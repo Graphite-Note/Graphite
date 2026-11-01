@@ -38,42 +38,44 @@ extension WorkspaceModel {
     }
 }
 
-extension VaultSettingsChanges {
+extension WorkspaceModel {
     /// A switch for an option that `app.json` can hold: it shows the vault's value, else the
     /// device's, and a change goes to the vault's file, or to the device when no vault is open.
-    func binding(for workspace: WorkspaceModel, vaultOption: WritableKeyPath<ObsidianSettings, Bool?> & Sendable,
-                 deviceOption: ReferenceWritableKeyPath<GraphitePreferences, Bool>) -> Binding<Bool> {
-        Binding(get: { self.settings(of: workspace)[keyPath: vaultOption] ?? workspace.preferences[keyPath: deviceOption] }, set: { isOn in
-            if workspace.store == nil {
-                workspace.preferences[keyPath: deviceOption] = isOn
+    func binding(vaultOption: WritableKeyPath<ObsidianSettings, Bool?> & Sendable, deviceOption: ReferenceWritableKeyPath<GraphitePreferences, Bool>,
+                 changes: VaultSettingsChanges) -> Binding<Bool> {
+        Binding(get: { changes.settings(of: self)[keyPath: vaultOption] ?? self.preferences[keyPath: deviceOption] }, set: { isOn in
+            if self.store == nil {
+                self.preferences[keyPath: deviceOption] = isOn
             } else {
-                self.update(workspace) { settings in settings[keyPath: vaultOption] = isOn }
+                changes.update(self) { settings in settings[keyPath: vaultOption] = isOn }
             }
         })
     }
 
     /// The view new notes open in, shown and changed the same way.
-    func defaultNoteViewBinding(for workspace: WorkspaceModel) -> Binding<DefaultNoteView> {
+    func defaultNoteViewBinding(changes: VaultSettingsChanges) -> Binding<DefaultNoteView> {
         Binding(get: {
-            self.settings(of: workspace).defaultViewMode.map { mode in mode == .preview ? DefaultNoteView.reading : .editing } ?? workspace.preferences.defaultNoteView
+            let vaultMode = changes.settings(of: self).defaultViewMode
+            return vaultMode.map { mode in mode == .preview ? DefaultNoteView.reading : .editing } ?? self.preferences.defaultNoteView
         }, set: { view in
-            if workspace.store == nil {
-                workspace.preferences.defaultNoteView = view
+            if self.store == nil {
+                self.preferences.defaultNoteView = view
             } else {
-                self.update(workspace) { settings in settings.defaultViewMode = view == .reading ? .preview : .source }
+                changes.update(self) { settings in settings.defaultViewMode = view == .reading ? .preview : .source }
             }
         })
     }
 
     /// The editing mode, shown and changed the same way.
-    func defaultEditingModeBinding(for workspace: WorkspaceModel) -> Binding<EditingMode> {
+    func defaultEditingModeBinding(changes: VaultSettingsChanges) -> Binding<EditingMode> {
         Binding(get: {
-            self.settings(of: workspace).usesLivePreview.map { usesLivePreview in usesLivePreview ? EditingMode.livePreview : .source } ?? workspace.preferences.defaultEditingMode
+            let usesLivePreview = changes.settings(of: self).usesLivePreview
+            return usesLivePreview.map { isOn in isOn ? EditingMode.livePreview : .source } ?? self.preferences.defaultEditingMode
         }, set: { mode in
-            if workspace.store == nil {
-                workspace.preferences.defaultEditingMode = mode
+            if self.store == nil {
+                self.preferences.defaultEditingMode = mode
             } else {
-                self.update(workspace) { settings in settings.usesLivePreview = mode == .livePreview }
+                changes.update(self) { settings in settings.usesLivePreview = mode == .livePreview }
             }
         })
     }

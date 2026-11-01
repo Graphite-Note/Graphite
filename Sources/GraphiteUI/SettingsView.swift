@@ -321,7 +321,7 @@ private struct AppearanceSettingsPage: View {
                     .formFooterAlignment()
             }
             Section {
-                Toggle("Show Inline Title", isOn: vaultSettingsChanges.binding(for: workspace, vaultOption: \.showsInlineTitle, deviceOption: \.showsInlineTitle))
+                Toggle("Show Inline Title", isOn: workspace.binding(vaultOption: \.showsInlineTitle, deviceOption: \.showsInlineTitle, changes: vaultSettingsChanges))
             } header: {
                 Text("Interface")
             } footer: {

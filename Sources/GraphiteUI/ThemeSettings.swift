@@ -98,31 +98,8 @@ struct ThemeChoicePage: View {
 
     var body: some View {
         List {
-            Section {
-                themeRow("Default", isChosen: chosenTheme.isEmpty) { choose("") }
-                ForEach(installedThemes, id: \.self) { themeName in
-                    themeRow(themeName, isChosen: chosenTheme == themeName) { choose(themeName) }
-                        .swipeActions { Button("Delete", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
-                        .contextMenu { Button("Delete Theme…", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
-                }
-            } header: {
-                Text("Installed Themes")
-            } footer: {
-                Text("A theme styles notes and community plugins' panels, and Style Settings and the theme's own settings plugin can change it. Buttons, menus and Settings keep Graphite's look.")
-                    .formFooterAlignment()
-            }
-            Section("Community Themes") {
-                if isLoadingDirectory && directory.isEmpty {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else if let directoryError {
-                    Text(directoryError).foregroundStyle(.secondary)
-                    Button("Try Again") { Task { await loadDirectory() } }
-                } else {
-                    ForEach(ObsidianThemeDirectoryEntry.search(directory, for: searchText).prefix(200)) { entry in
-                        directoryRow(entry)
-                    }
-                }
-            }
+            installedThemesSection
+            communityThemesSection
         }
         .searchable(text: $searchText, prompt: "Search Themes")
         .navigationTitle("Theme")
@@ -137,6 +114,37 @@ struct ThemeChoicePage: View {
             Text(chosenTheme == themeName
                  ? "Its folder is removed from this vault the way the vault deletes files, and notes go back to the default look. Obsidian loses the theme too."
                  : "Its folder is removed from this vault the way the vault deletes files. Obsidian loses the theme too.")
+        }
+    }
+
+    private var installedThemesSection: some View {
+        Section {
+            themeRow("Default", isChosen: chosenTheme.isEmpty) { choose("") }
+            ForEach(installedThemes, id: \.self) { themeName in
+                themeRow(themeName, isChosen: chosenTheme == themeName) { choose(themeName) }
+                    .swipeActions { Button("Delete", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
+                    .contextMenu { Button("Delete Theme…", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
+            }
+        } header: {
+            Text("Installed Themes")
+        } footer: {
+            Text("A theme styles notes and community plugins' panels, and Style Settings and the theme's own settings plugin can change it. Buttons, menus and Settings keep Graphite's look.")
+                .formFooterAlignment()
+        }
+    }
+
+    private var communityThemesSection: some View {
+        Section("Community Themes") {
+            if isLoadingDirectory && directory.isEmpty {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if let directoryError {
+                Text(directoryError).foregroundStyle(.secondary)
+                Button("Try Again") { Task { await loadDirectory() } }
+            } else {
+                ForEach(ObsidianThemeDirectoryEntry.search(directory, for: searchText).prefix(200)) { entry in
+                    directoryRow(entry)
+                }
+            }
         }
     }
 
@@ -216,7 +224,7 @@ struct ThemeChoicePage: View {
             await reloadInstalled()
             workspace.communityPlugins.vaultStylesDidChange()
         } catch {
-            workspace.errorMessage = "“\(themeName)” could not be deleted. " + error.localizedDescription
+            workspace.errorMessage = "“\(themeName)” could not be deleted. " + ((error as? GraphiteError)?.errorDescription ?? "Check that the vault's files can be changed.")
         }
     }
 

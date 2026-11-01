@@ -164,7 +164,9 @@ private struct KeyboardShortcutRowView: View {
     var body: some View {
         // At accessibility sizes the name would be left a few letters wide beside the
         // shortcut and its buttons, so they go under it.
-        let layout = dynamicTypeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+        let stacked = AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+        let sideBySide = AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+        let layout = dynamicTypeSize.isAccessibilitySize ? stacked : sideBySide
         layout {
             VStack(alignment: .leading, spacing: 3) {
                 Text(row.title)

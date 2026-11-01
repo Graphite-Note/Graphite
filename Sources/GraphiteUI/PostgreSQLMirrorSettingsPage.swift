@@ -108,7 +108,8 @@ struct PostgreSQLMirrorSettingsPage: View {
     @ViewBuilder private var connectionTestText: some View {
         switch connectionTest {
         case .notRun:
-            Text(hasUnsavedChanges ? "Changes are saved when you leave this page, or now with Save and Copy Now." : "Copies follow the vault while this plugin is on.")
+            Text(hasUnsavedChanges ? "Changes are saved when you leave this page, or now with Save and Copy Now."
+                 : "Copies follow the vault while this plugin is on.")
         case .running:
             Text("Connecting…")
         case .succeeded(let server):
