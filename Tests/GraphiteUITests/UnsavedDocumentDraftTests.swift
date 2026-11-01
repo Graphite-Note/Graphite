@@ -63,10 +63,7 @@ final class UnsavedDocumentDraftTests: XCTestCase {
         let (window, note) = try await window(showing: "Folder/Lecture.md", in: vault)
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
         note.text = "typed"
-        do {
-            try await note.save()
-            throw XCTSkip("This file system lets a read-only folder be written.")
-        } catch let skip as XCTSkip { throw skip } catch {}
+        do { try await note.save(); XCTFail("A read-only folder takes no save.") } catch {}
         let vaultIdentifier = try XCTUnwrap(window.currentVaultIdentifier)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
 
@@ -341,7 +338,7 @@ final class UnsavedDocumentDraftTests: XCTestCase {
         let note = try MarkdownSession(path: path, snapshot: try await store.read(path), store: store, didSave: { _ in })
         try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
         note.text = "typed"
-        do { try await note.save(); throw XCTSkip("This file system lets a read-only folder be written.") } catch let skip as XCTSkip { throw skip } catch {}
+        do { try await note.save(); XCTFail("A read-only folder takes no save.") } catch {}
 
         var delays: [Duration] = []
         await note.autosave(after: .milliseconds(900)) { delay in
@@ -388,13 +385,12 @@ final class UnsavedDocumentDraftTests: XCTestCase {
         // The first autosave fails and a second waits on the clock, with no further edit.
         try await clock.awaitPendingSleepers()
         clock.advance(by: CanvasSession.autosaveDelay)
-        for _ in 0..<400 where canvas.errorMessage == nil { try await Task.sleep(for: .milliseconds(5)) }
-        try XCTSkipIf(canvas.errorMessage == nil, "This file system lets a read-only folder be written.")
+        try await waitUntil("the first save failed") { canvas.errorMessage != nil }
         XCTAssertTrue(canvas.hasUnsavedChanges)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path)
         try await clock.awaitPendingSleepers()
         clock.advance(by: AutosaveRetryPolicy.delay(afterConsecutiveFailures: 1))
-        for _ in 0..<400 where canvas.hasUnsavedChanges { try await Task.sleep(for: .milliseconds(5)) }
+        try await waitUntil("the second try saved") { !canvas.hasUnsavedChanges }
         XCTAssertFalse(canvas.hasUnsavedChanges, "The second try reached the file.")
     }
 
@@ -431,12 +427,9 @@ final class UnsavedDocumentDraftTests: XCTestCase {
         await note.checkExternalChange()
         XCTAssertEqual(note.text, "from elsewhere")
         let path = try VaultPath("Lecture.md")
-        for _ in 0..<200 {
-            let snapshots = try fileRecovery.snapshots(for: path)
-            if try snapshots.contains(where: { snapshot in try fileRecovery.text(of: snapshot) == "third" }) { return }
-            try await Task.sleep(for: .milliseconds(5))
+        try await waitUntil("the replaced version was kept") {
+            try fileRecovery.snapshots(for: path).contains { snapshot in (try? fileRecovery.text(of: snapshot)) == "third" }
         }
-        XCTFail("The replaced version was not kept.")
     }
 
     // MARK: Helpers

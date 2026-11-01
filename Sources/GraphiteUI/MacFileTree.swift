@@ -395,7 +395,8 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Dragging
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> (any NSPasteboardWriting)? {
-        guard let node = item as? FileTreeNode, let data = try? JSONEncoder().encode(VaultItemTransfer(path: node.path.rawValue, vaultRoot: workspace.folderAccess?.root)) else { return nil }
+        guard let node = item as? FileTreeNode,
+              let data = try? JSONEncoder().encode(VaultItemTransfer(path: node.path.rawValue, vaultRoot: workspace.folderAccess?.root)) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setData(data, forType: Self.vaultItemType)
         return pasteboardItem
@@ -405,7 +406,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     /// elsewhere, to the vault's root. The folder that would receive the drop is highlighted.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: any NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let destination = dropDestination(for: item as? FileTreeNode)
-        let paths = draggedPaths(in: info)
+        let paths = draggedItems(in: info).compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }
         let hasItemOfAnotherVault = draggedItems(in: info).contains { item in item.isFromAnotherVault(than: workspace.folderAccess?.root) }
         guard hasItemOfAnotherVault || paths.contains(where: { path in Self.canMove(path, into: destination?.path ?? .root) }) else { return [] }
         outlineView.setDropItem(destination, dropChildIndex: NSOutlineViewDropOnItemIndex)
@@ -425,14 +426,10 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     private func draggedItems(in info: any NSDraggingInfo) -> [VaultItemTransfer] {
         (info.draggingPasteboard.pasteboardItems ?? []).compactMap { pasteboardItem in
             guard let data = pasteboardItem.data(forType: Self.vaultItemType) else { return nil }
-            return try? JSONDecoder().decode(VaultItemTransfer.self, from: data)
+            return try? JSONDecoder().decode(VaultItemTransfer.self, from: data) // An unreadable item moves nothing.
         }
     }
 
-    /// The dragged items of this window's vault. An item of another vault is taken on drop.
-    private func draggedPaths(in info: any NSDraggingInfo) -> [VaultPath] {
-        draggedItems(in: info).compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }
-    }
 
     /// An item moves only to another folder, and never into itself.
     static func canMove(_ path: VaultPath, into folder: VaultPath) -> Bool {

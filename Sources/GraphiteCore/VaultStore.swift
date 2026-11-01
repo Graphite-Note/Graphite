@@ -85,6 +85,23 @@ public enum FileNameRules {
     }
 }
 
+/// Why edits that could not be saved did not go to a copy.
+public enum SeparateCopyRefusal: LocalizedError, Equatable {
+    case vaultFolderIsGone(fileName: String)
+    /// A drawing can only be saved as a new file when it has a file already.
+    case drawingHasNoFile
+    /// A PDF's edits cannot be left behind by choosing a version; it has its own Save a Copy.
+    case pdfHasUnsavedEdits(fileName: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .vaultFolderIsGone(let fileName): "The vault's folder is no longer where it was, so a copy cannot be written beside “\(fileName)”."
+        case .drawingHasNoFile: "This drawing cannot be saved as a new file."
+        case .pdfHasUnsavedEdits(let fileName): "“\(fileName)” has edits that could not be saved. Use Save a Copy in its banner first, then choose a version."
+        }
+    }
+}
+
 public actor VaultStore {
     public nonisolated let root: URL
     public nonisolated let writer: AtomicFileWriter
@@ -370,34 +387,6 @@ public actor VaultStore {
         return firstIdentifier.isEqual(secondIdentifier)
     }
 
-    /// Copies a file or folder beside itself as "Name 1", like Obsidian's "Make a copy".
-    public func duplicate(_ path: VaultPath) async throws -> VaultPath {
-        let sourceLocation = try path.url(in: root)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: sourceLocation.path, isDirectory: &isDirectory) else { throw GraphiteError.unavailable("“\(path.name)” is no longer in the vault.") }
-        let copyPath = try availablePath(in: path.parent, stem: isDirectory.boolValue ? path.name : path.stem,
-                                         extension: isDirectory.boolValue ? "" : (path.name as NSString).pathExtension, firstSuffix: 1)
-        let copyLocation = try copyPath.url(in: root)
-        // Off the actor: a copy of gigabytes must not hold back every save waiting behind it.
-        let writer = writer
-        let isFolder = isDirectory.boolValue
-        try await Task.detached(priority: .userInitiated) {
-            guard isFolder else {
-                try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
-                return
-            }
-            var coordinationError: NSError?
-            var copyResult: Result<Void, Error>?
-            writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
-                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedCopy) }
-            }
-            if let coordinationError { throw coordinationError }
-            guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }
-            try copyResult.get()
-        }.value
-        return copyPath
-    }
-
     /// Creates an empty folder; fails if something already has that name.
     public func createFolder(named name: String, in directory: VaultPath) throws -> VaultPath {
         if let problem = FileNameRules.problem(with: name, isNote: false) { throw GraphiteError.unavailable(problem) }
@@ -476,12 +465,40 @@ public actor VaultStore {
         throw GraphiteError.unavailable("Choose another name.")
     }
 
+    /// Copies a file or folder beside itself as "Name 1", like Obsidian's "Make a copy".
+    public func duplicate(_ path: VaultPath) async throws -> VaultPath {
+        let sourceLocation = try path.url(in: root)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: sourceLocation.path, isDirectory: &isDirectory) else { throw GraphiteError.unavailable("“\(path.name)” is no longer in the vault.") }
+        let copyPath = try availablePath(in: path.parent, stem: isDirectory.boolValue ? path.name : path.stem,
+                                         extension: isDirectory.boolValue ? "" : (path.name as NSString).pathExtension, firstSuffix: 1)
+        let copyLocation = try copyPath.url(in: root)
+        // Off the actor: a copy of gigabytes must not hold back every save waiting behind it.
+        let writer = writer
+        let isFolder = isDirectory.boolValue
+        try await Task.detached(priority: .userInitiated) {
+            guard isFolder else {
+                try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
+                return
+            }
+            var coordinationError: NSError?
+            var copyResult: Result<Void, Error>?
+            writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
+                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedCopy) }
+            }
+            if let coordinationError { throw coordinationError }
+            guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }
+            try copyResult.get()
+        }.value
+        return copyPath
+    }
+
     /// A free path beside `path` for edits that could not be saved into it. Its folder is made
     /// again when another app renamed or removed it, so the copy always has a place. The vault's
     /// own folder is not: one that moved would come back empty beside the real one.
     public func separateCopyPath(of path: VaultPath, fileExtension: String) throws -> VaultPath {
         guard FileManager.default.fileExists(atPath: root.path) else {
-            throw GraphiteError.unavailable("The vault's folder is no longer where it was, so a copy cannot be written beside “\(path.name)”.")
+            throw SeparateCopyRefusal.vaultFolderIsGone(fileName: path.name)
         }
         try createDirectory(path.parent)
         return try uniquePath(directory: path.parent, stem: FileNameRules.separateCopyStem(of: path.stem), extension: fileExtension)

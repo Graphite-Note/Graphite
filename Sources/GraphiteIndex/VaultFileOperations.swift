@@ -144,10 +144,6 @@ public struct VaultFileOperations: Sendable {
             let newSource = moves[source] ?? source
             let snapshot: FileSnapshot
             do {
-                if unreadNotes.mayLink.contains(source), try await index.isUnreadableAsText(source) {
-                    notesNotUpdated[newSource] = .notText
-                    continue
-                }
                 snapshot = try await store.read(source, maximumBytes: Self.maximumRewrittenNoteBytes)
             } catch GraphiteError.oversized {
                 notesNotUpdated[newSource] = .tooLarge
@@ -192,7 +188,8 @@ public struct VaultFileOperations: Sendable {
     /// too large, not UTF-8, or still in the cloud. Those on this device are searched by bytes
     /// for the moved files' names, as unreadable canvases are for their paths, so the plan
     /// names them as not updated. Those in the cloud cannot be, so they are only counted.
-    private func unreadNotesLinkingTo(_ moves: [VaultPath: VaultPath], besides sources: Set<VaultPath>) async throws -> (mayLink: Set<VaultPath>, notChecked: [VaultPath]) {
+    private func unreadNotesLinkingTo(_ moves: [VaultPath: VaultPath], besides sources: Set<VaultPath>) async throws
+        -> (mayLink: Set<VaultPath>, notChecked: [VaultPath]) {
         let unreadNotes = try await index.notesWithUnreadText()
         guard !unreadNotes.isEmpty else { return ([], []) }
         var mayLink = Set<VaultPath>()
@@ -200,7 +197,7 @@ public struct VaultFileOperations: Sendable {
         let canSearchBytes = moves.count <= Self.maximumNamesSearchedInUnreadNotes
         let searchedNames: [Data] = canSearchBytes ? Set(moves.keys.flatMap(Self.spellings(ofNameOf:))).map { name in Data(name.utf8) } : []
         for note in unreadNotes where !sources.contains(note) {
-            guard let location = try? note.url(in: store.root) else { continue }
+            guard let location = try? note.url(in: store.root) else { continue } // A path outside the vault names no note.
             guard !isNotDownloaded(location), canSearchBytes else {
                 notChecked.append(note)
                 continue
@@ -465,16 +462,10 @@ extension VaultIndex {
     /// Notes and canvases whose text the index never read, so that it holds no links of theirs.
     func notesWithUnreadText() throws -> [VaultPath] {
         try databaseQueue.read { database in
-            try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed IN (?, ?) AND (path LIKE '%.md' OR path LIKE '%.markdown' OR path LIKE '%.canvas')",
+            try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed IN (?, ?)"
+                                    + " AND (path LIKE '%.md' OR path LIKE '%.markdown' OR path LIKE '%.canvas')",
                                 arguments: [IndexedContentState.notRead.rawValue, IndexedContentState.unreadableAsText.rawValue])
                 .map(VaultPath.init).filter { path in Self.holdsLinkText(path) }
-        }
-    }
-
-    /// Whether the index read this note and found that it is not UTF-8.
-    func isUnreadableAsText(_ path: VaultPath) throws -> Bool {
-        try databaseQueue.read { database in
-            try Int.fetchOne(database, sql: "SELECT contentIndexed FROM files WHERE path = ?", arguments: [path.rawValue]) == IndexedContentState.unreadableAsText.rawValue
         }
     }
 

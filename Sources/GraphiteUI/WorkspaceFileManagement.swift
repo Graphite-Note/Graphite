@@ -50,6 +50,8 @@ enum FileMoveRefusal: Equatable {
     case vaultStillBeingRead(movedName: String)
     /// The person dismissed the "Update links?" question without answering it.
     case cancelled(movedName: String)
+    /// Notes name the item in Wikilinks, which cannot hold `newName`.
+    case nameBreaksWikilinks(newName: String, movedName: String)
     case failed(message: String)
 
     var message: String {
@@ -59,6 +61,8 @@ enum FileMoveRefusal: Equatable {
         case .destinationTaken(let destination): "“\(destination.rawValue)” already exists."
         case .vaultStillBeingRead(let movedName): "Graphite is still reading the vault, so the links to “\(movedName)” cannot be updated yet. Try again when reading has finished."
         case .cancelled(let movedName): "“\(movedName)” was not renamed."
+        case .nameBreaksWikilinks(let newName, let movedName):
+            "“\(newName)” cannot be used, because notes link to “\(movedName)” with Wikilinks, and a Wikilink cannot hold # ^ [ ] or |. Nothing was moved."
         case .failed(let message): message
         }
     }
@@ -81,7 +85,7 @@ final class QueuedMoves {
 }
 
 /// Changes made to an open note or canvas while its file was moving, for its new place.
-private struct EditDuringMove {
+struct EditDuringMove {
     let newPath: VaultPath
     /// The whole file as the open document would save it.
     let data: Data
@@ -125,22 +129,6 @@ extension WorkspaceModel {
         catch { errorMessage = error.localizedDescription }
     }
 
-    /// What a drop of dragged items on `folder` does: items of this vault move there, those it
-    /// `accepts`, and items dragged from another window's vault are copied in as files from
-    /// outside are, since their paths mean nothing here and could name another file.
-    /// - Returns: Whether the drop did anything.
-    func takeDroppedItems(_ items: [VaultItemTransfer], into folder: VaultPath, accepts: (VaultPath) -> Bool = { _ in true }) -> Bool {
-        let root = folderAccess?.root
-        let paths = items.compactMap { item in item.path(inVaultAt: root) }.filter(accepts)
-        let foreignLocations = items.filter { item in item.isFromAnotherVault(than: root) }.compactMap(\.sourceLocation)
-        guard !paths.isEmpty || !foreignLocations.isEmpty else { return false }
-        Task {
-            for path in paths { await move(path, into: folder) }
-            if !foreignLocations.isEmpty { await importFiles(from: foreignLocations, into: folder) }
-        }
-        return true
-    }
-
     /// Moves a file or folder into `folder`, keeping its name.
     func move(_ path: VaultPath, into folder: VaultPath) async {
         guard !folder.isInside(path), folder != path.parent else { return }
@@ -181,6 +169,10 @@ extension WorkspaceModel {
             pathsBeingMoved.remove(path)
             stopShowingProgress()
         }
+        return await planAndCompleteMove(of: path, to: destination, through: fileOperations)
+    }
+
+    private func planAndCompleteMove(of path: VaultPath, to destination: VaultPath, through fileOperations: VaultFileOperations) async -> FileMoveOutcome {
         do {
             let editedNotePaths = tabDocuments.values.compactMap(\.markdownSession).filter(\.hasUnsavedChanges).map(\.path)
                 + tabDocuments.values.compactMap(\.canvasSession).filter(\.hasUnsavedChanges).map(\.path)
@@ -193,7 +185,7 @@ extension WorkspaceModel {
             let plan = try await fileOperations.linkUpdates(forMoving: path, to: destination)
             if plan.hasNameThatBreaksWikilinks {
                 // Nothing has moved yet, so no link is broken.
-                let refusal = FileMoveRefusal.failed(message: "“\(destination.name)” cannot be used, because notes link to “\(path.name)” with Wikilinks, and a Wikilink cannot hold # ^ [ ] or |. Nothing was moved.")
+                let refusal = FileMoveRefusal.nameBreaksWikilinks(newName: destination.name, movedName: path.name)
                 errorMessage = refusal.message
                 return .refused(refusal)
             }
@@ -329,101 +321,6 @@ extension WorkspaceModel {
         return revisions
     }
 
-    /// Open notes and canvases inside the moved item with changes not yet saved, made while it moved.
-    private func unsavedEdits(inside path: VaultPath, movedTo destination: VaultPath, revisionsBeforeMove: [VaultPath: FileRevision]) -> [EditDuringMove] {
-        let noteEdits = tabDocuments.values.compactMap(\.markdownSession).compactMap { session -> EditDuringMove? in
-            guard session.path.isInside(path), session.hasUnsavedChanges,
-                  let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
-            return EditDuringMove(newPath: newPath, data: NoteTextEncoding.encode(session.text, hasByteOrderMark: session.hasByteOrderMark),
-                                  copyExtension: "md", revisionBeforeMove: revisionsBeforeMove[session.path])
-        }
-        let canvasEdits = tabDocuments.values.compactMap(\.canvasSession).compactMap { session -> EditDuringMove? in
-            guard session.path.isInside(path), let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
-            // Text typed into a card is part of the file only once committed.
-            session.commitTextEdit()
-            guard session.hasUnsavedChanges else { return nil }
-            return EditDuringMove(newPath: newPath, data: session.file.data, copyExtension: "canvas", revisionBeforeMove: revisionsBeforeMove[session.path])
-        }
-        return noteEdits + canvasEdits
-    }
-
-    /// Writes changes made during a move into the note or canvas at its new place. A file
-    /// that the move itself changed (a note's own links were rewritten) keeps that version,
-    /// and the changes are saved beside it as a separate copy, so neither is lost.
-    /// - Returns: The files written, and a message for each edit saved as a copy or not saved.
-    private func saveEditsMadeDuringMove(_ edits: [EditDuringMove]) async -> (writtenPaths: [VaultPath], problems: [String]) {
-        guard let store else { return ([], []) }
-        var writtenPaths: [VaultPath] = []
-        var problems: [String] = []
-        for edit in edits {
-            let data = edit.data
-            do {
-                guard let revisionBeforeMove = edit.revisionBeforeMove else { throw GraphiteError.conflict }
-                _ = try await store.save(data, at: edit.newPath, expecting: .revision(revisionBeforeMove))
-                writtenPaths.append(edit.newPath)
-            } catch {
-                do {
-                    let copyPath = try await store.separateCopyPath(of: edit.newPath, fileExtension: edit.copyExtension)
-                    _ = try await store.save(data, at: copyPath, expecting: .absent)
-                    writtenPaths.append(copyPath)
-                    problems.append("“\(edit.newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as “\(copyPath.name)”.")
-                } catch {
-                    problems.append("The changes made to “\(edit.newPath.name)” while it moved could not be saved. " + error.localizedDescription)
-                }
-            }
-        }
-        return (writtenPaths, problems)
-    }
-
-    /// Ink and page changes made on an open PDF while it moved go to a copy beside the moved
-    /// file: the session holding them, kept alive here, still points at the old place.
-    private func savePDFEditsMadeDuringMove(_ sessions: [PDFSession], from path: VaultPath, to destination: VaultPath) async -> (writtenPaths: [VaultPath], problems: [String]) {
-        guard let root = folderAccess?.root else { return ([], []) }
-        var writtenPaths: [VaultPath] = []
-        var problems: [String] = []
-        for session in sessions {
-            let name = session.location.lastPathComponent
-            do {
-                guard let oldPath = vaultPath(for: session.location) else { throw GraphiteError.outsideVault }
-                let newPath = try oldPath.replacingPrefix(path, with: destination)
-                let copyLocation = try await session.saveSeparateCopy(inFolder: try newPath.parent.url(in: root))
-                if let copyPath = vaultPath(for: copyLocation) { writtenPaths.append(copyPath) }
-                problems.append("“\(newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as “\(copyLocation.lastPathComponent)”.")
-            } catch {
-                problems.append("The changes made to “\(name)” while it moved could not be saved. " + error.localizedDescription)
-            }
-        }
-        return (writtenPaths, problems)
-    }
-
-    /// Another app or window moved a file or folder: tabs follow it, and so does everything
-    /// remembered about it. Text not saved yet goes to the new place when the file there is
-    /// still the version it was made over, and beside it otherwise, as for edits during a
-    /// move of Graphite's own. A file that left the vault is not followed: its tab says it is
-    /// gone, with its text kept (`Save a Copy`).
-    func followExternalMove(from oldLocation: URL, to newLocation: URL) async {
-        guard let oldPath = vaultPath(for: oldLocation), let newPath = vaultPath(for: newLocation), oldPath != newPath,
-              !oldPath.isHidden, !newPath.isHidden, let store,
-              // A file put in the old place again is a save by replacing it, not a move.
-              (try? await store.fileExists(newPath)) == true, (try? await store.fileExists(oldPath)) == false else { return }
-        // Read before the tabs let go of their sessions, with no suspension in between.
-        let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.baseRevision) }
-            + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.baseRevision) }) { firstRevision, _ in firstRevision }
-        let edits = unsavedEdits(inside: oldPath, movedTo: newPath, revisionsBeforeMove: revisions)
-        let pdfsWithEdits = tabDocuments.values.compactMap(\.pdfSession).filter { session in
-            session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(oldPath) == true
-        }
-        expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(oldPath, with: newPath)) ?? folder })
-        followMoveInNavigation(from: oldPath, to: newPath)
-        moveDrafts(from: oldPath, to: newPath)
-        let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(edits)
-        let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsWithEdits, from: oldPath, to: newPath)
-        refreshIndexFollowingMove([oldPath, newPath] + keptEditPaths + keptPDFPaths)
-        await refreshDirectory()
-        let problems = editProblems + pdfProblems
-        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
-    }
-
     /// The notes shown by name in the message; a folder move can leave many more.
     private static let maximumListedNotesNotUpdated = 20
 
@@ -442,7 +339,8 @@ extension WorkspaceModel {
     /// many such notes would otherwise stop the work at every rename.
     static func describeNotesNotChecked(_ notes: [VaultPath], movedItemName: String) -> String {
         let noteCount = notes.count == 1 ? "1 note is" : "\(notes.count.formatted()) notes are"
-        return "\(noteCount) in the cloud and not on this device, so links to “\(movedItemName)” in them could not be updated. They may still name it as it was."
+        return "\(noteCount) in the cloud and not on this device, so links to “\(movedItemName)” in them could not be updated. "
+            + "They may still name it as it was."
     }
 
     func duplicate(_ path: VaultPath) async {
@@ -511,7 +409,8 @@ extension WorkspaceModel {
                 notice = "This storage has no system trash, so “\(path.name)” was moved to the vault's .trash folder instead."
             }
             if notesWithoutCopy > 0 {
-                notice = "File recovery kept copies of \(Self.maximumNotesCopiedBeforeDeletion) of the notes in “\(path.name)”, the most it copies at once; \(notesWithoutCopy.formatted()) more have none."
+                notice = "File recovery kept copies of \(Self.maximumNotesCopiedBeforeDeletion) of the notes in “\(path.name)”, the most it copies at once; "
+                    + "\(notesWithoutCopy.formatted()) more have none."
             }
         } catch { errorMessage = error.localizedDescription }
     }
@@ -548,7 +447,7 @@ extension WorkspaceModel {
 
     /// Refreshes the index rows of moved files, with the next move waiting for it. A scan would
     /// leave no way to wait short of the whole vault, and it reads these same files.
-    private func refreshIndexFollowingMove(_ paths: [VaultPath]) {
+    func refreshIndexFollowingMove(_ paths: [VaultPath]) {
         guard let index, let root = folderAccess?.root else { return }
         let uniquePaths = Array(Set(paths))
         let previousRefresh = indexRefreshFollowingMoves

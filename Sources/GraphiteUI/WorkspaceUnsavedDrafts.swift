@@ -16,7 +16,9 @@ import GraphiteCore
 
 extension WorkspaceModel {
     private func draftKeeper(for path: VaultPath) -> DocumentDraftKeeper? {
-        currentVaultIdentifier.map { vaultIdentifier in DocumentDraftKeeper(store: processServices.unsavedDrafts, vaultIdentifier: vaultIdentifier, path: path) }
+        currentVaultIdentifier.map { vaultIdentifier in
+            DocumentDraftKeeper(store: processServices.unsavedDrafts, vaultIdentifier: vaultIdentifier, path: path)
+        }
     }
 
     /// Gives a note that just opened its draft, and the text an ended app could not save.
@@ -59,7 +61,7 @@ extension WorkspaceModel {
     func keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: Bool) async -> Bool {
         var isEverythingSafe = await keepUnsavedTextInDrafts()
         for pdf in tabDocuments.values.compactMap(\.pdfSession) where pdf.hasUnsavedChanges {
-            guard writesPDFCopies, (try? await pdf.saveSeparateCopy()) != nil else {
+            guard writesPDFCopies, (try? await pdf.saveSeparateCopy()) != nil else { // Counted as not safe, which holds quitting.
                 isEverythingSafe = false
                 continue
             }
@@ -77,9 +79,9 @@ extension WorkspaceModel {
         var waitingNames: [String] = []
         var copiedNames: [String] = []
         for draft in drafts.sorted(by: { leftDraft, rightDraft in leftDraft.path < rightDraft.path }) where layout.tabID(showing: draft.path) == nil {
-            if (try? await store.fileExists(draft.path)) != false {
+            if (try? await store.fileExists(draft.path)) != false { // Cannot be checked: treated as there, so nothing is written.
                 // The file has the text after all, as when the save finished as the app ended.
-                if (try? await store.read(draft.path))?.data == draft.contents {
+                if (try? await store.read(draft.path))?.data == draft.contents { // Unreadable: the draft stays.
                     processServices.unsavedDrafts.remove(draft.path, inVault: vaultIdentifier)
                 } else {
                     waitingNames.append(draft.path.name)
@@ -100,7 +102,8 @@ extension WorkspaceModel {
         if !copiedNames.isEmpty { await refreshDirectory() }
         var sentences: [String] = []
         if !copiedNames.isEmpty {
-            sentences.append("Text that could not be saved before Graphite last closed is in " + Self.quotedList(copiedNames) + ", since the files it belonged to are gone.")
+            sentences.append("Text that could not be saved before Graphite last closed is in " + Self.quotedList(copiedNames)
+                + ", since the files it belonged to are gone.")
         }
         if !waitingNames.isEmpty {
             sentences.append("Graphite is keeping text that could not be saved in " + Self.quotedList(waitingNames) + ". Open the file to get it back.")
@@ -125,7 +128,7 @@ extension WorkspaceModel {
         for draft in await processServices.unsavedDrafts.drafts(inVault: currentVaultIdentifier) where draft.path.isInside(path) {
             if preferences.isEnabled(.fileRecovery), let fileRecovery, DocumentKind(path: draft.path) == .markdown,
                let decoded = NoteTextEncoding.decode(draft.contents) {
-                _ = try? fileRecovery.takeSnapshot(of: decoded.text, for: draft.path, minimumInterval: 0)
+                _ = try? fileRecovery.takeSnapshot(of: decoded.text, for: draft.path, minimumInterval: 0) // Best effort: the person deleted the file.
             }
             processServices.unsavedDrafts.remove(draft.path, inVault: currentVaultIdentifier)
         }

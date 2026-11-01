@@ -54,18 +54,18 @@ final class UnsavedDocumentDraftStore {
     /// - Returns: Whether the draft is on disk, once it is.
     func keep(_ draft: UnsavedDocumentDraft, inVault vaultIdentifier: UUID) async -> Bool {
         let location = Self.location(of: draft.path, in: folder(ofVault: vaultIdentifier))
-        return await enqueue { (try? Self.write(draft, to: location)) != nil }.value
+        return await enqueue { (try? Self.write(draft, to: location)) != nil }.value // The caller is told, and quitting stops for it.
     }
 
     func remove(_ path: VaultPath, inVault vaultIdentifier: UUID) {
         let location = Self.location(of: path, in: folder(ofVault: vaultIdentifier))
-        _ = enqueue { try? FileManager.default.removeItem(at: location) }
+        _ = enqueue { try? FileManager.default.removeItem(at: location) } // No draft there is the same outcome.
     }
 
     /// Forgets a vault's drafts, as for a vault taken off the list.
     func removeAll(inVault vaultIdentifier: UUID) {
         let folder = folder(ofVault: vaultIdentifier)
-        _ = enqueue { try? FileManager.default.removeItem(at: folder) }
+        _ = enqueue { try? FileManager.default.removeItem(at: folder) } // No folder there is the same outcome.
     }
 
     /// The path's draft, read after every write and removal asked for so far.
@@ -86,11 +86,11 @@ final class UnsavedDocumentDraftStore {
         let folder = folder(ofVault: vaultIdentifier)
         _ = enqueue {
             for draft in Self.readDrafts(in: folder) where draft.path.isInside(path) {
-                guard let newPath = try? draft.path.replacingPrefix(path, with: destination) else { continue }
+                guard let newPath = try? draft.path.replacingPrefix(path, with: destination) else { continue } // It stays, and comes back as a copy.
                 let movedDraft = UnsavedDocumentDraft(path: newPath, contents: draft.contents, baseRevision: draft.baseRevision, date: draft.date)
                 // The old one goes only once the new one is on disk.
-                guard (try? Self.write(movedDraft, to: Self.location(of: newPath, in: folder))) != nil else { continue }
-                try? FileManager.default.removeItem(at: Self.location(of: draft.path, in: folder))
+                guard (try? Self.write(movedDraft, to: Self.location(of: newPath, in: folder))) != nil else { continue } // It stays, and comes back as a copy.
+                try? FileManager.default.removeItem(at: Self.location(of: draft.path, in: folder)) // Left over, it comes back as a copy.
             }
         }
     }
@@ -130,12 +130,13 @@ final class UnsavedDocumentDraftStore {
     }
 
     private nonisolated static func readDraft(at location: URL) -> UnsavedDocumentDraft? {
-        guard FileManager.default.fileExists(atPath: location.path), let data = try? Data(contentsOf: location) else { return nil }
-        return try? PropertyListDecoder().decode(UnsavedDocumentDraft.self, from: data)
+        guard FileManager.default.fileExists(atPath: location.path),
+              let data = try? Data(contentsOf: location) else { return nil } // Unreadable now: left on disk for later.
+        return try? PropertyListDecoder().decode(UnsavedDocumentDraft.self, from: data) // Damaged: left on disk, untouched.
     }
 
     private nonisolated static func readDrafts(in folder: URL) -> [UnsavedDocumentDraft] {
-        let locations = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        let locations = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] // No folder: no drafts.
         return locations.filter { location in location.pathExtension == "draft" }.compactMap(readDraft(at:))
     }
 }

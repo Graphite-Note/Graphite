@@ -180,7 +180,7 @@ extension WorkspaceModel {
             if let note = document.markdownSession, note.hasUnsavedChanges { copies.append(try await note.saveSeparateCopy()) }
             if let canvas = document.canvasSession, canvas.hasUnsavedChanges { copies.append(try await canvas.saveSeparateCopy()) }
             if document.pdfSession?.hasUnsavedChanges == true {
-                throw GraphiteError.unavailable("“\(path.name)” has edits that could not be saved. Use Save a Copy in its banner first, then choose a version.")
+                throw SeparateCopyRefusal.pdfHasUnsavedEdits(fileName: path.name)
             }
         }
         return copies
@@ -190,8 +190,9 @@ extension WorkspaceModel {
     /// not the note is open.
     private func copyCurrentVersionForRecovery(of path: VaultPath) async {
         guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store, DocumentKind(path: path) == .markdown,
-              let snapshot = try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes),
+              let snapshot = try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes), // Unreadable or too large: no copy to take.
               let text = String(data: snapshot.data, encoding: .utf8) else { return }
+        // Best effort: the person confirmed replacing this version.
         _ = try? await Task.detached(priority: .utility) { try fileRecovery.takeSnapshot(of: text, for: path, minimumInterval: 0) }.value
     }
 

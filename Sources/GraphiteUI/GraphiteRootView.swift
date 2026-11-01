@@ -212,7 +212,7 @@ struct GraphiteRootView: View {
             }
         }
         .fullScreenCover(item: $workspace.drawingEditorRequest) { request in
-            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request)) { content, format in
+            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request), clock: workspace.clock) { content, format in
                 try await workspace.saveDrawing(content, format: format, for: request)
             } saveAsNewDrawing: { content, format in
                 try await workspace.saveDrawingAsNewFile(content, format: format, for: request)
@@ -221,15 +221,11 @@ struct GraphiteRootView: View {
             } preserveDraft: { content in
                 guard let vaultIdentifier = workspace.currentVaultIdentifier else { return }
                 workspace.processServices.drawingDrafts.markOpenInThisProcess(request.id)
-                // Without it iPadOS can suspend the app before a large drawing is encoded and written.
                 let backgroundTask = BackgroundTaskAssertion(name: "Keep drawing draft")
                 let write = workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
                     try await DrawingFileService().draftFileData(for: content)
                 }
-                Task {
-                    await write?.value
-                    backgroundTask.end()
-                }
+                Task { await write?.value; backgroundTask.end() }
             } removeDraft: {
                 workspace.processServices.drawingDrafts.removeDraft(withIdentifier: request.id)
             }
@@ -633,8 +629,7 @@ struct GraphiteRootView: View {
         // Drive, as soon as the app is off screen, and end the app before it finishes.
         let backgroundTask = BackgroundTaskAssertion(name: "Save open documents")
         Task {
-            // Outside the vault first: that write is quick and local, and it keeps the text if
-            // the save is refused, or is slow enough for iPadOS to end the app during it.
+            // First, as it is quick and local: the save may be refused, or slow enough for iPadOS to end the app.
             _ = await workspace.keepUnsavedTextInDrafts()
             await save()
             // Plugins' views of files (an Excalidraw drawing) save what they hold too, as when

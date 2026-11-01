@@ -1347,7 +1347,7 @@ final class WorkspaceModel {
     /// person its name, since the notes keep embedding the original.
     func saveDrawingAsNewFile(_ content: DrawingContent, format: DrawingFormat, for request: DrawingEditorRequest) async throws {
         guard let store, let root = folderAccess?.root, case .existingDrawing(let path, _, _) = request.target else {
-            throw GraphiteError.unavailable("This drawing cannot be saved as a new file.")
+            throw SeparateCopyRefusal.drawingHasNoFile
         }
         let newPath = try await store.separateCopyPath(of: path, fileExtension: format.fileExtension)
         _ = try await DrawingFileService(writer: store.writer).save(content, format: format, to: try newPath.url(in: root), expecting: .absent)

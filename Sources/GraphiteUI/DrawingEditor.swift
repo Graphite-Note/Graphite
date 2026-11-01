@@ -95,6 +95,8 @@ struct DrawingEditor: View {
     let request: DrawingEditorRequest
     let save: (DrawingContent, DrawingFormat) async throws -> Void
     let saveAsNewDrawing: (DrawingContent, DrawingFormat) async throws -> Void
+    /// Times the draft kept while drawing goes on.
+    let clock: any ApplicationClock
     let exportCopy: (DrawingContent, DrawingFormat) async throws -> URL
     /// Keeps a recovery copy of unsaved strokes while the app is in the background.
     let preserveDraft: (DrawingContent) -> Void
@@ -126,8 +128,9 @@ struct DrawingEditor: View {
 
     init(request: DrawingEditorRequest,
          noteDestination: LassoNoteDestination? = nil,
+         clock: any ApplicationClock = LiveApplicationClock(),
          save: @escaping (DrawingContent, DrawingFormat) async throws -> Void,
-         saveAsNewDrawing: @escaping (DrawingContent, DrawingFormat) async throws -> Void,
+         saveAsNewDrawing: @escaping (DrawingContent, DrawingFormat) async throws -> Void = { _, _ in throw SeparateCopyRefusal.drawingHasNoFile },
          exportCopy: @escaping (DrawingContent, DrawingFormat) async throws -> URL,
          preserveDraft: @escaping (DrawingContent) -> Void,
          removeDraft: @escaping () -> Void) {
@@ -135,6 +138,7 @@ struct DrawingEditor: View {
         self.noteDestination = noteDestination
         self.save = save
         self.saveAsNewDrawing = saveAsNewDrawing
+        self.clock = clock
         self.exportCopy = exportCopy
         self.preserveDraft = preserveDraft
         self.removeDraft = removeDraft
@@ -178,7 +182,8 @@ struct DrawingEditor: View {
                 }
                 // The message's first sentence is the title (`MessageAlert`).
                 .alert(MessageAlert.parts(of: errorMessage ?? "").title,
-                       isPresented: Binding(get: { errorMessage != nil }, set: { isPresented in if !isPresented { errorMessage = nil; failedBecauseOfConflict = false; failedPNGSave = false } })) {
+                       isPresented: Binding(get: { errorMessage != nil }, set: { isPresented in if !isPresented { errorMessage = nil; failedBecauseOfConflict = false
+                           failedPNGSave = false } })) {
                     if failedPNGSave {
                         ForEach([DrawingFormat.pdf, .svg]) { vectorFormat in
                             if request.isNewDrawing {
@@ -222,7 +227,7 @@ struct DrawingEditor: View {
             if phase == .background, canvasController.hasChanges, let content = currentContent { preserveDraft(content) }
         }
         // A crash or a forced end gives no notice, so strokes also go to the draft once they pause.
-        .background { DrawingDraftTimer(controller: canvasController) { if let content = currentContent { preserveDraft(content) } } }
+        .background { DrawingDraftTimer(controller: canvasController, clock: clock) { if let content = currentContent { preserveDraft(content) } } }
         .interactiveDismissDisabled(isSaving || canvasController.hasChanges)
         // The page is white paper in every appearance, so its controls use light styling.
         .preferredColorScheme(.light)
@@ -368,7 +373,8 @@ struct DrawingEditor: View {
     }
 
     /// What the alert says when the drawing's file changed elsewhere, naming what it offers.
-    private static let conflictMessage = "This drawing changed in another app. Save yours as a new drawing beside it, or use the other version and let yours go."
+    private static let conflictMessage = "This drawing changed in another app. "
+        + "Save yours as a new drawing beside it, or use the other version and let yours go."
 
     /// Keeps the strokes in a new file beside the one that changed elsewhere.
     private func saveAsNewDrawingAndClose() async {
@@ -1437,13 +1443,14 @@ private struct DrawingCanvas: UIViewRepresentable {
 /// A view of its own, so a stroke updates this rather than the whole editor.
 private struct DrawingDraftTimer: View {
     let controller: DrawingCanvasController
+    let clock: any ApplicationClock
     let preserveDraft: () -> Void
     private static let pauseBeforeKeepingDraft = Duration.seconds(5)
 
     var body: some View {
         Color.clear.task(id: controller.changeCount) {
             guard controller.changeCount > 0 else { return }
-            do { try await Task.sleep(for: Self.pauseBeforeKeepingDraft) } catch { return }
+            do { try await clock.sleep(for: Self.pauseBeforeKeepingDraft) } catch { return }
             preserveDraft()
         }
     }

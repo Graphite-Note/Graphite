@@ -675,7 +675,8 @@ private struct FileTreeRows: View, Equatable {
                 .selectionDisabled(row.entry.isDirectory)
                 .fileTreeRow()
                 .listRowBackground(contents.dropTargetFolder == row.entry.path ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil)
-                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier, atRoot: workspace.folderAccess?.root) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
+                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier,
+                                     atRoot: workspace.folderAccess?.root) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
         }
     }
 

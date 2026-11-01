@@ -432,7 +432,8 @@ public actor VaultIndex {
                 let namedPaths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_name = ?", arguments: [foldedKey(fileName)])
                 // Aliases are Obsidian's Wikilink names; a Markdown link names a file. A file's
                 // own name goes before another note's alias.
-                let aliasPaths = isWiki ? try String.fetchAll(database, sql: "SELECT path FROM aliases WHERE folded_alias = ?", arguments: [foldedKey(part)]) : []
+                let aliasPaths = isWiki
+                    ? try String.fetchAll(database, sql: "SELECT path FROM aliases WHERE folded_alias = ?", arguments: [foldedKey(part)]) : []
                 let namedResolution = WikiLinkResolver.closestFirst(namedPaths, toNoteAt: source)
                 paths = namedResolution + WikiLinkResolver.closestFirst(aliasPaths.filter { path in !namedPaths.contains(path) }, toNoteAt: source)
                 if !paths.isEmpty { return try paths.map(VaultPath.init) }
@@ -923,7 +924,8 @@ public actor VaultIndex {
     /// missing, not a regular file, hidden, or reached through a symbolic link.
     private func refreshedFile(at path: VaultPath, root: URL, writer: AtomicFileWriter) -> IndexedFile? {
         guard !path.isHidden, let location = Self.locationWithoutSymbolicLinks(of: path, root: root),
-              let values = try? location.resourceValues(forKeys: [.isRegularFileKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey, .ubiquitousItemDownloadingStatusKey, .canonicalPathKey]),
+              let values = try? location.resourceValues(forKeys: [.isRegularFileKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey,
+                                                                  .ubiquitousItemDownloadingStatusKey, .canonicalPathKey]),
               values.isRegularFile == true, values.isHidden != true else { return nil }
         // A case-insensitive volume finds `notes/Idea.md` under its old spelling `notes/idea.md`
         // too, right after a rename that only changed capitals. Only the stored spelling is a

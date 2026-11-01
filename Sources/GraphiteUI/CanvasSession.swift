@@ -88,8 +88,9 @@ final class CanvasSession {
     /// Increases with every change to `file`.
     private(set) var changeVersion = 0
     @ObservationIgnored private var savedVersion = 0
-    @ObservationIgnored private var savedData: Data
-    @ObservationIgnored private var revision: FileRevision
+    @ObservationIgnored private(set) var savedData: Data
+    /// The version of the file the edits were made over.
+    @ObservationIgnored private(set) var revision: FileRevision
     @ObservationIgnored private var activeSave: Task<Void, Error>?
     @ObservationIgnored private var autosave: Task<Void, Never>?
     /// Autosaves that failed in a row, each waiting longer before it tries again.
@@ -97,7 +98,7 @@ final class CanvasSession {
     /// Where edits that cannot reach the file wait, outside the vault.
     @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
     /// The change the draft on disk holds, nil when this session has no draft there.
-    @ObservationIgnored private var draftChangeVersion: Int?
+    @ObservationIgnored var draftChangeVersion: Int?
     var errorMessage: String?
     var hasExternalConflict = false
     /// Read or Write, as for notes and PDFs. Read never changes the file.
@@ -120,8 +121,6 @@ final class CanvasSession {
     @ObservationIgnored let undoAvailability = UndoAvailability()
 
     var isSaving: Bool { activeSave != nil }
-    /// The version of the file the edits were made over.
-    var baseRevision: FileRevision { revision }
     var hasUnsavedChanges: Bool { changeVersion != savedVersion || hasUncommittedText }
 
     // MARK: View
@@ -324,7 +323,13 @@ final class CanvasSession {
 
     // MARK: Saving
 
-    private func scheduleAutosave() {
+    /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.
+    func showConflict() {
+        hasExternalConflict = true
+        errorMessage = GraphiteError.conflict.localizedDescription
+    }
+
+    func scheduleAutosave() {
         autosave?.cancel()
         let delay = consecutiveAutosaveFailures == 0 ? Self.autosaveDelay : AutosaveRetryPolicy.delay(afterConsecutiveFailures: consecutiveAutosaveFailures)
         autosave = Task { [weak self, clock] in
@@ -387,46 +392,12 @@ final class CanvasSession {
         }
     }
 
-    /// Writes the canvas as edited to the draft outside the vault, as a note does.
-    /// - Returns: Whether the edits are safe: saved in the file or in the draft.
-    @discardableResult
-    func keepUnsavedEditsInDraft() async -> Bool {
-        commitTextEdit()
-        guard hasUnsavedChanges else { return true }
-        guard draftChangeVersion != changeVersion else { return true }
-        guard let draftKeeper else { return false }
-        let versionToKeep = changeVersion
-        guard await draftKeeper.keep(file.data, madeOver: revision) else { return false }
-        draftChangeVersion = versionToKeep
-        return true
-    }
-
-    /// Shows the edits an ended app could not save, as `MarkdownSession.restore` does.
-    /// - Returns: Whether the canvas now shows the draft's edits.
-    func restore(_ draft: UnsavedDocumentDraft) -> Bool {
-        guard !hasUnsavedChanges, let draftFile = try? CanvasFile(data: draft.contents) else { return false }
-        guard draft.contents != savedData else {
-            draftKeeper?.remove()
-            return false
-        }
+    /// Shows a draft's edits, made over `revision`, as unsaved changes to the canvas just opened.
+    func takeDraft(_ draftFile: CanvasFile, madeOver revision: FileRevision) {
         file = draftFile
         changeVersion += 1
-        draftChangeVersion = changeVersion
+        self.revision = revision
         updateDetailedNodes()
-        guard draft.baseRevision != revision else {
-            scheduleAutosave()
-            return true
-        }
-        revision = draft.baseRevision
-        hasExternalConflict = true
-        errorMessage = GraphiteError.conflict.localizedDescription
-        return true
-    }
-
-    private func discardDraft() {
-        guard draftChangeVersion != nil else { return }
-        draftKeeper?.remove()
-        draftChangeVersion = nil
     }
 
     /// Reads the file again after another app may have changed it. Unsaved edits are
@@ -445,8 +416,7 @@ final class CanvasSession {
                 return
             }
             if hasUnsavedChanges {
-                hasExternalConflict = true
-                errorMessage = GraphiteError.conflict.localizedDescription
+                showConflict()
                 await keepUnsavedEditsInDraft()
             } else {
                 try adopt(snapshot)

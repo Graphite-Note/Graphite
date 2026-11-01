@@ -72,9 +72,8 @@ final class FilesAndSavedDataTests: XCTestCase {
     // MARK: HUNT-085: a rename that only changes capitals
 
     func testARenameThatOnlyChangesCapitalsLeavesOneIndexRow() async throws {
-        let (workspace, vault) = try await makeWorkspace(files: ["notes/idea.md": "body", "Other/Linker.md": "[[idea]]"])
-        let upperLocation = vault.appendingPathComponent("notes/IDEA.md")
-        try XCTSkipUnless(FileManager.default.fileExists(atPath: upperLocation.path), "This volume tells capitals apart.")
+        // On a case-sensitive volume the old spelling is simply gone; the outcome is the same.
+        let (workspace, _) = try await makeWorkspace(files: ["notes/idea.md": "body", "Other/Linker.md": "[[idea]]"])
         await renameAnsweringUpdateLinks(try VaultPath("notes/idea.md"), to: "Idea", in: workspace)
         await workspace.indexRefreshFollowingMoves?.value
         let index = try XCTUnwrap(workspace.index)
@@ -383,11 +382,6 @@ final class FilesAndSavedDataTests: XCTestCase {
         }
         if let coordinationError { throw coordinationError }
         if let moveError { throw moveError }
-    }
-
-    private func waitUntil(_ condition: @MainActor () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
-        for _ in 0..<1_000 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
-        XCTAssertTrue(condition(), "Waited ten seconds.", file: file, line: line)
     }
 
     private func text(of relativePath: String, in vault: URL) throws -> String {

@@ -2787,7 +2787,7 @@ enum MacPastedAttachment: Equatable {
     static func attachments(on pasteboard: NSPasteboard, now: Date = .now, vaultRoot: URL? = nil) -> [MacPastedAttachment] {
         let vaultItems: [MacPastedAttachment] = (pasteboard.pasteboardItems ?? []).compactMap { pasteboardItem in
             guard let data = pasteboardItem.data(forType: vaultItemType),
-                  let item = try? JSONDecoder().decode(VaultItemTransfer.self, from: data) else { return nil }
+                  let item = try? JSONDecoder().decode(VaultItemTransfer.self, from: data) else { return nil } // An unreadable item adds nothing.
             // A link to an item of another window's vault would name whatever has that path here.
             guard let path = item.path(inVaultAt: vaultRoot) else { return .unreadableFile(name: item.path) }
             return .vaultItem(path)
