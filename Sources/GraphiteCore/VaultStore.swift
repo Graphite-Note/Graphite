@@ -1,3 +1,14 @@
+/**
+ * File: VaultStore.swift
+ * ----------------------
+ * Layer: Core
+ * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 public struct VaultEntry: Sendable, Identifiable, Hashable {

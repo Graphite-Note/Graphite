@@ -1,3 +1,14 @@
+/**
+ * File: QuitSaveDecision.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Whether Graphite quits once saving the open documents has ended, and what it says when it does not.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// How saving the open documents ended when the person asked to quit.

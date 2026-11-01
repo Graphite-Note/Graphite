@@ -1,3 +1,14 @@
+/**
+ * File: CanvasSession.swift
+ * -------------------------
+ * Layer: UI
+ * Description: An open canvas: its file, edits, undo, autosave, conflicts and what the board shows.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import CoreGraphics

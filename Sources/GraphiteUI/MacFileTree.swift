@@ -1,3 +1,14 @@
+/**
+ * File: MacFileTree.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The Mac's file tree on AppKit's outline view, with its dragging and dropping.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI

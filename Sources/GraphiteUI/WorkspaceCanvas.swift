@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCanvas.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Opening and creating canvases in a window.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

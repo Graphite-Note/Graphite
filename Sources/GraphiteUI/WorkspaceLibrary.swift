@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceLibrary.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: What the library view reads from and asks of a window.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

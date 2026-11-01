@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteWindows.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Windows of the app: what each opens on, and dragging items to open a new one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore

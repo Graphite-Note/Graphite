@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceModel.swift
+ * --------------------------
+ * Layer: UI
+ * Description: A window's state: its vault, tabs, sidebar, alerts, and what it does with them.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.63
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

@@ -1,3 +1,14 @@
+/**
+ * File: DrawingEditorDraftStore.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Keeps drafts of drawings being edited in Application Support, so they outlive the app.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

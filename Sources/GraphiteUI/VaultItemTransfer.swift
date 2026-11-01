@@ -1,3 +1,14 @@
+/**
+ * File: VaultItemTransfer.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: A file or folder being dragged, with the vault it comes from.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore

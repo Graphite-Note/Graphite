@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteMacScenes.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The Mac's scenes, menus and the saving that quitting waits for.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import SwiftUI
 import AppKit

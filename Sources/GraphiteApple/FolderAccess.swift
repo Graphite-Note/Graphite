@@ -1,3 +1,14 @@
+/**
+ * File: FolderAccess.swift
+ * ------------------------
+ * Layer: Apple
+ * Description: Finds and opens vault folders, and watches a vault for changes other apps and windows make.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Synchronization
 import GraphiteCore

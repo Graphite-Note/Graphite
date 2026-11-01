@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceConflictVersions.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: The versions a file provider keeps beside a file: listing them and deciding about them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

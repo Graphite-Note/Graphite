@@ -1,3 +1,14 @@
+/**
+ * File: DrawingEditor.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The full-screen drawing editor and its canvas controller.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.22
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple

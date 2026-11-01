@@ -1,3 +1,14 @@
+/**
+ * File: VaultNoteCopies.swift
+ * ---------------------------
+ * Layer: Index
+ * Description: Reads notes and their resolved links for copies of the vault elsewhere, such as the PostgreSQL mirror.
+ *
+ * Authors: felixchvl
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

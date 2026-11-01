@@ -1,3 +1,14 @@
+/**
+ * File: WikiLinkResolver.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: What a written link means: its parts, the paths it can name and which file of several it means, as in Obsidian.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 public enum WikiLinkResolver {

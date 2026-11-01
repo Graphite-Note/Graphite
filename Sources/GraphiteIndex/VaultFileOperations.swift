@@ -1,3 +1,14 @@
+/**
+ * File: VaultFileOperations.swift
+ * -------------------------------
+ * Layer: Index
+ * Description: Moves and renames that keep links working: plans the link changes, moves, then writes them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

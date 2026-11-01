@@ -1,3 +1,14 @@
+/**
+ * File: VaultGraph.swift
+ * ----------------------
+ * Layer: Index
+ * Description: Builds the graph view's data, and resolves links over names held in memory.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

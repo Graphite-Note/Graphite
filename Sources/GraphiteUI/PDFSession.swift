@@ -1,3 +1,14 @@
+/**
+ * File: PDFSession.swift
+ * ----------------------
+ * Layer: UI
+ * Description: An open PDF: its pages, edits, saving and conflicts.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.17
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import PDFKit

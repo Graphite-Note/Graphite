@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordQueries.swift
+ * -----------------------------
+ * Layer: Index
+ * Description: Answers bases' questions about files from the index.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

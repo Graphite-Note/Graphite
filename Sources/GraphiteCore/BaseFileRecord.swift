@@ -1,3 +1,14 @@
+/**
+ * File: BaseFileRecord.swift
+ * --------------------------
+ * Layer: Core
+ * Description: What a base knows of a file, and the provider that answers from records held in memory.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Yams
 

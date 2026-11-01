@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecovery.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Obsidian's File recovery for the open vault: copies of notes before their text is replaced or they are deleted.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -25,19 +36,23 @@ extension WorkspaceModel {
     }
 
     /// Copies notes about to be deleted, whatever the interval, since the deletion may be permanent.
-    func snapshotBeforeDeleting(_ paths: [VaultPath]) async {
-        guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store else { return }
+    /// - Returns: How many notes were left without a copy because the folder holds too many.
+    @discardableResult
+    func snapshotBeforeDeleting(_ paths: [VaultPath]) async -> Int {
+        guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store else { return 0 }
         // Notes only: pictures and PDFs in the folder must not use up the limit.
-        for path in paths.lazy.filter({ path in DocumentKind(path: path) == .markdown }).sorted().prefix(Self.maximumNotesCopiedBeforeDeletion) {
+        let notes = paths.filter { path in DocumentKind(path: path) == .markdown }.sorted()
+        for path in notes.prefix(Self.maximumNotesCopiedBeforeDeletion) {
             let text: String?
             if let session = openMarkdownSession(at: path) { text = session.text }
             else { text = (try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes)).flatMap { snapshot in String(data: snapshot.data, encoding: .utf8) } }
             guard let text else { continue }
             _ = try? await Task.detached(priority: .userInitiated) { try fileRecovery.takeSnapshot(of: text, for: path, minimumInterval: 0) }.value
         }
+        return max(notes.count - Self.maximumNotesCopiedBeforeDeletion, 0)
     }
 
-    private static var maximumNotesCopiedBeforeDeletion: Int { 500 }
+    static var maximumNotesCopiedBeforeDeletion: Int { 500 }
 
     /// Removes copies older than the history length, in the background.
     func pruneRecoverySnapshots() {

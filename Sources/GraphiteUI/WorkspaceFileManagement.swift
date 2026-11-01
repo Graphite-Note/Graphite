@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceFileManagement.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.14
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
@@ -489,7 +500,7 @@ extension WorkspaceModel {
             try await saveDocuments(inside: path)
             let removedFiles = isDirectory(path) ? (try await index?.paths(inside: path) ?? []) : [path]
             // Copies first, with any unsaved edits: the vault's settings may delete permanently.
-            await snapshotBeforeDeleting(removedFiles)
+            let notesWithoutCopy = await snapshotBeforeDeleting(removedFiles)
             let outcome = try await store.delete(path, method: vaultSettings.deletionMethod)
             await forgetDrafts(inside: path)
             expandedFolders = expandedFolders.filter { folder in !folder.isInside(path) }
@@ -498,6 +509,9 @@ extension WorkspaceModel {
             await refreshDirectory()
             if case .movedToVaultTrash = outcome, vaultSettings.deletionMethod == .systemTrash {
                 notice = "This storage has no system trash, so “\(path.name)” was moved to the vault's .trash folder instead."
+            }
+            if notesWithoutCopy > 0 {
+                notice = "File recovery kept copies of \(Self.maximumNotesCopiedBeforeDeletion) of the notes in “\(path.name)”, the most it copies at once; \(notesWithoutCopy.formatted()) more have none."
             }
         } catch { errorMessage = error.localizedDescription }
     }

@@ -1,3 +1,14 @@
+/**
+ * File: LinkRewriter.swift
+ * ------------------------
+ * Layer: Core
+ * Description: Rewrites the links in a note's text when the files they reach move, in the style they were written in.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Every link written in a note: those in the body, and Wikilinks and Markdown links

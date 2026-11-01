@@ -1,3 +1,14 @@
+/**
+ * File: VaultIndex.swift
+ * ----------------------
+ * Layer: Index
+ * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CryptoKit
 import GRDB

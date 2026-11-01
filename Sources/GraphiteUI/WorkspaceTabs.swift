@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTabs.swift
+ * -------------------------
+ * Layer: UI
+ * Description: A window's tabs: what each holds, opening files into them and closing them.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.28
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

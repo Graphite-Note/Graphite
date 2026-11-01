@@ -1,3 +1,14 @@
+/**
+ * File: OpenWindows.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The windows of the process, for what only one may run at a time and for quitting.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One window's part in what the windows of the process share: its name, and whether it

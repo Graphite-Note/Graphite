@@ -1,3 +1,14 @@
+/**
+ * File: LibraryDropReader.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Reads what a drop on the library carries from its item providers.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import UniformTypeIdentifiers
 import GraphiteCore

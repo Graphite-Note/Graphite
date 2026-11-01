@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownSessionRecoveryTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: A note session reports its saved text before a save or a reload replaces it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI

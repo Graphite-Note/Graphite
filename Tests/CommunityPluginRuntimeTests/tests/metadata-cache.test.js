@@ -1,3 +1,14 @@
+/**
+ * File: metadata-cache.test.js
+ * ----------------------------
+ * Layer: Tests
+ * Description: The plugin runtime's metadata cache against a vault on disk, in jsdom.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 'use strict';
 
 const test = require('node:test');

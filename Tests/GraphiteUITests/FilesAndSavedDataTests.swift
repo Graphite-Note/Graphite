@@ -323,6 +323,15 @@ final class FilesAndSavedDataTests: XCTestCase {
         XCTAssertEqual(try fileRecovery.snapshots(for: try VaultPath("Course/Lecture.md")).count, 1)
     }
 
+    func testTheNotesLeftWithoutACopyAreCounted() async throws {
+        let (workspace, _) = try await makeWorkspace(files: ["Other.md": "text"])
+        workspace.preferences.setEnabled(.fileRecovery, true)
+        // Paths with no file: the count is what is checked, not the copies.
+        let paths = try (0..<(WorkspaceModel.maximumNotesCopiedBeforeDeletion + 3)).map { number in try VaultPath("Gone/Note \(number).md") }
+        let notesWithoutCopy = await workspace.snapshotBeforeDeleting(paths)
+        XCTAssertEqual(notesWithoutCopy, 3)
+    }
+
     // MARK: HUNT-102: a note grown past the limit
 
     func testANoteGrownPastTheLimitIsSavedAndSaysSo() async throws {

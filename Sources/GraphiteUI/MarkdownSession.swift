@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownSession.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.14
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

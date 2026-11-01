@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-metadata.js
+ * ------------------------------------------
+ * Layer: UI
+ * Description: The plugin runtime's metadata cache: frontmatter, links and how link paths resolve, as in Obsidian.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Obsidian's `MetadataCache` for plugins: the headings, links, embeds, tags, sections,
 // list items, blocks and frontmatter of every note, with Obsidian's positions (line,
 // column, and offset in UTF-16 code units), and the vault's resolved and unresolved links.

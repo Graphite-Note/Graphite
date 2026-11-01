@@ -1,3 +1,14 @@
+/**
+ * File: NativeMarkdownEditor.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: The note editor on TextKit, for iOS and the Mac.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.57
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore
