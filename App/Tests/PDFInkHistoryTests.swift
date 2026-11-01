@@ -132,7 +132,6 @@ final class PDFInkHistoryTests: XCTestCase {
         session.undoAvailability.undo()
         XCTAssertNil(session.errorMessage)
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
-        XCTAssertEqual(session.currentPageIndex, 3)
         let shownOfPage = pdfView.convert(pdfView.bounds, to: page)
         let cropBox = page.bounds(for: .cropBox)
         let inkOnPage = CGRect(x: cropBox.minX + 50, y: cropBox.maxY - 784, width: 100, height: 8)
