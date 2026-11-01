@@ -7,7 +7,7 @@
  *              newer file, and quitting is not refused for good.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 01/11/2026
  */
 
@@ -291,6 +291,30 @@ final class UnsavedDocumentDraftTests: XCTestCase {
 
     /// A vault's own folder is not made again: it would come back empty beside the real one.
     /// The draft has the text, so quitting can still go ahead.
+    /// BUG-SHELL-03 as the Mac's quit runs it: the save fails, the text goes to a draft, Graphite
+    /// quits, and the next launch shows the text and says so. The file is not touched.
+    func testQuittingWithTextThatCannotBeSavedKeepsItInADraftAndSaysSoOnReopening() async throws {
+        let vault = try makeVault(["Folder/Lecture.md": "saved"])
+        let folder = vault.appendingPathComponent("Folder")
+        addTeardownBlock { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: folder.path) }
+        let (window, note) = try await window(showing: "Folder/Lecture.md", in: vault)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: folder.path)
+        note.text = "typed"
+
+        do { try await window.saveOpenDocuments(); XCTFail("A read-only folder takes no save.") } catch {}
+        let isSafe = await window.keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: true)
+        XCTAssertTrue(isSafe, "Not safe would keep Graphite open.")
+        XCTAssertTrue(QuitSaveDecision(outcome: .keptInDrafts).allowsTermination)
+        let vaultIdentifier = try XCTUnwrap(window.currentVaultIdentifier)
+        let drafts = await processServices.unsavedDrafts.drafts(inVault: vaultIdentifier)
+        XCTAssertEqual(drafts.map(\.contents), [Data("typed".utf8)])
+        XCTAssertEqual(try text(of: "Folder/Lecture.md", in: vault), "saved")
+
+        let (laterWindow, laterNote) = try await laterLaunchWindow(showing: "Folder/Lecture.md", vaultIdentifier: vaultIdentifier)
+        XCTAssertEqual(laterNote.text, "typed")
+        XCTAssertTrue(laterWindow.errorMessage?.contains("Lecture") == true, "The person is told the text came back.")
+    }
+
     func testWhenTheVaultsOwnFolderIsGoneTheCopyFailsAndTheDraftKeepsTheText() async throws {
         let vault = try makeVault(["Lecture.md": "saved"])
         let (window, note) = try await window(showing: "Lecture.md", in: vault)

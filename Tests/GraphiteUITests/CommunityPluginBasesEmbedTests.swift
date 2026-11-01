@@ -6,7 +6,7 @@
  *              them.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 01/11/2026
  */
 
@@ -315,6 +315,26 @@ final class CommunityPluginBasesEmbedTests: XCTestCase {
         await model.reload()
         let definition = try await save("Plan.base", "filters: file.inFolder(\"Tasks\")\nviews:\n  - type: cards\n    name: Cards\n")
         XCTAssertFalse(definition, "The base itself.")
+    }
+
+    /// Off screen a base lets its records go and keeps its result: it can no longer tell that a
+    /// row left the filters, so a save runs it rather than leaving a stale row.
+    func testABaseThatReleasedItsRecordsRunsAfterASave() async throws {
+        let vault = try TemporaryVault.make(prefix: "BaseReleasedVault", for: self).root
+        try Data("---\nstatus: open\n---\n".utf8).write(to: vault.appendingPathComponent("Row.md"))
+        try Data("filters: status == \"open\"\nviews:\n  - type: table\n    name: Table\n".utf8).write(to: vault.appendingPathComponent("Plan.base"))
+        let indexFolder = try TemporaryVault.make(prefix: "BaseReleasedIndex", for: self).root
+        let index = try VaultIndex(databaseURL: indexFolder.appendingPathComponent("index.sqlite"))
+        _ = try await index.reconcile(root: vault)
+        let model = BaseDocumentModel(source: .file(try VaultPath("Plan.base")), contextPath: try VaultPath("Plan.base"), store: VaultStore(root: vault), index: index)
+        await model.reload()
+        model.releaseLoadedRecords()
+
+        let row = try VaultPath("Row.md")
+        try Data("---\nstatus: done\n---\n".utf8).write(to: vault.appendingPathComponent("Row.md"))
+        try await index.refresh(paths: [row], root: vault)
+        let isSame = await model.showsTheSame(after: [row])
+        XCTAssertFalse(isSame)
     }
 
     func testABaseShowingFileDatesRunsAfterEverySave() async throws {

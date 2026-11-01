@@ -5,7 +5,7 @@
  * Description: What a scan and a lookup cost, counted in rows written, reads made and questions asked.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 01/11/2026
  */
 
@@ -286,6 +286,27 @@ final class VaultIndexWorkCountTests: XCTestCase {
         _ = try await index.reconcile(root: vault)
         let resolved = try await index.resolve(wikilinks: ["Target", "Missing"], from: try VaultPath("Note.md"))
         XCTAssertEqual(resolved, ["Target": try VaultPath("Folder/Target.md")])
+    }
+
+    /// As one link alone resolves (`getLinkpathDest`): several files of a name mean the closest.
+    func testWikilinksResolvedInOneReadChooseAsASingleLookupDoes() async throws {
+        try write("", to: "Course/Target.md")
+        try write("", to: "Target/Deep/Target.md")
+        _ = try await index.reconcile(root: vault)
+        let source = try VaultPath("Course/Note.md")
+        let resolved = try await index.resolve(wikilinks: ["Target"], from: source)
+        let single = try await index.resolve("Target", from: source)
+        XCTAssertEqual(resolved["Target"], try VaultPath("Course/Target.md"))
+        XCTAssertEqual(resolved["Target"], single.first)
+    }
+
+    /// A move must count a note in the cloud as one whose links it could not check.
+    func testANoteInTheCloudIsAmongTheNotesWithUnreadText() async throws {
+        index = try VaultIndex(databaseURL: databaseURL, cloudFileStatus: CloudFileStatus(isNotDownloaded: { _ in true }, isDatalessPlaceholder: { _ in true }))
+        try write("note", to: "Cloud.md")
+        _ = try await index.reconcile(root: vault)
+        let unreadNotes = try await index.notesWithUnreadText()
+        XCTAssertEqual(unreadNotes, [try VaultPath("Cloud.md")])
     }
 }
 

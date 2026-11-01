@@ -461,10 +461,10 @@ extension VaultIndex {
 
     /// Notes and canvases whose text the index never read, so that it holds no links of theirs.
     func notesWithUnreadText() throws -> [VaultPath] {
-        try databaseQueue.read { database in
-            try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed IN (?, ?)"
+        try databasePool.read { database in
+            try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed IN (?, ?, ?)"
                                     + " AND (path LIKE '%.md' OR path LIKE '%.markdown' OR path LIKE '%.canvas')",
-                                arguments: [IndexedContentState.notRead.rawValue, IndexedContentState.unreadableAsText.rawValue])
+                                arguments: [IndexedContentState.notRead.rawValue, IndexedContentState.unreadableAsText.rawValue, IndexedContentState.notDownloaded.rawValue])
                 .map(VaultPath.init).filter { path in Self.holdsLinkText(path) }
         }
     }
