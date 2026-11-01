@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceModel.swift
+ * --------------------------
+ * Layer: UI
+ * Description: The open vault's workspace: its files, tabs, index and services.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.63
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

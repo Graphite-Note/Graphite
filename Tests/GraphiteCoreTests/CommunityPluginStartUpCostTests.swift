@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginStartUpCostTests.swift
+ * -------------------------------------------
+ * Layer: Tests
+ * Description: What listing plugins and the vault costs at start-up, and what a keystroke sends, counted.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport

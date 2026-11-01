@@ -1,3 +1,14 @@
+/**
+ * File: BaseEmbedding.swift
+ * -------------------------
+ * Layer: UI
+ * Description: What a base inside a note needs from the app, and the code block and embed views that show it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

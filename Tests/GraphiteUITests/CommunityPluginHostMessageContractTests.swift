@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginHostMessageContractTests.swift
+ * ---------------------------------------------------
+ * Layer: Tests
+ * Description: The messages between CommunityPluginHost and the runtime, name by name.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI

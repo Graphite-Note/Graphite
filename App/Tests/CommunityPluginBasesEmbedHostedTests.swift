@@ -1,7 +1,19 @@
+/**
+ * File: CommunityPluginBasesEmbedHostedTests.swift
+ * ------------------------------------------------
+ * Layer: Tests
+ * Description: Several plugin-drawn base embeds in the app's own panes on the simulator.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import SwiftUI
 import WebKit
 import GraphiteCore
+import GraphiteIndex
 @testable import GraphiteUI
 
 #if os(iOS)
@@ -92,6 +104,70 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         attachPicture(of: controller, named: "after a tap and a property change")
     }
 
+    // MARK: Narrow screens
+
+    /// A sheet may not be wider than the screen it is on, or the plugin's controls are cut off.
+    func testAPluginsPanelFitsAPhonesWidth() throws {
+        let panel = UIHostingController(rootView: CommunityPluginPanel(host: CommunityPluginHost(defaults: UserDefaults(suiteName: UUID().uuidString) ?? .standard)))
+        let width = panel.sizeThatFits(in: CGSize(width: 320, height: 800)).width
+        XCTAssertLessThanOrEqual(width, 320)
+    }
+
+    /// The toolbar of a base in a note, with a long view name and a sort, in the narrowest note.
+    func testAnEmbeddedBasesToolbarFitsANarrowNoteWithItsButtons() async throws {
+        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("BasesToolbar-\(UUID().uuidString)", isDirectory: true)
+        vaultDirectories.append(vault)
+        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
+        try Data("Body\n".utf8).write(to: vault.appendingPathComponent("Note.md"))
+        try Data("views:\n  - type: table\n    name: One very long name of a view that goes on and on\n  - type: table\n    name: Second\n".utf8).write(to: vault.appendingPathComponent("Plan.base"))
+        let indexFolder = vault.appendingPathComponent(".index", isDirectory: true)
+        try FileManager.default.createDirectory(at: indexFolder, withIntermediateDirectories: true)
+        let index = try VaultIndex(databaseURL: indexFolder.appendingPathComponent("index.sqlite"))
+        _ = try await index.reconcile(root: vault)
+        let path = try VaultPath("Plan.base")
+        let model = BaseDocumentModel(source: .file(path), contextPath: path, store: VaultStore(root: vault), index: index)
+        await model.reload()
+        await model.toggleSort(on: .file("name"))
+        let toolbar = BaseToolbar(model: model, isEmbedded: true, openBase: { _, _ in }, editView: {}, deleteView: {})
+            .environment(\.horizontalSizeClass, .compact)
+        let controller = UIHostingController(rootView: AnyView(toolbar))
+        let window = UIWindow(windowScene: try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first))
+        window.frame = CGRect(x: 0, y: 0, width: 320, height: 120)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        controller.view.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(300))
+        attachPicture(of: controller, named: "toolbar at 320 points")
+        XCTAssertLessThanOrEqual(controller.sizeThatFits(in: CGSize(width: 320, height: 120)).width, 320)
+        for button in descendants(of: controller.view, matching: UIView.self) where button.accessibilityLabel == "Reload" {
+            XCTAssertLessThanOrEqual(button.convert(button.bounds, to: controller.view).maxX, 320, "The last button is on screen.")
+        }
+    }
+
+    /// The options a plugin's view offers, in the view editor.
+    func testTheViewEditorShowsThePluginsOptions() async throws {
+        let registrationJSON = "{\"viewType\": \"week-table\", \"name\": \"Week table\", \"icon\": \"calendar-days\", \"options\": [{\"key\": \"title\", \"type\": \"text\", \"displayName\": \"Heading\", \"defaultValue\": \"A week\"}, {\"key\": \"firstHour\", \"type\": \"slider\", \"displayName\": \"First hour\", \"defaultValue\": 8, \"min\": 6, \"max\": 12}, {\"key\": \"rooms\", \"type\": \"toggle\", \"displayName\": \"Show rooms\"}, {\"key\": \"layout\", \"type\": \"dropdown\", \"displayName\": \"Layout\", \"choices\": [{\"value\": \"compact\", \"title\": \"Compact\"}]}]}"
+        let registration = try JSONDecoder().decode(CommunityPluginBasesViewRegistration.self, from: Data(registrationJSON.utf8))
+        XCTAssertEqual(registration.options.map(\.kind), [.text, .slider, .toggle, .dropdown])
+        XCTAssertEqual(registration.options.first?.defaultValue, .text("A week"))
+        XCTAssertEqual(registration.systemImage, "calendar")
+        let definition = try BaseDefinition.parse("views:\n  - type: week-table\n    name: First\n    title: First year\n")
+        let sheet = BaseViewEditorSheet(definition: definition, viewIndex: 0, availablePropertyKeys: [], pluginViews: ["week-table": registration]) { _, _, _ in nil }
+        let controller = UIHostingController(rootView: AnyView(sheet))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
+        try await Task.sleep(for: .milliseconds(500))
+        let table = try XCTUnwrap(descendants(of: controller.view, matching: UICollectionView.self).first)
+        table.scrollToItem(at: IndexPath(item: 0, section: table.numberOfSections - 1), at: .top, animated: false)
+        try await Task.sleep(for: .milliseconds(500))
+        attachPicture(of: controller, named: "the view editor with the plugin's options")
+    }
+
     private func waitForEmbeds(in controller: UIViewController, host: CommunityPluginHost) async throws {
         try await waitUntil(timeoutSeconds: 30) {
             let joined = self.copies(in: host).joined()
@@ -102,6 +178,8 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
             return webViews.count == 2 && webViews.allSatisfy { webView in webView.bounds.height > 150 }
         }
         // Each is as tall as what the plugin drew: a heading, a button and one 124 point row, not a spinner's height.
+        try await waitUntil(timeoutSeconds: 15) { host.shownCodeBlocks.values.allSatisfy { block in block.height > 0 } }
+        try await Task.sleep(for: .milliseconds(500))
         let heights = host.shownCodeBlocks.values.map(\.height)
         XCTAssertEqual(heights.count, 2)
         XCTAssertTrue(heights.allSatisfy { height in height > 150 && height < 400 }, "\(heights)")

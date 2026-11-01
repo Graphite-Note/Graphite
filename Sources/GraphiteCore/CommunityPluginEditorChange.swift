@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginEditorChange.swift
+ * ---------------------------------------
+ * Layer: Core
+ * Description: A plugin's change to the open note as one edit, a keystroke's change for plugins, and Markdown
+ *              rendered for plugins.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Markdown
 

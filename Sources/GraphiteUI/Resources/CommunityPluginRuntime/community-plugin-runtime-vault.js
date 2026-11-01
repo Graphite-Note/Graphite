@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-vault.js
+ * ---------------------------------------
+ * Layer: UI
+ * Description: Obsidian's Vault, DataAdapter and FileManager for plugins, over Graphite's vault bridge.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 // Obsidian's vault for plugins: the file tree (`TFile`, `TFolder`), `Vault`, the low-level
 // `DataAdapter`, and `FileManager`. Contents are never kept here: every read asks Graphite,
 // and every write goes through Graphite's coordinated, revision-checked writer.

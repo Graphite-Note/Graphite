@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-plugins.js
+ * -----------------------------------------
+ * Layer: UI
+ * Description: Plugins, their loading and API, and the messages Graphite sends the runtime.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.21
+ * Date: 01/11/2026
+ */
+
 // Loading and running Obsidian community plugins: `App`, `Plugin`, the module loader that
 // gives plugins `require('obsidian')`, the command and ribbon registries, Markdown
 // post-processors, and the messages Graphite sends to the runtime.

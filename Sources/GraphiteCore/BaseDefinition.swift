@@ -1,3 +1,14 @@
+/**
+ * File: BaseDefinition.swift
+ * --------------------------
+ * Layer: Core
+ * Description: Reads a .base file: its filters, formulas, properties, summaries and views.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Yams
 

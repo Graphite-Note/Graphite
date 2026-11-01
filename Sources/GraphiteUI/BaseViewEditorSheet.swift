@@ -1,3 +1,14 @@
+/**
+ * File: BaseViewEditorSheet.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: The sheet that edits one view of a base, with the options of a view a plugin draws.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

@@ -1,3 +1,14 @@
+/**
+ * File: BaseDocumentView.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

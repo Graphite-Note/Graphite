@@ -1,3 +1,14 @@
+/**
+ * File: host-message-contract.test.js
+ * -----------------------------------
+ * Layer: Tests
+ * Description: The message names between Graphite and the runtime.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 // The messages the plugin runtime and Graphite's Swift host exchange, as the two sides spell
 // them: the web view's message handler, the operations in each direction, how a failure
 // is reported, which scripts the page loads in which order, and the API version plugins see.
@@ -64,7 +75,7 @@ test('the operations the runtime sends to Graphite are exactly the 47 written ou
     assert.equal(literalCallCount, callCount, 'every call names its operation with a string literal, so this list is complete');
     assert.deepEqual(Array.from(sendNames).sort(), operationsToGraphite.slice().sort());
     assert.equal(operationsToGraphite.length, 47);
-    assert.equal(operationsFromGraphite.length + operationsToGraphite.length, 86);
+    assert.equal(operationsFromGraphite.length + operationsToGraphite.length, 88);
 });
 
 test('an operation the runtime does not know is answered as unknownOperation, and an error in a handler as runtime', async () => {

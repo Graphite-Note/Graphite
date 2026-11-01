@@ -1,3 +1,14 @@
+/**
+ * File: typing.test.js
+ * --------------------
+ * Layer: Tests
+ * Description: Typing in a note: what plugins hear, and suggestions.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Typing in a note: plugins that listen for `editor-change` hear each change Graphite's
 // editor sends, and `EditorSuggest` suggestions are found at the cursor, shown by
 // Graphite and inserted by the plugin when chosen.

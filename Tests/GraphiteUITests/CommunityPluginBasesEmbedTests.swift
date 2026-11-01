@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginBasesEmbedTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Plugin-drawn bases embedded in a note, through the real views and WebKit, and what bases do around
+ *              them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import SwiftUI
 import GraphiteCore
@@ -117,6 +129,29 @@ final class CommunityPluginBasesEmbedTests: XCTestCase {
             .environment(\.communityPluginCodeBlocks, plugins).frame(width: 640))
 
         try await waitUntil("it shows again, as it was", timeoutSeconds: 25) { self.shownCopies(in: plugins).joined().contains("week 2") }
+    }
+
+    func testACodeBlockIsDrawnAgainAtItsNewWidthWhenTheNoteChangesWidth() async throws {
+        let plugin = """
+        'use strict';
+        const { Plugin } = require('obsidian');
+        module.exports = class extends Plugin {
+            onload() { this.registerMarkdownCodeBlockProcessor('width', (source, element) => { element.setText('Drawn at ' + element.parentElement.style.width); }); }
+        };
+        """
+        let workspace = try await testBed.workspaceWithRunningPlugins([("width-plugin", plugin)])
+        let plugins = workspace.communityPlugins
+        try await waitUntil("the language is known") { plugins.codeBlockLanguages.contains("width") }
+        let request = CommunityPluginReadingBlockRequest(kind: .codeBlock(language: "width"), source: "", note: try VaultPath("Note.md"), firstLine: 0, lineCount: 2)
+        let width = NoteWidth()
+        _ = host(WidthFollowingBlock(width: width, host: plugins, request: request))
+        try await waitUntil("it is drawn at the first width", timeoutSeconds: 15) { self.shownCopies(in: plugins).joined().contains("Drawn at 600px") }
+        let blockIdentifier = plugins.shownCodeBlocks.keys.first
+
+        width.points = 400
+
+        try await waitUntil("it is drawn at the second width", timeoutSeconds: 15) { self.shownCopies(in: plugins).joined().contains("Drawn at 400px") }
+        XCTAssertEqual(plugins.shownCodeBlocks.keys.first, blockIdentifier, "The same block, drawn again in place.")
     }
 
     func testAPropertyChangeRedrawsTheEmbedByItself() async throws {
@@ -350,3 +385,21 @@ final class CommunityPluginBasesEmbedTests: XCTestCase {
         XCTAssertTrue(CommunityPluginTurningOn.question(naming: ["Week Table", "Other"]).contains("Week Table, Other"))
     }
 }
+
+#if canImport(AppKit)
+@MainActor @Observable
+private final class NoteWidth {
+    var points: CGFloat = 600
+}
+
+/// A code block in a note whose width changes, as when an iPad rotates.
+private struct WidthFollowingBlock: View {
+    let width: NoteWidth
+    let host: CommunityPluginHost
+    let request: CommunityPluginReadingBlockRequest
+
+    var body: some View {
+        CommunityPluginCodeBlockView(host: host, request: request, textSize: 17).frame(width: width.points)
+    }
+}
+#endif

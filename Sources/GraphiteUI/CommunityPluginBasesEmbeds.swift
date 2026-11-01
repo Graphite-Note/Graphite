@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginBasesEmbeds.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: A community plugin's base view embedded in a note: a copy of what the plugin drew, kept current, so
+ *              several show at once, with the leaves kept while embeds are scrolled away.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -146,6 +158,8 @@ struct CommunityPluginBasesEmbedContent: View {
                                                     accentHex: accent.sRGBHex, isEmbeddedView: true, bodyClasses: host.pluginBodyClasses, bodyStyle: host.pluginBodyStyle,
                                                     hasTheme: !host.activeThemeName.isEmpty)
                         .frame(height: Self.shownHeight(measured: shownBlock.height))
+                        // Until its page has measured it, the note keeps the block's last height.
+                        .preference(key: LivePreviewEmbedLoadingKey.self, value: shownBlock.height == 0)
                 }
             case .failed:
                 CommunityPluginBasesFailure(viewName: host.pluginBasesViews[viewType]?.name ?? viewType) { tryAgain() }

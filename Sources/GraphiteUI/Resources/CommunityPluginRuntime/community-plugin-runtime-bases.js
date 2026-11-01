@@ -1,3 +1,15 @@
+/**
+ * File: community-plugin-runtime-bases.js
+ * ---------------------------------------
+ * Layer: UI
+ * Description: Obsidian's Bases values and classes for plugins, and plugins' views over Graphite's base results,
+ *              redrawn as their notes change.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Obsidian's Bases classes for plugins: the values of base formulas and the classes a
 // plugin extends to offer its own base view (`registerBasesView`). Graphite evaluates bases
 // natively (`BaseEvaluator`); a view of a plugin's type is drawn here by the plugin over

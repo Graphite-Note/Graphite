@@ -1,3 +1,14 @@
+/**
+ * File: CanvasBoardView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The board of a canvas: its grid, groups, connections, cards in view and selection.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

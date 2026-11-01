@@ -1,3 +1,14 @@
+/**
+ * File: test-vault-host.js
+ * ------------------------
+ * Layer: Tests
+ * Description: Answers the runtime's messages from a folder on disk, as Graphite does.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Answers the plugin runtime's messages from a vault folder on disk, as Graphite's native
 // bridge (`CommunityPluginVaultBridge` and `CommunityPluginHost`) does in the app. The two
 // follow one contract: the same operations, answers, revisions (SHA-256 and size) and

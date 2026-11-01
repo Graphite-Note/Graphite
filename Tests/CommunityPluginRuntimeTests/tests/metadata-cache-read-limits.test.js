@@ -1,3 +1,14 @@
+/**
+ * File: metadata-cache-read-limits.test.js
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: What the metadata cache reads while it fills.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 // What the metadata cache reads while it fills: no note over 4 MiB, at most two reads at
 // once for the pass over the vault, and no note text kept afterwards.
 'use strict';

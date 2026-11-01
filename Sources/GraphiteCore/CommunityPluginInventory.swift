@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginInventory.swift
+ * ------------------------------------
+ * Layer: Core
+ * Description: Installed plugins, listed from their manifests, and the scan of their code for the modules they ask
+ *              for.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// What Graphite can tell about a plugin before running it: whether it can load at all,

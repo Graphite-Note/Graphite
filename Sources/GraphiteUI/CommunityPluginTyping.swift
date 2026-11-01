@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginTyping.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: Typing in a note, for plugins: each change as a small message, and the suggestions plugins answer.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

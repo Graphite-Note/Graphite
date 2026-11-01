@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginReadingBlocks.swift
+ * ----------------------------------------
+ * Layer: UI
+ * Description: Plugins' code blocks and sections in notes: the copy of what a plugin drew, its web view and page,
+ *              and taps sent back.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import WebKit
 import GraphiteCore

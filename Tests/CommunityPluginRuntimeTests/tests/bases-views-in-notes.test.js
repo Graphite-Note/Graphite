@@ -1,3 +1,14 @@
+/**
+ * File: bases-views-in-notes.test.js
+ * ----------------------------------
+ * Layer: Tests
+ * Description: A plugin's view of a base embedded in a note, with a small fixture plugin.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 // A plugin's view of a base embedded in a note: each embed has a leaf of its own, shown as a
 // copy, so several show at once, and each stays current. The fixture plugin draws a small
 // week table from properties of the base's rows, the way a timetable does.

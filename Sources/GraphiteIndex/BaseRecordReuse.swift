@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordReuse.swift
+ * ---------------------------
+ * Layer: Index
+ * Description: Records a base query loaded, so the next query reads again only the files that changed.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

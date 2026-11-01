@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTabs.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Each tab's documents and opening a file in a tab.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.28
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

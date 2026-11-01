@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginPresentation.swift
+ * ---------------------------------------
+ * Layer: UI
+ * Description: The plugin panel, notices and menus shown over the workspace.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import WebKit
 import GraphiteCore

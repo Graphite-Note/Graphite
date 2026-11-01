@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Plugin lists, manifests, inventory and the vault bridge's answers.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport

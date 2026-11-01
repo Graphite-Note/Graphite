@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginSettings.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Settings › Community Plugins: turning plugins on, installing them, and each plugin's switch and
+ *              options.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

@@ -1,3 +1,15 @@
+/**
+ * File: BaseDocumentModel.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The state of one open or embedded base: loading, running its view, following vault changes, and
+ *              editing it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

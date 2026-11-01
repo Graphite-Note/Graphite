@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewRenderedBlocks.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.14
+ * Date: 01/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 #else

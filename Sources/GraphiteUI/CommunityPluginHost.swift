@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginHost.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: Runs the open vault's Obsidian community plugins in a web view and answers what they ask of
+ *              Graphite.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.35
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import OSLog

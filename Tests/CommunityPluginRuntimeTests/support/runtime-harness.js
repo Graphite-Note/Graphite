@@ -1,3 +1,14 @@
+/**
+ * File: runtime-harness.js
+ * ------------------------
+ * Layer: Tests
+ * Description: Loads the plugin runtime into jsdom, connected to a test vault host.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 // Loads Graphite's plugin runtime into jsdom, in the order `index.html` lists its scripts,
 // connected to a `TestVaultHost`. jsdom lacks a few browser features WebKit has
 // (`TextEncoder`, `CSS.escape`, `requestAnimationFrame`); only those are filled in here.

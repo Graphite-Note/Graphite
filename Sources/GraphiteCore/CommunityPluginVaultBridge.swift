@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginVaultBridge.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: The vault as plugins reach it: file operations answered from the open vault, large listings page by
+ *              page.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The vault as Obsidian community plugins reach it: the file operations of the plugin

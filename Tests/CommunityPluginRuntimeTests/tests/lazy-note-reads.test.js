@@ -1,3 +1,15 @@
+/**
+ * File: lazy-note-reads.test.js
+ * -----------------------------
+ * Layer: Tests
+ * Description: What plugins cost at start-up: no note read until asked for, pages of the file list, and saving
+ *              settings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 // What plugins cost at start-up: no note is read until something asks for one, and a plugin
 // that asks for the whole vault gets it behind what a person waits for.
 'use strict';
@@ -182,6 +194,36 @@ module.exports = class extends obsidian.Plugin {
         await plugin.saveData({ from: 'this device' });
         assert.deepEqual(JSON.parse(harness.readVaultFile('.obsidian/plugins/example/data.json')), { from: 'this device' }, 'it overwrites, as in Obsidian');
         assert.deepEqual(plain(harness.host.notificationsOf('plugin.writeConflict')), []);
+    } finally {
+        harness.close();
+    }
+});
+
+test('a plugin that takes over notes by their frontmatter finds it, although nothing read the note before', async () => {
+    const harness = await startRuntime({ files: { 'Drawing.md': '---\nexample-plugin: parsed\n---\nA drawing\n' } });
+    try {
+        const source = `"use strict";
+var obsidian = require("obsidian");
+class DrawingView extends obsidian.ItemView {
+    getViewType() { return 'drawing'; }
+    getDisplayText() { return 'Drawing'; }
+}
+module.exports = class extends obsidian.Plugin {
+    onload() {
+        const plugin = this;
+        this.registerView('drawing', (leaf) => new DrawingView(leaf));
+        const original = obsidian.WorkspaceLeaf.prototype.setViewState;
+        obsidian.WorkspaceLeaf.prototype.setViewState = function (state, result) {
+            const cache = state.state && state.state.file ? plugin.app.metadataCache.getCache(state.state.file) : null;
+            if (state.type === 'markdown' && cache && cache.frontmatter && cache.frontmatter['example-plugin']) return original.call(this, Object.assign({}, state, { type: 'drawing' }), result);
+            return original.call(this, state, result);
+        };
+        this.register(() => { obsidian.WorkspaceLeaf.prototype.setViewState = original; });
+    }
+};`;
+        await installAndLoadPlugin(harness, { manifest, mainSource: source });
+        const opened = plain(await harness.send({ operation: 'file.openInView', path: 'Drawing.md' }));
+        assert.equal(opened.isOpened, true, 'before, a note opened early showed as plain text');
     } finally {
         harness.close();
     }

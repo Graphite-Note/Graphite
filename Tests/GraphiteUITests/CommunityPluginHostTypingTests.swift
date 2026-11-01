@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginHostTypingTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: CommunityPluginHost telling plugins about typing in the focused note.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI

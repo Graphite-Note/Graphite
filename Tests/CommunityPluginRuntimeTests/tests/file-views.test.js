@@ -1,3 +1,15 @@
+/**
+ * File: file-views.test.js
+ * ------------------------
+ * Layer: Tests
+ * Description: Plugins' views of files, views split beside the note, live views, paste and drop, and plugins' Bases
+ *              views.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Plugin views for files (`registerExtensions`, and notes a plugin shows in its own view),
 // views split beside the note, live views, paste and drop events, and plugins' Bases views:
 // the gaps the community plugin sweep found (Docs/Community-plugins.md).

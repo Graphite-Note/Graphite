@@ -1,3 +1,15 @@
+/**
+ * File: community-plugin-runtime-metadata.js
+ * ------------------------------------------
+ * Layer: UI
+ * Description: Obsidian's MetadataCache for plugins: notes read when asked for, and the whole vault only for a
+ *              plugin that needs it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Obsidian's `MetadataCache` for plugins: the headings, links, embeds, tags, sections,
 // list items, blocks and frontmatter of every note, with Obsidian's positions (line,
 // column, and offset in UTF-16 code units), and the vault's resolved and unresolved links.

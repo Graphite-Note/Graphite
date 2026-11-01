@@ -1,3 +1,14 @@
+/**
+ * File: BaseDefinitionEditor.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: Edits a .base file's views, leaving the rest of the file as written.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Yams
 

@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-reading.js
+ * -----------------------------------------
+ * Layer: UI
+ * Description: Plugins' code blocks, sections and views drawn in the page and copied to Graphite, and live views.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 // Plugins' code blocks in Graphite's native reading view, and the links plugins draw.
 //
 // A note's reading view is native, so a block such as ```` ```dataview ```` cannot be drawn

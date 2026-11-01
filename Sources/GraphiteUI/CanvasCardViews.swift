@@ -1,3 +1,14 @@
+/**
+ * File: CanvasCardViews.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The cards of a canvas: text, notes, images, PDFs and bases.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

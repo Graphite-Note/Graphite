@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginViews.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: Plugins' views in tabs and sidebar panels, files in plugins' views, live views, and a base's plugin
+ *              view in its own tab.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import WebKit
 import GraphiteCore
