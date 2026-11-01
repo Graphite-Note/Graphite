@@ -177,7 +177,7 @@ final class CoreAreaIndexHandoffTests: XCTestCase {
         XCTAssertEqual(kelvin.all, ["Sign.md"])
         XCTAssertEqual(kelvin.prefiltered, kelvin.all)
         let destination = try VaultPath("People/Émile.md")
-        let condition = try await index.databaseQueue.read { database in try VaultIndex.linkCondition(for: .path(destination), in: database) }
+        let condition = try await index.databasePool.read { database in try VaultIndex.linkCondition(for: .path(destination), in: database) }
         XCTAssertNotNil(condition, "A name outside ASCII still narrows the query.")
     }
 

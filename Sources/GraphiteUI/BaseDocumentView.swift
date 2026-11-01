@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 import GraphiteCore
 import GraphiteIndex
 
@@ -119,25 +122,64 @@ public struct EmbeddedBaseView: View {
 /// scrolled out of sight; with this cache a base scrolled back shows its last results at
 /// once and runs again only if the vault changed meanwhile. Keep one per open vault and
 /// note editor, and drop it when the vault closes.
+///
+/// Bounded by what its models hold as well as by count, since one base can hold thousands of
+/// rows. A model off screen lets go of its loaded records (`releaseLoadedRecords`), and the
+/// whole cache goes on a memory warning: all it saves is a run of each base.
 @MainActor
 public final class EmbeddedBaseModelCache {
-    /// Each kept model holds its loaded records and result, so only a few are kept.
+    /// Each kept model holds its result, so only a few are kept.
     private static let capacity = 8
+    /// The most its models may hold together, estimated; the model used last always stays.
+    static let maximumEstimatedBytes = 32 * 1_048_576
     /// Most recently used last.
     private var entries: [(identity: EmbeddedBaseView.EmbedIdentity, model: BaseDocumentModel)] = []
+    private var memoryWarningObserver: (any NSObjectProtocol)?
 
-    public init() {}
+    public init() {
+        #if canImport(UIKit)
+        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.removeAllModels() }
+        }
+        #endif
+    }
+
+    isolated deinit {
+        if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
+    }
+
+    /// Models kept now, which a test counts.
+    var modelCount: Int { entries.count }
+
+    /// Gives back the memory, as a memory warning asks. A base on screen keeps its model.
+    func removeAllModels() {
+        entries.removeAll()
+    }
 
     func model(for identity: EmbeddedBaseView.EmbedIdentity, makeModel: () -> BaseDocumentModel) -> BaseDocumentModel {
         if let position = entries.firstIndex(where: { entry in entry.identity == identity }) {
             let entry = entries.remove(at: position)
             entries.append(entry)
+            removeModelsBeyondBudget()
             return entry.model
         }
         let model = makeModel()
         entries.append((identity, model))
-        if entries.count > Self.capacity { entries.removeFirst(entries.count - Self.capacity) }
+        removeModelsBeyondBudget()
         return model
+    }
+
+    /// A base finished a run, so what its model holds may have grown.
+    func modelDidLoad() {
+        removeModelsBeyondBudget()
+    }
+
+    private func removeModelsBeyondBudget() {
+        if entries.count > Self.capacity { entries.removeFirst(entries.count - Self.capacity) }
+        var estimatedBytes = entries.reduce(0) { total, entry in total + entry.model.estimatedHeldBytes }
+        while estimatedBytes > Self.maximumEstimatedBytes, entries.count > 1 {
+            estimatedBytes -= entries.removeFirst().model.estimatedHeldBytes
+        }
     }
 }
 
@@ -189,6 +231,8 @@ struct BaseContainerView: View {
     let openBase: (VaultPath, String?) -> Void
     let filesChanged: ([VaultPath]) -> Void
     @State private var model: BaseDocumentModel
+    /// Where a base inside a note keeps its model while it is off screen.
+    private let modelCache: EmbeddedBaseModelCache?
     /// Kept across reloads: each cached thumbnail is checked against its file, so an index
     /// change after every autosave does not decode every cover again.
     @State private var thumbnails = BaseThumbnailStore()
@@ -216,6 +260,7 @@ struct BaseContainerView: View {
         }
         let identity = EmbeddedBaseView.EmbedIdentity(source: source, embeddingNote: contextPath, viewName: preferredViewName)
         _model = State(initialValue: modelCache?.model(for: identity, makeModel: makeModel) ?? makeModel())
+        self.modelCache = modelCache
     }
 
     private var isEmbedded: Bool { presentation != .document }
@@ -245,7 +290,10 @@ struct BaseContainerView: View {
             guard model.loadedContentVersion != contentVersion else { return }
             await model.reload()
             if !Task.isCancelled, model.loadErrorMessage == nil { model.loadedContentVersion = contentVersion }
+            modelCache?.modelDidLoad()
         }
+        .onAppear { model.startKeepingLoadedRecords() }
+        .onDisappear { if modelCache != nil { model.releaseLoadedRecords() } }
         .onChange(of: preferredViewName) { _, viewName in
             guard let viewName else { return }
             Task { await model.selectView(named: viewName) }

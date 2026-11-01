@@ -138,9 +138,10 @@ extension WorkspaceModel {
             errorMessage = refusal.message
             return .refused(refusal)
         }
-        // Notes linking to the item are found through the index. Before its first scan
-        // finishes, some would be missed and their links silently left broken.
-        guard hasCompletedIndexScan else {
+        // Notes linking to the item are found through the index. Before a scan this launch
+        // finishes, some would be missed and their links silently left broken. An index
+        // complete from an earlier launch is checked in moments, so that is waited for.
+        guard await isIndexCompleteAfterRunningScan() else {
             let refusal = FileMoveRefusal.vaultStillBeingRead(movedName: path.name)
             errorMessage = refusal.message
             return .refused(refusal)
@@ -327,8 +328,8 @@ extension WorkspaceModel {
             // A copied folder's files are indexed one by one; the folder itself has no row.
             let copiedFiles = filesInFolder.isEmpty ? [copy] : filesInFolder.compactMap { file in try? file.replacingPrefix(path, with: copy) }
             refreshIndexAfterFileChanges(copiedFiles)
-            await refreshDirectory()
             if !isDirectory(copy) { await open(copy) }
+            await showInListings(copy)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -378,7 +379,7 @@ extension WorkspaceModel {
             expandedFolders = expandedFolders.filter { folder in !folder.isInside(path) }
             forgetInNavigation(path)
             refreshIndexAfterFileChanges(removedFiles)
-            await refreshDirectory()
+            await showInListings(path)
             if case .movedToVaultTrash = outcome, vaultSettings.deletionMethod == .systemTrash {
                 notice = "This storage has no system trash, so “\(path.name)” was moved to the vault's .trash folder instead."
             }

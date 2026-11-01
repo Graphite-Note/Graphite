@@ -62,11 +62,37 @@ final class BaseDocumentModel {
     /// The records the last published run loaded. The next run reads again only the files
     /// whose index rows changed, so a save elsewhere or a header tap does not reload them all.
     private var loadedRecords = LoadedBaseRecords()
+    /// False while the base is off screen: what the next run would save does not justify
+    /// holding up to 5,000 records for a note that may not come back.
+    @ObservationIgnored private var keepsLoadedRecords = true
     /// The vault content version the last completed reload read, set by the view that owns
     /// this model, so a view appearing again does not reload unchanged content.
     @ObservationIgnored var loadedContentVersion: Int?
     /// Keeps the property list for the view editor small on vaults with many keys.
     private nonisolated static let maximumAvailablePropertyKeys = 300
+
+    /// A base that came on screen keeps what its runs load, for the next run to reuse.
+    func startKeepingLoadedRecords() {
+        keepsLoadedRecords = true
+    }
+
+    /// A base inside a note left the screen: its result stays for when it comes back, and its
+    /// loaded records go.
+    func releaseLoadedRecords() {
+        keepsLoadedRecords = false
+        loadedRecords = LoadedBaseRecords()
+    }
+
+    /// Roughly what the model holds in memory, for the cache of bases off screen.
+    var estimatedHeldBytes: Int {
+        let cellCount = (result?.groups ?? []).reduce(0) { total, group in total + group.rows.reduce(0) { rowTotal, row in rowTotal + row.cells.count + 1 } }
+        return cellCount * Self.estimatedBytesPerResultCell + loadedRecords.recordCount * Self.estimatedBytesPerLoadedRecord
+    }
+
+    /// A row's cell, with its text and its place in the row.
+    private static let estimatedBytesPerResultCell = 128
+    /// A record, with its path, properties, tags and links.
+    private static let estimatedBytesPerLoadedRecord = 2_048
 
     init(source: BaseSource, contextPath: VaultPath, store: VaultStore, index: VaultIndex, preferredViewName: String? = nil,
          didSaveFile: @escaping (VaultPath) -> Void = { _ in }) {
@@ -224,7 +250,7 @@ final class BaseDocumentModel {
                 queryTask.cancel()
             }
             guard generation == queryGeneration else { return }
-            loadedRecords = outcome.loadedRecords
+            loadedRecords = keepsLoadedRecords ? outcome.loadedRecords : LoadedBaseRecords()
             // Publishing an identical result would lay out every visible row again.
             if !(result.map { shownResult in Self.hasSameContent(shownResult, outcome.result) } ?? false) { result = outcome.result }
             candidateCount = outcome.candidateCount

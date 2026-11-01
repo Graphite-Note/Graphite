@@ -86,7 +86,9 @@ extension WorkspaceModel {
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
                 refreshIndex(for: [path])
-                await refreshDirectory()
+                await open(path, placement: placement)
+                await showInListings(path)
+                return
             }
             await open(path, placement: placement)
         } catch { errorMessage = error.localizedDescription }

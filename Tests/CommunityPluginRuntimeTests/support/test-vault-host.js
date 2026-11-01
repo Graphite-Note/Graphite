@@ -147,7 +147,15 @@ class TestVaultHost {
             }
         };
         visit(start);
-        return { entries, isTruncated: false };
+        // As the app's bridge answers: one JSON text of parallel lists.
+        const encodedEntries = JSON.stringify({
+            paths: entries.map((entry) => entry.path),
+            isFolder: entries.map((entry) => (entry.isFolder ? 1 : 0)),
+            sizes: entries.map((entry) => entry.size),
+            modified: entries.map((entry) => entry.modified),
+            created: entries.map((entry) => entry.created),
+        });
+        return { encodedEntries, isTruncated: false };
     }
 
     listFolder(folder) {

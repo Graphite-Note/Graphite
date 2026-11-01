@@ -273,7 +273,7 @@ struct QuickSwitcher: View {
         if !isExistingNote, FileNameRules.problem(with: trimmedQuery, isNote: true) == nil {
             // Until the index has seen every file, a note may exist without being found:
             // Return then does not create a second one.
-            let isIndexComplete = workspace.hasCompletedIndexScan
+            let isIndexComplete = workspace.isIndexUsable
             var create = PaletteItem(id: "create", title: "Create “\(trimmedQuery)”",
                                      subtitle: isIndexComplete ? "New note in \(folderDescription)" : "Graphite is still reading the vault; this note may already exist",
                                      systemImage: "plus") { [workspace] in

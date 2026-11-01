@@ -38,8 +38,8 @@ extension WorkspaceModel {
             let stem = PhotoFileName.stem(createdAt: takenAt, calendar: Calendar(identifier: .gregorian))
             let path = try await saveUnderFreeName(contents.data, in: directory, stem: stem, fileExtension: contents.fileExtension, store: store)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
         } catch {
             errorMessage = "The picture could not be saved. Choose or take it again."
         }

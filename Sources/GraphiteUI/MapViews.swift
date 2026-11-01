@@ -36,7 +36,7 @@ struct LocalMapPanel: View {
             if let localNotes {
                 if localNotes.isEmpty {
                     ContentUnavailableView("No Places", systemImage: "map",
-                                           description: Text(workspace.hasCompletedIndexScan
+                                           description: Text(workspace.isIndexUsable
                                                              ? "This note and the notes it links to have no coordinates property." : "Still reading the vault."))
                 } else {
                     NotesMapView(notes: localNotes, title: { path in path.stem }, highlightedPath: session.path,

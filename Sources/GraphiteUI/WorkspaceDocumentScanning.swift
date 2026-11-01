@@ -21,8 +21,8 @@ extension WorkspaceModel {
             let path = try await saveUnderFreeName(scan.data, in: directory, stem: Self.scannedDocumentStem(scannedAt: scannedAt),
                                                    fileExtension: "pdf", store: store)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
             reportPagesWithoutRecognizedText(in: scan)
         } catch {
             errorMessage = "The scan could not be saved. Scan the document again."

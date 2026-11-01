@@ -112,20 +112,45 @@ public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
         // Each name is taken from its path once, not twice per comparison.
         let namedEntries = entries.map { entry in (entry: entry, name: entry.path.name) }
         return namedEntries.sorted { left, right in
-            let leftEntry = left.entry, rightEntry = right.entry
-            if leftEntry.isDirectory != rightEntry.isDirectory { return leftEntry.isDirectory }
-            let nameOrder = left.name.localizedStandardCompare(right.name)
-            // Folders keep name order under date sorts, as in Obsidian.
-            if leftEntry.isDirectory { return self == .alphabeticalReverse ? nameOrder == .orderedDescending : nameOrder == .orderedAscending }
-            switch self {
-            case .alphabetical: return nameOrder == .orderedAscending
-            case .alphabeticalReverse: return nameOrder == .orderedDescending
-            case .byModifiedTime: return leftEntry.modified != rightEntry.modified ? leftEntry.modified > rightEntry.modified : nameOrder == .orderedAscending
-            case .byModifiedTimeReverse: return leftEntry.modified != rightEntry.modified ? leftEntry.modified < rightEntry.modified : nameOrder == .orderedAscending
-            case .byCreatedTime: return leftEntry.created != rightEntry.created ? leftEntry.created > rightEntry.created : nameOrder == .orderedAscending
-            case .byCreatedTimeReverse: return leftEntry.created != rightEntry.created ? leftEntry.created < rightEntry.created : nameOrder == .orderedAscending
-            }
+            orders(left.entry, named: left.name, before: right.entry, named: right.name)
         }.map { namedEntry in namedEntry.entry }
+    }
+
+    private func orders(_ leftEntry: VaultEntry, named leftName: String, before rightEntry: VaultEntry, named rightName: String) -> Bool {
+        if leftEntry.isDirectory != rightEntry.isDirectory { return leftEntry.isDirectory }
+        let nameOrder = leftName.localizedStandardCompare(rightName)
+        // Folders keep name order under date sorts, as in Obsidian.
+        if leftEntry.isDirectory { return self == .alphabeticalReverse ? nameOrder == .orderedDescending : nameOrder == .orderedAscending }
+        switch self {
+        case .alphabetical: return nameOrder == .orderedAscending
+        case .alphabeticalReverse: return nameOrder == .orderedDescending
+        case .byModifiedTime: return leftEntry.modified != rightEntry.modified ? leftEntry.modified > rightEntry.modified : nameOrder == .orderedAscending
+        case .byModifiedTimeReverse: return leftEntry.modified != rightEntry.modified ? leftEntry.modified < rightEntry.modified : nameOrder == .orderedAscending
+        case .byCreatedTime: return leftEntry.created != rightEntry.created ? leftEntry.created > rightEntry.created : nameOrder == .orderedAscending
+        case .byCreatedTimeReverse: return leftEntry.created != rightEntry.created ? leftEntry.created < rightEntry.created : nameOrder == .orderedAscending
+        }
+    }
+
+    /// `sortedEntries`, which are in this order, with these items replaced, added, or removed
+    /// when their value is nil. A few comparisons per changed item, where sorting again takes
+    /// about 360,000 for 24,712 entries.
+    public func applying(_ changes: [VaultPath: VaultEntry?], to sortedEntries: [VaultEntry]) -> [VaultEntry] {
+        guard !changes.isEmpty else { return sortedEntries }
+        var entries = sortedEntries.filter { entry in changes[entry.path] == nil }
+        for case let changedEntry? in changes.values {
+            let name = changedEntry.path.name
+            var lowerBound = 0, upperBound = entries.count
+            while lowerBound < upperBound {
+                let middle = (lowerBound + upperBound) / 2
+                if orders(entries[middle], named: entries[middle].path.name, before: changedEntry, named: name) {
+                    lowerBound = middle + 1
+                } else {
+                    upperBound = middle
+                }
+            }
+            entries.insert(changedEntry, at: lowerBound)
+        }
+        return entries
     }
 }
 

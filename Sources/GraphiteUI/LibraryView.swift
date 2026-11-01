@@ -22,6 +22,8 @@ struct LibraryVault {
     let sortOrder: FileSortOrder
     /// Changes whenever Graphite or another app may have changed the vault's files.
     let listingVersion: Int
+    /// Changes known to each folder, as `WorkspaceModel.folderListingVersions` counts them.
+    let folderListingVersions: [VaultPath: Int]
     let firstCreatedKind: CreationKind
     let isPluginEnabled: (CorePlugin) -> Bool
     let presentation: LibraryPresentation
@@ -122,9 +124,11 @@ struct LibraryView: View {
             if selection.isSelecting { selectionHeader } else { header }
             content
         }
-        .task(id: vault.reloadKey) {
+        .task(id: "\(vault.reloadKey)|\(vault.folderListingVersions[library.folder] ?? 0)") {
             await library.reload(source: vault.source, sortOrder: vault.sortOrder)
         }
+        // A folder's tile says how many items it holds, which a change inside it may move.
+        .onChange(of: vault.folderListingVersions) { library.folderItemCounts.refreshVisibleFolders() }
         .onChange(of: library.items) { keepChosenTilesListed() }
         .onChange(of: library.folder) { selection.end() }
         .confirmationDialog("Delete \(selection.chosenCount) \(selection.chosenCount == 1 ? "Item" : "Items")?",

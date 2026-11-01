@@ -16,7 +16,7 @@ final class WorkspaceExternalRefreshTimingTests: XCTestCase {
     }
 
     private func openedWorkspace(clock: ManualClock) async throws -> (workspace: WorkspaceModel, vault: URL) {
-        let vault = try testBed.makeVault(files: ["Note.md": "Text"])
+        let vault = try testBed.makeVault(files: ["Picture.png": "not really a picture"])
         let workspace = try testBed.isolatedDevice().makeWorkspace(clock: clock)
         try await workspace.openFolderAsVault(vault)
         return (workspace, vault)
@@ -27,7 +27,7 @@ final class WorkspaceExternalRefreshTimingTests: XCTestCase {
         let (workspace, vault) = try await openedWorkspace(clock: clock)
         let versionBeforeTheChange = workspace.drawingVersion
 
-        workspace.scheduleExternalRefresh(vault.appendingPathComponent("Note.md"))
+        workspace.scheduleExternalRefresh(vault.appendingPathComponent("Picture.png"))
         try await clock.awaitPendingSleepers()
         clock.advance(by: .milliseconds(499))
         await ManualClock.letResumedTasksRun()
@@ -41,15 +41,15 @@ final class WorkspaceExternalRefreshTimingTests: XCTestCase {
         let clock = ManualClock()
         let (workspace, vault) = try await openedWorkspace(clock: clock)
         let versionBeforeTheChanges = workspace.drawingVersion
-        let note = vault.appendingPathComponent("Note.md")
+        let picture = vault.appendingPathComponent("Picture.png")
 
         // A report every 400 ms keeps postponing the 500 ms pause until the 2 s cap.
-        workspace.scheduleExternalRefresh(note)
+        workspace.scheduleExternalRefresh(picture)
         for _ in 1...4 {
             try await clock.awaitPendingSleepers()
             clock.advance(by: .milliseconds(400))
             await ManualClock.letResumedTasksRun()
-            workspace.scheduleExternalRefresh(note)
+            workspace.scheduleExternalRefresh(picture)
         }
         try await clock.awaitPendingSleepers()
         XCTAssertEqual(clock.pendingSleepDurations, [.milliseconds(400)])

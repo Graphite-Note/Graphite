@@ -188,11 +188,11 @@ struct VaultTagsList: View {
             }
             if !overview.hasLoadedTags {
                 ProgressView().frame(maxWidth: .infinity)
-            } else if overview.tagCounts.isEmpty && workspace.hasCompletedIndexScan {
+            } else if overview.tagCounts.isEmpty && workspace.isIndexUsable {
                 Text("No tags in this vault yet. Write #tag in a note, or add it to the note's tags property.").foregroundStyle(.secondary)
             }
         } footer: {
-            if !workspace.hasCompletedIndexScan { Text("Still reading the vault; more tags may appear.") }
+            if !workspace.isIndexUsable { Text("Still reading the vault; more tags may appear.") }
         }
     }
 }
@@ -266,11 +266,11 @@ struct VaultPropertiesList: View {
             }
             if !overview.hasLoadedProperties {
                 ProgressView().frame(maxWidth: .infinity)
-            } else if overview.properties.isEmpty && workspace.hasCompletedIndexScan {
+            } else if overview.properties.isEmpty && workspace.isIndexUsable {
                 Text("No properties in this vault yet. Add them to a note from its Properties.").foregroundStyle(.secondary)
             }
         } footer: {
-            if !workspace.hasCompletedIndexScan { Text("Still reading the vault; more properties may appear.") }
+            if !workspace.isIndexUsable { Text("Still reading the vault; more properties may appear.") }
         }
     }
 

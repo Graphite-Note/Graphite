@@ -115,44 +115,22 @@ public struct CommunityPluginVaultBridge: Sendable {
     private func listVault(under folder: VaultPath) async throws -> [String: Any] {
         let root = store.root
         let folderLocation = try folder.url(in: root)
-        let listing = try await Task.detached(priority: .utility) { () throws -> (entries: [ListedEntry], isTruncated: Bool) in
+        let listing = try await Task.detached(priority: .utility) { () throws -> (entries: [CommunityPluginListedEntry], isTruncated: Bool) in
             let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
             guard let enumerator = FileManager.default.enumerator(at: folderLocation, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
                 throw GraphiteError.unavailable("Graphite could not list “\(folder.rawValue)”.")
             }
-            var entries: [ListedEntry] = []
+            var entries: [CommunityPluginListedEntry] = []
             while let location = enumerator.nextObject() as? URL {
                 try Task.checkCancellation()
                 guard let values = try? location.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
                       let path = Self.vaultPath(of: location, under: folderLocation, folder: folder) else { continue }
                 if entries.count == Self.maximumListedEntries { return (entries, true) }
-                entries.append(ListedEntry(path: path, values: values))
+                entries.append(CommunityPluginListedEntry(path: path, values: values))
             }
             return (entries, false)
         }.value
-        let entries = listing.entries.map { entry -> [String: Any] in
-            var dictionary = Self.statDictionary(isFolder: entry.isFolder, size: entry.size, modified: entry.modified, created: entry.created)
-            dictionary["path"] = entry.path.rawValue
-            return dictionary
-        }
-        return ["entries": entries, "isTruncated": listing.isTruncated]
-    }
-
-    /// One listed item, made off the main thread and turned into JSON afterwards.
-    private struct ListedEntry: Sendable {
-        let path: VaultPath
-        let isFolder: Bool
-        let size: Int
-        let modified: Date
-        let created: Date
-
-        init(path: VaultPath, values: URLResourceValues) {
-            self.path = path
-            isFolder = values.isDirectory == true
-            size = values.fileSize ?? 0
-            modified = values.contentModificationDate ?? .distantPast
-            created = values.creationDate ?? modified
-        }
+        return ["encodedEntries": try await CommunityPluginListedEntry.encoded(listing.entries), "isTruncated": listing.isTruncated]
     }
 
     /// The direct children of `folder`, hidden ones included, as Obsidian's adapter lists them.

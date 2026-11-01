@@ -39,7 +39,7 @@ extension VaultIndex {
     /// Every Markdown note with a revision that changes whenever the index reads the note's
     /// file again: its size, its modification date, and whether its contents were read yet.
     public func noteRevisions() throws -> [String: String] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             var revisions: [String: String] = [:]
             let rows = try Row.fetchCursor(database, sql: "SELECT path, size, modified, contentIndexed FROM files WHERE \(Self.markdownCondition)")
             while let row = try rows.next() {
@@ -52,7 +52,7 @@ extension VaultIndex {
     /// The notes at `paths` that the index holds, in that order, each with its aliases and the
     /// revision it was read with. One read, so a note and its revision always agree.
     public func indexedNotes(atPaths paths: [String]) throws -> [IndexedNote] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             let records = try Self.records(forPaths: paths, in: database)
             var revisions: [String: String] = [:]
             var aliasesByPath: [String: [String]] = [:]
@@ -79,7 +79,7 @@ extension VaultIndex {
     /// it stays the same, a note's links resolve as they did, unless the note itself changed.
     /// It is a hash, comparable only within one run of the app.
     public func linkResolutionState() throws -> Int {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             var hasher = Hasher()
             let paths = try String.fetchCursor(database, sql: "SELECT path FROM files ORDER BY path")
             while let path = try paths.next() { hasher.combine(path) }
@@ -99,7 +99,7 @@ extension VaultIndex {
     /// resolved as the graph resolves it. Web pages and other apps' links are left out, as the
     /// graph leaves them out. A note without such links has no entry.
     public func resolvedLinks(ofNotesAt paths: [String]? = nil) throws -> [String: [ResolvedNoteLink]] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             let resolver = try GraphLinkResolver(database: database)
             // A link resolves the same way from every note in one folder.
             var destinationsByKey: [String: VaultPath?] = [:]

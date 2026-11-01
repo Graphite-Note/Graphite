@@ -13,7 +13,7 @@ extension VaultStore {
         let list = try myPaperTemplateList()
         let directory = try VaultPath(MyPaperTemplateList.directory)
         guard try fileExists(directory) else { return [] }
-        let fileNames = try children(of: directory)
+        let fileNames = try listedChildren(of: directory)
             .filter { entry in !entry.isDirectory && (entry.path.name as NSString).pathExtension.lowercased() == MyPaperTemplateList.fileExtension }
             .map(\.path.name)
         return list.templates(listing: fileNames)

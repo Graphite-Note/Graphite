@@ -374,10 +374,10 @@ extension VaultIndex {
     /// Every indexed file inside `folder`, at any depth; every file for the vault root.
     public func paths(inside folder: VaultPath) throws -> [VaultPath] {
         guard !folder.rawValue.isEmpty else {
-            return try databaseQueue.read { database in try String.fetchAll(database, sql: "SELECT path FROM files").map(VaultPath.init) }
+            return try databasePool.read { database in try String.fetchAll(database, sql: "SELECT path FROM files").map(VaultPath.init) }
         }
         let prefix = folder.rawValue + "/"
-        return try databaseQueue.read { database in
+        return try databasePool.read { database in
             // An exact prefix (SQLite counts characters as Unicode scalars): LIKE would ignore
             // case and match another folder on a case-sensitive volume.
             try String.fetchAll(database, sql: "SELECT path FROM files WHERE substr(path, 1, ?) = ?", arguments: [prefix.unicodeScalars.count, prefix])
@@ -387,12 +387,12 @@ extension VaultIndex {
 
     /// Notes with a link, in their text or properties, that reaches `destination`.
     public func linkingNotes(to destination: VaultPath) throws -> [VaultPath] {
-        try databaseQueue.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: true, in: database) }
+        try databasePool.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: true, in: database) }
     }
 
     /// Canvases whose links the index does not know, because Graphite cannot read them.
     func unreadableCanvases() throws -> [VaultPath] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed = ?", arguments: [IndexedContentState.unreadableCanvas.rawValue])
                 .map(VaultPath.init)
         }
@@ -403,7 +403,7 @@ extension VaultIndex {
     /// case of every letter, not only ASCII.
     func fileCount(named fileName: String, excluding excludedPaths: [VaultPath]) throws -> Int {
         let exclusion = excludedPaths.isEmpty ? "" : " AND path NOT IN (" + Array(repeating: "?", count: excludedPaths.count).joined(separator: ",") + ")"
-        return try databaseQueue.read { database in
+        return try databasePool.read { database in
             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE folded_name = ?" + exclusion,
                              arguments: StatementArguments([Self.foldedKey(fileName)] + excludedPaths.map(\.rawValue))) ?? 0
         }

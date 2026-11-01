@@ -66,7 +66,7 @@ extension WorkspaceModel {
             } else {
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(text.utf8), at: path, expecting: .absent)
-                await refreshDirectory()
+                await showInListings(path)
             }
             refreshIndex(for: [path])
             await open(path)

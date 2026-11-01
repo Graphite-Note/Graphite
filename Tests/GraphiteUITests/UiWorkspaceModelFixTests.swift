@@ -422,14 +422,15 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         let vault = try makeVault(files: ["Note.md": "text", "Drawing.png": "image", ".obsidian/workspace.json": "{}"])
         let changes: Set<URL> = [vault, vault.appendingPathComponent("Note.md"), vault.appendingPathComponent("Drawing.png"), vault.appendingPathComponent(".obsidian/workspace.json")]
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: changes, root: vault, maximumFileCount: 200),
-                       .files([try VaultPath("Drawing.png"), try VaultPath("Note.md")]))
+                       .items(files: [try VaultPath("Drawing.png"), try VaultPath("Note.md")], folders: []))
     }
 
     func testChangesThatCannotBeNamedFileByFileScanTheWholeVault() throws {
         let vault = try makeVault(files: ["Folder/Note.md": "text", "Other.md": "text"])
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault], root: vault, maximumFileCount: 200), .wholeVault)
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [], root: vault, maximumFileCount: 200), .wholeVault)
-        XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault.appendingPathComponent("Folder")], root: vault, maximumFileCount: 200), .wholeVault)
+        XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault.appendingPathComponent("Folder")], root: vault, maximumFileCount: 200),
+                       .items(files: [], folders: [try VaultPath("Folder")]), "A folder reported is read on its own, not the whole vault.")
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [URL(fileURLWithPath: "/elsewhere/Note.md")], root: vault, maximumFileCount: 200), .wholeVault)
         let manyChanges: Set<URL> = [vault.appendingPathComponent("Folder/Note.md"), vault.appendingPathComponent("Other.md")]
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: manyChanges, root: vault, maximumFileCount: 1), .wholeVault)

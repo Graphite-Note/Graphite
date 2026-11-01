@@ -30,8 +30,8 @@ extension WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "canvas")
             _ = try await store.save(CanvasFile.emptyFileData, at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
             #if canImport(UIKit)
             if let session = canvasSession, session.path == path { session.isWriting = true }
             #endif

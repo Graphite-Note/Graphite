@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public struct VaultEntry: Sendable, Identifiable, Hashable {
     public var id: VaultPath { path }
@@ -66,7 +67,8 @@ public enum FileNameRules {
 public actor VaultStore {
     public nonisolated let root: URL
     public nonisolated let writer: AtomicFileWriter
-    private static let applicationConfigurationPath = ".obsidian/app.json"
+    nonisolated let directoryListings = Mutex(0)
+    static let applicationConfigurationPath = ".obsidian/app.json"
     private static let maximumConfigurationBytes = 1_048_576
     /// The Obsidian settings Graphite last read or saved, which a save without an explicit
     /// starting point compares against: only the keys that differ are written, so a key
@@ -78,20 +80,6 @@ public actor VaultStore {
     public init(root: URL, filePresenter: (any NSFilePresenter & Sendable)? = nil) {
         self.root = root
         writer = AtomicFileWriter(filePresenter: filePresenter)
-    }
-
-    public func children(of directory: VaultPath, sortedBy sortOrder: FileSortOrder = .alphabetical) throws -> [VaultEntry] {
-        let url = try directory.url(in: root)
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
-        let entries = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]).compactMap { child -> VaultEntry? in
-            // One child that vanished since the listing, or that has a name no vault path
-            // can hold, is left out instead of failing the whole folder.
-            guard let values = try? child.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
-                  let childPath = try? directory.appending(child.lastPathComponent) else { return nil }
-            return VaultEntry(path: childPath, isDirectory: values.isDirectory == true, size: values.fileSize ?? 0,
-                              modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
-        }
-        return sortOrder.sorted(entries)
     }
 
     public func read(_ path: VaultPath, maximumBytes: Int? = nil) throws -> FileSnapshot {

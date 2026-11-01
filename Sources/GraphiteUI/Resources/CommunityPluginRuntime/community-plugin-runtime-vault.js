@@ -62,6 +62,27 @@
         return { ctime: hostStat.created || hostStat.modified || 0, mtime: hostStat.modified || 0, size: hostStat.size || 0 };
     }
 
+    /// The entries of a `vault.list` answer, which comes as one JSON text of parallel lists.
+    function decodedHostEntries(response) {
+        if (!response.encodedEntries) return [];
+        const columns = JSON.parse(response.encodedEntries);
+        return columns.paths.map((path, position) => ({
+            path,
+            isFolder: columns.isFolder[position] === 1,
+            size: columns.sizes[position],
+            modified: columns.modified[position],
+            created: columns.created[position],
+        }));
+    }
+
+    function pathDepth(path) {
+        let depth = 1;
+        for (let position = 0; position < path.length; position += 1) {
+            if (path[position] === '/') depth += 1;
+        }
+        return depth;
+    }
+
     function textFromData(data) {
         if (typeof data === 'string') return data;
         throw new TypeError('Expected text to write.');
@@ -370,15 +391,18 @@
         /// Reads the vault's file tree from Graphite: names and sizes only.
         async loadFileTree() {
             const response = await hostBridge.send('vault.list', {});
-            this.addHostEntries(response.entries || [], false);
+            this.addHostEntries(decodedHostEntries(response), false);
             if (response.isTruncated) {
                 console.warn('Graphite listed only part of this vault to plugins, because it holds more files than the plugin runtime keeps in its file list.');
             }
         }
 
         addHostEntries(entries, isTriggeringEvents) {
-            const sortedEntries = entries.slice().sort((firstEntry, secondEntry) => firstEntry.path.split('/').length - secondEntry.path.split('/').length);
-            for (const entry of sortedEntries) {
+            // Each path's depth is counted once, not twice per comparison: 31,748 entries make
+            // about 470,000 comparisons.
+            const entriesWithDepth = entries.map((entry) => ({ entry, depth: pathDepth(entry.path) }));
+            entriesWithDepth.sort((first, second) => first.depth - second.depth);
+            for (const { entry } of entriesWithDepth) {
                 if (isHiddenPath(entry.path)) continue;
                 this.addAbstractFile(entry.path, entry.isFolder, statFromHost(entry), isTriggeringEvents);
             }
@@ -484,7 +508,7 @@
                     this.addAbstractFile(path, hostStat.isFolder, statFromHost(hostStat), true);
                     if (hostStat.isFolder) {
                         const response = await hostBridge.send('vault.list', { folder: path });
-                        this.addHostEntries(response.entries || [], true);
+                        this.addHostEntries(decodedHostEntries(response), true);
                     }
                 }
             }

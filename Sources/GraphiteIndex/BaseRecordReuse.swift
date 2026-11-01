@@ -24,6 +24,8 @@ public struct LoadedBaseRecords: Sendable {
     fileprivate var recordsByPath: [String: RevisionedRecord]
     /// Records the query that produced this read from the database rather than reused.
     let rereadRecordCount: Int
+    /// Records held for the next query.
+    public var recordCount: Int { recordsByPath.count }
 
     /// Nothing loaded yet: the next query reads every record.
     public init() {
@@ -44,7 +46,7 @@ extension VaultIndex {
     public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit,
                             reusing previousRecords: LoadedBaseRecords) throws -> (batch: BaseRecordBatch, loadedRecords: LoadedBaseRecords) {
         let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
-        return try databaseQueue.read { database in
+        return try databasePool.read { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
             let rows = try Row.fetchAll(database, sql: "SELECT path, size, modified, created, contentIndexed FROM files WHERE \(whereClause) ORDER BY path LIMIT ?",
                                         arguments: arguments + [boundedLimit + 1])

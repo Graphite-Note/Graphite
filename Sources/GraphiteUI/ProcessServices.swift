@@ -46,7 +46,7 @@ public final class ProcessServices {
     let makeReadAloudController: @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController
 
     /// Services over `defaults` and `applicationFolders`.
-    init(defaults: UserDefaults, applicationFolders: ApplicationFolders,
+    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30),
          makeReadAloudController: @escaping @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController) {
         self.defaults = defaults
         // Before the preferences read the switches: a device that used Read Aloud keeps it on.
@@ -56,7 +56,7 @@ public final class ProcessServices {
         documentPlaceStore = DocumentPlaceStore(defaults: defaults)
         self.applicationFolders = applicationFolders
         addOns = .standard(applicationFolders: applicationFolders)
-        vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder)
+        vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
         self.makeReadAloudController = makeReadAloudController

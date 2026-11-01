@@ -29,7 +29,7 @@ struct ThemeSettingsSection: View {
             Text("Saved in the vault, so Obsidian uses the same theme. Buttons, menus and Settings keep Graphite's look.")
                 .formFooterAlignment()
         }
-        .task(id: "\(workspace.directoryVersion)-\(appearance.cssTheme)") { await reload() }
+        .task(id: "\(workspace.directoryVersion)-\(workspace.styleFilesVersion)-\(appearance.cssTheme)") { await reload() }
         if !snippets.isEmpty {
             Section {
                 ForEach(snippets, id: \.name) { snippet in snippetToggle(snippet) }

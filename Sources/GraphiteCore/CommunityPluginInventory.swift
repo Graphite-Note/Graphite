@@ -130,7 +130,7 @@ public extension VaultStore {
         guard try fileExists(pluginsFolder) else { return CommunityPluginInventory(plugins: [], unreadableFolders: []) }
         var plugins: [InstalledCommunityPlugin] = []
         var unreadableFolders: [UnreadableCommunityPlugin] = []
-        for entry in try children(of: pluginsFolder) where entry.isDirectory {
+        for entry in try listedChildren(of: pluginsFolder) where entry.isDirectory {
             do {
                 let manifestSnapshot = try read(entry.path.appending("manifest.json"), maximumBytes: CommunityPluginManifest.maximumManifestBytes)
                 let manifest = try CommunityPluginManifest(manifestData: manifestSnapshot.data)

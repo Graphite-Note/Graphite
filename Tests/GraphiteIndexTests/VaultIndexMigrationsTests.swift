@@ -22,7 +22,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     ]
 
     private func recordedMigrations(in index: VaultIndex) async throws -> [String] {
-        try await index.databaseQueue.read { database in
+        try await index.databasePool.read { database in
             try String.fetchAll(database, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid")
         }
     }
@@ -51,7 +51,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     func testTheSearchTableUsesTheDiacriticFoldingUnicodeTokenizer() async throws {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
 
-        let statement = try await index.databaseQueue.read { database in
+        let statement = try await index.databasePool.read { database in
             try String.fetchOne(database, sql: "SELECT sql FROM sqlite_master WHERE name = 'search'")
         }
 
@@ -84,7 +84,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     func testTheRegularExpressionFunctionReadsItsCaseFromTheArgumentPrefix() async throws {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
 
-        let results = try await index.databaseQueue.read { database in
+        let results = try await index.databasePool.read { database in
             try [
                 Bool.fetchOne(database, sql: "SELECT graphite_regexp('c:a+b', 'xaab')"),
                 Bool.fetchOne(database, sql: "SELECT graphite_regexp('c:A+B', 'xaab')"),
@@ -135,7 +135,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
 
         let migrations = try await recordedMigrations(in: index)
         XCTAssertEqual(migrations, Self.migrationIdentifiers)
-        let counts = try await index.databaseQueue.read { database in
+        let counts = try await index.databasePool.read { database in
             try ["files", "search", "links"].map { table in try Int.fetchOne(database, sql: "SELECT count(*) FROM \(table)") }
         }
         XCTAssertEqual(counts, [0, 0, 0], "The fourth migration empties the cache; the next scan rebuilds it from the vault.")
@@ -152,7 +152,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     }
 
     private func schemaDescription(of index: VaultIndex) async throws -> SchemaDescription {
-        try await index.databaseQueue.read { database in
+        try await index.databasePool.read { database in
             var columnsByTable: [String: [String]] = [:]
             for table in ["files", "links", "aliases", "tags", "headings", "properties", "property_links"] {
                 columnsByTable[table] = try Row.fetchAll(database, sql: "PRAGMA table_info(\(table))").map { row in row["name"] as String }

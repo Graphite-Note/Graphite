@@ -10,10 +10,13 @@ extension WorkspaceModel {
         // Taken at once as Graphite stops being active, not in the save that follows: by
         // the time that task runs, iPadOS can have resized the window for its app switcher
         // snapshots, and an editor laid out again then reports a line further down.
-        if previousPhase == .active { rememberPlacesOfOpenDocuments() }
+        if previousPhase == .active {
+            rememberPlacesOfOpenDocuments()
+            noteLeftFront()
+        }
         if phase == .active {
             windowCameToFront()
-            Task { await checkOpenDocumentsForExternalChanges(); await refreshDirectory(); await reloadVaultSettings() }
+            Task { await refreshAfterComingToFront() }
         } else {
             // Reading goes on in the background and on the lock screen, like an audiobook.
             saveBeforeLeaving()

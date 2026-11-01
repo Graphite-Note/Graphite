@@ -22,6 +22,11 @@ public enum VaultIndexScanRequest: Sendable {
     case unlessScanned
     /// Something changed that a scan which started earlier may have missed.
     case always
+    /// Another app changed what cannot be named, as a sync does again and again: a scan of the
+    /// whole vault follows, but not sooner than `minimumSpacingOfSpacedScans` after the last.
+    case spaced
+    /// Another app changed what is inside this folder, and only that is read again.
+    case folder(VaultPath)
 }
 
 /// One index per vault for the whole process (decision 12 of
@@ -41,6 +46,12 @@ public final class VaultIndexRegistry {
         var listeners: [UUID: AsyncStream<VaultIndexEvent>.Continuation] = [:]
         var runningScan: Task<Void, Never>?
         var isScanQueued = false
+        /// Folders to read when the running scan ends; a queued scan of everything covers them.
+        var queuedFolders: Set<VaultPath> = []
+        var isSpacedScanQueued = false
+        /// The wait for the spacing to pass before a spaced scan starts.
+        var spacingWait: Task<Void, Never>?
+        var lastWholeScanEnd: ContinuousClock.Instant?
         /// The last finished scan's report; nil before one finished or once the index is emptied.
         var lastReport: IndexingReport?
 
@@ -52,11 +63,13 @@ public final class VaultIndexRegistry {
     }
 
     private let cachesFolder: URL?
+    private let minimumSpacingOfSpacedScans: Duration
     private var sharedIndexes: [UUID: SharedIndex] = [:]
 
     /// Indexes kept in `cachesFolder`, or in the system's Caches folder when nil.
-    public init(cachesFolder: URL?) {
+    public init(cachesFolder: URL?, minimumSpacingOfSpacedScans: Duration = .seconds(30)) {
         self.cachesFolder = cachesFolder
+        self.minimumSpacingOfSpacedScans = minimumSpacingOfSpacedScans
     }
 
     /// Whether a window has the vault open, so its index must stay.
@@ -97,48 +110,102 @@ public final class VaultIndexRegistry {
 
     fileprivate func requestScan(_ request: VaultIndexScanRequest, for lease: VaultIndexLease) {
         guard let shared = sharedIndexes[lease.vaultIdentifier], shared.listeners[lease.identifier] != nil else { return }
-        if shared.runningScan != nil {
+        switch request {
+        case .folder(let folder):
+            // Before a scan of the whole vault ended, a folder's scan would count for one.
+            guard shared.lastReport != nil || shared.runningScan != nil else { return startScan(of: shared, index: lease.index) }
+            if shared.runningScan != nil {
+                shared.queuedFolders.insert(folder)
+            } else {
+                startScan(of: shared, index: lease.index, inside: folder)
+            }
+        case .spaced:
+            if shared.runningScan != nil {
+                shared.isSpacedScanQueued = true
+            } else {
+                startSpacedScan(of: shared, index: lease.index)
+            }
+        case .always:
             // The running scan may have read past what prompted the request.
-            if request == .always { shared.isScanQueued = true }
-            return
+            if shared.runningScan != nil {
+                shared.isScanQueued = true
+            } else {
+                startScan(of: shared, index: lease.index)
+            }
+        case .unlessScanned:
+            guard shared.runningScan == nil else { return }
+            if let lastReport = shared.lastReport {
+                shared.listeners[lease.identifier]?.yield(.scanFinished(lastReport, isAnotherScanQueued: false))
+            } else {
+                startScan(of: shared, index: lease.index)
+            }
         }
-        if request == .unlessScanned, let lastReport = shared.lastReport {
-            shared.listeners[lease.identifier]?.yield(.scanFinished(lastReport, isAnotherScanQueued: false))
-            return
-        }
-        startScan(of: shared, index: lease.index)
     }
 
-    private func startScan(of shared: SharedIndex, index: VaultIndex) {
-        shared.isScanQueued = false
+    /// Scans the whole vault now, or once the spacing since the last scan has passed.
+    private func startSpacedScan(of shared: SharedIndex, index: VaultIndex) {
+        shared.isSpacedScanQueued = false
+        guard shared.spacingWait == nil else { return }
+        let timeSinceLastScan = shared.lastWholeScanEnd.map { scanEnd in ContinuousClock.now - scanEnd }
+        guard let timeSinceLastScan, timeSinceLastScan < minimumSpacingOfSpacedScans else { return startScan(of: shared, index: index) }
+        let remainingSpacing = minimumSpacingOfSpacedScans - timeSinceLastScan
+        shared.spacingWait = Task { [weak self, weak shared] in
+            do { try await Task.sleep(for: remainingSpacing) } catch { return }
+            guard let self, let shared else { return }
+            shared.spacingWait = nil
+            if shared.runningScan != nil {
+                shared.isScanQueued = true
+            } else if !shared.listeners.isEmpty {
+                self.startScan(of: shared, index: index)
+            }
+        }
+    }
+
+    private func startScan(of shared: SharedIndex, index: VaultIndex, inside folder: VaultPath? = nil) {
+        if folder == nil {
+            shared.isScanQueued = false
+            shared.queuedFolders = []
+            shared.isSpacedScanQueued = false
+            shared.spacingWait?.cancel(); shared.spacingWait = nil
+        }
         broadcast(.scanStarted, to: shared)
         let root = shared.root
         // Below the editor's priority, so a scan does not compete with typing and scrolling.
         shared.runningScan = Task(priority: .utility) { [weak self, weak shared] in
             let outcome: Result<IndexingReport, any Error>
-            do { outcome = .success(try await index.reconcile(root: root)) } catch { outcome = .failure(error) }
+            do { outcome = .success(try await index.reconcile(root: root, inside: folder)) } catch { outcome = .failure(error) }
             guard let self, let shared else { return }
-            self.scanDidEnd(of: shared, index: index, with: outcome)
+            self.scanDidEnd(of: shared, index: index, inside: folder, with: outcome)
         }
     }
 
-    private func scanDidEnd(of shared: SharedIndex, index: VaultIndex, with outcome: Result<IndexingReport, any Error>) {
+    private func scanDidEnd(of shared: SharedIndex, index: VaultIndex, inside folder: VaultPath?, with outcome: Result<IndexingReport, any Error>) {
         shared.runningScan = nil
         // The last window on the vault closed meanwhile: the index closes now.
         guard !shared.listeners.isEmpty else {
             if sharedIndexes[shared.vaultIdentifier] === shared { sharedIndexes[shared.vaultIdentifier] = nil }
             return
         }
+        if folder == nil { shared.lastWholeScanEnd = .now }
+        let isAnotherScanQueued = shared.isScanQueued || !shared.queuedFolders.isEmpty
         switch outcome {
         case .success(let report):
             shared.lastReport = report
-            broadcast(.scanFinished(report, isAnotherScanQueued: shared.isScanQueued), to: shared)
+            broadcast(.scanFinished(report, isAnotherScanQueued: isAnotherScanQueued), to: shared)
         case .failure(let error) where error is CancellationError:
             broadcast(.scanCancelled, to: shared)
         case .failure(let error):
             broadcast(.scanFailed(error), to: shared)
         }
-        if shared.isScanQueued { startScan(of: shared, index: index) }
+        if shared.isScanQueued {
+            startScan(of: shared, index: index)
+        } else if let nextFolder = shared.queuedFolders.popFirst() {
+            // A scan of everything that failed leaves only a scan of everything to count as one.
+            startScan(of: shared, index: index, inside: shared.lastReport == nil ? nil : nextFolder)
+        }
+        if shared.isSpacedScanQueued {
+            if shared.runningScan == nil { startSpacedScan(of: shared, index: index) }
+        }
     }
 
     /// Empties the index and scans the vault again, for every window on it. A scan running
@@ -148,6 +215,9 @@ public final class VaultIndexRegistry {
         let previousReport = shared.lastReport
         shared.lastReport = nil
         shared.isScanQueued = false
+        shared.queuedFolders = []
+        shared.isSpacedScanQueued = false
+        shared.spacingWait?.cancel(); shared.spacingWait = nil
         broadcast(.emptied, to: shared)
         if let runningScan = shared.runningScan {
             runningScan.cancel()
@@ -172,6 +242,7 @@ public final class VaultIndexRegistry {
               let continuation = shared.listeners.removeValue(forKey: lease.identifier) else { return }
         continuation.finish()
         guard shared.listeners.isEmpty else { return }
+        shared.spacingWait?.cancel(); shared.spacingWait = nil
         // The last window on the vault: its scan stops and the index closes once the
         // windows let go of it. A stopping scan still holds the database, so the index stays
         // listed until it ends, and a window opening the vault meanwhile shares this

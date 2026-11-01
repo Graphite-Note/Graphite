@@ -38,7 +38,7 @@ struct LocalGraphPanel: View {
             if let localGraph {
                 if localGraph.nodes.count <= 1 {
                     ContentUnavailableView("No Links", systemImage: "point.3.connected.trianglepath.dotted",
-                                           description: Text(workspace.hasCompletedIndexScan ? "This note has no links yet, in either direction." : "Still reading the vault."))
+                                           description: Text(workspace.isIndexUsable ? "This note has no links yet, in either direction." : "Still reading the vault."))
                 } else {
                     GraphCanvas(graph: localGraph, highlightedIdentifier: session.path.rawValue, alwaysShowsLabels: localGraph.nodes.count <= 60,
                                 open: { node in Task { await workspace.open(node, from: session.path) } }, fitRequest: fitRequest, chosenTag: $chosenTag,

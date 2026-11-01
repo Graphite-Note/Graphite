@@ -19,8 +19,10 @@ public enum LibraryFilter: String, CaseIterable, Sendable, Identifiable {
 
 /// What the library shows of one folder's listing, in order.
 public enum LibraryListing {
-    /// Folders first, then the files the filter lets through, each in the vault's sort order.
-    public static func items(of entries: [VaultEntry], filter: LibraryFilter, sortOrder: FileSortOrder) -> [VaultEntry] {
-        sortOrder.sorted(entries.filter { entry in entry.isDirectory || filter.includes(entry.kind) })
+    /// The folders and the files the filter lets through, keeping the order of `sortedEntries`,
+    /// which a listing gives folders first and in the vault's sort order: a filter never changes
+    /// the order, so nothing is compared.
+    public static func items(ofSorted sortedEntries: [VaultEntry], filter: LibraryFilter) -> [VaultEntry] {
+        sortedEntries.filter { entry in entry.isDirectory || filter.includes(entry.kind) }
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import CryptoKit
 import GRDB
 import GraphiteCore
@@ -14,22 +15,25 @@ public struct IndexedFile: Sendable {
     /// The note was read and is not UTF-8 text. Its content cannot become searchable
     /// until the file changes, so an unchanged file is not read again on every scan.
     let isUnreadableAsText: Bool
+    /// The file is in the cloud, so its text is unknown until it is downloaded.
+    let isNotDownloaded: Bool
     public init(path: VaultPath, size: Int, modified: Date, markdown: String?) {
         self.init(path: path, size: size, modified: modified, created: nil, markdown: markdown)
     }
     public init(path: VaultPath, size: Int, modified: Date, created: Date?, markdown: String?) {
         self.init(path: path, size: size, modified: modified, created: created, markdown: markdown, isUnreadableAsText: false)
     }
-    init(path: VaultPath, size: Int, modified: Date, created: Date?, markdown: String?, isUnreadableAsText: Bool) {
+    init(path: VaultPath, size: Int, modified: Date, created: Date?, markdown: String?, isUnreadableAsText: Bool, isNotDownloaded: Bool = false) {
         self.path = path; self.size = size; self.modified = modified; self.created = created; self.markdown = markdown
         self.isUnreadableAsText = isUnreadableAsText
+        self.isNotDownloaded = isNotDownloaded
     }
 }
 
 /// The `files.contentIndexed` column: whether a note's text is in the search table.
 enum IndexedContentState: Int {
-    /// Not read: not a note, too large, not downloaded, or reading failed. A readable
-    /// note in this state is read again by the next scan.
+    /// Not read: not a note, too large, or reading failed. A readable note in this state is
+    /// read again by the next scan.
     case notRead = 0
     case indexed = 1
     /// Read, but not UTF-8 text.
@@ -37,6 +41,9 @@ enum IndexedContentState: Int {
     /// Read as text, but a canvas Graphite cannot read (damaged, or beyond its bounds): its
     /// links are unknown, so it has no link rows and a move looks for moved paths in its bytes.
     case unreadableCanvas = 3
+    /// In the cloud at this size and date. A scan asks about it again only once the file system
+    /// no longer marks it as a placeholder, not of the file provider on every launch.
+    case notDownloaded = 4
 }
 
 public struct IndexingReport: Sendable {
@@ -44,6 +51,33 @@ public struct IndexingReport: Sendable {
     public let updatedFiles: Int
     public let pendingContentFiles: Int
     public let failedPaths: [String]
+    /// Rows of files no longer in the vault, removed by the scan.
+    public let prunedFiles: Int
+    /// Whether what the index answers can differ from before the scan.
+    public var changedAnything: Bool { updatedFiles > 0 || prunedFiles > 0 }
+}
+
+/// What the index asks about a file in the cloud. The answers come through the file provider,
+/// so a test gives its own to count them.
+public struct CloudFileStatus: Sendable {
+    /// Whether the file is in the cloud and not downloaded; asked of the file provider, which
+    /// inspects the item. Reading such a file would start a download.
+    let isNotDownloaded: @Sendable (URL) -> Bool
+    /// Whether the file system still marks the file as a placeholder without its contents. One
+    /// system call per file, which the provider does not hear of.
+    let isDatalessPlaceholder: @Sendable (URL) -> Bool
+
+    public init(isNotDownloaded: @escaping @Sendable (URL) -> Bool, isDatalessPlaceholder: @escaping @Sendable (URL) -> Bool) {
+        self.isNotDownloaded = isNotDownloaded
+        self.isDatalessPlaceholder = isDatalessPlaceholder
+    }
+
+    public static let live = CloudFileStatus(isNotDownloaded: { location in
+        (try? location.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus == .notDownloaded
+    }, isDatalessPlaceholder: { location in
+        var fileStatus = stat()
+        return lstat(location.path, &fileStatus) == 0 && fileStatus.st_flags & UInt32(SF_DATALESS) != 0
+    })
 }
 
 /// SQLite is an inventory and search cache. It never writes the user's documents.
@@ -54,38 +88,47 @@ public actor VaultIndex {
     /// `maximumBatchFileCount` files, so a folder of large notes keeps memory bounded.
     static let maximumBatchContentBytes = 4 * 1_048_576
     static let maximumBatchFileCount = 64
-    /// Internal so the base record queries in `BaseRecordQueries.swift` share it.
-    let databaseQueue: DatabaseQueue
+    /// Readers at the same time beside the writer: long reads such as a graph or a base leave
+    /// a link tap or the quick switcher a reader of its own.
+    static let maximumReaderCount = 4
+    /// Page cache of each connection. A reader serves short reads, and there are several.
+    private static let writerCacheKilobytes = 8192
+    private static let readerCacheKilobytes = 2048
+    /// One writer and concurrent readers. Internal so the base record queries in
+    /// `BaseRecordQueries.swift` share it.
+    let databasePool: DatabasePool
+    private let cloudFileStatus: CloudFileStatus
     private var isScanning = false
-    /// The generation of the scan in progress. `refresh` writes rows with it, so a note
-    /// saved during a scan counts as seen and is not pruned when the scan ends.
+    /// The generation of the scan in progress, which the rows it writes carry.
     private var activeScanGeneration: String?
     /// Files `refresh` wrote or removed during the scan in progress, with the modification
     /// date it wrote (`distantFuture` for a removal). The scan may have read such a file
-    /// earlier into a batch it has not written yet; that older reading must not replace them.
+    /// earlier into a batch it has not written yet; that older reading must not replace them,
+    /// and a note saved during a scan is not pruned when the scan ends.
     private var pathsRefreshedDuringScan: [String: Date] = [:]
     /// Tables holding one or more rows per file, keyed by the file's path.
     static let perFileTables = ["aliases", "tags", "headings", "properties", "property_links"]
-    /// Deletes the search rows of files a scan did not see. By row identity: the search
-    /// table has no ordinary index on its path column, so deleting by path would read
-    /// every row of it on every scan.
-    static let staleSearchRowDeletion = "DELETE FROM search WHERE rowid IN (SELECT rowid FROM files WHERE generation != ?)"
+    /// Deletes one file's search row. By row identity: the search table has no ordinary index on
+    /// its path column, so deleting by path would read every row of it.
+    static let searchRowDeletion = "DELETE FROM search WHERE rowid = (SELECT rowid FROM files WHERE path = ?)"
 
     /// How long, in seconds, a write waits for another connection's lock before it fails.
     static let busyTimeout: TimeInterval = 5
 
-    public init(databaseURL: URL) throws {
+    public init(databaseURL: URL, cloudFileStatus: CloudFileStatus = .live) throws {
+        self.cloudFileStatus = cloudFileStatus
         try FileManager.default.createDirectory(at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         var configuration = Configuration()
         // Another process may hold the write lock for a moment (a second copy of the app, or
         // later the share extension): wait for it rather than fail with "database is locked".
         configuration.busyMode = .timeout(Self.busyTimeout)
+        configuration.maximumReaderCount = Self.maximumReaderCount
         configuration.prepareDatabase { database in
-            try database.execute(sql: "PRAGMA cache_size = -8192")
-            try database.execute(sql: "PRAGMA journal_mode = WAL")
+            let cacheKilobytes = database.configuration.readonly ? Self.readerCacheKilobytes : Self.writerCacheKilobytes
+            try database.execute(sql: "PRAGMA cache_size = -\(cacheKilobytes)")
             database.add(function: RegularExpressionFunction.function)
         }
-        databaseQueue = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
+        databasePool = try DatabasePool(path: databaseURL.path, configuration: configuration)
         var migrator = DatabaseMigrator()
         migrator.registerMigration("inventory-and-links-1") { database in
             try database.execute(sql: """
@@ -198,7 +241,22 @@ public actor VaultIndex {
             // again on the next scan to set it.
             try database.execute(sql: "UPDATE files SET size = -1 WHERE path LIKE '%.canvas'")
         }
-        try migrator.migrate(databaseQueue)
+        migrator.registerMigration("finished-scan-fact-11") { database in
+            try database.execute(sql: "CREATE TABLE index_facts (name TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)")
+        }
+        try migrator.migrate(databasePool)
+    }
+
+    private static let finishedScanFact = "finishedScan"
+
+    /// Whether a scan of the whole vault ended since the index was made or emptied, on this launch
+    /// or an earlier one: the index is complete but for what changed since.
+    public nonisolated func hasFinishedAScan() async throws -> Bool {
+        try await databasePool.read { database in try Self.hasFinishedScanFact(in: database) }
+    }
+
+    private static func hasFinishedScanFact(in database: Database) throws -> Bool {
+        try Bool.fetchOne(database, sql: "SELECT 1 FROM index_facts WHERE name = ?", arguments: [finishedScanFact]) ?? false
     }
 
     /// Text for matching names the way Obsidian does: ignoring case for every letter, not
@@ -318,7 +376,7 @@ public actor VaultIndex {
 
     private func write(_ preparedFiles: [PreparedFile], generation: String) throws {
         guard !preparedFiles.isEmpty else { return }
-        try databaseQueue.write { database in
+        try databasePool.write { database in
             // Cached statements: every file runs the same few dozen statements, and
             // compiling each one again per file cost more than executing it.
             let fileUpsert = try database.cachedStatement(sql: """
@@ -332,7 +390,7 @@ public actor VaultIndex {
                 """)
             // FTS content columns have no ordinary B-tree index. Deleting by
             // path here would turn a full build into a quadratic table scan.
-            let searchDeletion = try database.cachedStatement(sql: "DELETE FROM search WHERE rowid = (SELECT rowid FROM files WHERE path = ?)")
+            let searchDeletion = try database.cachedStatement(sql: Self.searchRowDeletion)
             let searchInsertion = try database.cachedStatement(sql: "INSERT INTO search(rowid, path, title, body) SELECT rowid, path, ?, ? FROM files WHERE path = ?")
             let linkDeletion = try database.cachedStatement(sql: "DELETE FROM links WHERE source = ?")
             let perFileDeletions = try Self.perFileTables.map { table in try database.cachedStatement(sql: "DELETE FROM \(table) WHERE path = ?") }
@@ -347,7 +405,7 @@ public actor VaultIndex {
                 let semantics = prepared.semantics
                 let title = semantics?.headings.first ?? file.path.stem
                 let contentState: IndexedContentState = semantics != nil ? .indexed
-                    : prepared.isUnreadableCanvas ? .unreadableCanvas : file.isUnreadableAsText ? .unreadableAsText : .notRead
+                    : prepared.isUnreadableCanvas ? .unreadableCanvas : file.isUnreadableAsText ? .unreadableAsText : file.isNotDownloaded ? .notDownloaded : .notRead
                 try fileUpsert.execute(arguments: [file.path.rawValue, file.path.name, title, file.size, file.modified.timeIntervalSince1970, generation, contentState.rawValue,
                                                    (file.created ?? file.modified).timeIntervalSince1970,
                                                    WikiLinkResolver.comparisonKey(file.path.rawValue), WikiLinkResolver.comparisonKey(file.path.name),
@@ -385,7 +443,20 @@ public actor VaultIndex {
 
     /// Ambiguous results are returned to the caller, never silently selected.
     public nonisolated func resolve(_ target: String, from source: VaultPath, isWiki: Bool = true) async throws -> [VaultPath] {
-        try await databaseQueue.read { database in try Self.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }
+        try await databasePool.read { database in try Self.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }
+    }
+
+    /// The single file each of these wikilinks names from `source`, in one read; a link that is
+    /// missing or ambiguous has no entry.
+    public nonisolated func resolve(wikilinks targets: [String], from source: VaultPath) async throws -> [String: VaultPath] {
+        try await databasePool.read { database in
+            var resolved: [String: VaultPath] = [:]
+            for target in targets {
+                let paths = try Self.resolvedPaths(target, from: source, isWiki: true, in: database)
+                if paths.count == 1 { resolved[target] = paths[0] }
+            }
+            return resolved
+        }
     }
 
     static func resolvedPaths(_ target: String, from source: VaultPath, isWiki: Bool, in database: Database) throws -> [VaultPath] {
@@ -438,22 +509,22 @@ public actor VaultIndex {
 
     /// Number of indexed files in the vault.
     public nonisolated func fileCount() async throws -> Int {
-        try await databaseQueue.read { database in try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0 }
+        try await databasePool.read { database in try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0 }
     }
 
     /// Number of indexed files with this file name anywhere in the vault.
     public nonisolated func fileCount(named fileName: String) async throws -> Int {
-        try await databaseQueue.read { database in
+        try await databasePool.read { database in
             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE folded_name = ?", arguments: [Self.foldedKey(fileName)]) ?? 0
         }
     }
 
     public nonisolated func outgoingLinks(from source: VaultPath) async throws -> [String] {
-        try await databaseQueue.read { database in try String.fetchAll(database, sql: "SELECT DISTINCT target FROM links WHERE source = ? ORDER BY target LIMIT 200", arguments: [source.rawValue]) }
+        try await databasePool.read { database in try String.fetchAll(database, sql: "SELECT DISTINCT target FROM links WHERE source = ? ORDER BY target LIMIT 200", arguments: [source.rawValue]) }
     }
 
     public nonisolated func backlinks(to destination: VaultPath) async throws -> [VaultPath] {
-        try await databaseQueue.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: false, in: database) }
+        try await databasePool.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: false, in: database) }
     }
 
     /// Every folded link target (`links.folded_target`, `property_links.folded_target`)
@@ -560,6 +631,8 @@ public actor VaultIndex {
         let isPDF: Bool
         /// Set once the file is known to have changed: a note whose text the scan reads.
         var readsContent = false
+        /// Set when the unchanged check found the file in the cloud.
+        var isNotDownloaded = false
     }
 
     /// A changed file of a scan batch, read and parsed outside the actor.
@@ -579,15 +652,17 @@ public actor VaultIndex {
 
     /// What a scan has found and not yet written, and what it reports.
     private struct ScanState {
-        var discoveredFiles = 0, updatedFiles = 0, pendingFiles = 0
+        var discoveredFiles = 0, updatedFiles = 0, pendingFiles = 0, prunedFiles = 0
         var failedPaths: [String] = []
         /// Enumerated files waiting for the unchanged check.
         var scannedFiles: [ScannedFile] = []
         /// Changed files waiting to be read and written.
         var batch: [ScannedFile] = []
         var batchContentBytes = 0
-        /// Unchanged files waiting to be marked seen.
-        var unchangedPaths: [String] = []
+        /// Every file enumerated, which the prune keeps. In memory, so a scan that finds the
+        /// vault as the index has it writes nothing; with 31,748 files it is a few megabytes,
+        /// for as long as the scan runs.
+        var seenPaths: Set<String> = []
 
         mutating func recordFailure(_ description: String) {
             if failedPaths.count < 100 { failedPaths.append(description) }
@@ -597,7 +672,8 @@ public actor VaultIndex {
     /// Enumerated files are checked against the index this many at a time, in one read.
     private static let unchangedCheckChunkSize = 256
 
-    public func reconcile(root: URL) async throws -> IndexingReport {
+    /// Brings the index up to date with the whole vault, or with what is inside `folder`.
+    public func reconcile(root: URL, inside folder: VaultPath? = nil) async throws -> IndexingReport {
         guard !isScanning else { throw GraphiteError.unavailable("An index scan is already running.") }
         isScanning = true
         let generation = UUID().uuidString
@@ -607,22 +683,31 @@ public actor VaultIndex {
             activeScanGeneration = nil
             pathsRefreshedDuringScan.removeAll()
         }
+        // A folder a scan would not enter: its files are not the vault's.
+        let enumeratedFolder: URL
+        if let folder {
+            guard !folder.isHidden, let folderLocation = Self.locationWithoutSymbolicLinks(of: folder, root: root) else { return try partialReport(of: ScanState()) }
+            enumeratedFolder = folderLocation
+        } else {
+            enumeratedFolder = root
+        }
         // The download state is not listed: asking for it makes the file provider inspect
         // every item, which costs more than the rest of the enumeration. It is read only
         // for changed notes, the only files whose content the scan would read.
         let keys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
         // Set when part of the vault could not be listed. Rows for files there were not
-        // marked seen, so pruning would delete files that still exist.
+        // seen, so pruning would delete files that still exist.
         var isInventoryIncomplete = false
         // Relative URLs: the enumerator may report `/private/var/…` for a root given as
         // `/var/…`, so cutting the root's path length off absolute paths is unreliable.
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs], errorHandler: { _, _ in isInventoryIncomplete = true; return true }) else {
+        guard let enumerator = FileManager.default.enumerator(at: enumeratedFolder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs], errorHandler: { _, _ in isInventoryIncomplete = true; return true }) else {
             throw GraphiteError.unavailable("Cannot enumerate the vault.")
         }
+        let folderPrefix = folder.map { folder in folder.rawValue + "/" } ?? ""
         var state = ScanState()
         while let location = enumerator.nextObject() as? URL {
             try Task.checkCancellation()
-            let relative = location.relativePath
+            let relative = folderPrefix + location.relativePath
             let values: URLResourceValues
             do {
                 values = try location.resourceValues(forKeys: Set(keys))
@@ -630,7 +715,7 @@ public actor VaultIndex {
                 // The item vanished or could not be inspected mid-scan. Its row, if any, is
                 // kept rather than pruned on an unknown state; the file presenter or the
                 // next scan settles it.
-                if let path = try? VaultPath(relative) { state.unchangedPaths.append(path.rawValue) }
+                if let path = try? VaultPath(relative) { state.seenPaths.insert(path.rawValue) }
                 state.recordFailure(relative + ": " + error.localizedDescription)
                 continue
             }
@@ -647,6 +732,7 @@ public actor VaultIndex {
                 continue
             }
             state.discoveredFiles += 1
+            state.seenPaths.insert(path.rawValue)
             state.scannedFiles.append(ScannedFile(path: path, location: location, size: values.fileSize ?? 0, modified: values.contentModificationDate ?? .distantPast,
                                                   created: values.creationDate, isMarkdown: DocumentKind(path: path) == .markdown,
                                                   isCanvas: DocumentKind(path: path) == .canvas, isPDF: DocumentKind(path: path) == .pdf))
@@ -654,38 +740,78 @@ public actor VaultIndex {
         }
         try await checkScannedFiles(&state, generation: generation)
         try await writeBatch(&state, generation: generation)
-        if !isInventoryIncomplete {
-            try await databaseQueue.write { database in
-                try database.execute(sql: Self.staleSearchRowDeletion, arguments: [generation])
-                for table in Self.perFileTables {
-                    try database.execute(sql: "DELETE FROM \(table) WHERE path IN (SELECT path FROM files WHERE generation != ?)", arguments: [generation])
-                }
-                try database.execute(sql: "DELETE FROM links WHERE source IN (SELECT path FROM files WHERE generation != ?)", arguments: [generation])
-                try database.execute(sql: "DELETE FROM files WHERE generation != ?", arguments: [generation])
-            }
-        }
-        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles, failedPaths: state.failedPaths)
+        if !isInventoryIncomplete { state.prunedFiles = try pruneFilesNotSeen(state.seenPaths, inside: folder) }
+        guard folder == nil else { return try partialReport(of: state) }
+        if !isInventoryIncomplete { try recordFinishedScan() }
+        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles, failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
-    /// Checks a chunk of enumerated files against the index in one read, marks unchanged
-    /// files seen, and adds changed files to the batch, writing it whenever it is full.
+    /// What a scan of one folder reports: what it changed, with the counts of the whole vault,
+    /// which are what a window says.
+    private func partialReport(of state: ScanState) throws -> IndexingReport {
+        let (fileCount, pendingFileCount) = try databasePool.read { database in
+            (try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0,
+             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'", arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
+        }
+        return IndexingReport(discoveredFiles: fileCount, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount, failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
+    }
+
+    /// Removes the rows of files the scan did not see, and returns how many. Synchronous on the
+    /// actor, so `refresh` cannot add a row between the read and the deletion. Reading the paths
+    /// is all an unchanged vault costs here: nothing is written.
+    private func pruneFilesNotSeen(_ seenPaths: Set<String>, inside folder: VaultPath?) throws -> Int {
+        let indexedPaths = try databasePool.read { database in
+            guard let folder else { return try String.fetchAll(database, sql: "SELECT path FROM files") }
+            // '0' follows '/' in code-unit order, so this range is exactly the paths inside the folder.
+            return try String.fetchAll(database, sql: "SELECT path FROM files WHERE path > ? AND path < ?", arguments: [folder.rawValue + "/", folder.rawValue + "0"])
+        }
+        // A file `refresh` wrote or removed during the scan is as `refresh` left it.
+        let stalePaths = indexedPaths.filter { path in !seenPaths.contains(path) && pathsRefreshedDuringScan[path] == nil }
+        guard !stalePaths.isEmpty else { return 0 }
+        try databasePool.write { database in try Self.deleteRows(ofPaths: stalePaths, in: database) }
+        return stalePaths.count
+    }
+
+    private static func deleteRows(ofPaths paths: [String], in database: Database) throws {
+        let searchDeletion = try database.cachedStatement(sql: searchRowDeletion)
+        let perFileDeletions = try perFileTables.map { table in try database.cachedStatement(sql: "DELETE FROM \(table) WHERE path = ?") }
+        let linkDeletion = try database.cachedStatement(sql: "DELETE FROM links WHERE source = ?")
+        let fileDeletion = try database.cachedStatement(sql: "DELETE FROM files WHERE path = ?")
+        for path in paths {
+            try searchDeletion.execute(arguments: [path])
+            for perFileDeletion in perFileDeletions { try perFileDeletion.execute(arguments: [path]) }
+            try linkDeletion.execute(arguments: [path])
+            try fileDeletion.execute(arguments: [path])
+        }
+    }
+
+    /// Written once: a later scan that finds the vault unchanged writes nothing at all.
+    private func recordFinishedScan() throws {
+        guard try !databasePool.read({ database in try Self.hasFinishedScanFact(in: database) }) else { return }
+        try databasePool.write { database in
+            try database.execute(sql: "INSERT OR IGNORE INTO index_facts (name, value) VALUES (?, 1)", arguments: [Self.finishedScanFact])
+        }
+    }
+
+    /// Checks a chunk of enumerated files against the index in one read, and adds changed files
+    /// to the batch, writing it whenever it is full.
     private func checkScannedFiles(_ state: inout ScanState, generation: String) async throws {
         let storedContentStates = try storedContentStates(of: state.scannedFiles)
         for (var file, storedContentState) in zip(state.scannedFiles, storedContentStates) {
             // A note too large to index or still in the cloud stays unread until its
             // size, date or download state changes; reading it again would give the
             // same result. The download state is asked last, and only when it decides.
-            let isContentReadable = (storedContentState == nil || storedContentState == .notRead) && (file.isMarkdown || file.isCanvas || file.isPDF)
-                && file.size <= (file.isPDF ? PDFIndexText.maximumPDFBytes : Self.maximumIndexedNoteBytes) && !Self.isNotDownloaded(file.location)
-            if let storedContentState, storedContentState != .notRead || !isContentReadable {
+            let readability = contentReadability(of: file, storedContentState: storedContentState)
+            let stateItWouldBeWritten: IndexedContentState = readability == .inTheCloud ? .notDownloaded : .notRead
+            if let storedContentState, (storedContentState != .notRead && storedContentState != .notDownloaded) || (readability != .readable && storedContentState == stateItWouldBeWritten) {
                 if file.isMarkdown, storedContentState != .indexed { state.pendingFiles += 1 }
-                state.unchangedPaths.append(file.path.rawValue)
                 continue
             }
-            if file.isMarkdown, !isContentReadable { state.pendingFiles += 1 }
-            file.readsContent = isContentReadable
+            if file.isMarkdown, readability != .readable { state.pendingFiles += 1 }
+            file.readsContent = readability == .readable
+            file.isNotDownloaded = readability == .inTheCloud
             // A PDF is not read whole: only its text boxes' text, which is bounded.
-            if isContentReadable { state.batchContentBytes += file.isPDF ? min(file.size, PDFFreeTextContents.maximumUTF16Count * 2) : file.size }
+            if file.readsContent { state.batchContentBytes += file.isPDF ? min(file.size, PDFFreeTextContents.maximumUTF16Count * 2) : file.size }
             state.batch.append(file)
             state.updatedFiles += 1
             if state.batch.count >= Self.maximumBatchFileCount || state.batchContentBytes >= Self.maximumBatchContentBytes {
@@ -693,9 +819,24 @@ public actor VaultIndex {
             }
         }
         state.scannedFiles.removeAll(keepingCapacity: true)
-        try markSeen(paths: state.unchangedPaths, generation: generation)
-        state.unchangedPaths.removeAll(keepingCapacity: true)
         await Task.yield()
+    }
+
+    private enum ContentReadability {
+        /// The index already has what it can have of the file, or the file has no text to read.
+        case notApplicable
+        case inTheCloud
+        case readable
+    }
+
+    /// Whether a scan can read the file's text. A file last found in the cloud is not asked about
+    /// through the file provider while the file system still marks it as a placeholder.
+    private func contentReadability(of file: ScannedFile, storedContentState: IndexedContentState?) -> ContentReadability {
+        guard storedContentState == nil || storedContentState == .notRead || storedContentState == .notDownloaded,
+              file.isMarkdown || file.isCanvas || file.isPDF,
+              file.size <= (file.isPDF ? PDFIndexText.maximumPDFBytes : Self.maximumIndexedNoteBytes) else { return .notApplicable }
+        if storedContentState == .notDownloaded, cloudFileStatus.isDatalessPlaceholder(file.location) { return .inTheCloud }
+        return cloudFileStatus.isNotDownloaded(file.location) ? .inTheCloud : .readable
     }
 
     private func writeBatch(_ state: inout ScanState, generation: String) async throws {
@@ -718,17 +859,12 @@ public actor VaultIndex {
     /// asynchronous read per file cost more than the lookup itself.
     private func storedContentStates(of files: [ScannedFile]) throws -> [IndexedContentState?] {
         guard !files.isEmpty else { return [] }
-        return try databaseQueue.read { database in
+        return try databasePool.read { database in
             let lookup = try database.cachedStatement(sql: "SELECT contentIndexed FROM files WHERE path = ? AND size = ? AND modified = ?")
             return try files.map { file in
                 try Int.fetchOne(lookup, arguments: [file.path.rawValue, file.size, file.modified.timeIntervalSince1970]).flatMap(IndexedContentState.init(rawValue:))
             }
         }
-    }
-
-    /// Whether the file is in the cloud and not downloaded. Reading it would start a download.
-    private static func isNotDownloaded(_ location: URL) -> Bool {
-        (try? location.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey]))?.ubiquitousItemDownloadingStatus == .notDownloaded
     }
 
     /// Reads the notes of a scan batch and parses every file of it. Static, so it runs
@@ -749,7 +885,7 @@ public actor VaultIndex {
                 }
             }
             let file = IndexedFile(path: scannedFile.path, size: scannedFile.size, modified: scannedFile.modified, created: scannedFile.created,
-                                   markdown: markdown, isUnreadableAsText: isUnreadableAsText)
+                                   markdown: markdown, isUnreadableAsText: isUnreadableAsText, isNotDownloaded: scannedFile.isNotDownloaded)
             return ScanBatchEntry(file: file, readFailure: readFailure, preparation: Result { try prepared(file) })
         }
     }
@@ -799,18 +935,16 @@ public actor VaultIndex {
     /// Writes one batch of a scan and returns a description of each file it could not
     /// write. After a failed batch write each file is tried alone, so one bad file costs
     /// only itself and the batch never has to be kept for another attempt. Files that
-    /// still fail, or could not be parsed, keep their existing rows, marked seen, so the
-    /// prune does not remove files that exist; the next scan tries them again.
+    /// still fail, or could not be parsed, keep their existing rows, which the prune keeps
+    /// as seen; the next scan tries them again.
     private func writeScanBatch(_ entries: [ScanBatchEntry], generation: String) throws -> [String] {
         var failures: [String] = []
-        var failedPaths: [String] = []
         var preparedFiles: [PreparedFile] = []
         for entry in entries where !isSupersededByRefresh(entry.file) {
             switch entry.preparation {
             case .success(let prepared): preparedFiles.append(prepared)
             case .failure(let error):
                 failures.append(entry.file.path.rawValue + ": " + error.localizedDescription)
-                failedPaths.append(entry.file.path.rawValue)
             }
         }
         do {
@@ -821,11 +955,9 @@ public actor VaultIndex {
                     try write([prepared], generation: generation)
                 } catch {
                     failures.append(prepared.file.path.rawValue + ": " + error.localizedDescription)
-                    failedPaths.append(prepared.file.path.rawValue)
                 }
             }
         }
-        try markSeen(paths: failedPaths, generation: generation)
         return failures
     }
 
@@ -884,22 +1016,15 @@ public actor VaultIndex {
         if activeScanGeneration != nil {
             for removedPath in removedPaths { pathsRefreshedDuringScan[removedPath] = .distantFuture }
         }
-        try databaseQueue.write { database in
-            let searchDeletion = try database.cachedStatement(sql: "DELETE FROM search WHERE rowid = (SELECT rowid FROM files WHERE path = ?)")
-            let perFileDeletions = try Self.perFileTables.map { table in try database.cachedStatement(sql: "DELETE FROM \(table) WHERE path = ?") }
-            let linkDeletion = try database.cachedStatement(sql: "DELETE FROM links WHERE source = ?")
-            let fileDeletion = try database.cachedStatement(sql: "DELETE FROM files WHERE path = ?")
+        try databasePool.write { database in
+            var allRemovedPaths: [String] = []
             for removedPath in removedPaths {
                 // '0' follows '/' in code-unit order, so this range is exactly the paths
                 // inside a removed folder, found through the primary key.
                 let descendantPaths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE path > ? AND path < ?", arguments: [removedPath + "/", removedPath + "0"])
-                for path in [removedPath] + descendantPaths {
-                    try searchDeletion.execute(arguments: [path])
-                    for perFileDeletion in perFileDeletions { try perFileDeletion.execute(arguments: [path]) }
-                    try linkDeletion.execute(arguments: [path])
-                    try fileDeletion.execute(arguments: [path])
-                }
+                allRemovedPaths += [removedPath] + descendantPaths
             }
+            try Self.deleteRows(ofPaths: allRemovedPaths, in: database)
         }
     }
 
@@ -912,6 +1037,7 @@ public actor VaultIndex {
         let size = values.fileSize ?? 0
         var markdown: String?
         var isUnreadableAsText = false
+        let isNotDownloaded = Self.readsText(of: path) && values.ubiquitousItemDownloadingStatus == .notDownloaded
         if DocumentKind(path: path) == .pdf {
             if values.ubiquitousItemDownloadingStatus != .notDownloaded, size <= PDFIndexText.maximumPDFBytes,
                case .text(let text) = PDFIndexText.coordinatedReading(at: location) { markdown = text }
@@ -925,7 +1051,7 @@ public actor VaultIndex {
             }
         }
         return IndexedFile(path: path, size: size, modified: values.contentModificationDate ?? .distantPast, created: values.creationDate,
-                           markdown: markdown, isUnreadableAsText: isUnreadableAsText)
+                           markdown: markdown, isUnreadableAsText: isUnreadableAsText, isNotDownloaded: isNotDownloaded)
     }
 
     /// Whether `path` is a folder a scan would enter. Its files are refreshed on their
@@ -946,16 +1072,8 @@ public actor VaultIndex {
 
     /// Deletes every cached row so the next scan rebuilds the index from the vault.
     public func removeAllEntries() throws {
-        try databaseQueue.write { database in
-            for table in ["search", "links", "files"] + Self.perFileTables { try database.execute(sql: "DELETE FROM \(table)") }
-        }
-    }
-
-    private func markSeen(paths: [String], generation: String) throws {
-        guard !paths.isEmpty else { return }
-        try databaseQueue.write { database in
-            let generationUpdate = try database.cachedStatement(sql: "UPDATE files SET generation = ? WHERE path = ?")
-            for path in paths { try generationUpdate.execute(arguments: [generation, path]) }
+        try databasePool.write { database in
+            for table in ["search", "links", "files", "index_facts"] + Self.perFileTables { try database.execute(sql: "DELETE FROM \(table)") }
         }
     }
 }

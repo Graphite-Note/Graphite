@@ -19,9 +19,9 @@ struct ConflictVersionListing: Equatable, Sendable {
 /// two places: finding the files that have them, and the three things the person can do
 /// with one. Nothing here removes a version unless the person chose it.
 extension WorkspaceModel {
-    /// The most paths that wait to be checked. Beyond it the oldest requests are given
-    /// up, so a huge folder cannot queue work without end; its files are checked again
-    /// the next time they are listed or opened.
+    /// The most paths that wait to be checked. Beyond it the latest requests are given
+    /// up, so a huge folder cannot queue work without end, and the first rows of a list are
+    /// among those kept; the others are checked when their rows come on screen or they open.
     static let maximumPendingConflictChecks = 5_000
     /// Files checked between two looks at whether the check is still wanted.
     static let conflictChecksPerBatch = 100
@@ -32,11 +32,42 @@ extension WorkspaceModel {
     /// that have them. Only files the sidebar lists or a tab shows are ever asked about.
     func checkConflictVersions(of paths: some Sequence<VaultPath>) {
         guard folderAccess != nil else { return }
-        var waitingPaths = Set(pendingConflictChecks)
-        for path in paths where waitingPaths.insert(path).inserted { pendingConflictChecks.append(path) }
-        if pendingConflictChecks.count > Self.maximumPendingConflictChecks {
-            pendingConflictChecks.removeFirst(pendingConflictChecks.count - Self.maximumPendingConflictChecks)
+        for path in paths where pendingConflictCheckPaths.insert(path).inserted {
+            pendingConflictChecks.append(path)
+            conflictCheckedPaths.insert(path)
         }
+        giveUpChecksBeyondTheMaximum()
+        startPendingConflictChecks()
+    }
+
+    /// Asks about the files of a listing that were not asked about since the vault opened: a
+    /// version a file gains or loses is reported as a change to it, which asks again. A listing
+    /// larger than the most that can wait gives up its end, and a file there is asked about
+    /// when its row comes on screen (`checkConflictVersionsOfRowShown`).
+    func checkConflictVersions(ofListedFiles paths: some Sequence<VaultPath>) {
+        guard folderAccess != nil else { return }
+        checkConflictVersions(of: paths.lazy.filter { path in !self.conflictCheckedPaths.contains(path) })
+    }
+
+    /// A file's row came on screen: it is asked about next, unless it already was.
+    func checkConflictVersionsOfRowShown(_ path: VaultPath) {
+        guard folderAccess != nil, !conflictCheckedPaths.contains(path), pendingConflictCheckPaths.insert(path).inserted else { return }
+        pendingConflictChecks.insert(path, at: 0)
+        conflictCheckedPaths.insert(path)
+        giveUpChecksBeyondTheMaximum()
+        startPendingConflictChecks()
+    }
+
+    private func giveUpChecksBeyondTheMaximum() {
+        guard pendingConflictChecks.count > Self.maximumPendingConflictChecks else { return }
+        for path in pendingConflictChecks[Self.maximumPendingConflictChecks...] {
+            pendingConflictCheckPaths.remove(path)
+            conflictCheckedPaths.remove(path)
+        }
+        pendingConflictChecks.removeLast(pendingConflictChecks.count - Self.maximumPendingConflictChecks)
+    }
+
+    private func startPendingConflictChecks() {
         guard conflictCheckTask == nil, !pendingConflictChecks.isEmpty else { return }
         conflictCheckTask = Task(priority: .utility) { [weak self] in await self?.runPendingConflictChecks() }
     }
@@ -45,6 +76,8 @@ extension WorkspaceModel {
     func resetConflictVersions() {
         conflictCheckTask?.cancel(); conflictCheckTask = nil
         pendingConflictChecks = []
+        pendingConflictCheckPaths = []
+        conflictCheckedPaths = []
         if !conflictedPaths.isEmpty { conflictedPaths = [] }
         conflictVersionsRequest = nil
     }
@@ -54,6 +87,7 @@ extension WorkspaceModel {
             guard let root = folderAccess?.root else { break }
             let batch = Array(pendingConflictChecks.prefix(Self.conflictChecksPerBatch))
             pendingConflictChecks.removeFirst(batch.count)
+            pendingConflictCheckPaths.subtract(batch)
             let states = await Self.conflictStates(of: batch, root: root, store: conflictVersionStore)
             // Another vault may have opened meanwhile; its check starts afresh.
             guard !Task.isCancelled, folderAccess?.root == root else { return }

@@ -237,7 +237,7 @@ final class IndexFileOperationsFixTests: XCTestCase {
         let provider = index.baseRecordProvider
         XCTAssertNotNil(provider.record(at: try VaultPath("Note.md")))
         XCTAssertNoThrow(try provider.throwIfLookupFailed())
-        try await index.databaseQueue.write { database in try database.execute(sql: "DROP TABLE aliases") }
+        try await index.databasePool.write { database in try database.execute(sql: "DROP TABLE aliases") }
         XCTAssertNil(provider.resolveLinkTarget("Missing", from: try VaultPath("Note.md"), isWiki: true))
         XCTAssertThrowsError(try provider.throwIfLookupFailed(), "A failed lookup is reported after the run.")
     }

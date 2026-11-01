@@ -44,8 +44,11 @@ struct PDFPagesSidebar: View {
                     LazyVStack(spacing: 14) {
                         // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
                         let _ = session.pageListVersion
-                        ForEach(PDFThumbnailListPage.pages(of: session.document)) { listPage in
-                            pageRow(page: listPage.page, pageIndex: listPage.pageIndex, isBookmarked: bookmarkedPages.contains(listPage.pageIndex))
+                        // Only the rows on screen ask PDFKit for their page.
+                        ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
+                            if let page = session.document.page(at: pageIndex) {
+                                pageRow(page: page, pageIndex: pageIndex, isBookmarked: bookmarkedPages.contains(pageIndex))
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -253,8 +256,9 @@ struct PDFCurrentPageFollower: View {
     }
 
     private func scrollToCurrentPage(animated: Bool) {
-        guard let page = session.document.page(at: session.currentPageIndex) else { return }
-        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(ObjectIdentifier(page), anchor: .center) }
+        // A row is known by its page's index, so nothing asks PDFKit for pages to scroll.
+        guard session.document.pageCount > session.currentPageIndex else { return }
+        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(session.currentPageIndex, anchor: .center) }
     }
 }
 

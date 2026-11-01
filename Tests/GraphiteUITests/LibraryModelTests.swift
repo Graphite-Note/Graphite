@@ -33,6 +33,7 @@ final class LibraryModelTests: XCTestCase {
         await library.show(try VaultPath("Courses"))
         XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Summary.md", "Week 1.pdf"])
         library.filter = .notebooks
+        await library.filterTask?.value
         XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Week 1.pdf"])
     }
 

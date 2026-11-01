@@ -485,7 +485,7 @@ final class UiWorkspaceAreaHandoffTests: XCTestCase {
         let indexFolder = try makeFolder("WorkspaceAreaBaseIndex")
         let index = try VaultIndex(databaseURL: indexFolder.appendingPathComponent("index.sqlite"))
         _ = try await index.reconcile(root: vault)
-        try await index.databaseQueue.write { database in try database.execute(sql: "DROP TABLE aliases") }
+        try await index.databasePool.write { database in try database.execute(sql: "DROP TABLE aliases") }
         let path = try VaultPath("Links.base")
         let model = BaseDocumentModel(source: .file(path), contextPath: path, store: VaultStore(root: vault), index: index)
 

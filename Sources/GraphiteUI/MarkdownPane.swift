@@ -696,7 +696,7 @@ struct MarkdownPane: View {
     }
 
     private func saveCopy() async {
-        do { let path = try await session.saveSeparateCopy(); await workspace.refreshDirectory(); await workspace.open(path) }
+        do { let path = try await session.saveSeparateCopy(); await workspace.open(path); await workspace.showInListings(path) }
         catch { workspace.errorMessage = error.localizedDescription }
     }
 

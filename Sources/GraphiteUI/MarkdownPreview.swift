@@ -300,9 +300,14 @@ actor ReadingViewBuilder {
     /// The measurers of the last font diagrams were laid out in, made when a note first has a diagram and made
     /// again only when the font or size changes: reading a font's advances costs more than laying a diagram out.
     private var diagramTypography: DiagramTypography?
+    /// The file each link of this build names, nil for one no file answers.
+    private var resolvedLinks: [LinkFromFolder: VaultPath?] = [:]
+    /// Reads of the index this build made to resolve links, which a test counts.
+    private(set) var indexReadCount = 0
 
     func build(source: String, note: VaultPath, root: URL, index: VaultIndex, configuration: ReadingConfiguration, allowsTransclusion: Bool = true) async throws -> ReadingViewBuild {
         hostNote = note
+        if configuration.marksUnresolvedLinks { await resolveWikilinks(in: source, note: note, root: root, index: index) }
         let sourceText = source as NSString
         // Only the frontmatter is parsed here: the body is split into blocks as text, and
         // parsing the whole note with MarkdownSemantics would cost more than the rest of the build.
@@ -552,10 +557,49 @@ actor ReadingViewBuilder {
         return .markdown(id: identifier(), text: "[\(Self.escapedLabel(ReadingMarkers.escaping(label)))](\(GraphiteOpenLink.markdownDestination(target: target.target, isWiki: target.isWiki)))")
     }
 
+    /// A link answers the same from every note in one folder.
+    private struct LinkFromFolder: Hashable {
+        let target: String
+        let isWiki: Bool
+        let folder: VaultPath
+    }
+
     private func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: VaultIndex) async -> VaultPath? {
-        if let file = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root) { return file }
-        guard let resolved = try? await index.resolve(target, from: note, isWiki: isWiki), resolved.count == 1 else { return nil }
-        return resolved.first
+        let link = LinkFromFolder(target: target, isWiki: isWiki, folder: note.parent)
+        if let knownPath = resolvedLinks[link] { return knownPath }
+        var resolvedPath = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root)
+        if resolvedPath == nil {
+            indexReadCount += 1
+            guard let resolved = try? await index.resolve(target, from: note, isWiki: isWiki) else { return nil } // Not known: asked again if the link comes up again.
+            resolvedPath = resolved.count == 1 ? resolved.first : nil
+        }
+        resolvedLinks.updateValue(resolvedPath, forKey: link)
+        return resolvedPath
+    }
+
+    /// Answers every wikilink of a note in one read, where a theme marks those no file answers:
+    /// a note with hundreds of links read the index once per link, each time it was built.
+    private func resolveWikilinks(in source: String, note: VaultPath, root: URL, index: VaultIndex) async {
+        guard source.contains("[["), let semantics = try? MarkdownSemantics.parse(source) else { return } // Text that cannot be parsed has its links asked about one by one.
+        var askedOfIndex: [LinkFromFolder] = []
+        for link in semantics.links where link.isWiki && !link.target.hasPrefix("#") {
+            let linkFromFolder = LinkFromFolder(target: link.target, isWiki: true, folder: note.parent)
+            guard resolvedLinks[linkFromFolder] == nil else { continue }
+            if let file = WikiLinkResolver.existingDirectFile(target: link.target, source: note, isWiki: true, in: root) {
+                resolvedLinks.updateValue(file, forKey: linkFromFolder)
+            } else {
+                resolvedLinks.updateValue(nil, forKey: linkFromFolder)
+                askedOfIndex.append(linkFromFolder)
+            }
+        }
+        guard !askedOfIndex.isEmpty else { return }
+        indexReadCount += 1
+        guard let resolved = try? await index.resolve(wikilinks: askedOfIndex.map(\.target), from: note) else {
+            // Not known: each is asked about on its own when the note's blocks are built.
+            for link in askedOfIndex { resolvedLinks[link] = nil }
+            return
+        }
+        for link in askedOfIndex { resolvedLinks.updateValue(resolved[link.target], forKey: link) }
     }
 
     /// Where the task on a line of a block's text, given by its index, is in the note.

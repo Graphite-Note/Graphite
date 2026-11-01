@@ -49,7 +49,7 @@ extension VaultStore {
         let directory = try VaultPath(FolderPicture.directory)
         guard try fileExists(directory) else { return }
         let usedPictures = Set(styles.styles.values.compactMap(\.picture?.path))
-        for entry in try children(of: directory) where !entry.isDirectory && !usedPictures.contains(entry.path) && Self.isSavedPictureName(entry.path.name) {
+        for entry in try listedChildren(of: directory) where !entry.isDirectory && !usedPictures.contains(entry.path) && Self.isSavedPictureName(entry.path.name) {
             _ = try delete(entry.path, method: .permanent)
         }
     }

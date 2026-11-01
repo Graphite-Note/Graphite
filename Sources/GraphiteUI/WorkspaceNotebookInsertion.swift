@@ -38,7 +38,7 @@ extension WorkspaceModel {
             let insertedText = placement.insertedText(fromEmbed: await embed(for: path, in: session.path, settings: settings))
             insertEmbed(insertedText, of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
-            await refreshDirectory()
+            await showInListings(path)
         } catch {
             errorMessage = "The notebook “\(name)” could not be created. Nothing was added to the note."
         }
