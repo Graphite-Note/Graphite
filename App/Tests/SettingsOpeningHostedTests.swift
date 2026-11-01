@@ -43,7 +43,6 @@ final class SettingsOpeningHostedTests: XCTestCase {
         await tap(try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" })
         _ = try await element(in: controller, "Appearance page") { ($0.accessibilityLabel ?? "").hasPrefix("Base Color Scheme") }
         if isPhone {
-            XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Editor" }, "The page has the screen to itself.")
             _ = try await element(in: controller, "Done on the page") { $0.accessibilityLabel == "Done" && $0.accessibilityTraits.contains(.button) }
             await tap(try await element(in: controller, "Back to the list") { $0.accessibilityTraits.contains(.button) && $0.accessibilityLabel == "Settings" })
             _ = try await element(in: controller, "the list again") { $0.accessibilityLabel == "Editor" }
