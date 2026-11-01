@@ -213,16 +213,10 @@ struct ThemeChoicePage: View {
         } catch { directoryError = "Obsidian's list of themes could not be loaded. " + error.localizedDescription }
     }
 
-    /// Removes a theme's folder the way the vault deletes files. A theme in use is switched
-    /// off first, as Obsidian does, so the vault is never left naming a theme it lacks.
     private func delete(_ themeName: String) async {
-        guard let store = workspace.store else { return }
         do {
-            let folder = try VaultPath(ObsidianStyleFiles.themesFolderPath).appending(themeName)
-            if chosenTheme == themeName { choose("") }
-            _ = try await store.delete(folder, method: workspace.vaultSettings.deletionMethod)
+            try await workspace.deleteInstalledTheme(named: themeName)
             await reloadInstalled()
-            workspace.communityPlugins.vaultStylesDidChange()
         } catch {
             workspace.errorMessage = "“\(themeName)” could not be deleted. " + ((error as? GraphiteError)?.errorDescription ?? "Check that the vault's files can be changed.")
         }
@@ -241,5 +235,20 @@ struct ThemeChoicePage: View {
         } catch {
             workspace.errorMessage = "“\(entry.name)” could not be installed. " + error.localizedDescription
         }
+    }
+}
+
+extension WorkspaceModel {
+    /// Removes an installed theme's folder the way the vault deletes files. A theme in use is
+    /// switched off first, as Obsidian does, so the vault is never left naming a theme it lacks.
+    func deleteInstalledTheme(named themeName: String) async throws {
+        guard let store else { return }
+        let folder = try VaultPath(ObsidianStyleFiles.themesFolderPath).appending(themeName)
+        if vaultAppearance.cssTheme == themeName {
+            updateVaultAppearance { appearance in appearance.cssTheme = "" }
+            await saveVaultAppearanceNow()
+        }
+        _ = try await store.delete(folder, method: vaultSettings.deletionMethod)
+        communityPlugins.vaultStylesDidChange()
     }
 }

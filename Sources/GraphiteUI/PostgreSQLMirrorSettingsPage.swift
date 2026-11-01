@@ -178,7 +178,8 @@ struct PostgreSQLMirrorSettingsPage: View {
 
     @discardableResult private func save() -> Bool {
         do {
-            try mirror.savePassword(password)
+            // The keychain is touched only for a password that was typed.
+            if password != savedPassword { try mirror.savePassword(password) }
         } catch {
             saveError = PostgreSQLMirrorController.message(for: error)
             return false

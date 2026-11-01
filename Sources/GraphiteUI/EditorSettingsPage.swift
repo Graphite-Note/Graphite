@@ -111,31 +111,6 @@ struct EditorSettingsPage: View {
 
     @ViewBuilder private var typingSection: some View {
         if workspace.store != nil {
-                Toggle("Strict Line Breaks", isOn: vaultSetting(\.usesStrictLineBreaks))
-            }
-        } header: {
-            Text("Display")
-        } footer: {
-            Text("With strict line breaks off, a single line break starts a new line when reading, as in Obsidian. Readable line length, spellcheck "
-                + "and strict line breaks are stored in the vault's .obsidian/app.json, shared with Obsidian; before a vault sets one, and while no "
-                + "vault is open, the choice made on this device applies.")
-                .formFooterAlignment()
-        }
-        Section {
-            Picker("Code Theme", selection: $preferences.codeColorTheme) {
-                ForEach(CodeColorTheme.allCases) { codeTheme in Text(codeTheme.title).tag(codeTheme) }
-            }
-            CodeThemePreview(codeTheme: preferences.codeColorTheme, noteTheme: workspace.noteTheme)
-            Toggle("Format Code Blocks", isOn: $preferences.formatsCodeBlocks)
-        } header: {
-            Text("Code")
-        } footer: {
-            Text("The code theme and code formatting are kept on this device. Each code theme has a light and a dark version that follow the "
-                + "appearance; Obsidian's follows the vault's theme. When you leave a code block you edited, its indentation and spacing are tidied "
-                + "for its language. Undo puts it back.")
-                .formFooterAlignment()
-        }
-        if workspace.store != nil {
             Section {
                 // Only the iPad editor continues lists and pairs characters as you type;
                 // the Mac editor has neither, so they would do nothing there.

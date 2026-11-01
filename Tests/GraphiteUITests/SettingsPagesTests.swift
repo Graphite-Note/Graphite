@@ -137,3 +137,43 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertTrue(workspace.preferences.usesReadableLineLength, "The device's own choice is not touched by the vault's.")
     }
 }
+
+// MARK: HUNT-257: removing an installed theme
+
+extension SettingsPagesTests {
+    func testDeletingTheThemeInUseRemovesItsFolderAndSwitchesItOff() async throws {
+        let workspace = device.makeWorkspace()
+        let vault = try makeVault(files: [".obsidian/appearance.json": "{\"cssTheme\": \"Minimal\"}", ".obsidian/themes/Minimal/theme.css": "body {}",
+                                          ".obsidian/themes/Other/theme.css": "body {}", "Note.md": "x"])
+        try await workspace.openFolderAsVault(vault)
+        // Permanently, so the test does not put files in the Trash of the machine that runs it.
+        var settings = workspace.vaultSettings
+        settings.deletionMethod = .permanent
+        await workspace.updateVaultSettings(settings)
+        XCTAssertEqual(workspace.vaultAppearance.cssTheme, "Minimal")
+
+        try await workspace.deleteInstalledTheme(named: "Minimal")
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".obsidian/themes/Minimal").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".obsidian/themes/Other/theme.css").path), "Other themes stay.")
+        XCTAssertEqual(workspace.vaultAppearance.cssTheme, "", "The vault no longer names a theme it lacks.")
+        let appearanceFile = try String(contentsOf: vault.appendingPathComponent(".obsidian/appearance.json"), encoding: .utf8)
+        XCTAssertFalse(appearanceFile.contains("Minimal"))
+    }
+
+    func testDeletingAnotherThemeLeavesTheChosenOneAlone() async throws {
+        let workspace = device.makeWorkspace()
+        let vault = try makeVault(files: [".obsidian/appearance.json": "{\"cssTheme\": \"Minimal\"}", ".obsidian/themes/Minimal/theme.css": "body {}",
+                                          ".obsidian/themes/Other/theme.css": "body {}", "Note.md": "x"])
+        try await workspace.openFolderAsVault(vault)
+        var settings = workspace.vaultSettings
+        settings.deletionMethod = .permanent
+        await workspace.updateVaultSettings(settings)
+
+        try await workspace.deleteInstalledTheme(named: "Other")
+
+        XCTAssertEqual(workspace.vaultAppearance.cssTheme, "Minimal")
+        let installedThemes = await workspace.store?.installedThemeNames()
+        XCTAssertEqual(installedThemes, ["Minimal"])
+    }
+}

@@ -40,12 +40,12 @@ final class SettingsOpeningHostedTests: XCTestCase {
         }
 
         // Picking a page shows it; on a phone it replaces the list, and Back returns to it.
-        try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" }.activate()
+        await tap(try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" })
         _ = try await element(in: controller, "Appearance page") { $0.accessibilityLabel == "Base Color Scheme" }
         if isPhone {
             XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Editor" }, "The page has the screen to itself.")
             _ = try await element(in: controller, "Done on the page") { $0.accessibilityLabel == "Done" && $0.accessibilityTraits.contains(.button) }
-            try await element(in: controller, "Back to the list") { $0.accessibilityTraits.contains(.button) && $0.accessibilityLabel == "Settings" }.activate()
+            await tap(try await element(in: controller, "Back to the list") { $0.accessibilityTraits.contains(.button) && $0.accessibilityLabel == "Settings" })
             _ = try await element(in: controller, "the list again") { $0.accessibilityLabel == "Editor" }
         }
 
@@ -61,7 +61,66 @@ final class SettingsOpeningHostedTests: XCTestCase {
         }
     }
 
+    // MARK: HUNT-244: another page starts at its own first screen
+
+    func testAnotherPageStartsAtItsFirstScreenNotOnAScreenThePreviousPagePushed() async throws {
+        // The list and the page are side by side only on an iPad.
+        guard !isPhone else { return }
+        let workspace = device.makeWorkspace()
+        try await workspace.openFolderAsVault(try TemporaryVault.make(prefix: "SettingsHostedVault", files: ["Note.md": "x"], for: self).root)
+        let controller = try host(SettingsView(workspace: workspace) {})
+
+        await tap(try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" })
+        await tap(try await element(in: controller, "Interface Font row") { ($0.accessibilityLabel ?? "").hasPrefix("Interface Font") })
+        _ = try await element(in: controller, "the font list the Appearance page pushed") { $0.accessibilityLabel == "Installed Fonts" }
+
+        await tap(try await element(in: controller, "Editor row") { $0.accessibilityLabel == "Editor" })
+        _ = try await element(in: controller, "the Editor page at its first screen") { $0.accessibilityLabel == "Default View for New Notes" }
+        XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Installed Fonts" }, "The font list belongs to the Appearance page.")
+    }
+
+    // MARK: HUNT-243: sheets that fit a phone
+
+    func testTheCommunityPluginBrowserFitsTheWidthOfAPhone() {
+        let controller = UIHostingController(rootView: CommunityPluginBrowser(workspace: device.makeWorkspace()))
+        let size = controller.sizeThatFits(in: CGSize(width: 390, height: 800))
+        XCTAssertLessThanOrEqual(size.width, 390, "A minimum width of 480 points would be laid out wider than the screen and cut off.")
+    }
+
+    // MARK: HUNT-254: what is typed is kept
+
+    func testPostgreSQLMirrorSettingsTypedAreKeptWhenThePageIsLeftWithoutSaving() async throws {
+        guard !isPhone else { return }
+        let workspace = device.makeWorkspace()
+        workspace.setCorePluginEnabled(.postgreSQLMirror, true)
+        let controller = try host(SettingsView(workspace: workspace) {})
+        await tap(try await element(in: controller, "PostgreSQL Mirror row") { $0.accessibilityLabel == "PostgreSQL Mirror" })
+        var addressField: UITextField?
+        try await waitUntil("the Address field", timeoutSeconds: 10) {
+            addressField = self.textFields(in: controller.view).first { field in field.placeholder == "localhost or db.example.org" }
+            return addressField != nil
+        }
+        let field = try XCTUnwrap(addressField)
+        field.text = "db.example.org"
+        field.sendActions(for: .editingChanged)
+
+        await tap(try await element(in: controller, "Editor row") { $0.accessibilityLabel == "Editor" })
+
+        try await waitUntil("the address is kept", timeoutSeconds: 10) { workspace.preferences.postgreSQLMirrorConfiguration.host == "db.example.org" }
+    }
+
     // MARK: Hosting and finding
+
+    /// A finger tap in the middle of the element, as the screen delivers one: a list row is
+    /// picked by a touch, not by an accessibility activation.
+    private func tap(_ object: NSObject) async {
+        guard let window else { return XCTFail("No window.") }
+        let touches = SynthesizedTouches(window: window)
+        let frame = object.accessibilityFrame
+        touches.begin(at: [CGPoint(x: frame.midX, y: frame.midY)])
+        try? await Task.sleep(for: .seconds(0.05))
+        touches.end()
+    }
 
     private func host(_ settings: SettingsView) throws -> UIHostingController<AnyView> {
         let controller = UIHostingController(rootView: AnyView(settings))
@@ -72,6 +131,10 @@ final class SettingsOpeningHostedTests: XCTestCase {
         window.makeKeyAndVisible()
         self.window = window
         return controller
+    }
+
+    private func textFields(in view: UIView) -> [UITextField] {
+        (view as? UITextField).map { field in [field] } ?? view.subviews.flatMap(textFields)
     }
 
     private func find(in controller: UIViewController, matching matches: (NSObject) -> Bool) -> NSObject? {
@@ -110,8 +173,4 @@ final class SettingsOpeningHostedTests: XCTestCase {
     }
 }
 
-private extension NSObject {
-    /// Activates the element as VoiceOver's double tap does.
-    func activate() { _ = accessibilityActivate() }
-}
 #endif
