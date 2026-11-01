@@ -133,12 +133,13 @@ final class BaseDocumentModel {
     /// properties, tags or links, and no other file now matching its filters. A base that
     /// shows files' sizes or times is run again, since every save changes those.
     func showsTheSame(after paths: Set<VaultPath>) async -> Bool {
-        guard let definition, !definition.views.isEmpty, result != nil, loadErrorMessage == nil, let parsedSourceText, paths.count <= Self.maximumCheckedChangedFiles else { return false }
+        guard let definition, !definition.views.isEmpty, result != nil, loadErrorMessage == nil, let parsedSourceText,
+            paths.count <= Self.maximumCheckedChangedFiles else { return false }
         if case .file(let basePath) = source, paths.contains(basePath) { return false }
         if ["file.size", "file.mtime", "file.ctime"].contains(where: parsedSourceText.contains) { return false }
         let environment = BaseEvaluationEnvironment(now: .now, calendar: BaseDateFormatting.displayCalendar, declaredTypes: declaredTypes)
         for path in paths {
-            guard let record = try? await index.baseRecord(at: path) else { return false }
+            guard let record = try? await index.baseRecord(at: path) else { return false } // Not known: the base runs.
             if path == contextPath {
                 guard let lastThisRecord, Self.hasSameContent(record, lastThisRecord) else { return false }
             }
@@ -149,7 +150,8 @@ final class BaseDocumentModel {
                 let thisRecord = lastThisRecord ?? BaseFileRecord(path: contextPath, size: 0, createdDate: .now, modifiedDate: .now)
                 let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: index.baseRecordProvider)
                 let viewIndex = selectedViewIndex
-                let matches = await Task.detached(priority: .userInitiated) { !engine.run(viewIndex: viewIndex, records: [record], sortOverride: nil).rows.isEmpty }.value
+                let matches = await Task.detached(priority: .userInitiated) { !engine.run(viewIndex: viewIndex, records: [record],
+                    sortOverride: nil).rows.isEmpty }.value
                 if matches { return false }
             }
         }
@@ -274,7 +276,8 @@ final class BaseDocumentModel {
             if definition.hasUnreadableFilters || view.hasUnreadableFilters {
                 let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
                 return QueryOutcome(result: engine.run(viewIndex: viewIndex, records: [], sortOverride: sortOverride),
-                                    candidateCount: 0, loadedRecordCount: 0, availablePropertyKeys: [], loadedRecords: LoadedBaseRecords(), thisRecord: thisRecord)
+                                    candidateCount: 0, loadedRecordCount: 0, availablePropertyKeys: [], loadedRecords: LoadedBaseRecords(),
+                                        thisRecord: thisRecord)
             }
             let filters = [definition.filters, view.filters].compactMap { filter in filter }
             let prefilter = BaseRecordPrefilter.extract(from: filters, definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)

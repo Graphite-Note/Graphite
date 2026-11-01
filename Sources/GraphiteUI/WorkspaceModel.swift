@@ -1053,7 +1053,8 @@ final class WorkspaceModel {
     /// What bases inside `note` need to run; nil when Bases are turned off or no vault is open.
     func baseEmbedContext(for note: VaultPath) -> BaseEmbedContext? {
         guard preferences.isEnabled(.bases), let store, let index else { return nil }
-        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, contentChange: lastIndexChange, isIndexComplete: hasCompletedIndexScan,
+        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, contentChange: lastIndexChange,
+            isIndexComplete: hasCompletedIndexScan,
                                 open: { [weak self] path in Task { await self?.open(path) } },
                                 filesChanged: { [weak self] paths in self?.filesSavedOutsideEditors(paths) },
                                 openBase: { [weak self] basePath, viewName in Task { await self?.openBase(basePath, viewName: viewName) } },

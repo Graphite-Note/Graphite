@@ -41,7 +41,8 @@ public struct BaseDocumentView: View {
     private let modelCache: EmbeddedBaseModelCache?
     private let viewRequestApplied: () -> Void
 
-    public init(path: VaultPath, viewName: String? = nil, store: VaultStore, index: VaultIndex, contentVersion: Int = 0, contentChange: BaseContentChange? = nil, isIndexComplete: Bool = true,
+    public init(path: VaultPath, viewName: String? = nil, store: VaultStore, index: VaultIndex, contentVersion: Int = 0,
+        contentChange: BaseContentChange? = nil, isIndexComplete: Bool = true,
                 open: @escaping (VaultPath) -> Void, filesChanged: @escaping ([VaultPath]) -> Void = { _ in }, modelCache: EmbeddedBaseModelCache? = nil,
                 viewRequestApplied: @escaping () -> Void = {}) {
         self.path = path
@@ -60,7 +61,8 @@ public struct BaseDocumentView: View {
     public var body: some View {
         let open = open
         BaseContainerView(source: .file(path), contextPath: path, preferredViewName: viewName, store: store, index: index, contentVersion: contentVersion,
-                          contentChange: contentChange, isIndexComplete: isIndexComplete, presentation: .document, open: open, openBase: { basePath, _ in open(basePath) },
+                          contentChange: contentChange, isIndexComplete: isIndexComplete, presentation: .document, open: open, openBase: { basePath,
+                              _ in open(basePath) },
                           filesChanged: filesChanged, modelCache: modelCache, viewRequestApplied: viewRequestApplied)
             .id(path)
     }
@@ -87,10 +89,12 @@ public struct EmbeddedBaseView: View {
 
     /// A ```` ```base ```` code block.
     /// - Parameter modelCache: Keeps the base's results while it is off screen; see `EmbeddedBaseModelCache`.
-    public init(yaml: String, embeddingNote: VaultPath, store: VaultStore, index: VaultIndex, contentVersion: Int = 0, contentChange: BaseContentChange? = nil, isIndexComplete: Bool = true,
+    public init(yaml: String, embeddingNote: VaultPath, store: VaultStore, index: VaultIndex, contentVersion: Int = 0,
+        contentChange: BaseContentChange? = nil, isIndexComplete: Bool = true,
                 height: CGFloat = EmbeddedBaseView.defaultHeight, open: @escaping (VaultPath) -> Void, filesChanged: @escaping ([VaultPath]) -> Void = { _ in },
                 modelCache: EmbeddedBaseModelCache? = nil) {
-        self.init(source: .inline(yaml), embeddingNote: embeddingNote, viewName: nil, store: store, index: index, contentVersion: contentVersion, contentChange: contentChange,
+        self.init(source: .inline(yaml), embeddingNote: embeddingNote, viewName: nil, store: store, index: index, contentVersion: contentVersion,
+            contentChange: contentChange,
                   isIndexComplete: isIndexComplete, height: height, open: open, openBase: nil, filesChanged: filesChanged, modelCache: modelCache)
     }
 
@@ -98,15 +102,18 @@ public struct EmbeddedBaseView: View {
     /// - Parameter openBase: Opens the base on its own at the named view, for the Open Base
     ///   button. Without it, the button opens the base at its first view through `open`.
     /// - Parameter modelCache: Keeps the base's results while it is off screen; see `EmbeddedBaseModelCache`.
-    public init(basePath: VaultPath, viewName: String? = nil, embeddingNote: VaultPath, store: VaultStore, index: VaultIndex, contentVersion: Int = 0, contentChange: BaseContentChange? = nil,
+    public init(basePath: VaultPath, viewName: String? = nil, embeddingNote: VaultPath, store: VaultStore, index: VaultIndex,
+        contentVersion: Int = 0, contentChange: BaseContentChange? = nil,
                 isIndexComplete: Bool = true, height: CGFloat = EmbeddedBaseView.defaultHeight,
                 open: @escaping (VaultPath) -> Void, openBase: ((VaultPath, String?) -> Void)? = nil, filesChanged: @escaping ([VaultPath]) -> Void = { _ in },
                 modelCache: EmbeddedBaseModelCache? = nil) {
-        self.init(source: .file(basePath), embeddingNote: embeddingNote, viewName: viewName, store: store, index: index, contentVersion: contentVersion, contentChange: contentChange,
+        self.init(source: .file(basePath), embeddingNote: embeddingNote, viewName: viewName, store: store, index: index,
+            contentVersion: contentVersion, contentChange: contentChange,
                   isIndexComplete: isIndexComplete, height: height, open: open, openBase: openBase, filesChanged: filesChanged, modelCache: modelCache)
     }
 
-    private init(source: BaseSource, embeddingNote: VaultPath, viewName: String?, store: VaultStore, index: VaultIndex, contentVersion: Int, contentChange: BaseContentChange?,
+    private init(source: BaseSource, embeddingNote: VaultPath, viewName: String?, store: VaultStore, index: VaultIndex, contentVersion: Int,
+        contentChange: BaseContentChange?,
                  isIndexComplete: Bool, height: CGFloat, open: @escaping (VaultPath) -> Void, openBase: ((VaultPath, String?) -> Void)?,
                  filesChanged: @escaping ([VaultPath]) -> Void, modelCache: EmbeddedBaseModelCache?) {
         self.source = source
@@ -127,7 +134,8 @@ public struct EmbeddedBaseView: View {
     public var body: some View {
         let open = open
         BaseContainerView(source: source, contextPath: embeddingNote, preferredViewName: preferredViewName, store: store, index: index,
-                          contentVersion: contentVersion, contentChange: contentChange, isIndexComplete: isIndexComplete, presentation: .embedded(height: height),
+                          contentVersion: contentVersion, contentChange: contentChange, isIndexComplete: isIndexComplete,
+                              presentation: .embedded(height: height),
                           open: open, openBase: openBase ?? { basePath, _ in open(basePath) }, filesChanged: filesChanged, modelCache: modelCache)
             .id(EmbedIdentity(source: source, embeddingNote: embeddingNote, viewName: preferredViewName))
     }
@@ -229,7 +237,8 @@ struct BaseContainerView: View {
     /// Rows a base inside a note shows; "Show More" raises it.
     @State private var embeddedRowLimit = Self.embeddedRowLimitStep
 
-    init(source: BaseSource, contextPath: VaultPath, preferredViewName: String?, store: VaultStore, index: VaultIndex, contentVersion: Int, contentChange: BaseContentChange? = nil,
+    init(source: BaseSource, contextPath: VaultPath, preferredViewName: String?, store: VaultStore, index: VaultIndex, contentVersion: Int,
+        contentChange: BaseContentChange? = nil,
          isIndexComplete: Bool, presentation: BasePresentation, open: @escaping (VaultPath) -> Void, openBase: @escaping (VaultPath, String?) -> Void,
          filesChanged: @escaping ([VaultPath]) -> Void, modelCache: EmbeddedBaseModelCache? = nil, viewRequestApplied: @escaping () -> Void = {}) {
         self.presentation = presentation
@@ -258,10 +267,7 @@ struct BaseContainerView: View {
     /// plugin's view is as tall as what it drew (`CommunityPluginBasesEmbedContent`).
     private var growsWithContent: Bool { isEmbedded && model.selectedView?.type != .map }
     /// A plugin draws every row of its view itself, so no row limit applies to it.
-    private var isDrawnByPlugin: Bool {
-        if case .unsupported? = model.selectedView?.type { return true }
-        return false
-    }
+    private var isDrawnByPlugin: Bool { model.selectedView?.type.isOfAPluginsType ?? false }
     /// An embed that names its view (`![[Plan.base#First]]`) shows that view, as Obsidian does:
     /// a note about one view is not switched to another, or the shared file edited, from inside it.
     private var isLockedToNamedView: Bool {
@@ -314,7 +320,8 @@ struct BaseContainerView: View {
             // removed, and always keeps Cancel.
             let definition = model.definition ?? editedView.definition
             BaseViewEditorSheet(definition: definition, viewIndex: editedView.viewIndex(in: definition),
-                                availablePropertyKeys: model.availablePropertyKeys, pluginViews: pluginHost?.pluginBasesViews ?? [:]) { draft, original, viewPosition in
+                                availablePropertyKeys: model.availablePropertyKeys, pluginViews: pluginHost?.pluginBasesViews ?? [:]) { draft,
+                                    original, viewPosition in
                 // The view the draft was made from; saving is refused if the file no longer
                 // has it there, so the draft never lands on another view.
                 let target = BaseViewTarget(position: viewPosition, name: original.name)
@@ -445,7 +452,8 @@ struct BaseContainerView: View {
             // the base's own tab, a copy in a note, where several can show at once.
             let result = model.result?.view.id == view.id ? model.result : nil
             if isEmbedded {
-                CommunityPluginBasesEmbedContent(host: pluginHost, viewType: typeName, view: view, source: model.source, embeddingNote: model.contextPath, result: result)
+                CommunityPluginBasesEmbedContent(host: pluginHost, viewType: typeName, view: view, source: model.source,
+                    embeddingNote: model.contextPath, result: result)
             } else {
                 CommunityPluginBasesViewContent(host: pluginHost, viewType: typeName, view: view, source: model.source, result: result)
             }
@@ -547,6 +555,16 @@ struct BaseContainerView: View {
             definition.views.firstIndex(where: target.matches)
                 ?? definition.views.firstIndex { view in view.name == target.name }
                 ?? definition.views.endIndex
+        }
+    }
+}
+
+extension BaseViewType {
+    /// A type Graphite does not draw itself, which a plugin may.
+    var isOfAPluginsType: Bool {
+        switch self {
+        case .unsupported: true
+        case .table, .cards, .list, .kanban, .map: false
         }
     }
 }

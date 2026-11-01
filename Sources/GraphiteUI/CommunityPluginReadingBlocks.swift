@@ -35,6 +35,13 @@ struct CommunityPluginReadingBlockRequest: Hashable, Sendable {
     let source: String
     /// The note the block is written in.
     let note: VaultPath
+    /// Whether the request is for a plugin's view rather than a block of a note.
+    var showsPluginView: Bool {
+        switch kind {
+        case .view, .embeddedBasesView: true
+        case .codeBlock, .section: false
+        }
+    }
     /// The zero-based line of the block's opening fence in `note`, nil when not known.
     let firstLine: Int?
     /// Lines the block spans, fences included.
@@ -75,7 +82,7 @@ final class CommunityPluginShownCodeBlock {
     private(set) var appearance: Appearance = .drawing
     /// The copy's height in points, as its web view measured it.
     var height: CGFloat = 0
-    @ObservationIgnored private(set) weak var host: CommunityPluginHost?
+    @ObservationIgnored private weak var host: CommunityPluginHost?
     @ObservationIgnored private var request: CommunityPluginReadingBlockRequest?
     /// Ticks the note's task on a line of a section, counted from the section's first line.
     @ObservationIgnored var tickTask: ((Int) -> Void)?
@@ -130,15 +137,23 @@ final class CommunityPluginShownCodeBlock {
     }
 
     /// Shows a plugin's view at `size`, the size of its tab or sidebar panel.
-    func attachView(_ viewIdentifier: String, size: CGSize) async {
+    /// - Parameter embeddedRequest: For a view embedded in a note, which it stands for there: the
+    ///   last copy shows at once, at its height, and the page lays the view out at the note's width.
+    func attachView(_ viewIdentifier: String, size: CGSize, embeddedRequest: CommunityPluginReadingBlockRequest? = nil) async {
         guard let host else { return }
-        request = CommunityPluginReadingBlockRequest(kind: .view(identifier: viewIdentifier), source: "", note: .root, firstLine: nil, lineCount: 0)
+        request = embeddedRequest ?? CommunityPluginReadingBlockRequest(kind: .view(identifier: viewIdentifier), source: "", note: .root,
+            firstLine: nil, lineCount: 0)
         host.shownCodeBlocks[blockIdentifier] = self
-        appearance = .drawing
-        let message: [String: Any] = ["operation": "view.attach", "blockIdentifier": blockIdentifier, "leafIdentifier": viewIdentifier,
-                                      "width": Double(size.width), "height": Double(size.height)]
+        if let embeddedRequest, let lastCopy = host.lastCodeBlockCopies[embeddedRequest] {
+            appearance = .drawn(html: lastCopy.html)
+            height = lastCopy.height
+        } else {
+            appearance = .drawing
+        }
         do {
-            let answer = try await host.send(message, timeout: Self.drawingTimeout)
+            let answer = try await host.send(["operation": "view.attach", "blockIdentifier": blockIdentifier, "leafIdentifier": viewIdentifier,
+                                              "isEmbedded": embeddedRequest != nil, "width": Double(size.width), "height": Double(size.height)],
+                                             timeout: Self.drawingTimeout)
             if let styles = answer["styles"] as? String { host.updatePluginStyleSheets(styles) }
             if answer["isDrawn"] as? Bool == true, let html = answer["html"] as? String { receive(html: html) }
             else { appearance = .failed(answer["message"] as? String ?? "The plugin did not show this view.") }
@@ -147,34 +162,9 @@ final class CommunityPluginShownCodeBlock {
         }
     }
 
-    /// Starts showing `request`, with its last copy at its height meanwhile. Nil once the host is gone.
-    func begin(_ request: CommunityPluginReadingBlockRequest) -> CommunityPluginHost? {
-        guard let host else { return nil }
-        self.request = request
-        host.shownCodeBlocks[blockIdentifier] = self
-        if let lastCopy = host.lastCodeBlockCopies[request] {
-            appearance = .drawn(html: lastCopy.html)
-            height = lastCopy.height
-        } else {
-            appearance = .drawing
-        }
-        return host
-    }
-
-    /// What the page answered to a drawing: the copy, or why there is none.
-    func finishDrawing(_ answer: [String: Any], failureMessage: String) {
-        if let styles = answer["styles"] as? String { host?.updatePluginStyleSheets(styles) }
-        if answer["isDrawn"] as? Bool == true, let html = answer["html"] as? String { receive(html: html) }
-        else { appearance = .failed(answer["message"] as? String ?? failureMessage) }
-    }
-
-    func fail(with message: String) {
-        appearance = .failed(message)
-    }
-
     /// The tab or panel showing a view changed size; the view lays out again.
     func resizeView(to size: CGSize) {
-        guard let host, case .view = request?.kind, size.width > 0, size.height > 0 else { return }
+        guard let host, request?.showsPluginView == true, size.width > 0, size.height > 0 else { return }
         let blockIdentifier = blockIdentifier
         Task { _ = try? await host.send(["operation": "view.resize", "blockIdentifier": blockIdentifier, "width": Double(size.width), "height": Double(size.height)],
                                          timeout: .seconds(5)) }
@@ -220,9 +210,6 @@ final class CommunityPluginShownCodeBlock {
         if let overPath = details["overPath"] as? [Int] { event["overPath"] = overPath }
         deliver(event, linkHovered: linkHovered)
     }
-
-    /// Whether this block is the one showing `shownRequest` now.
-    func isShowing(_ shownRequest: CommunityPluginReadingBlockRequest) -> Bool { request == shownRequest }
 
     /// The note an internal link drawn in the copy starts from: a block's note, the vault's
     /// root for a view.
@@ -310,7 +297,6 @@ extension CommunityPluginHost {
 /// by a step, not at every point of a split being dragged.
 enum CommunityPluginDrawingWidth {
     static let stepWidth: CGFloat = 50
-    static let settlingDelay: Duration = .milliseconds(250)
 
     static func step(of width: CGFloat) -> CGFloat {
         (width / stepWidth).rounded() * stepWidth
@@ -335,11 +321,6 @@ struct CommunityPluginCodeBlockView: View {
             .task(id: DrawingKey(request: request, width: CommunityPluginDrawingWidth.step(of: availableWidth))) {
                 guard availableWidth > 0 else { return }
                 let block = shownBlock ?? CommunityPluginShownCodeBlock(host: host)
-                // A rotation or a split being dragged settles first; the last copy stays meanwhile.
-                if shownBlock != nil, block.isShowing(request) {
-                    try? await Task.sleep(for: CommunityPluginDrawingWidth.settlingDelay)
-                    guard !Task.isCancelled else { return }
-                }
                 shownBlock = block
                 await block.draw(request, width: availableWidth)
             }
@@ -423,10 +404,6 @@ struct CommunityPluginSectionView<NativeContent: View>: View {
         .task(id: SectionKey(request: request, width: CommunityPluginDrawingWidth.step(of: availableWidth))) {
             guard availableWidth > 0 else { return }
             let block = shownBlock ?? CommunityPluginShownCodeBlock(host: host)
-            if shownBlock != nil, block.isShowing(request) {
-                try? await Task.sleep(for: CommunityPluginDrawingWidth.settlingDelay)
-                guard !Task.isCancelled else { return }
-            }
             shownBlock = block
             block.tickTask = { lineIndex in Task { await tickTask(onSectionLine: lineIndex) } }
             await block.draw(request, width: availableWidth)
@@ -850,7 +827,8 @@ final class CommunityPluginCodeBlockDisplayCoordinator: NSObject, WKScriptMessag
     func present(_ presentation: [String: Any]) {
         pendingPresentation = presentation
         guard isLoaded, let webView else { return }
-        webView.callAsyncJavaScript("GraphiteCodeBlock.show(html, styleSheets, isDark, textSize, accent, fillsSpace, isEmbeddedView, bodyClasses, bodyStyle, hasTheme)", arguments: presentation,
+        let showing = "GraphiteCodeBlock.show(html, styleSheets, isDark, textSize, accent, fillsSpace, isEmbeddedView, bodyClasses, bodyStyle, hasTheme)"
+        webView.callAsyncJavaScript(showing, arguments: presentation,
                                     in: nil, in: .defaultClient) { _ in }
     }
 }
@@ -918,7 +896,8 @@ struct CommunityPluginCodeBlockDisplay {
     @MainActor private func update(_ coordinator: CommunityPluginCodeBlockDisplayCoordinator) {
         coordinator.block = block
         coordinator.linkPreviews.linkPreviews = linkPreviews
-        coordinator.present(["html": html, "styleSheets": styleSheets, "isDark": isDark, "textSize": textSize, "accent": accentHex ?? "", "fillsSpace": fillsSpace, "isEmbeddedView": isEmbeddedView,
+        coordinator.present(["html": html, "styleSheets": styleSheets, "isDark": isDark, "textSize": textSize, "accent": accentHex ?? "",
+                             "fillsSpace": fillsSpace, "isEmbeddedView": isEmbeddedView,
                              "bodyClasses": bodyClasses, "bodyStyle": bodyStyle, "hasTheme": hasTheme])
     }
 

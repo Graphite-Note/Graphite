@@ -51,11 +51,12 @@ extension CommunityPluginHost {
         let answer = Task { [weak self] () -> CommunityPluginSuggestion? in
             // In order: a plugin such as Natural Language Dates remembers where its `@` was.
             _ = await previousAnswer?.value
-            guard let self, var reply = try? await self.send(message, timeout: Self.typingTimeout) else { return nil }
+            guard let self, var reply = try? await self.send(message,
+                timeout: Self.typingTimeout) else { return nil } // Too slow: no suggestions for this change.
             // The page's copy was not the one this change was made from.
             if reply["needsWholeNote"] as? Bool == true {
                 let wholeNote = typingMessage(revision: revision, wantsSuggestions: wantsSuggestions, sendsOnlyChange: false)
-                guard let wholeNoteReply = try? await self.send(wholeNote, timeout: Self.typingTimeout) else { return nil }
+                guard let wholeNoteReply = try? await self.send(wholeNote, timeout: Self.typingTimeout) else { return nil } // As above.
                 reply = wholeNoteReply
             }
             guard let suggestion = reply["suggestion"] as? [String: Any], let requestIdentifier = suggestion["requestIdentifier"] as? String else { return nil }

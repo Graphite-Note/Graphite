@@ -115,9 +115,8 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
 
     /// The toolbar of a base in a note, with a long view name and a sort, in the narrowest note.
     func testAnEmbeddedBasesToolbarFitsANarrowNoteWithItsButtons() async throws {
-        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("BasesToolbar-\(UUID().uuidString)", isDirectory: true)
+        let vault = try TemporaryVault(prefix: "BasesToolbar").root
         vaultDirectories.append(vault)
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
         try Data("Body\n".utf8).write(to: vault.appendingPathComponent("Note.md"))
         try Data("views:\n  - type: table\n    name: One very long name of a view that goes on and on\n  - type: table\n    name: Second\n".utf8).write(to: vault.appendingPathComponent("Plan.base"))
         let indexFolder = vault.appendingPathComponent(".index", isDirectory: true)
@@ -137,7 +136,7 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         window.makeKeyAndVisible()
         self.window = window
         controller.view.layoutIfNeeded()
-        try await Task.sleep(for: .milliseconds(300))
+        try await letTheScreenSettle()
         attachPicture(of: controller, named: "toolbar at 320 points")
         XCTAssertLessThanOrEqual(controller.sizeThatFits(in: CGSize(width: 320, height: 120)).width, 320)
         for button in descendants(of: controller.view, matching: UIView.self) where button.accessibilityLabel == "Reload" {
@@ -161,10 +160,10 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window
-        try await Task.sleep(for: .milliseconds(500))
+        try await letTheScreenSettle()
         let table = try XCTUnwrap(descendants(of: controller.view, matching: UICollectionView.self).first)
         table.scrollToItem(at: IndexPath(item: 0, section: table.numberOfSections - 1), at: .top, animated: false)
-        try await Task.sleep(for: .milliseconds(500))
+        try await letTheScreenSettle()
         attachPicture(of: controller, named: "the view editor with the plugin's options")
     }
 
@@ -179,7 +178,7 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         }
         // Each is as tall as what the plugin drew: a heading, a button and one 124 point row, not a spinner's height.
         try await waitUntil(timeoutSeconds: 15) { host.shownCodeBlocks.values.allSatisfy { block in block.height > 0 } }
-        try await Task.sleep(for: .milliseconds(500))
+        try await letTheScreenSettle()
         let heights = host.shownCodeBlocks.values.map(\.height)
         XCTAssertEqual(heights.count, 2)
         XCTAssertTrue(heights.allSatisfy { height in height > 150 && height < 400 }, "\(heights)")
@@ -202,7 +201,7 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
     }
 
     private func runningWorkspace() async throws -> (WorkspaceModel, URL, UIViewController) {
-        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("BasesEmbeds-\(UUID().uuidString)", isDirectory: true)
+        let vault = try TemporaryVault(prefix: "BasesEmbeds").root
         vaultDirectories.append(vault)
         let files = [
             ".obsidian/plugins/week-table/manifest.json": "{\"id\": \"week-table\", \"name\": \"Week Table\", \"version\": \"1.0.0\", \"minAppVersion\": \"1.0.0\", \"author\": \"Graphite\"}",
@@ -235,6 +234,12 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         await host.setTurnedOnForVault(true)
         try await waitUntil(timeoutSeconds: 20) { host.pluginBasesViews["week-table"] != nil }
         return (workspace, vault, controller)
+    }
+
+    /// Half a second of the run loop, for what is about to be pictured to be drawn.
+    private func letTheScreenSettle() async throws {
+        let deadline = Date.now.addingTimeInterval(0.5)
+        try await waitUntil { Date.now >= deadline }
     }
 
     private func descendants<View: UIView>(of parent: UIView, matching type: View.Type) -> [View] {

@@ -63,7 +63,8 @@ struct CommunityPluginEmbeddedBasesLeaves {
         guard let position = entries.firstIndex(where: { entry in entry.leafIdentifier == leafIdentifier }) else { return [] }
         entries[position].isShown = false
         var closed: [String] = []
-        while entries.filter({ entry in !entry.isShown }).count > Self.maximumHiddenLeaves, let oldest = entries.firstIndex(where: { entry in !entry.isShown }) {
+        while entries.filter({ entry in !entry.isShown }).count > Self.maximumHiddenLeaves,
+            let oldest = entries.firstIndex(where: { entry in !entry.isShown }) {
             closed.append(entries.remove(at: oldest).leafIdentifier)
         }
         return closed
@@ -78,29 +79,6 @@ struct CommunityPluginEmbeddedBasesLeaves {
     mutating func removeAll() -> [String] {
         defer { entries = [] }
         return entries.filter { entry in !entry.isShown }.map(\.leafIdentifier)
-    }
-}
-
-extension CommunityPluginShownCodeBlock {
-    /// Shows a copy of an embedded base view's leaf, at the width of the note: the last copy at
-    /// once, at its height, while the leaf is attached in the plugins' page.
-    func attachEmbeddedView(_ leafIdentifier: String, request: CommunityPluginReadingBlockRequest, width: CGFloat) async {
-        guard let host = begin(request) else { return }
-        let message: [String: Any] = ["operation": "view.attach", "blockIdentifier": blockIdentifier, "leafIdentifier": leafIdentifier,
-                                      "isEmbedded": true, "width": Double(width)]
-        do {
-            let answer = try await host.send(message, timeout: Self.drawingTimeout)
-            finishDrawing(answer, failureMessage: "The plugin did not show this view.")
-        } catch {
-            fail(with: error.localizedDescription)
-        }
-    }
-
-    /// The note's width changed; the plugin lays its view out again and the copy follows.
-    func resizeEmbeddedView(toWidth width: CGFloat) {
-        guard let host, width > 0 else { return }
-        let blockIdentifier = blockIdentifier
-        Task { _ = try? await host.send(["operation": "view.resize", "blockIdentifier": blockIdentifier, "width": Double(width)], timeout: .seconds(5)) }
     }
 }
 
@@ -132,17 +110,19 @@ struct CommunityPluginBasesEmbedContent: View {
         case .file(let path): sourceText = path.rawValue
         case .inline(let yaml): sourceText = yaml
         }
-        return CommunityPluginReadingBlockRequest(kind: .embeddedBasesView(viewType: viewType, viewName: view.name), source: sourceText, note: embeddingNote, firstLine: nil, lineCount: 0)
+        return CommunityPluginReadingBlockRequest(kind: .embeddedBasesView(viewType: viewType, viewName: view.name), source: sourceText,
+            note: embeddingNote, firstLine: nil, lineCount: 0)
     }
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in availableWidth = width }
-            .task(id: OpeningKey(viewType: viewType, viewPosition: view.id, hasResult: result != nil, hasWidth: availableWidth > 0, attempt: openingAttempt)) { await show() }
+            .task(id: OpeningKey(viewType: viewType, viewPosition: view.id, hasResult: result != nil, hasWidth: availableWidth > 0,
+                attempt: openingAttempt)) { await show() }
             .onChange(of: CommunityPluginBasesViewContent.updateKey(for: result)) { _, updateKey in send(updateKey: updateKey, viewOptionsChanged: false) }
             .onChange(of: view) { _, _ in send(updateKey: CommunityPluginBasesViewContent.updateKey(for: result), viewOptionsChanged: true) }
-            .onChange(of: availableWidth) { _, width in shownBlock?.resizeEmbeddedView(toWidth: width) }
+            .onChange(of: availableWidth) { _, width in shownBlock?.resizeView(to: CGSize(width: width, height: EmbeddedBaseView.defaultHeight)) }
             .onDisappear(perform: hide)
     }
 
@@ -154,8 +134,10 @@ struct CommunityPluginBasesEmbedContent: View {
             switch shownBlock?.appearance ?? .drawing {
             case .drawn(let html):
                 if let shownBlock {
-                    CommunityPluginCodeBlockDisplay(block: shownBlock, html: html, styleSheets: host.pluginStyleSheets, isDark: colorScheme == .dark, textSize: scaledTextSize,
-                                                    accentHex: accent.sRGBHex, isEmbeddedView: true, bodyClasses: host.pluginBodyClasses, bodyStyle: host.pluginBodyStyle,
+                    CommunityPluginCodeBlockDisplay(block: shownBlock, html: html, styleSheets: host.pluginStyleSheets, isDark: colorScheme == .dark,
+                        textSize: scaledTextSize,
+                                                    accentHex: accent.sRGBHex, isEmbeddedView: true, bodyClasses: host.pluginBodyClasses,
+                                                        bodyStyle: host.pluginBodyStyle,
                                                     hasTheme: !host.activeThemeName.isEmpty)
                         .frame(height: Self.shownHeight(measured: shownBlock.height))
                         // Until its page has measured it, the note keeps the block's last height.
@@ -202,7 +184,7 @@ struct CommunityPluginBasesEmbedContent: View {
         }
         leafIdentifier = leaf
         host.embeddedBasesLeaves.show(leaf, for: request, updateKey: updateKey)
-        await block.attachEmbeddedView(leaf, request: request, width: availableWidth)
+        await block.attachView(leaf, size: CGSize(width: availableWidth, height: EmbeddedBaseView.defaultHeight), embeddedRequest: request)
         // A kept leaf that was closed meanwhile (its plugin reloaded): a new one is opened.
         if isReused, case .failed = block.appearance {
             host.embeddedBasesLeaves.forget(leaf)
@@ -281,6 +263,11 @@ struct CommunityPluginBasesFailure: View {
     }
 }
 
+/// What `basesViews.changed` says: the view types plugins registered now.
+struct CommunityPluginBasesViewTypes: Decodable {
+    let views: [CommunityPluginBasesViewRegistration]
+}
+
 /// A view type a plugin registered (`registerBasesView`), as Graphite offers it.
 struct CommunityPluginBasesViewRegistration: Decodable, Equatable {
     struct Option: Decodable, Equatable, Identifiable {
@@ -326,10 +313,7 @@ struct CommunityPluginBasesViewRegistration: Decodable, Equatable {
             minimum = try container.decodeIfPresent(Double.self, forKey: .min)
             maximum = try container.decodeIfPresent(Double.self, forKey: .max)
             step = try container.decodeIfPresent(Double.self, forKey: .step)
-            if let isOn = try? container.decode(Bool.self, forKey: .defaultValue) { defaultValue = .boolean(isOn) }
-            else if let number = try? container.decode(Double.self, forKey: .defaultValue) { defaultValue = .number(number) }
-            else if let text = try? container.decode(String.self, forKey: .defaultValue) { defaultValue = .text(text) }
-            else { defaultValue = nil }
+            defaultValue = BaseViewOptionValue.decodedScalar(from: container, forKey: .defaultValue)
         }
     }
 
@@ -352,15 +336,61 @@ struct CommunityPluginBasesViewRegistration: Decodable, Equatable {
     var systemImage: String { CommunityPluginViewSymbol.systemImage(forIcon: icon) }
 }
 
+/// A plugin set an option of its view (`config.set`): what the runtime sends.
+struct CommunityPluginBasesViewOptionSave: Decodable {
+    let baseFilePath: String
+    let viewName: String
+    let viewIndex: Int
+    let key: String
+    /// Nil when the plugin cleared it, or set what a view in a file cannot hold as one value.
+    let value: BaseViewOptionValue?
+    let isCleared: Bool
+
+    private enum CodingKeys: String, CodingKey { case baseFilePath, viewName, viewIndex, key, value }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        baseFilePath = try container.decode(String.self, forKey: .baseFilePath)
+        viewName = try container.decode(String.self, forKey: .viewName)
+        viewIndex = try container.decode(Int.self, forKey: .viewIndex)
+        key = try container.decode(String.self, forKey: .key)
+        value = BaseViewOptionValue.decodedScalar(from: container, forKey: .value)
+        isCleared = try container.decodeNil(forKey: .value)
+    }
+}
+
+extension BaseViewOptionValue {
+    /// A single value of JSON, whichever kind; nil for anything else.
+    static func decodedScalar<Key: CodingKey>(from container: KeyedDecodingContainer<Key>, forKey key: Key) -> BaseViewOptionValue? {
+        // Each attempt that fails only means the value is of another kind.
+        if let isOn = try? container.decode(Bool.self, forKey: key) { return .boolean(isOn) } // Another kind of value.
+        if let number = try? container.decode(Double.self, forKey: key) { return .number(number) } // Another kind of value.
+        if let text = try? container.decode(String.self, forKey: key) { return .text(text) } // Another kind of value.
+        return nil
+    }
+}
+
+/// Why a plugin's view could not save its option.
+enum CommunityPluginBasesViewOptionProblem: LocalizedError {
+    case baseIsNotText
+    case viewChanged(viewName: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .baseIsNotText: "This base is not UTF-8 text."
+        case .viewChanged(let viewName): "The view “\(viewName)” changed in another app."
+        }
+    }
+}
+
 extension CommunityPluginHost {
-    /// A plugin set an option of its view (`config.set`): written into the view in the `.base`
-    /// file, as Obsidian does, in turn with other such saves and with the file's revision
-    /// checked. A value the file cannot hold as one scalar is reported, not written.
-    func saveBasesViewOption(_ message: [String: Any]) {
-        guard let store = workspace?.store, let pathText = message["baseFilePath"] as? String, let path = try? VaultPath(pathText),
-              let key = message["key"] as? String, let viewName = message["viewName"] as? String, let viewPosition = message["viewIndex"] as? Int else { return }
-        let value = Self.baseViewOptionValue(message["value"])
-        if value == nil, !(message["value"] is NSNull) {
+    /// A plugin set an option of its view: written into the view in the `.base` file, as Obsidian
+    /// does, in turn with other such saves and with the file's revision checked. A value the
+    /// file cannot hold as one scalar is reported, not written.
+    func saveBasesViewOption(_ save: CommunityPluginBasesViewOptionSave) {
+        guard let store = workspace?.store,
+            let path = try? VaultPath(save.baseFilePath) else { return } // A path the runtime sent that no vault holds saves nothing.
+        guard save.value != nil || save.isCleared else {
             showNotice("A plugin's view tried to keep a value a base file's view cannot hold, so it lasts only until it closes.", pluginIdentifier: nil)
             return
         }
@@ -368,31 +398,23 @@ extension CommunityPluginHost {
         basesViewOptionSave = Task { [weak self] in
             await previousSave?.value
             do {
-                guard try await Self.writeBasesViewOption(key, value: value, viewName: viewName, viewPosition: viewPosition, to: path, in: store) else { return }
+                guard try await Self.writeBasesViewOption(save.key, value: save.value, viewName: save.viewName, viewPosition: save.viewIndex,
+                    to: path, in: store) else { return }
                 self?.workspace?.filesSavedOutsideEditors([path])
             } catch {
-                self?.showNotice("A plugin's view could not save its option in “\(path.name)”. " + error.localizedDescription, pluginIdentifier: nil)
+                self?.showNotice("A plugin's view could not save its option in “\(path.name)”: the file changed or could not be read.", pluginIdentifier: nil)
             }
         }
     }
 
-    /// A value from the plugins' page: WebKit gives numbers and Booleans as `NSNumber`.
-    private static func baseViewOptionValue(_ value: Any?) -> BaseViewOptionValue? {
-        switch value {
-        case let text as String: return .text(text)
-        case let number as NSNumber:
-            return CFGetTypeID(number) == CFBooleanGetTypeID() ? .boolean(number.boolValue) : .number(number.doubleValue)
-        default: return nil
-        }
-    }
-
     /// True when the file changed. It stays byte for byte as written outside the option.
-    static func writeBasesViewOption(_ key: String, value: BaseViewOptionValue?, viewName: String, viewPosition: Int, to path: VaultPath, in store: VaultStore) async throws -> Bool {
+    static func writeBasesViewOption(_ key: String, value: BaseViewOptionValue?, viewName: String, viewPosition: Int, to path: VaultPath,
+        in store: VaultStore) async throws -> Bool {
         let snapshot = try await store.read(path, maximumBytes: BaseDefinition.maximumSourceBytes)
-        guard let fileText = UTF8FileText(snapshot.data) else { throw GraphiteError.invalidFile("This base is not UTF-8 text.") }
+        guard let fileText = UTF8FileText(snapshot.data) else { throw CommunityPluginBasesViewOptionProblem.baseIsNotText }
         let definition = try BaseDefinition.parse(fileText.text)
         guard definition.views.contains(where: { view in view.id == viewPosition && view.name == viewName }) else {
-            throw GraphiteError.invalidFile("The view “\(viewName)” changed in another app.")
+            throw CommunityPluginBasesViewOptionProblem.viewChanged(viewName: viewName)
         }
         var editor = try BaseDefinitionEditor(yaml: fileText.text)
         try editor.setOption(key, value: value, forViewAt: viewPosition)

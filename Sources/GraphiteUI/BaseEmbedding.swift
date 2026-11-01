@@ -33,7 +33,8 @@ public struct BaseEmbedContext {
     /// Keeps the results of bases scrolled out of sight; see `EmbeddedBaseModelCache`.
     public let modelCache: EmbeddedBaseModelCache?
 
-    public init(store: VaultStore, index: VaultIndex, embeddingNote: VaultPath, contentVersion: Int, contentChange: BaseContentChange? = nil, isIndexComplete: Bool,
+    public init(store: VaultStore, index: VaultIndex, embeddingNote: VaultPath, contentVersion: Int, contentChange: BaseContentChange? = nil,
+        isIndexComplete: Bool,
                 open: @escaping (VaultPath) -> Void, filesChanged: @escaping ([VaultPath]) -> Void = { _ in },
                 openBase: ((VaultPath, String?) -> Void)? = nil, modelCache: EmbeddedBaseModelCache? = nil) {
         self.store = store
@@ -78,7 +79,8 @@ public struct BaseCodeBlockView: View {
     public var body: some View {
         if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(yaml: yaml, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
-                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange, isIndexComplete: activeContext.isIndexComplete,
+                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
+                                 isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, filesChanged: activeContext.filesChanged, modelCache: activeContext.modelCache)
         } else {
             Text(yaml)
@@ -110,7 +112,8 @@ public struct BaseFileEmbedView: View {
     public var body: some View {
         if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(basePath: path, viewName: viewName, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
-                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange, isIndexComplete: activeContext.isIndexComplete,
+                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
+                                 isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, openBase: activeContext.openBase, filesChanged: activeContext.filesChanged,
                              modelCache: activeContext.modelCache)
         } else if let openWithoutContext {

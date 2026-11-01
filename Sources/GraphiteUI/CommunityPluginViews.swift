@@ -53,11 +53,12 @@ extension CommunityPluginHost {
     /// take is not asked about, so opening it does not wait for the plugins' page.
     func openFileInPluginView(_ path: VaultPath) async -> String? {
         guard mayShowInPluginView(path) else { return nil }
-        if path.fileExtension == "md", let root = workspace?.folderAccess?.root, let location = try? path.url(in: root) {
+        if path.fileExtension == "md", let root = workspace?.folderAccess?.root,
+            let location = try? path.url(in: root) { // A path outside the vault is asked about below.
             let mayBeTakenOver = await Task.detached(priority: .userInitiated) { CommunityPluginNoteTakeover.mayBeTakenOver(noteAt: location) }.value
             guard mayBeTakenOver else { return nil }
         }
-        guard let answer = try? await send(["operation": "file.openInView", "path": path.rawValue], timeout: .seconds(3)),
+        guard let answer = try? await send(["operation": "file.openInView", "path": path.rawValue], timeout: .seconds(3)), // Too slow: Graphite shows it.
               answer["isOpened"] as? Bool == true, let identifier = answer["leafIdentifier"] as? String else { return nil }
         // The view list arrives right after; until then the tab knows the view by its identifier.
         if pluginView(withIdentifier: identifier) == nil {
@@ -139,11 +140,13 @@ extension CommunityPluginHost {
     /// answer in time the runtime is told, so a late opening leaves no view nobody closes.
     /// - Parameter embedWidth: The width in the note of an embed, shown as a copy; nil for a
     ///   base's own tab, shown live.
-    func openBasesView(type viewType: String, viewName: String, viewIndex: Int, source: BaseSource, result: BaseQueryResult, embedWidth: CGFloat? = nil) async -> String? {
+    func openBasesView(type viewType: String, viewName: String, viewIndex: Int, source: BaseSource, result: BaseQueryResult,
+        embedWidth: CGFloat? = nil) async -> String? {
         guard isRuntimeRunning, pluginBasesViews[viewType] != nil else { return nil }
         let openingIdentifier = UUID().uuidString
         var message = Self.basesMessage(result)
-        message.merge(["operation": "basesView.open", "viewType": viewType, "viewName": viewName, "viewIndex": viewIndex, "openingIdentifier": openingIdentifier]) { _, new in new }
+        message.merge(["operation": "basesView.open", "viewType": viewType, "viewName": viewName, "viewIndex": viewIndex,
+            "openingIdentifier": openingIdentifier]) { _, new in new }
         if let embedWidth { message["embedWidth"] = Double(embedWidth) }
         switch source {
         case .file(let path): message["baseFilePath"] = path.rawValue
@@ -153,7 +156,8 @@ extension CommunityPluginHost {
             let answer = try await send(message, timeout: .seconds(10))
             return answer["isOpened"] as? Bool == true ? answer["leafIdentifier"] as? String : nil
         } catch {
-            Task { _ = try? await send(["operation": "basesView.abandonOpening", "openingIdentifier": openingIdentifier], timeout: .seconds(30)) }
+            // Without an answer the page is gone, and the leaf with it.
+            Task { _ = try? await send(["operation": "basesView.abandonOpening", "openingIdentifier": openingIdentifier], timeout: .seconds(30)) } // See above.
             return nil
         }
     }
@@ -191,11 +195,11 @@ extension CommunityPluginHost {
                 formulaValues[row.path.rawValue] = values
             }
         }
-        var summaryValues: [String: Any] = [:]
-        for (property, summary) in result.summaries {
-            if let value = summary.value.value { summaryValues[property.rawValue] = pluginValue(value) }
-        }
-        return ["groups": groups, "properties": result.columns.map { column in column.property.rawValue }, "formulaValues": formulaValues, "summaryValues": summaryValues]
+        let summaryValues = Dictionary(uniqueKeysWithValues: result.summaries.compactMap { property, summary in
+            summary.value.value.map { value in (property.rawValue, pluginValue(value)) }
+        })
+        return ["groups": groups, "properties": result.columns.map { column in column.property.rawValue }, "formulaValues": formulaValues,
+                "summaryValues": summaryValues]
     }
 
     /// A base value as the runtime makes Obsidian's Bases values of it (`community-plugin-runtime-bases.js`).
@@ -382,9 +386,9 @@ enum CommunityPluginNoteTakeover {
     private static let inspectedBytes = 64 * 1024
 
     static func mayBeTakenOver(noteAt location: URL) -> Bool {
-        guard let handle = try? FileHandle(forReadingFrom: location) else { return false }
-        defer { try? handle.close() }
-        guard let head = try? handle.read(upToCount: inspectedBytes) else { return false }
+        guard let handle = try? FileHandle(forReadingFrom: location) else { return false } // Graphite reports a note it cannot read as it opens it.
+        defer { try? handle.close() } // Read only: nothing can be lost.
+        guard let head = try? handle.read(upToCount: inspectedBytes) else { return false } // As above.
         return mayBeTakenOver(noteBeginning: String(decoding: head, as: UTF8.self))
     }
 

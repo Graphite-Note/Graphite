@@ -58,7 +58,8 @@ struct CommunityPluginsSettingsPage: View {
         }
         .navigationTitle("Community Plugins")
         .task { await host.reloadInventory(readsPluginCode: true) }
-        .confirmationDialog("Turn on community plugins?", isPresented: Binding(get: { pluginsToConfirm != nil }, set: { isPresented in if !isPresented { pluginsToConfirm = nil } }),
+        .confirmationDialog("Turn on community plugins?", isPresented: Binding(get: { pluginsToConfirm != nil },
+            set: { isPresented in if !isPresented { pluginsToConfirm = nil } }),
                             titleVisibility: .visible, presenting: pluginsToConfirm) { _ in
             Button("Turn On and Run Them") { Task { await host.setTurnedOnForVault(true) } }
             Button("Cancel", role: .cancel) {}
@@ -334,7 +335,8 @@ struct CommunityPluginBrowser: View {
             let compatibility = host.inventory.plugins.first { plugin in plugin.id == entry.id }?.compatibility
             var outcome = "Installed version \(installation.manifest.version)."
             if installation.isOlderReleaseForCompatibility { outcome += " An older release, because the newest needs a newer plugin API than Graphite provides." }
-            outcomes[entry.id] = CommunityPluginTurningOn.installationOutcome(outcome, compatibility: compatibility, isTurnedOn: host.enabledList.isEnabled(entry.id), isRunning: host.loadStates[entry.id] == .loaded)
+            outcomes[entry.id] = CommunityPluginTurningOn.installationOutcome(outcome, compatibility: compatibility,
+                isTurnedOn: host.enabledList.isEnabled(entry.id), isRunning: host.loadStates[entry.id] == .loaded)
         } catch {
             outcomes[entry.id] = error.localizedDescription
         }
@@ -344,7 +346,8 @@ struct CommunityPluginBrowser: View {
 /// What Settings says when a plugin starts to run or changes.
 @MainActor enum CommunityPluginTurningOn {
     static func question(naming pluginNames: [String]) -> String {
-        "These plugins, made by other people, will run now, and can read and change every file in this vault and reach the internet: " + pluginNames.joined(separator: ", ") + "."
+        "These plugins, made by other people, will run now, and can read and change every file in this vault and reach the internet: "
+            + pluginNames.joined(separator: ", ") + "."
     }
 
     /// After installing or updating: a plugin already running keeps its old code until plugins reload.

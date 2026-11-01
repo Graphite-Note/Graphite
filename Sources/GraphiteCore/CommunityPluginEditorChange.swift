@@ -170,7 +170,8 @@ public struct CommunityPluginTextChange: Equatable, Sendable {
                 var suffixCount = 0
                 while suffixCount < shorterCount - prefixCount,
                       originalBytes[originalBytes.count - 1 - suffixCount] == changedBytes[changedBytes.count - 1 - suffixCount] { suffixCount += 1 }
-                while suffixCount > 0, isContinuation(originalBytes, at: originalBytes.count - suffixCount) || isContinuation(changedBytes, at: changedBytes.count - suffixCount) { suffixCount -= 1 }
+                while suffixCount > 0, isContinuation(originalBytes, at: originalBytes.count - suffixCount) || isContinuation(changedBytes,
+                    at: changedBytes.count - suffixCount) { suffixCount -= 1 }
                 let inserted = UnsafeBufferPointer(rebasing: changedBytes[prefixCount..<(changedBytes.count - suffixCount)])
                 return Self(originalLength: utf16Length(originalBytes[...]), location: utf16Length(originalBytes[..<prefixCount]),
                             removedLength: utf16Length(originalBytes[prefixCount..<(originalBytes.count - suffixCount)]),

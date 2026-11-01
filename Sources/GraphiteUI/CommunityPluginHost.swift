@@ -331,8 +331,8 @@ final class CommunityPluginHost {
     @ObservationIgnored private var isPageLoaded = false
     @ObservationIgnored private var pageLoadFailure: String?
     /// The text each editor snapshot sent to the runtime was taken from, by identifier.
-    @ObservationIgnored private var editorSnapshots: [String: (path: VaultPath, text: String)] = [:]
-    @ObservationIgnored private var editorSnapshotOrder: [String] = []
+    @ObservationIgnored var editorSnapshots: [String: (path: VaultPath, text: String)] = [:]
+    @ObservationIgnored var editorSnapshotOrder: [String] = []
     @ObservationIgnored private var pendingVaultChanges: Set<String> = []
     @ObservationIgnored private var vaultChangeTask: Task<Void, Never>?
     /// Set while a settings page shows the plugin panel inline, so a plugin's modal opens there.
@@ -362,7 +362,7 @@ final class CommunityPluginHost {
         consentDefaults.set(isTurnedOn, forKey: Self.consentKey(for: vaultIdentifier))
         isTurnedOnForVault = isTurnedOn
         if isTurnedOn {
-            await listAndStartPlugins(workspace) // not read at vault open while plugins were off
+            await listAndStartPlugins() // not read at vault open while plugins were off
         } else {
             await stopRuntime()
         }
@@ -395,14 +395,14 @@ final class CommunityPluginHost {
         isTurnedOnForVault = vaultIdentifier.map { identifier in consentDefaults.bool(forKey: Self.consentKey(for: identifier)) } ?? false
         guard isTurnedOnForVault else { return }
         isStartingPlugins = true
-        Task { await listAndStartPlugins(workspace) }
+        Task { await listAndStartPlugins() }
     }
 
-    private func listAndStartPlugins(_ workspace: WorkspaceModel) async {
+    private func listAndStartPlugins() async {
         isStartingPlugins = true
         defer { isStartingPlugins = false }
         await reloadInventory()
-        await startIfNeeded(workspace)
+        if let workspace { await startIfNeeded(workspace) }
     }
 
     /// The vault is being left: plugins unload first, as when Obsidian closes a vault.
@@ -586,16 +586,18 @@ final class CommunityPluginHost {
         #if canImport(UIKit)
         device["isPhone"] = UIDevice.current.userInterfaceIdiom == .phone
         #endif
-        let message: [String: Any] = [
-            "operation": "runtime.start",
-            "vault": vault,
-            "device": device,
-            "appearance": appearance,
-            "compatibleApiVersion": CommunityPluginCompatibility.providedApiVersion,
-            "recentFiles": workspace.recentFiles.paths.prefix(50).map(\.rawValue),
-            "styles": await vaultStyles(),
-        ]
-        do { _ = try await send(message) } catch { workspace.errorMessage = "Graphite could not start community plugins. " + error.localizedDescription }
+        let styles = await vaultStyles()
+        do {
+            _ = try await send([
+                "operation": "runtime.start",
+                "vault": vault,
+                "device": device,
+                "appearance": appearance,
+                "compatibleApiVersion": CommunityPluginCompatibility.providedApiVersion,
+                "recentFiles": workspace.recentFiles.paths.prefix(50).map(\.rawValue),
+                "styles": styles,
+            ])
+        } catch { workspace.errorMessage = "Graphite could not start community plugins. " + error.localizedDescription }
     }
 
     /// `.obsidian/app.json` as a JSON object, for `vault.getConfig`.
@@ -763,13 +765,12 @@ final class CommunityPluginHost {
 
     /// Loads every enabled plugin again from disk, as after an update.
     func restartPlugins() async {
-        guard let workspace else { return }
         isStartingPlugins = true
         await stopRuntime()
         loadStates = [:]
         unsupportedFeatures = [:]
         runtimeProblems = [:]
-        await listAndStartPlugins(workspace)
+        await listAndStartPlugins()
     }
 
     /// Moves a plugin's folder out of the vault the way the vault deletes files.
@@ -876,80 +877,6 @@ final class CommunityPluginHost {
         var description: [String: Any] = ["path": path.rawValue, "mode": session.viewMode == .reading ? "reading" : (session.viewMode == .source ? "source" : "livePreview")]
         if includingEditor { description["editorSnapshot"] = editorSnapshot(of: session, sendsOnlyChange: sendsOnlyChange) }
         return description
-    }
-
-    /// The note's text and selection for the runtime's `Editor`, remembered under an
-    /// identifier so the change that comes back can be checked against it.
-    /// - Parameter sendsOnlyChange: The note is sent as the change from the snapshot sent last,
-    ///   as a keystroke is, when that snapshot was of this note: one letter does not carry the
-    ///   whole note across. The runtime asks for the note when its copy is another.
-    private func editorSnapshot(of session: MarkdownSession, sendsOnlyChange: Bool = false) -> [String: Any] {
-        let baseSnapshot = editorSnapshotOrder.last.flatMap { identifier in editorSnapshots[identifier].map { snapshot in (identifier: identifier, path: snapshot.path, text: snapshot.text) } }
-        let snapshotIdentifier = UUID().uuidString
-        editorSnapshots[snapshotIdentifier] = (session.path, session.text)
-        editorSnapshotOrder.append(snapshotIdentifier)
-        // A few recent snapshots are enough: an asynchronous command's edit arrives soon.
-        while editorSnapshotOrder.count > 8 { editorSnapshots[editorSnapshotOrder.removeFirst()] = nil }
-        var snapshot: [String: Any] = [
-            "path": session.path.rawValue,
-            "snapshotIdentifier": snapshotIdentifier,
-            "selectionAnchor": session.selection.location,
-            "selectionHead": session.selection.location + session.selection.length,
-            "isReadOnly": session.viewMode == .reading,
-        ]
-        if sendsOnlyChange, let baseSnapshot, baseSnapshot.path == session.path {
-            let change = CommunityPluginTextChange.between(baseSnapshot.text, session.text)
-            snapshot["textChange"] = ["baseSnapshotIdentifier": baseSnapshot.identifier, "originalLength": change.originalLength, "location": change.location,
-                                      "removedLength": change.removedLength, "insertedText": change.insertedText] as [String: Any]
-        } else {
-            snapshot["text"] = session.text
-        }
-        return snapshot
-    }
-
-    /// A plugin changed the note in its editor: the change is applied through the note's
-    /// session as one undoable edit, but only while the note still has the text the
-    /// plugin saw. The answer carries the note as it is now, for the plugin's next change.
-    private func applyEditorChange(_ message: [String: Any]) async -> [String: Any] {
-        guard let workspace, let pathText = message["path"] as? String, let path = try? VaultPath(pathText),
-              let snapshotIdentifier = message["snapshotIdentifier"] as? String, let changedText = message["text"] as? String else {
-            return Self.failure("invalidData", "The plugin's change named no note.")
-        }
-        guard let session = workspace.openMarkdownSession(at: path) else {
-            return Self.failure("conflict", "“\(path.name)” is no longer open, so the plugin's change was not applied.")
-        }
-        // Insertions the editor has not applied yet are waited for, so the comparison sees the
-        // note as the person sees it.
-        for _ in 0..<20 where session.pendingInsertion != nil { try? await Task.sleep(for: .milliseconds(10)) }
-        guard let snapshot = editorSnapshots[snapshotIdentifier], snapshot.path == path, session.text == snapshot.text else {
-            let pluginName = (message["pluginIdentifier"] as? String).flatMap(pluginName(of:)) ?? "A plugin"
-            showNotice("\(pluginName) did not change “\(path.stem)”: the note changed while it was working.", pluginIdentifier: message["pluginIdentifier"] as? String)
-            var failure = Self.failure("conflict", "The note changed while the plugin was working.")
-            failure["snapshot"] = editorSnapshot(of: session)
-            return failure
-        }
-        guard session.viewMode != .reading else { return Self.failure("readOnly", "The note is shown in reading view.") }
-        let anchor = message["selectionAnchor"] as? Int ?? 0
-        let head = message["selectionHead"] as? Int ?? anchor
-        if let edit = CommunityPluginEditorChange.edit(from: snapshot.text, to: changedText, selectionAnchor: anchor, selectionHead: head) {
-            let previousProblem = session.errorMessage
-            session.apply(edit)
-            // The session refuses an edit that a queued insertion overlaps, and says so.
-            if let problem = session.errorMessage, problem != previousProblem {
-                var failure = Self.failure("conflict", problem)
-                failure["snapshot"] = editorSnapshot(of: session)
-                return failure
-            }
-        } else {
-            // Only the cursor or the selection moved (`setCursor`, `setSelection`).
-            let selection = CommunityPluginEditorChange.selection(anchor: anchor, head: head, inTextOfLength: (changedText as NSString).length)
-            if selection != session.selection { session.requestSelection(selection) }
-        }
-        editorSnapshots[snapshotIdentifier] = (path, changedText)
-        return ["snapshot": [
-            "path": path.rawValue, "snapshotIdentifier": snapshotIdentifier, "text": changedText,
-            "selectionAnchor": anchor, "selectionHead": head, "isReadOnly": false,
-        ] as [String: Any]]
     }
 
     // MARK: Vault changes
@@ -1191,17 +1118,9 @@ final class CommunityPluginHost {
             let takesOverNotes = message["takesOverNotes"] as? Bool == true
             if takesOverNotes != pluginsTakeOverNotes { pluginsTakeOverNotes = takesOverNotes }
         case "basesViews.changed":
-            var views: [String: CommunityPluginBasesViewRegistration] = [:]
-            for view in message["views"] as? [[String: Any]] ?? [] {
-                if let registration = CommunityPluginRuntimeMessage.decoded(CommunityPluginBasesViewRegistration.self, from: view) { views[registration.viewType] = registration }
-            }
-            if views != pluginBasesViews {
-                pluginBasesViews = views
-                // Leaves kept for embeds run the plugin's old code once it reloads.
-                for leafIdentifier in embeddedBasesLeaves.removeAll() { closeView(leafIdentifier) }
-            }
+            if let viewTypes = CommunityPluginRuntimeMessage.decoded(CommunityPluginBasesViewTypes.self, from: message) { receive(viewTypes) }
         case "basesView.setOption":
-            saveBasesViewOption(message)
+            if let save = CommunityPluginRuntimeMessage.decoded(CommunityPluginBasesViewOptionSave.self, from: message) { saveBasesViewOption(save) }
         case "menus.changed":
             hasFileMenuItems = message["hasFileMenuItems"] as? Bool == true
             hasEditorMenuItems = message["hasEditorMenuItems"] as? Bool == true
@@ -1277,6 +1196,14 @@ final class CommunityPluginHost {
         }
     }
 
+    private func receive(_ viewTypes: CommunityPluginBasesViewTypes) {
+        let registrations = Dictionary(viewTypes.views.map { registration in (registration.viewType, registration) }, uniquingKeysWith: { _, last in last })
+        guard registrations != pluginBasesViews else { return }
+        pluginBasesViews = registrations
+        // Leaves kept for embeds run the plugin's old code once it reloads.
+        for leafIdentifier in embeddedBasesLeaves.removeAll() { closeView(leafIdentifier) }
+    }
+
     func updatePluginStyleSheets(_ styles: String) {
         if styles != pluginStyleSheets { pluginStyleSheets = styles }
     }
@@ -1341,7 +1268,7 @@ final class CommunityPluginHost {
         inventory.plugins.first { plugin in plugin.id == pluginIdentifier }?.manifest.name
     }
 
-    private static func failure(_ kind: String, _ message: String) -> [String: Any] {
+    static func failure(_ kind: String, _ message: String) -> [String: Any] {
         ["failure": ["kind": kind, "message": message]]
     }
 }

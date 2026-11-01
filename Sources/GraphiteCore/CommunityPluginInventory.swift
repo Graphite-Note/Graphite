@@ -65,13 +65,15 @@ public struct CommunityPluginCompatibility: Equatable, Sendable {
 
     private static let requirePattern = CommunityPluginCompatibilityPattern.requirePattern.compiled()
 
-    public static func assess(manifest: CommunityPluginManifest, mainScript: String?, providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) -> Self {
+    public static func assess(manifest: CommunityPluginManifest, mainScript: String?,
+                              providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) -> Self {
         let withoutCode = assess(manifest: manifest, hasMainScript: mainScript != nil, providedApiVersion: providedApiVersion)
         return Self(blockers: withoutCode.blockers, missingModules: mainScript.map(missingModules(in:)) ?? [])
     }
 
     /// Whether the plugin can load, which takes its manifest and no reading of its code.
-    public static func assess(manifest: CommunityPluginManifest, hasMainScript: Bool, providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) -> Self {
+    public static func assess(manifest: CommunityPluginManifest, hasMainScript: Bool,
+                              providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) -> Self {
         var blockers: [Blocker] = []
         if manifest.isDesktopOnly { blockers.append(.desktopOnly) }
         if let required = manifest.minimumApplicationVersion, ObsidianVersionNumber.compare(required, providedApiVersion) == .orderedDescending {
@@ -166,7 +168,8 @@ public extension VaultStore {
                 let mainScriptPath = try entry.path.appending("main.js")
                 let hasMainScript = try fileExists(mainScriptPath)
                 if hasMainScript { try Self.checkPluginScriptSize(at: mainScriptPath.url(in: root)) }
-                plugins.append(InstalledCommunityPlugin(folder: entry.path, manifest: manifest, compatibility: .assess(manifest: manifest, hasMainScript: hasMainScript)))
+                plugins.append(InstalledCommunityPlugin(folder: entry.path, manifest: manifest,
+                                                        compatibility: .assess(manifest: manifest, hasMainScript: hasMainScript)))
             } catch {
                 unreadableFolders.append(UnreadableCommunityPlugin(folder: entry.path, reason: error.localizedDescription))
             }
@@ -177,7 +180,7 @@ public extension VaultStore {
 
     private static func checkPluginScriptSize(at location: URL) throws {
         let size = try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-        if size > maximumPluginScriptBytes { throw GraphiteError.oversized("This plugin's main.js is too large for Graphite to read.") }
+        if size > maximumPluginScriptBytes { throw CommunityPluginListingProblem.scriptTooLarge }
     }
 
     /// The plugin's code and styles, read again so the runtime loads what is on disk now.
@@ -186,6 +189,19 @@ public extension VaultStore {
         let stylesPath = try plugin.folder.appending("styles.css")
         let styles = try fileExists(stylesPath) ? String(decoding: try read(stylesPath, maximumBytes: Self.maximumPluginStylesBytes).data, as: UTF8.self) : ""
         return CommunityPluginPackage(plugin: plugin, mainScript: String(decoding: mainScriptData, as: UTF8.self), styles: styles)
+    }
+}
+
+/// Why a plugin's folder, or the vault's files, were not listed for plugins.
+enum CommunityPluginListingProblem: LocalizedError {
+    case scriptTooLarge
+    case listingIsClosed
+
+    var errorDescription: String? {
+        switch self {
+        case .scriptTooLarge: "This plugin's main.js is too large for Graphite to read."
+        case .listingIsClosed: "This list of the vault's files is no longer open."
+        }
     }
 }
 
@@ -216,18 +232,21 @@ public actor CommunityPluginModuleScanner {
     public func inventory(_ inventory: CommunityPluginInventory, root: URL, isReadingCode: Bool) -> CommunityPluginInventory {
         let plugins = inventory.plugins.map { plugin -> InstalledCommunityPlugin in
             guard plugin.compatibility.blockers.contains(.missingMainScript) == false,
-                  let location = try? plugin.folder.appending("main.js").url(in: root),
+                  let location = try? plugin.folder.appending("main.js").url(in: root), // A folder name no path holds has nothing to scan.
                   let modules = modules(at: location, isReadingCode: isReadingCode) else { return plugin }
-            return InstalledCommunityPlugin(folder: plugin.folder, manifest: plugin.manifest, compatibility: plugin.compatibility.listing(missingModules: modules))
+            return InstalledCommunityPlugin(folder: plugin.folder, manifest: plugin.manifest,
+                                            compatibility: plugin.compatibility.listing(missingModules: modules))
         }
         return CommunityPluginInventory(plugins: plugins, unreadableFolders: inventory.unreadableFolders)
     }
 
     private func modules(at location: URL, isReadingCode: Bool) -> [CommunityPluginCompatibility.RequiredModule]? {
-        guard let values = try? location.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { return nil }
+        // A file that cannot be read lists no modules, which are only reported, never required.
+        guard let values = try? location.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]) else { return nil } // See above.
         let version = FileVersion(size: values.fileSize ?? 0, modified: values.contentModificationDate)
         if let scan = scans[location], scan.version == version { return scan.modules }
-        guard isReadingCode, version.size <= VaultStore.maximumPluginScriptBytes, let code = try? Data(contentsOf: location, options: .mappedIfSafe) else { return nil }
+        guard isReadingCode, version.size <= VaultStore.maximumPluginScriptBytes,
+              let code = try? Data(contentsOf: location, options: .mappedIfSafe) else { return nil } // As above.
         let modules = findModules(String(decoding: code, as: UTF8.self))
         scans[location] = (version, modules)
         return modules

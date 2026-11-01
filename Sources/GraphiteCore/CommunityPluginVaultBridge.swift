@@ -30,14 +30,11 @@ public struct CommunityPluginVaultBridge: Sendable {
     /// The most entries `vault.list` returns. Beyond it the runtime's file list is partial,
     /// and it is told so.
     public static let maximumListedEntries = 250_000
-    /// The most entries one `vault.list` answer holds; the rest follow, asked for by `nextPage`.
-    /// An answer crosses to the plugins' page on the main thread, so none is large.
-    public static let maximumListedEntriesPerPage = 2_000
     /// The largest file a plugin can read or write in one message.
     public static let maximumTransferredBytes = 64 * 1_048_576
 
     /// What is left of each listing asked for page by page.
-    private let openListings = OpenListings()
+    let openListings = CommunityPluginOpenListings()
 
     public init(store: VaultStore, deletionMethod: @escaping @Sendable () async -> DeletionMethod) {
         self.store = store
@@ -67,7 +64,10 @@ public struct CommunityPluginVaultBridge: Sendable {
         switch operation {
         case "vault.list":
             let request = try decoder.decode(ListRequest.self, from: messageData)
-            if let nextPage = request.nextPage { return try await continueListing(nextPage) }
+            if let nextPage = request.nextPage {
+                guard let remaining = await openListings.take(nextPage) else { throw CommunityPluginListingProblem.listingIsClosed }
+                return await listingAnswer(for: remaining, isTruncated: false)
+            }
             return try await listVault(under: VaultPath(request.folder ?? ""))
         case "vault.listFolder":
             return try listFolder(VaultPath(try decoder.decode(PathRequest.self, from: messageData).path))
@@ -149,63 +149,7 @@ public struct CommunityPluginVaultBridge: Sendable {
             }
             return (entries, false)
         }.value
-        var answer = Self.page(of: listing.entries.prefix(Self.maximumListedEntriesPerPage))
-        answer["isTruncated"] = listing.isTruncated
-        if listing.entries.count > Self.maximumListedEntriesPerPage {
-            answer["nextPage"] = await openListings.keep(listing.entries.dropFirst(Self.maximumListedEntriesPerPage))
-        }
-        return answer
-    }
-
-    private func continueListing(_ listingIdentifier: String) async throws -> [String: Any] {
-        guard let remaining = await openListings.take(listingIdentifier) else { throw GraphiteError.invalidFile("This list of the vault's files is no longer open.") }
-        var answer = Self.page(of: remaining.prefix(Self.maximumListedEntriesPerPage))
-        answer["isTruncated"] = false
-        if remaining.count > Self.maximumListedEntriesPerPage {
-            answer["nextPage"] = await openListings.keep(remaining.dropFirst(Self.maximumListedEntriesPerPage))
-        }
-        return answer
-    }
-
-    private static func page(of entries: ArraySlice<ListedEntry>) -> [String: Any] {
-        ["entries": entries.map { entry -> [String: Any] in
-            var dictionary = statDictionary(isFolder: entry.isFolder, size: entry.size, modified: entry.modified, created: entry.created)
-            dictionary["path"] = entry.path.rawValue
-            return dictionary
-        }]
-    }
-
-    /// The listings not fully sent yet. A runtime that stops midway leaves one here until
-    /// its bridge goes with it.
-    private actor OpenListings {
-        private var remainingByIdentifier: [String: ArraySlice<ListedEntry>] = [:]
-
-        func keep(_ remaining: ArraySlice<ListedEntry>) -> String {
-            let identifier = UUID().uuidString
-            remainingByIdentifier[identifier] = remaining
-            return identifier
-        }
-
-        func take(_ identifier: String) -> ArraySlice<ListedEntry>? {
-            remainingByIdentifier.removeValue(forKey: identifier)
-        }
-    }
-
-    /// One listed item, made off the main thread and turned into JSON afterwards.
-    fileprivate struct ListedEntry: Sendable {
-        let path: VaultPath
-        let isFolder: Bool
-        let size: Int
-        let modified: Date
-        let created: Date
-
-        init(path: VaultPath, values: URLResourceValues) {
-            self.path = path
-            isFolder = values.isDirectory == true
-            size = values.fileSize ?? 0
-            modified = values.contentModificationDate ?? .distantPast
-            created = values.creationDate ?? modified
-        }
+        return await listingAnswer(for: listing.entries[...], isTruncated: listing.isTruncated)
     }
 
     /// The direct children of `folder`, hidden ones included, as Obsidian's adapter lists them.
@@ -373,7 +317,7 @@ public struct CommunityPluginVaultBridge: Sendable {
         return statDictionary(isFolder: values.isDirectory == true, size: values.fileSize ?? 0, modified: modified, created: values.creationDate ?? modified)
     }
 
-    private static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
+    static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
         [
             "isFolder": isFolder,
             "size": isFolder ? 0 : size,
