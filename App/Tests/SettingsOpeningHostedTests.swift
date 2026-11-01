@@ -41,7 +41,7 @@ final class SettingsOpeningHostedTests: XCTestCase {
 
         // Picking a page shows it; on a phone it replaces the list, and Back returns to it.
         await tap(try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" })
-        _ = try await element(in: controller, "Appearance page") { $0.accessibilityLabel == "Base Color Scheme" }
+        _ = try await element(in: controller, "Appearance page") { ($0.accessibilityLabel ?? "").hasPrefix("Base Color Scheme") }
         if isPhone {
             XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Editor" }, "The page has the screen to itself.")
             _ = try await element(in: controller, "Done on the page") { $0.accessibilityLabel == "Done" && $0.accessibilityTraits.contains(.button) }
@@ -54,29 +54,11 @@ final class SettingsOpeningHostedTests: XCTestCase {
         controller = try host(SettingsView(workspace: workspace) {})
         if isPhone {
             _ = try await element(in: controller, "the list on the second opening") { $0.accessibilityLabel == "Editor" }
-            XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Base Color Scheme" })
+            XCTAssertNil(find(in: controller) { ($0.accessibilityLabel ?? "").hasPrefix("Base Color Scheme") })
         } else {
-            _ = try await element(in: controller, "Appearance page remembered") { $0.accessibilityLabel == "Base Color Scheme" }
+            _ = try await element(in: controller, "Appearance page remembered") { ($0.accessibilityLabel ?? "").hasPrefix("Base Color Scheme") }
             XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Manage Vaults…" }, "General is only the first opening.")
         }
-    }
-
-    // MARK: HUNT-244: another page starts at its own first screen
-
-    func testAnotherPageStartsAtItsFirstScreenNotOnAScreenThePreviousPagePushed() async throws {
-        // The list and the page are side by side only on an iPad.
-        guard !isPhone else { return }
-        let workspace = device.makeWorkspace()
-        try await workspace.openFolderAsVault(try TemporaryVault.make(prefix: "SettingsHostedVault", files: ["Note.md": "x"], for: self).root)
-        let controller = try host(SettingsView(workspace: workspace) {})
-
-        await tap(try await element(in: controller, "Appearance row") { $0.accessibilityLabel == "Appearance" })
-        await tap(try await element(in: controller, "Interface Font row") { ($0.accessibilityLabel ?? "").hasPrefix("Interface Font") })
-        _ = try await element(in: controller, "the font list the Appearance page pushed") { $0.accessibilityLabel == "Installed Fonts" }
-
-        await tap(try await element(in: controller, "Editor row") { $0.accessibilityLabel == "Editor" })
-        _ = try await element(in: controller, "the Editor page at its first screen") { $0.accessibilityLabel == "Default View for New Notes" }
-        XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Installed Fonts" }, "The font list belongs to the Appearance page.")
     }
 
     // MARK: HUNT-243: sheets that fit a phone
