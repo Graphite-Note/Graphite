@@ -103,3 +103,21 @@ Regression test: `AppProjectTextualPatchTests.testSpacesAndStyleChangesHaveNoCla
 `Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`preprocessMathList`), `Typesetter+DecoratedList.swift` (`boldOrdinarySymbol`): `\nabla`, `\partial`, `\epsilon`, `\vartheta`, `\phi`, `\varrho` and `\varpi` take their bold forms under `\bm` and `\mathbf`. Upstream's bold alphabets skipped them, as they are not letters to it, and the owner's vault has `\boldsymbol{\nabla}` 844 times. `\nabla` is upright, as in MathJax. Symbols with no bold form in Latin Modern, such as `\times` and `\ell`, stay regular, where MathJax draws them bold.
 
 Regression test: `AppProjectTextualPatchTests.testBoldSymbolsHaveTheirBoldForms`.
+
+## 17. Named colors, as MathJax reads them
+
+`Sources/SwiftUIMath/Internal/Helpers/FormulaColor.swift` (new, replacing `CGColor+HexString.swift`), `Internal/Display/DisplayNode.swift`, `DisplayNode+Outlines.swift`, `Typesetter.swift`: the argument of `\textcolor`, `\color` and `\colorbox` is read as MathJax 3.2.2 reads it. A name is looked up in its exact case among the 68 dvips names of MathJax's `color` package; anything else goes to CSS, so a name in any case or `#rgb` or `#rrggbb` is valid and anything else leaves the color around it. So `red` is CSS's `#FF0000` and `Red` is the package's `#ED1B23`. Upstream read only hex, so `\textcolor{red}{x}` drew in the text color; the owner's vault has red, blue, grey, orange, green, violet, magenta and brown about 190 times. The dvips table is generated from MathJax's `ColorConstants.ts`, and both tables were checked against what MathJax draws in a browser.
+
+Black and white are Graphite's own decision: by any name (`black`, `Black`, `white`) or as pure hex (`#000000`, `#000`, `#fff`), `\textcolor` and `\color` mean the formula's text color, where MathJax draws them literally. The vault has `\color{black}` 2,042 times and `\color{#000000}` 103 times, ending a colored passage, and `\color{white}` 3 times, for the formula inside a colored `\boxed`: each was written against one background, and the literal color would disappear on the other. Since `LaTeXCommandRewriting` nests what follows a `\color` in its group, this has to end the color around it, not inherit it: `DisplayNode.resetsToTextColor`, read by `MathOutlines`. `\colorbox{black}` stays black, as it is a background. `CGContext+DisplayNode.swift` is not called and does not read the reset (patch 5).
+
+Not read: a `\textcolor[rgb]{…}` model and CSS's `rgb(…)`, which cannot be parsed (the vault has neither), and `\definecolor`. `\colorbox`'s background is parsed and has never been drawn, in upstream or here (the vault has none).
+
+Regression tests: `AppProjectTextualPatchTests.testNamedColorsAreReadAsMathJaxReadsThem`, `testBlackAndWhiteAreTheTextColorEvenInsideAColor`. They read the pixels `Math` draws.
+
+## 18. `\dfrac`, `\tfrac`, `\dbinom`, `\tbinom` set the whole fraction in their style
+
+`Sources/SwiftUIMath/Internal/Syntax/Atoms/Fraction.swift` (`wholeStyle`), `Internal/Syntax/Parser.swift`, `Internal/Display/Typesetter.swift` (`makeFraction`): as in amsmath and MathJax (`AmsMethods.Genfrac`), these commands set the whole fraction in display or text style, whatever is around it: its shifts, gaps and delimiters are that style's, and its parts one style smaller. So `\tfrac{a}{b}` has script-size parts, and is the same fraction in display and inline math, in an exponent too. Upstream put `\textstyle` or `\displaystyle` in the numerator and denominator of a fraction in the surrounding style, so `\tfrac` in display math was as large as `\frac` (the vault has it 2,754 times), and inline `\dfrac` kept inline's tighter shifts. Patch 14's `\tbinom` put `\scriptstyle` in its parts, in the surrounding style's parentheses.
+
+`\frac` itself keeps upstream's `fractionStyle()`, its parts in the style around it. MathJax makes them one style smaller, so inline `\frac` and a `\frac` inside a `\frac` are drawn larger than in MathJax (`Docs/Coverage.md`).
+
+Regression test: `AppProjectTextualPatchTests.testFractionStylesSetTheWholeFractionInTheirStyle`.

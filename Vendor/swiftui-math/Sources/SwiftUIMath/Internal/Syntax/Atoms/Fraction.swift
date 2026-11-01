@@ -10,6 +10,9 @@ extension Math {
 
     var isContinuedFraction: Bool = false
     var alignment: String  // "l", "r", "c" for left, right, center
+    /// Graphite patch: the style \dfrac, \tfrac, \dbinom and \tbinom set the whole fraction in;
+    /// nil keeps the style around it.
+    var wholeStyle: Style.Level?
 
     override var description: String {
       [
@@ -44,6 +47,7 @@ extension Math {
       self.denominator = fraction.denominator.map { AtomList($0) }
       self.isContinuedFraction = fraction.isContinuedFraction
       self.alignment = fraction.alignment
+      self.wholeStyle = fraction.wholeStyle
 
       super.init(fraction)
     }

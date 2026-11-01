@@ -1029,7 +1029,7 @@ extension Math {
           let colorAtom = atom as! Color
           let display = Typesetter.createLineForMathList(
             colorAtom.innerList, font: font, style: style, maxWidth: maxWidth)
-          display!.localTextColor = CGColor.fromHexString(colorAtom.colorString)
+          display!.setTextColor(forArgument: colorAtom.colorString)
 
           // Check if we need to break before adding this colored content
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -1056,7 +1056,7 @@ extension Math {
           let colorAtom = atom as! TextColor
           let display = Typesetter.createLineForMathList(
             colorAtom.innerList, font: font, style: style, maxWidth: maxWidth)
-          display!.localTextColor = CGColor.fromHexString(colorAtom.colorString)
+          display!.setTextColor(forArgument: colorAtom.colorString)
 
           // Check if we need to break before adding this colored content
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -1094,7 +1094,7 @@ extension Math {
           let display = Typesetter.createLineForMathList(
             colorboxAtom.innerList, font: font, style: style, maxWidth: maxWidth)
 
-          display!.localBackgroundColor = CGColor.fromHexString(colorboxAtom.colorString)
+          display!.localBackgroundColor = FormulaColor.color(forArgument: colorboxAtom.colorString)
 
           // Check if we need to break before adding this colorbox
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -2121,10 +2121,19 @@ extension Math {
       let numeratorStyle: Style.Level
       let denominatorStyle: Style.Level
 
+      // Graphite patch: \dfrac and \tfrac set the whole fraction in their style, as TeX does, for
+      // its shifts, gaps and delimiters too, and the parts one style smaller.
+      let surroundingStyle = style
+      if let wholeStyle = frac!.wholeStyle { style = wholeStyle }
+      defer { style = surroundingStyle }
+
       if frac!.isContinuedFraction {
         // Continued fractions always use display style
         numeratorStyle = .display
         denominatorStyle = .display
+      } else if let wholeStyle = frac!.wholeStyle {
+        numeratorStyle = wholeStyle == .display ? .text : .script
+        denominatorStyle = numeratorStyle
       } else {
         // Regular fractions use adaptive style
         let fractionStyle = self.fractionStyle

@@ -6,7 +6,7 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 01/11/2026
  */
 
@@ -596,6 +596,115 @@ final class AppProjectTextualPatchTests: XCTestCase {
         XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{x}"#), try inkPixelCount("x"))
         XCTAssertGreaterThan(try inkPixelCount(#"\pmb{\alpha}"#), try inkPixelCount(#"\alpha"#))
         XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{1}"#), try inkPixelCount("1"))
+    }
+
+    // MARK: SwiftUIMath patches 17 and 18, colors and fraction styles as MathJax draws them
+
+    private static let formulaTextColor = (red: 238, green: 221, blue: 204)
+    private static let formulaPageColor = (red: 16, green: 16, blue: 16)
+
+    /// How many pixels of a formula are exactly `color` (the middle of its strokes, not their
+    /// edges), drawn as `Math` draws it (patch 5) in a text color no name gives, on a dark page.
+    private func pixelCount(of latex: String, in color: (red: Int, green: Int, blue: Int), file: StaticString = #filePath, line: UInt = #line) throws -> Int {
+        func swiftUIColor(_ color: (red: Int, green: Int, blue: Int)) -> SwiftUI.Color {
+            SwiftUI.Color(.sRGB, red: Double(color.red) / 255, green: Double(color.green) / 255, blue: Double(color.blue) / 255)
+        }
+        let drawn = LaTeXCompatibility.normalized(latex)
+        let renderer = ImageRenderer(content: Math(drawn)
+            .mathFont(.init(name: .latinModern, size: Self.mathFontSize))
+            .mathRenderingMode(.multicolor(base: swiftUIColor(Self.formulaTextColor)))
+            .padding(10)
+            .background(swiftUIColor(Self.formulaPageColor)))
+        renderer.scale = 3
+        let image = try XCTUnwrap(renderer.cgImage, latex, file: file, line: line)
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                              space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return stride(from: 0, to: pixels.count, by: 4).filter { offset in
+            abs(Int(pixels[offset]) - color.red) <= 3 && abs(Int(pixels[offset + 1]) - color.green) <= 3 && abs(Int(pixels[offset + 2]) - color.blue) <= 3
+        }.count
+    }
+
+    /// Patch 17. The vault has `\textcolor{red}` and its kin about 190 times, which drew in the
+    /// text color. The values are what MathJax 3.2.2 gives each name in a browser: `red` is CSS's,
+    /// `Red` is the `color` package's.
+    func testNamedColorsAreReadAsMathJaxReadsThem() throws {
+        let colors: [(argument: String, color: (red: Int, green: Int, blue: Int))] = [
+            ("red", (255, 0, 0)), ("blue", (0, 0, 255)), ("grey", (128, 128, 128)), ("orange", (255, 165, 0)),
+            ("green", (0, 128, 0)), ("violet", (238, 130, 238)), ("magenta", (255, 0, 255)), ("brown", (165, 42, 42)),
+            ("Red", (237, 27, 35)), ("Blue", (45, 47, 146)), ("Green", (0, 166, 79)), ("RED", (255, 0, 0)), ("DarkBlue", (0, 0, 139)),
+            ("#7852ee", (120, 82, 238)), ("#f80", (255, 136, 0)),
+        ]
+        for (argument, color) in colors {
+            for latex in [#"\textcolor{\#(argument)}{x+y}"#, #"\color{\#(argument)} x+y"#] {
+                XCTAssertGreaterThan(try pixelCount(of: latex, in: color), 100, latex)
+                XCTAssertEqual(try pixelCount(of: latex, in: Self.formulaTextColor), 0, latex)
+            }
+        }
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{notacolor}{x+y}"#, in: Self.formulaTextColor), 100, "CSS ignores what it cannot read: the text color.")
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{red}{x\textcolor{notacolor}{y}}"#, in: (255, 0, 0)), try pixelCount(of: #"\textcolor{red}{x}"#, in: (255, 0, 0)), "It inherits the color around it.")
+    }
+
+    /// Patch 17. The vault has `\color{black}` 2,042 times, `\color{#000000}` 103 times and
+    /// `\color{white}` 3 times, each ending a colored passage: they must stay readable on either
+    /// background, also inside the color they end.
+    func testBlackAndWhiteAreTheTextColorEvenInsideAColor() throws {
+        let red = (red: 255, green: 0, blue: 0)
+        let blue = (red: 0, green: 0, blue: 255)
+        for argument in ["black", "Black", "BLACK", "white", "White", "#000000", "#000", "#ffffff", "#FFF"] {
+            let alone = try pixelCount(of: #"\textcolor{\#(argument)}{x+y}"#, in: Self.formulaTextColor)
+            XCTAssertGreaterThan(alone, 100, argument)
+            XCTAssertEqual(try pixelCount(of: #"\textcolor{red}{\textcolor{\#(argument)}{x+y}}"#, in: Self.formulaTextColor), alone, argument)
+            XCTAssertEqual(try pixelCount(of: #"\textcolor{red}{\textcolor{\#(argument)}{x+y}}"#, in: red), 0, argument)
+        }
+        let redInk = try pixelCount(of: #"\textcolor{red}{x+y}"#, in: red)
+        for declarations in [#"\color{red} x+y \color{black} x+y"#, #"{\color{red} x+y \color{#000000} x+y}"#] {
+            XCTAssertEqual(try pixelCount(of: declarations, in: red), redInk, accuracy: redInk / 10, declarations)
+            XCTAssertGreaterThan(try pixelCount(of: declarations, in: Self.formulaTextColor), 100, declarations)
+        }
+        let frame = #"\color{red}\boxed{\color{white} x+y}"#
+        XCTAssertGreaterThan(try pixelCount(of: frame, in: red), redInk / 2, "The frame stays red, the formula in it is text.")
+        XCTAssertGreaterThan(try pixelCount(of: frame, in: Self.formulaTextColor), 100)
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{black}{\textcolor{blue}{x+y}}"#, in: blue), 100, "A color inside the text color is drawn.")
+        XCTAssertEqual(try pixelCount(of: #"\textcolor{black}{\textcolor{blue}{x+y}}"#, in: Self.formulaTextColor), 0)
+    }
+
+    /// A formula's width and height set inline, in text style, where `mathMetrics` sets it in display style.
+    private func inlineMathMetrics(_ latex: String, file: StaticString = #filePath, line: UInt = #line) throws -> InlineMathRendering.Metrics {
+        try XCTUnwrap(InlineMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: Self.mathFontSize), latex, file: file, line: line)
+    }
+
+    /// Patch 18. The vault has `\tfrac` 2,754 times, which in display math was as large as `\frac`.
+    /// As in TeX and MathJax, `\tfrac` and `\dfrac` are the same fraction in display and inline
+    /// math, its parts one style smaller than the whole.
+    func testFractionStylesSetTheWholeFractionInTheirStyle() throws {
+        for fraction in [#"\tfrac{a}{b}"#, #"\dfrac{a}{b}"#, #"\tbinom{n}{k}"#, #"\dbinom{n}{k}"#] {
+            let inDisplay = try mathMetrics(fraction)
+            let inline = try inlineMathMetrics(fraction)
+            XCTAssertEqual(inDisplay.width, inline.width, accuracy: 0.01, fraction)
+            XCTAssertEqual(inDisplay.ascent, inline.ascent, accuracy: 0.01, fraction)
+            XCTAssertEqual(inDisplay.descent, inline.descent, accuracy: 0.01, fraction)
+        }
+        XCTAssertEqual(try mathMetrics(#"\tfrac{a}{b}"#).width, try mathMetrics(#"\frac{\scriptstyle a}{\scriptstyle b}"#).width, accuracy: 0.01, "The parts of \\tfrac are script size.")
+        XCTAssertEqual(try inlineMathMetrics(#"\dfrac{a}{b}"#).width, try inlineMathMetrics(#"\frac{a}{b}"#).width, accuracy: 0.01, "The parts of \\dfrac are text size.")
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\dfrac{a}{b}"#).ascent, try inlineMathMetrics(#"\frac{a}{b}"#).ascent, "Display style's larger shifts, inline too.")
+
+        let textFraction = try mathMetrics(#"\tfrac{a}{b}"#)
+        let displayFraction = try mathMetrics(#"\dfrac{a}{b}"#)
+        XCTAssertEqual(textFraction.width / displayFraction.width, 0.7, accuracy: 0.05, "Latin Modern's script size is 70 %.")
+        XCTAssertLessThan(textFraction.ascent + textFraction.descent, 0.75 * (displayFraction.ascent + displayFraction.descent))
+        XCTAssertGreaterThan(try mathMetrics(#"x^{\dfrac{a}{b}}"#).width, try mathMetrics(#"x^{\tfrac{a}{b}}"#).width, "Display style in an exponent, as in TeX.")
+        XCTAssertLessThan(try mathMetrics(#"\tbinom{n}{k}"#).ascent, try mathMetrics(#"\dbinom{n}{k}"#).ascent, "The parentheses follow the style.")
+
+        XCTAssertEqual(try mathMetrics(#"\tfrac{a}{b}\int"#).ascent, try mathMetrics(#"\int"#).ascent, accuracy: 0.01, "What follows is back in display style.")
+
+        let long = #"\tfrac{a}{b}+\tfrac{c}{d}+\tfrac{e}{f}+\tfrac{g}{h}+\tfrac{i}{j}+\tfrac{k}{l}"#
+        let natural = try mathMetrics(long)
+        let width = natural.width * 0.6
+        let broken = try XCTUnwrap(DisplayMathRendering.metrics(for: long, fontSize: Self.mathFontSize, fittingWidth: width))
+        XCTAssertLessThanOrEqual(broken.width, width + Self.mathFontSize)
+        XCTAssertGreaterThan(broken.ascent + broken.descent, 1.5 * (natural.ascent + natural.descent), "Wrapping keeps it small.")
     }
 
     /// Commands rewritten for the typesetter reach it as text it can draw.

@@ -27,7 +27,7 @@ struct MathOutlines {
   }
 
   private mutating func add(_ node: Math.DisplayNode, transform: CGAffineTransform, color: CGColor?, usesFormulaColors: Bool) {
-    let color = usesFormulaColors ? (node.localTextColor ?? node.textColor ?? color) : nil
+    let color = usesFormulaColors && !node.resetsToTextColor ? (node.localTextColor ?? node.textColor ?? color) : nil
 
     switch node {
     case let list as Math.DisplayList:
