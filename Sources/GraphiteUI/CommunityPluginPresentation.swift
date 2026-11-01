@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginPresentation.swift
+ * ---------------------------------------
+ * Layer: UI
+ * Description: The plugin panel, notices and menus shown over the workspace.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import WebKit
 import GraphiteCore
@@ -154,7 +165,11 @@ struct CommunityPluginPanel: View {
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { host.panelDidClose() } }
                 }
         }
+        // An iOS sheet cannot be wider than the screen, so a minimum would only cut the plugin's
+        // panel off at the edges of a phone or Slide Over; the Mac's sheet fits its content.
+        #if os(macOS)
         .frame(minWidth: 420, minHeight: 360)
+        #endif
     }
 }
 

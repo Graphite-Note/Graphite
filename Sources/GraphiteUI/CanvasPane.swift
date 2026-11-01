@@ -95,7 +95,8 @@ struct CanvasPane: View {
             imageActions: ReadingImageActions(providerIdentity: ObjectIdentifier(workspace), viewImage: { [workspace] path in
                 workspace.viewedImageNote = nil
                 workspace.viewedImage = path
-            }, editDrawing: nil))
+            }, editDrawing: nil),
+            pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn)
     }
 
     /// How Markdown on cards reads: as in reading view, without the properties, which an

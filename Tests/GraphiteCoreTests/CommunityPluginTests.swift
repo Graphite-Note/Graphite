@@ -2,7 +2,7 @@
  * File: CommunityPluginTests.swift
  * --------------------------------
  * Layer: Tests
- * Description: Obsidian community plugin packages in a vault, and the bridge the plugin runtime's file
+ * Description: Plugin lists, manifests, inventory and the vault bridge's answers.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.8
@@ -100,7 +100,9 @@ final class CommunityPluginTests: XCTestCase {
                   to: ".obsidian/plugins/sample/main.js")
         try write("{\"id\": \"desk\", \"name\": \"Desk\", \"isDesktopOnly\": true, \"minAppVersion\": \"9.0.0\"}", to: ".obsidian/plugins/desk/manifest.json")
         try write("not json", to: ".obsidian/plugins/broken/manifest.json")
-        let inventory = try await VaultStore(root: vault).installedCommunityPlugins()
+        let listed = try await VaultStore(root: vault).installedCommunityPlugins()
+        XCTAssertEqual(listed.plugins.first { plugin in plugin.id == "sample" }?.compatibility.missingModules, [], "Listing plugins does not read their code.")
+        let inventory = await CommunityPluginModuleScanner().inventory(listed, root: vault, isReadingCode: true)
         XCTAssertEqual(inventory.plugins.map(\.id), ["desk", "sample"])
         let sample = try XCTUnwrap(inventory.plugins.first { plugin in plugin.id == "sample" })
         XCTAssertTrue(sample.compatibility.canLoad)

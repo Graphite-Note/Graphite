@@ -2,7 +2,8 @@
  * File: community-plugin-runtime-metadata.js
  * ------------------------------------------
  * Layer: UI
- * Description: The plugin runtime's metadata cache: frontmatter, links and how link paths resolve, as in Obsidian.
+ * Description: Obsidian's MetadataCache for plugins: notes read when asked for, and the whole vault only for a
+ *              plugin that needs it.
  *
  * Authors: Bahey Shalash
  * Version: 0.4
@@ -12,8 +13,10 @@
 // Obsidian's `MetadataCache` for plugins: the headings, links, embeds, tags, sections,
 // list items, blocks and frontmatter of every note, with Obsidian's positions (line,
 // column, and offset in UTF-16 code units), and the vault's resolved and unresolved links.
-// Notes are read once in the background and again when they change; only the metadata
-// is kept, never the text. Notes a file provider has not downloaded are not read.
+// A note is read when something asks for it (a plugin's `getFileCache`, a base's rows, the
+// note being opened) and again when it changes; the whole vault is read, behind everything a
+// person waits for, only once a plugin asks for what needs all of it. Only the metadata is
+// kept, never the text. Notes a file provider has not downloaded are not read.
 (function installRuntimeMetadata(globalScope) {
     'use strict';
 
@@ -25,8 +28,18 @@
     /// Notes larger than this are not read for metadata, so one huge file cannot hold
     /// the background reading up or fill memory.
     const maximumIndexedNoteBytes = 4 * 1024 * 1024;
-    /// How many notes are read at once while the cache fills.
+    /// How many notes something is waiting for are read at once.
     const concurrentNoteReads = 4;
+    /// The pass over the whole vault goes behind those: fewer at once, with a pause between
+    /// reads, so a person opening and typing in notes never waits on it.
+    const concurrentBackgroundReads = 2;
+    const backgroundReadPauseMilliseconds = 10;
+    /// How long the pass waits after it is asked for, and after a person's last action: a
+    /// launch or an open note goes first.
+    const backgroundReadDelayMilliseconds = 4000;
+    /// Asking for more unread notes than this means a plugin is going over the vault note by
+    /// note (it would never get far one miss at a time), so the pass runs for it.
+    const unreadNotesThatMeanAScan = 64;
 
     // MARK: Parsing one note
 
@@ -373,27 +386,62 @@
             this.app = app;
             this.vault = app.vault;
             this.metadataByPath = new Map();
-            this.resolvedLinks = {};
-            this.unresolvedLinks = {};
+            this.resolvedLinksBySource = {};
+            this.unresolvedLinksBySource = {};
             this.filesByLowercasedName = new Map();
             this.isInitialReadComplete = false;
             this.resolutionTimer = null;
+            /// Reads something is waiting for.
             this.readQueue = [];
+            /// The pass over the whole vault, read when `readQueue` is empty.
+            this.backgroundReadQueue = [];
             this.activeReadCount = 0;
+            this.activeBackgroundReadCount = 0;
             /// The newest read asked for each note whose read is queued or in flight.
             this.newestReadByFile = new Map();
+            /// Notes read, or found unreadable (too large, not downloaded), since they last
+            /// changed: asking again for one with no metadata does not read it again.
+            this.readAttemptedPaths = new Set();
+            this.isFollowingNotes = false;
+            this.unreadNotesAskedFor = 0;
+            this.wholeVaultRead = null;
+            this.wholeVaultReadTimer = null;
+            this.backgroundReadTimer = null;
+            this.backgroundReadsWaitUntil = 0;
         }
 
         // Obsidian's public API.
 
+        /// A note not read yet has no metadata now; it is read at once, and `changed` says so.
         getFileCache(file) {
-            return file ? this.metadataByPath.get(file.path) || null : null;
+            if (!file) return null;
+            const metadata = this.metadataByPath.get(file.path);
+            if (!metadata) this.notePluginAskedFor(file);
+            return metadata || null;
         }
         getCache(path) {
-            return this.metadataByPath.get(normalizePath(path)) || null;
+            const normalizedPath = normalizePath(path);
+            const metadata = this.metadataByPath.get(normalizedPath);
+            if (!metadata) this.notePluginAskedFor(this.vault.getFileByPath(normalizedPath));
+            return metadata || null;
+        }
+        /// Plugins that wait for `resolved` want every note read, so asking for it starts the
+        /// pass over the vault.
+        on(eventName, callback, context) {
+            if (eventName === 'resolved' || eventName === 'resolve') this.requestWholeVaultRead();
+            return super.on(eventName, callback, context);
+        }
+        get resolvedLinks() {
+            this.requestWholeVaultRead();
+            return this.resolvedLinksBySource;
+        }
+        get unresolvedLinks() {
+            this.requestWholeVaultRead();
+            return this.unresolvedLinksBySource;
         }
         /// The paths of every note read so far (undocumented, widely used).
         getCachedFiles() {
+            this.requestWholeVaultRead();
             return Array.from(this.metadataByPath.keys());
         }
         isUserIgnored() {
@@ -417,6 +465,7 @@
             return destination ? [destination] : [];
         }
         getTags() {
+            this.requestWholeVaultRead();
             const counts = {};
             for (const metadata of this.metadataByPath.values()) {
                 for (const tag of exportedApi.getAllTags(metadata) || []) counts[tag] = (counts[tag] || 0) + 1;
@@ -424,6 +473,7 @@
             return counts;
         }
         getBacklinksForFile(file) {
+            this.requestWholeVaultRead();
             const data = new Map();
             for (const [sourcePath, metadata] of this.metadataByPath) {
                 const references = [].concat(metadata.links || [], metadata.embeds || [], metadata.frontmatterLinks || []);
@@ -433,6 +483,7 @@
             return { data, keys: () => Array.from(data.keys()), get: (key) => data.get(key) || null, count: () => data.size };
         }
         getAllPropertyInfos() {
+            this.requestWholeVaultRead();
             const properties = {};
             for (const metadata of this.metadataByPath.values()) {
                 for (const key of Object.keys(metadata.frontmatter || {})) {
@@ -444,6 +495,7 @@
             return properties;
         }
         getFrontmatterPropertyValuesForKey(key) {
+            this.requestWholeVaultRead();
             const values = new Set();
             for (const metadata of this.metadataByPath.values()) {
                 const value = metadata.frontmatter ? metadata.frontmatter[key] : undefined;
@@ -519,13 +571,13 @@
                     else if (linkpath) unresolved[linkpath] = (unresolved[linkpath] || 0) + 1;
                 }
             }
-            this.resolvedLinks[sourcePath] = resolved;
-            this.unresolvedLinks[sourcePath] = unresolved;
+            this.resolvedLinksBySource[sourcePath] = resolved;
+            this.unresolvedLinksBySource[sourcePath] = unresolved;
         }
 
         resolveAllLinks() {
-            this.resolvedLinks = {};
-            this.unresolvedLinks = {};
+            this.resolvedLinksBySource = {};
+            this.unresolvedLinksBySource = {};
             for (const file of this.vault.getMarkdownFiles()) {
                 this.resolveLinksOf(file.path);
                 this.trigger('resolve', file);
@@ -543,27 +595,77 @@
 
         // Reading notes.
 
-        /// Starts reading every note in the background; `resolved` fires when done.
-        startInitialRead() {
+        /// Ready to read notes. None is read yet: a vault with no plugin that uses metadata
+        /// never reads one, however many notes it holds.
+        startFollowingNotes() {
             this.rebuildNameIndex();
+            this.isFollowingNotes = true;
+        }
+
+        /// The pass over the whole vault, wanted by a plugin; `resolved` fires when it is done.
+        /// It starts after a pause, so what the person is opening goes first.
+        requestWholeVaultRead() {
+            if (this.wholeVaultRead || this.wholeVaultReadTimer !== null || !this.isFollowingNotes) return;
+            this.wholeVaultReadTimer = globalScope.setTimeout(() => {
+                this.wholeVaultReadTimer = null;
+                this.readWholeVaultNow();
+            }, backgroundReadDelayMilliseconds);
+        }
+
+        /// Reads every note not read yet, behind any read something waits for.
+        readWholeVaultNow() {
+            if (this.wholeVaultRead) return this.wholeVaultRead;
+            if (this.wholeVaultReadTimer !== null) globalScope.clearTimeout(this.wholeVaultReadTimer);
+            this.wholeVaultReadTimer = null;
             const notes = this.vault.getMarkdownFiles();
-            if (notes.length === 0) {
-                this.isInitialReadComplete = true;
-                this.resolveAllLinks();
-                return Promise.resolve();
-            }
-            return new Promise((resolve) => {
+            this.wholeVaultRead = new Promise((resolve) => {
                 let remaining = notes.length;
+                const finish = () => {
+                    this.isInitialReadComplete = true;
+                    this.resolveAllLinks();
+                    resolve();
+                };
+                if (notes.length === 0) { finish(); return; }
                 const finishOne = () => {
                     remaining -= 1;
-                    if (remaining === 0) {
-                        this.isInitialReadComplete = true;
-                        this.resolveAllLinks();
-                        resolve();
-                    }
+                    if (remaining === 0) finish();
                 };
-                for (const note of notes) this.enqueueRead(note, false, finishOne);
+                for (const note of notes) {
+                    const queuedRead = { file: note, isChange: false, completion: finishOne, isBackground: true };
+                    if (!this.newestReadByFile.has(note)) this.newestReadByFile.set(note, queuedRead);
+                    this.backgroundReadQueue.push(queuedRead);
+                }
+                this.pumpReadQueue();
             });
+            return this.wholeVaultRead;
+        }
+
+        /// The person just did something (opened a note, typed): the pass waits.
+        holdBackgroundReads() {
+            this.backgroundReadsWaitUntil = Date.now() + backgroundReadDelayMilliseconds;
+        }
+
+        /// Something asked for a note with no metadata: it goes ahead of the pass. A plugin
+        /// listening for `changed` hears when it arrives. False when no read was needed.
+        readOnDemand(file) {
+            if (!file || file.extension !== 'md' || !this.isFollowingNotes || this.readAttemptedPaths.has(file.path)) return false;
+            const newestRead = this.newestReadByFile.get(file);
+            if (newestRead && !newestRead.isBackground) return false;
+            this.enqueueRead(file, true);
+            return true;
+        }
+
+        notePluginAskedFor(file) {
+            if (!this.readOnDemand(file)) return;
+            this.unreadNotesAskedFor += 1;
+            if (this.unreadNotesAskedFor > unreadNotesThatMeanAScan) this.requestWholeVaultRead();
+        }
+
+        /// Reads these notes now, for one who waits for the answer (a base about to draw its
+        /// rows): the promise settles when every note was read, or found unreadable.
+        readNow(files) {
+            const unread = (files || []).filter((file) => file && file.extension === 'md' && !this.metadataByPath.has(file.path) && !this.readAttemptedPaths.has(file.path));
+            return Promise.all(unread.map((file) => new Promise((resolve) => this.enqueueRead(file, false, resolve))));
         }
 
         /// Only the newest read asked for a note stores what it finds, as answers can arrive
@@ -571,30 +673,52 @@
         /// the note before that (through the vault's `create` or `modify` event), so an older
         /// read never replaces the written text.
         enqueueRead(file, isChange, completion) {
-            const queuedRead = { file, isChange, completion };
+            const queuedRead = { file, isChange, completion, isBackground: false };
             this.newestReadByFile.set(file, queuedRead);
             this.readQueue.push(queuedRead);
             this.pumpReadQueue();
         }
 
         pumpReadQueue() {
-            while (this.activeReadCount < concurrentNoteReads && this.readQueue.length > 0) {
-                const queued = this.readQueue.shift();
-                this.activeReadCount += 1;
-                this.readNote(queued).catch((error) => console.warn('Graphite could not read “' + queued.file.path + '” for plugins.', error)).finally(() => {
-                    this.activeReadCount -= 1;
-                    if (this.newestReadByFile.get(queued.file) === queued) this.newestReadByFile.delete(queued.file);
-                    if (queued.completion) queued.completion();
-                    this.pumpReadQueue();
-                });
-            }
+            while (this.activeReadCount < concurrentNoteReads && this.readQueue.length > 0) this.startRead(this.readQueue.shift());
+            if (this.readQueue.length === 0 && this.backgroundReadQueue.length > 0) this.scheduleBackgroundRead();
+        }
+
+        /// The next read of the pass, after its pause, when the person has been still for long
+        /// enough and nothing else waits.
+        scheduleBackgroundRead() {
+            if (this.backgroundReadTimer !== null || this.activeBackgroundReadCount >= concurrentBackgroundReads) return;
+            const pause = Math.max(backgroundReadPauseMilliseconds, this.backgroundReadsWaitUntil - Date.now());
+            this.backgroundReadTimer = globalScope.setTimeout(() => {
+                this.backgroundReadTimer = null;
+                if (this.backgroundReadsWaitUntil > Date.now()) { this.scheduleBackgroundRead(); return; }
+                if (this.readQueue.length === 0 && this.backgroundReadQueue.length > 0) {
+                    this.startRead(this.backgroundReadQueue.shift());
+                    this.scheduleBackgroundRead();
+                }
+            }, pause);
+        }
+
+        startRead(queued) {
+            if (queued.isBackground) this.activeBackgroundReadCount += 1;
+            this.activeReadCount += 1;
+            this.readNote(queued).catch((error) => console.warn('Graphite could not read “' + queued.file.path + '” for plugins.', error)).finally(() => {
+                this.activeReadCount -= 1;
+                if (queued.isBackground) this.activeBackgroundReadCount -= 1;
+                if (this.newestReadByFile.get(queued.file) === queued) this.newestReadByFile.delete(queued.file);
+                if (queued.completion) queued.completion();
+                this.pumpReadQueue();
+            });
         }
 
         async readNote(queuedRead) {
             const file = queuedRead.file;
             const isNewestRead = () => this.newestReadByFile.get(file) === queuedRead;
             if (file.extension !== 'md' || this.vault.getFileByPath(file.path) !== file || !isNewestRead()) return;
+            // The pass does not read again what something already asked for.
+            if (queuedRead.isBackground && this.readAttemptedPaths.has(file.path)) return;
             const response = await hostBridge.send('vault.read', { path: file.path, encoding: 'text', isSkippingCloudFiles: true, maximumBytes: maximumIndexedNoteBytes });
+            if (this.vault.getFileByPath(file.path) === file && isNewestRead()) this.readAttemptedPaths.add(file.path);
             if (response.isNotDownloaded || response.isTooLarge || typeof response.text !== 'string') return;
             if (this.vault.getFileByPath(file.path) !== file || !isNewestRead()) return;
             const metadata = new NoteParser(response.text).parse();
@@ -603,7 +727,8 @@
                 this.resolveLinksOf(file.path);
                 this.trigger('changed', file, response.text, metadata);
                 this.trigger('resolve', file);
-                this.trigger('resolved');
+                // A plugin takes `resolved` to mean every note is indexed, as in Obsidian.
+                if (this.isInitialReadComplete) this.trigger('resolved');
             }
         }
 
@@ -613,6 +738,7 @@
         indexWrittenText(file, text) {
             if (!file || file.extension !== 'md' || typeof text !== 'string') return;
             this.metadataByPath.set(file.path, new NoteParser(text).parse());
+            this.readAttemptedPaths.add(file.path);
             this.resolveLinksOf(file.path);
         }
 
@@ -622,19 +748,24 @@
             this.vault.on('create', (abstractFile) => {
                 if (!(abstractFile instanceof TFile)) return;
                 this.addToNameIndex(abstractFile);
+                this.readAttemptedPaths.delete(abstractFile.path);
                 if (abstractFile.extension === 'md') this.enqueueRead(abstractFile, true);
                 this.scheduleLinkResolution();
             });
             this.vault.on('modify', (abstractFile) => {
-                if (abstractFile instanceof TFile && abstractFile.extension === 'md') this.enqueueRead(abstractFile, true);
+                if (abstractFile instanceof TFile && abstractFile.extension === 'md') {
+                    this.readAttemptedPaths.delete(abstractFile.path);
+                    this.enqueueRead(abstractFile, true);
+                }
             });
             this.vault.on('delete', (abstractFile) => {
                 if (!(abstractFile instanceof TFile)) return;
                 this.removeFromNameIndex(abstractFile);
                 const previousMetadata = this.metadataByPath.get(abstractFile.path) || null;
                 this.metadataByPath.delete(abstractFile.path);
-                delete this.resolvedLinks[abstractFile.path];
-                delete this.unresolvedLinks[abstractFile.path];
+                this.readAttemptedPaths.delete(abstractFile.path);
+                delete this.resolvedLinksBySource[abstractFile.path];
+                delete this.unresolvedLinksBySource[abstractFile.path];
                 this.trigger('deleted', abstractFile, previousMetadata);
                 this.scheduleLinkResolution();
             });
@@ -647,8 +778,9 @@
                     this.metadataByPath.delete(oldPath);
                     this.metadataByPath.set(abstractFile.path, metadata);
                 }
-                delete this.resolvedLinks[oldPath];
-                delete this.unresolvedLinks[oldPath];
+                if (this.readAttemptedPaths.delete(oldPath)) this.readAttemptedPaths.add(abstractFile.path);
+                delete this.resolvedLinksBySource[oldPath];
+                delete this.unresolvedLinksBySource[oldPath];
                 this.scheduleLinkResolution();
             });
         }

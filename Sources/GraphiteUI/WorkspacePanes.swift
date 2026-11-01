@@ -684,10 +684,13 @@ struct TabDocumentView: View {
                 if let store = workspace.store, let index = workspace.index {
                     BaseDocumentView(path: path, viewName: document.baseViewRequest.flatMap { request in request.path == path ? request.viewName : nil },
                                      store: store, index: index, contentVersion: workspace.indexVersion,
+                                     contentChange: workspace.lastIndexChange,
                                      isIndexComplete: workspace.isIndexUsable,
                                      open: { target in Task { await workspace.open(target) } },
-                                     filesChanged: { paths in workspace.filesSavedOutsideEditors(paths) })
-                    .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil)
+                                     filesChanged: { paths in workspace.filesSavedOutsideEditors(paths) },
+                                     modelCache: document.baseModelCache,
+                                     viewRequestApplied: { document.baseViewRequest = nil })
+                    .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 }
             case .media:
                 // One player per file: its playback, size and duration are not carried over

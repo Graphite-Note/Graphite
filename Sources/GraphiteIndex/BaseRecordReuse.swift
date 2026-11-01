@@ -2,7 +2,7 @@
  * File: BaseRecordReuse.swift
  * ---------------------------
  * Layer: Index
- * Description: Records a base query loaded, each with the index row it was read from, so the next
+ * Description: Records a base query loaded, so the next query reads again only the files that changed.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -37,6 +37,11 @@ public struct LoadedBaseRecords: Sendable {
     let rereadRecordCount: Int
     /// Records held for the next query.
     public var recordCount: Int { recordsByPath.count }
+
+    /// The record a query went through for this file; nil when it did not go through it.
+    public func record(at path: VaultPath) -> BaseFileRecord? {
+        recordsByPath[path.rawValue]?.record
+    }
 
     /// Nothing loaded yet: the next query reads every record.
     public init() {

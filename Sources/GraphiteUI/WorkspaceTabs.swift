@@ -2,9 +2,9 @@
  * File: WorkspaceTabs.swift
  * -------------------------
  * Layer: UI
- * Description: A window's tabs: what each holds, opening files into them and closing them.
+ * Description: Each tab's documents and opening a file in a tab.
  *
- * Authors: Bahey Shalash, felixchvl
+ * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.28
  * Date: 01/11/2026
  */
@@ -37,8 +37,11 @@ final class TabDocument {
     /// Where the graph was left (its zoom, position and framing), so it comes back as it was
     /// when the tab is in front again.
     var graphPlace: GraphCanvasPlace?
-    /// The view a `[[Books.base#Gallery]]` link asked the tab's base to show.
+    /// The view a `[[Books.base#Gallery]]` link asked the tab's base to show, until it is shown.
     var baseViewRequest: BaseViewRequest?
+    /// The tab's base as the person left it (the view chosen, a column's sort), while another
+    /// document is in front and its view is gone.
+    let baseModelCache = EmbeddedBaseModelCache(capacity: 1)
     /// A notebook to create from the tab's note, asked for by the note's menus or the
     /// command palette; the note's pane shows the New Notebook sheet for it.
     var notebookInsertion: NotebookInsertionRequest?

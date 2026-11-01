@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginTyping.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: Typing in a note, for plugins: each change as a small message, and the suggestions plugins answer.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -30,20 +41,25 @@ extension CommunityPluginHost {
     /// suggest as the person types, nil otherwise.
     func editorDidChange(in session: MarkdownSession) -> Int? {
         guard isRuntimeRunning, hasEditorSuggestions || hasEditorChangeListeners, let workspace, workspace.markdownSession === session,
-              (session.text as NSString).length <= Self.maximumTypingNoteLength else { return nil }
+              // No more UTF-16 units than UTF-8 bytes, whose count needs no walk over the text.
+              session.text.utf8.count <= Self.maximumTypingNoteLength || session.text.utf16.count <= Self.maximumTypingNoteLength else { return nil }
         lastTypingRevision += 1
         let revision = lastTypingRevision
         let wantsSuggestions = hasEditorSuggestions
-        let message: [String: Any] = [
-            "operation": "editor.update", "activeDocument": activeDocumentDescription(includingEditor: true),
-            "wantsSuggestions": wantsSuggestions, "requestIdentifier": String(revision),
-        ]
+        let message = typingMessage(revision: revision, wantsSuggestions: wantsSuggestions, sendsOnlyChange: true)
         let previousAnswer = typingRequest?.answer
         let answer = Task { [weak self] () -> CommunityPluginSuggestion? in
             // In order: a plugin such as Natural Language Dates remembers where its `@` was.
             _ = await previousAnswer?.value
-            guard let self, let reply = try? await self.send(message, timeout: Self.typingTimeout),
-                  let suggestion = reply["suggestion"] as? [String: Any], let requestIdentifier = suggestion["requestIdentifier"] as? String else { return nil }
+            guard let self, var reply = try? await self.send(message,
+                timeout: Self.typingTimeout) else { return nil } // Too slow: no suggestions for this change.
+            // The page's copy was not the one this change was made from.
+            if reply["needsWholeNote"] as? Bool == true {
+                let wholeNote = typingMessage(revision: revision, wantsSuggestions: wantsSuggestions, sendsOnlyChange: false)
+                guard let wholeNoteReply = try? await self.send(wholeNote, timeout: Self.typingTimeout) else { return nil } // As above.
+                reply = wholeNoteReply
+            }
+            guard let suggestion = reply["suggestion"] as? [String: Any], let requestIdentifier = suggestion["requestIdentifier"] as? String else { return nil }
             let items = (suggestion["items"] as? [[String: Any]] ?? []).compactMap { item -> CommunityPluginSuggestion.Item? in
                 guard let position = item["position"] as? Int, let title = item["title"] as? String else { return nil }
                 return CommunityPluginSuggestion.Item(position: position, title: title, subtitle: item["subtitle"] as? String)
@@ -52,6 +68,13 @@ extension CommunityPluginHost {
         }
         typingRequest = (revision, answer)
         return wantsSuggestions ? revision : nil
+    }
+
+    /// What one change of the focused note sends to the plugins' page: the change alone,
+    /// however long the note, unless the page needs the whole note.
+    func typingMessage(revision: Int, wantsSuggestions: Bool, sendsOnlyChange: Bool) -> [String: Any] {
+        ["operation": "editor.update", "activeDocument": activeDocumentDescription(includingEditor: true, sendsOnlyChange: sendsOnlyChange),
+         "wantsSuggestions": wantsSuggestions, "requestIdentifier": String(revision)]
     }
 
     /// The suggestions plugins answered for a change, as items of Graphite's list; none

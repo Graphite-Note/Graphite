@@ -2,7 +2,7 @@
  * File: WorkspaceModel.swift
  * --------------------------
  * Layer: UI
- * Description: A window's state: its vault, tabs, sidebar, alerts, and what it does with them.
+ * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.63
@@ -174,6 +174,9 @@ final class WorkspaceModel {
     var indexVersion = 0 {
         didSet { schedulePostgreSQLMirrorCopy() }
     }
+    /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
+    /// none of them can affect do not run again.
+    @ObservationIgnored var lastIndexChange: BaseContentChange?
     /// Changes when Graphite writes `.obsidian/types.json`, so lists of property types reload.
     var propertyTypesVersion = 0
     var vaultSettings = ObsidianSettings()
@@ -915,6 +918,7 @@ final class WorkspaceModel {
         Task(priority: .utility) {
             do {
                 try await index.refresh(paths: paths, root: root)
+                lastIndexChange = BaseContentChange(version: indexVersion + 1, paths: Set(paths))
                 indexVersion += 1
                 if !isIndexing, hasCompletedIndexScan, self.index === index { describeIndex(fileCount: try await index.fileCount()) }
             } catch { indexingMessage = "Index needs attention" }
@@ -1126,7 +1130,8 @@ final class WorkspaceModel {
     /// What bases inside `note` need to run; nil when Bases are turned off or no vault is open.
     func baseEmbedContext(for note: VaultPath) -> BaseEmbedContext? {
         guard preferences.isEnabled(.bases), let store, let index else { return nil }
-        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, isIndexComplete: isIndexUsable,
+        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, contentChange: lastIndexChange,
+            isIndexComplete: isIndexUsable,
                                 open: { [weak self] path in Task { await self?.open(path) } },
                                 filesChanged: { [weak self] paths in self?.filesSavedOutsideEditors(paths) },
                                 openBase: { [weak self] basePath, viewName in Task { await self?.openBase(basePath, viewName: viewName) } },

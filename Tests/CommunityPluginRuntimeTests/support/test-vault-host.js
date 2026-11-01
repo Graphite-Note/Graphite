@@ -2,7 +2,7 @@
  * File: test-vault-host.js
  * ------------------------
  * Layer: Tests
- * Description: The location of a vault path, refusing anything outside the vault.
+ * Description: Answers the runtime's messages from a folder on disk, as Graphite does.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.4
@@ -46,6 +46,8 @@ class TestVaultHost {
         this.menuChoice = null;
         this.networkResponder = null;
         this.notDownloadedPaths = new Set();
+        /// What is left of each listing asked for page by page.
+        this.openListings = new Map();
     }
 
     /// The location of a vault path, refusing anything outside the vault.
@@ -84,7 +86,7 @@ class TestVaultHost {
 
     async handle(message) {
         switch (message.operation) {
-        case 'vault.list': return this.listVault(message.folder || '');
+        case 'vault.list': return this.listPage(message);
         case 'vault.listFolder': return this.listFolder(message.path || '');
         case 'vault.stat': {
             const stat = this.stat(this.location(message.path));
@@ -158,15 +160,32 @@ class TestVaultHost {
             }
         };
         visit(start);
+        return entries;
+    }
+
+    /// One page of a listing, as `CommunityPluginVaultBridge` answers: the rest waits under
+    /// `nextPage`.
+    listPage(message) {
+        const pageSize = this.listingPageSize || 2000;
+        const isContinuing = message.nextPage !== undefined;
+        if (isContinuing && !this.openListings.has(message.nextPage)) throw new HostFailure('invalidData', 'This listing is no longer open.');
+        const remaining = isContinuing ? this.openListings.get(message.nextPage) : this.listVault(message.folder || '');
+        if (isContinuing) this.openListings.delete(message.nextPage);
         // As the app's bridge answers: one JSON text of parallel lists.
+        const page = remaining.slice(0, pageSize);
         const encodedEntries = JSON.stringify({
-            paths: entries.map((entry) => entry.path),
-            isFolder: entries.map((entry) => (entry.isFolder ? 1 : 0)),
-            sizes: entries.map((entry) => entry.size),
-            modified: entries.map((entry) => entry.modified),
-            created: entries.map((entry) => entry.created),
+            paths: page.map((entry) => entry.path),
+            isFolder: page.map((entry) => (entry.isFolder ? 1 : 0)),
+            sizes: page.map((entry) => entry.size),
+            modified: page.map((entry) => entry.modified),
+            created: page.map((entry) => entry.created),
         });
-        return { encodedEntries, isTruncated: false };
+        const answer = { encodedEntries, isTruncated: false };
+        if (remaining.length > pageSize) {
+            answer.nextPage = 'listing-' + (this.openListings.size + 1) + '-' + remaining.length;
+            this.openListings.set(answer.nextPage, remaining.slice(pageSize));
+        }
+        return answer;
     }
 
     listFolder(folder) {

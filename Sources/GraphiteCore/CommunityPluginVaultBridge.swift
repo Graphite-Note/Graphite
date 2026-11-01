@@ -2,7 +2,8 @@
  * File: CommunityPluginVaultBridge.swift
  * --------------------------------------
  * Layer: Core
- * Description: The vault as Obsidian community plugins reach it: the file operations of the plugin
+ * Description: The vault as plugins reach it: file operations answered from the open vault, large listings page by
+ *              page.
  *
  * Authors: Bahey Shalash
  * Version: 0.5
@@ -32,6 +33,9 @@ public struct CommunityPluginVaultBridge: Sendable {
     /// The largest file a plugin can read or write in one message.
     public static let maximumTransferredBytes = 64 * 1_048_576
 
+    /// What is left of each listing asked for page by page.
+    let openListings = CommunityPluginOpenListings()
+
     public init(store: VaultStore, deletionMethod: @escaping @Sendable () async -> DeletionMethod) {
         self.store = store
         self.deletionMethod = deletionMethod
@@ -60,6 +64,10 @@ public struct CommunityPluginVaultBridge: Sendable {
         switch operation {
         case "vault.list":
             let request = try decoder.decode(ListRequest.self, from: messageData)
+            if let nextPage = request.nextPage {
+                guard let remaining = await openListings.take(nextPage) else { throw CommunityPluginListingProblem.listingIsClosed }
+                return try await listingAnswer(for: remaining, isTruncated: false)
+            }
             return try await listVault(under: VaultPath(request.folder ?? ""))
         case "vault.listFolder":
             return try listFolder(VaultPath(try decoder.decode(PathRequest.self, from: messageData).path))
@@ -91,7 +99,7 @@ public struct CommunityPluginVaultBridge: Sendable {
     // MARK: Requests
 
     private struct PathRequest: Decodable { let path: String }
-    private struct ListRequest: Decodable { let folder: String? }
+    private struct ListRequest: Decodable { let folder: String?; let nextPage: String? }
     private struct ReadRequest: Decodable {
         let path: String
         let encoding: String
@@ -141,7 +149,7 @@ public struct CommunityPluginVaultBridge: Sendable {
             }
             return (entries, false)
         }.value
-        return ["encodedEntries": try await CommunityPluginListedEntry.encoded(listing.entries), "isTruncated": listing.isTruncated]
+        return try await listingAnswer(for: listing.entries[...], isTruncated: listing.isTruncated)
     }
 
     /// The direct children of `folder`, hidden ones included, as Obsidian's adapter lists them.
@@ -309,7 +317,7 @@ public struct CommunityPluginVaultBridge: Sendable {
         return statDictionary(isFolder: values.isDirectory == true, size: values.fileSize ?? 0, modified: modified, created: values.creationDate ?? modified)
     }
 
-    private static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
+    static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
         [
             "isFolder": isFolder,
             "size": isFolder ? 0 : size,

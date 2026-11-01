@@ -1,3 +1,14 @@
+/**
+ * File: BaseDefinitionEditor.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: Edits a .base file's views, leaving the rest of the file as written.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Yams
 
@@ -303,6 +314,17 @@ public struct BaseDefinitionEditor {
         try updateView(at: viewIndex) { viewMapping in
             guard let number else { return Self.removeOption(key, from: &viewMapping) }
             viewMapping[key] = Node(BaseValue.formatted(number))
+        }
+    }
+
+    /// Writes an option of a plugin's view, leaving the rest of the file as written; nil removes it.
+    public mutating func setOption(_ key: String, value: BaseViewOptionValue?, forViewAt viewIndex: Int) throws {
+        switch value {
+        case .none: try setOption(key, text: nil, forViewAt: viewIndex)
+        case .text(let text): try setOption(key, text: text, forViewAt: viewIndex)
+        case .number(let number): try setOption(key, number: number, forViewAt: viewIndex)
+        case .boolean(let isOn):
+            try updateView(at: viewIndex) { viewMapping in viewMapping[key] = Node(isOn ? "true" : "false") }
         }
     }
 
