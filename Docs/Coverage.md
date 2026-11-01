@@ -2,7 +2,19 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-10-24.
+Last updated: 2026-11-01.
+
+## MathJax's other commands typeset in formulas: 2026-11-01
+
+About 5 % of the formulas in the owner's vault showed as LaTeX source in the reading view and Live Preview, where Obsidian draws them. Measured on the vault at this date, with Textual's tokenizer and `MathAttachment.canTypeset` after Graphite's rewriting: 16,796 of 316,950 could not be typeset before, 54 now (0.02 %).
+
+- **SwiftUIMath patches 10 to 16 (`Vendor/swiftui-math/GRAPHITE-PATCHES.md`):** `\boxed`, `\fbox`, `\textcircled`; `\cancel` and its kin; `\phantom` and its kin; `\overset`, `\underset`, `\stackrel`; `\xrightarrow`, `\xleftarrow`, `\xleftrightarrow`; `\overrightarrow` and its kin; `\mathbin` and its kin; `\big` and its kin, and `\middle`; `array` with its alignments and rules, `\hline`, `\\[2pt]`, `cases` of any width, `gathered`; `\substack` inside an environment; `\dbinom`, `\tbinom`, `\operatorname*`, `\hspace`; KaTeX's other symbols; characters typed in a formula (`δ`, `≤`), which were dropped; bold `\nabla` and `\phi`. A minus after a space after a relation (`\quad -\frac…`) no longer stops Debug builds on an `assert`, and a minus at the start of a matrix's cell is a sign.
+- **`LaTeXCommandRewriting` (new):** aliases (`\boldsymbol`, `\pmb`, `\lvert`, `\mathscr`, `\bmod`, `\varDelta`, `\dots` low or centered by what follows), font declarations (`{\sf H}`), and `\color` ending at its cell's `&`, `\\`, `\end` or `\right`, which made 114 formulas unreadable. `\ldots` is drawn with TeX's spacing, where the font's `…` was tight.
+- **Automated tests, passing on macOS:** `AppProjectTextualPatchTests`, `LaTeXCompatibilityTests` (new), `NumberedEquationTests`, `NotePreviewDocumentTests`, `CorePreviewTypesetterCompatibilityTests`, `ParserNestingLimitsTests`, `StaticPatternTests`, `UiNumberedEquationTests`, `InlineMathRuleTests`, `DisplayMathEscapedDollarTests`. The full package suite was not run locally (no-sound rule); CI runs it.
+- **Checked by eye:** a sheet of these commands drawn through `MathOutlines` beside MathJax 3.2.2 in a browser, row by row. Every vault formula was also typeset unwrapped and at two widths and turned into outlines in a Debug build, with no crash. **Not checked in the app** on the Mac, iPad or iPhone.
+- **What still shows as source:** 54 formulas. Most are not valid MathJax either: `\Log`, `\cotg`, `\tg`, `\logit`, `\circled`, `\overbar` (25), malformed groups, stray `\]` or `\)`, `\bgroup` and `\overrightharpoon` (16), and an empty `\textcolor{…}{}` alone (9), which MathJax draws as nothing. Valid ones not typeset: `\xRightarrow`, `\xrightleftharpoons`, `\nleqslant`, `\not =`.
+- **Drawn differently from MathJax:** `\middle` is spaced as an ordinary atom; `\hdashline` is solid and a preamble's `:` is not drawn; symbols with no bold form in Latin Modern, such as `\boldsymbol{\times}`, stay regular; `\textcircled`, `\llbracket` and `\oiint` are drawn where MathJax reports an error, as KaTeX draws them.
+- **Found on the way, not fixed:** named colors are not read: `\textcolor{red}` draws in the text color (hex colors work), which the vault has about 190 times. `\tfrac` in display math is as large as `\frac` (2,754 uses). An operator right after a display may hang past the column when a formula wraps, as after a fraction or a root.
 
 ## KaTeX arrows typeset, and the Mac editor opens at the passage read: 2026-10-24
 
