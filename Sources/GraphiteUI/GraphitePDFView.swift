@@ -1892,11 +1892,6 @@ final class PencilTouchDownRecognizer: UIGestureRecognizer {
         followingDrawingRecognizer = nil
         state = .cancelled
     }
-
-    override func reset() {
-        super.reset()
-        followingDrawingRecognizer = nil
-    }
 }
 
 #else
