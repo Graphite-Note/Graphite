@@ -614,7 +614,8 @@ struct BaseToolbar: View {
                 viewTitle(showsChevron: false).foregroundStyle(.tint).layoutPriority(-1)
             }
 
-            countLabel
+            // The count gives way with the name, down to its number, so the name is not cut to nothing.
+            countLabel.layoutPriority(-1)
             if model.showsProgress { ProgressView().controlSize(.small) }
             Spacer(minLength: 8)
             if model.sortOverride != nil {

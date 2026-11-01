@@ -37,12 +37,17 @@ struct BaseViewPluginOptionRow: View {
     var body: some View {
         switch option.kind {
         case .text:
-            TextField(option.displayName, text: Binding(get: { text }, set: { newText in value = newText.isEmpty ? nil : .text(newText) }))
+            // Labelled apart: a form's text field shows its label only while it is empty.
+            LabeledContent(option.displayName) {
+                TextField(option.displayName, text: Binding(get: { text }, set: { newText in value = newText.isEmpty ? nil : .text(newText) }))
+                    .multilineTextAlignment(.trailing)
+            }
         case .toggle:
             Toggle(option.displayName, isOn: Binding(get: { if case .boolean(true) = shownValue { return true } else { return false } },
                 set: { isOn in value = .boolean(isOn) }))
         case .dropdown:
             Picker(option.displayName, selection: Binding(get: { text }, set: { choice in value = .text(choice) })) {
+                if option.defaultValue == nil && value == nil { Text("Not Set").tag("") }
                 ForEach(option.choices, id: \.value) { choice in Text(choice.title).tag(choice.value) }
             }
         case .slider:
