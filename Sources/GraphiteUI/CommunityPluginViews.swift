@@ -377,10 +377,10 @@ enum CommunityPluginNoteTakeover {
     }
 
     static func mayBeTakenOver(noteBeginning: String) -> Bool {
-        var lines = noteBeginning.split(separator: "\n", omittingEmptySubsequences: false).makeIterator()
-        guard lines.next()?.trimmingCharacters(in: .whitespaces) == "---" else { return false }
+        var lines = noteBeginning.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).makeIterator()
+        guard lines.next()?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(["\u{FEFF}"])) == "---" else { return false }
         while let line = lines.next() {
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmedLine == "---" { return false }
             guard let colon = trimmedLine.firstIndex(of: ":") else { continue }
             let key = trimmedLine[..<colon].trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))

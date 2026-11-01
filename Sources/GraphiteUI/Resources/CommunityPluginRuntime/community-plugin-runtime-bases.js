@@ -352,7 +352,7 @@
         getViewType() { return 'graphite-bases-plugin-view'; }
         getDisplayText() { return this.viewName || 'Base'; }
         onResize() {
-            if (!this.basesView) return;
+            if (!this.basesView || typeof this.basesView.onResize !== 'function') return;
             try { this.basesView.onResize(); } catch (error) { console.error(error); }
         }
     }

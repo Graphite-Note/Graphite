@@ -139,7 +139,7 @@ public final class EmbeddedBaseModelCache {
     /// Most recently used last.
     private var entries: [(identity: EmbeddedBaseView.EmbedIdentity, model: BaseDocumentModel)] = []
 
-    public nonisolated init(capacity: Int = 8) {
+    public init(capacity: Int = 8) {
         self.capacity = capacity
     }
 

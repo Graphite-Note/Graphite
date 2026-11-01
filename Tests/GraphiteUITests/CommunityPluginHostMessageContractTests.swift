@@ -28,7 +28,7 @@ final class CommunityPluginHostMessageContractTests: XCTestCase {
 
     /// The operations Graphite sends to the runtime.
     private static let operationsFromGraphite = [
-        "appearance.changed", "appearance.styles", "basesView.open", "basesView.update", "codeBlock.event", "codeBlock.release",
+        "appearance.changed", "appearance.styles", "basesView.abandonOpening", "basesView.open", "basesView.update", "codeBlock.event", "codeBlock.release",
         "codeBlock.render", "command.run", "editor.chooseSuggestion", "editor.closeSuggestions", "editor.drop", "editor.paste",
         "editor.update", "file.openInView", "hoverLink.hovered", "menu.choose", "menu.dismiss", "menu.editor", "menu.file", "notice.tap", "plugin.load",
         "plugin.unload", "plugins.layoutReady", "protocol.open", "ribbon.run", "runtime.start", "runtime.stop", "settings.show",
@@ -62,7 +62,7 @@ final class CommunityPluginHostMessageContractTests: XCTestCase {
 
         let handledOperations = try await testBed.evaluate("return Object.keys(GraphitePluginRuntime.messageHandlers).sort();", in: host) as? [String]
         XCTAssertEqual(handledOperations, Self.operationsFromGraphite.sorted())
-        XCTAssertEqual(Self.operationsFromGraphite.count, 40)
+        XCTAssertEqual(Self.operationsFromGraphite.count, 41)
 
         let answer = try await testBed.evaluate("return await GraphitePluginRuntime.receive({ operation: 'no.such.operation' });", in: host) as? [String: Any]
         let failure = answer?["failure"] as? [String: Any]
@@ -104,7 +104,7 @@ final class CommunityPluginHostMessageContractTests: XCTestCase {
         XCTAssertTrue(host.pluginsTakeOverNotes)
 
         _ = await host.deliver(["operation": "basesViews.changed", "views": [["viewType": "calendar", "name": "Calendar"]]])
-        XCTAssertEqual(host.pluginBasesViews, ["calendar": "Calendar"])
+        XCTAssertEqual(host.pluginBasesViews.mapValues(\.name), ["calendar": "Calendar"])
 
         _ = await host.deliver(["operation": "menus.changed", "hasFileMenuItems": true, "hasEditorMenuItems": true])
         XCTAssertTrue(host.hasFileMenuItems && host.hasEditorMenuItems)

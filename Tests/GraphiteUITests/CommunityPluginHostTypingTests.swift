@@ -49,6 +49,14 @@ final class CommunityPluginHostTypingTests: XCTestCase {
     };
     """
 
+    private static let recordingPluginSource = """
+    'use strict';
+    const { Plugin } = require('obsidian');
+    module.exports = class RecordingPlugin extends Plugin {
+        onload() { this.registerEvent(this.app.workspace.on('editor-change', (editor) => { window.lastHeardNote = editor.getValue(); })); }
+    };
+    """
+
     func testSuggestionsReturnOnlyForTheLatestChangeAndThePluginIsAskedInTheOrderTheChangesWereMade() async throws {
         let workspace = try await testBed.workspaceWithRunningPlugins([("suggesting-plugin", Self.suggestingPluginSource)])
         let host = workspace.communityPlugins
@@ -94,6 +102,34 @@ final class CommunityPluginHostTypingTests: XCTestCase {
         session.text += "x"
         _ = host.editorDidChange(in: session)
         XCTAssertEqual(host.lastTypingRevision, revisionBefore + 1, "One unit more is not sent, and takes no revision.")
+    }
+
+    func testAKeystrokeInALongNoteSendsOnlyTheChangeAndThePluginHearsTheWholeNote() async throws {
+        let workspace = try await testBed.workspaceWithRunningPlugins([("listening-plugin", Self.recordingPluginSource)])
+        let host = workspace.communityPlugins
+        try await waitUntil("the plugin's listener is known") { host.hasEditorChangeListeners }
+        await workspace.open(try VaultPath("Note.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        let longText = String(repeating: "A line of a long note, über Rechnerarchitektur.\n", count: 8_000)
+        session.text = longText
+        host.activeDocumentDidChange()
+        // The note as the page has it, then one letter.
+        _ = try await testBed.evaluate("return null;", in: host)
+        session.text = longText + "x"
+
+        let message = host.typingMessage(revision: 1, wantsSuggestions: false, sendsOnlyChange: true)
+        let messageSize = try JSONSerialization.data(withJSONObject: message).count
+        XCTAssertLessThan(messageSize, 1_024, "Before this fix each keystroke sent the whole note, here \(longText.utf8.count) bytes.")
+
+        // The real path: the plugin hears the note as it is after each keystroke.
+        session.text = longText + "xy"
+        _ = host.editorDidChange(in: session)
+        await host.typingRequest?.answer.value
+        session.text = longText + "xyz"
+        _ = host.editorDidChange(in: session)
+        await host.typingRequest?.answer.value
+        let lastHeard = try await testBed.evaluate("return window.lastHeardNote;", in: host) as? String
+        XCTAssertEqual(lastHeard, longText + "xyz")
     }
 
     // MARK: Helpers

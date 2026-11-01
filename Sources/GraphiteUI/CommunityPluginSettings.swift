@@ -330,7 +330,7 @@ struct CommunityPluginBrowser: View {
 }
 
 /// What Settings says when a plugin starts to run or changes.
-enum CommunityPluginTurningOn {
+@MainActor enum CommunityPluginTurningOn {
     static func question(naming pluginNames: [String]) -> String {
         "These plugins, made by other people, will run now, and can read and change every file in this vault and reach the internet: " + pluginNames.joined(separator: ", ") + "."
     }
