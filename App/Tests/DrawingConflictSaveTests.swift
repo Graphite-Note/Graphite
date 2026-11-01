@@ -11,6 +11,7 @@
  */
 
 import XCTest
+import PencilKit
 import GraphiteApple
 import GraphiteCore
 @testable import GraphiteUI
@@ -18,19 +19,18 @@ import GraphiteCore
 @MainActor
 final class DrawingConflictSaveTests: XCTestCase {
     func testADrawingThatChangedElsewhereSavesAsANewFileBesideIt() async throws {
-        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("DrawingConflict-\(UUID().uuidString)").resolvingSymlinksInPath()
+        let vault = try TemporaryVault.make(prefix: "DrawingConflict", for: self).root.resolvingSymlinksInPath()
         try FileManager.default.createDirectory(at: vault.appendingPathComponent("Sketches"), withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: vault) } // Temporary either way.
         let workspace = WorkspaceModel()
         workspace.folderAccess = FolderAccess(root: vault)
         workspace.store = VaultStore(root: vault)
 
         let original = try VaultPath("Sketches/Drawing.svg")
         let location = vault.appendingPathComponent(original.rawValue)
-        let content = DrawingContent(strokeData: Data(), canvasWidth: 800, background: .white)
+        let content = DrawingContent(strokeData: PKDrawing().dataRepresentation(), canvasWidth: 800, background: .white)
         _ = try await DrawingFileService(writer: AtomicFileWriter()).save(content, format: .svg, to: location, expecting: .absent)
         let request = DrawingEditorRequest(target: .existingDrawing(path: original, location: location, revision: try FileRevision.read(location)),
-                                           title: original.name, initialStrokeData: Data(), canvasWidth: 800, background: .white, format: .svg)
+                                           title: original.name, initialStrokeData: PKDrawing().dataRepresentation(), canvasWidth: 800, background: .white, format: .svg)
         try Data("<svg/>".utf8).write(to: location)
 
         do {
