@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceDeepLinks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

@@ -1,3 +1,14 @@
+/**
+ * File: UiWorkspaceAreaHandoffTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: PDF session behavior that other groups' fixes asked the workspace area to complete.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import Observation
 import os

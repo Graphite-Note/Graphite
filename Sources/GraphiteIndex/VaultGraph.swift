@@ -1,3 +1,14 @@
+/**
+ * File: VaultGraph.swift
+ * ----------------------
+ * Layer: Index
+ * Description: Every file, the links between them (in note text and in properties, embeds
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

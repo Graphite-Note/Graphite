@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecordingRecovery.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: Recordings Graphite did not finish, offered back when their vault is open.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

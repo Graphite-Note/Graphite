@@ -1,3 +1,14 @@
+/**
+ * File: VaultStoreListingWorkTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Placing changed items in a sorted listing, and counting listings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport

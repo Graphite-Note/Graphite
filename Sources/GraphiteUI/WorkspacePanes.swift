@@ -5,9 +5,9 @@
  * Description: The documents area: one group of tabs or two side by side with a divider that can be dragged or held
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
- * Authors: Bahey Shalash
- * Version: 0.28
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.37
+ * Date: 01/11/2026
  */
 
 import SwiftUI

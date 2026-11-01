@@ -1,3 +1,15 @@
+/**
+ * File: VaultStoreListing.swift
+ * -----------------------------
+ * Layer: Core
+ * Description: Listing the vault's folders off the store's actor, and what can be asked about them
+ *              without a listing: one item, a folder's date, the settings files' dates.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Synchronization
 

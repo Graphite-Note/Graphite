@@ -1,3 +1,15 @@
+/**
+ * File: WorkspaceDirectoryListing.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: Keeping the file lists up to date: a change touches the folder it names and no other,
+ *              what another app's reported changes refresh, and what coming back to the front lists.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex

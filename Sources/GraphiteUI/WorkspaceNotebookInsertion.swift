@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceNotebookInsertion.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: Notebooks created from inside a note.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

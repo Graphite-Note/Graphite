@@ -1,3 +1,14 @@
+/**
+ * File: VaultStoreMyPaperTemplates.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: The person's own paper templates, kept as ordinary one-page PDFs in the vault's
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The person's own paper templates, kept as ordinary one-page PDFs in the vault's

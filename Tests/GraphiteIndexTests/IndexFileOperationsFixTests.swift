@@ -1,3 +1,14 @@
+/**
+ * File: IndexFileOperationsFixTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: Regression tests for moves and renames that must not corrupt, skip or misreport
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 import GraphiteCore

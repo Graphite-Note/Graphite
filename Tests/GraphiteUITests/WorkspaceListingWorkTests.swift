@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceListingWorkTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: What a change in the vault costs the workspace, counted in listings done and versions moved.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import Observation
 import PDFKit

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCanvas.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Canvases in the workspace: opening a `.canvas` file in a tab, and creating one.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

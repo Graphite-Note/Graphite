@@ -1,3 +1,14 @@
+/**
+ * File: VaultSidebarPanels.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: What the left sidebar lists, as the tabs of Obsidian's left sidebar.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

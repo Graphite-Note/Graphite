@@ -1,3 +1,15 @@
+/**
+ * File: WorkspaceExternalRefreshTimingTests.swift
+ * -----------------------------------------------
+ * Layer: Tests
+ * Description: When the workspace refreshes after another app changes vault files: once reports pause
+ *              for
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI

@@ -1,3 +1,14 @@
+/**
+ * File: BaseDocumentModel.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Where a base's definition comes from.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

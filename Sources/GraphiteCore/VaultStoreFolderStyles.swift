@@ -1,3 +1,14 @@
+/**
+ * File: VaultStoreFolderStyles.swift
+ * ----------------------------------
+ * Layer: Core
+ * Description: Graphite's folder colors and symbols, read and written as bookmarks are.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CryptoKit
 

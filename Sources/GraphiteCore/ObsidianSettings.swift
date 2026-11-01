@@ -1,3 +1,14 @@
+/**
+ * File: ObsidianSettings.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: Where new attachments are stored. Mirrors Obsidian's "Default location for new
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Where new attachments are stored. Mirrors Obsidian's "Default location for new

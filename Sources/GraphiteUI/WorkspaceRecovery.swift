@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecovery.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Obsidian's File recovery for the open vault: copies of notes taken before their saved
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceDocumentScanning.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: Saving a document scan: as a PDF attachment of a note, or as a new PDF notebook.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

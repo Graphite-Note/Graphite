@@ -1,3 +1,14 @@
+/**
+ * File: MacFileTree.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The Mac's file tree: AppKit's outline view, as in Finder's and NetNewsWire's sidebars.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI

@@ -1,3 +1,14 @@
+/**
+ * File: LibraryListing.swift
+ * --------------------------
+ * Layer: Core
+ * Description: Which files the library shows; folders are always shown.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Which files the library shows; folders are always shown.

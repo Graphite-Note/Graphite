@@ -1,3 +1,14 @@
+/**
+ * File: VaultIndexMigrationsTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: The shape of the index database: the migrations it records, its full-text tokenizer, the
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 @testable import GraphiteIndex

@@ -1,3 +1,14 @@
+/**
+ * File: VaultStore.swift
+ * ----------------------
+ * Layer: Core
+ * Description: The modification date when the file system does not record creation.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Synchronization
 

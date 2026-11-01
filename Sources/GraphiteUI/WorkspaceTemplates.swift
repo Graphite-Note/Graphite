@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTemplates.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

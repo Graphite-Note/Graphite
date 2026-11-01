@@ -1,3 +1,14 @@
+/**
+ * File: LibraryModelTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: A look chosen in Graphite on the Mac is written where Finder reads it, so the tile
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
 import GraphiteCore

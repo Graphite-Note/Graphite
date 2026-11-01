@@ -6,8 +6,8 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 21/10/2026
+ * Version: 0.8
+ * Date: 01/11/2026
  */
 
 import SwiftUI

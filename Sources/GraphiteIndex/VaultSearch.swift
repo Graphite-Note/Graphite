@@ -1,3 +1,14 @@
+/**
+ * File: VaultSearch.swift
+ * -----------------------
+ * Layer: Index
+ * Description: Places in the note that matched, in order. Empty when only the name matched.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

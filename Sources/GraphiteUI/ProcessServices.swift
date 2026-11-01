@@ -1,3 +1,14 @@
+/**
+ * File: ProcessServices.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: What every window of the app shares, built once per process (decision 12 of
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex

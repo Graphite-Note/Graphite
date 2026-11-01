@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginListedEntry.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: One item the plugins' vault list holds, and the whole list encoded as one JSON text.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One item `vault.list` lists, made off the main thread and turned into JSON there too.

@@ -1,3 +1,14 @@
+/**
+ * File: IsolatedWorkspaceDevice.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: The device state of a workspace under test: a preferences suite of its own and temporary
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteApple

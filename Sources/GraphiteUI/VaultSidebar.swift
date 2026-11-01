@@ -5,9 +5,9 @@
  * Description: The sidebar's file list of the vault: folders and files, their menus (open, rename, move, share, export to PDF,
  *              delete), drag and drop, and creating files in a folder.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.40
+ * Date: 01/11/2026
  */
 
 import SwiftUI

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceScenePhase.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: What the workspace does when the scene's phase changes: places are remembered as the
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 
 extension WorkspaceModel {

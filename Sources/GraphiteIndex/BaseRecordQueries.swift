@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordQueries.swift
+ * -----------------------------
+ * Layer: Index
+ * Description: Base queries over the index: bounded record loading with SQL pre-filtering, and a
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

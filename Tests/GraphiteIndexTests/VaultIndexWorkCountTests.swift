@@ -1,3 +1,14 @@
+/**
+ * File: VaultIndexWorkCountTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: What a scan and a lookup cost, counted in rows written, reads made and questions asked.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 import Synchronization

@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginVaultBridge.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: The vault as Obsidian community plugins reach it: the file operations of the plugin
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The vault as Obsidian community plugins reach it: the file operations of the plugin

@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordReuse.swift
+ * ---------------------------
+ * Layer: Index
+ * Description: Records a base query loaded, each with the index row it was read from, so the next
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

@@ -1,3 +1,15 @@
+/**
+ * File: VaultIndexRegistry.swift
+ * ------------------------------
+ * Layer: Index
+ * Description: What a window hears about the index of its vault, which every window on that vault
+ *              shares.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

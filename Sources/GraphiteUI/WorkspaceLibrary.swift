@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceLibrary.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The values and actions a `LibraryView` needs, made from the workspace by the views that
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

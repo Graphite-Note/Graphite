@@ -5,9 +5,9 @@
  * Description: The reading view: builds a note's blocks off the main actor (links resolved, embeds read), shows them
  *              with Textual in a lazy stack, keeps the reading position, folds headings, and follows the word read aloud.
  *
- * Authors: Bahey Shalash
- * Version: 0.36
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.46
+ * Date: 01/11/2026
  */
 
 import SwiftUI

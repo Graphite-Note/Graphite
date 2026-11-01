@@ -1,3 +1,14 @@
+/**
+ * File: BaseDocumentView.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Opens a `.base` file: a view switcher, the result count, and the selected view.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 #if canImport(UIKit)
 import UIKit

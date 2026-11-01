@@ -1,3 +1,14 @@
+/**
+ * File: VaultFileOperations.swift
+ * -------------------------------
+ * Layer: Index
+ * Description: A note whose links change because files moved.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

@@ -1,3 +1,14 @@
+/**
+ * File: GraphViews.swift
+ * ----------------------
+ * Layer: UI
+ * Description: Obsidian's local graph: the open note and the notes around it, in the right sidebar.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.15
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

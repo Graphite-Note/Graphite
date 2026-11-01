@@ -1,3 +1,14 @@
+/**
+ * File: VaultIndex.swift
+ * ----------------------
+ * Layer: Index
+ * Description: Creation date for `file.ctime` in bases; the modification date when unknown.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Darwin
 import CryptoKit

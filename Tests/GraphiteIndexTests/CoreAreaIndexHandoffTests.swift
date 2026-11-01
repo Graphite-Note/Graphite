@@ -1,3 +1,14 @@
+/**
+ * File: CoreAreaIndexHandoffTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Regressions for changes other groups handed to the index files: the base pre-filter
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex

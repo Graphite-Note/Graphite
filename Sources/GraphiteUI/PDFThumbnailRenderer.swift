@@ -1,3 +1,14 @@
+/**
+ * File: PDFThumbnailRenderer.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: Renders and caches small page images for the pages sidebar.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import GraphiteApple

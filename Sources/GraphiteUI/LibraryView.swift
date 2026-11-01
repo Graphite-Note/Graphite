@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 21/10/2026
+ * Version: 0.15
+ * Date: 01/11/2026
  */
 
 import SwiftUI

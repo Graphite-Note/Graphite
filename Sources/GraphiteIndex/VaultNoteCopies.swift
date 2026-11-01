@@ -1,3 +1,14 @@
+/**
+ * File: VaultNoteCopies.swift
+ * ---------------------------
+ * Layer: Index
+ * Description: A link written in a note, with the file it reaches.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore

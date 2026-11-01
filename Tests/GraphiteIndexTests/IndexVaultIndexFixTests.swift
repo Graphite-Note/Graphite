@@ -1,3 +1,15 @@
+/**
+ * File: IndexVaultIndexFixTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: Link resolution and backlinks: partial paths, aliases and case differences in any
+ *              script.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 import SQLite3

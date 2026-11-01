@@ -1,3 +1,14 @@
+/**
+ * File: SharedVaultIndexTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Two windows of one process on the same vault share its index (decision 12 of
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex

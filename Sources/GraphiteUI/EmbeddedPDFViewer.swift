@@ -1,3 +1,14 @@
+/**
+ * File: EmbeddedPDFViewer.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import GraphiteCore

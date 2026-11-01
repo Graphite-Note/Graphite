@@ -6,8 +6,8 @@
  *              More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 21/10/2026
+ * Version: 0.10
+ * Date: 01/11/2026
  */
 
 import SwiftUI

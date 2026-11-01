@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Obsidian community plugin packages in a vault, and the bridge the plugin runtime's file
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport

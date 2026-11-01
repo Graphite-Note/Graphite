@@ -1,3 +1,14 @@
+/**
+ * File: LibraryModel.swift
+ * ------------------------
+ * Layer: UI
+ * Description: The library of one window: the folder shown as a grid, its listing, the filter, the
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CoreGraphics
 import Observation

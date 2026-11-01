@@ -1,3 +1,15 @@
+/**
+ * File: WorkspacePictureCreation.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: Pictures made from the New menu: a photo from the photo library or one just taken
+ *              becomes
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple

@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginInventory.swift
+ * ------------------------------------
+ * Layer: Core
+ * Description: What Graphite can tell about a plugin before running it: whether it can load at all,
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// What Graphite can tell about a plugin before running it: whether it can load at all,

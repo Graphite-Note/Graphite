@@ -6,8 +6,8 @@
  *              and each row's menu, Reveal in Finder included.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.5
- * Date: 21/10/2026
+ * Version: 0.6
+ * Date: 01/11/2026
  */
 
 #if os(macOS)

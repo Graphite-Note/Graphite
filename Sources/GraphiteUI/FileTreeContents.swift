@@ -1,3 +1,15 @@
+/**
+ * File: FileTreeContents.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The file list's rows as one flat list, kept up to date row by row, so tapping a folder or
+ *              a folder's listing arriving does not rebuild the whole tree.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import SwiftUI

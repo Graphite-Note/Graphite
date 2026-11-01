@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceModel.swift
+ * --------------------------
+ * Layer: UI
+ * Description: Beyond this many changed paths, one reconciling scan is cheaper than refreshing each.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.63
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore

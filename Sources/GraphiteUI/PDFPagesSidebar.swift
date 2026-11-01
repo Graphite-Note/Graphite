@@ -1,3 +1,14 @@
+/**
+ * File: PDFPagesSidebar.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Page thumbnails with selection and page actions, and the PDF's outline and bookmarks.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers

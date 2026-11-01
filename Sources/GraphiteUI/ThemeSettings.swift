@@ -1,3 +1,14 @@
+/**
+ * File: ThemeSettings.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Settings › Appearance › Obsidian Theme and CSS Snippets: Obsidian's theme and snippet
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

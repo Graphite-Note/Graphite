@@ -1,3 +1,14 @@
+/**
+ * File: UiWorkspaceModelFixTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: Vault switching, link following, external changes, and attachment saving in the
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import Observation
 import os

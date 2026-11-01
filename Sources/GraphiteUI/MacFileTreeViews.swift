@@ -1,3 +1,14 @@
+/**
+ * File: MacFileTreeViews.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The Mac file tree's outline view and its rows.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI

@@ -1,3 +1,15 @@
+/**
+ * File: WorkspaceFileManagement.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: A request to show a file in the sidebar's file list, drained by the sidebar. Each
+ *              request
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.14
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
