@@ -131,7 +131,7 @@ struct BaseTiledMapView {
     let annotations: [BaseMapMarkerAnnotation]
     let cameraTarget: BaseMapCameraTarget
     /// Changes with the view, its center or its zoom, which always place the camera again.
-    let cameraConfiguration: Int
+    let cameraConfiguration: AnyHashable
     /// Changes when markers move or the map is resized, which place the camera again only
     /// until the person moves the map, as in `BaseMapView`.
     let cameraLayout: Int
@@ -148,7 +148,7 @@ struct BaseTiledMapView {
         var parent: BaseTiledMapView
         var shownTemplates: [BaseMapTileTemplate] = []
         var shownAnnotationPaths: [VaultPath] = []
-        var placedCameraConfiguration: Int?
+        var placedCameraConfiguration: AnyHashable?
         var placedCameraLayout: Int?
         var isPositionedByUser = false
         /// Set while the camera is placed from here, so only the person's moves count as theirs.

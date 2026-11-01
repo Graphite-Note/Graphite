@@ -180,6 +180,14 @@ struct CanvasMarkdownContent: View {
     let environment: CanvasCardEnvironment
     @State private var shownBuild: CanvasCardRenderCache.Build?
 
+    /// What a build depends on, compared by value so two sources never share a build.
+    private struct BuildTaskKey: Equatable {
+        let source: String
+        let drawingVersion: Int
+        let renderingHash: Int
+        let indexVersion: Int
+    }
+
     var body: some View {
         let configuration = environment.configuration
         let build = currentBuild
@@ -194,7 +202,8 @@ struct CanvasMarkdownContent: View {
         }
         .environment(\.baseEmbedContext, environment.baseContext)
         .environment(\.readingImageActions, environment.imageActions)
-        .task(id: "\(source.hashValue)-\(configuration.drawingVersion)-\(configuration.hashValueForReload)-\(build?.hasMissingEmbeds == false ? -1 : configuration.indexVersion)") {
+        .task(id: BuildTaskKey(source: source, drawingVersion: configuration.drawingVersion, renderingHash: configuration.hashValueForReload,
+                               indexVersion: build?.hasMissingEmbeds == false ? -1 : configuration.indexVersion)) {
             if currentBuild != nil { return }
             do {
                 let newBuild = try await Self.build(source, sourcePath: sourcePath, root: environment.root, index: environment.index, configuration: configuration)

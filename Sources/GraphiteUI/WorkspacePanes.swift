@@ -6,8 +6,8 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Bahey Shalash
- * Version: 0.28
- * Date: 21/10/2026
+ * Version: 0.29
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -976,7 +976,8 @@ struct DelayedProgressView: View {
         ProgressView().controlSize(.large)
             .opacity(isVisible ? 1 : 0)
             .task {
-                do { try await Task.sleep(for: .milliseconds(300)); isVisible = true } catch {}
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return } // the view went away first
+                isVisible = true
             }
     }
 }

@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 21/10/2026
+ * Version: 0.36
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -189,7 +189,8 @@ struct VaultSidebar: View {
             // An empty field shows the file tree. Results of the last query are cleared rather
             // than replaced by a search for everything, which would show under the next query.
             guard !workspace.searchQuery.isEmpty else { workspace.searchResults = []; return }
-            do { try await Task.sleep(for: .milliseconds(180)); await workspace.search() } catch {}
+            do { try await Task.sleep(for: .milliseconds(180)) } catch { return } // a newer query replaced this one
+            await workspace.search()
         }
         .toolbar {
             #if canImport(UIKit)

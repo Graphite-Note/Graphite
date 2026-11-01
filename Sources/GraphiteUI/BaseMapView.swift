@@ -117,7 +117,7 @@ struct BaseMapView: View {
                 BaseMapMarkerAnnotation(path: marker.row.path, coordinate: marker.coordinate, title: BaseValue.file(marker.row.path).displayText)
             },
             cameraTarget: cameraTarget(size: size),
-            cameraConfiguration: cameraConfiguration.hashValue,
+            cameraConfiguration: cameraConfiguration,
             cameraLayout: layoutHasher.finalize(),
             cameraDistances: cameraDistances(for: size),
             selectedPath: $selectedPath,

@@ -350,11 +350,11 @@ struct RenderedMarkdownBlock: View {
     /// The `preparationTaskKey` of the last completed preparation. A preparation's own
     /// result can change the key (an unresolved embed starts following the index), which
     /// must not prepare the text again.
-    @State private var settledPreparationTaskKey: String?
+    @State private var settledPreparationTaskKey: PreparationTaskKey?
 
     private struct PreparedMarkdown {
-        let sourceKey: String
-        let textKey: String
+        let sourceKey: SourceKey
+        let textKey: TextKey
         let markdown: String
         let hasUnresolvedEmbeds: Bool
     }
@@ -362,23 +362,40 @@ struct RenderedMarkdownBlock: View {
     /// What the prepared text depends on besides the index and the files it shows: the
     /// source, colors, and the palette. The editor keeps this view while they change, so
     /// a preparation made for other text is stale and is not shown.
-    private var textKey: String {
-        let palette = environment.paletteHexByName.sorted { firstEntry, secondEntry in firstEntry.key < secondEntry.key }
-            .map { entry in "\(entry.key)=\(entry.value)" }.joined(separator: ",")
-        return "\(markdown.hashValue)|\(environment.colorsEnabled)|\(palette)"
+    private var textKey: TextKey {
+        TextKey(markdown: markdown, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName)
+    }
+
+    /// Compared by value, not by a hash of the text: two texts with equal hashes must not
+    /// show each other's preparation. Strings share storage, so a key costs no copy.
+    private struct TextKey: Equatable {
+        let markdown: String
+        let colorsEnabled: Bool
+        let paletteHexByName: [String: String]
+    }
+
+    private struct SourceKey: Equatable {
+        let text: TextKey
+        let drawingVersion: Int
+    }
+
+    private struct PreparationTaskKey: Equatable {
+        let source: SourceKey
+        /// -1 while the text does not follow the index.
+        let indexVersion: Int
     }
 
     /// Everything the prepared text depends on besides the index. After a file changes, the
     /// text is prepared again, and the earlier preparation, which differs at most in its
     /// images, is shown until then rather than the unprepared text.
-    private var sourceKey: String { "\(textKey)|\(environment.drawingVersion)" }
+    private var sourceKey: SourceKey { SourceKey(text: textKey, drawingVersion: environment.drawingVersion) }
 
     /// An embed not found yet (the vault may still be indexing) is looked up again when
     /// the index changes; a table whose embeds were all found is not prepared again.
-    private var preparationTaskKey: String {
+    private var preparationTaskKey: PreparationTaskKey {
         let key = sourceKey
         let followsIndex = LivePreviewText.hasWikiEmbed(markdown) && (prepared?.sourceKey != key || prepared?.hasUnresolvedEmbeds == true)
-        return "\(key)|\(followsIndex ? environment.indexVersion : -1)"
+        return PreparationTaskKey(source: key, indexVersion: followsIndex ? environment.indexVersion : -1)
     }
 
     var body: some View {
