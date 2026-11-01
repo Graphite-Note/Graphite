@@ -68,7 +68,7 @@ final class LinkResolutionLikeObsidianTests: XCTestCase {
             let sqlResolution = try await index.resolve(row.target, from: source, isWiki: row.isWiki).first?.rawValue
             XCTAssertEqual(sqlResolution, row.expected, "The index, for \(description)")
 
-            let memoryResolution = try await index.databaseQueue.read { database in
+            let memoryResolution = try await index.databasePool.read { database in
                 try GraphLinkResolver(database: database).resolve(row.target, from: source, isWiki: row.isWiki).first
             }
             XCTAssertEqual(memoryResolution, row.expected, "The graph's resolver, for \(description)")
