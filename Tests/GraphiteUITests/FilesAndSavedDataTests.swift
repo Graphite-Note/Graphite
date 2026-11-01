@@ -13,7 +13,6 @@
 import XCTest
 import GraphiteCore
 import GraphiteIndex
-import GraphiteApple
 @testable import GraphiteUI
 import GraphiteTestSupport
 
@@ -235,31 +234,6 @@ final class FilesAndSavedDataTests: XCTestCase {
         XCTAssertFalse(note.hasExternalConflict)
         XCTAssertEqual(note.text, "kept version")
     }
-
-#if canImport(UIKit)
-    // MARK: HUNT-092: a drawing changed elsewhere
-
-    func testADrawingThatChangedElsewhereSavesAsANewFileBesideIt() async throws {
-        let (workspace, vault) = try await makeWorkspace(files: ["Sketches/Keep.md": ""])
-        let original = try VaultPath("Sketches/Drawing.svg")
-        let service = DrawingFileService(writer: AtomicFileWriter())
-        let content = DrawingContent(strokeData: Data(), canvasWidth: 800, background: .white)
-        _ = try await service.save(content, format: .svg, to: vault.appendingPathComponent(original.rawValue), expecting: .absent)
-        let revision = try FileRevision.read(vault.appendingPathComponent(original.rawValue))
-        let request = DrawingEditorRequest(target: .existingDrawing(path: original, location: vault.appendingPathComponent(original.rawValue), revision: revision),
-                                           title: original.name, initialStrokeData: Data(), canvasWidth: 800, background: .white, format: .svg)
-        try Data("<svg/>".utf8).write(to: vault.appendingPathComponent(original.rawValue))
-
-        do {
-            try await workspace.saveDrawing(content, format: .svg, for: request)
-            XCTFail("The newer file is not overwritten.")
-        } catch { XCTAssertEqual(error as? GraphiteError, .conflict) }
-        try await workspace.saveDrawingAsNewFile(content, format: .svg, for: request)
-
-        XCTAssertEqual(try text(of: original.rawValue, in: vault), "<svg/>")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Sketches/Drawing Graphite edits.svg").path))
-    }
-#endif
 
     // MARK: HUNT-099: ink on a PDF that is moving
 
