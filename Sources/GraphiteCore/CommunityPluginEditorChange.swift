@@ -135,3 +135,46 @@ public enum CommunityPluginMarkdownRendering {
 enum CommunityPluginMarkdownRenderingPattern: String, StaticPatternSet {
     case calloutOpening = #"^<blockquote>\s*<p>\[!([A-Za-z0-9_-]+)\]([+-]?)[ \t]*([^\n<]*)(?:\n|(</p>))"#
 }
+
+/// What one keystroke changed in a note, for the plugins' page, which keeps a copy of the note:
+/// offsets in UTF-16 code units, as JavaScript counts. Works on the UTF-8 bytes, comparing and
+/// counting without walking the text character by character, on every keystroke.
+public struct CommunityPluginTextChange: Equatable, Sendable {
+    public let originalLength: Int
+    public let location: Int
+    public let removedLength: Int
+    public let insertedText: String
+
+    public static func between(_ originalText: String, _ changedText: String) -> Self {
+        var original = originalText
+        var changed = changedText
+        return original.withUTF8 { originalBytes in
+            changed.withUTF8 { changedBytes in
+                let shorterCount = min(originalBytes.count, changedBytes.count)
+                var prefixCount = 0
+                while prefixCount < shorterCount, originalBytes[prefixCount] == changedBytes[prefixCount] { prefixCount += 1 }
+                // Never inside a character: back to where it starts in both texts.
+                while prefixCount > 0, isContinuation(originalBytes, at: prefixCount) || isContinuation(changedBytes, at: prefixCount) { prefixCount -= 1 }
+                var suffixCount = 0
+                while suffixCount < shorterCount - prefixCount,
+                      originalBytes[originalBytes.count - 1 - suffixCount] == changedBytes[changedBytes.count - 1 - suffixCount] { suffixCount += 1 }
+                while suffixCount > 0, isContinuation(originalBytes, at: originalBytes.count - suffixCount) || isContinuation(changedBytes, at: changedBytes.count - suffixCount) { suffixCount -= 1 }
+                let inserted = UnsafeBufferPointer(rebasing: changedBytes[prefixCount..<(changedBytes.count - suffixCount)])
+                return Self(originalLength: utf16Length(originalBytes[...]), location: utf16Length(originalBytes[..<prefixCount]),
+                            removedLength: utf16Length(originalBytes[prefixCount..<(originalBytes.count - suffixCount)]),
+                            insertedText: String(decoding: inserted, as: UTF8.self))
+            }
+        }
+    }
+
+    private static func isContinuation(_ bytes: UnsafeBufferPointer<UInt8>, at position: Int) -> Bool {
+        position < bytes.count && bytes[position] & 0xC0 == 0x80
+    }
+
+    /// A UTF-8 lead byte starts one UTF-16 unit, or two for a character outside the first plane.
+    private static func utf16Length(_ bytes: Slice<UnsafeBufferPointer<UInt8>>) -> Int {
+        var length = 0
+        for byte in bytes where byte & 0xC0 != 0x80 { length += byte >= 0xF0 ? 2 : 1 }
+        return length
+    }
+}

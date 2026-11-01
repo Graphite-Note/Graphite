@@ -35,6 +35,8 @@ class TestVaultHost {
         this.menuChoice = null;
         this.networkResponder = null;
         this.notDownloadedPaths = new Set();
+        /// What is left of each listing asked for page by page.
+        this.openListings = new Map();
     }
 
     /// The location of a vault path, refusing anything outside the vault.
@@ -73,7 +75,7 @@ class TestVaultHost {
 
     async handle(message) {
         switch (message.operation) {
-        case 'vault.list': return this.listVault(message.folder || '');
+        case 'vault.list': return this.listPage(message);
         case 'vault.listFolder': return this.listFolder(message.path || '');
         case 'vault.stat': {
             const stat = this.stat(this.location(message.path));
@@ -148,6 +150,22 @@ class TestVaultHost {
         };
         visit(start);
         return { entries, isTruncated: false };
+    }
+
+    /// One page of a listing, as `CommunityPluginVaultBridge` answers: the rest waits under
+    /// `nextPage`.
+    listPage(message) {
+        const pageSize = this.listingPageSize || 2000;
+        const isContinuing = message.nextPage !== undefined;
+        if (isContinuing && !this.openListings.has(message.nextPage)) throw new HostFailure('invalidData', 'This listing is no longer open.');
+        const remaining = isContinuing ? this.openListings.get(message.nextPage) : this.listVault(message.folder || '').entries;
+        if (isContinuing) this.openListings.delete(message.nextPage);
+        const answer = { entries: remaining.slice(0, pageSize), isTruncated: false };
+        if (remaining.length > pageSize) {
+            answer.nextPage = 'listing-' + (this.openListings.size + 1) + '-' + remaining.length;
+            this.openListings.set(answer.nextPage, remaining.slice(pageSize));
+        }
+        return answer;
     }
 
     listFolder(folder) {

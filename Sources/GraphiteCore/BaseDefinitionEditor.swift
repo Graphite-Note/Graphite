@@ -306,6 +306,17 @@ public struct BaseDefinitionEditor {
         }
     }
 
+    /// Writes an option of a plugin's view, leaving the rest of the file as written; nil removes it.
+    public mutating func setOption(_ key: String, value: BaseViewOptionValue?, forViewAt viewIndex: Int) throws {
+        switch value {
+        case .none: try setOption(key, text: nil, forViewAt: viewIndex)
+        case .text(let text): try setOption(key, text: text, forViewAt: viewIndex)
+        case .number(let number): try setOption(key, number: number, forViewAt: viewIndex)
+        case .boolean(let isOn):
+            try updateView(at: viewIndex) { viewMapping in viewMapping[key] = Node(isOn ? "true" : "false") }
+        }
+    }
+
     private static func removeOption(_ key: String, from viewMapping: inout Node.Mapping) {
         for readKey in BaseMapOptions.readKeys(for: key) { viewMapping[readKey] = nil }
     }

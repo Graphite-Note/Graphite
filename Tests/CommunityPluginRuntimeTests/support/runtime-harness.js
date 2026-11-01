@@ -125,7 +125,8 @@ async function startRuntime(options) {
         fileSystem.mkdirSync(path.dirname(location), { recursive: true });
         fileSystem.writeFileSync(location, contents);
     };
-    harness.waitForMetadata = () => waitUntil(() => harness.app.metadataCache.isInitialReadComplete);
+    /// Every note read, as a plugin that waits for `resolved` has them, without the pause.
+    harness.waitForMetadata = () => harness.app.metadataCache.readWholeVaultNow();
     harness.close = () => {
         openDocuments.delete(window.document);
         window.close();

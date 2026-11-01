@@ -23,6 +23,12 @@
     /// How long a processor may take before its block is sent as it is; the block keeps
     /// updating afterwards.
     const processorWaitMilliseconds = 15000;
+    /// How long a block waits for its note's metadata before it is drawn without it.
+    const noteReadWaitMilliseconds = 2000;
+    /// The box a plugin's view embedded in a note lays out in. A view that sizes itself to its
+    /// box fills it and its copy is this tall; one as tall as its content, as most are, keeps
+    /// its own height, since a copy in a note has no box around it.
+    const embeddedViewLayoutHeight = 420;
 
     /// Blocks shown in a note, by the identifier Graphite gave them.
     const drawnBlocks = new Map();
@@ -404,7 +410,7 @@
         entry.isReleased = true;
         if (entry.observer) entry.observer.disconnect();
         // A plugin's view outlives the place that showed it; only blocks are unloaded.
-        if (entry.leaf) entry.element.detach();
+        if (entry.leaf) entry.leaf.containerEl.detach();
         else { try { entry.component.unload(); } catch (error) { console.error(error); } }
         entry.container.remove();
     }
@@ -459,11 +465,19 @@
         }
     }
 
+    /// The note a block is drawn for: its frontmatter is in the block's context, and plugins
+    /// read its metadata as they draw (Dataview's `dv.current()`).
+    function readNoteOfBlock(app, message) {
+        const note = app.vault.getFileByPath(message.sourcePath || '');
+        return note ? waitAtMost(app.metadataCache.readNow([note]), noteReadWaitMilliseconds) : Promise.resolve();
+    }
+
     async function draw(message) {
         const app = runtime.app;
         release(message.blockIdentifier);
         const registered = runtime.codeBlockProcessors.get(message.language);
         if (!app || !registered) return { isDrawn: false, message: 'No plugin draws “' + message.language + '” code blocks now.' };
+        await readNoteOfBlock(app, message);
         const entry = startEntry(message, 'block-language-' + message.language);
         watch(entry);
         try {
@@ -510,6 +524,7 @@
         const app = runtime.app;
         release(message.blockIdentifier);
         if (!app || runtime.markdownPostProcessors.length === 0) return { isDrawn: true, isChanged: false };
+        await readNoteOfBlock(app, message);
         const entry = startEntry(message, 'el-section');
         const response = await hostBridge.send('markdown.render', { markdown: String(message.source || ''), sourcePath: message.sourcePath || '' });
         if (entry.isReleased) return { isDrawn: false, message: 'The section was closed while it was drawn.' };
@@ -570,7 +585,9 @@
     // MARK: Plugin views
 
     /// A plugin's view shown in a Graphite tab or sidebar panel: its leaf's element is laid
-    /// out here at the size Graphite gives it, and copied like a code block while shown.
+    /// out here at the size Graphite gives it, and copied like a code block while shown. A
+    /// view embedded in a note (`isEmbedded`, a base's view) is laid out at the note's width,
+    /// and only what it drew is copied, as tall as that is.
     function attachView(message) {
         const app = runtime.app;
         release(message.blockIdentifier);
@@ -581,11 +598,11 @@
         container.appendChild(leaf.containerEl);
         if (leaf.waitingPlace) { leaf.waitingPlace.remove(); leaf.waitingPlace = null; }
         const entry = {
-            blockIdentifier: message.blockIdentifier, container, element: leaf.containerEl, leaf, component: null, addedChildCount: 0,
-            observer: null, isCopyScheduled: false, isReleased: false, lastSentHTML: null,
+            blockIdentifier: message.blockIdentifier, container, element: message.isEmbedded ? leaf.view.contentEl : leaf.containerEl, leaf, component: null, addedChildCount: 0,
+            observer: null, isCopyScheduled: false, isReleased: false, lastSentHTML: null, isEmbedded: Boolean(message.isEmbedded),
         };
         drawnBlocks.set(message.blockIdentifier, entry);
-        resizeView(entry, message.width, message.height);
+        resizeView(entry, message.width, message.isEmbedded ? embeddedViewLayoutHeight : message.height);
         watch(entry);
         entry.lastSentHTML = copyOf(entry);
         return { isDrawn: true, html: entry.lastSentHTML, styles: pluginStyles(), title: leaf.getDisplayText() };
@@ -597,7 +614,8 @@
 
     function resizeView(entry, width, height) {
         const size = { width: Math.max(200, Math.min(4000, Number(width) || 700)), height: Math.max(100, Math.min(4000, Number(height) || 600)) };
-        lastViewSizes[placementOfLeaf(entry.leaf)] = size;
+        // An embed's size says nothing about the next tab's or panel's.
+        if (!entry.isEmbedded) lastViewSizes[placementOfLeaf(entry.leaf)] = size;
         entry.container.style.width = size.width + 'px';
         entry.container.style.height = size.height + 'px';
         try { entry.leaf.onResize(); } catch (error) { console.error(error); }
@@ -626,6 +644,12 @@
         place.style.height = size.height + 'px';
         place.appendChild(leaf.containerEl);
         leaf.waitingPlace = place;
+    };
+
+    /// A view about to be embedded in a note waits at the note's width instead.
+    runtime.sizeWaitingPlace = function sizeWaitingPlace(leaf, width) {
+        leaf.waitingPlace.style.width = Math.max(200, Math.min(4000, Number(width) || 700)) + 'px';
+        leaf.waitingPlace.style.height = embeddedViewLayoutHeight + 'px';
     };
 
     // MARK: Live views
@@ -696,7 +720,7 @@
         },
         async 'view.resize'(message) {
             const entry = drawnBlocks.get(message.blockIdentifier);
-            if (entry && entry.leaf) resizeView(entry, message.width, message.height);
+            if (entry && entry.leaf) resizeView(entry, message.width, entry.isEmbedded ? embeddedViewLayoutHeight : message.height);
             return {};
         },
         /// The person closed the view's tab or panel: the view closes, as in Obsidian.

@@ -25,6 +25,11 @@ public struct LoadedBaseRecords: Sendable {
     /// Records the query that produced this read from the database rather than reused.
     let rereadRecordCount: Int
 
+    /// The record a query went through for this file; nil when it did not go through it.
+    public func record(at path: VaultPath) -> BaseFileRecord? {
+        recordsByPath[path.rawValue]?.record
+    }
+
     /// Nothing loaded yet: the next query reads every record.
     public init() {
         recordsByPath = [:]

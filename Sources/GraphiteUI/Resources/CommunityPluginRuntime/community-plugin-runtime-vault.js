@@ -214,6 +214,14 @@
             await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { text }, this.writeExpectation(normalizedPath), true, pluginIdentifier));
             if (options) await this.applyTimes(normalizedPath, options);
         }
+        /// A plugin's own `saveData`, which replaces its settings file whatever another app or
+        /// device left there, as in Obsidian: the plugin holds its settings in memory and has
+        /// no way to act on a refusal, so it would stop saving for the rest of the run.
+        async writeReplacing(path, text) {
+            const normalizedPath = normalizePath(path);
+            const pluginIdentifier = runtime.callingPluginIdentifier();
+            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { text }, { kind: 'replace' }, true, pluginIdentifier));
+        }
         async writeBinary(path, data, options) {
             const normalizedPath = normalizePath(path);
             const pluginIdentifier = runtime.callingPluginIdentifier();
@@ -369,8 +377,18 @@
 
         /// Reads the vault's file tree from Graphite: names and sizes only.
         async loadFileTree() {
-            const response = await hostBridge.send('vault.list', {});
-            this.addHostEntries(response.entries || [], false);
+            await this.addListedEntries({}, false);
+        }
+
+        /// Asks for a listing page by page, so a large vault's list never crosses to this page
+        /// as one message, which the app would build and hand over on its main thread.
+        async addListedEntries(listing, isTriggeringEvents) {
+            let response = await hostBridge.send('vault.list', listing);
+            this.addHostEntries(response.entries || [], isTriggeringEvents);
+            while (response.nextPage) {
+                response = await hostBridge.send('vault.list', { nextPage: response.nextPage });
+                this.addHostEntries(response.entries || [], isTriggeringEvents);
+            }
             if (response.isTruncated) {
                 console.warn('Graphite listed only part of this vault to plugins, because it holds more files than the plugin runtime keeps in its file list.');
             }
@@ -482,10 +500,7 @@
                     this.addAbstractFile(path, hostStat.isFolder, statFromHost(hostStat), true);
                 } else if (!existing) {
                     this.addAbstractFile(path, hostStat.isFolder, statFromHost(hostStat), true);
-                    if (hostStat.isFolder) {
-                        const response = await hostBridge.send('vault.list', { folder: path });
-                        this.addHostEntries(response.entries || [], true);
-                    }
+                    if (hostStat.isFolder) await this.addListedEntries({ folder: path }, true);
                 }
             }
         }

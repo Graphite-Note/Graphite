@@ -12,13 +12,29 @@ struct CommunityPluginsSettingsPage: View {
     @State private var installationMessage: String?
     @State private var isInstalling = false
     @State private var pluginToRemove: InstalledCommunityPlugin?
+    /// The plugins that would run, while the person is asked whether to turn plugins on.
+    @State private var pluginsToConfirm: [InstalledCommunityPlugin]?
 
     private var host: CommunityPluginHost { workspace.communityPlugins }
+
+    /// Turning plugins on runs the code of those the vault already enabled (a vault copied from
+    /// Obsidian), so they are named first, as Obsidian asks before it leaves restricted mode.
+    private func setTurnedOn(_ isTurnedOn: Bool) {
+        Task {
+            guard isTurnedOn else {
+                await host.setTurnedOnForVault(false)
+                return
+            }
+            await host.reloadInventory()
+            let plugins = host.pluginsEnabledToRun
+            if plugins.isEmpty { await host.setTurnedOnForVault(true) } else { pluginsToConfirm = plugins }
+        }
+    }
 
     var body: some View {
         Form {
             Section {
-                Toggle("Turn On Community Plugins", isOn: Binding(get: { host.isTurnedOnForVault }, set: { isTurnedOn in Task { await host.setTurnedOnForVault(isTurnedOn) } }))
+                Toggle("Turn On Community Plugins", isOn: Binding(get: { host.isTurnedOnForVault }, set: setTurnedOn))
             } footer: {
                 Text("Community plugins are made by other people, not by Graphite. A plugin runs code that can read and change every file in this vault and reach the internet. Turn on only plugins you trust. They are the same plugins Obsidian uses, and they keep their settings in the vault's .obsidian folder.")
                     .formFooterAlignment()
@@ -29,7 +45,14 @@ struct CommunityPluginsSettingsPage: View {
             }
         }
         .navigationTitle("Community Plugins")
-        .task { await host.reloadInventory() }
+        .task { await host.reloadInventory(readsPluginCode: true) }
+        .confirmationDialog("Turn on community plugins?", isPresented: Binding(get: { pluginsToConfirm != nil }, set: { isPresented in if !isPresented { pluginsToConfirm = nil } }),
+                            titleVisibility: .visible, presenting: pluginsToConfirm) { _ in
+            Button("Turn On and Run Them") { Task { await host.setTurnedOnForVault(true) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { plugins in
+            Text(CommunityPluginTurningOn.question(naming: plugins.map(\.manifest.name)))
+        }
         .sheet(isPresented: $isBrowsing) {
             CommunityPluginBrowser(workspace: workspace)
                 .tint(workspace.preferences.accentColor)
@@ -299,10 +322,23 @@ struct CommunityPluginBrowser: View {
             let compatibility = host.inventory.plugins.first { plugin in plugin.id == entry.id }?.compatibility
             var outcome = "Installed version \(installation.manifest.version)."
             if installation.isOlderReleaseForCompatibility { outcome += " An older release, because the newest needs a newer plugin API than Graphite provides." }
-            if let compatibility, !compatibility.canLoad { outcome += " " + CommunityPluginHost.describe(compatibility) } else { outcome += " Turn it on in Community Plugins." }
-            outcomes[entry.id] = outcome
+            outcomes[entry.id] = CommunityPluginTurningOn.installationOutcome(outcome, compatibility: compatibility, isTurnedOn: host.enabledList.isEnabled(entry.id), isRunning: host.loadStates[entry.id] == .loaded)
         } catch {
             outcomes[entry.id] = error.localizedDescription
         }
+    }
+}
+
+/// What Settings says when a plugin starts to run or changes.
+enum CommunityPluginTurningOn {
+    static func question(naming pluginNames: [String]) -> String {
+        "These plugins, made by other people, will run now, and can read and change every file in this vault and reach the internet: " + pluginNames.joined(separator: ", ") + "."
+    }
+
+    /// After installing or updating: a plugin already running keeps its old code until plugins reload.
+    static func installationOutcome(_ installed: String, compatibility: CommunityPluginCompatibility?, isTurnedOn: Bool, isRunning: Bool) -> String {
+        if let compatibility, !compatibility.canLoad { return installed + " " + CommunityPluginHost.describe(compatibility) }
+        if isRunning { return installed + " The old version keeps running until you tap Reload Plugins." }
+        return installed + (isTurnedOn ? " It runs the next time plugins start." : " Turn it on in Community Plugins.")
     }
 }

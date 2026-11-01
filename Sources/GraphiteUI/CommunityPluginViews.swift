@@ -37,10 +37,15 @@ extension CommunityPluginHost {
     }
 
     /// Asks the plugins to open the file in their view; the leaf's identifier when one did.
-    /// A plugin that takes too long leaves the file to Graphite.
+    /// A plugin that takes too long leaves the file to Graphite. A note no such plugin would
+    /// take is not asked about, so opening it does not wait for the plugins' page.
     func openFileInPluginView(_ path: VaultPath) async -> String? {
-        guard mayShowInPluginView(path),
-              let answer = try? await send(["operation": "file.openInView", "path": path.rawValue], timeout: .seconds(3)),
+        guard mayShowInPluginView(path) else { return nil }
+        if path.fileExtension == "md", let root = workspace?.folderAccess?.root, let location = try? path.url(in: root) {
+            let mayBeTakenOver = await Task.detached(priority: .userInitiated) { CommunityPluginNoteTakeover.mayBeTakenOver(noteAt: location) }.value
+            guard mayBeTakenOver else { return nil }
+        }
+        guard let answer = try? await send(["operation": "file.openInView", "path": path.rawValue], timeout: .seconds(3)),
               answer["isOpened"] as? Bool == true, let identifier = answer["leafIdentifier"] as? String else { return nil }
         // The view list arrives right after; until then the tab knows the view by its identifier.
         if pluginView(withIdentifier: identifier) == nil {
@@ -118,24 +123,37 @@ extension CommunityPluginHost {
 
     // MARK: Bases views from plugins
 
-    /// Makes a plugin's view of a base's results; the leaf to show live.
-    func openBasesView(type viewType: String, viewName: String, viewIndex: Int, source: BaseSource, result: BaseQueryResult) async -> String? {
+    /// Makes a plugin's view of a base's results; the leaf to show. When the page does not
+    /// answer in time the runtime is told, so a late opening leaves no view nobody closes.
+    /// - Parameter embedWidth: The width in the note of an embed, shown as a copy; nil for a
+    ///   base's own tab, shown live.
+    func openBasesView(type viewType: String, viewName: String, viewIndex: Int, source: BaseSource, result: BaseQueryResult, embedWidth: CGFloat? = nil) async -> String? {
         guard isRuntimeRunning, pluginBasesViews[viewType] != nil else { return nil }
+        let openingIdentifier = UUID().uuidString
         var message = Self.basesMessage(result)
-        message.merge(["operation": "basesView.open", "viewType": viewType, "viewName": viewName, "viewIndex": viewIndex]) { _, new in new }
+        message.merge(["operation": "basesView.open", "viewType": viewType, "viewName": viewName, "viewIndex": viewIndex, "openingIdentifier": openingIdentifier]) { _, new in new }
+        if let embedWidth { message["embedWidth"] = Double(embedWidth) }
         switch source {
         case .file(let path): message["baseFilePath"] = path.rawValue
         case .inline(let yaml): message["baseYaml"] = yaml
         }
-        guard let answer = try? await send(message, timeout: .seconds(10)), answer["isOpened"] as? Bool == true else { return nil }
-        return answer["leafIdentifier"] as? String
+        do {
+            let answer = try await send(message, timeout: .seconds(10))
+            return answer["isOpened"] as? Bool == true ? answer["leafIdentifier"] as? String : nil
+        } catch {
+            Task { _ = try? await send(["operation": "basesView.abandonOpening", "openingIdentifier": openingIdentifier], timeout: .seconds(30)) }
+            return nil
+        }
     }
 
-    func updateBasesView(_ identifier: String, result: BaseQueryResult) {
+    /// - Parameter viewOptionsChanged: The view's settings in the base changed, so the plugin
+    ///   reads them again.
+    func updateBasesView(_ identifier: String, result: BaseQueryResult, viewOptionsChanged: Bool = false) {
         guard isRuntimeRunning else { return }
         var message = Self.basesMessage(result)
         message["operation"] = "basesView.update"
         message["leafIdentifier"] = identifier
+        if viewOptionsChanged { message["viewOptionsChanged"] = true }
         Task { _ = try? await send(message, timeout: .seconds(10)) }
     }
 
@@ -161,7 +179,11 @@ extension CommunityPluginHost {
                 formulaValues[row.path.rawValue] = values
             }
         }
-        return ["groups": groups, "properties": result.columns.map { column in column.property.rawValue }, "formulaValues": formulaValues]
+        var summaryValues: [String: Any] = [:]
+        for (property, summary) in result.summaries {
+            if let value = summary.value.value { summaryValues[property.rawValue] = pluginValue(value) }
+        }
+        return ["groups": groups, "properties": result.columns.map { column in column.property.rawValue }, "formulaValues": formulaValues, "summaryValues": summaryValues]
     }
 
     /// A base value as the runtime makes Obsidian's Bases values of it (`community-plugin-runtime-bases.js`).
@@ -337,6 +359,34 @@ extension WorkspaceModel {
         if host.shownSidebarViewIdentifier == nil, let shownViewType = savedSidebar.shownViewType {
             host.shownSidebarViewIdentifier = host.sidebarViews.first { view in view.viewType == shownViewType }?.id
         }
+    }
+}
+
+/// Which notes a plugin that patched `setViewState` could show in a view of its own. Such
+/// plugins go by a frontmatter key named after them (`excalidraw-plugin`, `kanban-plugin`,
+/// `mindmap-plugin`), so a note without one opens at once, without asking the plugins' page.
+enum CommunityPluginNoteTakeover {
+    /// Enough of a note to hold its frontmatter's keys.
+    private static let inspectedBytes = 64 * 1024
+
+    static func mayBeTakenOver(noteAt location: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: location) else { return false }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: inspectedBytes) else { return false }
+        return mayBeTakenOver(noteBeginning: String(decoding: head, as: UTF8.self))
+    }
+
+    static func mayBeTakenOver(noteBeginning: String) -> Bool {
+        var lines = noteBeginning.split(separator: "\n", omittingEmptySubsequences: false).makeIterator()
+        guard lines.next()?.trimmingCharacters(in: .whitespaces) == "---" else { return false }
+        while let line = lines.next() {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine == "---" { return false }
+            guard let colon = trimmedLine.firstIndex(of: ":") else { continue }
+            let key = trimmedLine[..<colon].trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+            if key.hasSuffix("-plugin") { return true }
+        }
+        return false
     }
 }
 
@@ -526,8 +576,9 @@ extension CommunityPluginLiveWebView: NSViewRepresentable {
 }
 #endif
 
-/// A base's view of a type a plugin registered (`registerBasesView`): the plugin draws the
-/// base's results in its own view, shown live in place of Graphite's table or cards.
+/// A base's view of a type a plugin registered (`registerBasesView`) in the base's own tab:
+/// the plugin draws the base's results in its own view, shown live in place of Graphite's
+/// table or cards. In a note it is a copy instead (`CommunityPluginBasesEmbedContent`).
 struct CommunityPluginBasesViewContent: View {
     let host: CommunityPluginHost
     let viewType: String
@@ -536,6 +587,8 @@ struct CommunityPluginBasesViewContent: View {
     let result: BaseQueryResult?
     @State private var leafIdentifier: String?
     @State private var didFail = false
+    /// Raised by Try Again, and starts the opening over.
+    @State private var openingAttempt = 0
 
     /// Everything the plugin's view is sent for `result` (`basesMessage`), as comparable
     /// data: the view is sent the results again when this changes, so formula values and
@@ -551,19 +604,24 @@ struct CommunityPluginBasesViewContent: View {
             if let leafIdentifier {
                 CommunityPluginLiveViewContent(host: host, viewIdentifier: leafIdentifier)
             } else if didFail {
-                ContentUnavailableView("\u{201C}\(host.pluginBasesViews[viewType] ?? viewType)\u{201D} Could Not Be Shown", systemImage: "puzzlepiece.extension",
-                                       description: Text("Its plugin did not draw the view. Settings › Community Plugins lists what went wrong."))
+                CommunityPluginBasesFailure(viewName: host.pluginBasesViews[viewType]?.name ?? viewType) {
+                    didFail = false
+                    openingAttempt += 1
+                }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task(id: OpeningKey(viewType: viewType, viewIndex: view.id, hasResult: result != nil)) {
+        .task(id: OpeningKey(viewType: viewType, viewIndex: view.id, hasResult: result != nil, attempt: openingAttempt)) {
             guard let result, leafIdentifier == nil else { return }
             leafIdentifier = await host.openBasesView(type: viewType, viewName: view.name, viewIndex: view.id, source: source, result: result)
             didFail = leafIdentifier == nil
         }
         .onChange(of: Self.updateKey(for: result)) {
             if let leafIdentifier, let result { host.updateBasesView(leafIdentifier, result: result) }
+        }
+        .onChange(of: view) {
+            if let leafIdentifier, let result { host.updateBasesView(leafIdentifier, result: result, viewOptionsChanged: true) }
         }
         .onDisappear {
             if let leafIdentifier { host.closeView(leafIdentifier) }
@@ -575,6 +633,7 @@ struct CommunityPluginBasesViewContent: View {
         let viewType: String
         let viewIndex: Int
         let hasResult: Bool
+        let attempt: Int
     }
 }
 

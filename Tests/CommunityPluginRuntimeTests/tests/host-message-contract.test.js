@@ -19,7 +19,7 @@ function runtimeScriptNames() {
 
 /// The operations Swift sends to the runtime (JavaScript handles them).
 const operationsFromGraphite = [
-    'appearance.changed', 'appearance.styles', 'basesView.open', 'basesView.update', 'codeBlock.event', 'codeBlock.release',
+    'appearance.changed', 'appearance.styles', 'basesView.abandonOpening', 'basesView.open', 'basesView.update', 'codeBlock.event', 'codeBlock.release',
     'codeBlock.render', 'command.run', 'editor.chooseSuggestion', 'editor.closeSuggestions', 'editor.drop', 'editor.paste',
     'editor.update', 'file.openInView', 'hoverLink.hovered', 'menu.choose', 'menu.dismiss', 'menu.editor', 'menu.file', 'notice.tap', 'plugin.load',
     'plugin.unload', 'plugins.layoutReady', 'protocol.open', 'ribbon.run', 'runtime.start', 'runtime.stop', 'settings.show',
@@ -29,7 +29,7 @@ const operationsFromGraphite = [
 
 /// The operations the runtime sends to Swift: those answered, and those that only notify.
 const operationsToGraphite = [
-    'appearance.setConfig', 'basesViews.changed', 'clipboard.readText', 'clipboard.writeText', 'codeBlock.changed',
+    'appearance.setConfig', 'basesView.setOption', 'basesViews.changed', 'clipboard.readText', 'clipboard.writeText', 'codeBlock.changed',
     'codeBlocks.changed', 'commands.changed', 'editor.apply', 'editor.listenersChanged', 'fileViews.changed', 'hoverLink.end', 'hoverLink.show', 'markdown.render',
     'menu.show', 'menus.changed', 'network.request', 'notice.hide', 'notice.show', 'notice.update', 'plugin.failure',
     'plugin.settingTabChanged', 'plugin.unsupportedFeature', 'plugin.writeConflict', 'plugins.setEnabled', 'postProcessors.changed',
@@ -39,17 +39,17 @@ const operationsToGraphite = [
     'workspace.renameFile',
 ];
 
-test('the operations Graphite can send to the runtime are exactly the 40 the runtime handles', async () => {
+test('the operations Graphite can send to the runtime are exactly the 41 the runtime handles', async () => {
     const harness = await startRuntime({ files: {} });
     try {
         assert.deepEqual(Object.keys(harness.runtime.messageHandlers).sort(), operationsFromGraphite.slice().sort());
-        assert.equal(operationsFromGraphite.length, 40);
+        assert.equal(operationsFromGraphite.length, 41);
     } finally {
         harness.close();
     }
 });
 
-test('the operations the runtime sends to Graphite are exactly the 46 written out here, each named by a literal', () => {
+test('the operations the runtime sends to Graphite are exactly the 47 written out here, each named by a literal', () => {
     const sendNames = new Set();
     let callCount = 0;
     let literalCallCount = 0;
@@ -63,7 +63,7 @@ test('the operations the runtime sends to Graphite are exactly the 46 written ou
     }
     assert.equal(literalCallCount, callCount, 'every call names its operation with a string literal, so this list is complete');
     assert.deepEqual(Array.from(sendNames).sort(), operationsToGraphite.slice().sort());
-    assert.equal(operationsToGraphite.length, 46);
+    assert.equal(operationsToGraphite.length, 47);
     assert.equal(operationsFromGraphite.length + operationsToGraphite.length, 86);
 });
 

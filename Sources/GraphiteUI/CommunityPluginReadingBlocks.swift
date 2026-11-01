@@ -14,6 +14,8 @@ struct CommunityPluginReadingBlockRequest: Hashable, Sendable {
         case section
         /// A plugin's view in a tab or sidebar panel (its leaf's identifier).
         case view(identifier: String)
+        /// A plugin's view of a base embedded in the note.
+        case embeddedBasesView(viewType: String, viewName: String)
     }
 
     let kind: Kind
@@ -61,7 +63,7 @@ final class CommunityPluginShownCodeBlock {
     private(set) var appearance: Appearance = .drawing
     /// The copy's height in points, as its web view measured it.
     var height: CGFloat = 0
-    @ObservationIgnored private weak var host: CommunityPluginHost?
+    @ObservationIgnored private(set) weak var host: CommunityPluginHost?
     @ObservationIgnored private var request: CommunityPluginReadingBlockRequest?
     /// Ticks the note's task on a line of a section, counted from the section's first line.
     @ObservationIgnored var tickTask: ((Int) -> Void)?
@@ -93,7 +95,7 @@ final class CommunityPluginShownCodeBlock {
         switch request.kind {
         case .codeBlock(let language): message["language"] = language
         case .section: message["kind"] = "section"
-        case .view: return
+        case .view, .embeddedBasesView: return
         }
         message.merge(host.sectionInformation(for: request)) { _, new in new }
         do {
@@ -131,6 +133,31 @@ final class CommunityPluginShownCodeBlock {
         } catch {
             appearance = .failed(error.localizedDescription)
         }
+    }
+
+    /// Starts showing `request`, with its last copy at its height meanwhile. Nil once the host is gone.
+    func begin(_ request: CommunityPluginReadingBlockRequest) -> CommunityPluginHost? {
+        guard let host else { return nil }
+        self.request = request
+        host.shownCodeBlocks[blockIdentifier] = self
+        if let lastCopy = host.lastCodeBlockCopies[request] {
+            appearance = .drawn(html: lastCopy.html)
+            height = lastCopy.height
+        } else {
+            appearance = .drawing
+        }
+        return host
+    }
+
+    /// What the page answered to a drawing: the copy, or why there is none.
+    func finishDrawing(_ answer: [String: Any], failureMessage: String) {
+        if let styles = answer["styles"] as? String { host?.updatePluginStyleSheets(styles) }
+        if answer["isDrawn"] as? Bool == true, let html = answer["html"] as? String { receive(html: html) }
+        else { appearance = .failed(answer["message"] as? String ?? failureMessage) }
+    }
+
+    func fail(with message: String) {
+        appearance = .failed(message)
     }
 
     /// The tab or panel showing a view changed size; the view lays out again.
@@ -181,6 +208,9 @@ final class CommunityPluginShownCodeBlock {
         if let overPath = details["overPath"] as? [Int] { event["overPath"] = overPath }
         deliver(event, linkHovered: linkHovered)
     }
+
+    /// Whether this block is the one showing `shownRequest` now.
+    func isShowing(_ shownRequest: CommunityPluginReadingBlockRequest) -> Bool { request == shownRequest }
 
     /// The note an internal link drawn in the copy starts from: a block's note, the vault's
     /// root for a view.
@@ -263,6 +293,18 @@ extension CommunityPluginHost {
     var runsMarkdownPostProcessors: Bool { !postProcessingPluginIdentifiers.isEmpty }
 }
 
+/// The width a block is drawn at, in steps: plugins lay their blocks out once, for the width
+/// they are given (charts, tables), so a block is drawn again when the note's width changes
+/// by a step, not at every point of a split being dragged.
+enum CommunityPluginDrawingWidth {
+    static let stepWidth: CGFloat = 50
+    static let settlingDelay: Duration = .milliseconds(250)
+
+    static func step(of width: CGFloat) -> CGFloat {
+        (width / stepWidth).rounded() * stepWidth
+    }
+}
+
 /// A plugin's code block in the reading view: what the plugin drew, shown in a web view
 /// that runs no script of the page, sized to its content.
 struct CommunityPluginCodeBlockView: View {
@@ -278,9 +320,14 @@ struct CommunityPluginCodeBlockView: View {
         content
             .frame(maxWidth: .infinity, alignment: .leading)
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in availableWidth = width }
-            .task(id: DrawingKey(request: request, hasWidth: availableWidth > 0)) {
+            .task(id: DrawingKey(request: request, width: CommunityPluginDrawingWidth.step(of: availableWidth))) {
                 guard availableWidth > 0 else { return }
                 let block = shownBlock ?? CommunityPluginShownCodeBlock(host: host)
+                // A rotation or a split being dragged settles first; the last copy stays meanwhile.
+                if shownBlock != nil, block.isShowing(request) {
+                    try? await Task.sleep(for: CommunityPluginDrawingWidth.settlingDelay)
+                    guard !Task.isCancelled else { return }
+                }
                 shownBlock = block
                 await block.draw(request, width: availableWidth)
             }
@@ -290,10 +337,10 @@ struct CommunityPluginCodeBlockView: View {
             }
     }
 
-    /// Drawn again when the block's text changes, or once its width is known.
+    /// Drawn again when the block's text changes, or its width (`CommunityPluginDrawingWidth`).
     private struct DrawingKey: Equatable {
         let request: CommunityPluginReadingBlockRequest
-        let hasWidth: Bool
+        let width: CGFloat
     }
 
     @ViewBuilder private var content: some View {
@@ -361,9 +408,13 @@ struct CommunityPluginSectionView<NativeContent: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in availableWidth = width }
-        .task(id: SectionKey(request: request, hasWidth: availableWidth > 0)) {
+        .task(id: SectionKey(request: request, width: CommunityPluginDrawingWidth.step(of: availableWidth))) {
             guard availableWidth > 0 else { return }
             let block = shownBlock ?? CommunityPluginShownCodeBlock(host: host)
+            if shownBlock != nil, block.isShowing(request) {
+                try? await Task.sleep(for: CommunityPluginDrawingWidth.settlingDelay)
+                guard !Task.isCancelled else { return }
+            }
             shownBlock = block
             block.tickTask = { lineIndex in Task { await tickTask(onSectionLine: lineIndex) } }
             await block.draw(request, width: availableWidth)
@@ -399,7 +450,7 @@ struct CommunityPluginSectionView<NativeContent: View>: View {
 
     private struct SectionKey: Equatable {
         let request: CommunityPluginReadingBlockRequest
-        let hasWidth: Bool
+        let width: CGFloat
     }
 }
 
@@ -497,11 +548,12 @@ enum CommunityPluginCodeBlockPage {
             if (height !== lastHeight) { lastHeight = height; handler.postMessage({ kind: 'height', height }); }
         }
         window.GraphiteCodeBlock = {
-            show(html, styleSheets, isDark, textSize, accent, fillsSpace, bodyClasses, bodyStyle, hasTheme) {
+            show(html, styleSheets, isDark, textSize, accent, fillsSpace, isEmbeddedView, bodyClasses, bodyStyle, hasTheme) {
                 document.body.classList.toggle('graphite-view-page', Boolean(fillsSpace));
                 // A plugin's view is not a note's rendering; only blocks get the note's styles.
-                root().classList.toggle('markdown-rendered', !fillsSpace);
-                root().classList.toggle('markdown-preview-view', !fillsSpace);
+                const isPluginView = Boolean(fillsSpace) || Boolean(isEmbeddedView);
+                root().classList.toggle('markdown-rendered', !isPluginView);
+                root().classList.toggle('markdown-preview-view', !isPluginView);
                 const styleElement = document.getElementById('graphite-plugin-styles');
                 if (styleElement.textContent !== styleSheets) styleElement.textContent = styleSheets;
                 // The classes and inline style plugins and the theme set on the plugins' page body
@@ -520,7 +572,7 @@ enum CommunityPluginCodeBlockPage {
                 document.body.classList.toggle('graphite-themed', Boolean(hasTheme));
                 document.body.style.setProperty('--font-text-size', textSize + 'px');
                 // A view uses Obsidian's interface sizes, which follow the system's text size too.
-                const scale = fillsSpace ? textSize / 15 : 1;
+                const scale = isPluginView ? textSize / 15 : 1;
                 for (const [name, size] of [['--font-ui-smaller', 12], ['--font-ui-small', 13], ['--font-ui-medium', 15], ['--font-ui-large', 20]]) {
                     document.body.style.setProperty(name, (size * scale) + 'px');
                 }
@@ -786,7 +838,7 @@ final class CommunityPluginCodeBlockDisplayCoordinator: NSObject, WKScriptMessag
     func present(_ presentation: [String: Any]) {
         pendingPresentation = presentation
         guard isLoaded, let webView else { return }
-        webView.callAsyncJavaScript("GraphiteCodeBlock.show(html, styleSheets, isDark, textSize, accent, fillsSpace, bodyClasses, bodyStyle, hasTheme)", arguments: presentation,
+        webView.callAsyncJavaScript("GraphiteCodeBlock.show(html, styleSheets, isDark, textSize, accent, fillsSpace, isEmbeddedView, bodyClasses, bodyStyle, hasTheme)", arguments: presentation,
                                     in: nil, in: .defaultClient) { _ in }
     }
 }
@@ -802,6 +854,9 @@ struct CommunityPluginCodeBlockDisplay {
     let accentHex: String?
     /// A plugin view fills its tab or panel and scrolls inside; a block is as tall as its content.
     var fillsSpace = false
+    /// A plugin's view shown in a note (a base's): as tall as its content, like a block, but not
+    /// styled as the note's own text.
+    var isEmbeddedView = false
     /// The plugins' page body classes and inline style (`CommunityPluginHost.pluginBodyClasses`).
     var bodyClasses = ""
     var bodyStyle = ""
@@ -851,7 +906,7 @@ struct CommunityPluginCodeBlockDisplay {
     @MainActor private func update(_ coordinator: CommunityPluginCodeBlockDisplayCoordinator) {
         coordinator.block = block
         coordinator.linkPreviews.linkPreviews = linkPreviews
-        coordinator.present(["html": html, "styleSheets": styleSheets, "isDark": isDark, "textSize": textSize, "accent": accentHex ?? "", "fillsSpace": fillsSpace,
+        coordinator.present(["html": html, "styleSheets": styleSheets, "isDark": isDark, "textSize": textSize, "accent": accentHex ?? "", "fillsSpace": fillsSpace, "isEmbeddedView": isEmbeddedView,
                              "bodyClasses": bodyClasses, "bodyStyle": bodyStyle, "hasTheme": hasTheme])
     }
 

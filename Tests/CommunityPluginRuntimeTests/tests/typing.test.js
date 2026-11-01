@@ -90,3 +90,27 @@ test('suggestions at the cursor come from the plugin that triggers, and the chos
         harness.close();
     }
 });
+
+test('a keystroke carries only what changed, and a copy that is not the one it was made from asks for the note', async () => {
+    const harness = await startRuntime({ files: { 'Note.md': 'Hello\n' } });
+    try {
+        await installAndLoadPlugin(harness, { manifest, mainSource: emojiPlugin });
+        await settle();
+        const opened = harness.host.openNote('Note.md', 5);
+        await harness.send({ operation: 'workspace.activeDocument', activeDocument: { path: 'Note.md', mode: 'livePreview', editorSnapshot: opened } });
+        const typed = { path: 'Note.md', snapshotIdentifier: 'after-typing', selectionAnchor: 6, selectionHead: 6,
+            textChange: { baseSnapshotIdentifier: opened.snapshotIdentifier, originalLength: 6, location: 5, removedLength: 0, insertedText: '!' } };
+        assert.deepEqual(plain(await harness.send({ operation: 'editor.update', wantsSuggestions: false, activeDocument: { path: 'Note.md', mode: 'livePreview', editorSnapshot: typed } })), { suggestion: null });
+        assert.deepEqual(plain(harness.app.plugins.getPlugin('emoji').changes), ['Note.md:Hello!\n'], 'the plugin hears the whole note, as ever');
+        const view = harness.app.workspace.getActiveViewOfType(harness.obsidian.MarkdownView);
+        assert.equal(view.editor.getValue(), 'Hello!\n');
+        assert.equal(view.editor.snapshotIdentifier, 'after-typing');
+
+        const stale = { path: 'Note.md', snapshotIdentifier: 'later', selectionAnchor: 0, selectionHead: 0,
+            textChange: { baseSnapshotIdentifier: 'some other copy', originalLength: 7, location: 0, removedLength: 0, insertedText: 'x' } };
+        assert.deepEqual(plain(await harness.send({ operation: 'editor.update', wantsSuggestions: false, activeDocument: { path: 'Note.md', mode: 'livePreview', editorSnapshot: stale } })), { needsWholeNote: true });
+        assert.equal(view.editor.getValue(), 'Hello!\n', 'nothing was applied');
+    } finally {
+        harness.close();
+    }
+});

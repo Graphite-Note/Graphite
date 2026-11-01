@@ -22,6 +22,8 @@ struct BaseViewDraft: Equatable, Sendable {
     var markerIconProperty: BasePropertyIdentifier?
     var markerColorProperty: BasePropertyIdentifier?
     var defaultZoom: Double?
+    /// The options of a plugin's view, as the file writes them.
+    var pluginOptions: [String: BaseViewOptionValue]
 
     init(view: BaseView) {
         name = view.name
@@ -42,6 +44,7 @@ struct BaseViewDraft: Equatable, Sendable {
         markerIconProperty = view.map.markerIconProperty
         markerColorProperty = view.map.markerColorProperty
         defaultZoom = view.map.defaultZoom.flatMap { zoom in zoom.isFinite ? zoom : nil }
+        pluginOptions = view.pluginOptions
     }
 
     /// Applies the fields that differ from `original`, leaving everything else as written.
@@ -65,6 +68,9 @@ struct BaseViewDraft: Equatable, Sendable {
         if markerIconProperty != original.markerIconProperty { try editor.setOption("markerIcon", text: markerIconProperty?.rawValue, forViewAt: viewPosition) }
         if markerColorProperty != original.markerColorProperty { try editor.setOption("markerColor", text: markerColorProperty?.rawValue, forViewAt: viewPosition) }
         if defaultZoom != original.defaultZoom { try editor.setOption("defaultZoom", number: defaultZoom, forViewAt: viewPosition) }
+        for key in Set(pluginOptions.keys).union(original.pluginOptions.keys) where pluginOptions[key] != original.pluginOptions[key] {
+            try editor.setOption(key, value: pluginOptions[key], forViewAt: viewPosition)
+        }
     }
 
     static let limitRange = 1...100_000
@@ -171,6 +177,8 @@ struct BaseViewEditorSheet: View {
     let definition: BaseDefinition
     let viewIndex: Int
     let availablePropertyKeys: [String]
+    /// The view types plugins registered, offered as layouts, with the options each has.
+    let pluginViews: [String: CommunityPluginBasesViewRegistration]
     /// Saves the draft into the view at the given position of the file's `views` list and
     /// returns nil, or returns why the base was not saved. The sheet stays open with the
     /// draft until the save succeeds.
@@ -180,11 +188,12 @@ struct BaseViewEditorSheet: View {
     @State private var isSaving = false
     @State private var failureMessage: String?
 
-    init(definition: BaseDefinition, viewIndex: Int, availablePropertyKeys: [String],
+    init(definition: BaseDefinition, viewIndex: Int, availablePropertyKeys: [String], pluginViews: [String: CommunityPluginBasesViewRegistration] = [:],
          saveEdit: @escaping (_ draft: BaseViewDraft, _ original: BaseViewDraft, _ viewPosition: Int) async -> String?) {
         self.definition = definition
         self.viewIndex = viewIndex
         self.availablePropertyKeys = availablePropertyKeys
+        self.pluginViews = pluginViews
         self.saveEdit = saveEdit
         _editing = State(initialValue: BaseViewEditing(viewAt: viewIndex, in: definition))
     }
@@ -248,7 +257,10 @@ struct BaseViewEditorSheet: View {
                     TextField("Name", text: $editing.draft.name)
                     Picker("Layout", selection: $editing.draft.type) {
                         ForEach(Self.editableTypes, id: \.rawValue) { type in Label(type.defaultViewName, systemImage: type.systemImage).tag(type) }
-                        if case .unsupported(let name) = original.type { Text(name).tag(original.type) }
+                        ForEach(pluginViews.values.sorted { first, second in first.name < second.name }, id: \.viewType) { registration in
+                            Label(registration.name, systemImage: registration.systemImage).tag(BaseViewType(rawValue: registration.viewType))
+                        }
+                        if case .unsupported(let name) = original.type, pluginViews[name] == nil { Text(name).tag(original.type) }
                     }
                     Toggle("Limit Results", isOn: $editing.draft.hasLimit)
                     if draft.hasLimit {
@@ -267,6 +279,7 @@ struct BaseViewEditorSheet: View {
                 filtersSection
                 if draft.type == .cards { cardsSection }
                 if draft.type == .map { mapSection }
+                pluginOptionsSection
             }
             .formStyle(.grouped)
             .navigationTitle("Edit View")
@@ -432,6 +445,18 @@ struct BaseViewEditorSheet: View {
         }
     }
 
+    /// The options a plugin's view offers (`registerBasesView`'s `options`), which the view
+    /// reads from the file, as Obsidian's view menu shows them.
+    @ViewBuilder private var pluginOptionsSection: some View {
+        if case .unsupported(let typeName) = draft.type, let registration = pluginViews[typeName], !registration.options.isEmpty {
+            Section(registration.name) {
+                ForEach(registration.options) { option in
+                    BaseViewPluginOptionRow(option: option, value: Binding(get: { draft.pluginOptions[option.key] }, set: { value in draft.pluginOptions[option.key] = value }))
+                }
+            }
+        }
+    }
+
     private var cardsSection: some View {
         Section("Cards") {
             Picker("Cover Image", selection: $editing.draft.imageProperty) {
@@ -472,6 +497,48 @@ struct BaseViewEditorSheet: View {
             Text("Map")
         } footer: {
             Text("Coordinates are a property holding “latitude, longitude” or a two-item list. Icons use Lucide names, colors CSS colors.")
+        }
+    }
+}
+
+/// One option of a plugin's view. An option never set shows the plugin's default, and stays
+/// out of the file until it is changed.
+private struct BaseViewPluginOptionRow: View {
+    let option: CommunityPluginBasesViewRegistration.Option
+    @Binding var value: BaseViewOptionValue?
+
+    private var shownValue: BaseViewOptionValue? { value ?? option.defaultValue }
+
+    private var text: String {
+        switch shownValue {
+        case .text(let text): text
+        case .number(let number): BaseValue.formatted(number)
+        case .boolean(let isOn): isOn ? "true" : "false"
+        case nil: ""
+        }
+    }
+
+    private var number: Double {
+        if case .number(let number) = shownValue { return number }
+        return option.minimum ?? 0
+    }
+
+    var body: some View {
+        switch option.kind {
+        case .text:
+            TextField(option.displayName, text: Binding(get: { text }, set: { newText in value = newText.isEmpty ? nil : .text(newText) }))
+        case .toggle:
+            Toggle(option.displayName, isOn: Binding(get: { if case .boolean(true) = shownValue { return true } else { return false } }, set: { isOn in value = .boolean(isOn) }))
+        case .dropdown:
+            Picker(option.displayName, selection: Binding(get: { text }, set: { choice in value = .text(choice) })) {
+                ForEach(option.choices, id: \.value) { choice in Text(choice.title).tag(choice.value) }
+            }
+        case .slider:
+            Stepper(value: Binding(get: { number }, set: { newNumber in value = .number(newNumber) }), in: (option.minimum ?? 0)...(max(option.minimum ?? 0, option.maximum ?? 100)), step: option.step ?? 1) {
+                Text("\(option.displayName): \(BaseValue.formatted(number))")
+            }
+        case .other:
+            LabeledContent(option.displayName) { Text("Edit this in the base file.").foregroundStyle(.secondary) }
         }
     }
 }

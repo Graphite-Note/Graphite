@@ -413,7 +413,7 @@
 
         async saveData(data) {
             const dataPath = this.pluginFolderPath() + '/data.json';
-            await this.app.vault.adapter.write(dataPath, JSON.stringify(data, null, 2));
+            await this.app.vault.adapter.writeReplacing(dataPath, JSON.stringify(data, null, 2));
         }
 
         addCommand(command) {
@@ -1286,7 +1286,7 @@
             await app.vault.loadFileTree();
             await app.metadataTypeManager.loadTypes();
             app.metadataCache.observeVault();
-            app.metadataCache.startInitialRead();
+            app.metadataCache.startFollowingNotes();
             return { fileCount: app.vault.getAllLoadedFiles().length };
         },
         async 'runtime.stop'() {
@@ -1331,6 +1331,8 @@
             const extension = file.extension.toLowerCase();
             const viewType = extension === 'md' ? null : app.viewRegistry.typeByExtension[extension];
             if (!viewType && !(extension === 'md' && runtime.pluginsTakeOverNotes())) return { isOpened: false };
+            // A plugin decides by the note's frontmatter (Excalidraw's drawings), so it is read first.
+            if (!viewType) await app.metadataCache.readNow([file]);
             const leaf = workspace.createPluginLeaf('tab');
             // Graphite opens the tab itself; the leaf does not ask for one.
             leaf.hasBeenShown = true;
@@ -1453,6 +1455,11 @@
             const previousView = app.workspace.getActiveViewOfType(MarkdownView);
             const previousText = previousView && previousView.editor ? previousView.editor.getValue() : null;
             const previousPath = previousView && previousView.file ? previousView.file.path : null;
+            const snapshot = message.activeDocument ? message.activeDocument.editorSnapshot : null;
+            if (snapshot && snapshot.textChange) {
+                snapshot.text = textAfterTyping(previousView ? previousView.editor : null, snapshot);
+                if (snapshot.text === null) return { needsWholeNote: true };
+            }
             if (message.activeDocument) app.workspace.setActiveDocument(message.activeDocument);
             const view = app.workspace.getActiveViewOfType(MarkdownView);
             if (!view || !view.editor) return { suggestion: null };
@@ -1552,6 +1559,16 @@
             return { isHandled: true };
         },
     };
+
+    /// The note after a keystroke, from the copy the editor holds and the change Graphite sent
+    /// (a keystroke does not carry the whole note across). Null when the copy is not the one
+    /// the change was made from, and Graphite then sends the note.
+    function textAfterTyping(editor, snapshot) {
+        const change = snapshot.textChange;
+        if (!editor || editor.path !== snapshot.path || editor.hasUnsentChanges) return null;
+        if (editor.snapshotIdentifier !== change.baseSnapshotIdentifier || editor.text.length !== change.originalLength) return null;
+        return editor.text.slice(0, change.location) + change.insertedText + editor.text.slice(change.location + change.removedLength);
+    }
 
     /// A plugin whose `data.json` another app or device changed hears of it, as in Obsidian.
     function notifyPluginsOfSettingsChanges(changes) {

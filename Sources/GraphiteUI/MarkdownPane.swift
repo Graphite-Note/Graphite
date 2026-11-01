@@ -84,7 +84,7 @@ struct MarkdownPane: View {
                                 suspendReadingFollow: { workspace.readAloud?.suspendFollowing(in: session.path.rawValue) })
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
-                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil)
+                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // The pane stays when the tab shows another note; its reading view does not.
@@ -396,7 +396,7 @@ struct MarkdownPane: View {
             embeddedImageColumnWidth: preferences.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
-            pluginCodeBlocks: workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil,
+            pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
             notePath: notePath)
     }

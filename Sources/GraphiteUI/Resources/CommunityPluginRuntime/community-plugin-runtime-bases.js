@@ -1,7 +1,7 @@
 // Obsidian's Bases classes for plugins: the values of base formulas and the classes a
-// plugin extends to offer its own base view. Graphite's bases are native (`BaseEvaluator`),
-// so a plugin's view is not offered among a base's views; registering one is reported as
-// unsupported. The classes exist so plugins that define such views at load still load.
+// plugin extends to offer its own base view (`registerBasesView`). Graphite evaluates bases
+// natively (`BaseEvaluator`); a view of a plugin's type is drawn here by the plugin over
+// Graphite's results, shown live in a base's own tab and as a copy where a note embeds it.
 (function installRuntimeBases(globalScope) {
     'use strict';
 
@@ -55,11 +55,16 @@
     BooleanValue.type = 'boolean';
 
     class DateValue extends NotNullValue {
-        constructor(date) {
+        /// `hasTime` is false for a date without a time of day, which prints without one.
+        constructor(date, hasTime) {
             super();
             this.date = date;
+            this.hasTime = Boolean(hasTime);
         }
-        toString() { return globalScope.moment ? globalScope.moment(this.date).format('YYYY-MM-DD') : this.date.toISOString(); }
+        toString() {
+            if (!globalScope.moment) return this.date.toISOString();
+            return globalScope.moment(this.date).format(this.hasTime ? 'YYYY-MM-DD HH:mm' : 'YYYY-MM-DD');
+        }
         isTruthy() { return true; }
     }
     DateValue.type = 'date';
@@ -93,10 +98,18 @@
             super();
             this.entries = entries || {};
         }
-        toString() { return JSON.stringify(this.entries); }
+        toString() { return JSON.stringify(plainValue(this)); }
         isTruthy() { return Object.keys(this.entries).length > 0; }
     }
     ObjectValue.type = 'object';
+
+    /// A value as the data it holds, which is how an object prints in Obsidian.
+    function plainValue(value) {
+        if (value instanceof ObjectValue) return Object.fromEntries(Object.entries(value.entries).map(([key, entry]) => [key, plainValue(entry)]));
+        if (value instanceof ListValue) return value.values.map(plainValue);
+        if (value instanceof PrimitiveValue) return value.value;
+        return value instanceof NullValue ? null : String(value);
+    }
 
     class FileValue extends NotNullValue {
         constructor(file) {
@@ -138,33 +151,56 @@
     class QueryController extends Component {}
 
     class BasesViewConfig {
-        constructor(name) {
+        /// `savesOption` writes an option a plugin sets into the view in the `.base` file.
+        constructor(name, savesOption) {
             this.name = name || '';
             this.options = {};
+            this.displayNames = {};
+            this.savesOption = savesOption || null;
         }
         get(key) { return this.options[key]; }
         getAsPropertyId(key) { return typeof this.options[key] === 'string' ? this.options[key] : null; }
-        getEvaluatedFormula() { return NullValue.value; }
-        set(key, value) { this.options[key] = value; }
+        /// Graphite evaluates a base's own formulas, not one a plugin keeps in an option, and says so.
+        getEvaluatedFormula() {
+            runtime.reportUnsupportedFeature('BasesViewConfig.getEvaluatedFormula');
+            return NullValue.value;
+        }
+        set(key, value) {
+            if (this.options[key] === value) return;
+            this.options[key] = value;
+            if (this.savesOption) this.savesOption(key, value);
+        }
         getOrder() { return []; }
         getSort() { return []; }
-        getDisplayName(propertyId) { return parsePropertyId(propertyId).name; }
+        getDisplayName(propertyId) {
+            const displayName = this.displayNames[propertyId];
+            return typeof displayName === 'string' && displayName !== '' ? displayName : parsePropertyId(propertyId).name;
+        }
     }
 
-    /// A plain value from a note's frontmatter as one of Obsidian's Bases values.
-    function wrapValue(value) {
+    /// A date property's text (`2026-09-21`, `2026-09-21T10:15`) as a date; null for other text.
+    function dateValueFromText(text) {
+        if (!/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$/.test(text)) return null;
+        const hasTime = text.length > 10;
+        const date = new Date(hasTime ? text : text + 'T00:00:00');
+        return isNaN(date.getTime()) ? null : new DateValue(date, hasTime);
+    }
+
+    /// A plain value from a note's frontmatter as one of Obsidian's Bases values. Text that
+    /// looks like a date is a date unless the vault declares the property as text
+    /// (`.obsidian/types.json`); Obsidian too goes by the declared type first.
+    function wrapValue(value, declaredType) {
         if (value === null || value === undefined) return NullValue.value;
         if (value instanceof Value) return value;
-        if (Array.isArray(value)) return new ListValue(value.map(wrapValue));
+        if (Array.isArray(value)) return new ListValue(value.map((entry) => wrapValue(entry, declaredType)));
         if (typeof value === 'number') return new NumberValue(value);
         if (typeof value === 'boolean') return new BooleanValue(value);
-        if (value instanceof Date) return new DateValue(value);
-        if (typeof value === 'object') return new ObjectValue(Object.entries(value).map(([key, entry]) => [key, wrapValue(entry)]));
+        if (value instanceof Date) return new DateValue(value, value.getHours() !== 0 || value.getMinutes() !== 0);
+        if (typeof value === 'object') return new ObjectValue(Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, wrapValue(entry)])));
         const text = String(value);
-        if (/^\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2})?)?$/.test(text)) {
-            const date = new Date(text.length === 10 ? text + 'T00:00:00' : text);
-            if (!isNaN(date.getTime())) return new DateValue(date);
-        }
+        const isDeclaredAsOtherThanDate = typeof declaredType === 'string' && declaredType !== 'date' && declaredType !== 'datetime';
+        const dateValue = isDeclaredAsOtherThanDate ? null : dateValueFromText(text);
+        if (dateValue) return dateValue;
         if (/^\[\[[^\]]+\]\]$/.test(text)) return new LinkValue(text);
         return new StringValue(text);
     }
@@ -176,14 +212,14 @@
         case 'boolean': return new BooleanValue(Boolean(encoded.value));
         case 'number': return new NumberValue(Number(encoded.value));
         case 'string': return new StringValue(String(encoded.value));
-        case 'date': return new DateValue(new Date(Number(encoded.value)));
+        case 'date': return new DateValue(new Date(Number(encoded.value)), encoded.hasTime);
         case 'list': return new ListValue((encoded.value || []).map(receivedValue));
         case 'link': return new LinkValue(String(encoded.value));
         case 'file': {
             const file = runtime.app ? runtime.app.vault.getFileByPath(String(encoded.value)) : null;
             return file ? new FileValue(file) : new StringValue(String(encoded.value));
         }
-        case 'object': return new ObjectValue((encoded.value || []).map(([key, entry]) => [key, receivedValue(entry)]));
+        case 'object': return new ObjectValue(Object.fromEntries((encoded.value || []).map(([key, entry]) => [key, receivedValue(entry)])));
         default: return NullValue.value;
         }
     }
@@ -219,7 +255,8 @@
             if (type === 'note') {
                 const cache = runtime.app ? runtime.app.metadataCache.getFileCache(file) : null;
                 const frontmatter = cache && cache.frontmatter ? cache.frontmatter : {};
-                return wrapValue(frontmatter[name]);
+                const declaredTypes = runtime.app ? runtime.app.metadataTypeManager.types : {};
+                return wrapValue(frontmatter[name], declaredTypes[name]);
             }
             return NullValue.value;
         }
@@ -234,10 +271,11 @@
     }
 
     class BasesQueryResult {
-        constructor(data, groups, properties) {
+        constructor(data, groups, properties, summaryValues) {
             this.data = data || [];
             this.groups = groups || null;
             this.propertyIds = properties || [];
+            this.summaryValues = summaryValues || {};
         }
         get groupedData() {
             if (this.groups) return this.groups;
@@ -246,7 +284,10 @@
             return this.data.length ? [group] : [];
         }
         get properties() { return this.propertyIds; }
-        getSummaryValue() { return NullValue.value; }
+        /// The summary Graphite evaluated for a column of the view. Its own arguments are
+        /// Obsidian's (the controller, the entries, the property and the summary's name), and
+        /// one the view does not summarise reads as empty.
+        getSummaryValue(queryController, entries, propertyId) { return receivedValue(this.summaryValues[propertyId]); }
     }
 
     class BasesView extends Component {
@@ -259,8 +300,9 @@
             this.data = new BasesQueryResult();
         }
         onDataUpdated() {}
+        onResize() {}
         async createFileForView() {
-            runtime.unsupported('BasesView.createFileForView', 'Graphite does not show plugin views in bases yet.');
+            runtime.unsupported('BasesView.createFileForView', 'Graphite does not make a new note from a plugin\'s base view yet.');
         }
     }
 
@@ -275,15 +317,106 @@
         Promise.resolve().then(() => {
             isBasesNotificationScheduled = false;
             runtime.hostBridge.notify('basesViews.changed', {
-                views: Array.from(runtime.basesViews.entries()).map(([viewType, registered]) => ({ viewType, name: registered.registration.name || viewType, pluginIdentifier: registered.pluginIdentifier })),
+                views: Array.from(runtime.basesViews.entries()).map(([viewType, registered]) => ({
+                    viewType, name: registered.registration.name || viewType, pluginIdentifier: registered.pluginIdentifier,
+                    icon: typeof registered.registration.icon === 'string' ? registered.registration.icon : '',
+                    options: registeredOptions(registered),
+                })),
             });
         });
     };
 
-    /// A base's view of a plugin's type, shown in a leaf Graphite shows live in the base's tab.
+    /// The options a view offers (`registration.options()`), as Graphite's view editor shows
+    /// them: Obsidian's groups are flattened, and only what can cross to the app is kept.
+    function registeredOptions(registered) {
+        let options = [];
+        try {
+            const offered = typeof registered.registration.options === 'function' ? registered.registration.options() : [];
+            options = Array.isArray(offered) ? offered : [];
+        } catch (error) {
+            console.error(error);
+        }
+        const flattened = options.flatMap((option) => (option && option.type === 'group' && Array.isArray(option.items) ? option.items : [option]));
+        return flattened.filter((option) => option && typeof option.key === 'string').map((option) => {
+            const described = { key: option.key, type: String(option.type || 'text'), displayName: String(option.displayName || option.key) };
+            if (['string', 'number', 'boolean'].includes(typeof option.default)) described.defaultValue = option.default;
+            if (option.options && typeof option.options === 'object') described.choices = Object.entries(option.options).map(([value, title]) => ({ value: String(value), title: String(title) }));
+            for (const limit of ['min', 'max', 'step']) if (typeof option[limit] === 'number') described[limit] = option[limit];
+            return described;
+        });
+    }
+
+    /// A base's view of a plugin's type, in a leaf of its own: Graphite shows the leaf live in
+    /// the base's tab, or a copy of it where a note embeds the base.
     class PluginBasesHostView extends exportedApi.ItemView {
         getViewType() { return 'graphite-bases-plugin-view'; }
         getDisplayText() { return this.viewName || 'Base'; }
+        onResize() {
+            if (!this.basesView) return;
+            try { this.basesView.onResize(); } catch (error) { console.error(error); }
+        }
+    }
+
+    /// How long a view waits for its rows' notes to be read before it draws what it has;
+    /// what arrives later redraws it.
+    const metadataWaitMilliseconds = 5000;
+    /// Notes that change together redraw a view once.
+    const redrawDelayMilliseconds = 100;
+    /// Leaves whose opening Graphite gave up on: the opening is still under way, or just ended.
+    const abandonedOpenings = new Set();
+    const openedLeafByRequest = new Map();
+    const maximumRememberedOpenings = 32;
+
+    function waitAtMost(promise, milliseconds) {
+        return Promise.race([promise, new Promise((resolve) => globalScope.setTimeout(resolve, milliseconds))]);
+    }
+
+    function listedFiles(app, message) {
+        return (message.groups || []).flatMap((group) => group.paths || []).map((path) => app.vault.getFileByPath(path)).filter(Boolean);
+    }
+
+    /// Gives the view its results again, grouped by the values the notes have now.
+    function redraw(hostView) {
+        const view = hostView.basesView;
+        if (!view || !hostView.lastMessage) return;
+        view.data = groupedByView(resultFrom(hostView.lastMessage), hostView.groupBy);
+        try { view.onDataUpdated(); } catch (error) { console.error(error); }
+    }
+
+    /// The view draws again when a note it lists is read or changes, in Graphite or elsewhere:
+    /// its values come from the metadata cache, which fills after it opened.
+    function followListedNotes(hostView, app) {
+        hostView.registerEvent(app.metadataCache.on('changed', (file) => {
+            if (!hostView.listedPaths || !hostView.listedPaths.has(file.path) || hostView.redrawTimer) return;
+            hostView.redrawTimer = globalScope.setTimeout(() => {
+                hostView.redrawTimer = null;
+                redraw(hostView);
+            }, redrawDelayMilliseconds);
+        }));
+        hostView.register(() => { if (hostView.redrawTimer) globalScope.clearTimeout(hostView.redrawTimer); });
+    }
+
+    function remember(hostView, message) {
+        hostView.lastMessage = message;
+        hostView.listedPaths = new Set((message.groups || []).flatMap((group) => group.paths || []));
+    }
+
+    /// A plugin set an option of its view (`config.set`): Graphite writes it into the view in
+    /// the `.base` file, as Obsidian does. A code block's base belongs to its note's editor.
+    function optionSaver(message) {
+        if (typeof message.baseFilePath !== 'string' || message.baseFilePath === '') return null;
+        return (key, value) => runtime.hostBridge.notify('basesView.setOption', {
+            baseFilePath: message.baseFilePath, viewName: message.viewName || '', viewIndex: Number(message.viewIndex) || 0, key,
+            value: value === undefined ? null : value,
+        });
+    }
+
+    function applyViewSettings(hostView, config, options, definition) {
+        for (const key of Object.keys(config.options)) { if (!(key in options)) delete config.options[key]; }
+        Object.assign(config.options, options);
+        const properties = definition && typeof definition.properties === 'object' && definition.properties ? definition.properties : {};
+        config.displayNames = Object.fromEntries(Object.entries(properties).map(([propertyId, settings]) => [propertyId, settings && settings.displayName]));
+        hostView.groupBy = options.groupBy;
     }
 
     function resultFrom(message) {
@@ -298,7 +431,7 @@
         });
         const data = groups.flatMap((group) => group.entries);
         const isGrouped = groups.some((group) => group.key !== null);
-        return new BasesQueryResult(data, isGrouped ? groups : null, message.properties || []);
+        return new BasesQueryResult(data, isGrouped ? groups : null, message.properties || [], message.summaryValues);
     }
 
     /// The view's settings as the `.base` file writes them: its keys are what the plugin's
@@ -334,7 +467,7 @@
             }
             groupsByKey.get(key).entries.push(entry);
         }
-        return new BasesQueryResult(result.data, Array.from(groupsByKey.values()), result.propertyIds);
+        return new BasesQueryResult(result.data, Array.from(groupsByKey.values()), result.propertyIds, result.summaryValues);
     }
 
     async function viewOptions(baseFilePath, viewIndex, baseYaml) {
@@ -364,9 +497,13 @@
             if (!registered) return { isOpened: false, message: 'No plugin shows “' + message.viewType + '” views now.' };
             const leaf = app.workspace.createPluginLeaf('bases');
             leaf.hasBeenShown = true;
+            // An embed lays out at its width in the note, so the plugin measures what it will show in.
+            if (message.embedWidth && leaf.waitingPlace) runtime.sizeWaitingPlace(leaf, message.embedWidth);
             const hostView = new PluginBasesHostView(leaf);
             hostView.viewName = message.viewName || '';
             await leaf.open(hostView);
+            // Its rows' notes come first, before the rest of the vault, so it draws them filled in.
+            await waitAtMost(app.metadataCache.readNow(listedFiles(app, message)), metadataWaitMilliseconds);
             const controller = new QueryController();
             controller.load();
             const options = await viewOptions(message.baseFilePath || '', Number(message.viewIndex) || 0, message.baseYaml);
@@ -375,21 +512,22 @@
             const definition = await baseDefinition(message.baseFilePath || '', message.baseYaml);
             controller.query = { views: Array.isArray(definition.views) ? definition.views : [] };
             controller.viewName = message.viewName || options.name || '';
-            hostView.groupBy = options.groupBy;
             try {
                 const view = registered.registration.factory(controller, hostView.contentEl);
-                const config = new BasesViewConfig(message.viewName || options.name || '');
-                Object.assign(config.options, options);
-                const order = Array.isArray(options.order) ? options.order.map(String) : [];
-                config.getOrder = () => order;
-                config.getSort = () => (Array.isArray(options.sort) ? options.sort : []);
+                const config = new BasesViewConfig(message.viewName || options.name || '', optionSaver(message));
+                applyViewSettings(hostView, config, options, definition);
+                config.getOrder = () => (Array.isArray(config.options.order) ? config.options.order.map(String) : []);
+                config.getSort = () => (Array.isArray(config.options.sort) ? config.options.sort : []);
                 view.config = config;
-                view.allProperties = message.properties || order;
+                view.allProperties = message.properties || config.getOrder();
                 view.data = groupedByView(resultFrom(message), options.groupBy);
                 controller.addChild(view);
                 hostView.basesView = view;
                 hostView.controller = controller;
                 hostView.register(() => controller.unload());
+                remember(hostView, message);
+                hostView.baseSource = { baseFilePath: message.baseFilePath || '', baseYaml: message.baseYaml, viewIndex: Number(message.viewIndex) || 0 };
+                followListedNotes(hostView, app);
                 view.onDataUpdated();
             } catch (error) {
                 console.error(error);
@@ -397,15 +535,42 @@
                 hostView.contentEl.createDiv({ cls: 'graphite-plugin-error', text: String(error && error.message ? error.message : error) });
                 runtime.hostBridge.notify('plugin.failure', { pluginIdentifier: registered.pluginIdentifier, message: 'Its “' + message.viewType + '” view failed: ' + (error && error.message ? error.message : String(error)) });
             }
+            // Graphite stopped waiting for this answer, so it will never show or close this leaf.
+            if (abandonedOpenings.delete(message.openingIdentifier)) {
+                leaf.detach();
+                return { isOpened: false, message: 'Graphite stopped waiting for this view.' };
+            }
+            if (message.openingIdentifier) {
+                openedLeafByRequest.set(message.openingIdentifier, leaf.id);
+                if (openedLeafByRequest.size > maximumRememberedOpenings) openedLeafByRequest.delete(openedLeafByRequest.keys().next().value);
+            }
             return { isOpened: true, leafIdentifier: leaf.id };
         },
-        /// The base's results changed (a file changed, a filter was edited).
+        /// Graphite gave up waiting for `basesView.open`; the leaf made for it goes.
+        async 'basesView.abandonOpening'(message) {
+            const leafIdentifier = openedLeafByRequest.get(message.openingIdentifier);
+            const leaf = leafIdentifier && runtime.app ? runtime.app.workspace.getLeafById(leafIdentifier) : null;
+            if (leaf) leaf.detach();
+            else if (!leafIdentifier) abandonedOpenings.add(message.openingIdentifier);
+            openedLeafByRequest.delete(message.openingIdentifier);
+            return {};
+        },
+        /// The base's results changed (a file changed, a filter was edited), or the view's
+        /// settings did (`viewOptionsChanged`, the view editor).
         async 'basesView.update'(message) {
-            const leaf = runtime.app ? runtime.app.workspace.getLeafById(message.leafIdentifier) : null;
+            const app = runtime.app;
+            const leaf = app ? app.workspace.getLeafById(message.leafIdentifier) : null;
             const view = leaf && leaf.view && leaf.view.basesView;
             if (!view) return { isUpdated: false };
-            view.data = groupedByView(resultFrom(message), leaf.view.groupBy);
-            try { view.onDataUpdated(); } catch (error) { console.error(error); }
+            const hostView = leaf.view;
+            remember(hostView, message);
+            const source = hostView.baseSource;
+            if (message.viewOptionsChanged && source) {
+                const options = await viewOptions(source.baseFilePath, source.viewIndex, source.baseYaml);
+                applyViewSettings(hostView, view.config, options, await baseDefinition(source.baseFilePath, source.baseYaml));
+            }
+            await waitAtMost(app.metadataCache.readNow(listedFiles(app, message)), metadataWaitMilliseconds);
+            redraw(hostView);
             return { isUpdated: true };
         },
     });

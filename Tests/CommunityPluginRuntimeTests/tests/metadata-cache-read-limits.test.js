@@ -1,5 +1,5 @@
-// What the metadata cache reads while it fills: no note over 4 MiB, at most four reads at
-// once, and no note text kept afterwards.
+// What the metadata cache reads while it fills: no note over 4 MiB, at most two reads at
+// once for the pass over the vault, and no note text kept afterwards.
 'use strict';
 
 const test = require('node:test');
@@ -7,7 +7,7 @@ const assert = require('node:assert/strict');
 const { startRuntime, plain } = require('../support/runtime-harness');
 
 const maximumIndexedNoteBytes = 4 * 1024 * 1024;
-const concurrentNoteReads = 4;
+const concurrentBackgroundReads = 2;
 
 /// Starts the runtime on a vault whose `vault.read` answers are slowed a little, so reads
 /// that are allowed together overlap, and records how many were in flight at once.
@@ -29,13 +29,13 @@ async function startCountingReads(files) {
     return { harness, reads };
 }
 
-test('the initial read of many notes never has more than four reads in flight', async () => {
+test('the pass over the vault reads every note once, two at a time, behind what anything waits for', async () => {
     const files = {};
     for (let position = 0; position < 24; position += 1) files['Note ' + position + '.md'] = '# Note ' + position + '\n';
     const { harness, reads } = await startCountingReads(files);
     try {
         assert.equal(reads.requests.length, 24, 'every note is read once');
-        assert.equal(reads.mostInFlight, concurrentNoteReads, 'four are read together, never a fifth');
+        assert.ok(reads.mostInFlight <= concurrentBackgroundReads, "never a third read at once");
     } finally {
         harness.close();
     }

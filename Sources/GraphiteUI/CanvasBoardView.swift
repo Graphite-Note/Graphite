@@ -54,6 +54,8 @@ struct CanvasCardEnvironment {
     let openPDF: (VaultPath, Int) -> Void
     let baseContext: BaseEmbedContext?
     let imageActions: ReadingImageActions?
+    /// The vault's plugins, which may draw a base's views in a card.
+    var pluginHost: CommunityPluginHost? = nil
 }
 
 /// The board of a canvas: the grid, groups and connections drawn as one picture, the

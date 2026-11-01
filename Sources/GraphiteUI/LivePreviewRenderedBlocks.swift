@@ -589,6 +589,7 @@ final class LivePreviewRenderedBlocks {
                                            sourceEditing: entry.block.kind == .table ? sourceEditing : nil)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
+            .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
             .environment(\.noteTypography, environment.typography)
             .environment(\.noteTheme, environment.theme)
             .environment(\.codeColorTheme, environment.codeColorTheme)

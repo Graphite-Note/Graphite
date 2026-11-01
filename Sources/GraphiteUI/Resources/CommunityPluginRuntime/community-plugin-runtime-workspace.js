@@ -881,7 +881,10 @@
             }
             const previousPath = this.activeFilePath;
             this.activeFilePath = path;
+            // The person is at work here: this note's metadata comes first, the vault's later.
+            this.app.metadataCache.holdBackgroundReads();
             if (file && file.extension === 'md') {
+                this.app.metadataCache.readOnDemand(file);
                 if (!(this.markdownLeaf.view instanceof MarkdownView)) this.markdownLeaf.view = new MarkdownView(this.markdownLeaf);
                 const view = this.markdownLeaf.view;
                 view.file = file;

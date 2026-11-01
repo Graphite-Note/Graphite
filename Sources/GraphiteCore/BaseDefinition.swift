@@ -171,6 +171,13 @@ public struct BaseMapOptions: Hashable, Sendable {
     public init() {}
 }
 
+/// An option of a plugin's view as a `.base` file writes it (a heading, a start time).
+public enum BaseViewOptionValue: Hashable, Sendable {
+    case text(String)
+    case number(Double)
+    case boolean(Bool)
+}
+
 public struct BaseView: Hashable, Sendable, Identifiable {
     /// Position in the file's `views` list; names may repeat.
     public let id: Int
@@ -199,6 +206,8 @@ public struct BaseView: Hashable, Sendable, Identifiable {
     public var cards = BaseCardsOptions()
     public var list = BaseListOptions()
     public var map = BaseMapOptions()
+    /// The other single-valued keys of a view of a plugin's type, which belong to the plugin.
+    public var pluginOptions: [String: BaseViewOptionValue] = [:]
 
     public init(id: Int, type: BaseViewType, name: String) {
         self.id = id
@@ -434,7 +443,26 @@ public struct BaseDefinition: Hashable, Sendable {
         view.cards = parseCardsOptions(mapping)
         view.list = parseListOptions(mapping)
         view.map = parseMapOptions(mapping)
+        if case .unsupported = view.type { view.pluginOptions = Self.pluginOptions(in: mapping) }
         return view
+    }
+
+    /// Every view has these keys, whichever draws it.
+    private static let sharedViewKeys: Set<String> = ["type", "name", "limit", "filters", "order", "sort", "groupBy", "summaries", "columnSize", "rowHeight"]
+
+    private static func pluginOptions(in mapping: Node.Mapping) -> [String: BaseViewOptionValue] {
+        var options: [String: BaseViewOptionValue] = [:]
+        for (keyNode, valueNode) in mapping {
+            guard let key = keyNode.string, !sharedViewKeys.contains(key), let scalar = valueNode.scalar else { continue }
+            if scalar.style == .plain, scalar.string == "true" || scalar.string == "false" {
+                options[key] = .boolean(scalar.string == "true")
+            } else if scalar.style == .plain, let number = Double(scalar.string), number.isFinite {
+                options[key] = .number(number)
+            } else {
+                options[key] = .text(scalar.string)
+            }
+        }
+        return options
     }
 
     /// Sort entries are `{property, direction}`; early Obsidian builds wrote `column`.

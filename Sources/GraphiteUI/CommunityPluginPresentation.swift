@@ -154,7 +154,11 @@ struct CommunityPluginPanel: View {
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { host.panelDidClose() } }
                 }
         }
+        // An iOS sheet cannot be wider than the screen, so a minimum would only cut the plugin's
+        // panel off at the edges of a phone or Slide Over; the Mac's sheet fits its content.
+        #if os(macOS)
         .frame(minWidth: 420, minHeight: 360)
+        #endif
     }
 }
 
