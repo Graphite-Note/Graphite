@@ -6,8 +6,8 @@
  *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.48
- * Date: 21/10/2026
+ * Version: 0.56
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -599,7 +599,9 @@ struct MarkdownPane: View {
         }
         // The file's own commands in one submenu: the menu ran to 25 entries, cut off at about 520 points of a
         // phone's screen, and had neither Move nor Delete.
-        NoteFileMenu(workspace: workspace, path: session.path)
+        NoteFileMenu(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root,
+                     showFileRecovery: preferences.isEnabled(.fileRecovery) ? { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) } : nil,
+                     move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
             Button(isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {

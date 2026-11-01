@@ -1,3 +1,15 @@
+/**
+ * File: PencilToolsInTabBar.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: The fixed bar's Pencil tools at the end of a side's tab bar, and when a PDF shows the fixed tools or
+ *              the system's palette.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

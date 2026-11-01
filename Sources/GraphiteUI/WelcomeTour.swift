@@ -1,3 +1,14 @@
+/**
+ * File: WelcomeTour.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The welcome tour that shows once on a device, and the pictures it fetches at launch.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 
 /// Whether this device has seen the welcome tour. It shows once, the first time Graphite

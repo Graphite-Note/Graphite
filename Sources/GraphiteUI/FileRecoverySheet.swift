@@ -1,3 +1,14 @@
+/**
+ * File: FileRecoverySheet.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The sheet that lists a note's saved snapshots, to read, restore or copy.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import os
 import GraphiteCore

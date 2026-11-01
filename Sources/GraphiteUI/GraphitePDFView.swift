@@ -1,3 +1,15 @@
+/**
+ * File: GraphitePDFView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The PDF view: PDFKit with a PencilKit canvas on each page, zoom and resize handling, the palette and
+ *              text markup.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.29
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import os

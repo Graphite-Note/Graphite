@@ -1,3 +1,14 @@
+/**
+ * File: ConflictVersionsSheet.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: The sheet that lists the conflicting versions of a file that a sync service left, to keep or remove.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple

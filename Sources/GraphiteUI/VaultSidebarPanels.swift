@@ -1,3 +1,14 @@
+/**
+ * File: VaultSidebarPanels.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The sidebar's panels: search, bookmarks and tags.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

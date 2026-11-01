@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginSettings.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: The sheet that lists, installs and sets up community plugins.
+ *
+ * Authors: Bahey Shalash, Claude, felixchvl
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

@@ -1,3 +1,15 @@
+/**
+ * File: PencilWorkspaceTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Hosted tests of the Pencil workspace: PDFs written on, the fixed bar, window sizes and the tool
+ *              picker.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 #if os(iOS)
 import XCTest
 import SwiftUI

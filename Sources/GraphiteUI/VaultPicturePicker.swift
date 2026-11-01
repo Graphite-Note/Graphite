@@ -1,3 +1,14 @@
+/**
+ * File: VaultPicturePicker.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The sheet that picks a picture from the vault.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import CoreGraphics
 import GraphiteCore

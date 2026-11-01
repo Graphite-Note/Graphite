@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 21/10/2026
+ * Version: 0.55
+ * Date: 01/11/2026
  */
 
 import SwiftUI

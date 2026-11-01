@@ -1,3 +1,15 @@
+/**
+ * File: NoteLinksInspector.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The right sidebar of a note: outline, backlinks, outgoing links, tags, footnotes and the local graph
+ *              and map.
+ *
+ * Authors: felixchvl
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

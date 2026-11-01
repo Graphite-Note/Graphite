@@ -6,8 +6,8 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 21/10/2026
+ * Version: 0.13
+ * Date: 01/11/2026
  */
 
 import SwiftUI

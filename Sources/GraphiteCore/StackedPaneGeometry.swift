@@ -1,3 +1,14 @@
+/**
+ * File: StackedPaneGeometry.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: Where the panes of a stacked tab group go as the row scrolls.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Where the panes of a stacked tab group go, as Obsidian lays out stacked tabs after Andy

@@ -1,3 +1,15 @@
+/**
+ * File: LayoutNarrowWindowsHostedTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Hosted tests of the layout in narrow windows: tools beside a split, the tool row's forms, a phone held
+ *              sideways and the smallest zoom.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -6,7 +18,6 @@ import GraphiteApple
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
-import GraphiteTestSupport
 
 /// The iPad and iPhone layout in narrow windows, in a real window (section 13 of the bug hunt): the Pencil tools
 /// stay with a PDF that is written on while the other side of a split has the focus, the tool row never scrolls
@@ -188,17 +199,21 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         let (window, _) = try host(workspace, size: CGSize(width: 834, height: 1194), horizontalSizeClass: .regular)
         defer { window.isHidden = true; window.rootViewController = nil }
         try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
-        let pdfView = try XCTUnwrap(session.pdfView)
+        // The split builds the PDF's pane again, so the view is asked for each time.
+        func measure() -> CGFloat {
+            guard let pdfView = session.pdfView, pdfView.window === window, let page = session.document.page(at: 0) else { return .infinity }
+            return pdfView.bounds.width * 1_000 + pdfView.convert(page.bounds(for: .cropBox), from: page).minY
+        }
         func firstPageTop() -> CGFloat {
-            guard let page = session.document.page(at: 0) else { return .infinity }
+            guard let pdfView = session.pdfView, let page = session.document.page(at: 0) else { return .infinity }
             return pdfView.convert(page.bounds(for: .cropBox), from: page).minY
         }
-        try await waitUntilSettled("the whole-width PDF has laid out") { pdfView.bounds.width * 1_000 + firstPageTop() }
+        try await waitUntilSettled("the whole-width PDF has laid out") { measure() }
         XCTAssertLessThan(firstPageTop(), 40, "The first page starts at the top of the whole-width pane.")
 
         workspace.splitRight()
-        try await waitUntil("the split narrows the pane") { pdfView.bounds.width < 500 }
-        try await waitUntilSettled("the narrowed PDF has laid out") { pdfView.bounds.width * 1_000 + firstPageTop() }
+        try await waitUntil("the split narrows the pane") { (session.pdfView?.window === window) && (session.pdfView?.bounds.width ?? 1_000) < 500 }
+        try await waitUntilSettled("the narrowed PDF has laid out") { measure() }
         attachScreenshot(of: window, named: "PDF pane narrowed by a split")
         XCTAssertLessThan(firstPageTop(), 40, "The first page still starts at the top of the narrowed pane.")
     }
@@ -230,6 +245,30 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         attachScreenshot(of: window, named: "Note side focused beside a PDF")
         let topWithFocus = editorTop()
         XCTAssertEqual(topWithFocus, topWithoutFocus, accuracy: 1, "The note does not jump when its side gains the focus.")
+    }
+
+    /// HUNT-268: the keyboard's format bar on an iPad held upright (834 points) scrolls, but Find and Hide Keyboard
+    /// stand at its trailing end outside the scrolling row, and its buttons are 44 points tall.
+    func testTheKeyboardBarKeepsFindAndHideKeyboardInViewWhenItScrolls() throws {
+        var actions = EditorActions()
+        actions.attach = {}
+        actions.draw = {}
+        let toolbar = EditorKeyboardToolbar(actions: actions, run: { _ in })
+        toolbar.frame = CGRect(x: 0, y: 0, width: 834, height: EditorKeyboardToolbar.height)
+        toolbar.layoutIfNeeded()
+        let buttons = descendants(of: toolbar, matching: UIButton.self)
+        let scrollView = try XCTUnwrap(descendants(of: toolbar, matching: UIScrollView.self).first)
+        XCTAssertGreaterThan(scrollView.contentSize.width, scrollView.bounds.width, "The format buttons are wider than the iPad's portrait width and scroll.")
+        for label in ["Find in note", "Hide keyboard"] {
+            let button = try XCTUnwrap(buttons.first { button in button.accessibilityLabel == label }, label)
+            let frame = button.convert(button.bounds, to: toolbar)
+            XCTAssertGreaterThanOrEqual(frame.minX, 0, "\(label) is inside the bar.")
+            XCTAssertLessThanOrEqual(frame.maxX, toolbar.bounds.width, "\(label) is inside the bar, not past its end.")
+            XCTAssertFalse(button.isDescendant(of: scrollView), "\(label) does not scroll away.")
+        }
+        for button in buttons {
+            XCTAssertGreaterThanOrEqual(button.bounds.height, 43.5, "\(button.accessibilityLabel ?? "A button") is a 44-point target.")
+        }
     }
 }
 #endif

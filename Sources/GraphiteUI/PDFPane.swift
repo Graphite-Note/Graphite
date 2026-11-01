@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.22
- * Date: 21/10/2026
+ * Version: 0.24
+ * Date: 01/11/2026
  */
 
 import SwiftUI

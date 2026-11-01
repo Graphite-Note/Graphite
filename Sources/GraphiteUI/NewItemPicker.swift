@@ -6,8 +6,8 @@
  *              New button that opens it and carries out the choice once the menu has closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 21/10/2026
+ * Version: 0.6
+ * Date: 01/11/2026
  */
 
 import SwiftUI

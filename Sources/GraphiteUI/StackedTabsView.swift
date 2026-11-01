@@ -1,3 +1,14 @@
+/**
+ * File: StackedTabsView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: A stacked tab group: every tab a pane in a sideways-scrolling row with its title on a spine.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

@@ -1,3 +1,14 @@
+/**
+ * File: FileSheets.swift
+ * ----------------------
+ * Layer: UI
+ * Description: The Rename, New Folder and Move sheets of the file tree.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

@@ -1,3 +1,15 @@
+/**
+ * File: PencilToolButtons.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The buttons of the Pencil bar's tools, sizes and colors, shared by the fixed bar and the squeeze
+ *              palette.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

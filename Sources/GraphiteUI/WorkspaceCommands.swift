@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCommands.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
+ *
+ * Authors: Bahey Shalash, Claude, felixchvl
+ * Version: 0.15
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

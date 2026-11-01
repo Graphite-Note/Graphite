@@ -1,3 +1,14 @@
+/**
+ * File: PDFPagesSidebar.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers

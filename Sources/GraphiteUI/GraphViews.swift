@@ -1,3 +1,14 @@
+/**
+ * File: GraphViews.swift
+ * ----------------------
+ * Layer: UI
+ * Description: The whole-vault graph, the local graph of a note, and their settings.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.15
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

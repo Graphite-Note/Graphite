@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolboxTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: The Pencil bar's state, presets, undo steps and where the document controls go.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteUI
 import GraphiteCore

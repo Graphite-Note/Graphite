@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceBookmarks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Bookmarks of the workspace: reading, changing and opening them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

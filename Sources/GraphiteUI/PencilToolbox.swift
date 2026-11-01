@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolbox.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

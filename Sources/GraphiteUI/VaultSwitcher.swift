@@ -6,8 +6,8 @@
  *              Reveal Vault in Finder on the Mac) and the vault manager.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.12
- * Date: 21/10/2026
+ * Version: 0.13
+ * Date: 01/11/2026
  */
 
 import SwiftUI

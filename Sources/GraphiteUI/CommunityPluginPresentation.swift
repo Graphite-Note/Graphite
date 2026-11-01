@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginPresentation.swift
+ * ---------------------------------------
+ * Layer: UI
+ * Description: How a community plugin's panels, modals and notices are presented over the workspace.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import WebKit
 import GraphiteCore

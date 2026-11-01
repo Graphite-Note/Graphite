@@ -1,3 +1,15 @@
+/**
+ * File: PencilToolbar.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The fixed Pencil bar and its tool row, which folds into a compact and a condensed form instead of
+ *              scrolling.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 

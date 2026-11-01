@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudReader.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The Read Aloud reader's sheets: the player, the range, section and note pickers.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import AVFoundation
 import GraphiteCore

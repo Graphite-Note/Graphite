@@ -1,3 +1,15 @@
+/**
+ * File: LayoutFitsNarrowWindowsTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: The decisions behind the iPad and iPhone layout in narrow windows: which Pencil tools stay on a bar,
+ *              where they stand, and the phone's palette and bookmarks.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import SwiftUI
 import GraphiteCore

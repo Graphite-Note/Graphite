@@ -1,3 +1,14 @@
+/**
+ * File: StackedPaneGeometryTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: Where stacked tabs' panes go as the row scrolls.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
