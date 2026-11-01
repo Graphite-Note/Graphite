@@ -5,7 +5,7 @@
  * Description: The Write toggle, the control row, and where a document puts Write, Undo and Redo and the Pencil
  *              tools.
  *
- * Authors: Bahey Shalash, Claude, felixchvl
+ * Authors: Bahey Shalash, felixchvl
  * Version: 0.7
  * Date: 01/11/2026
  */

@@ -1,3 +1,13 @@
+/**
+ * File: PictureEditing.swift
+ * --------------------------
+ * Layer: Apple
+ * Description: Turning and cropping a picture placed on a drawing or a PDF page.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
 import Foundation
 import CoreGraphics
 import ImageIO
@@ -7,11 +17,15 @@ import GraphiteCore
 /// Turning and cropping a picture placed on a drawing or a PDF page. The picture's own
 /// bytes change, so every reader shows the result without Graphite; the picture as it was
 /// stays in the document's undo history. A photograph stays a JPEG and a picture with
-/// transparency a PNG.
+/// transparency a PNG. An edit is encoded again, so a JPEG's quality is high enough that a
+/// few edits do not show; a picture on a PDF page is not encoded again by Rotate Right at all
+/// (`PDFSession.rotatePictureRight`).
 public enum PictureEditing {
     /// A cropped picture keeps at least this many pixels along each side.
     public static let minimumSidePixels = 8
-    static let photographQuality = 0.92
+    static let photographQuality = 0.97
+    /// Used when the picture at `photographQuality` would pass what a PDF page keeps of one.
+    static let largePhotographQuality = 0.9
 
     /// The picture turned a quarter turn clockwise.
     public static func rotatedClockwise(_ imageData: Data) throws -> Data {
@@ -75,11 +89,18 @@ public enum PictureEditing {
     /// A JPEG stays a JPEG; anything else becomes a PNG, which keeps transparency.
     private static func encode(_ picture: CGImage, like original: Data) throws -> Data {
         let isPhotograph = original.starts(with: [0xFF, 0xD8])
+        guard isPhotograph else { return try encoded(picture, as: .png, quality: nil) }
+        let bestQuality = try encoded(picture, as: .jpeg, quality: photographQuality)
+        guard bestQuality.count > PDFPicture.maximumImageBytes else { return bestQuality }
+        return try encoded(picture, as: .jpeg, quality: largePhotographQuality)
+    }
+
+    private static func encoded(_ picture: CGImage, as type: UTType, quality: Double?) throws -> Data {
         let output = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(output, (isPhotograph ? UTType.jpeg : UTType.png).identifier as CFString, 1, nil) else {
+        guard let destination = CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil) else {
             throw GraphiteError.invalidFile("Cannot prepare the image.")
         }
-        let options = isPhotograph ? [kCGImageDestinationLossyCompressionQuality: photographQuality] as CFDictionary : nil
+        let options = quality.map { quality in [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary }
         CGImageDestinationAddImage(destination, picture, options)
         guard CGImageDestinationFinalize(destination) else { throw GraphiteError.invalidFile("Cannot prepare the image.") }
         return output as Data

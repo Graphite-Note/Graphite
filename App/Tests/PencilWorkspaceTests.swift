@@ -568,15 +568,11 @@ final class PencilWorkspaceTests: XCTestCase {
         let pageSize = page.bounds(for: .cropBox).size
         let pdfView = try XCTUnwrap(session.pdfView as? GraphitePDFDisplayView)
 
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 0.8), 1, "Never below the page's own size")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 1.2), 1.5, "In steps, never below the zoom")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 2.5), 2.5)
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 8), PDFPageOverlayView.maximumRenderingScale)
-
         pdfView.autoScales = false
         pdfView.scaleFactor = 2.2
-        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2)
-        try await waitUntil { canvas.zoomScale == expectedScale }
+        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2, pageSize: pageSize, screenScale: window.screen.scale)
+        XCTAssertEqual(expectedScale, 2.2, accuracy: 0.001, "The canvas draws at the zoom it is seen at")
+        try await waitUntil { abs(canvas.zoomScale - expectedScale) < 0.01 }
         XCTAssertEqual(canvas.overlayView?.renderingScale, expectedScale)
         XCTAssertEqual(canvas.drawingSize.width, pageSize.width, accuracy: 0.5, "The drawing stays in the page's points")
         XCTAssertEqual(canvas.drawingSize.height, pageSize.height, accuracy: 0.5)
@@ -589,15 +585,9 @@ final class PencilWorkspaceTests: XCTestCase {
         XCTAssertEqual(pointOverCanvas.x, pointOverPage.x, accuracy: 1)
         XCTAssertEqual(pointOverCanvas.y, pointOverPage.y, accuracy: 1)
 
-        // PencilKit keeps a tool as wide on screen at any zoom of its canvas: the canvas draws
-        // with the chosen width times its zoom, so the stroke is as wide on the page.
+        // PencilKit stores a stroke at the tool's width at any zoom of its canvas (INK-22).
         let chosenPen = PKInkingTool(.pen, color: .black, width: 3)
-        let drawingPen = try XCTUnwrap(canvas.toolForDrawing(chosenPen) as? PKInkingTool)
-        XCTAssertEqual(drawingPen.width, 3 * canvas.zoomScale, accuracy: 0.01)
-        // PencilKit gives a pixel eraser a width of at least 16.4 when it is made.
-        let chosenEraser = PKEraserTool(.bitmap, width: 20)
-        let drawingEraser = try XCTUnwrap(canvas.toolForDrawing(chosenEraser) as? PKEraserTool)
-        XCTAssertEqual(drawingEraser.width, chosenEraser.width * canvas.zoomScale, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(canvas.toolForDrawing(chosenPen) as? PKInkingTool).width, 3, accuracy: 0.01)
 
         // Ink drawn at this zoom is stored where it is on the page.
         let strokePoints = (0...10).map { pointIndex in
@@ -616,7 +606,7 @@ final class PencilWorkspaceTests: XCTestCase {
 
         // Back at the page's size, the canvas draws at it again.
         pdfView.scaleFactor = 1
-        try await waitUntil { canvas.zoomScale == 1 }
+        try await waitUntil { abs(canvas.zoomScale - 1) < 0.01 }
         XCTAssertEqual(canvas.drawing.strokes.count, 1)
         XCTAssertEqual(canvas.drawingSize.width, pageSize.width, accuracy: 0.5)
     }

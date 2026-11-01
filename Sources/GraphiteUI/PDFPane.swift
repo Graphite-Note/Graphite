@@ -257,6 +257,13 @@ private struct PDFPaneContent: View {
                 }
             }
         }
+        // The bar's row answers Apple Pencil's double tap and squeeze; with the bar hidden, the
+        // page does, since no palette of Apple's is there to answer them either.
+        .background {
+            if usesFixedToolbar, !showsToolPicker, session.isWriting {
+                PencilGestureReceiver(toolbox: toolbox, undoAvailability: session.undoAvailability)
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if session.isWriting, session.selectedPicture != nil {
                 PDFPictureArrangementBar(session: session)
