@@ -1,3 +1,13 @@
+/**
+ * File: PencilToolboxTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: The state of the fixed Pencil tool bar.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
 import XCTest
 @testable import GraphiteUI
 import GraphiteCore
@@ -352,11 +362,19 @@ final class PencilToolboxTests: XCTestCase {
 
     // MARK: Apple Pencil's double tap and squeeze
 
+    /// Just after launch there is no earlier tool, and the gesture still answers (HUNT-025).
+    func testSwitchingToThePreviousToolWithNoneTakesUpTheEraser() {
+        let toolbox = PencilToolbox(defaults: defaults)
+        XCTAssertNil(toolbox.previousTool)
+        toolbox.switchToPreviousTool()
+        XCTAssertEqual(toolbox.toolInUse, .eraser)
+        toolbox.switchToPreviousTool()
+        XCTAssertEqual(toolbox.toolInUse, .ink, "And the next one goes back.")
+    }
+
     func testSwitchingToThePreviousToolGoesBackAndForthBetweenTwoTools() {
         let toolbox = PencilToolbox(defaults: defaults)
-        toolbox.switchToPreviousTool()
-        XCTAssertEqual(toolbox.toolInUse, .ink, "Nothing to go back to yet.")
-        XCTAssertEqual(toolbox.presetInUseIndex, 0)
+        toolbox.usePreset(at: 0)
         toolbox.usePreset(at: 2)
         toolbox.switchToPreviousTool()
         XCTAssertEqual(toolbox.presetInUseIndex, 0)

@@ -1,3 +1,13 @@
+/**
+ * File: PencilToolbox.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Where the Pencil tools are shown while drawing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
 import SwiftUI
 import GraphiteCore
 
@@ -315,9 +325,13 @@ final class PencilToolbox {
 
     /// Takes up the tool in use before the last change, as a double tap or squeeze of Apple
     /// Pencil does when set to switch to the previous tool. A preset removed meanwhile is
-    /// replaced by the one in use.
+    /// replaced by the one in use. With no earlier tool, as just after launch, the gesture
+    /// still answers: it takes up the eraser, which is what a double tap does by default.
     func switchToPreviousTool() {
-        guard let previousTool else { return }
+        guard let previousTool else {
+            use(.eraser)
+            return
+        }
         let presetIndex = presets.firstIndex { preset in preset.id == previousTool.presetIdentifier } ?? presetInUseIndex
         changeTool {
             if presetInUseIndex != presetIndex { presetInUseIndex = presetIndex }

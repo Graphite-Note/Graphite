@@ -1,3 +1,14 @@
+/**
+ * File: PDFInkHistoryTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: Pencil ink in a PDF's own undo history: it survives page canvases being released and the
+ *              view being rebuilt, and never mixes two PDFs.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -55,6 +66,77 @@ final class PDFInkHistoryTests: XCTestCase {
         try await session.save()
         let saved = try XCTUnwrap(PDFDocument(url: session.location))
         XCTAssertEqual(saved.page(at: 0)?.annotations.filter { annotation in annotation.type == "Ink" }.count, 1)
+    }
+
+    /// The lasso's drag shows the drawing without the strokes it drags, which no step knows:
+    /// Undo said the ink changed in a way the step does not know, and the step was lost.
+    func testUndoDuringADragOfTheLassosSelectionPutsItsStrokesBackAndUndoes() async throws {
+        let session = try await openNotebook(pageCount: 1)
+        _ = try host(AnyView(NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) }))
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let canvas = try await editingCanvas(for: page, in: session)
+        canvas.drawing = PKDrawing(strokes: [stroke(atHeight: 100)])
+        try await waitUntil { self.inkCount(on: page) == 1 }
+        endEvent(of: session)
+        canvas.drawing = PKDrawing(strokes: canvas.drawing.strokes + [stroke(atHeight: 200)])
+        try await waitUntil { self.inkCount(on: page) == 2 }
+        endEvent(of: session)
+
+        canvas.selectsInk = true
+        canvas.inkSelection.select([0])
+        canvas.inkSelection.selectionDragDidBegin()
+        XCTAssertEqual(canvas.drawing.strokes.count, 1, "The drag shows the drawing without its stroke.")
+        session.undoAvailability.undo()
+        XCTAssertNil(session.errorMessage)
+        XCTAssertEqual(canvas.drawing.strokes.count, 1, "The stroke dragged is back and the last stroke is undone.")
+        XCTAssertEqual(try XCTUnwrap(canvas.drawing.strokes.first?.path.first).location.y, 100, accuracy: 0.01)
+        XCTAssertEqual(inkCount(on: page), 1)
+        endEvent(of: session)
+        session.undoAvailability.undo()
+        XCTAssertNil(session.errorMessage)
+        XCTAssertEqual(canvas.drawing.strokes.count, 0, "The history goes on working.")
+    }
+
+    /// A selection given up during its drag leaves the drawing as the history knows it.
+    func testClearingASelectionDuringItsDragPutsItsStrokesBack() async throws {
+        let session = try await openNotebook(pageCount: 1)
+        _ = try host(AnyView(NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) }))
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let canvas = try await editingCanvas(for: page, in: session)
+        canvas.drawing = PKDrawing(strokes: [stroke(atHeight: 100)])
+        try await waitUntil { self.inkCount(on: page) == 1 }
+        canvas.selectsInk = true
+        canvas.inkSelection.select([0])
+        canvas.inkSelection.selectionDragDidBegin()
+        XCTAssertTrue(canvas.drawing.strokes.isEmpty)
+        canvas.inkSelection.clearSelection()
+        XCTAssertEqual(canvas.drawing.strokes.count, 1)
+    }
+
+    /// Zoomed in, a page is several screens tall: Undo shows the ink it changed, not the page's top.
+    func testUndoOnAnotherPageShowsTheInkItChanged() async throws {
+        let session = try await openNotebook(pageCount: 8)
+        _ = try host(AnyView(NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) }))
+        let page = try XCTUnwrap(session.document.page(at: 3))
+        session.go(to: 3)
+        let canvas = try await editingCanvas(for: page, in: session)
+        canvas.drawing = PKDrawing(strokes: [stroke(atHeight: 780)])
+        try await waitUntil { self.inkCount(on: page) == 1 }
+        endEvent(of: session)
+        let pdfView = try XCTUnwrap(session.pdfView)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 3
+        session.go(to: 7)
+        try await Task.sleep(for: .milliseconds(300))
+
+        session.undoAvailability.undo()
+        XCTAssertNil(session.errorMessage)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(session.currentPageIndex, 3)
+        let shownOfPage = pdfView.convert(pdfView.bounds, to: page)
+        let cropBox = page.bounds(for: .cropBox)
+        let inkOnPage = CGRect(x: cropBox.minX + 50, y: cropBox.maxY - 784, width: 100, height: 8)
+        XCTAssertTrue(shownOfPage.intersects(inkOnPage), "\(shownOfPage) shows the ink at \(inkOnPage)")
     }
 
     func testInkUndoSurvivesRebuildingThePDFView() async throws {

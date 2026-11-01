@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.22
- * Date: 21/10/2026
+ * Version: 0.24
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -239,6 +239,13 @@ private struct PDFPaneContent: View {
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
                                   offersReadAloudPen: readAloud != nil, offersTextBoxes: true)
                 }
+            }
+        }
+        // The bar's row answers Apple Pencil's double tap and squeeze; with the bar hidden, the
+        // page does, since no palette of Apple's is there to answer them either.
+        .background {
+            if usesFixedToolbar, !showsToolPicker, session.isWriting {
+                PencilGestureReceiver(toolbox: toolbox, undoAvailability: session.undoAvailability)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {

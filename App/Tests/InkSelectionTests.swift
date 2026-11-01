@@ -1,3 +1,14 @@
+/**
+ * File: InkSelectionTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: Graphite's lasso on a hosted PDF page: selecting ink, and moving, resizing, recoloring,
+ *              duplicating, copying and deleting what is selected.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 01/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -89,6 +100,61 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertTrue(descendants(of: canvas, matching: SelectionFrameView.self).isEmpty)
     }
 
+    /// Writing resized keeps its weight in proportion: what PencilKit draws, not the points' sizes.
+    func testResizedInkDrawsInProportionAndNeverVanishes() async throws {
+        let inks: [(type: PKInk.InkType, size: CGFloat)] = [(.pen, 4.8), (.monoline, 3.4), (.pencil, 3), (.marker, 12)]
+        for ink in inks {
+            let (session, canvas, page) = try await openPageWithCanvas()
+            let points = (0...40).map { step in
+                PKStrokePoint(location: CGPoint(x: 100 + CGFloat(step) * 5, y: 200), timeOffset: Double(step) / 60, size: CGSize(width: ink.size, height: ink.size), opacity: 1, force: 1, azimuth: .pi / 2, altitude: .pi / 2)
+            }
+            let writing = PKStroke(ink: PKInk(ink.type, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+            try await draw([writing], on: canvas, page: page, session: session)
+            let widthBefore = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: writing))
+            canvas.selectsInk = true
+            let selection = canvas.inkSelection
+            selection.select([0])
+            for scale: CGFloat in [0.5, 0.25, 2] {
+                let frame = try XCTUnwrap(selection.selectionFrame)
+                let drawnBefore = try XCTUnwrap(canvas.drawing.strokes.first)
+                let lengthBefore = (drawnBefore.path.last?.location.x ?? 0) - (drawnBefore.path.first?.location.x ?? 0)
+                let widthWas = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: drawnBefore))
+                selection.moveSelection(in: canvas.drawing, from: frame, to: CGRect(x: frame.minX, y: frame.minY, width: frame.width * scale, height: frame.height * scale))
+                let resized = try XCTUnwrap(canvas.drawing.strokes.first)
+                let lengthAfter = (resized.path.last?.location.x ?? 0) - (resized.path.first?.location.x ?? 0)
+                let inkScale = lengthAfter / lengthBefore
+                let widthAfter = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: resized))
+                print("INK-WIDTH resize \(ink.type.rawValue) \(scale): \(widthWas) -> \(widthAfter), length scale \(inkScale)")
+                XCTAssertGreaterThan(widthAfter, 0, "\(ink.type.rawValue) still draws")
+                XCTAssertEqual(widthAfter / widthWas, inkScale, accuracy: inkScale * 0.3, "\(ink.type.rawValue) resized by \(scale): the weight follows the size")
+            }
+            XCTAssertGreaterThan(widthBefore, 0)
+        }
+    }
+
+    /// Stroke B of the bug: drawn with the page zoomed in, then lassoed at the fitted zoom.
+    func testAStrokeDrawnWhileZoomedInIsSelectedByALoopAroundIt() async throws {
+        UserDefaults.standard.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
+        defer { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+        let (session, canvas, _) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 3.27
+        try await Task.sleep(for: .milliseconds(400))
+        let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 100, y: middle.y), to: CGPoint(x: middle.x + 100, y: middle.y)), in: window)
+        let stroke = try XCTUnwrap(drawnStroke)
+        pdfView.scaleFactor = 0.91
+        try await Task.sleep(for: .milliseconds(500))
+        canvas.selectsInk = true
+        let around = stroke.renderBounds.insetBy(dx: -12, dy: -12)
+        let loop = [CGPoint(x: around.minX, y: around.minY), CGPoint(x: around.maxX, y: around.minY), CGPoint(x: around.maxX, y: around.maxY), CGPoint(x: around.minX, y: around.maxY), CGPoint(x: around.minX, y: around.minY)]
+        canvas.inkSelection.selectContents(enclosedBy: loop.map { point in CGPoint(x: point.x * canvas.zoomScale, y: point.y * canvas.zoomScale) })
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
+    }
+
     func testMovingAndResizingTheSelectionChangesItsStrokesAsOneUndoStep() async throws {
         let (session, canvas, page) = try await openPageWithCanvas()
         let selectedStroke = stroke(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 200, y: 100), width: 4)
@@ -117,7 +183,8 @@ final class InkSelectionTests: XCTestCase {
         // The extra scale depends on the canvas-to-screen scale and PencilKit's padding;
         // the frame width above verifies the actual requested size without a guessed cap.
         XCTAssertGreaterThan(movedStroke.renderBounds.width, inkBoundsBefore.width * 2)
-        XCTAssertEqual(movedStroke.path.first?.size.width ?? 0, 4 * inkScale, accuracy: 0.01, "Larger ink is broader by as much.")
+        // PencilKit draws a pen's point of size s as 2s - 4 wide: a size of 4 draws 4.
+        XCTAssertEqual(movedStroke.path.first?.size.width ?? 0, (4 * inkScale + 4) / 2, accuracy: 0.01, "Larger ink draws broader by as much.")
         XCTAssertEqual(canvas.drawing.strokes[1].path.first?.location, otherStroke.path.first?.location, "Other strokes stay.")
         XCTAssertEqual(selection.selectedStrokeIndices, [0], "The moved strokes stay selected.")
 
