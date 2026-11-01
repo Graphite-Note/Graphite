@@ -10,7 +10,6 @@
  */
 
 import Foundation
-import Darwin
 import CryptoKit
 import GRDB
 import GraphiteCore

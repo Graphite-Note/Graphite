@@ -12,7 +12,6 @@
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 /// Keeping the file lists up to date: a change touches the folder it names and no other.
 ///

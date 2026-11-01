@@ -12,7 +12,6 @@
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 extension WorkspaceModel {
     /// What a drop of dragged items on `folder` does: items of this vault move there, those it
