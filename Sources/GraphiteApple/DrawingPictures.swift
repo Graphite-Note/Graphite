@@ -24,6 +24,8 @@ public enum DrawingPictures {
     static let pixelsPerPoint = DrawingLimits.preferredPNGScale
     /// JPEG quality for opaque pictures; photos keep their detail at a fraction of PNG's size.
     static let photographQuality = 0.9
+    private static let unreadableImage = GraphiteError.invalidFile("This image could not be read.")
+    private static let unpreparableImage = GraphiteError.invalidFile("Cannot prepare the image.")
 
     public static func picture(from imageData: Data, canvasWidth: Double) throws -> DrawingBackgroundImage {
         guard canvasWidth.isFinite, canvasWidth > 0,
@@ -51,7 +53,7 @@ public enum DrawingPictures {
             kCGImageSourceThumbnailMaxPixelSize: longestKeptSide,
             kCGImageSourceShouldCacheImmediately: true,
         ] as CFDictionary) else {
-            throw GraphiteError.invalidFile("This image could not be read.")
+            throw unreadableImage
         }
         let encodedPicture = try encode(picture)
         guard encodedPicture.count <= DrawingLimits.maximumBackgroundImageBytes else {
@@ -72,11 +74,11 @@ public enum DrawingPictures {
     private static func encode(_ picture: CGImage, as type: UTType) throws -> Data {
         let output = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(output, type.identifier as CFString, 1, nil) else {
-            throw GraphiteError.invalidFile("Cannot prepare the image.")
+            throw unpreparableImage
         }
         let options = type == .png ? nil : [kCGImageDestinationLossyCompressionQuality: photographQuality] as CFDictionary
         CGImageDestinationAddImage(destination, picture, options)
-        guard CGImageDestinationFinalize(destination) else { throw GraphiteError.invalidFile("Cannot prepare the image.") }
+        guard CGImageDestinationFinalize(destination) else { throw unpreparableImage }
         return output as Data
     }
 
@@ -107,7 +109,7 @@ public enum DrawingPictures {
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let storedWidth = properties[kCGImagePropertyPixelWidth] as? Int, let storedHeight = properties[kCGImagePropertyPixelHeight] as? Int,
               storedWidth > 0, storedHeight > 0 else {
-            throw GraphiteError.invalidFile("Graphite cannot place this kind of image on a page.")
+            throw unreadableImage
         }
         let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
         let isUpright = orientation == 1
@@ -126,7 +128,7 @@ public enum DrawingPictures {
                 kCGImageSourceThumbnailMaxPixelSize: Int(longestSide.rounded()),
                 kCGImageSourceShouldCacheImmediately: true,
             ] as CFDictionary) else {
-                throw GraphiteError.invalidFile("This image could not be read.")
+                throw unreadableImage
             }
             // An opaque PNG too large as a PNG goes on as a JPEG before it loses any pixels.
             let types: [UTType] = hasTransparency(picture) ? [.png] : sourceType == .png ? [.png, .jpeg] : [.jpeg]

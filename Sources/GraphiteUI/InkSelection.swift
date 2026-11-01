@@ -724,8 +724,10 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         let inkType = stroke.ink.inkType
         let points = stroke.path.map { point in
             PKStrokePoint(location: point.location.applying(placement), timeOffset: point.timeOffset,
-                          size: sizeScale == 1 ? point.size : CGSize(width: PencilStrokeSampler.pointSize(point.size.width, forDrawnWidthScaledBy: sizeScale, inkType: inkType),
-                                                                     height: PencilStrokeSampler.pointSize(point.size.height, forDrawnWidthScaledBy: sizeScale, inkType: inkType)),
+                          size: sizeScale == 1 ? point.size : CGSize(width: PencilStrokeSampler.pointSize(point.size.width,
+                              forDrawnWidthScaledBy: sizeScale, inkType: inkType),
+                                                                     height: PencilStrokeSampler.pointSize(point.size.height,
+                                                                         forDrawnWidthScaledBy: sizeScale, inkType: inkType)),
                           opacity: point.opacity, force: point.force, azimuth: point.azimuth, altitude: point.altitude,
                           secondaryScale: point.secondaryScale)
         }

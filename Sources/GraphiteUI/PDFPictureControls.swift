@@ -248,7 +248,8 @@ final class PDFPictureSelectionController {
         let previewKey = PreviewKey(pictureName: picture.name, imageByteCount: picture.imageData.count, quarterTurnsClockwise: pageTurns - picture.quarterTurns)
         if previewKey != shownPreviewKey {
             shownPreviewKey = previewKey
-            selection.dragPreview = UIImage(data: picture.imageData).map { image in LassoAreaCapture.turned(image, quarterTurnsClockwise: previewKey.quarterTurnsClockwise) }
+            selection.dragPreview = UIImage(data: picture.imageData).map { image in LassoAreaCapture.turned(image,
+                quarterTurnsClockwise: previewKey.quarterTurnsClockwise) }
         }
     }
 

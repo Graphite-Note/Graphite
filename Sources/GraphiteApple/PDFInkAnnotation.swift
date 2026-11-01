@@ -322,7 +322,8 @@ public enum PDFInkGroups {
             let namedStrokes = strokeNames.filter { name in !name.isEmpty }
             guard !strokeNames.isEmpty, !annotationNames.contains(""), Set(annotationNames).count == annotationNames.count,
                   Set(namedStrokes).count == namedStrokes.count, Set(namedStrokes) == Set(annotationNames) else { continue }
-            let multipliedNames = groupAnnotations.filter { annotation in annotation.value(forAnnotationKey: PDFPageManager.inkMultipliesKey) != nil }.compactMap(\.persistentName)
+            let multipliedNames = groupAnnotations.filter
+                { annotation in annotation.value(forAnnotationKey: PDFPageManager.inkMultipliesKey) != nil }.compactMap(\.persistentName)
             return PDFEditableInkGroup(group: group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: strokeNames),
                                        multipliedStrokeNames: Set(multipliedNames))
         }

@@ -328,7 +328,8 @@ public enum PDFPageManager {
         guard !update.addedStrokes.isEmpty else { return }
         let textBoxesOnTop = takeTextBoxesOffTop(of: page)
         for stroke in update.addedStrokes {
-            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines) else { continue }
+            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines)
+                else { continue }
             page.addAnnotation(annotation)
         }
         for annotation in textBoxesOnTop { page.addAnnotation(annotation) }

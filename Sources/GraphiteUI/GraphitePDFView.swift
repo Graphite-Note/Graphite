@@ -849,18 +849,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         view.addGestureRecognizer(selectionRecognizer)
         textSelectionRecognizer = selectionRecognizer
 
-        let pencilRecognizer = PencilTouchDownRecognizer(target: self, action: #selector(handlePencilTouchWhileReading(_:)))
-        pencilRecognizer.drawingRecognizerUnderTouch = { [weak self, weak view] touch in
-            guard let self, let view, !self.input.isEnabled, self.beginWritingWithPencil != nil,
-                  let canvas = self.shownCanvas(at: touch.location(in: view), in: view) else { return nil }
-            // PencilKit draws only on a canvas that takes touches; going on writing leaves it so.
-            canvas.isUserInteractionEnabled = true
-            return canvas.drawingGestureRecognizer
-        }
-        pencilRecognizer.delegate = self
-        pencilRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-        view.addGestureRecognizer(pencilRecognizer)
-        pencilWhileReadingRecognizer = pencilRecognizer
+        installPencilWhileReadingRecognizer(in: view)
 
         // A hand resting on a page while the Pencil writes does not tap, select, scroll or zoom.
         palmRejection = PencilActivity.installRecognizers(in: view, isWriting: { [weak self] in self?.input.isEnabled ?? false },
@@ -883,8 +872,29 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRenderingScaleUpdate() }
         }
-        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.releaseMemoryOfCanvases() }
+        observeMemoryWarnings()
+    }
+
+    /// A Pencil on a page while reading switches to writing, and draws (`handlePencilTouchWhileReading`).
+    private func installPencilWhileReadingRecognizer(in view: GraphitePDFDisplayView) {
+        let pencilRecognizer = PencilTouchDownRecognizer(target: self, action: #selector(handlePencilTouchWhileReading(_:)))
+        pencilRecognizer.drawingRecognizerUnderTouch = { [weak self, weak view] touch in
+            guard let self, let view, !self.input.isEnabled, self.beginWritingWithPencil != nil,
+                  let canvas = self.shownCanvas(at: touch.location(in: view), in: view) else { return nil }
+            // PencilKit draws only on a canvas that takes touches; going on writing leaves it so.
+            canvas.isUserInteractionEnabled = true
+            return canvas.drawingGestureRecognizer
+        }
+        pencilRecognizer.delegate = self
+        pencilRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        view.addGestureRecognizer(pencilRecognizer)
+        pencilWhileReadingRecognizer = pencilRecognizer
+    }
+
+    private func observeMemoryWarnings() {
+        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil,
+            queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.releaseMemoryOfCanvases() }
         }
     }
 
@@ -1307,7 +1317,11 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         displayedPages.insert(identifier)
         hiddenCanvasOrder.removeAll { hiddenIdentifier in hiddenIdentifier == identifier }
         // PDFKit shows a page's view again as a zoom changes, which may be during a stroke.
-        if isStrokeUnderWay { scheduleRenderingScaleUpdate() } else { (overlayView as? PDFPageOverlayView)?.setRenderingScale(renderingScale(of: page, in: pdfView)) }
+        if isStrokeUnderWay {
+            scheduleRenderingScaleUpdate()
+        } else {
+            (overlayView as? PDFPageOverlayView)?.setRenderingScale(renderingScale(of: page, in: pdfView))
+        }
         configure(canvas)
         placeReadAloudMarkers(on: canvas)
         if let overlay = overlayView as? PDFPageOverlayView { textBoxInteraction?.pageDidAppear(page, in: overlay) }

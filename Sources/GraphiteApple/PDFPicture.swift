@@ -128,7 +128,8 @@ public struct PDFPicture: Sendable, Equatable {
         guard hasValidGeometry, let image = Self.decodedImage(imageData) else {
             throw GraphiteError.invalidFile("This image cannot be placed on the page.")
         }
-        let annotation = PDFPictureAnnotation(bounds: annotationBounds, image: image, imageData: imageData, pictureSize: bounds.size, quarterTurns: quarterTurns,
+        let annotation = PDFPictureAnnotation(bounds: annotationBounds, image: image, imageData: imageData, pictureSize: bounds.size,
+            quarterTurns: quarterTurns,
                                               rotationRadians: rotationRadians, drawsAppearance: isForWrittenDocument)
         annotation.setPersistentName(name)
         // An upright picture stays under the key every build reads; see `turnedPictureKey`.
@@ -251,7 +252,8 @@ final class PDFPictureAnnotation: PDFAnnotation {
         // other's pictures; two threads may both decode it the first time, harmlessly.
         let drawing = PDFPicture(annotation: self).flatMap { storedPicture -> PDFPictureAnnotationDrawing? in
             guard storedPicture.hasValidGeometry, let image = PDFPicture.decodedImage(storedPicture.imageData) else { return nil }
-            return PDFPictureAnnotationDrawing(image: image, imageData: storedPicture.imageData, pictureSize: storedPicture.bounds.size, quarterTurns: storedPicture.quarterTurns,
+            return PDFPictureAnnotationDrawing(image: image, imageData: storedPicture.imageData, pictureSize: storedPicture.bounds.size,
+                quarterTurns: storedPicture.quarterTurns,
                                                rotationRadians: storedPicture.rotationRadians, drawsAppearance: false)
         }
         Self.fileReadingLock.lock()

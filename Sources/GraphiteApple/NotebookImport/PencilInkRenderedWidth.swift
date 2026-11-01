@@ -122,7 +122,8 @@ enum PencilInkRenderedWidth {
     /// (a pen's point of 4.8 draws 5.6; at half the size 2.4 draws 0.8, and below 2 nothing).
     /// An ink not measured, and a point too small to draw, go by the scale.
     static func pointSize(_ pointSize: Double, forDrawnWidthScaledBy scale: Double, inkType: PKInkingTool.InkType) -> Double {
-        guard scale.isFinite, scale > 0, pointSize.isFinite, pointSize > 0, let table = acrossMeasurements(forInkType: inkType) else { return pointSize * scale }
+        guard scale.isFinite, scale > 0, pointSize.isFinite, pointSize > 0, let table = acrossMeasurements(forInkType: inkType) else
+            { return pointSize * scale }
         let drawnWidth = interpolatedWidth(forPointSize: pointSize, in: table)
         guard drawnWidth > 0 else { return pointSize * scale }
         return Self.pointSize(forRenderedWidth: drawnWidth * scale, in: table)

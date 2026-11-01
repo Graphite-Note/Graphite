@@ -618,10 +618,12 @@ class HistoryCanvasView: PKCanvasView {
             }
             discardStrokeBeingDrawn()
             heldShape = .dragged(shape: shape, heldPoint: heldPoint, draggedPoint: point, ink: inkingTool.ink, footprint: footprint)
-            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: inkingTool.ink), width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: inkingTool.inkType))
+            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: inkingTool.ink),
+                width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: inkingTool.inkType))
         case .dragged(let shape, let heldPoint, _, let ink, let footprint):
             heldShape = .dragged(shape: shape, heldPoint: heldPoint, draggedPoint: point, ink: ink, footprint: footprint)
-            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: ink), width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: ink.inkType))
+            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: ink),
+                width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: ink.inkType))
         case nil:
             break
         }
@@ -683,7 +685,8 @@ class HistoryCanvasView: PKCanvasView {
     /// How wide the tool's strokes draw in the drawing: its last stroke's footprint as PencilKit
     /// draws it, or its width before it has drawn one.
     private static func drawnWidth(of inkingTool: PKInkingTool) -> CGFloat {
-        footprint(of: inkingTool).map { footprint in PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: inkingTool.inkType) } ?? inkingTool.width
+        footprint(of: inkingTool).map { footprint in PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width,
+            inkType: inkingTool.inkType) } ?? inkingTool.width
     }
 
     /// Shows a shape, given in the canvas's own coordinates, in the ink's color; `width` is in the drawing's points.

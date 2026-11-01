@@ -297,9 +297,11 @@ extension PDFSession {
     func registerInkChange(_ change: PencilDrawingChange, on page: PDFPage, overlaySize: CGSize) {
         let drawnPage = historyPage(for: page)
         registerStep(named: "Drawing") { session in
-            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds) { drawing in change.reverting(drawing) }
+            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds)
+                { drawing in change.reverting(drawing) }
         } redo: { session in
-            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds) { drawing in change.reapplying(to: drawing) }
+            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds)
+                { drawing in change.reapplying(to: drawing) }
         }
     }
 
@@ -328,7 +330,8 @@ extension PDFSession {
     /// on a zoomed page it can be several screens below the page's top, where Undo would seem
     /// to do nothing.
     private func showInk(in changedBounds: CGRect, on page: PDFPage, at pageIndex: Int, overlaySize: CGSize) {
-        guard let pdfView, !changedBounds.isNull, let coordinates = try? PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize) else {
+
+        guard let pdfView, !changedBounds.isNull, let coordinates = try? PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize) else { // A page with no size has no place to scroll to.
             if inkCanvasProvider?.isDisplaying(page) != true { go(to: pageIndex) }
             return
         }
