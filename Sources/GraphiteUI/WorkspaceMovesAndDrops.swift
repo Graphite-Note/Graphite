@@ -66,8 +66,8 @@ extension WorkspaceModel {
               (try? await store.fileExists(newPath)) == true, // Cannot be checked: not followed.
               (try? await store.fileExists(oldPath)) == false else { return } // Cannot be checked: not followed.
         // Read before the tabs let go of their sessions, with no suspension in between.
-        let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.baseRevision) }
-            + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.baseRevision) }) { firstRevision, _ in firstRevision }
+        let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.revision) }
+            + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.revision) }) { firstRevision, _ in firstRevision }
         let edits = unsavedEdits(inside: oldPath, movedTo: newPath, revisionsBeforeMove: revisions)
         let pdfsWithEdits = tabDocuments.values.compactMap(\.pdfSession).filter { session in
             session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(oldPath) == true

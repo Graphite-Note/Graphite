@@ -95,5 +95,5 @@ extension MarkdownSession {
         for session in sessions { session.draftEditVersion = nil }
     }
 
-    private static let grownTooLargeMessage = "This note is saved, but it is now over 8 MB, the most Graphite can open for editing. Once it is closed it will not open here until it is smaller; Obsidian can open it."
+    static let grownTooLargeMessage = "This note is saved, but it is now over 8 MB, the most Graphite can open for editing. Once it is closed it will not open here until it is smaller; Obsidian can open it."
 }
