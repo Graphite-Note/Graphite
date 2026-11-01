@@ -113,7 +113,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         let toolPicker = PKToolPicker()
         pdfView.autoScales = false
-        let inks: [(ink: PencilInk, width: Double, renderedTolerance: CGFloat)] = [(.pen, 2.8, 0.12), (.monoline, 2, 0.02), (.pencil, 2.4, 0.5)]
+        let inks: [(ink: PencilInk, width: Double, renderedTolerance: CGFloat)] = [(.pen, 2.8, 0.12), (.monoline, 2, 0.02), (.pencil, 2.4, 0.25)]
         for inkCase in inks {
             canvas.takeTool(from: toolPicker, fixedTool: selection(inkCase.ink, width: inkCase.width))
             var sizeAtPageSize: CGFloat?

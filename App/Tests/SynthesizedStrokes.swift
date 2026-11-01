@@ -71,7 +71,7 @@ enum SynthesizedStrokes {
     }
 
     /// How wide a stroke along the rows draws in the drawing's points: the ink crossed by the
-    /// middle column of its picture, each pixel counted by how opaque it is.
+    /// columns of its picture, on average, each pixel counted by how opaque it is.
     static func renderedWidth(of stroke: PKStroke, pixelsPerPoint: CGFloat = 8) -> CGFloat? {
         let region = stroke.renderBounds.insetBy(dx: -4, dy: -4)
         guard let picture = PKDrawing(strokes: [stroke]).image(from: region, scale: pixelsPerPoint).cgImage,
@@ -80,12 +80,15 @@ enum SynthesizedStrokes {
         guard let context = CGContext(data: &bytes, width: picture.width, height: picture.height, bitsPerComponent: 8, bytesPerRow: picture.width * 4,
                                       space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.draw(picture, in: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))
-        let middleColumn = picture.width / 2
-        let strongest = (0..<picture.height).map { row in bytes[(row * picture.width + middleColumn) * 4 + 3] }.max() ?? 0
-        guard strongest > 0 else { return 0 }
-        let opaqueTotal = (0..<picture.height).reduce(0.0) { total, row in
-            total + Double(bytes[(row * picture.width + middleColumn) * 4 + 3]) / Double(strongest)
-        }
+        // Many columns of the stroke's middle half: a pencil's grain makes any one of them vary widely.
+        let columns = Array(stride(from: picture.width / 4, to: picture.width * 3 / 4, by: max(picture.width / 80, 1)))
+        let strongest = columns.lazy.flatMap { column in (0..<picture.height).map { row in bytes[(row * picture.width + column) * 4 + 3] } }.max() ?? 0
+        guard strongest > 0, !columns.isEmpty else { return 0 }
+        let opaqueTotal = columns.reduce(0.0) { total, column in
+            total + (0..<picture.height).reduce(0.0) { columnTotal, row in
+                columnTotal + Double(bytes[(row * picture.width + column) * 4 + 3]) / Double(strongest)
+            }
+        } / Double(columns.count)
         return CGFloat(opaqueTotal) / pixelsPerPoint
     }
 }
