@@ -81,6 +81,12 @@ final class CanvasSession {
     @ObservationIgnored private var revision: FileRevision
     @ObservationIgnored private var activeSave: Task<Void, Error>?
     @ObservationIgnored private var autosave: Task<Void, Never>?
+    /// Autosaves that failed in a row, each waiting longer before it tries again.
+    @ObservationIgnored private var consecutiveAutosaveFailures = 0
+    /// Where edits that cannot reach the file wait, outside the vault.
+    @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
+    /// The change the draft on disk holds, nil when this session has no draft there.
+    @ObservationIgnored private var draftChangeVersion: Int?
     var errorMessage: String?
     var hasExternalConflict = false
     /// Read or Write, as for notes and PDFs. Read never changes the file.
@@ -307,10 +313,18 @@ final class CanvasSession {
 
     private func scheduleAutosave() {
         autosave?.cancel()
+        let delay = consecutiveAutosaveFailures == 0 ? Self.autosaveDelay : AutosaveRetryPolicy.delay(afterConsecutiveFailures: consecutiveAutosaveFailures)
         autosave = Task { [weak self, clock] in
-            do { try await clock.sleep(for: Self.autosaveDelay) } catch { return }
-            // A failed save shows in the pane's banner; the edits stay open.
-            try? await self?.save()
+            do { try await clock.sleep(for: delay) } catch { return }
+            guard let self else { return }
+            do { try await save() } catch {
+                // A failed save shows in the pane's banner and the edits stay open. A conflict
+                // waits for the person's choice; any other failure is tried again, so the
+                // edits reach the file without waiting for another edit.
+                guard !hasExternalConflict, hasUnsavedChanges else { return }
+                consecutiveAutosaveFailures += 1
+                scheduleAutosave()
+            }
         }
     }
 
@@ -332,7 +346,10 @@ final class CanvasSession {
             savedVersion = versionToSave
             return
         }
-        guard !hasExternalConflict else { throw GraphiteError.conflict }
+        guard !hasExternalConflict else {
+            await keepUnsavedEditsInDraft()
+            throw GraphiteError.conflict
+        }
         let expectedRevision = revision
         let saveTask = Task { [store, path] in
             let newRevision = try await store.save(dataToSave, at: path, expecting: .revision(expectedRevision))
@@ -345,12 +362,58 @@ final class CanvasSession {
         do {
             try await saveTask.value
             errorMessage = nil
+            consecutiveAutosaveFailures = 0
+            // Edits made during the save are not in the file yet: the draft stays until they are.
+            if !hasUnsavedChanges { discardDraft() }
             didSave(path)
         } catch {
             if error as? GraphiteError == .conflict { hasExternalConflict = true }
             errorMessage = error.localizedDescription
+            await keepUnsavedEditsInDraft()
             throw error
         }
+    }
+
+    /// Writes the canvas as edited to the draft outside the vault, as a note does.
+    /// - Returns: Whether the edits are safe: saved in the file or in the draft.
+    @discardableResult
+    func keepUnsavedEditsInDraft() async -> Bool {
+        commitTextEdit()
+        guard hasUnsavedChanges else { return true }
+        guard draftChangeVersion != changeVersion else { return true }
+        guard let draftKeeper else { return false }
+        let versionToKeep = changeVersion
+        guard await draftKeeper.keep(file.data, madeOver: revision) else { return false }
+        draftChangeVersion = versionToKeep
+        return true
+    }
+
+    /// Shows the edits an ended app could not save, as `MarkdownSession.restore` does.
+    /// - Returns: Whether the canvas now shows the draft's edits.
+    func restore(_ draft: UnsavedDocumentDraft) -> Bool {
+        guard !hasUnsavedChanges, let draftFile = try? CanvasFile(data: draft.contents) else { return false }
+        guard draft.contents != savedData else {
+            draftKeeper?.remove()
+            return false
+        }
+        file = draftFile
+        changeVersion += 1
+        draftChangeVersion = changeVersion
+        updateDetailedNodes()
+        guard draft.baseRevision != revision else {
+            scheduleAutosave()
+            return true
+        }
+        revision = draft.baseRevision
+        hasExternalConflict = true
+        errorMessage = GraphiteError.conflict.localizedDescription
+        return true
+    }
+
+    private func discardDraft() {
+        guard draftChangeVersion != nil else { return }
+        draftKeeper?.remove()
+        draftChangeVersion = nil
     }
 
     /// Reads the file again after another app may have changed it. Unsaved edits are
@@ -359,10 +422,19 @@ final class CanvasSession {
         guard !isSaving else { return }
         do {
             let snapshot = try await store.read(path, maximumBytes: CanvasFile.maximumSourceBytes)
-            guard snapshot.revision != revision else { return }
+            guard snapshot.revision != revision else {
+                // The file went back to the version these edits were made over.
+                if hasExternalConflict {
+                    hasExternalConflict = false
+                    errorMessage = nil
+                    try? await save() // A failure shows in the banner, and the draft keeps the edits.
+                }
+                return
+            }
             if hasUnsavedChanges {
                 hasExternalConflict = true
                 errorMessage = GraphiteError.conflict.localizedDescription
+                await keepUnsavedEditsInDraft()
             } else {
                 try adopt(snapshot)
             }
@@ -391,6 +463,7 @@ final class CanvasSession {
         selectedEdgeIdentifiers = selectedEdgeIdentifiers.filter { identifier in newFile.edge(withIdentifier: identifier) != nil }
         previewFrames = [:]; activeDrag = nil; pendingConnection = nil; selectionRectangle = nil
         hasExternalConflict = false; errorMessage = nil
+        discardDraft()
         updateDetailedNodes()
     }
 
@@ -398,7 +471,7 @@ final class CanvasSession {
     /// shows the other app's version again.
     func saveSeparateCopy() async throws -> VaultPath {
         commitTextEdit()
-        let separatePath = try await store.uniquePath(directory: path.parent, stem: path.stem + " Graphite edits", extension: "canvas")
+        let separatePath = try await store.separateCopyPath(of: path, fileExtension: "canvas")
         _ = try await store.save(file.data, at: separatePath, expecting: .absent)
         do {
             try await reload()
@@ -406,6 +479,7 @@ final class CanvasSession {
             // The edits are in the copy; this canvas keeps showing them until it is closed.
             savedVersion = changeVersion
             hasExternalConflict = false
+            discardDraft()
             errorMessage = error.localizedDescription
         }
         return separatePath

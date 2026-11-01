@@ -274,12 +274,16 @@ public struct BaseInMemoryRecordProvider: BaseRecordProvider {
             let suffix = "/" + (fileName.hasPrefix("/") ? String(fileName.dropFirst()) : fileName)
             let nameMatches = recordsByPath.keys.filter { path in
                 let pathKey = WikiLinkResolver.comparisonKey(path.rawValue)
+                // A path written from the root names that path only, as the index resolves it.
+                if fileName.hasPrefix("/") { return ("/" + pathKey).lowercased() == suffix.lowercased() }
                 return pathPart.contains("/")
                     ? ("/" + pathKey).lowercased().hasSuffix(suffix.lowercased())
                     : WikiLinkResolver.comparisonKey(path.name).caseInsensitiveCompare(fileName) == .orderedSame
             }
-            let matches = Set(nameMatches + aliasMatches)
-            if !matches.isEmpty { return matches.count == 1 ? matches.first : nil }
+            // A file's own name goes before another note's alias, and the closest goes first.
+            let chosenMatches = nameMatches.isEmpty ? aliasMatches : Array(nameMatches)
+            let closestPath = WikiLinkResolver.closestFirst(chosenMatches.map(\.rawValue), toNoteAt: source).first
+            if let closestPath, let match = try? VaultPath(closestPath) { return match }
         }
         return nil
     }

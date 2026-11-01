@@ -33,6 +33,9 @@ public enum LinkUpdateFailure: Sendable, Equatable {
     /// A link in the note reaches a moved file but could not be rewritten, so the note
     /// was left unchanged rather than updated with that link broken.
     case linkNotRewritable
+    /// A Wikilink in the note would have to hold a name with `#`, `^`, `[`, `]` or `|`, which
+    /// no Wikilink can. The move is refused before anything moves.
+    case nameCannotBeInWikilink
 
     /// The cause in plain words, for the message that lists the notes.
     public var explanation: String {
@@ -44,6 +47,7 @@ public enum LinkUpdateFailure: Sendable, Equatable {
         case .linksNotLocated: "its links could not be located safely"
         case .saveFailed(let cause): "it could not be saved: \(cause)"
         case .linkNotRewritable: "one of its links could not be rewritten"
+        case .nameCannotBeInWikilink: "a Wikilink cannot hold that name"
         }
     }
 }
@@ -56,6 +60,12 @@ public struct LinkUpdatePlan: Sendable {
     /// Linking notes that planning could not rewrite, by their path after the move.
     /// They are reported as not updated when the plan is applied.
     public let notesNotUpdated: [VaultPath: LinkUpdateFailure]
+    /// Notes whose links could not even be looked at, by their path after the move: they are in
+    /// the cloud, not on this device, and downloading a vault's worth to rename a file is not
+    /// what the person asked for. They may keep links to the old name.
+    public var notesNotChecked: [VaultPath] = []
+    /// Whether a note names the moved file in a Wikilink that cannot hold its new name.
+    public var hasNameThatBreaksWikilinks: Bool { notesNotUpdated.values.contains(.nameCannotBeInWikilink) }
     public var changedLinkCount: Int { updates.reduce(0) { count, update in count + update.changedLinkCount } }
 }
 
@@ -66,6 +76,8 @@ public struct MoveReport: Sendable {
     public let updatedNotes: [VaultPath]
     /// Notes whose links were not updated, with the reason for each.
     public let failures: [VaultPath: LinkUpdateFailure]
+    /// Notes in the cloud whose links could not be looked at (`LinkUpdatePlan.notesNotChecked`).
+    public var notesNotChecked: [VaultPath] = []
     /// Notes whose links were not updated, in path order.
     public var notesNotUpdated: [VaultPath] { failures.keys.sorted() }
 }
@@ -78,10 +90,19 @@ public struct VaultFileOperations: Sendable {
     public let index: VaultIndex
     /// Notes larger than this are not rewritten; they are listed as not updated.
     static let maximumRewrittenNoteBytes = 8 * 1_048_576
+    /// Above this many moved files the bytes of unread notes are not searched for their names,
+    /// and those notes are reported as not checked.
+    static let maximumNamesSearchedInUnreadNotes = 100
     private static let byteOrderMark = Data([0xEF, 0xBB, 0xBF])
+    /// Whether a file is in the cloud and not on this device.
+    private let isNotDownloaded: @Sendable (URL) -> Bool
 
     public init(store: VaultStore, index: VaultIndex) {
-        self.store = store; self.index = index
+        self.init(store: store, index: index, isNotDownloaded: VaultIndex.isNotDownloaded)
+    }
+
+    init(store: VaultStore, index: VaultIndex, isNotDownloaded: @escaping @Sendable (URL) -> Bool) {
+        self.store = store; self.index = index; self.isNotDownloaded = isNotDownloaded
     }
 
     /// The link changes that moving `path` (a file or a folder) to `destination` needs.
@@ -99,6 +120,8 @@ public struct VaultFileOperations: Sendable {
             guard let snapshot = try? await store.read(canvasPath, maximumBytes: Self.maximumRewrittenNoteBytes) else { sources.insert(canvasPath); continue }
             if moves.keys.contains(where: { movedPath in snapshot.data.range(of: Data(movedPath.rawValue.utf8)) != nil }) { sources.insert(canvasPath) }
         }
+        let unreadNotes = try await unreadNotesLinkingTo(moves, besides: sources)
+        sources.formUnion(unreadNotes.mayLink)
         // Only a file whose own name changes alters how many files share a name: files
         // carried along by a folder move keep theirs.
         let renamedFiles = moves.filter { previousPath, newPath in previousPath.name != newPath.name }
@@ -110,6 +133,10 @@ public struct VaultFileOperations: Sendable {
             let newSource = moves[source] ?? source
             let snapshot: FileSnapshot
             do {
+                if unreadNotes.mayLink.contains(source), try await index.isUnreadableAsText(source) {
+                    notesNotUpdated[newSource] = .notText
+                    continue
+                }
                 snapshot = try await store.read(source, maximumBytes: Self.maximumRewrittenNoteBytes)
             } catch GraphiteError.oversized {
                 notesNotUpdated[newSource] = .tooLarge
@@ -146,7 +173,41 @@ public struct VaultFileOperations: Sendable {
                 updates.append(LinkUpdate(path: newSource, revision: snapshot.revision, updatedText: updatedText, changedLinkCount: changedLinkCount))
             }
         }
-        return LinkUpdatePlan(moves: moves, updates: updates, notesNotUpdated: notesNotUpdated)
+        return LinkUpdatePlan(moves: moves, updates: updates, notesNotUpdated: notesNotUpdated,
+                              notesNotChecked: unreadNotes.notChecked.map { note in moves[note] ?? note }.sorted())
+    }
+
+    /// Notes and canvases the index holds no links for, because it never read their text:
+    /// too large, not UTF-8, or still in the cloud. Those on this device are searched by bytes
+    /// for the moved files' names, as unreadable canvases are for their paths, so the plan
+    /// names them as not updated. Those in the cloud cannot be, so they are only counted.
+    private func unreadNotesLinkingTo(_ moves: [VaultPath: VaultPath], besides sources: Set<VaultPath>) async throws -> (mayLink: Set<VaultPath>, notChecked: [VaultPath]) {
+        let unreadNotes = try await index.notesWithUnreadText()
+        guard !unreadNotes.isEmpty else { return ([], []) }
+        var mayLink = Set<VaultPath>()
+        var notChecked: [VaultPath] = []
+        let canSearchBytes = moves.count <= Self.maximumNamesSearchedInUnreadNotes
+        let searchedNames: [Data] = canSearchBytes ? Set(moves.keys.flatMap(Self.spellings(ofNameOf:))).map { name in Data(name.utf8) } : []
+        for note in unreadNotes where !sources.contains(note) {
+            guard let location = try? note.url(in: store.root) else { continue }
+            guard !isNotDownloaded(location), canSearchBytes else {
+                notChecked.append(note)
+                continue
+            }
+            // Mapped, not read: only the pages searched take memory, however large the note.
+            guard let bytes = try? Data(contentsOf: location, options: .alwaysMapped) else {
+                mayLink.insert(note) // Read again below, which reports why it cannot be.
+                continue
+            }
+            if searchedNames.contains(where: { name in bytes.range(of: name) != nil }) { mayLink.insert(note) }
+        }
+        return (mayLink, notChecked)
+    }
+
+    /// How a link may spell a file's name: as named, or percent-encoded in a Markdown link.
+    private static func spellings(ofNameOf path: VaultPath) -> [String] {
+        let stem = path.stem
+        return [stem, stem.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? stem]
     }
 
     /// Whether a file's links are rewritten when what they name moves: notes, and canvases.
@@ -189,6 +250,7 @@ public struct VaultFileOperations: Sendable {
             let newPathPart = LinkRewriter.pathPart(linkingTo: target, from: context.newSource, writtenPath: writtenPath, isWiki: link.isWiki,
                                                     previousTarget: previousTarget, previousSource: context.source, isNameUnique: isNameUnique)
             guard newPathPart != writtenPath else { continue }
+            guard !link.isWiki || LinkRewriter.canBeWrittenInWikilink(newPathPart) else { return .failed(.nameCannotBeInWikilink) }
             let linkText = noteText.substring(with: link.range)
             // A reference-style link (`[text][ref]`) holds no destination, and an image in
             // its label must not be replaced: `replacingPath` returns nil for it. Its
@@ -256,7 +318,7 @@ public struct VaultFileOperations: Sendable {
                 failures[update.path] = .saveFailed(error.localizedDescription)
             }
         }
-        return MoveReport(newPath: destination, moves: moves, updatedNotes: updatedNotes, failures: failures)
+        return MoveReport(newPath: destination, moves: moves, updatedNotes: updatedNotes, failures: failures, notesNotChecked: plan?.notesNotChecked ?? [])
     }
 
     /// Every file that moving `path` moves, from its old path to its new one. A folder's
@@ -330,15 +392,14 @@ public struct VaultFileOperations: Sendable {
         return linkText.last == first
     }
 
-    /// The file a link reaches before anything moves, if exactly one.
+    /// The file a link reaches before anything moves, by the rules every resolver follows.
     private func resolvedTarget(of link: NoteLink, from source: VaultPath, canonicalRootPath: String?) async throws -> VaultPath? {
         for candidate in WikiLinkResolver.directCandidates(target: link.target, source: source, isWiki: link.isWiki) {
             // A file: a folder named as the link, beside the note, took the link's place,
             // and the link to the note being renamed was neither rewritten nor reported.
             if try await store.regularFileExists(candidate) { return storedSpelling(of: candidate, canonicalRootPath: canonicalRootPath) }
         }
-        let matches = try await index.resolve(link.target, from: source, isWiki: link.isWiki)
-        return matches.count == 1 ? matches.first : nil
+        return try await index.resolve(link.target, from: source, isWiki: link.isWiki).first
     }
 
     /// `candidate` spelled as the file system stores it. A case-insensitive volume (the
@@ -388,6 +449,27 @@ extension VaultIndex {
     /// Notes with a link, in their text or properties, that reaches `destination`.
     public func linkingNotes(to destination: VaultPath) throws -> [VaultPath] {
         try databaseQueue.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: true, in: database) }
+    }
+
+    /// Notes and canvases whose text the index never read, so that it holds no links of theirs.
+    func notesWithUnreadText() throws -> [VaultPath] {
+        try databaseQueue.read { database in
+            try String.fetchAll(database, sql: "SELECT path FROM files WHERE contentIndexed IN (?, ?) AND (path LIKE '%.md' OR path LIKE '%.markdown' OR path LIKE '%.canvas')",
+                                arguments: [IndexedContentState.notRead.rawValue, IndexedContentState.unreadableAsText.rawValue])
+                .map(VaultPath.init).filter { path in Self.holdsLinkText(path) }
+        }
+    }
+
+    /// Whether the index read this note and found that it is not UTF-8.
+    func isUnreadableAsText(_ path: VaultPath) throws -> Bool {
+        try databaseQueue.read { database in
+            try Int.fetchOne(database, sql: "SELECT contentIndexed FROM files WHERE path = ?", arguments: [path.rawValue]) == IndexedContentState.unreadableAsText.rawValue
+        }
+    }
+
+    private static func holdsLinkText(_ path: VaultPath) -> Bool {
+        let kind = DocumentKind(path: path)
+        return kind == .markdown || kind == .canvas
     }
 
     /// Canvases whose links the index does not know, because Graphite cannot read them.

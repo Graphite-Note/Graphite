@@ -45,6 +45,8 @@ final class WorkspaceModel {
     /// Files and folders with a move or rename under way; a second request for one is
     /// ignored (the title bar can report the same rename twice).
     var pathsBeingMoved: Set<VaultPath> = []
+    /// The index learning where the last moves put things, which the next move waits for.
+    @ObservationIgnored var indexRefreshFollowingMoves: Task<Void, Never>?
     /// How each move that waited for the person's "Update links?" answer ended, by the moved
     /// path, until whoever waited for it (a plugin's rename) takes it.
     @ObservationIgnored var answeredMoveOutcomes: [VaultPath: FileMoveOutcome] = [:]
@@ -226,7 +228,11 @@ final class WorkspaceModel {
         isRecording: { [weak self] in self?.recording.state.isActive ?? false },
         isReadingAloud: { [weak self] in self?.readAloud?.isReading ?? false },
         stopReadingAloud: { [weak self] in self?.readAloud?.stop(); self?.readAloud?.showsReader = false },
-        saveOpenDocuments: { [weak self] in try await self?.saveOpenDocuments() },
+        saveOpenDocuments: { [weak self] in
+            try await self?.saveOpenDocuments()
+            await self?.communityPlugins.saveOpenFileViews()
+        },
+        keepUnsavedDocuments: { [weak self] writesPDFCopies in await self?.keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: writesPDFCopies) ?? true },
         presentProblem: { [weak self] problem in self?.errorMessage = problem })
     /// Set by indexing when a scan of the whole vault finishes; tests that fill the index
     /// themselves set it too.
@@ -350,6 +356,7 @@ final class WorkspaceModel {
         if let fileRecovery = try? FileRecoveryStore.forVault(identifier: vault.id, in: applicationFolders.applicationSupportFolder) {
             Task.detached(priority: .utility) { try? fileRecovery.removeAllSnapshots() }
         }
+        processServices.unsavedDrafts.removeAll(inVault: vault.id)
         VaultIndex.removeIndex(forVault: vault.id, in: applicationFolders.cachesFolder)
         CommunityPluginHost.forgetVault(vault.id, defaults: deviceDefaults)
         // Opening the folder again makes a new identifier, so nothing would read these again.
@@ -469,6 +476,7 @@ final class WorkspaceModel {
         case .none: layoutVaultIdentifier = currentVaultIdentifier
         }
         checkForUnfinishedRecordings()
+        await recoverDraftsLeftBehind()
         joinVaultsPlugins()
         if preferences.isEnabled(.dailyNotes), dailyNoteSettings.opensOnStartup { await openDailyNote() }
     }
@@ -900,12 +908,12 @@ final class WorkspaceModel {
 
     // MARK: Links
 
-    /// The vault file an embed or link target refers to, if exactly one does.
+    /// The vault file an embed or link target refers to. A name several files share means
+    /// one of them, as in Obsidian (`WikiLinkResolver.closestFirst`).
     func resolveLink(_ target: String, from source: VaultPath, isWiki: Bool = true) async -> VaultPath? {
         guard let folderAccess else { return nil }
         if let file = WikiLinkResolver.existingDirectFile(target: target, source: source, isWiki: isWiki, in: folderAccess.root) { return storedPath(for: file) }
-        let matches = (try? await index?.resolve(target, from: source, isWiki: isWiki)) ?? []
-        return matches.count == 1 ? matches.first : nil
+        return (try? await index?.resolve(target, from: source, isWiki: isWiki))?.first
     }
 
     /// Follows a link: to a heading or block of a note, a page of a PDF, or any file. A
@@ -941,14 +949,13 @@ final class WorkspaceModel {
             return
         }
         do {
-            let matches = try await index.resolve(target, from: source, isWiki: isWiki)
-            if matches.isEmpty {
-                // As in Obsidian, following a link to a note that does not exist creates it.
-                // Until the first scan finishes the note may exist unindexed, so nothing is created then.
-                if hasCompletedIndexScan { await createNote(forLink: target, from: source, isWiki: isWiki) }
-                else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
-            }
-            else { searchQuery = WikiLinkResolver.pathPart(target); await search(); notice = "Several files match “\(target)”. Choose the intended file in search." }
+            // The lookup again, as an index that cannot be read must not look like a link
+            // with no match, which would create a note.
+            guard try await index.resolve(target, from: source, isWiki: isWiki).isEmpty else { return }
+            // As in Obsidian, following a link to a note that does not exist creates it.
+            // Until the first scan finishes the note may exist unindexed, so nothing is created then.
+            if hasCompletedIndexScan { await createNote(forLink: target, from: source, isWiki: isWiki) }
+            else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
         } catch { errorMessage = error.localizedDescription }
     }
 

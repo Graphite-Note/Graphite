@@ -15,9 +15,9 @@ extension WorkspaceModel {
     /// Keeps a copy of a note's saved text when a save or a reload is about to replace it.
     func watchForRecovery(_ session: MarkdownSession) {
         let path = session.path
-        session.willReplaceSavedText = { [weak self] replacedText in
+        session.willReplaceSavedText = { [weak self] replacedText, replacement in
             guard let self, self.preferences.isEnabled(.fileRecovery), let fileRecovery = self.fileRecovery else { return }
-            let interval = self.snapshotInterval
+            let interval = replacement == .bySave ? self.snapshotInterval : 0
             Task.detached(priority: .utility) {
                 _ = try? fileRecovery.takeSnapshot(of: replacedText, for: path, minimumInterval: interval)
             }
@@ -27,7 +27,8 @@ extension WorkspaceModel {
     /// Copies notes about to be deleted, whatever the interval, since the deletion may be permanent.
     func snapshotBeforeDeleting(_ paths: [VaultPath]) async {
         guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store else { return }
-        for path in paths.prefix(Self.maximumNotesCopiedBeforeDeletion) where DocumentKind(path: path) == .markdown {
+        // Notes only: pictures and PDFs in the folder must not use up the limit.
+        for path in paths.lazy.filter({ path in DocumentKind(path: path) == .markdown }).sorted().prefix(Self.maximumNotesCopiedBeforeDeletion) {
             let text: String?
             if let session = openMarkdownSession(at: path) { text = session.text }
             else { text = (try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes)).flatMap { snapshot in String(data: snapshot.data, encoding: .utf8) } }

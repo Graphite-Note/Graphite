@@ -49,6 +49,17 @@ public enum FileNameRules {
     /// characters (".md", ".base", ".markdown") and a number that tells it from an
     /// existing file (" 100000" at most).
     static let reservedSuffixBytes = 16
+    /// What the name of a copy of edits that could not be saved adds to the file's own.
+    static let separateCopySuffix = " Graphite edits"
+
+    /// The stem of a copy of a file's edits: the file's own, shortened when it would otherwise
+    /// make a name no file system stores, as a name that is already the longest allowed would.
+    static func separateCopyStem(of stem: String) -> String {
+        let maximumStemBytes = maximumFileNameBytes - reservedSuffixBytes - separateCopySuffix.utf8.count
+        var shortenedStem = stem
+        while shortenedStem.utf8.count > maximumStemBytes { shortenedStem.removeLast() }
+        return shortenedStem + separateCopySuffix
+    }
 
     /// Why `name` cannot be used, or nil when it can.
     public static func problem(with name: String, isNote: Bool) -> String? {
@@ -349,14 +360,21 @@ public actor VaultStore {
     }
 
     /// Copies a file or folder beside itself as "Name 1", like Obsidian's "Make a copy".
-    public func duplicate(_ path: VaultPath) throws -> VaultPath {
+    public func duplicate(_ path: VaultPath) async throws -> VaultPath {
         let sourceLocation = try path.url(in: root)
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: sourceLocation.path, isDirectory: &isDirectory) else { throw GraphiteError.unavailable("“\(path.name)” is no longer in the vault.") }
         let copyPath = try availablePath(in: path.parent, stem: isDirectory.boolValue ? path.name : path.stem,
                                          extension: isDirectory.boolValue ? "" : (path.name as NSString).pathExtension, firstSuffix: 1)
         let copyLocation = try copyPath.url(in: root)
-        if isDirectory.boolValue {
+        // Off the actor: a copy of gigabytes must not hold back every save waiting behind it.
+        let writer = writer
+        let isFolder = isDirectory.boolValue
+        try await Task.detached(priority: .userInitiated) {
+            guard isFolder else {
+                try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
+                return
+            }
             var coordinationError: NSError?
             var copyResult: Result<Void, Error>?
             writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
@@ -365,9 +383,7 @@ public actor VaultStore {
             if let coordinationError { throw coordinationError }
             guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }
             try copyResult.get()
-        } else {
-            try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
-        }
+        }.value
         return copyPath
     }
 
@@ -447,6 +463,17 @@ public actor VaultStore {
             if try isAvailable(path) { return path }
         }
         throw GraphiteError.unavailable("Choose another name.")
+    }
+
+    /// A free path beside `path` for edits that could not be saved into it. Its folder is made
+    /// again when another app renamed or removed it, so the copy always has a place. The vault's
+    /// own folder is not: one that moved would come back empty beside the real one.
+    public func separateCopyPath(of path: VaultPath, fileExtension: String) throws -> VaultPath {
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            throw GraphiteError.unavailable("The vault's folder is no longer where it was, so a copy cannot be written beside “\(path.name)”.")
+        }
+        try createDirectory(path.parent)
+        return try uniquePath(directory: path.parent, stem: FileNameRules.separateCopyStem(of: path.stem), extension: fileExtension)
     }
 
     /// "Name.ext", else "Name 1.ext", "Name 2.ext"…, the names Obsidian gives new files.

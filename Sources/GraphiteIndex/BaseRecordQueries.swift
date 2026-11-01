@@ -252,8 +252,8 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
 
     public func resolveLinkTarget(_ target: String, from source: VaultPath, isWiki: Bool) -> VaultPath? {
         guard let resolvedPaths = read({ database in try VaultIndex.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }),
-              resolvedPaths.count == 1 else { return nil }
-        return resolvedPaths.first
+              let closestPath = resolvedPaths.first else { return nil }
+        return closestPath
     }
 
     public func backlinks(to path: VaultPath) -> [VaultPath] {

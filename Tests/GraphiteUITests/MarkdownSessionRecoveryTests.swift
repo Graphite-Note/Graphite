@@ -15,7 +15,7 @@ final class MarkdownSessionRecoveryTests: XCTestCase {
         let store = VaultStore(root: vault)
         let session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
         var replacedTexts: [String] = []
-        session.willReplaceSavedText = { replacedText in replacedTexts.append(replacedText) }
+        session.willReplaceSavedText = { replacedText, _ in replacedTexts.append(replacedText) }
 
         try await session.save()
         XCTAssertEqual(replacedTexts, [], "Nothing changed, so nothing is replaced.")

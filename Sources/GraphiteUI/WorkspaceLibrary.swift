@@ -18,11 +18,9 @@ extension WorkspaceModel {
         guard let root = folderAccess?.root else { return nil }
         let index = index
         return LibraryPreviewLoader(root: root) { target, notePath in
-            // An unresolved or ambiguous picture leaves the note's tile without one.
+            // An unresolved picture leaves the note's tile without one.
             guard let index else { return nil }
-            let matches = try? await index.resolve(target, from: notePath) // A failed lookup is no picture.
-            guard let matches, matches.count == 1 else { return nil }
-            return matches[0]
+            return (try? await index.resolve(target, from: notePath))?.first // A failed lookup is no picture.
         }
     }
 

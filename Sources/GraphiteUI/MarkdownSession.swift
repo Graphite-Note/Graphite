@@ -154,6 +154,11 @@ final class MarkdownSession {
     private(set) var hasByteOrderMark: Bool
     private var revision: FileRevision
     private var activeSave: Task<Void, Error>?
+    /// Where text that cannot reach the file waits, outside the vault; nil for a session
+    /// that is not a tab's, as in tests.
+    @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
+    /// The edit the draft on disk holds, nil when this session has no draft there.
+    @ObservationIgnored private var draftEditVersion: Int?
     var isSaving: Bool { activeSave != nil }
     var hasUnsavedChanges: Bool { text != savedText || !pendingInsertions.isEmpty }
 
@@ -213,11 +218,18 @@ final class MarkdownSession {
             if activeSave == previousSave { activeSave = nil }
         }
         flushPendingInsertions()
-        guard hasUnsavedChanges else { return }
-        guard !hasExternalConflict else { throw GraphiteError.conflict }
+        guard hasUnsavedChanges else {
+            // Undone back to what the file holds: there is nothing left to bring back.
+            discardDraft()
+            return
+        }
+        guard !hasExternalConflict else {
+            await keepUnsavedTextInDraft()
+            throw GraphiteError.conflict
+        }
         let textToSave = text
         let expectedRevision = revision
-        willReplaceSavedText?(savedText)
+        willReplaceSavedText?(savedText, .bySave)
         let dataToSave = NoteTextEncoding.encode(textToSave, hasByteOrderMark: hasByteOrderMark)
         let saveTask = Task { [store, path] in
             let newRevision = try await store.save(dataToSave, at: path, expecting: .revision(expectedRevision))
@@ -232,12 +244,88 @@ final class MarkdownSession {
         do {
             try await saveTask.value
             errorMessage = nil
+            // Text typed during the save is not in the file yet: its draft stays until it is.
+            if !hasUnsavedChanges { discardDraft() }
             didSave(path)
         } catch {
             if error as? GraphiteError == .conflict { hasExternalConflict = true }
             errorMessage = error.localizedDescription
+            await keepUnsavedTextInDraft()
             throw error
         }
+    }
+
+    /// Saves once typing has paused for `pause`. A failed save is tried again, waiting longer
+    /// each time, so the text reaches the file without waiting for another edit. A conflict
+    /// waits for the person's choice. Cancelling, as the next keystroke does, ends the tries.
+    func autosave(after pause: Duration, sleeping sleep: (Duration) async throws -> Void) async {
+        var delay = pause
+        var consecutiveFailures = 0
+        while true {
+            do {
+                try await sleep(delay)
+                try await save()
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                errorMessage = error.localizedDescription
+                guard !hasExternalConflict, hasUnsavedChanges else { return }
+                consecutiveFailures += 1
+                delay = AutosaveRetryPolicy.delay(afterConsecutiveFailures: consecutiveFailures)
+            }
+        }
+    }
+
+    // MARK: Text that cannot be saved
+
+    /// Writes the text the file does not have to the draft outside the vault, where it
+    /// outlives the app. Nothing is written twice for one edit, and a note with nothing
+    /// unsaved writes nothing.
+    /// - Returns: Whether the text is safe: saved in the file or in the draft.
+    @discardableResult
+    func keepUnsavedTextInDraft() async -> Bool {
+        flushPendingInsertions()
+        guard hasUnsavedChanges else { return true }
+        guard draftEditVersion != editVersion else { return true }
+        guard let draftKeeper else { return false }
+        let versionToKeep = editVersion
+        let contents = NoteTextEncoding.encode(text, hasByteOrderMark: hasByteOrderMark)
+        guard await draftKeeper.keep(contents, madeOver: revision) else { return false }
+        draftEditVersion = versionToKeep
+        return true
+    }
+
+    /// Shows the text an ended app could not save, with `snapshot`'s text as what the file
+    /// holds. When the file is still the version the text was made over, the text simply
+    /// goes on to be saved. Otherwise the file is newer and this is a conflict, with the
+    /// meaning it has for a note left open: the session keeps expecting the old version, so
+    /// nothing is written over the newer file until the person chooses.
+    /// - Returns: Whether the note now shows the draft's text.
+    func restore(_ draft: UnsavedDocumentDraft) -> Bool {
+        // Another window on the note has its text, which is at least as new.
+        guard siblings.isEmpty, !hasUnsavedChanges else { return false }
+        guard let decoded = NoteTextEncoding.decode(draft.contents) else { return false }
+        guard decoded.text != savedText else {
+            draftKeeper?.remove()
+            return false
+        }
+        text = decoded.text
+        draftEditVersion = editVersion
+        guard draft.baseRevision != revision else { return true }
+        revision = draft.baseRevision
+        hasExternalConflict = true
+        errorMessage = GraphiteError.conflict.localizedDescription
+        return true
+    }
+
+    /// Lets go of the draft, for this session and any other window's on the note: the text
+    /// reached the file, or the person chose another version.
+    private func discardDraft() {
+        let sessions = [self] + siblings
+        guard sessions.contains(where: { session in session.draftEditVersion != nil }) else { return }
+        draftKeeper?.remove()
+        for session in sessions { session.draftEditVersion = nil }
     }
 
     func checkExternalChange() async {
@@ -246,9 +334,21 @@ final class MarkdownSession {
         do {
             let snapshot = try await store.read(path, maximumBytes: Self.maximumEditableBytes)
             guard !isSaving, revision == revisionBeforeRead else { return }
-            guard snapshot.revision != revision else { return }
-            if hasUnsavedChanges { hasExternalConflict = true; errorMessage = GraphiteError.conflict.localizedDescription }
-            else { try adopt(snapshot) }
+            guard snapshot.revision != revision else {
+                // The file went back to the version these edits were made over, so the
+                // conflict is over and the edits can be saved.
+                if hasExternalConflict {
+                    hasExternalConflict = false
+                    errorMessage = nil
+                    try? await save() // A failure shows in the banner, and the draft keeps the text.
+                }
+                return
+            }
+            if hasUnsavedChanges {
+                hasExternalConflict = true
+                errorMessage = GraphiteError.conflict.localizedDescription
+                await keepUnsavedTextInDraft()
+            } else { try adopt(snapshot) }
         } catch {
             guard !isSaving, revision == revisionBeforeRead else { return }
             errorMessage = error.localizedDescription
@@ -263,6 +363,7 @@ final class MarkdownSession {
         guard editVersion == versionBeforeRead, revision == revisionBeforeRead, !isSaving else {
             hasExternalConflict = true
             errorMessage = GraphiteError.conflict.localizedDescription
+            await keepUnsavedTextInDraft()
             throw GraphiteError.conflict
         }
         try adopt(snapshot)
@@ -274,10 +375,11 @@ final class MarkdownSession {
     private func adopt(_ snapshot: FileSnapshot) throws {
         guard let decoded = NoteTextEncoding.decode(snapshot.data) else { throw GraphiteError.invalidFile("External note is not UTF-8.") }
         // The version another app replaced is kept, in case its change was unwanted.
-        if decoded.text != savedText { willReplaceSavedText?(savedText) }
+        if decoded.text != savedText { willReplaceSavedText?(savedText, .byOtherVersion) }
         pendingInsertions = []
         text = decoded.text; savedText = decoded.text; hasByteOrderMark = decoded.hasByteOrderMark; revision = snapshot.revision
         hasExternalConflict = false; errorMessage = nil
+        discardDraft()
         shareSavedState()
     }
 
@@ -291,11 +393,12 @@ final class MarkdownSession {
         flushPendingInsertions()
         let bytesToCopy = NoteTextEncoding.encode(text, hasByteOrderMark: hasByteOrderMark)
         let versionToCopy = editVersion
-        let separatePath = try await store.uniquePath(directory: path.parent, stem: path.stem + " Graphite edits", extension: "md")
+        let separatePath = try await store.separateCopyPath(of: path, fileExtension: "md")
         _ = try await store.save(bytesToCopy, at: separatePath, expecting: .absent)
         guard editVersion == versionToCopy else {
             hasExternalConflict = true
             errorMessage = GraphiteError.conflict.localizedDescription
+            await keepUnsavedTextInDraft()
             return separatePath
         }
         do {
@@ -306,6 +409,7 @@ final class MarkdownSession {
             guard editVersion == versionToCopy else { return separatePath }
             text = savedText
             hasExternalConflict = false
+            discardDraft()
             // The other version exists but cannot be shown, such as a file too large or
             // no longer UTF-8; the note says so when the person comes back to it.
             errorMessage = isRemoved ? nil : error.localizedDescription
@@ -370,9 +474,18 @@ final class MarkdownSession {
         foldedKeys = []
     }
 
+    /// What is about to replace a note's saved text.
+    enum SavedTextReplacement {
+        /// The person's own typing, which File recovery copies at its interval.
+        case bySave
+        /// Another app's or device's version, or one the person chose: the text it replaces
+        /// may be in no other place, so it is copied whatever the interval.
+        case byOtherVersion
+    }
+
     /// Called with the note's saved text just before a save or a reload replaces it, so File
     /// recovery can keep a copy.
-    @ObservationIgnored var willReplaceSavedText: ((String) -> Void)?
+    @ObservationIgnored var willReplaceSavedText: ((String, SavedTextReplacement) -> Void)?
 
     /// A shown editor applies its waiting insertions through native undo before a save
     /// captures the text. Without an editor, the same work is applied to the model.

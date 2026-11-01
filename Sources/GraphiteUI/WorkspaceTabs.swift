@@ -438,6 +438,7 @@ extension WorkspaceModel {
                                                                     calloutExpansion: calloutFolds.expansion(for: path.rawValue)))
                 }
                 if let newMarkdown {
+                    await restoreUnsavedDraft(into: newMarkdown)
                     restoreViewMode(of: newMarkdown); restoreFolds(of: newMarkdown)
                     returnToRememberedPlace(of: newMarkdown); watchForRecovery(newMarkdown)
                 }

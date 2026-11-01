@@ -554,8 +554,7 @@ actor ReadingViewBuilder {
 
     private func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: VaultIndex) async -> VaultPath? {
         if let file = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root) { return file }
-        guard let resolved = try? await index.resolve(target, from: note, isWiki: isWiki), resolved.count == 1 else { return nil }
-        return resolved.first
+        return (try? await index.resolve(target, from: note, isWiki: isWiki))?.first
     }
 
     /// Where the task on a line of a block's text, given by its index, is in the note.

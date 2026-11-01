@@ -435,8 +435,7 @@ final class BaseDocumentModel {
     func resolve(_ link: BaseLink) async throws -> VaultPath? {
         guard !link.isExternal else { return nil }
         let source = link.source ?? contextPath
-        let matches = try await index.resolve(link.target, from: source)
-        return matches.count == 1 ? matches.first : nil
+        return try await index.resolve(link.target, from: source).first
     }
 
     // MARK: Editing

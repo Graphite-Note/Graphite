@@ -442,23 +442,19 @@
             return Array.from(values);
         }
 
-        // Link resolution, as Obsidian does it: beside the note, then from the vault root,
-        // then by name or the end of a path, ignoring case.
+        // Link resolution, as Obsidian does it (getLinkpathDest, 1.14.5): `./` and `../` from
+        // the note's folder only, `/` from the vault root only; otherwise the path from the vault
+        // root, then every file the name or the end of the path matches, ignoring case: those
+        // whose path starts with the note's folder first, the shortest path first within each.
 
         resolveLinkpath(linkpath, sourcePath) {
             const target = normalizeLinkTarget(linkpath);
             if (target === '') return sourcePath ? this.vault.getFileByPath(sourcePath) : null;
             const sourceFolder = sourcePath && sourcePath.includes('/') ? sourcePath.slice(0, sourcePath.lastIndexOf('/')) : '';
-            const candidates = [];
-            if (target.startsWith('./') || target.startsWith('../')) candidates.push(joinRelative(sourceFolder, target));
-            else {
-                if (sourceFolder) candidates.push(sourceFolder + '/' + target);
-                candidates.push(target);
-            }
-            for (const candidate of candidates) {
-                const file = this.findFileIgnoringCase(candidate) || this.findFileIgnoringCase(candidate + '.md');
-                if (file) return file;
-            }
+            const isRelative = target.startsWith('./') || target.startsWith('../');
+            const directPath = isRelative ? joinRelative(sourceFolder, target) : target;
+            const directFile = this.findFileIgnoringCase(directPath) || this.findFileIgnoringCase(directPath + '.md');
+            if (directFile || isRelative) return directFile;
             const lowercasedTarget = target.toLowerCase();
             const lastComponent = lowercasedTarget.slice(lowercasedTarget.lastIndexOf('/') + 1);
             const sameNamed = (this.filesByLowercasedName.get(lastComponent) || []).concat(this.filesByLowercasedName.get(lastComponent + '.md') || []);
@@ -468,7 +464,10 @@
                     || lowercasedPath.endsWith('/' + lowercasedTarget) || lowercasedPath.endsWith('/' + lowercasedTarget + '.md');
             });
             if (matching.length === 0) return null;
-            matching.sort((firstFile, secondFile) => firstFile.path.length - secondFile.path.length || (firstFile.path < secondFile.path ? -1 : 1));
+            const lowercasedSourceFolder = sourceFolder.toLowerCase();
+            const isNearSource = (file) => file.path.toLowerCase().startsWith(lowercasedSourceFolder);
+            matching.sort((firstFile, secondFile) => isNearSource(secondFile) - isNearSource(firstFile)
+                || firstFile.path.length - secondFile.path.length || (firstFile.path < secondFile.path ? -1 : 1));
             return matching[0];
         }
 

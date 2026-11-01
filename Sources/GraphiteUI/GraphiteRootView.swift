@@ -625,6 +625,9 @@ struct GraphiteRootView: View {
         // Drive, as soon as the app is off screen, and end the app before it finishes.
         let backgroundTask = BackgroundTaskAssertion(name: "Save open documents")
         Task {
+            // Outside the vault first: that write is quick and local, and it keeps the text if
+            // the save is refused, or is slow enough for iPadOS to end the app during it.
+            _ = await workspace.keepUnsavedTextInDrafts()
             await save()
             // Plugins' views of files (an Excalidraw drawing) save what they hold too, as when
             // Obsidian closes; their writes go through the vault like any plugin write.

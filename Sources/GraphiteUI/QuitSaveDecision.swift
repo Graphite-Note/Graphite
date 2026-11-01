@@ -3,9 +3,13 @@ import Foundation
 /// How saving the open documents ended when the person asked to quit.
 enum QuitSaveOutcome {
     case succeeded
+    /// A save failed and what it held could not be kept anywhere else.
     case failed(any Error)
     /// The deadline passed while a save was still running.
     case timedOut
+    /// Something could not be saved, or a save did not end in time, but all of it is in
+    /// drafts outside the vault, which come back when the document opens next.
+    case keptInDrafts
 }
 
 /// Why Graphite stays open instead of quitting.
@@ -25,16 +29,17 @@ enum QuitBlockingReason: Equatable {
     }
 }
 
-/// Whether Graphite quits once saving the open documents has ended. Quitting happens only
-/// when every save succeeded: a note that cannot be saved, or a save still running, keeps
-/// the unsaved text alive in the open app.
+/// Whether Graphite quits once saving the open documents has ended. It quits when nothing
+/// is left only in memory: every save succeeded, or what could not be saved is in a draft
+/// outside the vault. So a note that can never be saved does not keep Graphite open for
+/// good, and text that is nowhere else does.
 struct QuitSaveDecision: Equatable {
     let allowsTermination: Bool
     let blockingReason: QuitBlockingReason?
 
     init(outcome: QuitSaveOutcome) {
         switch outcome {
-        case .succeeded:
+        case .succeeded, .keptInDrafts:
             allowsTermination = true
             blockingReason = nil
         case .failed(let error):

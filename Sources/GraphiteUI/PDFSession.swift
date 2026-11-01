@@ -565,8 +565,10 @@ final class PDFSession {
 
     func saveSeparateCopy() async throws -> URL {
         let directory = location.deletingLastPathComponent()
-        let filename = location.deletingPathExtension().lastPathComponent + " Graphite edits " + UUID().uuidString.prefix(8) + ".pdf"
+        let filename = FileNameRules.separateCopyStem(of: location.deletingPathExtension().lastPathComponent) + " " + UUID().uuidString.prefix(8) + ".pdf"
         let destination = directory.appendingPathComponent(filename)
+        // The copy has a place even when another app renamed or removed the PDF's folder.
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         writePendingInkRecords()
         let currentBaseline = baseline
         _ = try await fileService.saveCopy(baselineURL: currentBaseline.location, edits: edits, destination: destination)
