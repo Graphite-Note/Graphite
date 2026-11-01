@@ -99,7 +99,6 @@ final class SettingsOpeningHostedTests: XCTestCase {
         let touches = SynthesizedTouches(window: window)
         let frame = object.accessibilityFrame
         touches.begin(at: [CGPoint(x: frame.midX, y: frame.midY)])
-        try? await Task.sleep(for: .seconds(0.05))
         touches.end()
     }
 
