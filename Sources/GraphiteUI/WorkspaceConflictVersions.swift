@@ -19,9 +19,8 @@ struct ConflictVersionListing: Equatable, Sendable {
 /// two places: finding the files that have them, and the three things the person can do
 /// with one. Nothing here removes a version unless the person chose it.
 extension WorkspaceModel {
-    /// The most paths that wait to be checked. Beyond it the latest requests are given
-    /// up, so a huge folder cannot queue work without end, and the first rows of a list are
-    /// among those kept; the others are checked when their rows come on screen or they open.
+    /// The most paths that wait to be checked, so a huge folder cannot queue work without end.
+    /// A file given up is checked when its row comes on screen or it opens.
     static let maximumPendingConflictChecks = 5_000
     /// Files checked between two looks at whether the check is still wanted.
     static let conflictChecksPerBatch = 100
@@ -29,42 +28,50 @@ extension WorkspaceModel {
     // MARK: Finding
 
     /// Looks for kept versions of these files, off the main thread, and marks the files
-    /// that have them. Only files the sidebar lists or a tab shows are ever asked about.
+    /// that have them. Only files the sidebar lists or a tab shows are ever asked about. These
+    /// are files that changed, or a tab shows, so the oldest requests are the ones given up.
     func checkConflictVersions(of paths: some Sequence<VaultPath>) {
         guard folderAccess != nil else { return }
         for path in paths where pendingConflictCheckPaths.insert(path).inserted {
             pendingConflictChecks.append(path)
             conflictCheckedPaths.insert(path)
         }
-        giveUpChecksBeyondTheMaximum()
+        if pendingConflictChecks.count > Self.maximumPendingConflictChecks {
+            let givenUpCount = pendingConflictChecks.count - Self.maximumPendingConflictChecks
+            for path in pendingConflictChecks.prefix(givenUpCount) { forgetPendingCheck(of: path) }
+            pendingConflictChecks.removeFirst(givenUpCount)
+        }
         startPendingConflictChecks()
     }
 
     /// Asks about the files of a listing that were not asked about since the vault opened: a
     /// version a file gains or loses is reported as a change to it, which asks again. A listing
-    /// larger than the most that can wait gives up its end, and a file there is asked about
-    /// when its row comes on screen (`checkConflictVersionsOfRowShown`).
+    /// larger than the most that can wait keeps its first files, the rows a list starts with, and
+    /// a file beyond them is asked about when its row comes on screen (`checkConflictVersionsOfRowShown`).
     func checkConflictVersions(ofListedFiles paths: some Sequence<VaultPath>) {
         guard folderAccess != nil else { return }
-        checkConflictVersions(of: paths.lazy.filter { path in !self.conflictCheckedPaths.contains(path) })
+        for path in paths where !conflictCheckedPaths.contains(path) {
+            guard pendingConflictChecks.count < Self.maximumPendingConflictChecks else { break }
+            pendingConflictCheckPaths.insert(path)
+            pendingConflictChecks.append(path)
+            conflictCheckedPaths.insert(path)
+        }
+        startPendingConflictChecks()
     }
 
     /// A file's row came on screen: it is asked about next, unless it already was.
     func checkConflictVersionsOfRowShown(_ path: VaultPath) {
-        guard folderAccess != nil, !conflictCheckedPaths.contains(path), pendingConflictCheckPaths.insert(path).inserted else { return }
+        guard folderAccess != nil, !conflictCheckedPaths.contains(path) else { return }
         pendingConflictChecks.insert(path, at: 0)
+        pendingConflictCheckPaths.insert(path)
         conflictCheckedPaths.insert(path)
-        giveUpChecksBeyondTheMaximum()
+        if pendingConflictChecks.count > Self.maximumPendingConflictChecks { forgetPendingCheck(of: pendingConflictChecks.removeLast()) }
         startPendingConflictChecks()
     }
 
-    private func giveUpChecksBeyondTheMaximum() {
-        guard pendingConflictChecks.count > Self.maximumPendingConflictChecks else { return }
-        for path in pendingConflictChecks[Self.maximumPendingConflictChecks...] {
-            pendingConflictCheckPaths.remove(path)
-            conflictCheckedPaths.remove(path)
-        }
-        pendingConflictChecks.removeLast(pendingConflictChecks.count - Self.maximumPendingConflictChecks)
+    private func forgetPendingCheck(of path: VaultPath) {
+        pendingConflictCheckPaths.remove(path)
+        conflictCheckedPaths.remove(path)
     }
 
     private func startPendingConflictChecks() {

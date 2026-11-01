@@ -41,7 +41,10 @@ extension VaultStore {
         let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
         var entries: [VaultPath: VaultEntry?] = [:]
         for path in paths {
-            guard !path.isHidden, let location = try? path.url(in: root), let values = try? location.resourceValues(forKeys: keys), values.isSymbolicLink != true else {
+            // Not through `url(in:)`, which follows a link to what it leads to: a listing leaves
+            // the link itself out.
+            guard !path.isHidden, (try? path.url(in: root)) != nil, let values = try? root.appendingPathComponent(path.rawValue).resourceValues(forKeys: keys),
+                  values.isSymbolicLink != true else {
                 entries.updateValue(nil, forKey: path)
                 continue
             }

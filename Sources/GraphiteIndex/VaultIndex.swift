@@ -96,7 +96,7 @@ public actor VaultIndex {
     private static let readerCacheKilobytes = 2048
     /// One writer and concurrent readers. Internal so the base record queries in
     /// `BaseRecordQueries.swift` share it.
-    let databasePool: DatabasePool
+    nonisolated let databasePool: DatabasePool
     private let cloudFileStatus: CloudFileStatus
     private var isScanning = false
     /// The generation of the scan in progress, which the rows it writes carry.

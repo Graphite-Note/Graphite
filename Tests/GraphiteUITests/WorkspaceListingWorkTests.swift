@@ -39,7 +39,7 @@ final class WorkspaceListingWorkTests: XCTestCase {
         firstLaunch.windowDidClose()
 
         let workspace = device.makeWorkspace()
-        final class FirstListing { var tabPathWhenItArrived: VaultPath?; var storeWasSet = false }
+        @MainActor final class FirstListing { var tabPathWhenItArrived: VaultPath?; var storeWasSet = false }
         let firstListing = FirstListing()
         // Stands by until the root's entries are about to be set for the first time with
         // anything in them; the switch to the vault sets them to nothing first.
@@ -396,19 +396,17 @@ final class FlattenedFileTreeTests: XCTestCase {
         let contents = FileTreeContents()
         let rootEntries = try root(fileCount: 3)
         contents.apply(rootEntries: rootEntries, expandedFolders: [])
-        var rowChangeCount = 0
-        func watchRows() {
-            withObservationTracking { _ = contents.rows } onChange: { MainActor.assumeIsolated { rowChangeCount += 1 } }
-        }
-        watchRows()
+        @MainActor final class RowChanges { var count = 0 }
+        let rowChanges = RowChanges()
+        withObservationTracking { _ = contents.rows } onChange: { MainActor.assumeIsolated { rowChanges.count += 1 } }
 
         contents.apply(rootEntries: rootEntries, expandedFolders: [try VaultPath("Folder")])
-        XCTAssertEqual(rowChangeCount, 0, "Tapping a folder not listed yet redraws nothing.")
+        XCTAssertEqual(rowChanges.count, 0, "Tapping a folder not listed yet redraws nothing.")
         contents.setChildren([], of: try VaultPath("Folder"))
-        XCTAssertEqual(rowChangeCount, 0, "An empty folder's listing redraws nothing.")
+        XCTAssertEqual(rowChanges.count, 0, "An empty folder's listing redraws nothing.")
 
         contents.setChildren(try [entry("Folder/A.md")], of: try VaultPath("Folder"))
-        XCTAssertEqual(rowChangeCount, 1)
+        XCTAssertEqual(rowChanges.count, 1)
         XCTAssertEqual(contents.rows.count, rootEntries.count + 1)
     }
 

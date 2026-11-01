@@ -402,11 +402,16 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         let workspace = try await openedWorkspace(vault)
         XCTAssertTrue(workspace.isIndexing)
         let indexVersionBeforeScans = workspace.indexVersion
+        let index = try XCTUnwrap(workspace.index)
 
         workspace.startIndexing()
+        // Written after the running scan may have passed it: only the scan that follows finds it.
+        try Data("late".utf8).write(to: vault.appendingPathComponent("Notes/Note 0.md"))
         try await waitUntil { !workspace.isIndexing }
 
-        XCTAssertEqual(workspace.indexVersion - indexVersionBeforeScans, 2)
+        let indexedFileCount = try await index.fileCount()
+        XCTAssertEqual(indexedFileCount, 201)
+        XCTAssertGreaterThanOrEqual(workspace.indexVersion - indexVersionBeforeScans, 1)
         XCTAssertTrue(workspace.hasCompletedIndexScan)
     }
 
