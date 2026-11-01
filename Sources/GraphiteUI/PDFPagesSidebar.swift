@@ -12,6 +12,8 @@ struct PDFPagesSidebar: View {
     @Bindable var session: PDFSession
     let commands: PDFPageCommands
     let renderer: PDFThumbnailRenderer
+    /// Called after a page is chosen to read, so a sheet that holds the list can close.
+    var didChoosePage: (() -> Void)?
     @State private var content = Content.pages
     @State private var isSelecting = false
     @State private var selectedPages = PDFPageSelection()
@@ -66,6 +68,7 @@ struct PDFPagesSidebar: View {
                 selectedPages.toggle(page)
             } else {
                 session.go(to: pageIndex)
+                didChoosePage?()
             }
         } label: {
             VStack(spacing: 6) {
@@ -177,7 +180,10 @@ struct PDFPagesSidebar: View {
         } else {
             List(entries) { entry in
                 Button {
-                    if let pageIndex = entry.pageIndex { session.go(to: pageIndex) }
+                    if let pageIndex = entry.pageIndex {
+                        session.go(to: pageIndex)
+                        didChoosePage?()
+                    }
                 } label: {
                     HStack {
                         if entry.isBookmark { Image(systemName: "bookmark.fill").foregroundStyle(.red).imageScale(.small) }

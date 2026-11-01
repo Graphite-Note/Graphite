@@ -334,7 +334,7 @@ private struct NewVaultForm: View {
             }
             .errorAlert($errorMessage)
         }
-        .frame(minWidth: 360, minHeight: 320)
+        .sheetMinimumSize(width: 360, height: 320)
     }
 
     /// Only iOS shows an app's own Documents folder in Files; on the Mac it is hidden.

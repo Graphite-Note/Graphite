@@ -60,4 +60,13 @@ final class StackedPaneGeometryTests: XCTestCase {
         XCTAssertEqual(roomy.displayedLeadingEdge(ofPane: 1, scrollOffset: 0), 740)
         XCTAssertEqual(roomy.visibleContentWidth(ofPane: 0, scrollOffset: 0), 700)
     }
+
+    func testAPaneShowsContentOnlyWhereSomeOfItIsNotCovered() {
+        XCTAssertTrue(geometry.showsContent(ofPane: 1, scrollOffset: 0), "140 points of the second pane show.")
+        XCTAssertFalse(geometry.showsContent(ofPane: 2, scrollOffset: 0), "Only its spine shows.")
+        // A divider dragged while the second pane is active leaves a row alone that still shows it,
+        // and moves one that hides it (HUNT-286).
+        XCTAssertTrue(geometry.showsContent(ofPane: 1, scrollOffset: 300))
+        XCTAssertFalse(geometry.showsContent(ofPane: 1, scrollOffset: geometry.maximumScrollOffset))
+    }
 }

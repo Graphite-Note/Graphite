@@ -230,7 +230,8 @@ struct VaultGraphView: View {
             displaySettings
             forceSettings
         }
-        .frame(minWidth: 360, idealWidth: 380, minHeight: 640, idealHeight: 760)
+        .frame(idealWidth: 380, idealHeight: 760)
+        .sheetMinimumSize(width: 360, height: 640)
     }
 
     private var displaySettings: some View {

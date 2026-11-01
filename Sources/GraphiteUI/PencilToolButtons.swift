@@ -57,7 +57,7 @@ struct PencilToolButtons {
             Circle()
                 .fill(.primary)
                 .frame(width: diameter, height: diameter)
-                .frame(width: 28, height: buttonSide)
+                .frame(width: buttonSide, height: buttonSide)
                 .background(isChosen ? selectedFill : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
                 .frame(height: rowHeight)
                 .contentShape(Rectangle())
@@ -76,11 +76,12 @@ struct PencilToolButtons {
         } label: {
             Circle()
                 .fill(Color(graphiteHex: hex) ?? .black)
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5) }
+                // A ring in the text color, so a black ink shows on the dark bar of dark mode.
+                .overlay { Circle().strokeBorder(Color.primary.opacity(0.4), lineWidth: 1) }
                 .frame(width: 20, height: 20)
                 // A ring, so the color in use is marked by shape as well.
                 .overlay { if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: 28, height: 28) } }
-                .frame(width: 30, height: rowHeight)
+                .frame(width: buttonSide, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -161,7 +162,7 @@ struct PencilToolGlyph: View {
             .frame(height: 22)
             Capsule()
                 .fill(inkColor ?? .clear)
-                .overlay { if inkColor != nil { Capsule().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5) } }
+                .overlay { if inkColor != nil { Capsule().strokeBorder(Color.primary.opacity(0.4), lineWidth: 0.5) } }
                 .frame(width: 16, height: 3)
         }
         .frame(width: PencilToolbarMetrics.buttonSide, height: PencilToolbarMetrics.buttonSide)

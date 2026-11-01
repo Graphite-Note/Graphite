@@ -46,6 +46,14 @@ public struct StackedPaneGeometry: Equatable, Sendable {
         return max(0, trailingEdge - (leadingEdge + spineWidth))
     }
 
+    /// Whether any of the pane's content shows at a scroll offset.
+    public func showsContent(ofPane index: Int, scrollOffset: Double) -> Bool {
+        visibleContentWidth(ofPane: index, scrollOffset: scrollOffset) > Self.visibleContentThreshold
+    }
+
+    /// Narrower than this, a pane's content counts as not shown.
+    public static let visibleContentThreshold: Double = 0.5
+
     /// The scroll offset closest to `currentOffset` that shows the pane whole, with the
     /// spines of the panes before it at the leading edge and those after it at the trailing
     /// edge. When the pane cannot show whole, its leading part shows.

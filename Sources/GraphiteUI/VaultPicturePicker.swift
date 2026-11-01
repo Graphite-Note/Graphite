@@ -45,6 +45,6 @@ struct VaultPicturePicker: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task(id: query) { paths = await findPictures(query.trimmingCharacters(in: .whitespaces)) }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }

@@ -130,11 +130,15 @@ extension MarkdownEditing {
 import UIKit
 
 /// The row of buttons above the keyboard, like Obsidian mobile's editing toolbar. It
-/// scrolls sideways when it is wider than the screen.
+/// scrolls sideways when it is wider than the screen, except for Find and Hide Keyboard,
+/// which stand at its trailing end outside the scrolling row: the buttons a person reaches
+/// for to leave the keyboard are never off the screen.
 final class EditorKeyboardToolbar: UIInputView {
     private let run: (EditorCommand) -> Void
     private let scrollView = UIScrollView()
     private let stackView = UIStackView()
+    /// Find and Hide Keyboard, kept in view beside the scrolling row.
+    private let pinnedStackView = UIStackView()
     static let height: CGFloat = 48
     /// Which of the pane's actions the buttons were built for.
     private var builtActions: AvailableActions
@@ -172,11 +176,18 @@ final class EditorKeyboardToolbar: UIInputView {
         stackView.spacing = 2
         stackView.alignment = .center
         stackView.translatesAutoresizingMaskIntoConstraints = false
+        pinnedStackView.axis = .horizontal
+        pinnedStackView.spacing = 2
+        pinnedStackView.alignment = .center
+        pinnedStackView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(scrollView)
+        addSubview(pinnedStackView)
         scrollView.addSubview(stackView)
         NSLayoutConstraint.activate([
             scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: pinnedStackView.leadingAnchor, constant: -8),
+            pinnedStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            pinnedStackView.centerYAnchor.constraint(equalTo: centerYAnchor),
             scrollView.topAnchor.constraint(equalTo: topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
             stackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 8),
@@ -185,6 +196,7 @@ final class EditorKeyboardToolbar: UIInputView {
             heightAnchor.constraint(equalToConstant: Self.height),
         ])
         buildButtons(actions: actions)
+        buildPinnedButtons()
         registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (toolbar: EditorKeyboardToolbar, _) in
             toolbar.updateUndoAndRedoVisibility()
         }
@@ -261,9 +273,18 @@ final class EditorKeyboardToolbar: UIInputView {
         if actions.attach != nil || actions.draw != nil { addSeparator() }
         if actions.attach != nil { addAttachMenu(actions: actions) }
         if actions.draw != nil { add("Draw", "pencil.tip.crop.circle.badge.plus", .draw) }
-        addSeparator()
-        add("Find in note", "magnifyingglass", .find)
-        add("Hide keyboard", "keyboard.chevron.compact.down", .dismissKeyboard)
+    }
+
+    /// Find and Hide Keyboard, after a separator, at the trailing end.
+    private func buildPinnedButtons() {
+        let separator = UIView()
+        separator.backgroundColor = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([separator.widthAnchor.constraint(equalToConstant: 1), separator.heightAnchor.constraint(equalToConstant: 22)])
+        pinnedStackView.addArrangedSubview(separator)
+        pinnedStackView.setCustomSpacing(8, after: separator)
+        add("Find in note", "magnifyingglass", .find, to: pinnedStackView)
+        add("Hide keyboard", "keyboard.chevron.compact.down", .dismissKeyboard, to: pinnedStackView)
     }
 
     /// A phone's Undo and Redo show while the note's toolbar has none: in a compact width.
@@ -283,13 +304,15 @@ final class EditorKeyboardToolbar: UIInputView {
         button.accessibilityLabel = title
         button.toolTip = title
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 42).isActive = true
+        // 44 points to touch, as the rest of the interface.
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         return button
     }
 
-    private func add(_ title: String, _ systemImage: String, _ command: EditorCommand) {
+    private func add(_ title: String, _ systemImage: String, _ command: EditorCommand, to row: UIStackView? = nil) {
         let button = makeButton(title, systemImage)
         button.addAction(UIAction { [weak self] _ in self?.run(command) }, for: .touchUpInside)
-        stackView.addArrangedSubview(button)
+        (row ?? stackView).addArrangedSubview(button)
     }
 
     /// Files, Photos, and the camera, as Obsidian mobile's attach button offers them.

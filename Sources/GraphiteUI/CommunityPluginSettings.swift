@@ -263,7 +263,7 @@ struct CommunityPluginBrowser: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await loadDirectory() }
         }
-        .frame(minWidth: 480, minHeight: 520)
+        .sheetMinimumSize(width: 480, height: 520)
     }
 
     @ViewBuilder private func installButton(for entry: CommunityPluginDirectoryEntry) -> some View {

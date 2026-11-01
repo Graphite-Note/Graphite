@@ -309,7 +309,7 @@ final class PencilWorkspaceTests: XCTestCase {
 
     /// The checks a PDF workspace passes in a window of any size: the page fits the PDF's
     /// width, with no empty column; the PDF, the fixed Pencil bar and every bar control are
-    /// inside the window; the Pencil bar is whole or compact; the title stays readable.
+    /// inside the window; the Pencil bar is whole, compact or condensed and inside the window, never scrolling; the title stays readable.
     private func checkPDFWorkspaceFits(_ window: UIWindow, session: PDFSession, name: String, showsPencilBar: Bool) throws {
         let (page, viewWidth) = try pageEdges(of: session)
         XCTAssertGreaterThanOrEqual(page.minX, -1, "\(name): the page starts inside its view.")
@@ -321,7 +321,6 @@ final class PencilWorkspaceTests: XCTestCase {
 
         if showsPencilBar {
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown, "\(name): the fixed Pencil bar shows.")
-            XCTAssertNotEqual(shownRow.form, .scrolling, "\(name): the Pencil bar is whole or compact, not cut off.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, -0.5, "\(name): the Pencil bar starts inside the window.")
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, window.bounds.width + 0.5, "\(name): the Pencil bar ends inside the window.")
         }

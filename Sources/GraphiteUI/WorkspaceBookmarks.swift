@@ -73,6 +73,8 @@ extension WorkspaceModel {
             reveal(folder: path)
         case "search":
             searchQuery = bookmark.query ?? ""
+        case "graph":
+            showGraph()
         default:
             break
         }

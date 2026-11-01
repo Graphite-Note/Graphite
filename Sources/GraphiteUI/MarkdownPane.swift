@@ -36,6 +36,7 @@ struct MarkdownPane: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
+    @Environment(\.isActiveInItsSide) private var isActiveInItsSide
 
     init(session: MarkdownSession, workspace: WorkspaceModel, document: TabDocument, tabID: UUID, isFocused: Bool, showsLinksInspector: Binding<Bool>) {
         self.session = session
@@ -109,7 +110,7 @@ struct MarkdownPane: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isFocused {
+            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isActiveInItsSide {
                 DocumentControlRow(isWriting: isWritingBinding) {
                     #if canImport(UIKit)
                     if isEditing { UndoRedoButtons(availability: session.undoAvailability) }
@@ -217,15 +218,8 @@ struct MarkdownPane: View {
     /// Link and tag suggestions just below the cursor, or above it near the bottom.
     @ViewBuilder private var banner: some View {
         if session.hasExternalConflict {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("This note changed in another app. Your edits are still here.").font(.callout)
-                Spacer()
-                Button("Save a Copy") { Task { await saveCopy() } }
-                Button("Use Other Version") { noteState.showsReloadConfirmation = true }
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
-            .background(.orange.opacity(0.12))
+            ExternalChangeBanner(message: "This note changed in another app. Your edits are still here.",
+                                 saveCopy: { Task { await saveCopy() } }, useOtherVersion: { noteState.showsReloadConfirmation = true })
         } else if let errorMessage = session.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.circle")
                 .font(.callout).foregroundStyle(.red)
@@ -603,16 +597,14 @@ struct MarkdownPane: View {
                 showsLinksInspector = true
             }
         }
-        FileLocationMenuItems(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root)
-        NotePDFExportButton()
+        // The file's own commands in one submenu: the menu ran to 25 entries, cut off at about 520 points of a
+        // phone's screen, and had neither Move nor Delete.
+        NoteFileMenu(workspace: workspace, path: session.path)
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
             Button(isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 Task { await workspace.toggleBookmark(session.path) }
             }
-        }
-        if preferences.isEnabled(.fileRecovery) {
-            Button("File Recovery…", systemImage: "clock.arrow.circlepath") { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) }
         }
         CommunityPluginFileActionsButton(host: workspace.communityPlugins, path: session.path, source: "more-options")
         WorkspaceMoreMenuItems()
@@ -909,7 +901,7 @@ private struct LinkPicker: View {
                 } catch { workspace.errorMessage = error.localizedDescription }
             }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }
 

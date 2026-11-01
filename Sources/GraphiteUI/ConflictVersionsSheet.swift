@@ -114,7 +114,7 @@ struct ConflictVersionsSheet: View {
                 Text("“\(fileName)” stays as it is. The other versions are removed for good, on every device that syncs this folder.")
             }
         }
-        .frame(minWidth: 520, minHeight: 560)
+        .sheetMinimumSize(width: 520, height: 560)
         .task { await model.load() }
         .disabled(model.isWorking)
     }

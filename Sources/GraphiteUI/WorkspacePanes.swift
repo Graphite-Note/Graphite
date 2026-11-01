@@ -41,6 +41,7 @@ struct WorkspacePanes: View {
     var acceptsFocusTouches = true
     var showsTabBar = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     /// The split when a divider drag began.
     @State private var dragStartFraction: Double?
     /// Where each side is in the window, to focus the side a touch lands on.
@@ -54,7 +55,9 @@ struct WorkspacePanes: View {
     var body: some View {
         panes
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in detailWidth = width }
-            .environment(\.usesDocumentControlRow, DocumentToolbarLayout.usesControlRow(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass))
+            .environment(\.usesDocumentControlRow, DocumentToolbarLayout.usesControlRow(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass,
+                                                                                        verticalSizeClass: verticalSizeClass))
+            .environment(\.sharesWindowWithOtherSide, showsBothGroups)
             .environment(\.foldsSecondaryToolbarActions, DocumentToolbarLayout.foldsSecondaryActions(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass))
             #if canImport(UIKit)
             // A touch anywhere on a side focuses it, so the toolbar and new files follow. The
@@ -158,7 +161,9 @@ private struct TabGroupPane: View {
             showsTabBar: showsTabBar, tabBarWidth: width)
         // Compact widths keep Apple's palette; there is no fixed bar to place.
         let showsPencilToolsInTabBar = horizontalSizeClass != .compact && DocumentToolbarLayout.showsPencilToolsInTabBar(
-            showsTabBar: showsTabBar, tabBarWidth: width, showsDocumentControls: showsDocumentControlsInTabBar)
+            showsTabBar: showsTabBar, tabBarWidth: width, showsDocumentControls: showsDocumentControlsInTabBar,
+            toolCount: PencilToolRowLayout.tools(presetCount: PencilToolbox.shared.presets.count, offersTextBoxes: true,
+                                                 offersReadAloudPen: workspace.readAloud != nil).count)
         VStack(spacing: 0) {
             if showsTabBar {
                 TabBar(workspace: workspace, group: group, isFocused: isFocused, showsBothGroups: showsBothGroups,
@@ -216,6 +221,7 @@ extension TabGroupPane {
                 TabDocumentView(workspace: workspace, tab: stackedTab, document: workspace.document(for: stackedTab.id),
                                 isFocused: isFocused && isActive, showsLinksInspector: $showsLinksInspector,
                                 create: create, showQuickSwitcher: showQuickSwitcher)
+                    .environment(\.isActiveInItsSide, isActive)
             }
         } else {
             TabDocumentView(workspace: workspace, tab: tab, document: workspace.document(for: tab.id), isFocused: isFocused,
@@ -274,11 +280,14 @@ private struct TabBar: View {
     private var groupIndex: Int { layout.groups.firstIndex { candidate in candidate.id == group.id } ?? 0 }
     /// The room at each end of the row of tabs.
     private static let tabsInset: CGFloat = 8
-    @AppStorage(PencilToolbarStyle.preferenceKey) private var pencilToolbarStyle = PencilToolbarStyle.floating
+    @AppStorage(PencilToolbarStyle.preferenceKey) private var chosenPencilToolbarStyle = PencilToolbarStyle.floating
+    @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
     /// Whether tabs stay narrow enough for the tab area the fixed bar's tools leave them:
     /// wherever those tools can share this tab bar, whichever tab is shown, so tabs keep
     /// their width when a PDF and a note take turns.
-    private var keepsTabsBesidePencilTools: Bool { showsPencilTools && pencilToolbarStyle == .fixed }
+    private var keepsTabsBesidePencilTools: Bool {
+        showsPencilTools && chosenPencilToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) == .fixed
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -298,7 +307,7 @@ private struct TabBar: View {
                 // A tab whose file is still loading has the sessions of the file before it.
                 if let session = document.pdfSession, group.activeTab.path != nil, document.loadedPath == group.activeTab.path {
                     Hairline(axis: .vertical).frame(height: 18)
-                    TabBarPencilTools(session: session, isFocused: isFocused, offersReadAloudPen: workspace.readAloud != nil)
+                    TabBarPencilTools(session: session, offersReadAloudPen: workspace.readAloud != nil)
                         .layoutPriority(1)
                 }
             }
@@ -444,7 +453,7 @@ private struct TabBar: View {
 /// takes full strength text and a faint fill. Notes, which most tabs show, go without an
 /// icon; other files keep a small one. The close button shows on the tab in use and under
 /// the pointer, and keeps its room on the others so a tab does not change width when it
-/// is chosen; every tab can be closed from its menu and by VoiceOver.
+/// is chosen; by touch every tab shows it. Every tab can be closed from its menu and by VoiceOver.
 private struct TabItem: View {
     let tab: WorkspaceTab
     let title: String
@@ -465,7 +474,17 @@ private struct TabItem: View {
         return kind == .markdown ? nil : kind.systemImage
     }
 
-    private var showsCloseButton: Bool { isActive || isPointerOver }
+    /// By touch there is no pointer to hover, so every tab shows its close button, quieter on the ones not in use;
+    /// a long press for the menu collides with the drag that lifts the tab (HUNT-288). On the Mac, the tab in use
+    /// and the one under the pointer show it.
+    private var showsCloseButton: Bool {
+        #if os(iOS)
+        true
+        #else
+        isActive || isPointerOver
+        #endif
+    }
+    private var closeButtonOpacity: Double { isActive || isPointerOver ? 1 : 0.55 }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -489,11 +508,12 @@ private struct TabItem: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
+                        // 44 points to touch, as the bar's other buttons.
+                        .contentShape(Rectangle().inset(by: -8))
                 }
                 .buttonStyle(.borderless)
                 .tint(.secondary)
-                .opacity(showsCloseButton ? 1 : 0)
+                .opacity(showsCloseButton ? closeButtonOpacity : 0)
                 .allowsHitTesting(showsCloseButton)
                 .accessibilityHidden(!showsCloseButton)
                 .accessibilityLabel("Close \(title)")
@@ -553,7 +573,9 @@ private struct SplitDivider: View {
         }
         .frame(width: Self.width)
         .frame(maxHeight: .infinity)
-        .contentShape(Rectangle())
+        // Drawn thin and touched over 27 points, so a finger finds it without taking the
+        // text beside it.
+        .contentShape(Rectangle().inset(by: -8))
         .allowsHitTesting(!isHeldByFold)
         // Measured in the panes' space: the divider itself moves while it is dragged.
         .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.coordinateSpaceName))

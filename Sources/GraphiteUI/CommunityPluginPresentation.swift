@@ -154,7 +154,7 @@ struct CommunityPluginPanel: View {
                     ToolbarItem(placement: .confirmationAction) { Button("Done") { host.panelDidClose() } }
                 }
         }
-        .frame(minWidth: 420, minHeight: 360)
+        .sheetMinimumSize(width: 420, height: 360)
     }
 }
 

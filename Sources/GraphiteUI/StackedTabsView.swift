@@ -45,7 +45,9 @@ struct StackedTabsView<Document: View>: View {
         // The active tab's pane slides into view: a tab chosen from the menu or the keyboard,
         // a note opened in a new tab, or the group just stacked.
         .onChange(of: group.activeTabID) { showActivePane(animated: true) }
-        .onChange(of: containerWidth) { showActivePane(animated: false) }
+        // A width that changes while a divider is dragged leaves the row where the person scrolled
+        // it, unless that hides the active pane altogether.
+        .onChange(of: containerWidth) { showActivePane(animated: false, onlyWhenHidden: true) }
         #if canImport(UIKit)
         // A touch on a pane makes its tab the active one. Only observed, as for the split's
         // sides: a gesture over the editor would take its taps.
@@ -62,7 +64,7 @@ struct StackedTabsView<Document: View>: View {
     private func pane(for tab: WorkspaceTab, at index: Int, geometry: StackedPaneGeometry) -> some View {
         let unstuckEdge = CGFloat(index) * CGFloat(geometry.paneWidth) - scrollOffset
         let displayedEdge = CGFloat(geometry.displayedLeadingEdge(ofPane: index, scrollOffset: Double(scrollOffset)))
-        let showsContent = geometry.visibleContentWidth(ofPane: index, scrollOffset: Double(scrollOffset)) > 0.5
+        let showsContent = geometry.showsContent(ofPane: index, scrollOffset: Double(scrollOffset))
         let isActive = tab.id == group.activeTabID
         return HStack(spacing: 0) {
             StackedTabSpine(title: actions.title(tab), isActive: isActive, marksFocus: isActive && isFocused, isPinned: tab.isPinned,
@@ -108,8 +110,10 @@ struct StackedTabsView<Document: View>: View {
         if tab.id != group.activeTabID { actions.activate(tab.id) }
     }
 
-    private func showActivePane(animated: Bool) {
+    private func showActivePane(animated: Bool, onlyWhenHidden: Bool = false) {
         guard containerWidth > 0 else { return }
+        if onlyWhenHidden, group.tabs.indices.contains(group.activeTabIndex),
+           geometry.showsContent(ofPane: group.activeTabIndex, scrollOffset: Double(scrollOffset)) { return }
         let target = CGFloat(geometry.scrollOffset(showingPane: group.activeTabIndex, from: Double(scrollOffset)))
         guard abs(target - scrollOffset) > 0.5 else { return }
         if animated {
@@ -192,7 +196,7 @@ private struct StackedTabSpine: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 9, weight: .semibold))
                     .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                    .contentShape(Rectangle().inset(by: -8))
             }
             .buttonStyle(.borderless)
             .tint(.secondary)

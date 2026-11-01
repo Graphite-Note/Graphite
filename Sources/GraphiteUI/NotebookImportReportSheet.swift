@@ -32,7 +32,7 @@ struct NotebookImportReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done", action: done) }
             }
         }
-        .frame(minWidth: 420, minHeight: 360)
+        .sheetMinimumSize(width: 420, height: 360)
     }
 }
 
