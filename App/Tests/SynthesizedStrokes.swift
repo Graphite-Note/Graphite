@@ -10,6 +10,7 @@
  * Date: 01/11/2026
  */
 #if os(iOS)
+import SwiftUI
 import UIKit
 import PencilKit
 @testable import GraphiteUI
@@ -29,9 +30,9 @@ enum SynthesizedStrokes {
 
     /// Lets a finger draw on a PDF page, which reads the standard preference, until `restore` is called.
     static func letFingersDraw() -> () -> Void {
-        let defaults = UserDefaults.standard
-        defaults.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
-        return { defaults.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+        let preference = AppStorage(wrappedValue: false, PDFAnnotationPreferenceKey.drawsWithFinger)
+        preference.wrappedValue = true
+        return { preference.wrappedValue = false }
     }
 
     /// One stroke through points in the window's coordinates. Returns when the canvas has
