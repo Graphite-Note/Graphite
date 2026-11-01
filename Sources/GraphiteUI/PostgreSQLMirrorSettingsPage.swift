@@ -1,3 +1,14 @@
+/**
+ * File: PostgreSQLMirrorSettingsPage.swift
+ * ----------------------------------------
+ * Layer: UI
+ * Description: Settings > PostgreSQL Mirror: the server, a connection test, Copy Now and what the last copy did.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphitePostgreSQLMirror
 
@@ -83,26 +94,21 @@ struct PostgreSQLMirrorSettingsPage: View {
             savedPassword = mirror.readPassword()
             password = savedPassword
         }
+        // What was typed is kept when the page is left, as Templates and Daily Notes keep theirs;
+        // only Save and Copy Now also copies.
+        .onDisappear(perform: saveWithoutCopying)
         .onChange(of: draft) { connectionTest = .notRun }
         .onChange(of: password) { connectionTest = .notRun }
     }
 
     private func field(_ title: String, prompt: String, text: Binding<String>) -> some View {
-        LabeledContent(title) {
-            TextField(title, text: text, prompt: Text(prompt))
-                .multilineTextAlignment(.trailing)
-                .autocorrectionDisabled()
-                #if canImport(UIKit)
-                .textInputAutocapitalization(.never)
-                #endif
-                .onSubmit { if hasUnsavedChanges, draft.missingSetting == nil { saveAndCopy() } }
-        }
+        SettingsTextField(title: title, prompt: prompt, text: text) { if hasUnsavedChanges, draft.missingSetting == nil { saveAndCopy() } }
     }
 
     @ViewBuilder private var connectionTestText: some View {
         switch connectionTest {
         case .notRun:
-            Text(hasUnsavedChanges ? "Changes apply once saved." : "Copies follow the vault while this plugin is on.")
+            Text(hasUnsavedChanges ? "Changes are saved when you leave this page, or now with Save and Copy Now." : "Copies follow the vault while this plugin is on.")
         case .running:
             Text("Connecting…")
         case .succeeded(let server):
@@ -158,16 +164,28 @@ struct PostgreSQLMirrorSettingsPage: View {
     }
 
     private func saveAndCopy() {
+        guard save() else { return }
+        copyNow()
+    }
+
+    /// Keeps the server and password as typed. Nothing is copied until the next change in the
+    /// vault or Copy Now, and nothing is while a setting is still missing.
+    private func saveWithoutCopying() {
+        guard hasUnsavedChanges else { return }
+        save()
+    }
+
+    @discardableResult private func save() -> Bool {
         do {
             try mirror.savePassword(password)
         } catch {
             saveError = PostgreSQLMirrorController.message(for: error)
-            return
+            return false
         }
         saveError = nil
         savedPassword = password
         preferences.postgreSQLMirrorConfiguration = draft
-        copyNow()
+        return true
     }
 
     private func testConnection() {

@@ -1,3 +1,14 @@
+/**
+ * File: ThemeSettings.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Settings > Appearance > Obsidian Theme and CSS Snippets, and the page that chooses and installs themes.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -65,11 +76,19 @@ struct ThemeSettingsSection: View {
     }
 }
 
+/// Obsidian's list of community themes as last loaded, for as long as the app runs, so the
+/// page shows it at once each time it opens instead of downloading it again.
+@MainActor
+final class ThemeDirectoryCache {
+    var entries: [ObsidianThemeDirectoryEntry] = []
+}
+
 /// The installed themes with Default first, and Obsidian's community themes to install.
 struct ThemeChoicePage: View {
     @Bindable var workspace: WorkspaceModel
     @State private var installedThemes: [String] = []
     @State private var directory: [ObsidianThemeDirectoryEntry] = []
+    @State private var themePendingDeletion: String?
     @State private var searchText = ""
     @State private var isLoadingDirectory = false
     @State private var installingTheme: String?
@@ -83,6 +102,8 @@ struct ThemeChoicePage: View {
                 themeRow("Default", isChosen: chosenTheme.isEmpty) { choose("") }
                 ForEach(installedThemes, id: \.self) { themeName in
                     themeRow(themeName, isChosen: chosenTheme == themeName) { choose(themeName) }
+                        .swipeActions { Button("Delete", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
+                        .contextMenu { Button("Delete Theme…", systemImage: "trash", role: .destructive) { themePendingDeletion = themeName } }
                 }
             } header: {
                 Text("Installed Themes")
@@ -106,6 +127,17 @@ struct ThemeChoicePage: View {
         .searchable(text: $searchText, prompt: "Search Themes")
         .navigationTitle("Theme")
         .task { await reloadInstalled(); await loadDirectory() }
+        .refreshable { await loadDirectory(reloading: true) }
+        .confirmationDialog(themePendingDeletion.map { themeName in "Delete “\(themeName)”?" } ?? "",
+                            isPresented: Binding(get: { themePendingDeletion != nil }, set: { isPresented in if !isPresented { themePendingDeletion = nil } }),
+                            titleVisibility: .visible, presenting: themePendingDeletion) { themeName in
+            Button("Delete Theme", role: .destructive) { Task { await delete(themeName) } }
+            Button("Cancel", role: .cancel) {}
+        } message: { themeName in
+            Text(chosenTheme == themeName
+                 ? "Its folder is removed from this vault the way the vault deletes files, and notes go back to the default look. Obsidian loses the theme too."
+                 : "Its folder is removed from this vault the way the vault deletes files. Obsidian loses the theme too.")
+        }
     }
 
     private func themeRow(_ title: String, isChosen: Bool, choose: @escaping () -> Void) -> some View {
@@ -155,13 +187,37 @@ struct ThemeChoicePage: View {
         installedThemes = await store.installedThemeNames()
     }
 
-    private func loadDirectory() async {
-        guard let store = workspace.store, directory.isEmpty else { return }
+    /// Obsidian's list of themes: the one loaded earlier in this run, else downloaded now.
+    /// `reloading` downloads it again, as pulling the page down asks.
+    private func loadDirectory(reloading: Bool = false) async {
+        guard let store = workspace.store else { return }
+        let cache = workspace.processServices.themeDirectoryCache
+        if !reloading {
+            if !directory.isEmpty { return }
+            if !cache.entries.isEmpty { directory = cache.entries; return }
+        }
         isLoadingDirectory = true
         directoryError = nil
         defer { isLoadingDirectory = false }
-        do { directory = try await ObsidianThemeInstaller(store: store).directory() }
-        catch { directoryError = "Obsidian's list of themes could not be loaded. " + error.localizedDescription }
+        do {
+            directory = try await ObsidianThemeInstaller(store: store).directory()
+            cache.entries = directory
+        } catch { directoryError = "Obsidian's list of themes could not be loaded. " + error.localizedDescription }
+    }
+
+    /// Removes a theme's folder the way the vault deletes files. A theme in use is switched
+    /// off first, as Obsidian does, so the vault is never left naming a theme it lacks.
+    private func delete(_ themeName: String) async {
+        guard let store = workspace.store else { return }
+        do {
+            let folder = try VaultPath(ObsidianStyleFiles.themesFolderPath).appending(themeName)
+            if chosenTheme == themeName { choose("") }
+            _ = try await store.delete(folder, method: workspace.vaultSettings.deletionMethod)
+            await reloadInstalled()
+            workspace.communityPlugins.vaultStylesDidChange()
+        } catch {
+            workspace.errorMessage = "“\(themeName)” could not be deleted. " + error.localizedDescription
+        }
     }
 
     private func install(_ entry: ObsidianThemeDirectoryEntry) async {

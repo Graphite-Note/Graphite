@@ -1,8 +1,61 @@
+/**
+ * File: ColorsSettingsPage.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Settings > Colors: the palette notes and the Pencil tools offer, and the highlighter colors.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
 struct ColorsSettingsPage: View {
     @Bindable var preferences: GraphitePreferences
+    @State private var palettePendingRestore: RestorablePalette?
+
+    /// A palette that "Restore Default" replaces, after the person agrees.
+    private enum RestorablePalette: Identifiable {
+        case notes, highlighter
+        var id: Self { self }
+        var title: String { self == .notes ? "Replace your palette with the default colors?" : "Replace your highlighter colors with the default ones?" }
+        var buttonTitle: String { self == .notes ? "Restore Default Palette" : "Restore Default Highlighter Colors" }
+        var message: String {
+            switch self {
+            case .notes: "The colors you added, renamed or changed are removed from this device, also from the Pencil's Favorite Colors. A note that names one of them, as in ~={name}text=~, then shows the default color of that name, or none. This cannot be undone."
+            case .highlighter: "The colors you added, renamed or changed are removed from this device. This cannot be undone."
+            }
+        }
+    }
+
+    private func isDefault(_ palette: [PaletteColor], _ defaultPalette: [PaletteColor]) -> Bool {
+        palette.map { color in [color.name, color.hex] } == defaultPalette.map { color in [color.name, color.hex] }
+    }
+
+    /// A visible way to remove a color, since a swipe is the only other and a Mac row has none.
+    private func removeButton(for color: PaletteColor, from palette: Binding<[PaletteColor]>) -> some View {
+        Button("Remove \(color.name.isEmpty ? "Color" : color.name)", systemImage: "minus.circle") {
+            palette.wrappedValue.removeAll { paletteColor in paletteColor.id == color.id }
+        }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.borderless)
+        .foregroundStyle(.red)
+        #if canImport(UIKit)
+        .frame(minWidth: 44, minHeight: 44)
+        #endif
+    }
+
+    /// Moves a color one place, for people who cannot drag rows (the Mac's Form, VoiceOver).
+    @ViewBuilder private func moveButtons(for color: PaletteColor, in palette: Binding<[PaletteColor]>) -> some View {
+        if let index = palette.wrappedValue.firstIndex(where: { paletteColor in paletteColor.id == color.id }) {
+            Button("Move Up", systemImage: "arrow.up") { palette.wrappedValue.move(fromOffsets: [index], toOffset: index - 1) }
+                .disabled(index == 0)
+            Button("Move Down", systemImage: "arrow.down") { palette.wrappedValue.move(fromOffsets: [index], toOffset: index + 2) }
+                .disabled(index == palette.wrappedValue.count - 1)
+        }
+    }
 
     var body: some View {
         Form {
@@ -20,18 +73,21 @@ struct ColorsSettingsPage: View {
                                 .textInputAutocapitalization(.never)
                                 #endif
                             Text(color.hex).font(.caption.monospaced()).foregroundStyle(.secondary)
+                            removeButton(for: color, from: $preferences.colorPalette)
                         }
                         if let problem = PaletteColorNames.problem(with: color, in: preferences.colorPalette) {
                             Text(problem).font(.footnote).foregroundStyle(.red)
                         }
                     }
+                    .contextMenu { moveButtons(for: color, in: $preferences.colorPalette) }
                 }
                 .onDelete { offsets in preferences.colorPalette.remove(atOffsets: offsets) }
                 .onMove { offsets, destination in preferences.colorPalette.move(fromOffsets: offsets, toOffset: destination) }
                 Button("Add Color", systemImage: "plus") {
                     preferences.colorPalette.append(PaletteColor(name: PaletteColorNames.unusedName(in: preferences.colorPalette), hex: "#888888"))
                 }
-                Button("Restore Default Palette", systemImage: "arrow.counterclockwise") { preferences.colorPalette = PaletteColor.defaultPalette }
+                Button("Restore Default Palette", systemImage: "arrow.counterclockwise") { palettePendingRestore = .notes }
+                    .disabled(isDefault(preferences.colorPalette, PaletteColor.defaultPalette))
             } header: {
                 Text("Palette")
             } footer: {
@@ -51,16 +107,17 @@ struct ColorsSettingsPage: View {
                             .textInputAutocapitalization(.never)
                             #endif
                         Text(color.hex).font(.caption.monospaced()).foregroundStyle(.secondary)
+                        removeButton(for: color, from: $preferences.highlighterPalette)
                     }
+                    .contextMenu { moveButtons(for: color, in: $preferences.highlighterPalette) }
                 }
                 .onDelete { offsets in preferences.highlighterPalette.remove(atOffsets: offsets) }
                 .onMove { offsets, destination in preferences.highlighterPalette.move(fromOffsets: offsets, toOffset: destination) }
                 Button("Add Color", systemImage: "plus") {
                     preferences.highlighterPalette.append(PaletteColor(name: PaletteColorNames.unusedName(in: preferences.highlighterPalette), hex: "#f6d743"))
                 }
-                Button("Restore Default Highlighter Colors", systemImage: "arrow.counterclockwise") {
-                    preferences.highlighterPalette = PaletteColor.defaultHighlighterPalette
-                }
+                Button("Restore Default Highlighter Colors", systemImage: "arrow.counterclockwise") { palettePendingRestore = .highlighter }
+                    .disabled(isDefault(preferences.highlighterPalette, PaletteColor.defaultHighlighterPalette))
             } header: {
                 Text("Highlighter")
             } footer: {
@@ -69,6 +126,23 @@ struct ColorsSettingsPage: View {
             }
         }
         .navigationTitle("Colors")
+        #if canImport(UIKit)
+        // Rows are dragged to a new place only in edit mode, which nothing else enters.
+        .toolbar { ToolbarItem(placement: .secondaryAction) { EditButton() } }
+        #endif
+        .confirmationDialog(palettePendingRestore?.title ?? "", isPresented: Binding(get: { palettePendingRestore != nil }, set: { isPresented in
+            if !isPresented { palettePendingRestore = nil }
+        }), titleVisibility: .visible, presenting: palettePendingRestore) { palette in
+            Button(palette.buttonTitle, role: .destructive) {
+                switch palette {
+                case .notes: preferences.colorPalette = PaletteColor.defaultPalette
+                case .highlighter: preferences.highlighterPalette = PaletteColor.defaultHighlighterPalette
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { palette in
+            Text(palette.message)
+        }
     }
 }
 

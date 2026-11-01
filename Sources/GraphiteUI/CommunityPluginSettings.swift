@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginSettings.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Settings > Community Plugins: turning plugins on for the vault, installing, browsing and removing them.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -17,6 +28,7 @@ struct CommunityPluginsSettingsPage: View {
 
     var body: some View {
         Form {
+            if workspace.store == nil { SettingsNeedAVault(what: "community plugins") }
             Section {
                 Toggle("Turn On Community Plugins", isOn: Binding(get: { host.isTurnedOnForVault }, set: { isTurnedOn in Task { await host.setTurnedOnForVault(isTurnedOn) } }))
             } footer: {
@@ -263,7 +275,11 @@ struct CommunityPluginBrowser: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await loadDirectory() }
         }
+        // A Mac sheet needs a size to start from; on a 390-point phone it would be laid out
+        // wider than the screen and cut off.
+        #if os(macOS)
         .frame(minWidth: 480, minHeight: 520)
+        #endif
     }
 
     @ViewBuilder private func installButton(for entry: CommunityPluginDirectoryEntry) -> some View {

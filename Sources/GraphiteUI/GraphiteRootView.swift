@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 21/10/2026
+ * Version: 0.55
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -174,7 +174,10 @@ struct GraphiteRootView: View {
         .sheet(isPresented: $workspace.isVaultManagerPresented) {
             NavigationStack { VaultManagerView(workspace: workspace) }
                 .tint(workspace.preferences.accentColor)
+                #if os(macOS)
+                // A phone's sheet is narrower than this and would be cut off.
                 .frame(minWidth: 480, minHeight: 360)
+                #endif
         }
         // Closes by itself when Read Aloud is turned off: there is no reader to show.
         .sheet(isPresented: Binding(get: { workspace.readAloud?.showsReader ?? false },

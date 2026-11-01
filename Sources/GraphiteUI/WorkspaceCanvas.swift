@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCanvas.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Opening a canvas file in the workspace.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -15,7 +26,7 @@ extension WorkspaceModel {
         }
         #if canImport(UIKit)
         // As for notes: "Default view for new tabs" decides between reading and editing.
-        session.isWriting = preferences.initialNoteViewMode != .reading
+        session.isWriting = initialNoteViewMode != .reading
         #endif
         return session
     }

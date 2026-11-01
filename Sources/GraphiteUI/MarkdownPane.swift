@@ -6,8 +6,8 @@
  *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.48
- * Date: 21/10/2026
+ * Version: 0.56
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -236,7 +236,7 @@ struct MarkdownPane: View {
     }
 
     private var readingConfiguration: ReadingConfiguration {
-        ReadingConfiguration(usesReadableLineLength: preferences.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+        ReadingConfiguration(usesReadableLineLength: workspace.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
                              colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                              showsProperties: preferences.isEnabled(.properties), declaredPropertyTypes: session.declaredPropertyTypes, inlineTitle: inlineTitle,
                              textSize: noteTextSize, drawingVersion: workspace.drawingVersion, indexVersion: workspace.indexVersion,
@@ -252,12 +252,12 @@ struct MarkdownPane: View {
     /// The note's name above its text, written as the tab and the title bar write it, so the
     /// three agree: with `.md` when Settings › Files and Links › Show File Extensions is on.
     private var inlineTitle: String? {
-        preferences.showsInlineTitle ? preferences.displayName(for: session.path) : nil
+        workspace.showsInlineTitle ? preferences.displayName(for: session.path) : nil
     }
 
     private var editorConfiguration: EditorConfiguration {
-        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: preferences.usesReadableLineLength,
-                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: preferences.usesSpellChecking,
+        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: workspace.usesReadableLineLength,
+                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: workspace.usesSpellChecking,
                             formatsCodeBlocks: preferences.formatsCodeBlocks, codeColorTheme: preferences.codeColorTheme, colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                             editingBehavior: EditingBehavior(settings: workspace.vaultSettings), accentHex: preferences.accentHex,
                             inlineTitle: inlineTitle)
@@ -393,7 +393,7 @@ struct MarkdownPane: View {
             baseContext: workspace.baseEmbedContext(for: notePath),
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
-            embeddedImageColumnWidth: preferences.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
+            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
             pluginCodeBlocks: workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil,
@@ -670,7 +670,7 @@ struct MarkdownPane: View {
 
     private var isWritingBinding: Binding<Bool> {
         Binding(get: { isEditing }, set: { shouldWrite in
-            if shouldWrite != isEditing { session.toggleReadingView(editingMode: preferences.defaultEditingMode) }
+            if shouldWrite != isEditing { session.toggleReadingView(editingMode: workspace.defaultEditingMode) }
         })
     }
 

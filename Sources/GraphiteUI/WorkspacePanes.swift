@@ -6,8 +6,8 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Bahey Shalash
- * Version: 0.28
- * Date: 21/10/2026
+ * Version: 0.38
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -305,7 +305,7 @@ private struct TabBar: View {
             #endif
             if showsDocumentControls && !isLibraryHomeShown {
                 TabBarDocumentControls(tab: group.activeTab, document: workspace.document(for: group.activeTabID),
-                                       defaultEditingMode: workspace.preferences.defaultEditingMode, isFocused: isFocused)
+                                       defaultEditingMode: workspace.defaultEditingMode, isFocused: isFocused)
                     .padding(.horizontal, 4)
             }
             if (showsDocumentControls || showsPencilTools) && !isLibraryHomeShown {

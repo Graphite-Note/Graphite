@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecovery.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: File recovery for the open vault: copies of notes taken before they are replaced or deleted, and kept outside the vault.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -38,11 +49,21 @@ extension WorkspaceModel {
 
     private static var maximumNotesCopiedBeforeDeletion: Int { 500 }
 
-    /// Removes copies older than the history length, in the background.
-    func pruneRecoverySnapshots() {
-        guard let fileRecovery else { return }
+    /// Removes copies older than the history length, in the background. The task ends when
+    /// they are gone; nil when no vault is open.
+    @discardableResult
+    func pruneRecoverySnapshots() -> Task<Void, Never>? {
+        guard let fileRecovery else { return nil }
         let historyLength = TimeInterval(preferences.snapshotHistoryDays * 86_400)
-        Task.detached(priority: .background) { try? fileRecovery.pruneSnapshots(olderThan: historyLength) }
+        return Task.detached(priority: .background) { try? fileRecovery.pruneSnapshots(olderThan: historyLength) }
+    }
+
+    /// Settings › File Recovery › History length: keeps the new length and removes the copies
+    /// it makes too old at once, not at the next time a vault opens.
+    @discardableResult
+    func changeSnapshotHistoryDays(_ days: Int) -> Task<Void, Never>? {
+        preferences.snapshotHistoryDays = days
+        return pruneRecoverySnapshots()
     }
 
     /// Puts a snapshot's text back: through the note's editor when it is open, so it can be
