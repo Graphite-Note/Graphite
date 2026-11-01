@@ -2,9 +2,9 @@
  * File: NativeMarkdownEditor.swift
  * --------------------------------
  * Layer: UI
- * Description: The note editor on TextKit, for iOS and the Mac.
+ * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
- * Authors: Bahey Shalash, felixchvl
+ * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.57
  * Date: 01/11/2026
  */
@@ -2639,6 +2639,10 @@ final class MarkdownMacTextView: NSTextView {
     var pendingPluginMenuItems: [NSMenuItem] = []
     /// Offers a paste to community plugins that listen; true when one took it over.
     var offerPasteToPlugins: ((_ text: String?, _ html: String?) async -> Bool)?
+    /// Whether a pasted web page or rich text becomes Markdown (Obsidian's "Auto convert HTML").
+    var convertsPastedHTML = true
+    /// What a paste reads; a test gives its own so the person's clipboard is not touched.
+    var pastingPasteboard = NSPasteboard.general
 
     /// The Color, Format, Paragraph and Insert submenus, built when the menu opens; set by the
     /// pane's update, nil outside Source and Live Preview editing.
@@ -2685,10 +2689,10 @@ final class MarkdownMacTextView: NSTextView {
     }
 
     override func paste(_ sender: Any?) {
-        if canInsertAttachments, insertAttachments(from: .general, at: selectedRange()) { return }
+        let pasteboard = pastingPasteboard
+        if canInsertAttachments, insertAttachments(from: pasteboard, at: selectedRange()) { return }
         // Text plugins may take over (Link or Card makes a card of an address); the text is
         // pasted as usual when none does.
-        let pasteboard = NSPasteboard.general
         // A web address pasted over selected text links the text to it, as in Obsidian.
         if selectedRange().length > 0, let pastedText = pasteboard.string(forType: .string),
            let edit = MarkdownEditing.linkingSelection(to: pastedText, in: string as NSString, selection: selectedRange()) {
@@ -2701,11 +2705,16 @@ final class MarkdownMacTextView: NSTextView {
         }
         if let offerPasteToPlugins, let text = pasteboard.string(forType: .string) {
             let html = pasteboard.string(forType: .html)
+            let htmlData = convertsPastedHTML ? pasteboard.data(forType: .html) : nil
             let pastedRange = selectedRange()
             let textWhenPasted = string
             Task { @MainActor [weak self] in
                 let isTakenOver = await offerPasteToPlugins(text, html)
                 guard let self, !isTakenOver else { return }
+                if let htmlData, htmlData.count <= HTMLToMarkdown.maximumConvertedLength {
+                    self.insertConvertedHTML(htmlData, plainText: text, at: pastedRange)
+                    return
+                }
                 // The range was the selection's before the plugins answered: a note changed
                 // meanwhile takes the text at its selection now. A note made shorter raised
                 // an exception, and a longer one received the text at the wrong place.
@@ -2718,6 +2727,7 @@ final class MarkdownMacTextView: NSTextView {
             }
             return
         }
+        if pasteConvertedHTML(from: pasteboard) { return }
         super.paste(sender)
     }
 
@@ -2943,6 +2953,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isContinuousSpellCheckingEnabled = configuration.usesSpellChecking
+        textView.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
         textView.allowsUndo = true
         textView.textContainerInset = CGSize(width: 32, height: 32)
         textView.setAccessibilityLabel("Markdown note")
@@ -2994,6 +3005,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             await coordinator?.actions.pluginContextMenuItems?() ?? []
         }
         (textView as? MarkdownMacTextView)?.offerPasteToPlugins = coordinator.actions.pluginPaste
+        (textView as? MarkdownMacTextView)?.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
         let editorActions = actions
         (textView as? MarkdownMacTextView)?.contextMenuEntries = contextMenu.map { menuActions in
             { EditorContextMenuContent.entries(actions: menuActions, editorActions: editorActions) }

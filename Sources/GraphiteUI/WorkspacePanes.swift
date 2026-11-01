@@ -6,7 +6,7 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.37
+ * Version: 0.39
  * Date: 01/11/2026
  */
 
@@ -305,7 +305,7 @@ private struct TabBar: View {
             #endif
             if showsDocumentControls && !isLibraryHomeShown {
                 TabBarDocumentControls(tab: group.activeTab, document: workspace.document(for: group.activeTabID),
-                                       defaultEditingMode: workspace.preferences.defaultEditingMode, isFocused: isFocused)
+                                       defaultEditingMode: workspace.defaultEditingMode, isFocused: isFocused)
                     .padding(.horizontal, 4)
             }
             if (showsDocumentControls || showsPencilTools) && !isLibraryHomeShown {

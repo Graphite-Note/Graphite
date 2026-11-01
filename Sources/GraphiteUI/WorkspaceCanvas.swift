@@ -26,7 +26,7 @@ extension WorkspaceModel {
         }
         #if canImport(UIKit)
         // As for notes: "Default view for new tabs" decides between reading and editing.
-        session.isWriting = preferences.initialNoteViewMode != .reading
+        session.isWriting = initialNoteViewMode != .reading
         #endif
         await restoreUnsavedDraft(into: session)
         return session

@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteCommands.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The menu bar's commands and their shortcuts.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -142,7 +153,7 @@ public struct GraphiteCommands: Commands {
         let note = workspace?.markdownSession
         Button(note?.viewMode == .reading ? "Edit Note" : "Read Note") {
             guard let workspace else { return }
-            workspace.markdownSession?.toggleReadingView(editingMode: workspace.preferences.defaultEditingMode)
+            workspace.markdownSession?.toggleReadingView(editingMode: workspace.defaultEditingMode)
         }
         .keyboardShortcut(shortcut(.toggleReadingView))
         .disabled(note == nil)

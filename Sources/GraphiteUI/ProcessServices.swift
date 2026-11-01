@@ -51,6 +51,10 @@ public final class ProcessServices {
     let openWindows = OpenWindows()
     /// The notes open in every window, so a note open in two windows is one text.
     let openNotes = OpenNoteFiles()
+    /// The page Settings was last left on, so it opens there again (`SettingsOpening`).
+    let settingsPageMemory = SettingsPageMemory()
+    /// Obsidian's list of community themes once loaded, for the Theme page.
+    let themeDirectoryCache = ThemeDirectoryCache()
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the

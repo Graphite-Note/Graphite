@@ -2,7 +2,7 @@
  * File: ObsidianSettings.swift
  * ----------------------------
  * Layer: Core
- * Description: Where new attachments are stored. Mirrors Obsidian's "Default location for new
+ * Description: The subset of the vault's .obsidian/app.json that Graphite reads and writes, kept key by key so Obsidian's other keys and layout survive a save.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -96,6 +96,12 @@ public enum NewNoteLocation: Equatable, Hashable, Sendable {
     }
 }
 
+/// Obsidian's "Default view for new tabs" (`defaultViewMode`): a note opens for editing
+/// (`source`, whatever the editing mode) or for reading (`preview`).
+public enum DefaultViewMode: String, Sendable {
+    case source, preview
+}
+
 /// Obsidian's file explorer sort order (`fileSortOrder`).
 public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
     case alphabetical, alphabeticalReverse
@@ -184,6 +190,11 @@ public struct ObsidianSettings: Equatable, Sendable {
     public static let useTabKey = "useTab"
     public static let tabSizeKey = "tabSize"
     public static let autoConvertHtmlKey = "autoConvertHtml"
+    public static let readableLineLengthKey = "readableLineLength"
+    public static let showInlineTitleKey = "showInlineTitle"
+    public static let spellcheckKey = "spellcheck"
+    public static let defaultViewModeKey = "defaultViewMode"
+    public static let livePreviewKey = "livePreview"
 
     public var attachmentLocation: AttachmentLocation
     public var linkFormat: LinkFormat
@@ -211,6 +222,20 @@ public struct ObsidianSettings: Equatable, Sendable {
     public var tabSize = 4
     /// "Auto convert HTML": pasted web pages become Markdown.
     public var convertsPastedHTML = true
+    /// The options below are nil while `app.json` does not have the key, and then the choice
+    /// made on this device applies. Once set they are written, as Obsidian writes them; a
+    /// value is never taken back out of the file.
+    ///
+    /// "Readable line length".
+    public var usesReadableLineLength: Bool?
+    /// "Show inline title".
+    public var showsInlineTitle: Bool?
+    /// "Spellcheck".
+    public var usesSpellChecking: Bool?
+    /// "Default view for new tabs".
+    public var defaultViewMode: DefaultViewMode?
+    /// "Live Preview" in "Editing mode": off means Source mode.
+    public var usesLivePreview: Bool?
 
     /// What one level of indentation inserts.
     public var indentUnit: String { indentsWithTabs ? "\t" : String(repeating: " ", count: min(max(tabSize, 1), 8)) }
@@ -247,6 +272,11 @@ public struct ObsidianSettings: Equatable, Sendable {
         indentsWithTabs = configuration.value(named: Self.useTabKey) as? Bool ?? true
         tabSize = (configuration.value(named: Self.tabSizeKey) as? Int).map { size in min(max(size, 1), 8) } ?? 4
         convertsPastedHTML = configuration.value(named: Self.autoConvertHtmlKey) as? Bool ?? true
+        usesReadableLineLength = configuration.value(named: Self.readableLineLengthKey) as? Bool
+        showsInlineTitle = configuration.value(named: Self.showInlineTitleKey) as? Bool
+        usesSpellChecking = configuration.value(named: Self.spellcheckKey) as? Bool
+        defaultViewMode = (configuration.value(named: Self.defaultViewModeKey) as? String).flatMap(DefaultViewMode.init(rawValue:))
+        usesLivePreview = configuration.value(named: Self.livePreviewKey) as? Bool
     }
 
     /// Returns `existingData` with only the Graphite keys whose value differs from
@@ -293,6 +323,12 @@ public struct ObsidianSettings: Equatable, Sendable {
             (Self.tabSizeKey, String(tabSize)),
             (Self.autoConvertHtmlKey, String(convertsPastedHTML)),
         ]
+        // Only what is set: a key the file lacks stays lacking until the person chooses.
+        if let usesReadableLineLength { valueTexts.append((Self.readableLineLengthKey, String(usesReadableLineLength))) }
+        if let showsInlineTitle { valueTexts.append((Self.showInlineTitleKey, String(showsInlineTitle))) }
+        if let usesSpellChecking { valueTexts.append((Self.spellcheckKey, String(usesSpellChecking))) }
+        if let defaultViewMode { valueTexts.append((Self.defaultViewModeKey, ApplicationConfigurationObject.jsonText(for: defaultViewMode.rawValue))) }
+        if let usesLivePreview { valueTexts.append((Self.livePreviewKey, String(usesLivePreview))) }
         return valueTexts
     }
 }

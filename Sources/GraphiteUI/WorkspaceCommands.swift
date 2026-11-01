@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCommands.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The workspace's commands that menus, the palette and shortcuts run.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.15
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -225,7 +236,7 @@ enum WorkspaceCommandList {
     }
 
     private static func noteCommands(session: MarkdownSession, workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
-        let editingMode = workspace.preferences.defaultEditingMode
+        let editingMode = workspace.defaultEditingMode
         var commands = [
             PaletteCommand(id: "toggle-reading", command: .toggleReadingView, systemImage: "book") { session.toggleReadingView(editingMode: editingMode) },
             PaletteCommand(id: "toggle-source", command: .toggleSourceMode, systemImage: "chevron.left.forwardslash.chevron.right") {
