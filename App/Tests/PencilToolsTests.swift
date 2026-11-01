@@ -1,3 +1,13 @@
+/**
+ * File: PencilToolsTests.swift
+ * ----------------------------
+ * Layer: Tests
+ * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -363,7 +373,7 @@ final class PencilToolsTests: XCTestCase {
         let highlight = try XCTUnwrap(canvas.drawing.strokes.first)
         let firstPointSize = try XCTUnwrap(Array(highlight.path).first?.size)
         for point in highlight.path { XCTAssertEqual(point.size, firstPointSize, "One tip at every point.") }
-        XCTAssertEqual(highlight.renderBounds.height, toolWidth / canvas.zoomScale, accuracy: 3, "As tall as the tool is wide, across a line.")
+        XCTAssertEqual(highlight.renderBounds.height, toolWidth, accuracy: 3, "As tall in the drawing as the tool is wide, across a line, at any zoom (INK-22).")
         XCTAssertEqual(history.undoActionName, "Drawing", "One step with the stroke.")
 
         // A pen keeps every point as it was drawn.
