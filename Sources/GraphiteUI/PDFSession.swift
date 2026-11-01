@@ -563,8 +563,10 @@ final class PDFSession {
         try await save()
     }
 
-    func saveSeparateCopy() async throws -> URL {
-        let directory = location.deletingLastPathComponent()
+    /// Writes the edits to a new PDF beside this one, or in `folder`, as when the PDF has
+    /// moved while its session still points at the old place.
+    func saveSeparateCopy(inFolder folder: URL? = nil) async throws -> URL {
+        let directory = folder ?? location.deletingLastPathComponent()
         let filename = FileNameRules.separateCopyStem(of: location.deletingPathExtension().lastPathComponent) + " " + UUID().uuidString.prefix(8) + ".pdf"
         let destination = directory.appendingPathComponent(filename)
         // The copy has a place even when another app renamed or removed the PDF's folder.

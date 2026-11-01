@@ -322,6 +322,9 @@ final class MarkdownTextView: UITextView {
     /// content loads and saves asynchronously while the note may change.
     var insertAttachment: ((_ data: Data, _ stem: String, _ fileExtension: String, _ request: InsertionRequest) -> Void)?
     var insertLinkToVaultFile: ((VaultPath, InsertionRequest) -> Void)?
+    /// The vault of the note shown: a link to an item of another window's vault would name
+    /// whatever has that path here.
+    var currentVaultRoot: URL?
     /// The note's current text revision; set by the coordinator.
     var textRevision: (() -> Int)?
     /// Tells the person that a pasted or dropped item could not be read; set by the coordinator.
@@ -476,7 +479,7 @@ final class MarkdownTextView: UITextView {
         for provider in itemProviders {
             if provider.hasItemConformingToTypeIdentifier(UTType.graphiteVaultItem.identifier) {
                 _ = provider.loadTransferable(type: VaultItemTransfer.self) { [weak self] result in
-                    guard case .success(let item) = result, let path = try? VaultPath(item.path) else {
+                    guard case .success(let item) = result, let path = item.path(inVaultAt: self?.currentVaultRoot) else {
                         Task { @MainActor in self?.reportUnreadableItem?() }
                         return
                     }
@@ -657,6 +660,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
         textView.textRevision = { [weak coordinator] in coordinator?.textRevision ?? 0 }
         textView.reportUnreadableItem = { [weak coordinator] in coordinator?.session.errorMessage = NativeMarkdownEditor.unreadableItemMessage }
+        textView.currentVaultRoot = session.vaultRoot
         coordinator.updateInsertionHandlers(of: textView)
         textView.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
         // Files, images, and items from the sidebar can be dropped into the note.
@@ -2448,6 +2452,9 @@ final class MarkdownMacTextView: NSTextView {
     }
     /// Saves pasted or dropped files and images, and links vault items; set by the coordinator.
     var insertAttachment: ((_ data: Data, _ stem: String, _ fileExtension: String, _ range: NSRange) -> Void)?
+    /// The vault of the note shown: a link to an item of another window's vault would name
+    /// whatever has that path here.
+    var currentVaultRoot: URL?
     var insertLinkToVaultFile: ((VaultPath, NSRange) -> Void)?
     /// Tells the person that a pasted or dropped file could not be read; set by the coordinator.
     var reportUnreadableItem: (() -> Void)?
@@ -2725,7 +2732,7 @@ final class MarkdownMacTextView: NSTextView {
 
     /// Inserts what the pasteboard carries besides text; false when it carries only text.
     private func insertAttachments(from pasteboard: NSPasteboard, at range: NSRange) -> Bool {
-        let attachments = MacPastedAttachment.attachments(on: pasteboard)
+        let attachments = MacPastedAttachment.attachments(on: pasteboard, vaultRoot: currentVaultRoot)
         guard !attachments.isEmpty else { return false }
         for attachment in attachments {
             switch attachment {
@@ -2766,11 +2773,12 @@ enum MacPastedAttachment: Equatable {
     /// with text, such as one copied from a web page with its caption, is pasted as text;
     /// one that comes with its address is an image.
     @MainActor
-    static func attachments(on pasteboard: NSPasteboard, now: Date = .now) -> [MacPastedAttachment] {
+    static func attachments(on pasteboard: NSPasteboard, now: Date = .now, vaultRoot: URL? = nil) -> [MacPastedAttachment] {
         let vaultItems: [MacPastedAttachment] = (pasteboard.pasteboardItems ?? []).compactMap { pasteboardItem in
             guard let data = pasteboardItem.data(forType: vaultItemType),
-                  let item = try? JSONDecoder().decode(VaultItemTransfer.self, from: data),
-                  let path = try? VaultPath(item.path) else { return nil }
+                  let item = try? JSONDecoder().decode(VaultItemTransfer.self, from: data) else { return nil }
+            // A link to an item of another window's vault would name whatever has that path here.
+            guard let path = item.path(inVaultAt: vaultRoot) else { return .unreadableFile(name: item.path) }
             return .vaultItem(path)
         }
         if !vaultItems.isEmpty { return vaultItems }
@@ -3184,6 +3192,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 insertLinkToVaultFile(path, range)
             }
             textView.reportUnreadableItem = { [weak self] in self?.session.errorMessage = NativeMarkdownEditor.unreadableItemMessage }
+            textView.currentVaultRoot = session.vaultRoot
             textView.linkPreviews = linkPreviews
             textView.followLinkOnClick = { [weak self, weak textView] characterIndex, modifierFlags in
                 guard let self, let textView else { return false }

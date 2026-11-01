@@ -5,9 +5,9 @@
  * Description: The documents area: one group of tabs or two side by side with a divider that can be dragged or held
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
- * Authors: Bahey Shalash
- * Version: 0.28
- * Date: 21/10/2026
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.37
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -320,7 +320,8 @@ private struct TabBar: View {
         .background(isDropTargeted ? AnyShapeStyle(accent.opacity(0.12)) : AnyShapeStyle(GraphiteChrome.barBackground))
         // A file dragged from the sidebar opens in a new tab on this side.
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in !workspace.isDirectory(path) }
+            // An item of another window's vault has no tab here; dropping it on a folder copies it.
+            let paths = items.compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }.filter { path in !workspace.isDirectory(path) }
             guard !paths.isEmpty else { return false }
             workspace.focusGroup(group.id)
             Task { for path in paths { await workspace.open(path, placement: .newTab) } }

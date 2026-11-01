@@ -5,9 +5,9 @@
  * Description: The root view of one window: the sidebar and documents split view, the window's toolbar and phone
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 21/10/2026
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.55
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -214,13 +214,21 @@ struct GraphiteRootView: View {
         .fullScreenCover(item: $workspace.drawingEditorRequest) { request in
             DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request)) { content, format in
                 try await workspace.saveDrawing(content, format: format, for: request)
+            } saveAsNewDrawing: { content, format in
+                try await workspace.saveDrawingAsNewFile(content, format: format, for: request)
             } exportCopy: { content, format in
                 try await workspace.exportDrawingCopy(content, format: format, title: request.title)
             } preserveDraft: { content in
                 guard let vaultIdentifier = workspace.currentVaultIdentifier else { return }
                 workspace.processServices.drawingDrafts.markOpenInThisProcess(request.id)
-                workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
+                // Without it iPadOS can suspend the app before a large drawing is encoded and written.
+                let backgroundTask = BackgroundTaskAssertion(name: "Keep drawing draft")
+                let write = workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
                     try await DrawingFileService().draftFileData(for: content)
+                }
+                Task {
+                    await write?.value
+                    backgroundTask.end()
                 }
             } removeDraft: {
                 workspace.processServices.drawingDrafts.removeDraft(withIdentifier: request.id)

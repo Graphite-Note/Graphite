@@ -95,7 +95,9 @@ final class DrawingEditorDraftStore {
     /// Writes the draft's drawing file, encoded off the main actor by `drawingFile`, then
     /// its description. A draft that fails to encode is skipped: the editor still has the
     /// strokes, and nothing in the vault changes.
-    func preserve(_ draft: DrawingEditorDraft, drawingFile: @escaping @Sendable () async throws -> Data) {
+    /// - Returns: The write, for a caller that holds off suspension until it ends.
+    @discardableResult
+    func preserve(_ draft: DrawingEditorDraft, drawingFile: @escaping @Sendable () async throws -> Data) -> Task<Void, Never>? {
         let directory = directory
         let drawingLocation = Self.drawingLocation(for: draft.requestIdentifier, in: directory)
         let descriptionLocation = Self.descriptionLocation(for: draft.requestIdentifier, in: directory)
@@ -113,6 +115,7 @@ final class DrawingEditorDraftStore {
                 if hasReplacedDrawing { try? FileManager.default.removeItem(at: descriptionLocation) }
             }
         }
+        return latestOperation
     }
 
     func removeDraft(withIdentifier requestIdentifier: UUID) {

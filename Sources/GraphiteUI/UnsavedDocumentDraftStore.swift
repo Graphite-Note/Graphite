@@ -81,12 +81,12 @@ final class UnsavedDocumentDraftStore {
         return await enqueue { Self.readDrafts(in: folder) }.value
     }
 
-    /// Lets the drafts of moved files follow them.
-    func moveDrafts(following moves: [VaultPath: VaultPath], inVault vaultIdentifier: UUID) {
+    /// Lets the drafts of a moved file, or of the files in a moved folder, follow them.
+    func moveDrafts(from path: VaultPath, to destination: VaultPath, inVault vaultIdentifier: UUID) {
         let folder = folder(ofVault: vaultIdentifier)
         _ = enqueue {
-            for draft in Self.readDrafts(in: folder) {
-                guard let newPath = moves[draft.path] else { continue }
+            for draft in Self.readDrafts(in: folder) where draft.path.isInside(path) {
+                guard let newPath = try? draft.path.replacingPrefix(path, with: destination) else { continue }
                 let movedDraft = UnsavedDocumentDraft(path: newPath, contents: draft.contents, baseRevision: draft.baseRevision, date: draft.date)
                 // The old one goes only once the new one is on disk.
                 guard (try? Self.write(movedDraft, to: Self.location(of: newPath, in: folder))) != nil else { continue }

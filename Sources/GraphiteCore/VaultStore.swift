@@ -54,7 +54,7 @@ public enum FileNameRules {
 
     /// The stem of a copy of a file's edits: the file's own, shortened when it would otherwise
     /// make a name no file system stores, as a name that is already the longest allowed would.
-    static func separateCopyStem(of stem: String) -> String {
+    public static func separateCopyStem(of stem: String) -> String {
         let maximumStemBytes = maximumFileNameBytes - reservedSuffixBytes - separateCopySuffix.utf8.count
         var shortenedStem = stem
         while shortenedStem.utf8.count > maximumStemBytes { shortenedStem.removeLast() }

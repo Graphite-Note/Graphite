@@ -143,14 +143,45 @@ extension WorkspaceModel {
         guard let store, let root = folderAccess?.root else { throw GraphiteError.unavailable("No vault is open.") }
         // Edits made since the listing are saved, which changes the file, so the
         // replacement is refused below and the person sees them compared first.
-        try await saveOpenDocument(at: path)
+        var keptCopies: [VaultPath] = []
+        do { try await saveOpenDocument(at: path) } catch GraphiteError.conflict {
+            // The open text is in conflict with another app's edit and cannot be saved, and
+            // these versions are what settles that. It goes to a copy, so choosing one loses
+            // nothing, and that leaves the file as it was listed.
+            keptCopies = try await copyEditsInConflict(at: path)
+        }
+        await copyCurrentVersionForRecovery(of: path)
         let location = try path.url(in: root)
         let conflictVersionStore = conflictVersionStore, writer = store.writer
         let replacedLocation = try await Task.detached(priority: .userInitiated) {
             try conflictVersionStore.replaceFile(at: location, withVersion: version.id, expecting: listing.currentStamp, using: writer)
         }.value
-        await filesDidChangeByResolvingVersions([path] + [vaultPath(for: replacedLocation)].compactMap { replacedPath in replacedPath })
+        await filesDidChangeByResolvingVersions([path] + keptCopies + [vaultPath(for: replacedLocation)].compactMap { replacedPath in replacedPath })
         await refreshConflictState(of: path)
+        if let keptCopy = keptCopies.first { notice = "The text you had not saved in “\(path.name)” is kept in “\(keptCopy.name)”." }
+    }
+
+    /// Writes the unsaved edits of `path`'s open note or canvas beside it, which ends its
+    /// conflict. A PDF's cannot be left behind that way, so the person is told what to do.
+    private func copyEditsInConflict(at path: VaultPath) async throws -> [VaultPath] {
+        var copies: [VaultPath] = []
+        for document in tabDocuments.values where document.loadedPath == path {
+            if let note = document.markdownSession, note.hasUnsavedChanges { copies.append(try await note.saveSeparateCopy()) }
+            if let canvas = document.canvasSession, canvas.hasUnsavedChanges { copies.append(try await canvas.saveSeparateCopy()) }
+            if document.pdfSession?.hasUnsavedChanges == true {
+                throw GraphiteError.unavailable("“\(path.name)” has edits that could not be saved. Use Save a Copy in its banner first, then choose a version.")
+            }
+        }
+        return copies
+    }
+
+    /// Keeps the note's text in File recovery before a chosen version replaces it, whether or
+    /// not the note is open.
+    private func copyCurrentVersionForRecovery(of path: VaultPath) async {
+        guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store, DocumentKind(path: path) == .markdown,
+              let snapshot = try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes),
+              let text = String(data: snapshot.data, encoding: .utf8) else { return }
+        _ = try? await Task.detached(priority: .utility) { try fileRecovery.takeSnapshot(of: text, for: path, minimumInterval: 0) }.value
     }
 
     /// Keeps `version` as a file of its own beside the current one, named as a conflict

@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 21/10/2026
+ * Version: 0.15
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -357,7 +357,7 @@ struct LibraryView: View {
     /// A dragged item as other apps take it too: its path for Graphite, its file for the rest.
     private func draggedItem(forRawPath rawPath: String) -> VaultItemTransfer {
         let location = (try? VaultPath(rawPath)).flatMap(entries.fileLocation) // A name no vault path can hold has no file to give.
-        return VaultItemTransfer(path: rawPath, fileLocation: location)
+        return VaultItemTransfer(path: rawPath, fileLocation: location, vaultRoot: entries.fileLocation(.root))
     }
 
     private func open(_ entry: VaultEntry) {

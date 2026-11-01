@@ -229,8 +229,9 @@ final class WorkspaceModel {
         isReadingAloud: { [weak self] in self?.readAloud?.isReading ?? false },
         stopReadingAloud: { [weak self] in self?.readAloud?.stop(); self?.readAloud?.showsReader = false },
         saveOpenDocuments: { [weak self] in
-            try await self?.saveOpenDocuments()
+            // First: a plugin's view of a file is saved even when a note cannot be.
             await self?.communityPlugins.saveOpenFileViews()
+            try await self?.saveOpenDocuments()
         },
         keepUnsavedDocuments: { [weak self] writesPDFCopies in await self?.keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: writesPDFCopies) ?? true },
         presentProblem: { [weak self] problem in self?.errorMessage = problem })
@@ -399,6 +400,8 @@ final class WorkspaceModel {
             Task { @MainActor in self?.scheduleExternalRefresh(changedLocation) }
         }, onVaultMove: { [weak self] newLocation in
             Task { @MainActor in await self?.vaultFolderDidMove(to: newLocation) }
+        }, onItemMove: { [weak self] oldLocation, newLocation in
+            Task { @MainActor in await self?.followExternalMove(from: oldLocation, to: newLocation) }
         })
         // Writes coordinated with our own presenter are not reported back as external.
         let vaultStore = VaultStore(root: root, filePresenter: vaultMonitor)
@@ -1329,6 +1332,20 @@ final class WorkspaceModel {
         await refreshDirectory()
     }
 
+    /// Keeps a drawing whose file changed elsewhere in a new file beside it, and tells the
+    /// person its name, since the notes keep embedding the original.
+    func saveDrawingAsNewFile(_ content: DrawingContent, format: DrawingFormat, for request: DrawingEditorRequest) async throws {
+        guard let store, let root = folderAccess?.root, case .existingDrawing(let path, _, _) = request.target else {
+            throw GraphiteError.unavailable("This drawing cannot be saved as a new file.")
+        }
+        let newPath = try await store.separateCopyPath(of: path, fileExtension: format.fileExtension)
+        _ = try await DrawingFileService(writer: store.writer).save(content, format: format, to: try newPath.url(in: root), expecting: .absent)
+        refreshIndex(for: [newPath])
+        drawingVersion += 1
+        await refreshDirectory()
+        notice = "Your drawing is saved as “\(newPath.name)”. The notes still embed “\(path.name)”, which has the other app's version."
+    }
+
     /// Encodes a copy for sharing; nothing is written into the vault.
     func exportDrawingCopy(_ content: DrawingContent, format: DrawingFormat, title: String) async throws -> URL {
         let fileData = try await DrawingFileService().fileData(for: content, format: format)
@@ -1456,7 +1473,11 @@ final class WorkspaceModel {
     /// Keeps tabs, their histories, and recent files pointing at a moved file or folder.
     /// Tabs of moved files load them again from their new place.
     func followMoveInNavigation(from oldPath: VaultPath, to newPath: VaultPath) {
-        for tab in layout.allTabs where tab.path?.isInside(oldPath) == true { tabDocuments[tab.id]?.unload() }
+        let movedDocuments = layout.allTabs.filter { tab in tab.path?.isInside(oldPath) == true }.compactMap { tab in tabDocuments[tab.id] }
+        // As every other way a session goes: the note reopens at the line and cursor it left,
+        // and `followMoveInPlaces` below carries that to the new path.
+        rememberPlaces(of: movedDocuments)
+        for document in movedDocuments { document.unload() }
         followMoveInConflictVersions(from: oldPath, to: newPath)
         layout.replacePrefix(oldPath, with: newPath)
         recentFiles.replacePrefix(oldPath, with: newPath)

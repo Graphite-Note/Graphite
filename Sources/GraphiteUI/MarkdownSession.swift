@@ -160,6 +160,10 @@ final class MarkdownSession {
     /// The edit the draft on disk holds, nil when this session has no draft there.
     @ObservationIgnored private var draftEditVersion: Int?
     var isSaving: Bool { activeSave != nil }
+    /// The folder of the vault the note is in.
+    var vaultRoot: URL { store.root }
+    /// The version of the file the text was made over.
+    var baseRevision: FileRevision { revision }
     var hasUnsavedChanges: Bool { text != savedText || !pendingInsertions.isEmpty }
 
     init(path: VaultPath, snapshot: FileSnapshot, store: VaultStore, openNotes: OpenNoteFiles? = nil,
@@ -243,7 +247,8 @@ final class MarkdownSession {
         defer { if activeSave == saveTask { activeSave = nil } }
         do {
             try await saveTask.value
-            errorMessage = nil
+            // A note can grow past what opens again; better said now than when it will not open.
+            errorMessage = dataToSave.count > Self.maximumEditableBytes ? Self.grownTooLargeMessage : nil
             // Text typed during the save is not in the file yet: its draft stays until it is.
             if !hasUnsavedChanges { discardDraft() }
             didSave(path)
@@ -327,6 +332,8 @@ final class MarkdownSession {
         draftKeeper?.remove()
         for session in sessions { session.draftEditVersion = nil }
     }
+
+    private static let grownTooLargeMessage = "This note is saved, but it is now over 8 MB, the most Graphite can open for editing. Once it is closed it will not open here until it is smaller; Obsidian can open it."
 
     func checkExternalChange() async {
         guard !isSaving else { return }

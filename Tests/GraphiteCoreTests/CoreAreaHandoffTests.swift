@@ -146,9 +146,9 @@ final class CoreAreaHandoffTests: XCTestCase {
         func candidates(_ target: String) -> [String] {
             WikiLinkResolver.directCandidates(target: target, source: source, isWiki: false).map(\.rawValue)
         }
-        XCTAssertEqual(Array(candidates("Folder/Sub/Target.md").prefix(2)), ["Other/Folder/Sub/Target.md", "Folder/Sub/Target.md"],
-                       "Beside the note first, then from the root.")
-        XCTAssertEqual(Array(candidates("Folder/Sub/Target%20Two.md").prefix(2)), ["Other/Folder/Sub/Target Two.md", "Folder/Sub/Target Two.md"])
+        XCTAssertEqual(Array(candidates("Folder/Sub/Target.md").prefix(2)), ["Folder/Sub/Target.md", "Other/Folder/Sub/Target.md"],
+                       "From the root first, then beside the note, as in Obsidian.")
+        XCTAssertEqual(Array(candidates("Folder/Sub/Target%20Two.md").prefix(2)), ["Folder/Sub/Target Two.md", "Other/Folder/Sub/Target Two.md"])
         XCTAssertEqual(candidates("./Target.md").filter { candidate in !candidate.hasPrefix("Other/") }, [],
                        "A path starting with ./ is relative to the note only.")
         XCTAssertEqual(candidates("../Target.md").first, "Target.md")

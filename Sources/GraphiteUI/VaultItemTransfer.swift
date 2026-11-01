@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import GraphiteCore
 
 /// A file or folder dragged in the sidebar or the library.
 struct VaultItemTransfer: Codable, Transferable {
@@ -7,13 +8,35 @@ struct VaultItemTransfer: Codable, Transferable {
     /// Where the file is on disk, so a drag out of Graphite gives Files, the Finder or another app
     /// the file itself. Not encoded: a drop inside Graphite needs the vault path only.
     var fileLocation: URL?
+    /// The folder of the vault the item comes from: two windows can show two vaults, and
+    /// `path` means something else in the other one. Nil from a drag that does not say, which
+    /// counts as coming from the vault it lands in.
+    var vaultRoot: URL?
 
-    init(path: String, fileLocation: URL? = nil) {
+    init(path: String, fileLocation: URL? = nil, vaultRoot: URL? = nil) {
         self.path = path
         self.fileLocation = fileLocation
+        self.vaultRoot = vaultRoot
     }
 
-    private enum CodingKeys: String, CodingKey { case path }
+    private enum CodingKeys: String, CodingKey { case path, vaultRoot }
+
+    /// The item's path, when it comes from the vault at `root`.
+    func path(inVaultAt root: URL?) -> VaultPath? {
+        guard !isFromAnotherVault(than: root) else { return nil }
+        return try? VaultPath(path) // A path no vault can hold moves nothing.
+    }
+
+    /// Whether the item comes from a vault other than the one at `root`.
+    func isFromAnotherVault(than root: URL?) -> Bool {
+        guard let vaultRoot, let root else { return false }
+        return vaultRoot.standardizedFileURL.resolvingSymlinksInPath() != root.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    /// Where the item is on disk, from what the drag carries.
+    var sourceLocation: URL? {
+        vaultRoot?.appendingPathComponent(path)
+    }
 
     static var transferRepresentation: some TransferRepresentation {
         // The vault item first: a drop in Graphite moves it. Other apps take the file.

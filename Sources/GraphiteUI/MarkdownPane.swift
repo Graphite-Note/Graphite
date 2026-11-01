@@ -5,9 +5,9 @@
  * Description: A note's pane: the editor or reading view, its toolbar and More commands in the system's overflow
  *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.48
- * Date: 21/10/2026
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.56
+ * Date: 01/11/2026
  */
 
 import SwiftUI

@@ -109,6 +109,8 @@ final class CanvasSession {
     @ObservationIgnored let undoAvailability = UndoAvailability()
 
     var isSaving: Bool { activeSave != nil }
+    /// The version of the file the edits were made over.
+    var baseRevision: FileRevision { revision }
     var hasUnsavedChanges: Bool { changeVersion != savedVersion || hasUncommittedText }
 
     // MARK: View

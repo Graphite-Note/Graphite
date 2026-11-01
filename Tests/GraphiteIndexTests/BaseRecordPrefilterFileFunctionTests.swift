@@ -51,7 +51,7 @@ final class BaseRecordPrefilterFileFunctionTests: XCTestCase {
     }
 
     func testFileFunctionWithABareNameKeepsRowsThatLinkToTheNoteBesideThem() async throws {
-        try write("Note.md", "the note at the vault root")
+        try write("Elsewhere/Deep/Note.md", "another note of the name, further from the row")
         try write("A/Note.md", "the note beside the linking note")
         try write("A/X.md", "[[A/Note]]")
         try write("Unrelated.md", "[[Elsewhere]]")
@@ -62,7 +62,7 @@ final class BaseRecordPrefilterFileFunctionTests: XCTestCase {
     }
 
     func testFileFunctionWithAFullPathKeepsTheRowsThatLinkToThatFile() async throws {
-        try write("Note.md", "the note at the vault root")
+        try write("Elsewhere/Deep/Note.md", "another note of the name, further from the row")
         try write("A/Note.md", "the note beside the linking note")
         try write("A/X.md", "[[A/Note]]")
         try write("B/Y.md", "[[Note]]")

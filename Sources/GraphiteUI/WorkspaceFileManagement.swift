@@ -114,6 +114,22 @@ extension WorkspaceModel {
         catch { errorMessage = error.localizedDescription }
     }
 
+    /// What a drop of dragged items on `folder` does: items of this vault move there, those it
+    /// `accepts`, and items dragged from another window's vault are copied in as files from
+    /// outside are, since their paths mean nothing here and could name another file.
+    /// - Returns: Whether the drop did anything.
+    func takeDroppedItems(_ items: [VaultItemTransfer], into folder: VaultPath, accepts: (VaultPath) -> Bool = { _ in true }) -> Bool {
+        let root = folderAccess?.root
+        let paths = items.compactMap { item in item.path(inVaultAt: root) }.filter(accepts)
+        let foreignLocations = items.filter { item in item.isFromAnotherVault(than: root) }.compactMap(\.sourceLocation)
+        guard !paths.isEmpty || !foreignLocations.isEmpty else { return false }
+        Task {
+            for path in paths { await move(path, into: folder) }
+            if !foreignLocations.isEmpty { await importFiles(from: foreignLocations, into: folder) }
+        }
+        return true
+    }
+
     /// Moves a file or folder into `folder`, keeping its name.
     func move(_ path: VaultPath, into folder: VaultPath) async {
         guard !folder.isInside(path), folder != path.parent else { return }
@@ -216,7 +232,7 @@ extension WorkspaceModel {
 
     /// Says that `path` is being moved, once that has taken a moment.
     /// - Returns: What to call as the move ends; another message by then stays.
-    private func startShowingMoveProgress(of path: VaultPath) -> () -> Void {
+    func startShowingMoveProgress(of path: VaultPath) -> () -> Void {
         let message = "Moving “\(path.name)”…"
         let showing = Task { [weak self, clock] in
             do { try await clock.sleep(for: Self.moveProgressDelay) } catch { return }
@@ -237,25 +253,29 @@ extension WorkspaceModel {
             try await saveOpenDocuments()
             let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
             let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
-            moveDrafts(following: report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination })
+            moveDrafts(from: path, to: destination)
             // Read before the tabs let go of their sessions, with no suspension in between,
             // so every keystroke made during the move is kept.
             let editsDuringMove = unsavedEdits(inside: path, movedTo: destination, revisionsBeforeMove: revisionsBeforeMove)
+            let pdfsEditedDuringMove = tabDocuments.values.compactMap(\.pdfSession).filter { session in
+                session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(path) == true
+            }
             expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(path, with: destination)) ?? folder })
             // Tabs of moved files load them again from their new place.
             followMoveInNavigation(from: path, to: destination)
             let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(editsDuringMove)
+            let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsEditedDuringMove, from: path, to: destination)
             // Without link updates the report lists only the moved item itself; the plan
             // lists every indexed file inside a moved folder.
             let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
-            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths)
+            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths)
             let changedNotes = Set(report.updatedNotes + keptEditPaths)
             for document in tabDocuments.values {
                 if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
                 if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
             }
             await refreshDirectory()
-            var problems = editProblems
+            var problems = editProblems + pdfProblems
             if !report.failures.isEmpty {
                 problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: destination.name))
             }
@@ -342,6 +362,55 @@ extension WorkspaceModel {
             }
         }
         return (writtenPaths, problems)
+    }
+
+    /// Ink and page changes made on an open PDF while it moved go to a copy beside the moved
+    /// file: the session holding them, kept alive here, still points at the old place.
+    private func savePDFEditsMadeDuringMove(_ sessions: [PDFSession], from path: VaultPath, to destination: VaultPath) async -> (writtenPaths: [VaultPath], problems: [String]) {
+        guard let root = folderAccess?.root else { return ([], []) }
+        var writtenPaths: [VaultPath] = []
+        var problems: [String] = []
+        for session in sessions {
+            let name = session.location.lastPathComponent
+            do {
+                guard let oldPath = vaultPath(for: session.location) else { throw GraphiteError.outsideVault }
+                let newPath = try oldPath.replacingPrefix(path, with: destination)
+                let copyLocation = try await session.saveSeparateCopy(inFolder: try newPath.parent.url(in: root))
+                if let copyPath = vaultPath(for: copyLocation) { writtenPaths.append(copyPath) }
+                problems.append("“\(newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as “\(copyLocation.lastPathComponent)”.")
+            } catch {
+                problems.append("The changes made to “\(name)” while it moved could not be saved. " + error.localizedDescription)
+            }
+        }
+        return (writtenPaths, problems)
+    }
+
+    /// Another app or window moved a file or folder: tabs follow it, and so does everything
+    /// remembered about it. Text not saved yet goes to the new place when the file there is
+    /// still the version it was made over, and beside it otherwise, as for edits during a
+    /// move of Graphite's own. A file that left the vault is not followed: its tab says it is
+    /// gone, with its text kept (`Save a Copy`).
+    func followExternalMove(from oldLocation: URL, to newLocation: URL) async {
+        guard let oldPath = vaultPath(for: oldLocation), let newPath = vaultPath(for: newLocation), oldPath != newPath,
+              !oldPath.isHidden, !newPath.isHidden, let store,
+              // A file put in the old place again is a save by replacing it, not a move.
+              (try? await store.fileExists(newPath)) == true, (try? await store.fileExists(oldPath)) == false else { return }
+        // Read before the tabs let go of their sessions, with no suspension in between.
+        let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.baseRevision) }
+            + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.baseRevision) }) { firstRevision, _ in firstRevision }
+        let edits = unsavedEdits(inside: oldPath, movedTo: newPath, revisionsBeforeMove: revisions)
+        let pdfsWithEdits = tabDocuments.values.compactMap(\.pdfSession).filter { session in
+            session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(oldPath) == true
+        }
+        expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(oldPath, with: newPath)) ?? folder })
+        followMoveInNavigation(from: oldPath, to: newPath)
+        moveDrafts(from: oldPath, to: newPath)
+        let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(edits)
+        let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsWithEdits, from: oldPath, to: newPath)
+        refreshIndexFollowingMove([oldPath, newPath] + keptEditPaths + keptPDFPaths)
+        await refreshDirectory()
+        let problems = editProblems + pdfProblems
+        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
     }
 
     /// The notes shown by name in the message; a folder move can leave many more.

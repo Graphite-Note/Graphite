@@ -206,8 +206,9 @@ final class UiBasesDocumentModelTests: XCTestCase {
         XCTAssertEqual(rootedDestination?.rawValue, "Books/Dune.md")
     }
 
-    /// BUG-BASES-04: the tap tried the vault root first, the base resolves beside the note first.
-    func testALinkCellOpensTheFileTheBaseResolvesBesideItsNote() async throws {
+    /// BUG-BASES-04: the tap and the base must agree. Both follow Obsidian, for whom a path from
+    /// the vault root goes before the same path beside the note (HUNT-082).
+    func testALinkCellOpensTheFileTheBaseResolves() async throws {
         try write("From the vault root", to: "Sub/Note.md")
         try write("Beside the linking note", to: "Folder/Sub/Note.md")
         try write("---\nrelated: \"[[Sub/Note.md]]\"\n---\nBody\n", to: "Folder/A.md")
@@ -220,9 +221,9 @@ final class UiBasesDocumentModelTests: XCTestCase {
             return row.cells[position].value
         }
         guard case .link(let link)? = try cellValue(.note("related")) else { return XCTFail("The related cell holds a link.") }
-        XCTAssertEqual(try cellValue(.formula("target")), .file(try VaultPath("Folder/Sub/Note.md")), "The base resolves the link beside its note.")
+        XCTAssertEqual(try cellValue(.formula("target")), .file(try VaultPath("Sub/Note.md")), "The base resolves the link from the vault root, as Obsidian does.")
         let destination = try await model.resolve(link)
-        XCTAssertEqual(destination?.rawValue, "Folder/Sub/Note.md", "Tapping the link opens the file the base resolved.")
+        XCTAssertEqual(destination?.rawValue, "Sub/Note.md", "Tapping the link opens the file the base resolved.")
     }
 
     // MARK: Property editing

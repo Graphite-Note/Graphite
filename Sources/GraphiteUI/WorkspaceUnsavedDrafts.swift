@@ -78,7 +78,12 @@ extension WorkspaceModel {
         var copiedNames: [String] = []
         for draft in drafts.sorted(by: { leftDraft, rightDraft in leftDraft.path < rightDraft.path }) where layout.tabID(showing: draft.path) == nil {
             if (try? await store.fileExists(draft.path)) != false {
-                waitingNames.append(draft.path.name)
+                // The file has the text after all, as when the save finished as the app ended.
+                if (try? await store.read(draft.path))?.data == draft.contents {
+                    processServices.unsavedDrafts.remove(draft.path, inVault: vaultIdentifier)
+                } else {
+                    waitingNames.append(draft.path.name)
+                }
                 continue
             }
             do {
@@ -107,10 +112,10 @@ extension WorkspaceModel {
         names.map { name in "“\(name)”" }.joined(separator: ", ")
     }
 
-    /// The drafts of moved files follow them.
-    func moveDrafts(following moves: [VaultPath: VaultPath]) {
+    /// The drafts of a moved file or folder follow it.
+    func moveDrafts(from path: VaultPath, to destination: VaultPath) {
         guard let currentVaultIdentifier else { return }
-        processServices.unsavedDrafts.moveDrafts(following: moves, inVault: currentVaultIdentifier)
+        processServices.unsavedDrafts.moveDrafts(from: path, to: destination, inVault: currentVaultIdentifier)
     }
 
     /// The person deleted these files, so their drafts must not come back as copies. What

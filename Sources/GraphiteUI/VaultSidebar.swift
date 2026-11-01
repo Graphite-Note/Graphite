@@ -5,9 +5,9 @@
  * Description: The sidebar's file list of the vault: folders and files, their menus (open, rename, move, share, export to PDF,
  *              delete), drag and drop, and creating files in a folder.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 21/10/2026
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.40
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -465,10 +465,7 @@ struct VaultSidebar: View {
     }
 
     private func moveDroppedItems(_ items: [VaultItemTransfer], into folder: VaultPath) -> Bool {
-        let paths = items.compactMap { item in try? VaultPath(item.path) }
-        guard !paths.isEmpty else { return false }
-        Task { for path in paths { await workspace.move(path, into: folder) } }
-        return true
+        workspace.takeDroppedItems(items, into: folder)
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -678,7 +675,7 @@ private struct FileTreeRows: View, Equatable {
                 .selectionDisabled(row.entry.isDirectory)
                 .fileTreeRow()
                 .listRowBackground(contents.dropTargetFolder == row.entry.path ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil)
-                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
+                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier, atRoot: workspace.folderAccess?.root) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
         }
     }
 
@@ -753,10 +750,7 @@ private struct VaultEntryRow: View, Equatable {
         .accessibilityHint("Folder")
         .contextMenu { VaultEntryMenu(entry: entry, workspace: workspace, requestCreation: requestCreation) }
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in path != entry.path }
-            guard !paths.isEmpty else { return false }
-            Task { for path in paths { await workspace.move(path, into: entry.path) } }
-            return true
+            workspace.takeDroppedItems(items, into: entry.path) { path in path != entry.path }
         } isTargeted: { isTargeted in
             if isTargeted {
                 contents.dropTargetFolder = entry.path
@@ -800,10 +794,7 @@ private struct VaultEntryRow: View, Equatable {
         // list's own destination would take it and move the item to the vault's root.
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
             let folder = entry.path.parent
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in path.parent != folder }
-            guard !paths.isEmpty else { return false }
-            Task { for path in paths { await workspace.move(path, into: folder) } }
-            return true
+            return workspace.takeDroppedItems(items, into: folder) { path in path.parent != folder }
         }
     }
 

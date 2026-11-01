@@ -224,8 +224,9 @@ final class CoreBasesDefinitionQueryEngineTests: XCTestCase {
         XCTAssertEqual(provider.resolveLinkTarget("robert", from: .root, isWiki: true), try VaultPath("People/Bob.md"))
         XCTAssertEqual(provider.backlinks(to: annPath), [try VaultPath("Tasks/Body.md"), try VaultPath("Tasks/Property.md")])
 
-        let ambiguous = BaseInMemoryRecordProvider(records: records + [BaseTestRecords.record("Other/Ann.md")])
-        XCTAssertNil(ambiguous.resolveLinkTarget("Ann", from: .root, isWiki: true), "A name and another note's alias make the link ambiguous, as in the index.")
+        let withFileOfTheName = BaseInMemoryRecordProvider(records: records + [BaseTestRecords.record("Other/Ann.md")])
+        XCTAssertEqual(withFileOfTheName.resolveLinkTarget("Ann", from: .root, isWiki: true), try VaultPath("Other/Ann.md"),
+                       "A file's own name goes before another note's alias, as in the index.")
     }
 
     /// BUG-BASES-02: the in-memory provider matched aliases for Markdown links too.

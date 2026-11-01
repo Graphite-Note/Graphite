@@ -238,7 +238,7 @@ final class UnsavedDocumentDraftTests: XCTestCase {
         note.text = "typed"
         _ = await window.keepUnsavedTextInDrafts()
         let vaultIdentifier = try XCTUnwrap(window.currentVaultIdentifier)
-        window.moveDrafts(following: [try VaultPath("Lecture.md"): try VaultPath("Renamed.md")])
+        window.moveDrafts(from: try VaultPath("Lecture.md"), to: try VaultPath("Renamed.md"))
         let drafts = await processServices.unsavedDrafts.drafts(inVault: vaultIdentifier)
         XCTAssertEqual(drafts.map(\.path), [try VaultPath("Renamed.md")])
         XCTAssertEqual(drafts.first?.contents, Data("typed".utf8))

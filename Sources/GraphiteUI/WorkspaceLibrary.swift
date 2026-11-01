@@ -94,7 +94,7 @@ extension WorkspaceModel {
     func receiveDrop(_ providers: [NSItemProvider], into folder: VaultPath) -> Bool {
         guard LibraryDropReader.canRead(providers) else { return false }
         Task {
-            let plan = LibraryDropPlan.make(from: await LibraryDropReader.read(providers), into: folder)
+            let plan = LibraryDropPlan.make(from: await LibraryDropReader.read(providers, vaultRoot: folderAccess?.root), into: folder)
             for path in plan.movedPaths { await move(path, into: folder) }
             guard !plan.droppedFiles.isEmpty else { return }
             let batch = DroppedFileBatch(files: plan.droppedFiles)
