@@ -1,3 +1,15 @@
+/**
+ * File: GraphitePDFView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The PDF view: PDFKit with a PencilKit canvas on each page, zoom and resize handling, the palette and
+ *              text markup.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.29
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import os
@@ -459,10 +471,24 @@ final class GraphitePDFDisplayView: PDFView {
                 show(placeBeforeResize)
             }
         }
+        limitZoomingOut()
         if bounds.width > 0, abs(bounds.width - widthOfLastZoom) > 0.5 {
             pdfResizeLog.debug("PDF view width \(self.widthOfLastZoom, privacy: .public) -> \(self.bounds.width, privacy: .public), scale \(self.scaleFactor, privacy: .public)")
             widthOfLastZoom = bounds.width
         }
+    }
+
+    /// How far a pinch may shrink the pages, as a fraction of the zoom that fits the width: down to half of it, so
+    /// a whole page of a portrait iPad can be seen, and never to the 20 percent stamp PDFKit allows (HUNT-266).
+    static let smallestZoomAsFractionOfFitting: CGFloat = 0.5
+
+    /// PDFKit resets its zoom limits as the view's size changes, so they are set again at each layout, to the same
+    /// values (which changes nothing).
+    private func limitZoomingOut() {
+        let fittingScale = scaleFactorForSizeToFit
+        guard bounds.width > 0, fittingScale.isFinite, fittingScale > 0 else { return }
+        let smallestScale = fittingScale * Self.smallestZoomAsFractionOfFitting
+        if abs(minScaleFactor - smallestScale) > 0.0001 { minScaleFactor = smallestScale }
     }
 
     /// Fits the pages to the new width when they fitted the old one, and keeps them as far
@@ -859,6 +885,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         session.inkCanvasProvider = self
         view.addSubview(toolPickerHost)
         toolPicker.accessoryItem = paletteAccessoryItem
+        if !isEmbedded { toolPicker.addObserver(paletteInsetObserver) }
         let fingerAndPointer = [UITouch.TouchType.direct, .indirectPointer].map { touchType in NSNumber(value: touchType.rawValue) }
 
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -972,6 +999,22 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
     }
     private var paletteFrameObserver: PaletteFrameObserver?
+    /// Keeps the last page clear of a palette docked along the bottom of a phone's screen.
+    private lazy var paletteInsetObserver = PaletteFrameObserver { [weak self] in self?.clearPagesOfPalette() }
+
+    /// A palette docked at the bottom of a phone covers the last 70 to 100 points of the pages, and the PDF reaches
+    /// under the bottom safe area: the pages scroll that far past their end while it shows, and no further after.
+    private func clearPagesOfPalette() {
+        guard let pdfView, let scrollView = pdfView.pagesScrollView else { return }
+        var coveredHeight: CGFloat = 0
+        if pdfView.window != nil, toolPicker.isVisible {
+            let obscured = toolPicker.frameObscured(in: pdfView)
+            if !obscured.isNull, !obscured.isEmpty { coveredHeight = pdfView.bounds.intersection(obscured).height }
+        }
+        guard abs(scrollView.contentInset.bottom - coveredHeight) > 0.5 else { return }
+        scrollView.contentInset.bottom = coveredHeight
+        scrollView.verticalScrollIndicatorInsets.bottom = coveredHeight
+    }
     /// The height along the bottom of the window that a floating palette takes, with its margin.
     private static let floatingPaletteBand: CGFloat = 150
 

@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolbox.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
+ *
+ * Authors: Bahey Shalash, Claude
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -17,6 +28,15 @@ enum PencilToolbarStyle: String, CaseIterable, Identifiable {
     }
 
     static let preferenceKey = "GraphitePencilToolbarStyle"
+
+    /// The style that shows. The system's palette hangs from the window, not from a side: with
+    /// two sides shown it floats over both and over the sidebar's edge, and it follows the
+    /// focus, so the side not focused has none. A split therefore uses the fixed bar, which
+    /// belongs to its side's tab bar, whatever the Settings choice is.
+    /// - Parameter sharesWindowWithOtherSide: Whether the window shows two sides at once.
+    func inEffect(sharesWindowWithOtherSide: Bool) -> PencilToolbarStyle {
+        sharesWindowWithOtherSide ? .fixed : self
+    }
 }
 
 /// Every ink PencilKit draws with, under the names of the system's palette.

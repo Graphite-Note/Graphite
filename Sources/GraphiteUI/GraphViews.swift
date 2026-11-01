@@ -2,7 +2,7 @@
  * File: GraphViews.swift
  * ----------------------
  * Layer: UI
- * Description: Obsidian's local graph: the open note and the notes around it, in the right sidebar.
+ * Description: The whole-vault graph, the local graph of a note, and their settings.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.15
@@ -241,7 +241,8 @@ struct VaultGraphView: View {
             displaySettings
             forceSettings
         }
-        .frame(minWidth: 360, idealWidth: 380, minHeight: 640, idealHeight: 760)
+        .frame(idealWidth: 380, idealHeight: 760)
+        .sheetMinimumSize(width: 360, height: 640)
     }
 
     private var displaySettings: some View {

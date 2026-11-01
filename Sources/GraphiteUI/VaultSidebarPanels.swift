@@ -416,7 +416,7 @@ private struct BookmarkRow: View {
 
     var body: some View {
         switch bookmark.type {
-        case "file", "folder", "search":
+        case "file", "folder", "search", "graph":
             Button { Task { await workspace.open(bookmark) } } label: { label(subtitle: isMissing ? "Not in this vault" : nil).contentShape(Rectangle()) }
                 .buttonStyle(.plain)
                 .foregroundStyle(isMissing ? .secondary : .primary)
@@ -427,7 +427,7 @@ private struct BookmarkRow: View {
                 label(subtitle: nil).foregroundStyle(.secondary)
             }
         default:
-            // A graph or another kind Obsidian shows; kept in the file, listed here.
+            // Another kind Obsidian shows; kept in the file, listed here.
             label(subtitle: "Opens in Obsidian").foregroundStyle(.secondary)
         }
     }

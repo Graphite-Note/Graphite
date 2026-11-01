@@ -299,11 +299,7 @@ struct CommunityPluginBrowser: View {
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task { await loadDirectory() }
         }
-        // A Mac sheet needs a size to start from; on a 390-point phone it would be laid out
-        // wider than the screen and cut off.
-        #if os(macOS)
-        .frame(minWidth: 480, minHeight: 520)
-        #endif
+        .sheetMinimumSize(width: 480, height: 520)
     }
 
     @ViewBuilder private func installButton(for entry: CommunityPluginDirectoryEntry) -> some View {

@@ -6,8 +6,8 @@
  *              Reveal Vault in Finder on the Mac) and the vault manager.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.12
- * Date: 21/10/2026
+ * Version: 0.13
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -334,7 +334,7 @@ private struct NewVaultForm: View {
             }
             .errorAlert($errorMessage)
         }
-        .frame(minWidth: 360, minHeight: 320)
+        .sheetMinimumSize(width: 360, height: 320)
     }
 
     /// Only iOS shows an app's own Documents folder in Files; on the Mac it is hidden.
