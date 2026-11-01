@@ -1,3 +1,14 @@
+/**
+ * File: CoreBasesDefinitionQueryEngineTests.swift
+ * -----------------------------------------------
+ * Layer: Tests
+ * Description: Bases' definitions and query engine, and the in-memory record provider.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 

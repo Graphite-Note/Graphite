@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordPrefilterSupersetTests.swift
+ * --------------------------------------------
+ * Layer: Tests
+ * Description: The index's prefilter for bases never drops a row the evaluator would keep.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex

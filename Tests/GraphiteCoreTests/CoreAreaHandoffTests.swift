@@ -1,3 +1,14 @@
+/**
+ * File: CoreAreaHandoffTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Fixes handed over from the Core area, among them which paths a link can name and in what order.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import Yams
 @testable import GraphiteCore

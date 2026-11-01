@@ -1,3 +1,14 @@
+/**
+ * File: VaultTagsAndPropertiesTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: The vault's tags and properties, and the link graph built from the index.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteIndex
 import GraphiteCore

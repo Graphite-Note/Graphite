@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordPrefilterFileFunctionTests.swift
+ * ------------------------------------------------
+ * Layer: Tests
+ * Description: The index's prefilter for bases keeps every row the evaluator would keep, for filters using file().
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex

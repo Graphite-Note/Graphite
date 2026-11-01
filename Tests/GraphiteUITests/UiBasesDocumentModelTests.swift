@@ -1,3 +1,14 @@
+/**
+ * File: UiBasesDocumentModelTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: An open base: results, link cells, property editing and views.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
