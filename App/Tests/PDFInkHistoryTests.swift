@@ -44,7 +44,7 @@ final class PDFInkHistoryTests: XCTestCase {
         // Scrolling far enough releases the first page's canvas.
         for pageIndex in 1..<session.pageCount {
             session.go(to: pageIndex)
-            try await Task.sleep(for: .milliseconds(60))
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 60)
         }
         let coordinator = try XCTUnwrap((session.pdfView as? GraphitePDFDisplayView)?.annotationCoordinator)
         try await waitUntil { coordinator.editingCanvas(for: firstPage) == nil }
@@ -127,11 +127,11 @@ final class PDFInkHistoryTests: XCTestCase {
         pdfView.autoScales = false
         pdfView.scaleFactor = 3
         session.go(to: 7)
-        try await Task.sleep(for: .milliseconds(300))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
 
         session.undoAvailability.undo()
         XCTAssertNil(session.errorMessage)
-        try await Task.sleep(for: .milliseconds(300))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
         XCTAssertEqual(session.currentPageIndex, 3)
         let shownOfPage = pdfView.convert(pdfView.bounds, to: page)
         let cropBox = page.bounds(for: .cropBox)
@@ -204,7 +204,7 @@ final class PDFInkHistoryTests: XCTestCase {
         // Scrolling far enough releases the canvas, and undo changes the page's ink itself.
         for pageIndex in 1..<session.pageCount {
             session.go(to: pageIndex)
-            try await Task.sleep(for: .milliseconds(60))
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 60)
         }
         let coordinator = try XCTUnwrap((session.pdfView as? GraphitePDFDisplayView)?.annotationCoordinator)
         try await waitUntil { coordinator.editingCanvas(for: firstPage) == nil }

@@ -331,7 +331,8 @@ extension PDFSession {
     /// to do nothing.
     private func showInk(in changedBounds: CGRect, on page: PDFPage, at pageIndex: Int, overlaySize: CGSize) {
 
-        guard let pdfView, !changedBounds.isNull, let coordinates = try? PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize) else { // A page with no size has no place to scroll to.
+        guard let pdfView, !changedBounds.isNull,
+              let coordinates = try? PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize) else { // No size, no place to scroll to.
             if inkCanvasProvider?.isDisplaying(page) != true { go(to: pageIndex) }
             return
         }

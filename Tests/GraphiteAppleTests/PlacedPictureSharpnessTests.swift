@@ -16,6 +16,7 @@ import PDFKit
 import UniformTypeIdentifiers
 import GraphiteCore
 @testable import GraphiteApple
+import GraphiteTestSupport
 
 final class PlacedPictureSharpnessTests: XCTestCase {
     /// Varied blocks of color, so a JPEG's size is that of a photograph's rather than nothing.
@@ -90,10 +91,9 @@ final class PlacedPictureSharpnessTests: XCTestCase {
     /// The PDF keeps the photo at about its own size twice, as the appearance other readers
     /// show (the JPEG itself, `PDFObjectCompaction`) and for moving it, not as inflated pixels.
     func testASavedPDFHoldsTheFullPhotoAtAboutTwiceItsBytesAndOtherReadersGetEveryPixel() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let location = directory.appendingPathComponent("Notebook.pdf")
+        let vault = try TemporaryVault(prefix: "PlacedPicture")
+        defer { vault.remove() }
+        let location = vault.location(of: "Notebook.pdf")
         let revision = try await PDFFileService().create(documentData: PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank), pageCount: 1), at: location)
         let emptySize = try XCTUnwrap(try FileManager.default.attributesOfItem(atPath: location.path)[.size] as? Int)
         let photo = try Self.encoded(try Self.bitmap(width: 4_032, height: 3_024), as: .jpeg, quality: 0.8)

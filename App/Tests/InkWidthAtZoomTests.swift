@@ -107,8 +107,8 @@ final class InkWidthAtZoomTests: XCTestCase {
     /// canvas's zoom, so a tool scaled by the zoom landed up to 1.75 times too thick in this
     /// measure and 2.64 times on the simulator's screen.
     func testTheSamePenLandsEquallyWideOnThePageAtEveryZoomAndInTheSavedFile() async throws {
-        UserDefaults.standard.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
-        defer { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
         let (canvas, pdfView, window) = try await hostedPageCanvas(named: "MeasuredWidth")
         defer { window.isHidden = true; window.rootViewController = nil }
         let toolPicker = PKToolPicker()
@@ -120,7 +120,7 @@ final class InkWidthAtZoomTests: XCTestCase {
             var renderedAtPageSize: CGFloat?
             for zoom: CGFloat in [1, 1.5, 2, 3] {
                 pdfView.scaleFactor = zoom
-                try await Task.sleep(for: .milliseconds(350))
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 350)
                 try await waitUntil("the canvas draws at \(zoom)") { abs(canvas.zoomScale - zoom) < 0.02 }
                 let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
                 let line = SynthesizedStrokes.line(from: CGPoint(x: middle.x - 120, y: middle.y), to: CGPoint(x: middle.x + 120, y: middle.y))
@@ -219,16 +219,16 @@ final class InkWidthAtZoomTests: XCTestCase {
         canvas.drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.monoline, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
         func softness(atZoom zoom: CGFloat, drawnAt scale: CGFloat?) async throws -> Double {
             pdfView.scaleFactor = zoom
-            try await Task.sleep(for: .milliseconds(500))
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
             if let scale {
                 overlay.setRenderingScale(scale)
                 overlay.layoutIfNeeded()
-                try await Task.sleep(for: .milliseconds(500))
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
             }
             let page = try XCTUnwrap(canvas.page)
             let inkOnPage = CGRect(x: 280, y: page.bounds(for: .cropBox).maxY - 300, width: 40, height: 1)
             pdfView.go(to: inkOnPage, on: page)
-            try await Task.sleep(for: .milliseconds(300))
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
             let point = canvas.convert(CGPoint(x: 300 * canvas.zoomScale, y: 300 * canvas.zoomScale), to: window)
             return try softEdgeRows(in: window, atWindowPoint: point)
         }
@@ -248,8 +248,8 @@ final class InkWidthAtZoomTests: XCTestCase {
     /// The pixel eraser cuts the same gap on the page at any zoom (HUNT-023), up to the 80.4
     /// points of the screen PencilKit makes it at most.
     func testThePixelEraserCutsTheSameGapOnThePageAtEveryZoom() async throws {
-        UserDefaults.standard.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
-        defer { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
         let (canvas, pdfView, window) = try await hostedPageCanvas(named: "EraserAtZoom")
         defer { window.isHidden = true; window.rootViewController = nil }
         let toolPicker = PKToolPicker()
@@ -258,14 +258,14 @@ final class InkWidthAtZoomTests: XCTestCase {
             for zoom: CGFloat in [1.5, 3] {
                 canvas.takeTool(from: toolPicker, fixedTool: selection(.monoline, width: 2))
                 pdfView.scaleFactor = zoom
-                try await Task.sleep(for: .milliseconds(400))
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
                 canvas.drawing = PKDrawing()
                 let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
                 _ = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 240, y: middle.y), to: CGPoint(x: middle.x + 240, y: middle.y), steps: 60), in: window)
                 let inkBounds = canvas.drawing.bounds
                 canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .eraser, preset: InkPreset(ink: .pen), erasesWholeStrokes: false, eraserWidth: eraserWidth, isRulerActive: false))
                 _ = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x, y: middle.y - 160), to: CGPoint(x: middle.x, y: middle.y + 160), steps: 30), in: window)
-                try await Task.sleep(for: .milliseconds(150))
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 150)
                 let picture = try XCTUnwrap(canvas.drawing.image(from: inkBounds, scale: 4).cgImage)
                 var bytes = [UInt8](repeating: 0, count: picture.width * picture.height * 4)
                 let context = try XCTUnwrap(CGContext(data: &bytes, width: picture.width, height: picture.height, bitsPerComponent: 8, bytesPerRow: picture.width * 4,
@@ -286,7 +286,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil; PencilActivity.forgetPencil() }
         pdfView.autoScales = false
         pdfView.scaleFactor = 2
-        try await Task.sleep(for: .milliseconds(400))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
         try await waitUntil("the canvas draws at 2") { abs(canvas.zoomScale - 2) < 0.01 }
 
         let follower = PencilActivityRecognizer(target: nil, action: nil)
@@ -296,7 +296,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         let event = UIEvent()
         follower.touchesBegan([pencil], with: event)
         pdfView.scaleFactor = 3
-        try await Task.sleep(for: .milliseconds(500))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
         XCTAssertEqual(canvas.zoomScale, 2, accuracy: 0.01, "The canvas keeps its size under the stroke.")
 
         pencil.standInPhase = .ended
@@ -325,7 +325,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         let firstCanvas = try XCTUnwrap(coordinator.editingCanvas(for: firstPage))
         pdfView.autoScales = false
         pdfView.scaleFactor = 3
-        try await Task.sleep(for: .milliseconds(400))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
         try await waitUntil("the page draws at the zoom") { abs(firstCanvas.zoomScale - 3) < 0.01 }
         var points: [PKStrokePoint] = []
         for step in 0...5 { points.append(PKStrokePoint(location: CGPoint(x: 100 + CGFloat(step) * 10, y: 100), timeOffset: Double(step) / 60, size: CGSize(width: 4, height: 4), opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)) }
@@ -340,7 +340,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         let shownCanvas = try XCTUnwrap(coordinator.editingCanvas(for: shownPage))
         try await waitUntil("the shown page draws at the zoom") { abs(shownCanvas.zoomScale - 3) < 0.01 }
         NotificationCenter.default.post(name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
-        try await Task.sleep(for: .milliseconds(100))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 100)
         XCTAssertNil(coordinator.editingCanvas(for: firstPage), "The kept page's canvas has gone")
         XCTAssertTrue(firstPage.annotations.contains { annotation in annotation.type == "Ink" }, "Its ink is in the PDF")
         try await waitUntil("the shown page draws smaller") { shownCanvas.zoomScale <= 2.01 }

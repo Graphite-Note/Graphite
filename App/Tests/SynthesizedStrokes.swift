@@ -12,6 +12,7 @@
 #if os(iOS)
 import UIKit
 import PencilKit
+@testable import GraphiteUI
 
 /// PencilKit draws nothing from touches sent through UIKit's event path (`SynthesizedTouches`),
 /// even when their coalesced samples are answered. Its recognizer takes stand-in touches told
@@ -20,6 +21,19 @@ import PencilKit
 /// Pencil's force changes the sizes is outside this; `touchType` covers what the type changes.
 @MainActor
 enum SynthesizedStrokes {
+    /// Waits while the page draws what it was just told to: PDFKit and PencilKit report no end
+    /// to it, and the rendering scale takes a fixed time to settle after a zoom.
+    static func waitForPageToDraw(milliseconds: Int = 400) async throws {
+        try await Task.sleep(for: .milliseconds(milliseconds))
+    }
+
+    /// Lets a finger draw on a PDF page, which reads the standard preference, until `restore` is called.
+    static func letFingersDraw() -> () -> Void {
+        let defaults = UserDefaults.standard
+        defaults.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
+        return { defaults.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+    }
+
     /// One stroke through points in the window's coordinates. Returns when the canvas has
     /// reported the stroke, or after a second if PencilKit made none.
     /// `recognizer` is what is told of the touches, the canvas's own by default; `midway` runs
@@ -36,13 +50,13 @@ enum SynthesizedStrokes {
         for (pointIndex, point) in windowPoints.enumerated().dropFirst() {
             touch.move(to: point, phase: .moved)
             recognizer.touchesMoved([touch], with: event)
-            try await Task.sleep(for: .milliseconds(8))
+            try await waitForPageToDraw(milliseconds: 8)
             if pointIndex == windowPoints.count / 2 { try await midway?() }
         }
         touch.move(to: windowPoints.last ?? firstPoint, phase: .ended)
         recognizer.touchesEnded([touch], with: event)
         for _ in 0..<40 where canvas.drawing.strokes.count <= strokeCountBefore {
-            try await Task.sleep(for: .milliseconds(25))
+            try await waitForPageToDraw(milliseconds: 25)
         }
         return canvas.drawing.strokes.count > strokeCountBefore ? canvas.drawing.strokes.last : nil
     }

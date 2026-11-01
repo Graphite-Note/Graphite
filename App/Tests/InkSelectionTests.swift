@@ -134,19 +134,19 @@ final class InkSelectionTests: XCTestCase {
 
     /// Stroke B of the bug: drawn with the page zoomed in, then lassoed at the fitted zoom.
     func testAStrokeDrawnWhileZoomedInIsSelectedByALoopAroundIt() async throws {
-        UserDefaults.standard.set(true, forKey: PDFAnnotationPreferenceKey.drawsWithFinger)
-        defer { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsWithFinger) }
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
         let (session, canvas, _) = try await openPageWithCanvas()
         let pdfView = try XCTUnwrap(session.pdfView)
         let window = try XCTUnwrap(canvas.window)
         pdfView.autoScales = false
         pdfView.scaleFactor = 3.27
-        try await Task.sleep(for: .milliseconds(400))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
         let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
         let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 100, y: middle.y), to: CGPoint(x: middle.x + 100, y: middle.y)), in: window)
         let stroke = try XCTUnwrap(drawnStroke)
         pdfView.scaleFactor = 0.91
-        try await Task.sleep(for: .milliseconds(500))
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
         canvas.selectsInk = true
         let around = stroke.renderBounds.insetBy(dx: -12, dy: -12)
         let loop = [CGPoint(x: around.minX, y: around.minY), CGPoint(x: around.maxX, y: around.minY), CGPoint(x: around.maxX, y: around.maxY), CGPoint(x: around.minX, y: around.maxY), CGPoint(x: around.minX, y: around.minY)]
