@@ -175,7 +175,7 @@ struct GraphLinkResolver: Sendable {
         var destinations = pathsByFoldedPath[foldedTarget] ?? []
         if target.hasPrefix("/") { destinations += pathsByFoldedPath[VaultIndex.foldedKey(String(target.dropFirst()))] ?? [] }
         let resolvedPaths = resolve(target, from: source, isWiki: isWiki)
-        if resolvedPaths.count == 1 { destinations += resolvedPaths }
+        destinations += resolvedPaths.prefix(1)
         return destinations
     }
 
