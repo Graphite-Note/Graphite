@@ -278,7 +278,7 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
         if let loadedLinks = loadedLinksAfterThisLookup() {
             let resolvedPaths = loadedLinks.resolver.resolve(target, from: source, isWiki: isWiki)
             // A stored path is a valid one; one that is not names nothing.
-            return resolvedPaths.count == 1 ? resolvedPaths.first.flatMap { path in try? VaultPath(path) } : nil // Not valid: names nothing.
+            return resolvedPaths.first.flatMap { path in try? VaultPath(path) } // Not valid: names nothing.
         }
         guard let resolvedPaths = read({ database in try VaultIndex.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }),
               let closestPath = resolvedPaths.first else { return nil }
