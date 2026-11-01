@@ -2,7 +2,7 @@
  * File: VaultGraph.swift
  * ----------------------
  * Layer: Index
- * Description: Every file, the links between them (in note text and in properties, embeds
+ * Description: Builds the graph view's data, and resolves links over names held in memory.
  *
  * Authors: Bahey Shalash
  * Version: 0.3
@@ -41,7 +41,7 @@ extension VaultIndex {
                     resolved = resolver.resolve(target, from: source, isWiki: isWiki)
                     resolvedByKey[cacheKey] = resolved
                 }
-                if resolved.count == 1, let destination = resolved.first.flatMap({ path in try? VaultPath(path) }) {
+                if let destination = resolved.first.flatMap({ path in try? VaultPath(path) }) {
                     links.append((source, destination))
                 } else if resolved.isEmpty {
                     unresolvedLinks.append((source, target))
@@ -135,7 +135,7 @@ struct GraphLinkResolver: Sendable {
     func resolve(_ target: String, from source: VaultPath, isWiki: Bool) -> [String] {
         for candidate in WikiLinkResolver.directCandidates(target: target, source: source, isWiki: isWiki) {
             // Files whose names differ only by case prefer the exact spelling, and are
-            // otherwise returned together as ambiguous.
+            // otherwise returned together.
             let matches = Array((pathsByFoldedPath[VaultIndex.foldedKey(candidate.rawValue)] ?? []).prefix(50))
             guard !matches.isEmpty else { continue }
             let candidateKey = WikiLinkResolver.comparisonKey(candidate.rawValue)
@@ -157,10 +157,12 @@ struct GraphLinkResolver: Sendable {
                     if foldedPath == pathSuffix || (!isFromRoot && foldedPath.hasSuffix("/" + pathSuffix)) { matches.insert(path) }
                 }
             } else {
-                matches.formUnion(pathsByFoldedName[VaultIndex.foldedKey(fileName)] ?? [])
+                // A file's own name goes before another note's alias, as in the index.
+                let namedPaths = pathsByFoldedName[VaultIndex.foldedKey(fileName)] ?? []
+                if !namedPaths.isEmpty { return WikiLinkResolver.closestFirst(namedPaths, toNoteAt: source) }
                 if isWiki { matches.formUnion(pathsByFoldedAlias[VaultIndex.foldedKey(part)] ?? []) }
             }
-            if !matches.isEmpty { return Array(matches.sorted().prefix(50)) }
+            if !matches.isEmpty { return WikiLinkResolver.closestFirst(Array(matches), toNoteAt: source) }
         }
         return []
     }

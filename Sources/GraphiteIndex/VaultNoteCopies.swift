@@ -2,7 +2,7 @@
  * File: VaultNoteCopies.swift
  * ---------------------------
  * Layer: Index
- * Description: A link written in a note, with the file it reaches.
+ * Description: Reads notes and their resolved links for copies of the vault elsewhere, such as the PostgreSQL mirror.
  *
  * Authors: Félix Chevalier
  * Version: 0.3
@@ -117,9 +117,8 @@ extension VaultIndex {
             func destination(of target: String, from source: VaultPath, isWiki: Bool) -> VaultPath? {
                 let cacheKey = (isWiki ? "w" : "m") + source.parent.rawValue + "\u{0}" + target
                 if let cached = destinationsByKey[cacheKey] { return cached }
-                let resolved = resolver.resolve(target, from: source, isWiki: isWiki)
-                let onlyDestination = resolved.count == 1 ? resolved.first : nil
-                let destination = onlyDestination.flatMap { path in try? VaultPath(path) } // A stored path that is not valid is no destination.
+                let destination = resolver.resolve(target, from: source, isWiki: isWiki).first
+                    .flatMap { path in try? VaultPath(path) } // A stored path that is not valid is no destination.
                 destinationsByKey[cacheKey] = destination
                 return destination
             }

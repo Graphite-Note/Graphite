@@ -2,7 +2,7 @@
  * File: WorkspaceCanvas.swift
  * ---------------------------
  * Layer: UI
- * Description: Canvases in the workspace: opening a `.canvas` file in a tab, and creating one.
+ * Description: Opening and creating canvases in a window.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.4
@@ -28,6 +28,7 @@ extension WorkspaceModel {
         // As for notes: "Default view for new tabs" decides between reading and editing.
         session.isWriting = preferences.initialNoteViewMode != .reading
         #endif
+        await restoreUnsavedDraft(into: session)
         return session
     }
 

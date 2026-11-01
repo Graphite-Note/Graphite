@@ -2,7 +2,7 @@
  * File: WorkspaceModel.swift
  * --------------------------
  * Layer: UI
- * Description: Beyond this many changed paths, one reconciling scan is cheaper than refreshing each.
+ * Description: A window's state: its vault, tabs, sidebar, alerts, and what it does with them.
  *
  * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.63
@@ -75,6 +75,8 @@ final class WorkspaceModel {
     /// Files and folders with a move or rename under way; a second request for one is
     /// ignored (the title bar can report the same rename twice).
     var pathsBeingMoved: Set<VaultPath> = []
+    /// The index learning where the last moves put things, which the next move waits for.
+    @ObservationIgnored var indexRefreshFollowingMoves: Task<Void, Never>?
     /// How each move that waited for the person's "Update links?" answer ended, by the moved
     /// path, until whoever waited for it (a plugin's rename) takes it.
     @ObservationIgnored var answeredMoveOutcomes: [VaultPath: FileMoveOutcome] = [:]
@@ -263,7 +265,12 @@ final class WorkspaceModel {
         isRecording: { [weak self] in self?.recording.state.isActive ?? false },
         isReadingAloud: { [weak self] in self?.readAloud?.isReading ?? false },
         stopReadingAloud: { [weak self] in self?.readAloud?.stop(); self?.readAloud?.showsReader = false },
-        saveOpenDocuments: { [weak self] in try await self?.saveOpenDocuments() },
+        saveOpenDocuments: { [weak self] in
+            // First: a plugin's view of a file is saved even when a note cannot be.
+            await self?.communityPlugins.saveOpenFileViews()
+            try await self?.saveOpenDocuments()
+        },
+        keepUnsavedDocuments: { [weak self] writesPDFCopies in await self?.keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: writesPDFCopies) ?? true },
         presentProblem: { [weak self] problem in self?.errorMessage = problem })
     /// Set by indexing when a scan of the whole vault finishes; tests that fill the index
     /// themselves set it too.
@@ -392,6 +399,7 @@ final class WorkspaceModel {
         if let fileRecovery = try? FileRecoveryStore.forVault(identifier: vault.id, in: applicationFolders.applicationSupportFolder) {
             Task.detached(priority: .utility) { try? fileRecovery.removeAllSnapshots() }
         }
+        processServices.unsavedDrafts.removeAll(inVault: vault.id)
         VaultIndex.removeIndex(forVault: vault.id, in: applicationFolders.cachesFolder)
         CommunityPluginHost.forgetVault(vault.id, defaults: deviceDefaults)
         // Opening the folder again makes a new identifier, so nothing would read these again.
@@ -434,6 +442,8 @@ final class WorkspaceModel {
             Task { @MainActor in self?.scheduleExternalRefresh(changedLocation) }
         }, onVaultMove: { [weak self] newLocation in
             Task { @MainActor in await self?.vaultFolderDidMove(to: newLocation) }
+        }, onItemMove: { [weak self] oldLocation, newLocation in
+            Task { @MainActor in await self?.followExternalMove(from: oldLocation, to: newLocation) }
         })
         // Writes coordinated with our own presenter are not reported back as external.
         let vaultStore = VaultStore(root: root, filePresenter: vaultMonitor)
@@ -506,6 +516,7 @@ final class WorkspaceModel {
         await fillInVaultBehindDocuments(vaultIdentifier: vaultIdentifier, root: root, vaultStore: vaultStore, settingsReading: settingsReading)
         guard store === vaultStore else { return }
         checkForUnfinishedRecordings()
+        await recoverDraftsLeftBehind()
         joinVaultsPlugins()
         if preferences.isEnabled(.dailyNotes), dailyNoteSettings.opensOnStartup { await openDailyNote() }
     }
@@ -970,12 +981,12 @@ final class WorkspaceModel {
 
     // MARK: Links
 
-    /// The vault file an embed or link target refers to, if exactly one does.
+    /// The vault file an embed or link target refers to. A name several files share means
+    /// one of them, as in Obsidian (`WikiLinkResolver.closestFirst`).
     func resolveLink(_ target: String, from source: VaultPath, isWiki: Bool = true) async -> VaultPath? {
         guard let folderAccess else { return nil }
         if let file = WikiLinkResolver.existingDirectFile(target: target, source: source, isWiki: isWiki, in: folderAccess.root) { return storedPath(for: file) }
-        let matches = (try? await index?.resolve(target, from: source, isWiki: isWiki)) ?? []
-        return matches.count == 1 ? matches.first : nil
+        return (try? await index?.resolve(target, from: source, isWiki: isWiki))?.first
     }
 
     /// Follows a link: to a heading or block of a note, a page of a PDF, or any file. A
@@ -1011,20 +1022,19 @@ final class WorkspaceModel {
             return
         }
         do {
-            let matches = try await index.resolve(target, from: source, isWiki: isWiki)
-            if matches.isEmpty {
-                // As in Obsidian, following a link to a note that does not exist creates it.
-                // Until a scan finishes the note may exist unindexed, as one synced since the
-                // last launch. An index complete from then is checked in a moment, so this
-                // waits for that scan instead of asking the person to try again.
-                if await isIndexCompleteAfterRunningScan() {
-                    let matchesAfterScan = try await index.resolve(target, from: source, isWiki: isWiki)
-                    if matchesAfterScan.isEmpty { await createNote(forLink: target, from: source, isWiki: isWiki) } else { await follow(target,
-                        from: source, isWiki: isWiki, placement: placement) }
-                }
-                else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
+            // The lookup again, as an index that cannot be read must not look like a link
+            // with no match, which would create a note.
+            guard try await index.resolve(target, from: source, isWiki: isWiki).isEmpty else { return }
+            // As in Obsidian, following a link to a note that does not exist creates it.
+            // Until a scan finishes the note may exist unindexed, as one synced since the
+            // last launch. An index complete from then is checked in a moment, so this
+            // waits for that scan instead of asking the person to try again.
+            if await isIndexCompleteAfterRunningScan() {
+                let matchesAfterScan = try await index.resolve(target, from: source, isWiki: isWiki)
+                if matchesAfterScan.isEmpty { await createNote(forLink: target, from: source, isWiki: isWiki) } else { await follow(target,
+                    from: source, isWiki: isWiki, placement: placement) }
             }
-            else { searchQuery = WikiLinkResolver.pathPart(target); await search(); notice = "Several files match “\(target)”. Choose the intended file in search." }
+            else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1401,6 +1411,20 @@ final class WorkspaceModel {
         await refreshDirectory()
     }
 
+    /// Keeps a drawing whose file changed elsewhere in a new file beside it, and tells the
+    /// person its name, since the notes keep embedding the original.
+    func saveDrawingAsNewFile(_ content: DrawingContent, format: DrawingFormat, for request: DrawingEditorRequest) async throws {
+        guard let store, let root = folderAccess?.root, case .existingDrawing(let path, _, _) = request.target else {
+            throw SeparateCopyRefusal.drawingHasNoFile
+        }
+        let newPath = try await store.separateCopyPath(of: path, fileExtension: format.fileExtension)
+        _ = try await DrawingFileService(writer: store.writer).save(content, format: format, to: try newPath.url(in: root), expecting: .absent)
+        refreshIndex(for: [newPath])
+        drawingVersion += 1
+        await refreshDirectory()
+        notice = "Your drawing is saved as “\(newPath.name)”. The notes still embed “\(path.name)”, which has the other app's version."
+    }
+
     /// Encodes a copy for sharing; nothing is written into the vault.
     func exportDrawingCopy(_ content: DrawingContent, format: DrawingFormat, title: String) async throws -> URL {
         let fileData = try await DrawingFileService().fileData(for: content, format: format)
@@ -1528,7 +1552,11 @@ final class WorkspaceModel {
     /// Keeps tabs, their histories, and recent files pointing at a moved file or folder.
     /// Tabs of moved files load them again from their new place.
     func followMoveInNavigation(from oldPath: VaultPath, to newPath: VaultPath) {
-        for tab in layout.allTabs where tab.path?.isInside(oldPath) == true { tabDocuments[tab.id]?.unload() }
+        let movedDocuments = layout.allTabs.filter { tab in tab.path?.isInside(oldPath) == true }.compactMap { tab in tabDocuments[tab.id] }
+        // As every other way a session goes: the note reopens at the line and cursor it left,
+        // and `followMoveInPlaces` below carries that to the new path.
+        rememberPlaces(of: movedDocuments)
+        for document in movedDocuments { document.unload() }
         followMoveInConflictVersions(from: oldPath, to: newPath)
         layout.replacePrefix(oldPath, with: newPath)
         recentFiles.replacePrefix(oldPath, with: newPath)

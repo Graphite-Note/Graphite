@@ -320,7 +320,8 @@ private struct TabBar: View {
         .background(isDropTargeted ? AnyShapeStyle(accent.opacity(0.12)) : AnyShapeStyle(GraphiteChrome.barBackground))
         // A file dragged from the sidebar opens in a new tab on this side.
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in !workspace.isDirectory(path) }
+            // An item of another window's vault has no tab here; dropping it on a folder copies it.
+            let paths = items.compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }.filter { path in !workspace.isDirectory(path) }
             guard !paths.isEmpty else { return false }
             workspace.focusGroup(group.id)
             Task { for path in paths { await workspace.open(path, placement: .newTab) } }

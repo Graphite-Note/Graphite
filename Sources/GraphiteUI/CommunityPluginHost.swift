@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginHost.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: Runs a vault's Obsidian community plugins and answers what they ask of the vault and the windows.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.35
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import OSLog
@@ -1062,7 +1073,7 @@ final class CommunityPluginHost {
         switch refusal {
         case .destinationTaken: "alreadyExists"
         case .cancelled: "cancelled"
-        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .failed: "unavailable"
+        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .nameBreaksWikilinks, .failed: "unavailable"
         }
     }
 

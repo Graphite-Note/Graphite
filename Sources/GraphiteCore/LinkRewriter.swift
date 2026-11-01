@@ -1,3 +1,14 @@
+/**
+ * File: LinkRewriter.swift
+ * ------------------------
+ * Layer: Core
+ * Description: Rewrites the links in a note's text when the files they reach move, in the style they were written in.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Every link written in a note: those in the body, and Wikilinks and Markdown links
@@ -507,9 +518,15 @@ public enum LinkRewriter {
         // name) or absolute (a vault path) format, which Graphite also writes.
         if !isWiki && reachedBesideNote { return .relative(hasDotPrefix: false) }
         guard writtenPath.contains("/") else { return .name }
-        // A Wikilink path without a dot prefix is tried beside the note first, then from the root.
+        // A Wikilink path that reached a file beside the note stays relative to it.
         if isWiki, !previousSource.parent.rawValue.isEmpty, reachedBesideNote { return .relative(hasDotPrefix: false) }
         return .vaultPath
+    }
+
+    /// Whether a Wikilink can hold this path. `[[photo #2.png]]` means the heading `2.png` of
+    /// `photo `, and no escape exists for it, in Graphite or in Obsidian.
+    public static func canBeWrittenInWikilink(_ pathPart: String) -> Bool {
+        pathPart.rangeOfCharacter(from: FileNameRules.linkBreakingCharacters) == nil
     }
 
     /// The link's text with its path replaced; its `!`, `#subpath`, alias, label and title
@@ -545,7 +562,8 @@ public enum LinkRewriter {
         // The fragment is kept exactly as written, already escaped for any enclosing quotes.
         let newDestination: String
         if isAngleBracketed {
-            newDestination = "<" + escapedForValue(newPathPart) + fragment + ">"
+            // Inside angle brackets only the `#` of a name would still be read as a fragment.
+            newDestination = "<" + escapedForValue(newPathPart.replacingOccurrences(of: "#", with: "%23")) + fragment + ">"
         } else {
             // Letters beyond ASCII stay as they were written: literal (`Café.md`) or encoded.
             let writesNonASCIILiterally = bareDestination.unicodeScalars.contains { scalar in !scalar.isASCII }

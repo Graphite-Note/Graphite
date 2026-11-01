@@ -5,9 +5,9 @@
  * Description: The root view of one window: the sidebar and documents split view, the window's toolbar and phone
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 21/10/2026
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.55
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -212,16 +212,20 @@ struct GraphiteRootView: View {
             }
         }
         .fullScreenCover(item: $workspace.drawingEditorRequest) { request in
-            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request)) { content, format in
+            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request), clock: workspace.clock) { content, format in
                 try await workspace.saveDrawing(content, format: format, for: request)
+            } saveAsNewDrawing: { content, format in
+                try await workspace.saveDrawingAsNewFile(content, format: format, for: request)
             } exportCopy: { content, format in
                 try await workspace.exportDrawingCopy(content, format: format, title: request.title)
             } preserveDraft: { content in
                 guard let vaultIdentifier = workspace.currentVaultIdentifier else { return }
                 workspace.processServices.drawingDrafts.markOpenInThisProcess(request.id)
-                workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
+                let backgroundTask = BackgroundTaskAssertion(name: "Keep drawing draft")
+                let write = workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
                     try await DrawingFileService().draftFileData(for: content)
                 }
+                Task { await write?.value; backgroundTask.end() }
             } removeDraft: {
                 workspace.processServices.drawingDrafts.removeDraft(withIdentifier: request.id)
             }
@@ -625,6 +629,8 @@ struct GraphiteRootView: View {
         // Drive, as soon as the app is off screen, and end the app before it finishes.
         let backgroundTask = BackgroundTaskAssertion(name: "Save open documents")
         Task {
+            // First, as it is quick and local: the save may be refused, or slow enough for iPadOS to end the app.
+            _ = await workspace.keepUnsavedTextInDrafts()
             await save()
             // Plugins' views of files (an Excalidraw drawing) save what they hold too, as when
             // Obsidian closes; their writes go through the vault like any plugin write.

@@ -2,7 +2,7 @@
  * File: ProcessServices.swift
  * ---------------------------
  * Layer: UI
- * Description: What every window of the app shares, built once per process (decision 12 of
+ * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.8
@@ -44,6 +44,9 @@ public final class ProcessServices {
     let vaultIndexes: VaultIndexRegistry
     /// The unsaved strokes of drawing editors, kept in Application Support for every window.
     let drawingDrafts: DrawingEditorDraftStore
+    /// Text of notes and canvases that could not reach their files, kept in Application
+    /// Support for every window.
+    let unsavedDrafts: UnsavedDocumentDraftStore
     /// The open windows, for what only one of them may run at a time.
     let openWindows = OpenWindows()
     /// The notes open in every window, so a note open in two windows is one text.
@@ -69,6 +72,7 @@ public final class ProcessServices {
         addOns = .standard(applicationFolders: applicationFolders)
         vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
+        unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
         self.makeReadAloudController = makeReadAloudController
     }

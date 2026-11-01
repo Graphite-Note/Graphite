@@ -2,7 +2,7 @@
  * File: BaseRecordQueries.swift
  * -----------------------------
  * Layer: Index
- * Description: Base queries over the index: bounded record loading with SQL pre-filtering, and a
+ * Description: Answers bases' questions about files from the index.
  *
  * Authors: Bahey Shalash
  * Version: 0.3
@@ -281,8 +281,8 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
             return resolvedPaths.count == 1 ? resolvedPaths.first.flatMap { path in try? VaultPath(path) } : nil // Not valid: names nothing.
         }
         guard let resolvedPaths = read({ database in try VaultIndex.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }),
-              resolvedPaths.count == 1 else { return nil }
-        return resolvedPaths.first
+              let closestPath = resolvedPaths.first else { return nil }
+        return closestPath
     }
 
     public func backlinks(to path: VaultPath) -> [VaultPath] {

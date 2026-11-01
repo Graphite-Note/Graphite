@@ -1,3 +1,14 @@
+/**
+ * File: DrawingEditorDraftStore.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Keeps drafts of drawings being edited in Application Support, so they outlive the app.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -95,7 +106,9 @@ final class DrawingEditorDraftStore {
     /// Writes the draft's drawing file, encoded off the main actor by `drawingFile`, then
     /// its description. A draft that fails to encode is skipped: the editor still has the
     /// strokes, and nothing in the vault changes.
-    func preserve(_ draft: DrawingEditorDraft, drawingFile: @escaping @Sendable () async throws -> Data) {
+    /// - Returns: The write, for a caller that holds off suspension until it ends.
+    @discardableResult
+    func preserve(_ draft: DrawingEditorDraft, drawingFile: @escaping @Sendable () async throws -> Data) -> Task<Void, Never>? {
         let directory = directory
         let drawingLocation = Self.drawingLocation(for: draft.requestIdentifier, in: directory)
         let descriptionLocation = Self.descriptionLocation(for: draft.requestIdentifier, in: directory)
@@ -113,6 +126,7 @@ final class DrawingEditorDraftStore {
                 if hasReplacedDrawing { try? FileManager.default.removeItem(at: descriptionLocation) }
             }
         }
+        return latestOperation
     }
 
     func removeDraft(withIdentifier requestIdentifier: UUID) {

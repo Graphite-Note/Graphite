@@ -712,12 +712,8 @@ private struct AutosaveDriver: View {
         Color.clear
             .onChange(of: session.text) { _, _ in textDidChange() }
             .task(id: session.text) {
-            do {
-                try await Task.sleep(for: .milliseconds(900))
-                try await session.save()
-            } catch is CancellationError {
-            } catch { session.errorMessage = error.localizedDescription }
-        }
+                await session.autosave(after: .milliseconds(900)) { delay in try await Task.sleep(for: delay) }
+            }
     }
 }
 

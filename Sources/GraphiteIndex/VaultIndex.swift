@@ -2,7 +2,7 @@
  * File: VaultIndex.swift
  * ----------------------
  * Layer: Index
- * Description: Creation date for `file.ctime` in bases; the modification date when unknown.
+ * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
  * Version: 0.7
@@ -453,19 +453,19 @@ public actor VaultIndex {
     // they do not wait while a scan reads and parses notes, and a cancelled caller
     // interrupts its query instead of letting it run to completion.
 
-    /// Ambiguous results are returned to the caller, never silently selected.
+    /// The files a link can mean from `source`, the one it means first (`getFirstLinkpathDest`
+    /// in Obsidian is this list's first): `WikiLinkResolver.closestFirst`.
     public nonisolated func resolve(_ target: String, from source: VaultPath, isWiki: Bool = true) async throws -> [VaultPath] {
         try await databasePool.read { database in try Self.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }
     }
 
-    /// The single file each of these wikilinks names from `source`, in one read; a link that is
-    /// missing or ambiguous has no entry.
+    /// The file each of these wikilinks means from `source`, in one read, as `resolve` chooses
+    /// it; a link no file answers has no entry.
     public nonisolated func resolve(wikilinks targets: [String], from source: VaultPath) async throws -> [String: VaultPath] {
         try await databasePool.read { database in
             var resolved: [String: VaultPath] = [:]
             for target in targets {
-                let paths = try Self.resolvedPaths(target, from: source, isWiki: true, in: database)
-                if paths.count == 1 { resolved[target] = paths[0] }
+                resolved[target] = try Self.resolvedPaths(target, from: source, isWiki: true, in: database).first
             }
             return resolved
         }
@@ -475,7 +475,7 @@ public actor VaultIndex {
         for candidate in WikiLinkResolver.directCandidates(target: target, source: source, isWiki: isWiki) {
             // Paths match case-insensitively, through the indexed folded key. Files whose
             // names differ only by case (possible on case-sensitive volumes) prefer the
-            // exact spelling, and are otherwise returned together as ambiguous.
+            // exact spelling, and are otherwise returned together.
             let paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_path = ? ORDER BY path LIMIT 50",
                                             arguments: [foldedKey(candidate.rawValue)])
             guard !paths.isEmpty else { continue }
@@ -493,19 +493,24 @@ public actor VaultIndex {
                 let pathSuffix = foldedKey(fileName.hasPrefix("/") ? String(fileName.drop { character in character == "/" }) : fileName)
                 if fileName.hasPrefix("/") {
                     // From the root only: as a suffix it also matched `Other/Folder/Note.md`.
-                    paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_path = ? ORDER BY path LIMIT 50", arguments: [pathSuffix])
+                    paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_path = ? ORDER BY path", arguments: [pathSuffix])
                 } else {
-                    paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_path = ? OR folded_path LIKE ? ESCAPE '\\' ORDER BY path LIMIT 50",
+                    paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_path = ? OR folded_path LIKE ? ESCAPE '\\' ORDER BY path",
                                                 arguments: [pathSuffix, "%/" + escapedForLike(pathSuffix)])
                 }
-            } else if isWiki {
-                paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_name = ? UNION SELECT path FROM aliases WHERE folded_alias = ? ORDER BY path LIMIT 50",
-                                            arguments: [foldedKey(fileName), foldedKey(part)])
             } else {
-                // Aliases are Obsidian's Wikilink names; a Markdown link names a file.
-                paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_name = ? ORDER BY path LIMIT 50", arguments: [foldedKey(fileName)])
+                // Every file of the name is read, with no limit: the closest may sort last by path.
+                let namedPaths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE folded_name = ?", arguments: [foldedKey(fileName)])
+                // Aliases are Obsidian's Wikilink names; a Markdown link names a file. A file's
+                // own name goes before another note's alias.
+                let aliasPaths = isWiki
+                    ? try String.fetchAll(database, sql: "SELECT path FROM aliases WHERE folded_alias = ?", arguments: [foldedKey(part)]) : []
+                let namedResolution = WikiLinkResolver.closestFirst(namedPaths, toNoteAt: source)
+                paths = namedResolution + WikiLinkResolver.closestFirst(aliasPaths.filter { path in !namedPaths.contains(path) }, toNoteAt: source)
+                if !paths.isEmpty { return try paths.map(VaultPath.init) }
+                continue
             }
-            if !paths.isEmpty { return try paths.map(VaultPath.init) }
+            if !paths.isEmpty { return try WikiLinkResolver.closestFirst(paths, toNoteAt: source).map(VaultPath.init) }
         }
         return []
     }
@@ -561,7 +566,8 @@ public actor VaultIndex {
     ///   Obsidian's `file.backlinks` does in bases.
     static func backlinkSources(to destination: VaultPath, includesPropertyLinks: Bool, in database: Database) throws -> [VaultPath] {
         // Candidate reduction uses the folded target indexes. Every link is then resolved
-        // from its note, to respect ambiguity and each kind's rules (`storedLinkTarget`).
+        // from its note, as a name several files share means the closest (`closestFirst`), and
+        // each kind has its rules (`storedLinkTarget`).
         let candidateTargets = try foldedLinkTargetCandidates(for: destination, in: database)
         // A Wikilink relative to its note (`[[../Sub/Target]]`) is kept as written, so it is
         // found by its ending. Targets starting with `.` are a range of the folded index.
@@ -598,8 +604,7 @@ public actor VaultIndex {
             if let cached = resolvesToDestination[cacheKey] {
                 isMatch = cached
             } else {
-                let resolved = try resolvedPaths(target, from: source, isWiki: isWiki, in: database)
-                isMatch = resolved.count == 1 && resolved.first == destination
+                isMatch = try resolvedPaths(target, from: source, isWiki: isWiki, in: database).first == destination
                 resolvesToDestination[cacheKey] = isMatch
             }
             if isMatch { sources.insert(source) }
@@ -1052,8 +1057,14 @@ public actor VaultIndex {
     /// missing, not a regular file, hidden, or reached through a symbolic link.
     private func refreshedFile(at path: VaultPath, root: URL, writer: AtomicFileWriter) -> IndexedFile? {
         guard !path.isHidden, let location = Self.locationWithoutSymbolicLinks(of: path, root: root),
-              let values = try? location.resourceValues(forKeys: [.isRegularFileKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey, .ubiquitousItemDownloadingStatusKey]),
+              let values = try? location.resourceValues(forKeys: [.isRegularFileKey, .isHiddenKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey,
+                                                                  .ubiquitousItemDownloadingStatusKey, .canonicalPathKey]),
               values.isRegularFile == true, values.isHidden != true else { return nil }
+        // A case-insensitive volume finds `notes/Idea.md` under its old spelling `notes/idea.md`
+        // too, right after a rename that only changed capitals. Only the stored spelling is a
+        // file; a row for the other would stay beside the new one until the next full scan.
+        if let canonicalPath = values.canonicalPath,
+           !WikiLinkResolver.comparisonKey(canonicalPath).hasSuffix("/" + WikiLinkResolver.comparisonKey(path.rawValue)) { return nil }
         let size = values.fileSize ?? 0
         var markdown: String?
         var isUnreadableAsText = false

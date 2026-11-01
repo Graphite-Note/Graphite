@@ -572,7 +572,7 @@ actor ReadingViewBuilder {
             indexReadCount += 1
             guard let resolved = try? await index.resolve(target, from: note,
                 isWiki: isWiki) else { return nil } // Not known: asked again if the link comes up again.
-            resolvedPath = resolved.count == 1 ? resolved.first : nil
+            resolvedPath = resolved.first
         }
         resolvedLinks.updateValue(resolvedPath, forKey: link)
         return resolvedPath

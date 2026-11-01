@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTabs.swift
+ * -------------------------
+ * Layer: UI
+ * Description: A window's tabs: what each holds, opening files into them and closing them.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.28
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -438,6 +449,7 @@ extension WorkspaceModel {
                                                                     calloutExpansion: calloutFolds.expansion(for: path.rawValue)))
                 }
                 if let newMarkdown {
+                    await restoreUnsavedDraft(into: newMarkdown)
                     restoreViewMode(of: newMarkdown); restoreFolds(of: newMarkdown)
                     returnToRememberedPlace(of: newMarkdown); watchForRecovery(newMarkdown)
                 }
