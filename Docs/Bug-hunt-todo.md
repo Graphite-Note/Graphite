@@ -56,7 +56,7 @@ Second readers set these aside because the code or docs call them deliberate. Th
 
 Issue: [#114](https://github.com/Graphite-Note/Graphite/issues/114)
 
-Where it lands in the rewrite: Phase 11, with pictures in Phase 10.
+Where it lands in the rewrite: Phase 10 for PDF pages, their ink and pictures, Phase 11 for the drawing editor and shared canvas; a fix made before the rewrite comes before Phase 10.
 - [ ] **HUNT-001** (high, bug, owner) A picture added to a PDF page looks blurry and pixelated at zoom. `Sources/GraphiteApple/DrawingPictures.swift:35`.
   Cause: Sharpness is lost when the picture is added, not when it is drawn. PDFSession.addPicture (Sources/GraphiteUI/PDFSessionPictures.swift:52) prepares it for 60% of the page width, and DrawingPictures.picture keeps only 2 pixels per point of that width (DrawingPictures.swift:35, preferredPNGScale 2 at … Fix: Keep the picture's full resolution and redraw at zoom
 - [ ] **HUNT-002** (high, bug, seen on iPad) A highlighter stroke turns into a solid band that hides the text under it once saved: in Graphite after a relaunch, on the Mac, in Preview and in other apps. `Sources/GraphiteApple/PencilStrokeSampler.swift:37`.
@@ -233,7 +233,7 @@ Where it lands in the rewrite: Phase 12.
 
 Issue: [#117](https://github.com/Graphite-Note/Graphite/issues/117)
 
-Where it lands in the rewrite: Phase 0 rules: fix now, Phase 4 for the error paths.
+Where it lands in the rewrite: Phase 0 rules: fix now, Phase 4 for the error paths; a durable draft for unsaved text has no plan step yet.
 - [ ] **HUNT-079** (high, bug, traced) Renaming or moving a note leaves links broken in every note iCloud has not downloaded yet, with no warning. `Sources/GraphiteIndex/VaultFileOperations.swift:91`.
   Cause: linkUpdates finds sources only through index.linkingNotes. The scan and refresh skip the text of files whose download status is notDownloaded (VaultIndex.checkScannedFiles isNotDownloaded, refreshedFile), so they have no link rows and never become sources or failures. The move only checks hasCompletedIndexScan; … Fix: Before a move, list notes with unread content; download and scan them, or tell the person how many notes could not be checked.
 - [ ] **HUNT-080** (high, bug, traced) Text typed into a note that cannot be saved exists only in memory, so it is gone if iPadOS ends the app in the background. `Sources/GraphiteUI/GraphiteRootView.swift:622`.
@@ -423,7 +423,7 @@ Where it lands in the rewrite: Phase 5 and Phase 7.
 
 Issue: [#121](https://github.com/Graphite-Note/Graphite/issues/121)
 
-Where it lands in the rewrite: Phase 7 and Phase 9.
+Where it lands in the rewrite: Phase 7 and Phase 9, Phase 6 for the embed environment (HUNT-161).
 - [ ] **HUNT-160** (high, bug, traced) A note that embeds several plugin-drawn bases (several timetable views) can show only one: the others say "This view is in use in another tab or beside this one". `Sources/GraphiteUI/CommunityPluginViews.swift:453`.
   Cause: CommunityPluginBasesViewContent shows every plugin base view through CommunityPluginLiveViewContent, which needs the runtime's one WKWebView (host.liveViewIdentifier is a single String?). Each embed calls showLive in .task; the later one takes the web view, the earlier one has no picture (liveViewPictures is filled only when … Fix: Show embedded plugin bases as copies (the code-block copy path used by CommunityPluginViewContent.copyContent) and keep the live web view for a base opened in its own …
 - [ ] **HUNT-161** (high, bug, traced) An embedded base in Live Preview (and on a canvas card) shows "course-timetable Views Aren't Supported" although the community plugin that draws it is running; the same embed works in reading view and in the base's own tab. `Sources/GraphiteUI/LivePreviewRenderedBlocks.swift:590`.
