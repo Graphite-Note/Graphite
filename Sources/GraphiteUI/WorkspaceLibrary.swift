@@ -17,7 +17,8 @@ import GraphiteApple
 /// hold it, so the library itself depends on no workspace.
 extension WorkspaceModel {
     var libraryVault: LibraryVault {
-        LibraryVault(source: librarySource, title: title, sortOrder: vaultSettings.fileSortOrder, listingVersion: directoryVersion, folderListingVersions: folderListingVersions,
+        LibraryVault(source: librarySource, title: title, sortOrder: vaultSettings.fileSortOrder, listingVersion: directoryVersion,
+            folderListingVersions: folderListingVersions,
                      firstCreatedKind: preferences.library.firstCreatedKind, isPluginEnabled: preferences.isEnabled,
                      presentation: preferences.library.presentation, confirmsDeletion: vaultSettings.confirmsDeletion,
                      deletionMethod: vaultSettings.deletionMethod)

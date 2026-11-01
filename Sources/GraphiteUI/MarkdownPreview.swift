@@ -570,7 +570,8 @@ actor ReadingViewBuilder {
         var resolvedPath = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root)
         if resolvedPath == nil {
             indexReadCount += 1
-            guard let resolved = try? await index.resolve(target, from: note, isWiki: isWiki) else { return nil } // Not known: asked again if the link comes up again.
+            guard let resolved = try? await index.resolve(target, from: note,
+                isWiki: isWiki) else { return nil } // Not known: asked again if the link comes up again.
             resolvedPath = resolved.count == 1 ? resolved.first : nil
         }
         resolvedLinks.updateValue(resolvedPath, forKey: link)
@@ -580,7 +581,8 @@ actor ReadingViewBuilder {
     /// Answers every wikilink of a note in one read, where a theme marks those no file answers:
     /// a note with hundreds of links read the index once per link, each time it was built.
     private func resolveWikilinks(in source: String, note: VaultPath, root: URL, index: VaultIndex) async {
-        guard source.contains("[["), let semantics = try? MarkdownSemantics.parse(source) else { return } // Text that cannot be parsed has its links asked about one by one.
+        guard source.contains("[["),
+            let semantics = try? MarkdownSemantics.parse(source) else { return } // Text that cannot be parsed has its links asked about one by one.
         var askedOfIndex: [LinkFromFolder] = []
         for link in semantics.links where link.isWiki && !link.target.hasPrefix("#") {
             let linkFromFolder = LinkFromFolder(target: link.target, isWiki: true, folder: note.parent)
@@ -594,7 +596,7 @@ actor ReadingViewBuilder {
         }
         guard !askedOfIndex.isEmpty else { return }
         indexReadCount += 1
-        guard let resolved = try? await index.resolve(wikilinks: askedOfIndex.map(\.target), from: note) else {
+        guard let resolved = try? await index.resolve(wikilinks: askedOfIndex.map(\.target), from: note) else { // Not known, as below.
             // Not known: each is asked about on its own when the note's blocks are built.
             for link in askedOfIndex { resolvedLinks[link] = nil }
             return

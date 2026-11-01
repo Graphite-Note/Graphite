@@ -96,7 +96,7 @@ final class UiFileTreeNativeMacTests: XCTestCase {
         let reloadsBefore = fileTree.fullReloadCount
 
         await workspace.refreshDirectory()
-        try await Task.sleep(for: .milliseconds(100))
+        await ManualClock.letResumedTasksRun()
         XCTAssertEqual(fileTree.fullReloadCount, reloadsBefore, "Every refresh used to reload all rows, 24,712 at the owner's root.")
 
         // Listed anew by name: a change in Course lists Course and nothing else.

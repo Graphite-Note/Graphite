@@ -277,7 +277,8 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
     public func resolveLinkTarget(_ target: String, from source: VaultPath, isWiki: Bool) -> VaultPath? {
         if let loadedLinks = loadedLinksAfterThisLookup() {
             let resolvedPaths = loadedLinks.resolver.resolve(target, from: source, isWiki: isWiki)
-            return resolvedPaths.count == 1 ? resolvedPaths.first.flatMap { path in try? VaultPath(path) } : nil
+            // A stored path is a valid one; one that is not names nothing.
+            return resolvedPaths.count == 1 ? resolvedPaths.first.flatMap { path in try? VaultPath(path) } : nil // Not valid: names nothing.
         }
         guard let resolvedPaths = read({ database in try VaultIndex.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }),
               resolvedPaths.count == 1 else { return nil }
@@ -323,12 +324,13 @@ final class BaseLinkMemory: Sendable {
         init(database: Database) throws {
             let resolver = try GraphLinkResolver(database: database)
             self.resolver = resolver
-            let rows = try Row.fetchAll(database, sql: "SELECT DISTINCT source, target, isWiki FROM links UNION SELECT DISTINCT path, target, 1 FROM property_links")
+            let rows = try Row.fetchAll(database,
+                sql: "SELECT DISTINCT source, target, isWiki FROM links UNION SELECT DISTINCT path, target, 1 FROM property_links")
             var sourcesByDestination: [String: Set<VaultPath>] = [:]
             // A link resolves the same way from every note in one folder.
             var destinationsByLink: [String: [String]] = [:]
             for row in rows {
-                guard let source = try? VaultPath(row["source"] as String) else { continue }
+                guard let source = try? VaultPath(row["source"] as String) else { continue } // A row with no valid path links nothing.
                 let target: String = row["target"]
                 let isWiki: Bool = row["isWiki"]
                 let linkKey = (isWiki ? "w" : "m") + source.parent.rawValue + "\u{0}" + target

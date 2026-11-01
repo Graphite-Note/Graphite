@@ -505,7 +505,8 @@ extension VaultIndex {
             // little else it holds, not by how deep the file is: an exact name in a deep folder
             // is never dropped for weak matches with short paths.
             let closeness = Self.quickSwitcherClosenessOrder(of: trimmedQuery, on: column)
-            let rows = try Row.fetchAll(database, sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
+            let rows = try Row.fetchAll(database,
+                sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
                                         arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
             // Stored paths and names are already normalized, so candidates are ranked by
             // their text, and only those shown become `VaultPath`s.
@@ -543,7 +544,8 @@ extension VaultIndex {
     /// with other letters written differently falls to its length among the rest.
     private static func quickSwitcherClosenessOrder(of query: String, on column: String) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
         let escapedQuery = escapedForLike(query)
-        let sql = "CASE WHEN \(column) LIKE ? ESCAPE '\\' OR \(column) LIKE ? ESCAPE '\\' THEN 0 WHEN \(column) LIKE ? ESCAPE '\\' THEN 1 WHEN \(column) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
+        let sql = "CASE WHEN \(column) LIKE ? ESCAPE '\\' OR \(column) LIKE ? ESCAPE '\\' THEN 0 "
+            + "WHEN \(column) LIKE ? ESCAPE '\\' THEN 1 WHEN \(column) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
         return (sql, [escapedQuery, escapedQuery + ".%", escapedQuery + "%", "%" + escapedQuery + "%"])
     }
 

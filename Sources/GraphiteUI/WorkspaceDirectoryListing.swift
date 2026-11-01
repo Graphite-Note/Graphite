@@ -103,7 +103,7 @@ extension WorkspaceModel {
     /// The item directly in the vault's root that holds `path`, or is it.
     nonisolated static func topLevelItem(of path: VaultPath) -> VaultPath? {
         guard let firstComponent = path.rawValue.split(separator: "/", maxSplits: 1).first else { return nil }
-        return try? VaultPath(String(firstComponent))
+        return try? VaultPath(String(firstComponent)) // A name no vault path can hold is not listed.
     }
 
     /// Takes the comparisons off the main actor, where a sync's many reports would add up. The
@@ -156,15 +156,19 @@ extension WorkspaceModel {
     /// Whether a scan of this launch has finished, after waiting for the one under way when the
     /// index is complete from an earlier launch, for as long as a person would wait on a tap.
     func isIndexCompleteAfterRunningScan() async -> Bool {
-        guard isIndexUsable else { return hasCompletedIndexScan }
-        let deadline = Date.now.addingTimeInterval(Self.longestWaitForRunningScan)
-        while !hasCompletedIndexScan, isIndexing, Date.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+        guard isIndexUsable, !hasCompletedIndexScan, isIndexing else { return hasCompletedIndexScan }
+        let (scanEnd, ended) = AsyncStream.makeStream(of: Void.self)
+        runningScanWaits.append(ended)
+        let timeLimit = Task { [clock] in
+            try? await clock.sleep(for: Self.longestWaitForRunningScan) // Cancelled: the scan ended first.
+            ended.finish()
         }
+        for await _ in scanEnd {}
+        timeLimit.cancel()
         return hasCompletedIndexScan
     }
 
-    private static let longestWaitForRunningScan: TimeInterval = 10
+    private static let longestWaitForRunningScan = Duration.seconds(10)
 
     // MARK: Coming back to the front
 
@@ -223,7 +227,8 @@ extension WorkspaceModel {
         let openNotePaths = Set(openNotes.map(\.path))
         guard !openNotePaths.isEmpty else { return false }
         // A note embedded through another note: the index knows who embeds whom.
-        let notesEmbeddingThem = (try? await index.notesEmbedding(changedNotes, throughLevels: EmbeddedNoteNames.levelsFollowed)) ?? [] // Not known: treated as not embedded; the note reloads when opened.
+        let notesEmbeddingThem = (try? await index.notesEmbedding(changedNotes,
+            throughLevels: EmbeddedNoteNames.levelsFollowed)) ?? [] // Not known: treated as not embedded; the note reloads when opened.
         return !notesEmbeddingThem.isDisjoint(with: openNotePaths)
     }
 }
@@ -305,7 +310,9 @@ enum ExternalChangeRefresh: Equatable {
             return
         }
         // A folder reported with others inside it is scanned once, from the outermost.
-        let outermostFolders = changedFolders.filter { folder in !changedFolders.contains { otherFolder in otherFolder != folder && folder.isInside(otherFolder) } }
+        let outermostFolders = changedFolders.filter { folder in
+            !changedFolders.contains { otherFolder in otherFolder != folder && folder.isInside(otherFolder) }
+        }
         self = changedFiles.isEmpty && outermostFolders.isEmpty ? .nothingShown : .items(files: changedFiles.sorted(), folders: outermostFolders.sorted())
     }
 }

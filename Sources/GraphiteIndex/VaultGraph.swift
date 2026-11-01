@@ -65,8 +65,11 @@ extension VaultIndex {
             for _ in 0..<levels where !notesThisLevel.isEmpty {
                 var candidates: [String] = []
                 for note in notesThisLevel { candidates += try Self.foldedLinkTargetCandidates(for: note, in: database) }
-                let sources = try String.fetchAll(database, sql: "SELECT DISTINCT source FROM links WHERE isEmbed = 1 AND folded_target IN (\(databaseQuestionMarks(count: candidates.count)))",
-                                                  arguments: StatementArguments(candidates)).compactMap { source in try? VaultPath(source) }
+                let sources = try String.fetchAll(database,
+                    sql: "SELECT DISTINCT source FROM links WHERE isEmbed = 1 AND folded_target IN (\(databaseQuestionMarks(count: candidates.count)))",
+                                                  arguments: StatementArguments(candidates)).compactMap { source in
+                    try? VaultPath(source) // A row with no valid path embeds nothing.
+                }
                 notesThisLevel = sources.filter { source in embeddingNotes.insert(source).inserted }
             }
             return embeddingNotes

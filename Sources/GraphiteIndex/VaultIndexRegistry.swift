@@ -63,7 +63,7 @@ public final class VaultIndexRegistry {
         var isSpacedScanQueued = false
         /// The wait for the spacing to pass before a spaced scan starts.
         var spacingWait: Task<Void, Never>?
-        var lastWholeScanEnd: ContinuousClock.Instant?
+        var lastWholeScanEnd: Duration?
         /// The last finished scan's report; nil before one finished or once the index is emptied.
         var lastReport: IndexingReport?
 
@@ -76,11 +76,13 @@ public final class VaultIndexRegistry {
 
     private let cachesFolder: URL?
     private let minimumSpacingOfSpacedScans: Duration
+    private let clock: any ApplicationClock
     private var sharedIndexes: [UUID: SharedIndex] = [:]
 
     /// Indexes kept in `cachesFolder`, or in the system's Caches folder when nil.
-    public init(cachesFolder: URL?, minimumSpacingOfSpacedScans: Duration = .seconds(30)) {
+    public init(cachesFolder: URL?, minimumSpacingOfSpacedScans: Duration = .seconds(30), clock: any ApplicationClock = LiveApplicationClock()) {
         self.cachesFolder = cachesFolder
+        self.clock = clock
         self.minimumSpacingOfSpacedScans = minimumSpacingOfSpacedScans
     }
 
@@ -158,11 +160,11 @@ public final class VaultIndexRegistry {
     private func startSpacedScan(of shared: SharedIndex, index: VaultIndex) {
         shared.isSpacedScanQueued = false
         guard shared.spacingWait == nil else { return }
-        let timeSinceLastScan = shared.lastWholeScanEnd.map { scanEnd in ContinuousClock.now - scanEnd }
+        let timeSinceLastScan = shared.lastWholeScanEnd.map { scanEnd in clock.now - scanEnd }
         guard let timeSinceLastScan, timeSinceLastScan < minimumSpacingOfSpacedScans else { return startScan(of: shared, index: index) }
         let remainingSpacing = minimumSpacingOfSpacedScans - timeSinceLastScan
-        shared.spacingWait = Task { [weak self, weak shared] in
-            do { try await Task.sleep(for: remainingSpacing) } catch { return }
+        shared.spacingWait = Task { [weak self, weak shared, clock] in
+            do { try await clock.sleep(for: remainingSpacing) } catch { return }
             guard let self, let shared else { return }
             shared.spacingWait = nil
             if shared.runningScan != nil {
@@ -198,7 +200,7 @@ public final class VaultIndexRegistry {
             if sharedIndexes[shared.vaultIdentifier] === shared { sharedIndexes[shared.vaultIdentifier] = nil }
             return
         }
-        if folder == nil { shared.lastWholeScanEnd = .now }
+        if folder == nil { shared.lastWholeScanEnd = clock.now }
         let isAnotherScanQueued = shared.isScanQueued || !shared.queuedFolders.isEmpty
         switch outcome {
         case .success(let report):

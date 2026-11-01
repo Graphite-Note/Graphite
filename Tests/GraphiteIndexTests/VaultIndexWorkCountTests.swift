@@ -296,7 +296,8 @@ final class VaultIndexRegistrySpacingTests: XCTestCase {
         let vault = try TemporaryVault.make(prefix: "SpacingVault", for: self).root
         try Data("note".utf8).write(to: vault.appendingPathComponent("Note.md"))
         let caches = try TemporaryVault.make(prefix: "SpacingCaches", for: self).root
-        let registry = VaultIndexRegistry(cachesFolder: caches, minimumSpacingOfSpacedScans: .seconds(60))
+        let clock = ManualClock()
+        let registry = VaultIndexRegistry(cachesFolder: caches, minimumSpacingOfSpacedScans: .seconds(60), clock: clock)
         let lease = try await registry.lease(forVault: UUID(), root: vault)
         defer { lease.end() }
         var events = lease.events.makeAsyncIterator()
@@ -305,7 +306,8 @@ final class VaultIndexRegistrySpacingTests: XCTestCase {
 
         // Reports as a sync sends them: none starts a scan before the spacing has passed.
         for _ in 0..<3 { lease.requestScan(.spaced) }
-        try await Task.sleep(for: .milliseconds(300))
+        try await clock.awaitPendingSleepers()
+        XCTAssertEqual(clock.pendingSleepDurations, [.seconds(60)], "One wait, for all three reports.")
         // Asked outright, as a rebuild or Graphite's own bulk change does, a scan starts at once.
         lease.requestScan(.always)
         guard case .scanStarted = await events.next() else { return XCTFail("A scan asked outright starts") }
@@ -316,7 +318,8 @@ final class VaultIndexRegistrySpacingTests: XCTestCase {
     func testASpacedScanRunsOnceTheSpacingHasPassed() async throws {
         let vault = try TemporaryVault.make(prefix: "SpacingVault", for: self).root
         let caches = try TemporaryVault.make(prefix: "SpacingCaches", for: self).root
-        let registry = VaultIndexRegistry(cachesFolder: caches, minimumSpacingOfSpacedScans: .milliseconds(200))
+        let clock = ManualClock()
+        let registry = VaultIndexRegistry(cachesFolder: caches, minimumSpacingOfSpacedScans: .seconds(30), clock: clock)
         let lease = try await registry.lease(forVault: UUID(), root: vault)
         defer { lease.end() }
         var events = lease.events.makeAsyncIterator()
@@ -324,6 +327,8 @@ final class VaultIndexRegistrySpacingTests: XCTestCase {
         guard case .scanStarted = await events.next(), case .scanFinished = await events.next() else { return XCTFail("The first scan runs") }
 
         lease.requestScan(.spaced)
+        try await clock.awaitPendingSleepers()
+        clock.advance(by: .seconds(30))
         guard case .scanStarted = await events.next(), case .scanFinished = await events.next() else { return XCTFail("The spaced scan runs") }
     }
 

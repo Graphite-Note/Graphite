@@ -416,7 +416,8 @@ public actor VaultIndex {
                 let semantics = prepared.semantics
                 let title = semantics?.headings.first ?? file.path.stem
                 let contentState: IndexedContentState = semantics != nil ? .indexed
-                    : prepared.isUnreadableCanvas ? .unreadableCanvas : file.isUnreadableAsText ? .unreadableAsText : file.isNotDownloaded ? .notDownloaded : .notRead
+                    : prepared.isUnreadableCanvas ? .unreadableCanvas : file.isUnreadableAsText ? .unreadableAsText
+                    : file.isNotDownloaded ? .notDownloaded : .notRead
                 try fileUpsert.execute(arguments: [file.path.rawValue, file.path.name, title, file.size, file.modified.timeIntervalSince1970, generation, contentState.rawValue,
                                                    (file.created ?? file.modified).timeIntervalSince1970,
                                                    WikiLinkResolver.comparisonKey(file.path.rawValue), WikiLinkResolver.comparisonKey(file.path.name),
@@ -531,7 +532,8 @@ public actor VaultIndex {
     }
 
     public nonisolated func outgoingLinks(from source: VaultPath) async throws -> [String] {
-        try await databasePool.read { database in try String.fetchAll(database, sql: "SELECT DISTINCT target FROM links WHERE source = ? ORDER BY target LIMIT 200", arguments: [source.rawValue]) }
+        try await databasePool.read { database in try String.fetchAll(database,
+            sql: "SELECT DISTINCT target FROM links WHERE source = ? ORDER BY target LIMIT 200", arguments: [source.rawValue]) }
     }
 
     public nonisolated func backlinks(to destination: VaultPath) async throws -> [VaultPath] {
@@ -697,7 +699,8 @@ public actor VaultIndex {
         // A folder a scan would not enter: its files are not the vault's.
         let enumeratedFolder: URL
         if let folder {
-            guard !folder.isHidden, let folderLocation = Self.locationWithoutSymbolicLinks(of: folder, root: root) else { return try partialReport(of: ScanState()) }
+            guard !folder.isHidden, let folderLocation = Self.locationWithoutSymbolicLinks(of: folder,
+                root: root) else { return try partialReport(of: ScanState()) }
             enumeratedFolder = folderLocation
         } else {
             enumeratedFolder = root
@@ -711,7 +714,8 @@ public actor VaultIndex {
         var isInventoryIncomplete = false
         // Relative URLs: the enumerator may report `/private/var/…` for a root given as
         // `/var/…`, so cutting the root's path length off absolute paths is unreliable.
-        guard let enumerator = FileManager.default.enumerator(at: enumeratedFolder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs], errorHandler: { _, _ in isInventoryIncomplete = true; return true }) else {
+        guard let enumerator = FileManager.default.enumerator(at: enumeratedFolder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles,
+            .skipsPackageDescendants, .producesRelativePathURLs], errorHandler: { _, _ in isInventoryIncomplete = true; return true }) else {
             throw GraphiteError.unavailable("Cannot enumerate the vault.")
         }
         let folderPrefix = folder.map { folder in folder.rawValue + "/" } ?? ""
@@ -754,7 +758,8 @@ public actor VaultIndex {
         if !isInventoryIncomplete { state.prunedFiles = try pruneFilesNotSeen(state.seenPaths, inside: folder) }
         guard folder == nil else { return try partialReport(of: state) }
         if !isInventoryIncomplete { try recordFinishedScan() }
-        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles, failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
+        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles,
+            failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
     /// What a scan of one folder reports: what it changed, with the counts of the whole vault,
@@ -762,9 +767,11 @@ public actor VaultIndex {
     private func partialReport(of state: ScanState) throws -> IndexingReport {
         let (fileCount, pendingFileCount) = try databasePool.read { database in
             (try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0,
-             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'", arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
+             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'",
+                 arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
         }
-        return IndexingReport(discoveredFiles: fileCount, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount, failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
+        return IndexingReport(discoveredFiles: fileCount, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount,
+            failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
     /// Removes the rows of files the scan did not see, and returns how many. Synchronous on the
@@ -774,7 +781,8 @@ public actor VaultIndex {
         let indexedPaths = try databasePool.read { database in
             guard let folder else { return try String.fetchAll(database, sql: "SELECT path FROM files") }
             // '0' follows '/' in code-unit order, so this range is exactly the paths inside the folder.
-            return try String.fetchAll(database, sql: "SELECT path FROM files WHERE path > ? AND path < ?", arguments: [folder.rawValue + "/", folder.rawValue + "0"])
+            return try String.fetchAll(database, sql: "SELECT path FROM files WHERE path > ? AND path < ?", arguments: [folder.rawValue + "/",
+                folder.rawValue + "0"])
         }
         // A file `refresh` wrote or removed during the scan is as `refresh` left it.
         let stalePaths = indexedPaths.filter { path in !seenPaths.contains(path) && pathsRefreshedDuringScan[path] == nil }
@@ -814,7 +822,8 @@ public actor VaultIndex {
             // same result. The download state is asked last, and only when it decides.
             let readability = contentReadability(of: file, storedContentState: storedContentState)
             let stateItWouldBeWritten: IndexedContentState = readability == .inTheCloud ? .notDownloaded : .notRead
-            if let storedContentState, (storedContentState != .notRead && storedContentState != .notDownloaded) || (readability != .readable && storedContentState == stateItWouldBeWritten) {
+            if let storedContentState,
+                (storedContentState != .notRead && storedContentState != .notDownloaded) || (readability != .readable && storedContentState == stateItWouldBeWritten) {
                 if file.isMarkdown, storedContentState != .indexed { state.pendingFiles += 1 }
                 continue
             }

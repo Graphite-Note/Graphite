@@ -393,7 +393,7 @@ struct VaultSidebar: View {
                 openingList
             }
         }
-        .task { await workspace.fileTreeContents.follow(workspace) }
+        .task { await workspace.fileTreeContents.follow(rootEntries: { workspace.rootEntries }, expandedFolders: { workspace.expandedFolders }) }
         // The sidebar style beside a document; on a phone, where it draws a card of rows
         // with separators, a plain list in the page's color, as Obsidian mobile's explorer.
         .modifier(SidebarListStyle(isCompactWidth: isCompactWidth))

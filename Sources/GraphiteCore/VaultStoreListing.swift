@@ -34,17 +34,7 @@ extension VaultStore {
     }
 
     nonisolated func listedChildren(of directory: VaultPath, sortedBy sortOrder: FileSortOrder = .alphabetical) throws -> [VaultEntry] {
-        let url = try directory.url(in: root)
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
-        let entries = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]).compactMap { child -> VaultEntry? in
-            // One child that vanished since the listing, or that has a name no vault path
-            // can hold, is left out instead of failing the whole folder.
-            guard let values = try? child.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
-                  let childPath = try? directory.appending(child.lastPathComponent) else { return nil }
-            return VaultEntry(path: childPath, isDirectory: values.isDirectory == true, size: values.fileSize ?? 0,
-                              modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
-        }
-        return sortOrder.sorted(entries)
+        try VaultFolderReader.children(of: directory, in: root, sortedBy: sortOrder)
     }
 
     /// What a folder's listing shows for each of these items, nil for one it would not show:
@@ -55,7 +45,8 @@ extension VaultStore {
         for path in paths {
             // Not through `url(in:)`, which follows a link to what it leads to: a listing leaves
             // the link itself out.
-            guard !path.isHidden, (try? path.url(in: root)) != nil, let values = try? root.appendingPathComponent(path.rawValue).resourceValues(forKeys: keys),
+            guard !path.isHidden, (try? path.url(in: root)) != nil, // Outside the vault: not listed.
+                  let values = try? root.appendingPathComponent(path.rawValue).resourceValues(forKeys: keys), // Gone: not listed.
                   values.isSymbolicLink != true else {
                 entries.updateValue(nil, forKey: path)
                 continue
@@ -83,8 +74,8 @@ extension VaultStore {
     /// When a folder's list of names last changed: a file added, removed or renamed in it moves
     /// this date, a file edited in place does not. Nil when the folder cannot be asked.
     public nonisolated func listingDate(of folder: VaultPath) async -> Date? {
-        guard let location = try? folder.url(in: root) else { return nil }
-        return try? location.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        guard let location = try? folder.url(in: root) else { return nil } // Outside the vault: nothing to ask.
+        return try? location.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate // Unknown: the caller lists.
     }
 
     /// The date and size of each settings file a window reads when it comes back to the front,
@@ -97,7 +88,7 @@ extension VaultStore {
         let settingsFilePaths = [Self.applicationConfigurationPath, ObsidianAppearance.configurationPath, BookmarkList.configurationPath,
                                  DailyNoteSettings.configurationPath, HotkeyFile.configurationPath, TemplateSettings.configurationPath]
         for settingsFilePath in settingsFilePaths {
-            guard let values = try? root.appendingPathComponent(settingsFilePath).resourceValues(forKeys: keys) else { continue }
+            guard let values = try? root.appendingPathComponent(settingsFilePath).resourceValues(forKeys: keys) else { continue } // Not there: no stamp.
             revision[settingsFilePath] = SettingsFileStamp(modified: values.contentModificationDate, size: values.fileSize)
         }
         return revision

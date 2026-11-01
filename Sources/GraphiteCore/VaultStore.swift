@@ -459,3 +459,21 @@ public actor VaultStore {
         return try availablePath(in: directory, stem: trimmedStem, extension: fileExtension, firstSuffix: nil)
     }
 }
+
+/// Reads one folder of the vault, as `VaultStore.children` lists it.
+enum VaultFolderReader {
+    static func children(of directory: VaultPath, in root: URL, sortedBy sortOrder: FileSortOrder) throws -> [VaultEntry] {
+        let url = try directory.url(in: root)
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
+        let children = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
+        let entries = children.compactMap { child -> VaultEntry? in
+            // One child that vanished since the listing, or that has a name no vault path
+            // can hold, is left out instead of failing the whole folder.
+            guard let values = try? child.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
+                  let childPath = try? directory.appending(child.lastPathComponent) else { return nil }
+            return VaultEntry(path: childPath, isDirectory: values.isDirectory == true, size: values.fileSize ?? 0,
+                              modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
+        }
+        return sortOrder.sorted(entries)
+    }
+}

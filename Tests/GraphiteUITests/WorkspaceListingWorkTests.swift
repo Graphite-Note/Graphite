@@ -75,7 +75,7 @@ final class WorkspaceListingWorkTests: XCTestCase {
 
     func testAVaultThatCannotBeReadIsRefusedAndTheOpenOneStays() async throws {
         let (workspace, _, store) = try await opened(files: ["Note.md": "text"])
-        let missingFolder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Missing-\(UUID().uuidString)")
+        let missingFolder = try TemporaryVault.make(prefix: "MissingParent", for: self).root.appendingPathComponent("Missing")
         do {
             try await workspace.openFolderAsVault(missingFolder)
             XCTFail("A folder that is not there does not open")
@@ -250,8 +250,8 @@ final class WorkspaceListingWorkTests: XCTestCase {
         XCTAssertEqual(workspace.directoryVersion, directoryVersionBefore)
 
         // A name added at the root moves the folder's date.
-        try await Task.sleep(for: .milliseconds(1_100))
         try Data("new".utf8).write(to: vault.appendingPathComponent("New.md"))
+        try FileManager.default.setAttributes([.modificationDate: Date.now.addingTimeInterval(60)], ofItemAtPath: vault.path)
         workspace.noteLeftFront()
         clock.advance(by: .seconds(30))
         await workspace.refreshAfterComingToFront()
@@ -424,7 +424,7 @@ final class FlattenedFileTreeTests: XCTestCase {
     func testTheContentsFollowTheWorkspace() async throws {
         let workspace = WorkspaceModel()
         let contents = FileTreeContents()
-        let following = Task { await contents.follow(workspace) }
+        let following = Task { await contents.follow(rootEntries: { workspace.rootEntries }, expandedFolders: { workspace.expandedFolders }) }
         defer { following.cancel() }
         workspace.rootEntries = try [entry("Folder", isDirectory: true), entry("Top.md")]
         try await waitUntil { contents.rows.count == 2 }

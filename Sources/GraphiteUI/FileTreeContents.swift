@@ -112,15 +112,15 @@ struct FlattenedFileTree {
 
     /// Follows the workspace's root listing and open folders for as long as the tree shows.
     /// A view reading them in its body would run for every folder tapped.
-    func follow(_ workspace: WorkspaceModel) async {
+    func follow(rootEntries: @escaping @MainActor () -> [VaultEntry], expandedFolders: @escaping @MainActor () -> Set<VaultPath>) async {
         while !Task.isCancelled {
             await withCheckedContinuation { (changed: CheckedContinuation<Void, Never>) in
-                let (rootEntries, expandedFolders) = withObservationTracking {
-                    (workspace.rootEntries, workspace.expandedFolders)
+                let (listedEntries, openFolders) = withObservationTracking {
+                    (rootEntries(), expandedFolders())
                 } onChange: {
                     changed.resume()
                 }
-                apply(rootEntries: rootEntries, expandedFolders: expandedFolders)
+                apply(rootEntries: listedEntries, expandedFolders: openFolders)
             }
         }
     }

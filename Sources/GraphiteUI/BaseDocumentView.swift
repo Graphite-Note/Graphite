@@ -149,8 +149,9 @@ public final class EmbeddedBaseModelCache {
 
     public init() {
         #if canImport(UIKit)
-        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.removeAllModels() }
+        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil,
+            queue: .main) { [weak self] _ in
+            Task { @MainActor in self?.removeAllModels() }
         }
         #endif
     }

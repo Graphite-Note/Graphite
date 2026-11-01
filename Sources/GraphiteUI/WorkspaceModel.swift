@@ -43,6 +43,8 @@ final class WorkspaceModel {
     @ObservationIgnored var fileTreeContents = FileTreeContents()
     /// Which root listing is the latest asked for: an older one finishing later is dropped.
     @ObservationIgnored var rootListingNumber = 0
+    /// Those waiting for the scan under way to end (`isIndexCompleteAfterRunningScan`).
+    @ObservationIgnored var runningScanWaits: [AsyncStream<Void>.Continuation] = []
     @ObservationIgnored var rootListingInFlight: Task<Void, Never>?
     /// The root folder's own date just before its last listing, and when, on `clock`, the
     /// window last stopped being in front; together they tell whether coming back needs a listing.
@@ -515,7 +517,7 @@ final class WorkspaceModel {
     private func waitBriefly(for settingsReading: Task<Void, Never>) async {
         let (firstToEnd, ended) = AsyncStream.makeStream(of: Void.self)
         let readingWatch = Task { await settingsReading.value; ended.finish() }
-        let timeLimit = Task { [clock] in try? await clock.sleep(for: Self.settingsWaitBeforeFirstNote); ended.finish() }
+        let timeLimit = Task { [clock] in try? await clock.sleep(for: Self.settingsWaitBeforeFirstNote); ended.finish() } // Cancelled: the settings came first.
         for await _ in firstToEnd {}
         readingWatch.cancel(); timeLimit.cancel()
     }
@@ -535,7 +537,7 @@ final class WorkspaceModel {
         } catch {
             // The index is a cache: the vault's documents open without it.
             indexingMessage = "Index needs attention"
-            errorMessage = "Graphite couldn't open this vault's index, so search and links are unavailable. " + error.localizedDescription
+            errorMessage = "Graphite couldn't open this vault's index, so search and links are unavailable. Rebuilding the index in Settings may help."
         }
         await listRoot()
         await settingsReading.value
@@ -784,10 +786,17 @@ final class WorkspaceModel {
             hasCompletedIndexScan = false
             indexFinishedAnEarlierScan = false
         }
+        if !isIndexing { endRunningScanWaits() }
+    }
+
+    private func endRunningScanWaits() {
+        for wait in runningScanWaits { wait.finish() }
+        runningScanWaits = []
     }
 
     /// Lets go of the open vault's index: it closes when no other window has the vault open.
     private func stopIndexing() {
+        endRunningScanWaits()
         indexEventsTask?.cancel(); indexEventsTask = nil
         indexLease?.end(); indexLease = nil
         isIndexing = false
@@ -1010,7 +1019,8 @@ final class WorkspaceModel {
                 // waits for that scan instead of asking the person to try again.
                 if await isIndexCompleteAfterRunningScan() {
                     let matchesAfterScan = try await index.resolve(target, from: source, isWiki: isWiki)
-                    if matchesAfterScan.isEmpty { await createNote(forLink: target, from: source, isWiki: isWiki) } else { await follow(target, from: source, isWiki: isWiki, placement: placement) }
+                    if matchesAfterScan.isEmpty { await createNote(forLink: target, from: source, isWiki: isWiki) } else { await follow(target,
+                        from: source, isWiki: isWiki, placement: placement) }
                 }
                 else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
             }
