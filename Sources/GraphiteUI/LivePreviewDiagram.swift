@@ -1,11 +1,22 @@
+/**
+ * File: LivePreviewDiagram.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: A mermaid block in Live Preview, drawn over its concealed fence.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
 
 /// A ```` ```mermaid ```` block in Live Preview, over its concealed fence: the diagram the reading view draws for the same
 /// code (`ReadingDiagramView`), read and laid out away from the main actor in the note's text font and size, so that the
-/// main actor only draws it. A diagram that cannot be read shows its source and why, and a type not drawn natively yet
-/// shows its code, as in the reading view. A tap shows the source, with the cursor at the fence, as a formula's does.
+/// main actor only draws it. A diagram that cannot be read, or is of a type or holds a feature not drawn natively yet,
+/// shows its source and why, as in the reading view. A tap shows the source, with the cursor at the fence, as a formula's does.
 struct LivePreviewDiagramView: View {
     let source: String
     let environment: LivePreviewEnvironment
@@ -35,8 +46,6 @@ struct LivePreviewDiagramView: View {
             ReadingDiagramView(diagram: diagram, textSize: environment.textSize, root: environment.root, navigate: environment.follow,
                                // `follow` scrolls the note to a heading written as `#heading`.
                                scrollToHeading: { anchor in environment.follow("#" + anchor, true) })
-        case .code:
-            RenderedMarkdownBlock(markdown: "```mermaid\n" + source + "\n```", environment: environment)
         case nil:
             Color.clear.frame(height: 0)
         }
@@ -61,10 +70,8 @@ struct LivePreviewDiagramRequest: Equatable, Sendable {
 
 /// What a diagram block shows, decided as the reading view decides it (`ReadingDiagram`).
 enum LivePreviewDiagramContent: Sendable {
-    /// A diagram of a type drawn natively, laid out; or its source with why it could not be read or laid out.
+    /// A diagram of a type drawn natively, laid out; or its source with why it could not be read, laid out or drawn yet.
     case diagram(ReadingDiagram)
-    /// A type not drawn natively yet, or a diagram holding what its type does not lay out yet: shown as code.
-    case code
 }
 
 /// A diagram block's code read and laid out for one request.
@@ -82,7 +89,6 @@ struct LivePreviewDiagramPreparation: Sendable {
     }
 
     static func content(of request: LivePreviewDiagramRequest) -> LivePreviewDiagramContent {
-        guard let diagram = ReadingDiagram(source: request.source, typography: DiagramTypography(font: request.font)) else { return .code }
-        return .diagram(diagram)
+        .diagram(ReadingDiagram(source: request.source, typography: DiagramTypography(font: request.font)))
     }
 }

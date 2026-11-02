@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartDiagram.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: A Mermaid flowchart as its text describes it.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 /// A Mermaid flowchart (`flowchart` or `graph`) as its text describes it: the nodes in the order they first
 /// appear, the edges between them in the order they are written, and the groups and statements read but not drawn.
 public struct FlowchartDiagram: Equatable, Sendable {
@@ -12,8 +23,9 @@ public struct FlowchartDiagram: Equatable, Sendable {
     public internal(set) var accessibilityTitle: String?
     /// `accDescr: …` or `accDescr { … }`, the longer description a screen reader reads, or nil.
     public internal(set) var accessibilityDescription: String?
-    /// Statements that change only how the diagram looks (`classDef`, `class`, `:::`, `style`, `linkStyle`) or
-    /// what a click does (`click`). They are read and not applied yet.
+    /// Statements, or parts of them, that are read and not applied: a `click`, a style property this drawing has no place
+    /// for (`font-size`) or a value it does not read, a style for a group or a link that is not there. The colors and
+    /// strokes of `classDef`, `class`, `:::`, `style` and `linkStyle` are applied (`FlowchartNode.style`, `FlowchartEdge.style`).
     public internal(set) var unappliedStatementCount: Int
 
     init(direction: FlowchartDirection = .topToBottom, nodes: [FlowchartNode] = [], edges: [FlowchartEdge] = [],

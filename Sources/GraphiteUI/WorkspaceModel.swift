@@ -215,6 +215,9 @@ final class WorkspaceModel {
     var isVaultManagerPresented = false
     /// An unfinished recording offered back, one at a time.
     var recordingRecoveryOffer: RecoverableRecording?
+    /// Unfinished recordings whose saving just failed: not offered again until the next launch, so the alert does not
+    /// come straight back with the error. The recording stays on disk for then.
+    @ObservationIgnored var recordingsNotOfferedAgain: Set<URL> = []
     /// Files that iCloud or another file provider keeps other versions of, among those
     /// the sidebar lists and the tabs show (see `WorkspaceConflictVersions.swift`).
     var conflictedPaths: Set<VaultPath> = []
@@ -1469,8 +1472,6 @@ final class WorkspaceModel {
             errorMessage = OtherWindowActivity.recording(windowName: recordingWindow.name()).errorDescription
             return
         }
-        // Narration in any window stops: it would reconfigure the recording's audio session.
-        for window in processServices.openWindows.all { window.stopReadingAloud() }
         do {
             let notePath = markdownSession?.path
             let directory = try await recordingDirectory(note: notePath, store: store)
@@ -1488,6 +1489,12 @@ final class WorkspaceModel {
             case .video:
                 showsRecordingPreview = true
                 await recording.startVideo(destination: destination, manifest: manifest, camera: preferences.recordingCamera, filePresenter: monitor)
+            }
+            // Narration in any window stops once the recording runs, not before: a recording refused (microphone or camera
+            // denied) leaves the listening session where it was. The narration's audio session is let go only if it is
+            // still the playback one (`AppleReadAloudSpeech.releaseAudio`), so the recording's stays.
+            if recording.state == .recording {
+                for window in processServices.openWindows.all { window.stopReadingAloud() }
             }
         } catch { errorMessage = error.localizedDescription }
     }
