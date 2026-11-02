@@ -18,7 +18,7 @@ public enum MarkdownQuoteSyntax {
     /// The line after up to `maximumDepth` `>` quote markers, as CommonMark reads them: each
     /// with up to three spaces before it and one optional space or tab after it. Returns how
     /// many there were and the rest of the line as written.
-    static func markersRemoved(from line: String, maximumDepth: Int = .max) -> (depth: Int, content: String) {
+    public static func markersRemoved(from line: String, maximumDepth: Int = .max) -> (depth: Int, content: String) {
         let (depth, content) = markersRemoved(from: Substring(line), maximumDepth: maximumDepth)
         return (depth, String(content))
     }

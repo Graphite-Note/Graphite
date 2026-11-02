@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewEditTracking.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -373,7 +384,8 @@ struct UnstyledEdit {
               NSMaxRange(combinedEdit.editedRange) <= source.length, NSMaxRange(replacedRange) <= sourceBeforeEdit.length else { return .everything }
         let replacedLines = sourceBeforeEdit.lineRange(for: replacedRange)
         let editedLines = source.lineRange(for: combinedEdit.editedRange)
-        if Self.containsLineAffectingFollowingLines(sourceBeforeEdit, in: replacedLines) || Self.containsLineAffectingFollowingLines(source, in: editedLines) {
+        if Self.containsLineAffectingFollowingLines(sourceBeforeEdit, in: replacedLines) || Self.containsLineAffectingFollowingLines(source, in: editedLines)
+            || Self.displayMathEffects(sourceBeforeEdit, in: replacedLines) != Self.displayMathEffects(source, in: editedLines) {
             return .everything
         }
         let candidateBlocks = blockRangesBeforeEdit + blockRanges
@@ -415,32 +427,36 @@ struct UnstyledEdit {
         NSIntersectionRange(firstRange, secondRange).length > 0 || NSLocationInRange(firstRange.location, secondRange) || NSLocationInRange(secondRange.location, firstRange)
     }
 
-    /// Whether a line in `lineRange` opens or closes code, math, or frontmatter, which
-    /// changes how every later line is styled. A math block closes at a line ending in
-    /// `$$`, and frontmatter also closes at `...`; the style scanner's own check only
-    /// looks at how a line starts.
+    /// Whether a line in `lineRange` opens or closes code or frontmatter, which changes how
+    /// every later line is styled; frontmatter also closes at `...`. Display math is
+    /// compared before and after the edit (`displayMathEffects`), since a line that merely
+    /// holds `$$` changes nothing while what it does stays the same.
     static func containsLineAffectingFollowingLines(_ text: NSString, in lineRange: NSRange) -> Bool {
         var lineStart = lineRange.location
         while lineStart < NSMaxRange(lineRange) {
             let currentLine = text.lineRange(for: NSRange(location: lineStart, length: 0))
-            let line = text.substring(with: currentLine)
-            if MarkdownStyleScanner.lineAffectsFollowingLines(line) || line.contains("$$") || line.trimmingCharacters(in: .whitespacesAndNewlines) == "..." {
-                return true
-            }
+            if MarkdownStyleScanner.lineAffectsFollowingLinesApartFromMath(text.substring(with: currentLine)) { return true }
             lineStart = NSMaxRange(currentLine)
         }
         return false
+    }
+
+    /// What each line in `lineRange` that holds `$$` does to display math, in order.
+    static func displayMathEffects(_ text: NSString, in lineRange: NSRange) -> [DisplayMathLineEffect] {
+        var effects: [DisplayMathLineEffect] = []
+        var lineStart = lineRange.location
+        while lineStart < NSMaxRange(lineRange) {
+            let currentLine = text.lineRange(for: NSRange(location: lineStart, length: 0))
+            if let effect = MarkdownStyleScanner.displayMathEffect(ofLine: text.substring(with: currentLine)) { effects.append(effect) }
+            lineStart = NSMaxRange(currentLine)
+        }
+        return effects
     }
 }
 
 /// Moves rendered blocks past an edit that cannot change them, so typing an ordinary
 /// paragraph does not scan the whole note for blocks again.
 enum LivePreviewBlockShifting {
-    /// First characters, after indentation, of lines that can start, end, or join a block:
-    /// fences, `$$`, quotes and callouts, table rows and delimiter rows, embeds, rules, and
-    /// frontmatter's `---` and `...`.
-    private static let blockSyntaxStarts = CharacterSet(charactersIn: "`~$>|!-*_:.")
-
     /// The entries moved past `edit`, or nil when the note must be scanned again. That is
     /// when the edit adds or removes a line break, when the edited line is inside a block,
     /// when the line starts or started with block syntax, or when it is or was blank
@@ -462,14 +478,16 @@ enum LivePreviewBlockShifting {
         }
     }
 
-    /// The entries after an edit inside one line of a callout's body, with the callout
-    /// found again in its own lines only; nil when the note must be scanned again.
+    /// The entries after an edit inside one line of a callout's body or of a display math
+    /// block, with the block found again in its own lines only; nil when the note must be
+    /// scanned again.
     ///
-    /// Typing in a callout scanned the whole note on every keystroke, which in a long note
-    /// cost more than the rest of the keystroke. A body line that starts with `>` before
-    /// and after the edit, and holds no `` ` ``, `~` or `$` that could open code or math,
-    /// keeps the callout's lines and cannot change the blocks around it. The callout found
-    /// again in its lines must cover all of them, or the note is scanned.
+    /// Typing in a callout or formula scanned the whole note on every keystroke, which in a
+    /// long note cost more than the rest of the keystroke. A body line that starts with `>`
+    /// before and after the edit, and holds no `` ` ``, `~` or `$` that could open code or
+    /// math, keeps the callout's lines and cannot change the blocks around it; a math line
+    /// that opens and closes what it did keeps the formula's. The block found again in its
+    /// lines must cover all of them, or the note is scanned.
     static func entriesFindingEditedCalloutAgain(_ entries: [LivePreviewBlockEntry], across edit: CharacterEdit, sourceBeforeEdit: NSString, source: NSString,
                                                  isRendered: (LivePreviewBlock) -> Bool) -> [LivePreviewBlockEntry]? {
         let replacedRange = edit.replacedRange
@@ -479,16 +497,25 @@ enum LivePreviewBlockShifting {
         let lineBeforeEdit = sourceBeforeEdit.lineRange(for: replacedRange)
         let lineAfterEdit = source.lineRange(for: edit.editedRange)
         let touchedIndices = entries.indices.filter { index in NSIntersectionRange(entries[index].range, lineBeforeEdit).length > 0 }
-        guard touchedIndices.count == 1, let calloutIndex = touchedIndices.first, entries[calloutIndex].block.kind == .callout else { return nil }
+        guard touchedIndices.count == 1, let calloutIndex = touchedIndices.first else { return nil }
         let calloutRange = entries[calloutIndex].range
-        // A body line: the header's `[!type]` decides whether the lines are a callout at all.
-        guard lineBeforeEdit.location > calloutRange.location, NSMaxRange(lineBeforeEdit) <= NSMaxRange(calloutRange),
-              isCalloutBodyLine(sourceBeforeEdit, lineRange: lineBeforeEdit), isCalloutBodyLine(source, lineRange: lineAfterEdit) else { return nil }
+        guard NSMaxRange(lineBeforeEdit) <= NSMaxRange(calloutRange) else { return nil }
+        if entries[calloutIndex].block.kind == .callout {
+            // A body line: the header's `[!type]` decides whether the lines are a callout at all.
+            guard lineBeforeEdit.location > calloutRange.location,
+                  isCalloutBodyLine(sourceBeforeEdit, lineRange: lineBeforeEdit), isCalloutBodyLine(source, lineRange: lineAfterEdit) else { return nil }
+        } else if entries[calloutIndex].block.kind == .mathBlock {
+            guard !UnstyledEdit.containsLineAffectingFollowingLines(source, in: lineAfterEdit),
+                  UnstyledEdit.displayMathEffects(sourceBeforeEdit, in: lineBeforeEdit)
+                    == UnstyledEdit.displayMathEffects(source, in: lineAfterEdit) else { return nil }
+        } else {
+            return nil
+        }
         let newCalloutRange = NSRange(location: calloutRange.location, length: calloutRange.length + edit.changeInLength)
         guard NSMaxRange(newCalloutRange) <= source.length else { return nil }
         let calloutLines = source.substring(with: newCalloutRange) as NSString
         let foundBlocks = LivePreviewBlockScanner.blocks(in: calloutLines)
-        guard foundBlocks.count == 1, let foundCallout = foundBlocks.first, foundCallout.kind == .callout,
+        guard foundBlocks.count == 1, let foundCallout = foundBlocks.first, foundCallout.kind == entries[calloutIndex].block.kind,
               foundCallout.range == NSRange(location: 0, length: calloutLines.length) else { return nil }
         let callout = foundCallout.offset(by: newCalloutRange.location)
         guard isRendered(callout) else { return nil }
@@ -531,7 +558,32 @@ enum LivePreviewBlockShifting {
             return text.rangeOfCharacter(from: listItemBlockCharacters, options: [], range: lineRange).location == NSNotFound
                 && isOrdinaryLine(text, lineRange: itemText)
         }
-        return text.rangeOfCharacter(from: blockSyntaxStarts, options: .anchored, range: content).location == NSNotFound
+        return !canJoinABlock(text.substring(with: content))
+    }
+
+    /// Whether a line, without its indentation, can start, end, or join a block: fences of
+    /// three or more, `$$`, a callout or a quoted block, table rows and delimiter rows,
+    /// embeds, rules, and frontmatter's `---` and `...`. The first character alone said so
+    /// for `**Definition.** text`, `$x$ is a number`, `` `code` first `` and `.5`, and each
+    /// key on such a line scanned the whole note for blocks.
+    private static func canJoinABlock(_ line: String) -> Bool {
+        let content = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = content.first else { return true }
+        switch first {
+        case "`", "~": return content.hasPrefix(String(repeating: first, count: 3))
+        case "$": return content.hasPrefix("$$")
+        case "|": return true
+        case "!": return content.hasPrefix("![")
+        case ".": return content.hasPrefix("...")
+        case "-", "*", "_", ":", "=":
+            // A rule, a setext underline or a table's delimiter row: nothing but these marks.
+            return content.allSatisfy { character in "-*_:=| \t".contains(character) }
+        case ">":
+            // A plain quote is text, unless it holds a callout's header or a block of its own.
+            let quoted = MarkdownQuoteSyntax.markersRemoved(from: content).content
+            return quoted.contains("[!") || canJoinABlock(quoted)
+        default: return false
+        }
     }
 
     /// The text after a bullet list item's marker and its spaces, when `content` is one.
@@ -769,6 +821,28 @@ enum TextDifference {
         while suffixLength > 0 && (!isCharacterBoundary(oldText.length - suffixLength, in: oldText) || !isCharacterBoundary(newText.length - suffixLength, in: newText)) { suffixLength -= 1 }
         return (NSRange(location: prefixLength, length: oldText.length - suffixLength - prefixLength),
                 NSRange(location: prefixLength, length: newText.length - suffixLength - prefixLength))
+    }
+
+    /// `otherText`, with what changed from `baseText` to `editedText` made in it as well. The
+    /// note's text changed elsewhere (another device's edit adopted while an input method
+    /// composed, say) while the person typed in the older text: their characters go where they
+    /// were typed, and the other change stays. Publishing the older text with them would write
+    /// over that change with a revision that matches, and raise no conflict. Where both
+    /// changed the same place, the typing goes after the other change.
+    static func carryingEdit(from baseText: String, to editedText: String, onto otherText: String) -> String {
+        let base = baseText as NSString, edited = editedText as NSString, other = otherText as NSString
+        guard let typed = changedRanges(from: base, to: edited) else { return otherText }
+        guard let elsewhere = changedRanges(from: base, to: other) else { return editedText }
+        let typedText = edited.substring(with: typed.replacementRange)
+        let lengthChange = elsewhere.replacementRange.length - elsewhere.replacedRange.length
+        if NSMaxRange(typed.replacedRange) <= elsewhere.replacedRange.location {
+            return other.replacingCharacters(in: typed.replacedRange, with: typedText)
+        }
+        if typed.replacedRange.location >= NSMaxRange(elsewhere.replacedRange) {
+            let movedRange = NSRange(location: typed.replacedRange.location + lengthChange, length: typed.replacedRange.length)
+            return other.replacingCharacters(in: movedRange, with: typedText)
+        }
+        return other.replacingCharacters(in: NSRange(location: NSMaxRange(elsewhere.replacementRange), length: 0), with: typedText)
     }
 
     private static func isCharacterBoundary(_ location: Int, in text: NSString) -> Bool {

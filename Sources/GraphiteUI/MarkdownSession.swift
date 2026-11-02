@@ -231,7 +231,7 @@ final class MarkdownSession {
             // main actor and the saver that owns it would never run again.
             if activeSave == previousSave { activeSave = nil }
         }
-        flushPendingInsertions()
+        bringWaitingTextIntoNote()
         guard hasUnsavedChanges else {
             // Undone back to what the file holds: there is nothing left to bring back.
             discardDraft()
@@ -399,6 +399,17 @@ final class MarkdownSession {
     /// captures the text. Without an editor, the same work is applied to the model.
     @ObservationIgnored var applyPendingInsertionsBeforeSaving: (() -> Void)?
 
+    /// Writes what rendered blocks' views hold back into the text, by the view that holds it:
+    /// a table cell's draft waits for typing to pause, and a save right after the last key
+    /// (quitting, closing the tab, leaving the app) must not go without those characters.
+    @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
+
+    /// What a save must take in first: the views' drafts, then the insertions waiting.
+    private func bringWaitingTextIntoNote() {
+        for commit in draftCommitsOfViews.values { commit() }
+        flushPendingInsertions()
+    }
+
     func flushPendingInsertions() {
         guard !pendingInsertions.isEmpty else { return }
         applyPendingInsertionsBeforeSaving?()
@@ -478,14 +489,14 @@ final class MarkdownSession {
         return true
     }
 
-    private func request(_ insertion: EditorInsertion) {
+    func request(_ insertion: EditorInsertion) {
         if isEditorAttached { pendingInsertions.append(insertion); editVersion += 1 } else { applyWithoutEditor(insertion) }
     }
 
     /// The text a new insertion goes into, which already includes the insertions still
     /// waiting for the editor, and `range` of the current text moved past them; without a
     /// range, the cursor as it will be once they are applied.
-    private func insertionTarget(for range: NSRange?) -> (text: NSString, range: NSRange) {
+    func insertionTarget(for range: NSRange?) -> (text: NSString, range: NSRange) {
         var source = text as NSString
         guard !pendingInsertions.isEmpty else { return (source, range ?? selection) }
         var movedRange = range ?? selection

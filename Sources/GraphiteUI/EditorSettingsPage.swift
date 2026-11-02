@@ -112,13 +112,9 @@ struct EditorSettingsPage: View {
     @ViewBuilder private var typingSection: some View {
         if workspace.store != nil {
             Section {
-                // Only the iPad editor continues lists and pairs characters as you type;
-                // the Mac editor has neither, so they would do nothing there.
-                #if canImport(UIKit)
                 Toggle("Smart Indent Lists", isOn: vaultSetting(\.continuesLists))
                 Toggle("Auto Pair Brackets", isOn: vaultSetting(\.pairsBrackets))
                 Toggle("Auto Pair Markdown Syntax", isOn: vaultSetting(\.pairsMarkdown))
-                #endif
                 Toggle("Indent Using Tabs", isOn: vaultSetting(\.indentsWithTabs))
                 if !vaultSettings.indentsWithTabs {
                     Stepper("Tab Indent Size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)

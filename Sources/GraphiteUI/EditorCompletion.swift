@@ -213,10 +213,9 @@ struct CompletionProvider {
                                   systemImage: alias != nil ? "arrow.turn.down.right" : DocumentKind(path: path).systemImage) { [weak workspace, weak session] context in
                 guard case .link(let currentQuery) = context, currentQuery.headingQuery == nil, currentQuery.blockQuery == nil,
                       let workspace, let session else { return [] }
-                let textBeforeLookup = session.text
+                // Text typed while the index answers moves the edit: `performCompletionEdits`
+                // takes it past that typing, or says why it cannot.
                 let isNameUnique = await Self.isNameUnique(path, in: workspace)
-                // Text typed while the index answered moves the range to replace.
-                guard session.text == textBeforeLookup else { return [] }
                 let target = LinkCompletion.linkTarget(for: path, from: session.path, settings: workspace.vaultSettings, isNameUnique: isNameUnique)
                 let choice = LinkChoice(wikilinkTarget: target, markdownPath: DocumentKind(path: path) == .markdown ? target + ".md" : target,
                                         fragment: nil, label: path.stem, alias: alias)
@@ -256,7 +255,7 @@ struct CompletionProvider {
                 .sorted { leftEntry, rightEntry in (leftEntry.1?.score ?? 0) > (rightEntry.1?.score ?? 0) }
         return ranked.prefix(Self.maximumItemCount).enumerated().map { position, entry in
             let (heading, match) = entry
-            let choice = Self.fragmentChoice(notePart: query.notePart, fragment: heading.text)
+            let choice = Self.fragmentChoice(notePart: query.notePart, fragment: LinkCompletion.linkFragment(forHeading: heading.text))
             return CompletionItem(id: "heading-\(position)-\(heading.text)", title: heading.text, titleHighlights: match?.matchedRanges ?? [],
                                   subtitle: "Heading \(heading.level)", systemImage: "number") { [weak workspace] context in
                 guard case .link(let currentQuery) = context, currentQuery.headingQuery != nil, currentQuery.notePart == query.notePart,

@@ -388,10 +388,7 @@ struct MarkdownPane: View {
             run: { command in run(command) },
             noteState: { [session] in (session.text as NSString, session.selection) },
             apply: { [session] edit in session.apply(edit) },
-            insertBlock: { [session] block in
-                // After the selected text, which a block inserted over it would replace.
-                session.insertBlock(block, at: NSRange(location: NSMaxRange(session.selection), length: 0))
-            },
+            insertBlock: { [session] block in session.insertBlockFromMenu(block) },
             colors: preferences.isEnabled(.colors) ? preferences.colorPalette : nil,
             insertColor: { hex, placeholder in insertColor(hex: hex, placeholder: placeholder) },
             linkToNote: { noteState.showsLinkPicker = true },
