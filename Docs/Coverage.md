@@ -2,7 +2,19 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-01.
+Last updated: 2026-11-02.
+
+## The Mac editor's test fixture keeps one width: 2026-11-02
+
+`MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` failed now and then on CI, with `savedScrollLocation` at 2185 where 1690 is expected.
+
+- **Cause:** the CI machine's `NSScroller.preferredScrollerStyle` starts as overlay and turns classic at a moment of its own while the test process runs. AppKit then gives the fixture's scroll view a classic scroller, which narrows the text view from 600 to 583 points. TextKit 2 replaces its layout with estimates and the scroll offset stays, so another line is at the top: line 255 at once, line 263 once the viewport is laid out again. In all 68 wrong runs of a traced copy of the test on a CI machine, the order was the jump, the style change, the width change, then the check. They read 2257 rather than 2185; the likely reason is that writing the trace let the viewport be laid out first. That was not checked separately.
+- **What it is not:** the test's single main-queue hop is not the fault. When the width changed in a test here, the place was still wrong 300 ms later, so a longer wait would not help. Most failures are not slow either: 21 of the 26 below took under 3 seconds. A blocked main thread or 40 seconds of idle alone does not move the place on this Mac, and neither does load: 192 runs of the class under load, with overlay and with classic scroll bars from the start, all passed. This Mac's style does not change while a test runs.
+- **Fix, in the fixture:** `MacMarkdownEditorFixture` has no vertical scroller, so its width does not depend on the style.
+- **Checked on a CI machine under load (`hw.ncpu` × 3 busy processes, `hw.ncpu` × 2 tests at a time), each test in its own process as `swift test --parallel` does:** with the scroller, 26 of 558 runs failed (25 at 2185, 1 at 2257), and 20 runs took over 3 seconds, the longest 37 seconds. Without it, 0 of 1056 failed and none took over 3 seconds. The whole class without it: 1152 tests in 288 runs, 0 failed. Why the slow runs come with the scroller was not found.
+- **Automated tests, passing on macOS:** the `GraphiteUITests.MacMarkdownEditor` test classes, 29 tests. The full package suite was not run locally (no-sound rule); CI runs it.
+- **Not fixed here, a real fault in the app:** a new width moves the Mac editor's place. #134 reports this in a copy of the app for the sidebar and a split, and is the fix, still open. A change of scroll bar style goes the same way in the editor's fixture, but was not tried in the app. On that branch's commit `d2f4b2ca`, with the style changed after a jump in the fixture, the recorded place stayed at line 200 and the view was back at line 200 by 800 ms.
+- **Same hazard elsewhere, not changed:** ten other test files build their own scroll view with `makeScrollableTextView`, so they keep the scroller and can see this width change. One asserts on the scroll position with an estimate-sensitive check, `UiEditorMacEditorTests.swift:388`, and it only requires more than 100 points.
 
 ## MathJax's other commands typeset in formulas: 2026-11-01
 

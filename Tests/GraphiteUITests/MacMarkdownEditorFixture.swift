@@ -1,3 +1,14 @@
+/**
+ * File: MacMarkdownEditorFixture.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: A Mac note editor in a window, built as the app builds it, for the editor's tests.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 02/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import XCTest
@@ -27,6 +38,11 @@ final class MacMarkdownEditorFixture {
         session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
         coordinator = NativeMarkdownEditor.Coordinator(session: session, configuration: EditorConfiguration())
         scrollView = MarkdownMacTextView.makeScrollableTextView()
+        // No scroller, so the note keeps one width. A CI machine's preferred scroller style turns
+        // from overlay to classic at a moment of its own, after the process has started. The
+        // scroller then takes its width, TextKit drops its layout for the new one, and a test
+        // that has just scrolled finds another line at that height.
+        scrollView.hasVerticalScroller = false
         textView = try XCTUnwrap(scrollView.documentView as? MarkdownMacTextView)
         textView.isRichText = false
         textView.allowsUndo = true
