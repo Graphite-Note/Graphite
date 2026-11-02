@@ -151,7 +151,7 @@ extension NativeMarkdownEditor.Coordinator {
     }
 
     /// Unfolds the sections that hide `location`, before a jump or a find shows it.
-    private func unfoldSections(hiding location: Int, in textView: NSTextView) {
+    func unfoldSections(hiding location: Int, in textView: NSTextView) {
         foldTracking.scanIfWaiting()
         let hiding = NoteFolding.regions(hiding: location, in: foldTracking.folded(foldedKeys: session.foldedKeys))
         guard !hiding.isEmpty else { return }
