@@ -15,30 +15,21 @@ import XCTest
 
 /// A player that makes no sound and, like `AVPlayer`, counts a removal of an observer it did not issue as the
 /// error that makes `AVPlayer` raise an exception.
+@MainActor
 private final class SilentObservablePlayer: PeriodicTimeObservablePlayer {
-    private struct ObserverToken: Hashable {
-        let issuer: UUID
-        let number: Int
-    }
-
-    private let identifier = UUID()
-    private(set) var issuedObserverCount = 0
-    private var activeObserverTokens: Set<ObserverToken> = []
+    private var issuedObserverCount = 0
+    private var activeObserverNumbers: Set<Int> = []
     private(set) var foreignRemovalCount = 0
 
-    var activeObserverCount: Int { activeObserverTokens.count }
+    var activeObserverCount: Int { activeObserverNumbers.count }
+    var totalIssuedObserverCount: Int { issuedObserverCount }
 
-    func addPeriodicTimeObserver(forInterval interval: CMTime, queue: DispatchQueue?, using block: @escaping @Sendable (CMTime) -> Void) -> Any {
+    func observePeriodically(every interval: CMTime, handler: @escaping @Sendable (CMTime) -> Void) -> () -> Void {
         issuedObserverCount += 1
-        let token = ObserverToken(issuer: identifier, number: issuedObserverCount)
-        activeObserverTokens.insert(token)
-        return token
-    }
-
-    func removeTimeObserver(_ observer: Any) {
-        guard let token = observer as? ObserverToken, activeObserverTokens.remove(token) != nil else {
-            foreignRemovalCount += 1
-            return
+        let observerNumber = issuedObserverCount
+        activeObserverNumbers.insert(observerNumber)
+        return { [self] in
+            if activeObserverNumbers.remove(observerNumber) == nil { foreignRemovalCount += 1 }
         }
     }
 }
@@ -80,6 +71,6 @@ final class PlayerTimeObservationTests: XCTestCase {
         observation.start(on: player, intervalSeconds: 0.5) { _ in }
 
         XCTAssertEqual(player.activeObserverCount, 1)
-        XCTAssertEqual(player.issuedObserverCount, 2)
+        XCTAssertEqual(player.totalIssuedObserverCount, 2)
     }
 }

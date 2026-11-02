@@ -254,11 +254,22 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     private func observeZoomOfEnclosingPDFView() {
         guard zoomObservation == nil else { return }
         zoomObservation = NotificationObservation(name: .PDFViewScaleChanged, queue: .main) { [weak self] notification in
+            let zoomedViewIdentifier = notification.object.map { zoomedView in ObjectIdentifier(zoomedView as AnyObject) }
             MainActor.assumeIsolated {
-                guard let self, let zoomedView = notification.object as? PDFView, self.canvas.isDescendant(of: zoomedView) else { return }
+                guard let self, self.canvasIsInside(viewIdentifiedBy: zoomedViewIdentifier) else { return }
                 self.canvasDidChangeScale()
             }
         }
+    }
+
+    private func canvasIsInside(viewIdentifiedBy identifier: ObjectIdentifier?) -> Bool {
+        guard let identifier else { return false }
+        var ancestor: UIView? = canvas
+        while let currentView = ancestor {
+            if ObjectIdentifier(currentView) == identifier { return true }
+            ancestor = currentView.superview
+        }
+        return false
     }
 
     /// The lasso takes the touches the canvas would draw with: the Pencil, and a finger when

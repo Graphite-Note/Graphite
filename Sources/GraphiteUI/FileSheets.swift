@@ -239,7 +239,8 @@ private struct MoveSheet: View {
             guard let root = workspace.folderAccess?.root else { return }
             // A detached task does not follow this one's cancellation, so it is told when the sheet goes.
             let folderWalk = Task.detached(priority: .userInitiated) { try VaultFolderListing.folders(in: root) }
-            guard let walkedFolders = try? await withTaskCancellationHandler(operation: { try await folderWalk.value }, onCancel: { folderWalk.cancel() }) else { return } // Cancelled: the sheet is gone.
+            let walk = { try await folderWalk.value }
+            guard let walkedFolders = try? await withTaskCancellationHandler(operation: walk, onCancel: { folderWalk.cancel() }) else { return } // Cancelled: the sheet is gone.
             folders = walkedFolders
             isLoading = false
         }

@@ -150,7 +150,8 @@ struct FolderIconMaker: View {
         defer { isRemovingBackground = false }
         let source = picture
         do {
-            let pictureWithoutBackground = try await Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }.value
+            let removal = Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }
+            let pictureWithoutBackground = try await removal.value
             picture = Self.picture(afterEditOf: source, resultingIn: pictureWithoutBackground, current: picture)
         } catch PictureBackgroundRemoval.Failure.noForeground {
             problem = .noForeground

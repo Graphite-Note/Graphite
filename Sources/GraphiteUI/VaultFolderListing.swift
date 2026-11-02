@@ -18,7 +18,8 @@ enum VaultFolderListing {
     /// nobody waits for any longer must not go on.
     nonisolated static func folders(in root: URL) throws -> [VaultPath] {
         let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs]) else { return [] }
+        let options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs]
+        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: options) else { return [] }
         var folders: [VaultPath] = []
         while let location = enumerator.nextObject() as? URL {
             try Task.checkCancellation()

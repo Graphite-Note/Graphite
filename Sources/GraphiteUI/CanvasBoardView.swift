@@ -137,7 +137,9 @@ private struct CanvasBackdropLayer: View {
                              in: &context, viewport: viewport)
         }
         // A picture file changed by a drawing session or another app shows as it now is.
-        .task(id: "\(session.changeVersion)-\(environment.configuration.drawingVersion)") { await groupBackgrounds.load(for: session.file.nodes, root: environment.root) }
+        .task(id: "\(session.changeVersion)-\(environment.configuration.drawingVersion)") {
+            await groupBackgrounds.load(for: session.file.nodes, root: environment.root)
+        }
         .accessibilityHidden(true)
     }
 

@@ -13,12 +13,18 @@ import AVFoundation
 
 /// What a time observation needs of a player; `AVPlayer` is the production conformer, and tests use a
 /// fake that makes no sound.
+@MainActor
 protocol PeriodicTimeObservablePlayer: AnyObject {
-    func addPeriodicTimeObserver(forInterval interval: CMTime, queue: DispatchQueue?, using block: @escaping @Sendable (CMTime) -> Void) -> Any
-    func removeTimeObserver(_ observer: Any)
+    /// Calls `handler` at `interval` while the observation lasts. The result ends the observation, on this player.
+    func observePeriodically(every interval: CMTime, handler: @escaping @Sendable (CMTime) -> Void) -> () -> Void
 }
 
-extension AVPlayer: PeriodicTimeObservablePlayer {}
+extension AVPlayer: PeriodicTimeObservablePlayer {
+    func observePeriodically(every interval: CMTime, handler: @escaping @Sendable (CMTime) -> Void) -> () -> Void {
+        let observer = addPeriodicTimeObserver(forInterval: interval, queue: .main, using: handler)
+        return { [weak self] in self?.removeTimeObserver(observer) }
+    }
+}
 
 /// A periodic time observer together with the player that issued it.
 ///
@@ -27,20 +33,17 @@ extension AVPlayer: PeriodicTimeObservablePlayer {}
 /// from the player it shows now.
 @MainActor
 final class PlayerTimeObservation {
-    private var observedPlayer: (any PeriodicTimeObservablePlayer)?
-    private var observerToken: Any?
+    private var endObservation: (() -> Void)?
 
     /// Observes `player`, first ending the observation of the player observed before.
     func start(on player: any PeriodicTimeObservablePlayer, intervalSeconds: Double, handler: @escaping @Sendable (CMTime) -> Void) {
         stop()
-        observerToken = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: intervalSeconds, preferredTimescale: 600), queue: .main, using: handler)
-        observedPlayer = player
+        endObservation = player.observePeriodically(every: CMTime(seconds: intervalSeconds, preferredTimescale: 600), handler: handler)
     }
 
     /// Ends the observation, on the player that has it. Does nothing when there is none.
     func stop() {
-        if let observedPlayer, let observerToken { observedPlayer.removeTimeObserver(observerToken) }
-        observedPlayer = nil
-        observerToken = nil
+        endObservation?()
+        endObservation = nil
     }
 }

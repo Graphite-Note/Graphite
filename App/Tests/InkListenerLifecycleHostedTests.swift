@@ -24,8 +24,10 @@ final class InkListenerLifecycleHostedTests: XCTestCase {
         windows = []
     }
 
-    private func showInAWindow(_ view: UIView) -> UIWindow {
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+    private func showInAWindow(_ view: UIView) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.coordinateSpace.bounds
         let controller = UIViewController()
         window.rootViewController = controller
         window.makeKeyAndVisible()
@@ -38,7 +40,7 @@ final class InkListenerLifecycleHostedTests: XCTestCase {
     /// update, the known cause of the app computing without end.
     func testTheToolPickerHostGivesUpFirstResponderOnTheNextTurnNotAtOnce() async throws {
         let host = PencilToolPickerHostView(frame: CGRect(x: 0, y: 0, width: 10, height: 10))
-        _ = showInAWindow(host)
+        _ = try showInAWindow(host)
         XCTAssertTrue(host.becomeFirstResponder())
 
         host.resignFirstResponderOnNextTurn()
@@ -49,26 +51,26 @@ final class InkListenerLifecycleHostedTests: XCTestCase {
 
     /// Every page canvas opened in a PDF registered a listener for the preference and kept it for the rest of
     /// the session.
-    func testACanvasHearsTheEvenHighlighterPreferenceOnlyWhileItIsInAWindow() {
+    func testACanvasHearsTheEvenHighlighterPreferenceOnlyWhileItIsInAWindow() throws {
         let canvas = HistoryCanvasView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
         XCTAssertFalse(canvas.isFollowingEvenHighlighterPreference)
 
-        _ = showInAWindow(canvas)
+        _ = try showInAWindow(canvas)
         XCTAssertTrue(canvas.isFollowingEvenHighlighterPreference)
 
         canvas.removeFromSuperview()
         XCTAssertFalse(canvas.isFollowingEvenHighlighterPreference, "A canvas that left its window has no listener.")
 
-        let window = showInAWindow(canvas)
+        let window = try showInAWindow(canvas)
         XCTAssertTrue(canvas.isFollowingEvenHighlighterPreference, "It listens again when it is shown again.")
         XCTAssertNotNil(window)
     }
 
     /// The lasso registered a zoom listener when first switched on and never removed it, so a PDF of many
     /// pages left one for each canvas it was used on.
-    func testTheLassoListensToZoomOnlyWhileItIsOn() {
+    func testTheLassoListensToZoomOnlyWhileItIsOn() throws {
         let canvas = HistoryCanvasView(frame: CGRect(x: 0, y: 0, width: 400, height: 400))
-        _ = showInAWindow(canvas)
+        _ = try showInAWindow(canvas)
         XCTAssertFalse(canvas.inkSelection.isObservingZoom)
 
         canvas.inkSelection.isActive = true
