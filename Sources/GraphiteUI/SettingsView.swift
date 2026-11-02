@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.36
- * Date: 01/11/2026
+ * Version: 0.37
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -172,7 +172,8 @@ struct SettingsView: View {
         return KeyboardShortcutsSettingsPage(shortcuts: workspace.keyboardShortcuts, pluginCommands: communityPlugins.commands,
                                              pluginName: { identifier in communityPlugins.pluginName(of: identifier) },
                                              isCorePluginEnabled: { plugin in preferences.isEnabled(plugin) },
-                                             systemSettingsShortcuts: systemSettingsShortcuts) { change in await workspace.changeKeyboardShortcuts(change) }
+                                             systemSettingsShortcuts: systemSettingsShortcuts,
+                                             isVaultOpen: workspace.store != nil) { change in await workspace.changeKeyboardShortcuts(change) }
     }
 
     private func showRequestedCommunityPluginSettings() {
