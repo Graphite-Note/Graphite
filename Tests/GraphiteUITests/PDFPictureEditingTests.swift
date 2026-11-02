@@ -6,7 +6,7 @@
  *              step of the PDF's history, and the saved file shows the result.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 02/11/2026
  */
 import XCTest
@@ -134,7 +134,8 @@ final class PDFPictureEditingTests: XCTestCase {
 
     /// A crop reads the picture and then waits for its image: a turn in that time stays, and the crop says it did not
     /// happen (the same shape as HUNT-208, in the one edit that still waits). Going on to replace the picture it read
-    /// ended this process before the check was there.
+    /// put the old picture back before the check was there. The crop has an undo group as `step` gives one: with
+    /// `groupsByEvent` off, its step registered outside a group aborted the test process instead of failing it.
     func testATurnWhileACropIsWorkedOutIsKeptAndTheCropIsRefused() async throws {
         let (session, _) = try await openSession()
         try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
@@ -143,7 +144,11 @@ final class PDFPictureEditingTests: XCTestCase {
         let selection = try XCTUnwrap(session.selectedPicture)
         let cropRegion = CGRect(x: placed.bounds.minX, y: placed.bounds.minY, width: placed.bounds.width / 2, height: placed.bounds.height)
 
-        let crop = Task { @MainActor in try await session.cropPicture(selection, to: cropRegion) }
+        let crop = Task { @MainActor in
+            session.undoManager.beginUndoGrouping()
+            defer { session.undoManager.endUndoGrouping() }
+            try await session.cropPicture(selection, to: cropRegion)
+        }
         await Task.yield()
         try await step(in: session) { try session.rotatePictureRight(selection) }
         do {
