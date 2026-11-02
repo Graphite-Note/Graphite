@@ -16,6 +16,15 @@ About 5 % of the formulas in the owner's vault showed as LaTeX source in the rea
 - **Drawn differently from MathJax:** `\middle` is spaced as an ordinary atom; `\hdashline` is solid and a preamble's `:` is not drawn; symbols with no bold form in Latin Modern, such as `\boldsymbol{\times}`, stay regular; `\textcircled`, `\llbracket` and `\oiint` are drawn where MathJax reports an error, as KaTeX draws them.
 - **Found on the way, not fixed:** named colors are not read: `\textcolor{red}` draws in the text color (hex colors work), which the vault has about 190 times. `\tfrac` in display math is as large as `\frac` (2,754 uses). An operator right after a display may hang past the column when a formula wraps, as after a fraction or a root.
 
+
+## The Mac editor keeps its line when its width changes: 2026-11-02
+
+A new width makes TextKit 2 replace its layout with estimates while the scroll offset stays the same number, so the Mac editor showed another passage: about 60 lines further in a 300-line note. `MarkdownMacEditorTopLineHold` holds the line at the top when the width begins to change, or when the editor leaves the window, and returns to it 0.35 seconds after the width stops changing. Scrolling, a jump or an edit in that time releases it. This is the Mac side of `HUNT-065`.
+
+- **Tests:** `MacMarkdownEditorWidthChangeTests`, 10 tests; 5 of the first 9 fail without the fix, and the 10th was added after the split check below. They pass with the scroller on, and with it off as `MacMarkdownEditorFixture` has it from #128.
+- **Checked in a copy of the Mac app, with a generated 400-paragraph note:** hiding the Files sidebar, opening a split (the text rewraps) and closing it left paragraph 192 at the top, and switching from reading view opened the editor at the passage read (paragraph 269). The first split check failed: a split takes the editor out of the window and gives it width 0 before its new width, which is why leaving the window also holds the line.
+- **Limits:** until the width settles the view shows another passage, for 0.35 seconds in a split and throughout a window drag. Going back on every step of a drag would lay out everything before the line each time: measured at 12 ms in a 40 KB note, 125 ms in 400 KB and 1.3 s in 4 MB. Estimated positions cost under 1 ms but landed off target, in the longer notes at the note's start. The line held is a whole paragraph, so a paragraph taller than the view returns to its start. A window drag itself and a tab hidden during a resize were not checked in the app, only by tests that change the width and move the editor out of the window.
+
 ## KaTeX arrows typeset, and the Mac editor opens at the passage read: 2026-10-24
 
 Two faults reported from the owner's Mac in `Advanced Analog ic/3_SmallSignalAnalysis_II.md` (51,927 words):
