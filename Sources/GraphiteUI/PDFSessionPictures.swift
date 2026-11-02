@@ -5,8 +5,8 @@
  * Description: The picture of a PDF page that is selected for moving, resizing or removing.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 02/11/2026
+ * Version: 0.9
+ * Date: 03/11/2026
  */
 import Foundation
 import PDFKit
@@ -157,7 +157,10 @@ extension PDFSession {
     /// Keeps the part of the picture shown inside `pageBounds`, a rectangle of the page's
     /// coordinates inside the picture's bounds, given as the bounds are: before the picture
     /// is turned by hand.
-    func cropPicture(_ selection: PDFPictureSelection, to pageBounds: CGRect) async throws {
+    func cropPicture(_ selection: PDFPictureSelection, to pageBounds: CGRect,
+                     croppingImage cropImage: @Sendable (Data, CGRect) async throws -> Data = { imageData, imageRegion in
+                         try await Task.detached(priority: .userInitiated) { try PictureEditing.cropped(imageData, to: imageRegion) }.value
+                     }) async throws {
         let (_, picture) = try pageAndPicture(of: selection)
         let pictureBounds = picture.bounds
         let croppedBounds = pageBounds.intersection(pictureBounds)
@@ -172,7 +175,7 @@ extension PDFSession {
         let imageRegion = PictureEditing.imageRegion(forDisplayedRegion: unturnedRegion, turnedClockwise: -picture.quarterTurns)
         let pictureData = picture.imageData
         var cropped = picture
-        cropped.imageData = try await Task.detached(priority: .userInitiated) { try PictureEditing.cropped(pictureData, to: imageRegion) }.value
+        cropped.imageData = try await cropImage(pictureData, imageRegion)
         // The bar is back while the crop is worked out; a picture turned or moved meanwhile is not put back as it was.
         guard try pageAndPicture(of: selection).1 == picture else { throw PDFPictureCropError.pictureChangedMeanwhile }
         // The part kept stays where it was shown: a picture of its own, turned as the

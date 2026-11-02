@@ -6,8 +6,8 @@
  *              step of the PDF's history, and the saved file shows the result.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 03/11/2026
  */
 import XCTest
 import PDFKit
@@ -144,13 +144,21 @@ final class PDFPictureEditingTests: XCTestCase {
         let selection = try XCTUnwrap(session.selectedPicture)
         let cropRegion = CGRect(x: placed.bounds.minX, y: placed.bounds.minY, width: placed.bounds.width / 2, height: placed.bounds.height)
 
+        // The crop stops where it waits for its image, so the turn always falls in that time.
+        let (cropStarted, cropStartedContinuation) = AsyncStream<Void>.makeStream()
+        let (imageMayFinish, imageMayFinishContinuation) = AsyncStream<Void>.makeStream()
         let crop = Task { @MainActor in
             session.undoManager.beginUndoGrouping()
             defer { session.undoManager.endUndoGrouping() }
-            try await session.cropPicture(selection, to: cropRegion)
+            try await session.cropPicture(selection, to: cropRegion) { imageData, imageRegion in
+                cropStartedContinuation.finish()
+                for await _ in imageMayFinish {}
+                return try PictureEditing.cropped(imageData, to: imageRegion)
+            }
         }
-        await Task.yield()
+        for await _ in cropStarted {}
         try await step(in: session) { try session.rotatePictureRight(selection) }
+        imageMayFinishContinuation.finish()
         do {
             try await crop.value
             XCTFail("The crop went on with the picture as it was before the turn.")
