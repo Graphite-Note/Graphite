@@ -5,7 +5,7 @@
  * Description: Settings > Editor: how notes open and look while they are written, and how typing behaves.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -121,7 +121,7 @@ struct EditorSettingsPage: View {
                 #endif
                 Toggle("Indent Using Tabs", isOn: vaultSetting(\.indentsWithTabs))
                 if !vaultSettings.indentsWithTabs {
-                    Stepper("Tab indent size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)
+                    Stepper("Tab Indent Size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)
                 }
                 Toggle("Auto Convert HTML on Paste", isOn: vaultSetting(\.convertsPastedHTML))
             } header: {

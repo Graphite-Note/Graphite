@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.56
+ * Version: 0.61
  * Date: 01/11/2026
  */
 
@@ -799,7 +799,7 @@ private struct CreateDocumentSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(kind.namePrompt, text: $name)
+                    TextField(kind.untitledName, text: $name)
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(createIfNamed)
@@ -826,13 +826,19 @@ private struct CreateDocumentSheet: View {
         .onAppear { isNameFocused = true }
     }
 
+    /// An empty name is allowed: the file is then called "Untitled", as in Obsidian.
+    private var chosenName: String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? kind.untitledName : trimmedName
+    }
+
     private var nameProblem: String? {
-        FileNameRules.problem(with: name.trimmingCharacters(in: .whitespacesAndNewlines), isNote: kind == .note)
+        FileNameRules.problem(with: chosenName, isNote: kind == .note)
     }
 
     private func createIfNamed() {
         guard nameProblem == nil else { return }
-        create(name.trimmingCharacters(in: .whitespacesAndNewlines))
+        create(chosenName)
         dismiss()
     }
 }

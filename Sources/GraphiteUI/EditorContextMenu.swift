@@ -1,3 +1,14 @@
+/**
+ * File: EditorContextMenu.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The editor's context menu, and the Format and Insert menus of the toolbar and the Mac menu bar, drawn from the same entries.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 #if canImport(UIKit)
@@ -59,8 +70,9 @@ struct EditorContextMenuEntry {
 }
 
 /// The items of Obsidian's editor context menu that Graphite offers, in Obsidian's order:
-/// links, then the Color, Format, Paragraph and Insert submenus. Titles and symbols are the
-/// toolbar's. The entries are built when a menu opens, never while typing.
+/// links, then the Color, Format, Paragraph and Insert submenus. The toolbar's and the Mac menu bar's
+/// Format and Insert menus are made from the same entries (`formatMenuEntries`, `insertMenuEntries`),
+/// so the three never differ. The entries are built when a menu opens, never while typing.
 ///
 /// Left out, because Graphite has no working command for them: Search for the selection and
 /// Format › Clear Formatting. Color › Custom… is left out too: the Mac's color panel reports
@@ -76,10 +88,10 @@ enum EditorContextMenuContent {
 
     static func entries(actions: EditorContextMenuActions, editorActions: EditorActions) -> [EditorContextMenuEntry] {
         var submenus: [EditorContextMenuEntry] = []
-        if let colors = actions.colors { submenus.append(colorMenu(colors: colors, actions: actions)) }
-        submenus.append(formatMenu(actions: actions))
+        if let colors = actions.colors { submenus.append(colorMenu(colors: colors, actions: actions, checksColorRemoval: true)) }
+        submenus.append(.submenu("Format", "textformat", formatEntries(actions: actions)))
         submenus.append(paragraphMenu(actions: actions))
-        submenus.append(insertMenu(actions: actions, editorActions: editorActions))
+        submenus.append(.submenu("Insert", "paperclip", insertEntries(actions: actions, editorActions: editorActions)))
         return [
             .group([
                 .action("Add Link", "link") { actions.run(.insertWikilink) },
@@ -89,13 +101,30 @@ enum EditorContextMenuContent {
         ]
     }
 
-    private static func colorMenu(colors: [PaletteColor], actions: EditorContextMenuActions) -> EditorContextMenuEntry {
+    /// The Format menu of the menu bar and the toolbar: the Format submenu's items, then the Color
+    /// and Paragraph submenus. Built while a view is built, so it never reads the note: Color's
+    /// Remove, which is dimmed when the selection has no color, is left to the context menu.
+    static func formatMenuEntries(actions: EditorContextMenuActions) -> [EditorContextMenuEntry] {
+        var submenus: [EditorContextMenuEntry] = []
+        if let colors = actions.colors { submenus.append(colorMenu(colors: colors, actions: actions, checksColorRemoval: false)) }
+        submenus.append(paragraphMenu(actions: actions))
+        return formatEntries(actions: actions) + [.group(submenus)]
+    }
+
+    /// The Insert menu of the menu bar and the toolbar, with the items of the Insert submenu.
+    static func insertMenuEntries(actions: EditorContextMenuActions, editorActions: EditorActions) -> [EditorContextMenuEntry] {
+        insertEntries(actions: actions, editorActions: editorActions)
+    }
+
+    /// - Parameter checksColorRemoval: Whether Remove is dimmed when the selection has no color, which reads the note.
+    private static func colorMenu(colors: [PaletteColor], actions: EditorContextMenuActions, checksColorRemoval: Bool) -> EditorContextMenuEntry {
         let paletteHexByName = Dictionary(colors.map { color in (color.name, color.hex) }, uniquingKeysWith: { firstHex, _ in firstHex })
-        let noteState = actions.noteState()
-        let canRemoveColor = TextColorMarkup.removingColor(in: noteState.text, selection: noteState.selection, paletteHexByName: paletteHexByName) != nil
         let colorEntries: [EditorContextMenuEntry] = colors.map { color in
             .action(color.name) { actions.insertColor(color.hex, color.name) }
         }
+        guard checksColorRemoval else { return .submenu("Color", "paintpalette", colorEntries) }
+        let noteState = actions.noteState()
+        let canRemoveColor = TextColorMarkup.removingColor(in: noteState.text, selection: noteState.selection, paletteHexByName: paletteHexByName) != nil
         let removeEntry = EditorContextMenuEntry.action("Remove", "xmark.circle", isEnabled: canRemoveColor) {
             applying(actions) { text, selection in
                 TextColorMarkup.removingColor(in: text, selection: selection, paletteHexByName: paletteHexByName)
@@ -104,8 +133,8 @@ enum EditorContextMenuContent {
         return .submenu("Color", "paintpalette", [.group(colorEntries), .group([removeEntry])])
     }
 
-    private static func formatMenu(actions: EditorContextMenuActions) -> EditorContextMenuEntry {
-        .submenu("Format", "textformat", [
+    private static func formatEntries(actions: EditorContextMenuActions) -> [EditorContextMenuEntry] {
+        [
             .action("Bold", "bold") { actions.run(.bold) },
             .action("Italic", "italic") { actions.run(.italic) },
             .action("Strikethrough", "strikethrough") { actions.run(.strikethrough) },
@@ -113,7 +142,7 @@ enum EditorContextMenuContent {
             .action("Code", "chevron.left.forwardslash.chevron.right") { actions.run(.code) },
             .action("Inline Math", "function") { actions.run(.math) },
             .action("Comment", "eye.slash") { actions.run(.comment) },
-        ])
+        ]
     }
 
     private static func paragraphMenu(actions: EditorContextMenuActions) -> EditorContextMenuEntry {
@@ -134,7 +163,7 @@ enum EditorContextMenuContent {
         ])
     }
 
-    private static func insertMenu(actions: EditorContextMenuActions, editorActions: EditorActions) -> EditorContextMenuEntry {
+    private static func insertEntries(actions: EditorContextMenuActions, editorActions: EditorActions) -> [EditorContextMenuEntry] {
         let blockEntries: [EditorContextMenuEntry] = [
             .action("Table", "tablecells") { actions.insertBlock(tableBlock) },
             .action("Callout", "text.bubble") { actions.insertBlock(calloutBlock) },
@@ -150,9 +179,10 @@ enum EditorContextMenuContent {
         if let takePhoto = editorActions.takePhoto { attachmentEntries.append(.action("Take Photo…", "camera") { takePhoto() }) }
         if let scanDocument = editorActions.scanDocument { attachmentEntries.append(.action("Scan Document…", "doc.viewfinder") { scanDocument() }) }
         if let attach = editorActions.attach { attachmentEntries.append(.action("Attachment…", "doc.badge.plus") { attach() }) }
+        if let newNotebook = editorActions.newNotebook { attachmentEntries.append(.action("New Notebook…", "book.closed") { newNotebook() }) }
         if let draw = editorActions.draw { attachmentEntries.append(.action("Draw", "pencil.tip.crop.circle.badge.plus") { draw() }) }
         if let template = actions.template { attachmentEntries.append(.action("Template…", "doc.on.doc") { template() }) }
-        return .submenu("Insert", "paperclip", [.group(blockEntries), .group(attachmentEntries)])
+        return [.group(blockEntries), .group(attachmentEntries)]
     }
 
     /// Computes an edit on the note as it is when the item is chosen, and applies it.

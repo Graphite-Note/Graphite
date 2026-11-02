@@ -5,7 +5,7 @@
  * Description: The Rename, New Folder and Move sheets of the file tree.
  *
  * Authors: felixchvl
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -186,6 +186,28 @@ private struct NewFolderSheet: View {
     }
 }
 
+/// What the Move sheet shows when it lists no folder: that there is nowhere else to go, with a way to
+/// make a folder, or that the typed words match none.
+private struct MoveSheetNoFolders: View {
+    let query: String
+    let createFolder: () -> Void
+
+    var body: some View {
+        if query.isEmpty {
+            ContentUnavailableView {
+                Label("No Other Folders", systemImage: "folder.badge.plus")
+            } description: {
+                Text("There is no other folder to move into yet.")
+            } actions: {
+                // The sheet gives way to the one that names the new folder.
+                Button("New Folder", action: createFolder)
+            }
+        } else {
+            ContentUnavailableView.search(text: query)
+        }
+    }
+}
+
 /// Obsidian's "Move file to…": every folder in the vault, searchable.
 private struct MoveSheet: View {
     @Bindable var workspace: WorkspaceModel
@@ -225,7 +247,7 @@ private struct MoveSheet: View {
             }
             .overlay {
                 if isLoading { ProgressView() }
-                else if listedFolders.isEmpty { ContentUnavailableView.search(text: query) }
+                else if listedFolders.isEmpty { MoveSheetNoFolders(query: query) { workspace.fileSheet = .newFolder(in: .root) } }
             }
             .searchable(text: $query, prompt: "Find a folder")
             .navigationTitle(paths.count == 1 ? "Move “\(paths[0].name)”" : "Move \(paths.count) Items")

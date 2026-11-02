@@ -6,7 +6,7 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.12
  * Date: 01/11/2026
  */
 
@@ -40,6 +40,8 @@ struct QuickPalette: View {
     let emptyMessage: String
     /// True while the items are still for an earlier query; Return then waits for them.
     var isUpdating = false
+    /// What the other side of the split is called in the menu of a file; the workspace's wording.
+    var otherSideTitle = "Open to the Right"
     let close: () -> Void
     @State private var selectedIndex = 0
     @State private var isSubmitPending = false
@@ -67,6 +69,15 @@ struct QuickPalette: View {
     private static let secondaryColor = Color(nsColor: .secondaryLabelColor)
     #endif
     @Environment(\.accent) private var accent
+
+    /// How a file's menu is reached: a touch screen has no right button.
+    static var moreMenuHint: String {
+        #if os(macOS)
+        "right-click"
+        #else
+        "touch and hold"
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,7 +117,7 @@ struct QuickPalette: View {
                                     .contextMenu {
                                         if let openElsewhere = item.openElsewhere {
                                             Button("Open in New Tab", systemImage: "plus.rectangle.on.rectangle") { Self.perform({ openElsewhere(.newTab) }, closing: close) }
-                                            Button("Open on the Other Side", systemImage: "rectangle.split.2x1") { Self.perform({ openElsewhere(.otherGroup) }, closing: close) }
+                                            Button(otherSideTitle, systemImage: "rectangle.split.2x1") { Self.perform({ openElsewhere(.otherGroup) }, closing: close) }
                                         }
                                     }
                             }
@@ -125,7 +136,7 @@ struct QuickPalette: View {
                 if !isCompactWidth && items.contains(where: { item in item.openElsewhere != nil }) {
                     Divider()
                     // The text variation selector keeps ↩ from being drawn as an emoji.
-                    Text("⌘↩\u{FE0E} new tab    ⌥⌘↩\u{FE0E} other side    long press for more")
+                    Text("⌘↩\u{FE0E} new tab    ⌥⌘↩\u{FE0E} other side    \(Self.moreMenuHint) for more")
                         .font(.caption)
                         .foregroundStyle(Self.secondaryColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -260,7 +271,7 @@ struct QuickSwitcher: View {
     var body: some View {
         QuickPalette(prompt: "Find or create a note…", query: $query, items: items,
                      emptyMessage: query.isEmpty ? "Files you open appear here." : "No files match.",
-                     isUpdating: matchedQuery != query, close: close)
+                     isUpdating: matchedQuery != query, otherSideTitle: workspace.openOnOtherSideTitle, close: close)
             .task(id: query) {
                 do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
                 let searchedQuery = query

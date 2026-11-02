@@ -354,7 +354,8 @@ final class UiMarkdownPaneFixTests: XCTestCase {
 
     // MARK: Word count
 
-    func testWordCountMatchesTheParsedBodyCount() throws {
+    /// Obsidian's word rule has its own tests (`ConsistencyBugHuntTests`); here the text counted is the body.
+    func testWordCountCountsTheParsedBody() throws {
         let samples = [
             "",
             "one",
@@ -365,9 +366,8 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         ]
         for sample in samples {
             let parsedBody = try MarkdownSemantics.parse(sample).body
-            let expectedWordCount = parsedBody.split(whereSeparator: { character in character.isWhitespace || character.isNewline }).count
             let counts = NoteTextCounts(countingBodyOf: sample)
-            XCTAssertEqual(counts.wordCount, expectedWordCount, sample)
+            XCTAssertEqual(counts.wordCount, NoteWordCountRule.wordCount(in: parsedBody), sample)
             XCTAssertEqual(counts.characterCount, parsedBody.count, sample)
         }
     }

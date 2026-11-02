@@ -114,7 +114,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 6) {
             NotebookSettingsCard {
-                TextField("Untitled Notebook", text: $name)
+                TextField(CreationKind.notebook.untitledName, text: $name)
                     .submitLabel(.done)
                     .onSubmit(createIfValid)
                     .accessibilityLabel("Name")
@@ -166,7 +166,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
 
     private var chosenName: String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? "Untitled Notebook" : trimmedName
+        return trimmedName.isEmpty ? CreationKind.notebook.untitledName : trimmedName
     }
 
     private func createIfValid() {
