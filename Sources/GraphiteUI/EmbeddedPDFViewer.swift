@@ -5,7 +5,7 @@
  * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
  *
  * Authors: Bahey Shalash
- * Version: 0.13
+ * Version: 0.14
  * Date: 01/11/2026
  */
 
@@ -126,6 +126,8 @@ struct EmbeddedPDFViewer: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
         .onDisappear { scheduleRelease() }
+        // Reading blocks keep their row when the note changes above them, so the place can name another PDF.
+        .onChange(of: location) { _, _ in showAnotherPDF() }
         // Runs each time the embed appears, and again after a reload.
         .task(id: loadGeneration) {
             isVisible = true
@@ -540,24 +542,46 @@ struct EmbeddedPDFViewer: View {
         Task {
             try? await Task.sleep(for: Self.releaseDelay)
             guard !isVisible else { return }
-            let sessions = sessions
-            do {
-                try await closingSession.saveBeforeClosing()
-            } catch {
-                closingSession.errorMessage = error.localizedDescription
-                // Shown again meanwhile: the banner offers a copy or reload.
-                if isVisible, session === closingSession { return }
-                // The note may be gone with this view. The session and its edits are kept
-                // until an embed of this PDF shows them again, with the banner.
-                if session === closingSession { session = nil }
-                sessions.remove(closingSession)
-                sessions.keep(closingSession)
-                return
-            }
-            guard !isVisible, session === closingSession else { return }
-            session = nil
-            sessions.remove(closingSession)
+            await saveAndRelease(closingSession)
         }
+    }
+
+    /// The place in the note now names another PDF: the one shown is saved and released at once, and the
+    /// new one loads, as when the embed is first shown.
+    private func showAnotherPDF() {
+        stopAnnotating()
+        conflictNotice = nil
+        loadingError = nil
+        pageText = ""
+        guard let closingSession = session else {
+            loadGeneration += 1
+            return
+        }
+        session = nil
+        loadGeneration += 1
+        Task { await saveAndRelease(closingSession) }
+    }
+
+    private func saveAndRelease(_ closingSession: PDFSession) async {
+        let sessions = sessions
+        do {
+            try await closingSession.saveBeforeClosing()
+        } catch {
+            closingSession.errorMessage = error.localizedDescription
+            // Shown again meanwhile: the banner offers a copy or reload.
+            if isVisible, session === closingSession { return }
+            // The note may be gone with this view. The session and its edits are kept
+            // until an embed of this PDF shows them again, with the banner.
+            if session === closingSession { session = nil }
+            sessions.remove(closingSession)
+            sessions.keep(closingSession)
+            return
+        }
+        if session === closingSession {
+            guard !isVisible else { return }
+            session = nil
+        }
+        sessions.remove(closingSession)
     }
 
     // MARK: Background time

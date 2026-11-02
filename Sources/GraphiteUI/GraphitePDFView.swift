@@ -1005,7 +1005,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         presentedScreenObserver.isObserving = false
         toolPicker.setVisible(false, forFirstResponder: toolPickerHost)
         toolPickerHost.takesFirstResponderBackFromSelections = false
-        toolPickerHost.resignFirstResponder()
+        // Called as SwiftUI dismantles the view, in the middle of its update.
+        toolPickerHost.resignFirstResponderOnNextTurn()
         for canvas in canvasesByPage.values { release(canvas) }
         canvasesByPage.removeAll()
         session.unregisterPendingInkRecordWriter(for: self)

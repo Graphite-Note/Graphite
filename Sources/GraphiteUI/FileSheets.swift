@@ -5,7 +5,7 @@
  * Description: The Rename, New Folder and Move sheets of the file tree.
  *
  * Authors: felixchvl
- * Version: 0.2
+ * Version: 0.3
  * Date: 01/11/2026
  */
 
@@ -237,20 +237,12 @@ private struct MoveSheet: View {
         .sheetMinimumSize(width: 380, height: 480)
         .task {
             guard let root = workspace.folderAccess?.root else { return }
-            folders = await Task.detached(priority: .userInitiated) { Self.folders(in: root) }.value
+            // A detached task does not follow this one's cancellation, so it is told when the sheet goes.
+            let folderWalk = Task.detached(priority: .userInitiated) { try VaultFolderListing.folders(in: root) }
+            let walk = { try await folderWalk.value }
+            guard let walkedFolders = try? await withTaskCancellationHandler(operation: walk, onCancel: { folderWalk.cancel() }) else { return } // Cancelled: the sheet is gone.
+            folders = walkedFolders
             isLoading = false
         }
-    }
-
-    /// Every visible folder, found without reading any file.
-    nonisolated private static func folders(in root: URL) -> [VaultPath] {
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
-        guard let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles, .skipsPackageDescendants, .producesRelativePathURLs]) else { return [] }
-        var folders: [VaultPath] = []
-        while let location = enumerator.nextObject() as? URL {
-            guard let values = try? location.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true else { enumerator.skipDescendants(); continue }
-            if values.isDirectory == true, let folder = try? VaultPath(location.relativePath) { folders.append(folder) }
-        }
-        return folders.sorted { leftFolder, rightFolder in leftFolder.rawValue.localizedStandardCompare(rightFolder.rawValue) == .orderedAscending }
     }
 }
