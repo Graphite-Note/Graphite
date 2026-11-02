@@ -140,7 +140,7 @@
     }
 
     var typographicBounds: CGRect {
-      base.typographicBounds.rect
+      base.contentBounds
     }
 
     var url: URL? {
@@ -180,7 +180,8 @@
 
   final class LiveTextRunSlice: TextRunSlice {
     var typographicBounds: CGRect {
-      base.typographicBounds.rect
+      // An attachment is one slice of its run, and the slice's bounds are its placeholder's.
+      base.run.attachment == nil ? base.typographicBounds.rect : base.run.contentBounds
     }
 
     let characterRange: Range<Int>

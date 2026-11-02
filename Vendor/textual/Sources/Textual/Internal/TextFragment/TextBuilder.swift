@@ -13,8 +13,9 @@ import SwiftUI
 // attributed string. The cache has a count limit of 10 to prevent unbounded growth.
 //
 // Runs with attachments are converted to placeholder images sized by the attachment's
-// sizeThatFits(_:in:) result. Placeholders are tagged with AttachmentAttribute so overlays
-// can identify and render the actual attachment views at the resolved layout positions.
+// sizeThatFits(_:in:) result, or for one that hangs below the baseline by its
+// HangingAttachmentPlacement (Graphite patch 22). Placeholders are tagged with AttachmentAttribute
+// so overlays can identify and render the actual attachment views at the resolved layout positions.
 
 extension TextFragment {
   @MainActor @Observable final class TextBuilder {
@@ -89,6 +90,9 @@ extension Text {
     attachmentSizes: [AttachmentKey: CGSize],
     in environment: TextEnvironmentValues
   ) {
+    // The font of the fragment, not of the run: a placeholder sets no font of its own.
+    let fontLineDescent = attachmentSizes.isEmpty ? 0 : environment.fontLineDescent
+
     let textValues = attributedString.runs.map { run in
       var text: Text
 
@@ -101,12 +105,21 @@ extension Text {
 
       if let key, let size = attachmentSizes[key] {
         // Create placeholder
-        text = Text(placeholderSize: size)
-          .baselineOffset(key.attachment.baselineOffset(in: runEnvironment))
+        let baselineOffset = key.attachment.baselineOffset(in: runEnvironment)
+        let hangingPlacement = key.attachment.isSetInALineOfText
+          ? HangingAttachmentPlacement(
+            attachmentSize: size,
+            baselineOffset: baselineOffset,
+            fontLineDescent: fontLineDescent
+          )
+          : nil
+        text = Text(placeholderSize: hangingPlacement?.placeholderSize ?? size)
+          .baselineOffset(hangingPlacement?.placeholderBaselineOffset ?? baselineOffset)
           .customAttribute(
             AttachmentAttribute(
               key.attachment,
-              presentationIntent: run.presentationIntent
+              presentationIntent: run.presentationIntent,
+              hangingPlacement: hangingPlacement
             )
           )
       } else {

@@ -44,7 +44,7 @@ struct TextLinkInteraction: ViewModifier {
           )
           let runs = layout.flatMap(\.self)
           let run = runs.first { run in
-            run.typographicBounds.rect.contains(localPoint)
+            run.contentBounds.contains(localPoint)
           }
           guard let url = run?.url else {
             return

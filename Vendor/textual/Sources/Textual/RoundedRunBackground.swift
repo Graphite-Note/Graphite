@@ -75,7 +75,7 @@ struct RoundedRunBackgrounds: ViewModifier {
           if let finished = current { shapes.append(finished); current = nil }
           continue
         }
-        let bounds = run.typographicBounds.rect.offsetBy(dx: origin.x, dy: origin.y)
+        let bounds = run.contentBounds.offsetBy(dx: origin.x, dy: origin.y)
         if let existing = current, existing.background == background {
           current = (existing.frame.union(bounds), background)
         } else {
