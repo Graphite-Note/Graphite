@@ -5,7 +5,7 @@
  * Description: A Markdown table read from its source, and the edits of its rows, columns and cells.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.7
  * Date: 02/11/2026
  */
 
@@ -82,7 +82,23 @@ public enum MarkdownTableEditing {
         if column < line.cells.count, text == editableText(ofCellSource: layout.text(in: line.cells[column].textRange)) {
             return source
         }
-        return layout.applying(layout.replacements(settingCellTexts: [column: cellSafeText(text)], in: line))
+        return layout.applying(layout.replacements(settingCellTexts: [column: cellSafeText(text, writtenIn: column, of: line, layout: layout)], in: line))
+    }
+
+    /// Whether `replacingCell` with this text changes that cell's text alone. A `%%` in the text
+    /// can pair with a marker in another cell, or leave one without its partner, so that the
+    /// comments hide other pipes: the same row and column then name another cell, and an editor
+    /// holding them would write over it.
+    public static func keepsOtherCellsInPlace(writing text: String, row: Int, column: Int, in source: String) -> Bool {
+        guard let written = replacingCell(row: row, column: column, with: text, in: source), written != source,
+              let layout = MarkdownTableLayout(source: source) else { return true }
+        let table = layout.table
+        guard let writtenTable = MarkdownTable.parse(written), writtenTable.alignments == table.alignments else { return false }
+        var expectedRows = table.rows.map { cells in cells.map(\.source) }
+        expectedRows[row] += Array(repeating: "", count: max(column + 1 - expectedRows[row].count, 0))
+        let safeText = cellSafeText(text, writtenIn: column, of: layout.rowLine(row), layout: layout)
+        expectedRows[row][column] = safeText.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
+        return writtenTable.rows.map { cells in cells.map(\.source) } == expectedRows
     }
 
     /// Inserts an empty body row so that it becomes body row `bodyRowIndex` (0 = first body row;
@@ -252,12 +268,12 @@ public enum MarkdownTableEditing {
 
     private static let lineBreakTagPattern = MarkdownTableEditingPattern.lineBreakTagPattern.compiled()
 
-    /// Escapes every pipe that is not already escaped (a pipe after a backslash, as the
-    /// parser reads it) and writes each line break, `\r\n` included, as one `<br>`. A pipe in a
-    /// `%%` comment separates nothing, and stays as it is written.
-    private static func cellSafeText(_ text: String) -> String {
-        let commentRanges = ObsidianComments.commentRanges(in: text)
-        var safeUnits: [UInt16] = []
+    /// Writes each line break, `\r\n` included, as one `<br>`, and escapes every pipe that is not
+    /// already escaped (a pipe after a backslash, as the parser reads it). A pipe in a `%%` comment
+    /// separates nothing and stays as it is written; which comment is read with the text in its
+    /// place, since its markers can pair with others in the table instead of with each other.
+    private static func cellSafeText(_ text: String, writtenIn column: Int, of line: MarkdownTableLineLayout, layout: MarkdownTableLayout) -> String {
+        var oneLineUnits: [UInt16] = []
         let units = Array(text.utf16)
         var index = 0
         while index < units.count {
@@ -266,15 +282,23 @@ public enum MarkdownTableEditing {
                 if unit == MarkdownTableUnit.carriageReturn, index + 1 < units.count, units[index + 1] == MarkdownTableUnit.lineFeed {
                     index += 1
                 }
-                safeUnits.append(contentsOf: Array("<br>".utf16))
-            } else if unit == MarkdownTableUnit.pipe, safeUnits.last != MarkdownTableUnit.backslash,
-                      !commentRanges.contains(where: { commentRange in NSLocationInRange(index, commentRange) }) {
-                safeUnits.append(MarkdownTableUnit.backslash)
-                safeUnits.append(unit)
+                oneLineUnits.append(contentsOf: Array("<br>".utf16))
             } else {
-                safeUnits.append(unit)
+                oneLineUnits.append(unit)
             }
             index += 1
+        }
+        guard oneLineUnits.contains(MarkdownTableUnit.pipe) else { return String(decoding: oneLineUnits, as: UTF16.self) }
+        let place = column < line.cells.count ? line.cells[column].textRange : line.trimmedRange.upperBound..<line.trimmedRange.upperBound
+        let written = Array(layout.units[..<place.lowerBound]) + oneLineUnits + Array(layout.units[place.upperBound...])
+        let commentRanges = ObsidianComments.commentRanges(in: String(decoding: written, as: UTF16.self))
+        var safeUnits: [UInt16] = []
+        for (offset, unit) in oneLineUnits.enumerated() {
+            if unit == MarkdownTableUnit.pipe, safeUnits.last != MarkdownTableUnit.backslash,
+               !commentRanges.contains(where: { commentRange in NSLocationInRange(place.lowerBound + offset, commentRange) }) {
+                safeUnits.append(MarkdownTableUnit.backslash)
+            }
+            safeUnits.append(unit)
         }
         return String(decoding: safeUnits, as: UTF16.self)
     }

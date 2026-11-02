@@ -5,7 +5,7 @@
  * Description: What Live Preview draws as rendered blocks: properties, tables, math, embeds, callouts, rules.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 02/11/2026
  */
 
@@ -156,5 +156,17 @@ final class LivePreviewBlockTests: XCTestCase {
         XCTAssertEqual(MarkdownTable.parse(past.markdown)?.rows[1].count, 1, "The rest of the row is hidden.")
         let before = LivePreviewBlockScanner.blocks(in: "Start %% hidden\nmore %% | a | b |\n| - | - |\n" as NSString).first { block in block.kind == .table }
         XCTAssertEqual(before?.isCutByComment, true)
+    }
+
+    /// Row commands move whole lines, so they would split this comment: what is left of it shows
+    /// the hidden text, or pairs with a later marker and hides what lies between.
+    func testACommentOverARowBreakLeavesTheTableToSourceEditing() throws {
+        let table = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| x | y |\n| - | - |\n| a | b %%\n| c %% | d |\n" as NSString).first)
+        XCTAssertEqual(table.kind, .table)
+        XCTAssertTrue(table.isCutByComment)
+        let windows = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| x | y |\r\n| - | - |\r\n| a | b %%\r\n| c %% | d |\r\n" as NSString).first)
+        XCTAssertTrue(windows.isCutByComment)
+        let oneRow = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| x | y |\n| - | - |\n| a %%n%% | b |\n| c | d %%m%% |\n" as NSString).first)
+        XCTAssertFalse(oneRow.isCutByComment, "Each comment moves with its row.")
     }
 }

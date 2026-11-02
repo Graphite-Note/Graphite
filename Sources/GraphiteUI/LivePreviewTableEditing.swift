@@ -5,8 +5,8 @@
  * Description: Editing a rendered table's cells in place.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -133,6 +133,8 @@ final class LivePreviewTableEditor {
     }
 
     private func startEditing(_ cell: TableCellPosition, text: String) {
+        // The text and the place were worked out from the cells as they were before the draft.
+        guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
         if editingCell == nil {
             TableCellTextField.endEditingInOtherTables()
@@ -171,12 +173,21 @@ final class LivePreviewTableEditor {
         commitTask = nil
         guard let cell = editingCell, draftText != committedDraft else { return }
         let text = draftText
+        let movesOtherCells = draftMovesOtherCells
         committedDraft = text
         cellTextAsWritten = tableSource.flatMap { source in MarkdownTableEditing.replacingCell(row: cell.row, column: cell.column, with: text, in: source) }
             .flatMap { written in Self.text(ofCell: cell, in: MarkdownTable.parse(written)) } ?? text
         replaceSource { source in
             MarkdownTableEditing.replacingCell(row: cell.row, column: cell.column, with: text, in: source)
         }
+        // This row and column name another cell now, which the next key would write over.
+        if movesOtherCells { endEditing() }
+    }
+
+    /// Whether writing the draft makes its `%%` pair with a marker in another cell.
+    private var draftMovesOtherCells: Bool {
+        guard let cell = editingCell, draftText != committedDraft, let tableSource else { return false }
+        return !MarkdownTableEditing.keepsOtherCellsInPlace(writing: draftText, row: cell.row, column: cell.column, in: tableSource)
     }
 
     /// Typing is written into the note once it pauses.
@@ -235,6 +246,7 @@ final class LivePreviewTableEditor {
 
     private func appendRow(editingColumn column: Int) {
         guard let table else { return }
+        guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
         let newRow = table.rows.count
         replaceSource { source in
@@ -298,8 +310,9 @@ final class LivePreviewTableEditor {
     /// A change of rows or columns closes the cell editor first, writing its draft: the cells
     /// move under it.
     private func changeTable(_ transform: @escaping (String) -> String?) {
+        let commandStillReachesItsCells = !draftMovesOtherCells
         endEditing()
-        replaceSource(transform)
+        if commandStillReachesItsCells { replaceSource(transform) }
     }
 
     // MARK: Geometry

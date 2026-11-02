@@ -5,8 +5,8 @@
  * Description: The Mac note editor does what the iPad's does: lists, Tab, pairs, folds, the note's name, and clicks that act on release.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 #if os(macOS)
@@ -399,6 +399,21 @@ final class MacEditorParityTests: XCTestCase {
         editor.textView.insertText("柿", replacementRange: editor.textView.markedRange())
         XCTAssertEqual(editor.session.text, "start柿\nend from another device")
         XCTAssertEqual(editor.textView.string, "start柿\nend from another device")
+    }
+
+    /// Unlike UIKit, `NSTextView` reports no change for `setMarkedText`, the method input methods
+    /// call, so a composition reaches the session only when it ends. Were that to change, the Mac's
+    /// `publish` would need the iPad's `textBeforeComposition`, or this test would lose `か`.
+    func testACompositionCarriedOverAChangeFromElsewhereKeepsItsFirstCharacters() async throws {
+        let editor = try await makeEditor(text: "abc", cursor: 3)
+        editor.textView.setMarkedText("か", selectedRange: NSRange(location: 1, length: 0), replacementRange: NSRange(location: 3, length: 0))
+        XCTAssertEqual(editor.session.text, "abc")
+        editor.session.text = "abcX"
+        editor.textView.setMarkedText("かん", selectedRange: NSRange(location: 2, length: 0), replacementRange: editor.textView.markedRange())
+        XCTAssertEqual(editor.session.text, "abcX")
+        editor.textView.insertText("かん", replacementRange: editor.textView.markedRange())
+        XCTAssertEqual(editor.session.text, "abcかんX")
+        XCTAssertEqual(editor.textView.string, "abcかんX")
     }
 
     func testAKeyTypedBeforeAChangeArrivesKeepsBoth() async throws {

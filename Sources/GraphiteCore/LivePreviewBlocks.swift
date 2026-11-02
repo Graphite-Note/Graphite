@@ -5,7 +5,7 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.12
+ * Version: 0.14
  * Date: 02/11/2026
  */
 
@@ -38,8 +38,9 @@ public struct LivePreviewBlock: Equatable, Sendable {
     public let markdown: String
     /// The lines as the note has them, for a block whose `markdown` differs from them.
     private let writtenLines: String?
-    /// Whether a `%%` comment runs past the first or last line of a table or callout. The lines
-    /// alone then do not say what is hidden, so a table's cells are not edited in its view.
+    /// Whether a `%%` comment runs past the first or last line of a table or callout, or over a
+    /// line break inside it. The lines alone then do not say what is hidden, and a command on a
+    /// row would take part of the comment with it, so a table's cells are not edited in its view.
     public let isCutByComment: Bool
 
     /// A table's or callout's lines as the note has them, comments and line endings included,
@@ -98,7 +99,8 @@ public enum LivePreviewBlockScanner {
             let written = text.substring(with: writtenRange)
             let isCutByComment = commentRanges.contains { commentRange in
                 NSIntersectionRange(commentRange, writtenRange).length > 0
-                    && (commentRange.location < writtenRange.location || NSMaxRange(commentRange) > NSMaxRange(writtenRange))
+                    && (commentRange.location < writtenRange.location || NSMaxRange(commentRange) > NSMaxRange(writtenRange)
+                        || text.rangeOfCharacter(from: lineBreakCharacters, options: .literal, range: commentRange).location != NSNotFound)
             }
             return LivePreviewBlock(kind: kind, range: range, markdown: rendered, writtenLines: written == rendered ? nil : written,
                                     isCutByComment: isCutByComment)

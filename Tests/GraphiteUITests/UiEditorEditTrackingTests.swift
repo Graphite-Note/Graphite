@@ -5,7 +5,7 @@
  * Description: Live Preview's edit tracking keeps blocks and styling in step with the text whichever path changed it.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 02/11/2026
  */
 import XCTest
@@ -318,6 +318,27 @@ final class UiEditorEditTrackingTests: XCTestCase {
     func testACompositionIsCarriedOverFromTheTextBeforeIt() {
         XCTAssertEqual(TextDifference.carryingEdit(from: "start\nend\n", to: "startかき\nend\n", onto: "start\nend from another device\n"),
                        "startかき\nend from another device\n")
+    }
+
+    /// A writer that worked from the session's text kept the composition published so far: the
+    /// final text takes its place, and nothing of it stays beside the final text.
+    func testTheFinalTextReplacesThePublishedCompositionTheOtherTextHolds() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "abcかん…X"), "abc感じ…X")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "Yabcかん"), "Yabc感じ", "Text added before it.")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "abcYかん"), "abcY感じ", "Text added right before it.")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc", onto: "abcかん…X"), "abc…X", "A cancelled composition leaves nothing.")
+    }
+
+    /// The other device saved the note with the characters and added to it: they are not typed twice.
+    func testACompositionTheOtherTextAlreadyHoldsIsNotDoubled() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcか", onto: "abcかX"), "abcかX")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "abcかX"), "abcかんX")
+    }
+
+    /// The other text never had the composition (HUNT-063): all of it is carried, from before it.
+    func testACompositionTheOtherTextNeverHadIsCarriedWhole() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "abcX"), "abcかんX")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "ab"), "abかん")
     }
 
     func testTextDifferenceReplacesOnlyTheChangedFrontmatter() throws {

@@ -5,7 +5,7 @@
  * Description: Reading a Markdown table from its source and editing it, every other character left as written.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 02/11/2026
  */
 
@@ -493,6 +493,36 @@ final class MarkdownTableTests: XCTestCase {
     }
 
     // MARK: `%%` comments
+
+    /// The text's markers pair with the `%%` before them, so its pipe is in no comment.
+    func testAPipeInTextWhoseMarkersPairWithAnEarlierOneIsEscaped() {
+        let source = "| a | b | c |\n| - | - | - |\n| 5%% | x | y |\n"
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 1, column: 2, with: "%% p | q %%", in: source),
+                       "| a | b | c |\n| - | - | - |\n| 5%% | x | %% p \\| q %% |\n")
+    }
+
+    func testTextThatStaysInItsCellKeepsTheOtherCellsInPlace() {
+        let source = "| a | b |\n| - | - |\n| x | y |\n| short |\n"
+        for text in ["z", "z  ", "  z", "p|q", "p\\|q", "one\ntwo", "back\\", "", "   ", "%%note%%", "z %%p|q%%", "z%%"] {
+            XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: text, row: 1, column: 1, in: source), text)
+        }
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 2, column: 1, in: source), "A short row gains the cell.")
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "", row: 2, column: 1, in: source))
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 0, column: 0, in: "a | b\r\n--|--\r\n1 | 2\r\n"), "No outer pipes, Windows line ends.")
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 9, column: 0, in: source), "Nothing is written.")
+    }
+
+    func testAMarkerThatPairsOutsideItsCellMovesTheOtherCells() {
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "c%%", row: 1, column: 1, in: "| a | b | c |\n| - | - | - |\n| 5%% | c | d |\n"))
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "q%%", row: 1, column: 1, in: "| a | b |\n| - | - |\n| p | q |\n| r%% | s |\n"))
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "a%%", row: 0, column: 0, in: "| a | b |\n| - | - |\n| r%% | s |\n"), "Over the delimiter row.")
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "%%", row: 1, column: 1, in: "| a | b |\n| - | - |\n| x | y |\n| %% | w |\n"), "Over a row break, where it hides this row's last pipe.")
+    }
+
+    func testAPipeInACommentThatThePlaceOfTheTextClosesStaysAsWritten() {
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 1, column: 0, with: "p %% q | r", in: "| a | b |\n| - | - |\n| x | y %% |\n"),
+                       "| a | b |\n| - | - |\n| p %% q | r | y %% |\n")
+    }
 
     /// The table drawn never sees a comment: a pipe in one separates no cells, or the drawn table's indexes would name other cells here.
     func testAPipeInACommentSeparatesNoCells() throws {

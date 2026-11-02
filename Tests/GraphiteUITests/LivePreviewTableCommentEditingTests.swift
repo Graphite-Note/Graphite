@@ -5,7 +5,7 @@
  * Description: Editing a rendered table's cells, rows and columns leaves the `%%` comments in its source alone and reaches the cell drawn.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -23,8 +23,20 @@ final class LivePreviewTableCommentEditingTests: XCTestCase {
 
         init(note: String) throws {
             self.note = note
-            let block = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first { block in block.kind == .table })
-            editor.update(source: block.sourceLines, textSize: 16, sourceEditing: RenderedBlockSourceEditing(replaceSource: { [unowned self] _, transform in
+            _ = try XCTUnwrap(tableBlock)
+            viewUpdates()
+        }
+
+        private var tableBlock: LivePreviewBlock? {
+            LivePreviewBlockScanner.blocks(in: note as NSString).first { block in block.kind == .table }
+        }
+
+        /// What the table's view gives its editor as it updates, as the note's editor gives it:
+        /// a table a comment cuts is left to source editing.
+        func viewUpdates() {
+            guard let block = tableBlock else { return }
+            editor.update(source: block.sourceLines, textSize: 16, sourceEditing: block.isCutByComment ? nil : RenderedBlockSourceEditing(replaceSource: { [unowned self] _, transform in
+                guard let block = self.tableBlock else { return }
                 let source = self.note as NSString
                 guard let replacement = transform(source.substring(with: block.range)) else { return }
                 self.note = source.replacingCharacters(in: block.range, with: replacement)
@@ -77,5 +89,68 @@ final class LivePreviewTableCommentEditingTests: XCTestCase {
         }
         // A view kept under the old key would write the old comment back with its next edit.
         XCTAssertNotEqual(try key("| a %%old%% |\n| - |\n"), try key("| a %%new%% |\n| - |\n"))
+    }
+
+    // MARK: A `%%` that pairs with a marker in another cell
+
+    /// The first pause writes `c%%`, which pairs with `5%%` and hides the pipe between them:
+    /// column 1 is now `d`. A key after it must not be written over `d`.
+    func testATypedMarkerThatPairsAcrossCellsClosesTheEditorBeforeANeighbourIsOverwritten() async throws {
+        let table = try EditedTable(note: "| h | i | j |\n| - | - | - |\n| 5%% | c | d |\n")
+        table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
+        table.editor.draftText = "c%%"
+        table.editor.commitDraft()
+        table.viewUpdates()
+        await Task.yield()
+        table.editor.draftText = "c%%x"
+        table.editor.commitDraft()
+        XCTAssertEqual(table.note, "| h | i | j |\n| - | - | - |\n| 5%% | c%% | d |\n")
+        XCTAssertNil(table.editor.editingCell)
+    }
+
+    func testATypedMarkerThatPairsAcrossRowsClosesTheEditor() async throws {
+        let table = try EditedTable(note: "| a | b |\n| - | - |\n| p | q |\n| r%% | s |\n")
+        table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
+        table.editor.draftText = "q%%"
+        table.editor.commitDraft()
+        table.viewUpdates()
+        await Task.yield()
+        table.editor.draftText = "q%%x"
+        table.editor.commitDraft()
+        XCTAssertEqual(table.note, "| a | b |\n| - | - |\n| p | q%% |\n| r%% | s |\n")
+        XCTAssertNil(table.editor.editingCell)
+    }
+
+    /// Tab was going to the cell at the next index, which holds other text once the draft is written.
+    func testMovingOnFromAMarkerThatPairsAcrossCellsDoesNotOpenTheNextCell() throws {
+        let table = try EditedTable(note: "| h | i | j |\n| - | - | - |\n| 5%% | c | d |\n")
+        table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
+        table.editor.draftText = "c%%"
+        XCTAssertTrue(table.editor.handle(.tab))
+        XCTAssertEqual(table.note, "| h | i | j |\n| - | - | - |\n| 5%% | c%% | d |\n")
+        XCTAssertNil(table.editor.editingCell)
+    }
+
+    /// The menu's command names cells by where they were before the draft moved them.
+    func testAMenuCommandDoesNotRunOnCellsTheDraftMoved() throws {
+        let table = try EditedTable(note: "| h | i | j |\n| - | - | - |\n| 5%% | c | d |\n")
+        table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
+        table.editor.draftText = "c%%"
+        try table.menuCommand("Column", "Delete Column")()
+        XCTAssertEqual(table.note, "| h | i | j |\n| - | - | - |\n| 5%% | c%% | d |\n")
+    }
+
+    /// A comment being typed where every marker pairs in the cell keeps the editor, as it always has.
+    func testTypingACommentThatStaysInItsCellKeepsTheEditor() throws {
+        let table = try EditedTable(note: "| a %%x%% | b |\n| - | - |\n")
+        table.editor.beginEditing(TableCellPosition(row: 0, column: 1))
+        table.editor.draftText = "b%%"
+        table.editor.commitDraft()
+        table.viewUpdates()
+        XCTAssertEqual(table.editor.editingCell, TableCellPosition(row: 0, column: 1))
+        table.editor.draftText = "b%%n | m%%"
+        table.editor.commitDraft()
+        XCTAssertEqual(table.note, "| a %%x%% | b%%n | m%% |\n| - | - |\n")
+        XCTAssertEqual(table.editor.editingCell, TableCellPosition(row: 0, column: 1))
     }
 }

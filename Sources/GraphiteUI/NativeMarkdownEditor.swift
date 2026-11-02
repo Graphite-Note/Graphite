@@ -5,7 +5,7 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.67
+ * Version: 0.70
  * Date: 02/11/2026
  */
 
@@ -1890,7 +1890,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // run or is waiting out a composition; see `TextDifference.carryingEdit`.
             if session.text != lastSynchronizedText, session.text != text {
                 guard textView.markedTextRange == nil else { return }
-                let merged = TextDifference.carryingEdit(from: textBeforeComposition ?? lastSynchronizedText, to: text, onto: session.text)
+                let merged = TextDifference.carryingEdit(from: textBeforeComposition ?? lastSynchronizedText, published: lastSynchronizedText, to: text, onto: session.text)
                 session.text = merged
                 lastSynchronizedText = merged
                 replaceText(with: merged, in: textView)

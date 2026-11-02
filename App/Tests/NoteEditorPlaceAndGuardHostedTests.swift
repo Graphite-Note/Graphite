@@ -5,7 +5,7 @@
  * Description: The iPad's note editor keeps its place through mode, width, fold and appearance changes, and its edits leave properties and folds whole.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 02/11/2026
  */
 
@@ -265,6 +265,21 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         editor.delegate?.textViewDidChange?(editor)
         try await waitUntil { session.text == "startかき\nend from another device\n" }
         XCTAssertEqual(session.text, "startかき\nend from another device\n")
+        XCTAssertEqual(editor.text, session.text)
+    }
+
+    /// A writer that worked from the session's text kept the composition published so far.
+    func testAConversionReplacesTheCompositionAWriterKept() async throws {
+        let (editor, session) = try await openNote("abc\n")
+        try await startEditing(editor, at: 3)
+        editor.setMarkedText("かん", selectedRange: NSRange(location: 2, length: 0))
+        try await waitUntil { session.text == "abcかん\n" }
+        session.text = "abcかん…X\n"
+        await Task.yield()
+        editor.setMarkedText("感じ", selectedRange: NSRange(location: 2, length: 0))
+        editor.unmarkText()
+        editor.delegate?.textViewDidChange?(editor)
+        try await waitUntil { session.text == "abc感じ…X\n" }
         XCTAssertEqual(editor.text, session.text)
     }
 

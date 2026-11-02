@@ -5,7 +5,7 @@
  * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.14
+ * Version: 0.15
  * Date: 02/11/2026
  */
 
@@ -830,7 +830,15 @@ enum TextDifference {
     /// were typed, and the other change stays. Publishing the older text with them would write
     /// over that change with a revision that matches, and raise no conflict. Where both
     /// changed the same place, the typing goes after the other change.
-    static func carryingEdit(from baseText: String, to editedText: String, onto otherText: String) -> String {
+    ///
+    /// `publishedText` is what the session last got from the editor, when a composition has
+    /// reached it since `baseText`. A writer that worked from the session's text kept those
+    /// characters, as a device that synced them did, so the edit is measured from them: the
+    /// final text takes their place, and they stay neither beside it nor doubled.
+    static func carryingEdit(from baseText: String, published publishedText: String? = nil, to editedText: String, onto otherText: String) -> String {
+        if let publishedText, holdsComposition(otherText, publishedIn: publishedText, over: baseText) {
+            return carryingEdit(from: publishedText, to: editedText, onto: otherText)
+        }
         let base = baseText as NSString, edited = editedText as NSString, other = otherText as NSString
         guard let typed = changedRanges(from: base, to: edited) else { return otherText }
         guard let elsewhere = changedRanges(from: base, to: other) else { return editedText }
@@ -844,6 +852,14 @@ enum TextDifference {
             return other.replacingCharacters(in: movedRange, with: typedText)
         }
         return other.replacingCharacters(in: NSRange(location: NSMaxRange(elsewhere.replacementRange), length: 0), with: typedText)
+    }
+
+    /// Whether the characters that changed from `baseText` to `publishedText` are still whole in `otherText`.
+    private static func holdsComposition(_ otherText: String, publishedIn publishedText: String, over baseText: String) -> Bool {
+        let published = publishedText as NSString
+        guard let composition = changedRanges(from: baseText as NSString, to: published)?.replacementRange, composition.length > 0,
+              let elsewhere = changedRanges(from: published, to: otherText as NSString)?.replacedRange else { return false }
+        return NSMaxRange(elsewhere) <= composition.location || elsewhere.location >= NSMaxRange(composition)
     }
 
     private static func isCharacterBoundary(_ location: Int, in text: NSString) -> Bool {
