@@ -485,12 +485,7 @@ extension WorkspaceModel {
         guard let store, let root = folderAccess?.root else { return }
         // Goodnotes and Notability notebooks, and folders of them, are converted rather than copied.
         let notebookSources = notebookImportSources(in: chosenSources)
-        if !notebookSources.isEmpty {
-            let copies = stagedCopies?.split(at: notebookSources)
-            if importNotebooks(notebookSources, into: directory, whenEnded: { copies?.atLocations.discard() }) {
-                copiesThisCallRemoves = copies?.others
-            }
-        }
+        copiesThisCallRemoves = startNotebookImport(of: notebookSources, into: directory, stagedCopies: stagedCopies)
         let routing = DroppedFileImporters.route(chosenSources.filter { source in !notebookSources.contains(source) },
                                                  through: importers)
         for routed in routing.routed { await routed.importer.importFiles(routed.files, directory) }
@@ -520,5 +515,13 @@ extension WorkspaceModel {
         if !failedNames.isEmpty {
             errorMessage = "Could not import " + failedNames.map { name in "“\(name)”" }.joined(separator: ", ") + "."
         }
+    }
+
+    /// Hands notebooks to an import, which removes their copies when it ends. Returns the copies its caller still removes:
+    /// the others, or all of them when no import started.
+    private func startNotebookImport(of notebookSources: [URL], into directory: VaultPath, stagedCopies: DroppedFileBatch?) -> DroppedFileBatch? {
+        guard !notebookSources.isEmpty else { return stagedCopies }
+        let copies = stagedCopies?.split(at: notebookSources)
+        return importNotebooks(notebookSources, into: directory, whenEnded: { copies?.atLocations.discard() }) ? copies?.others : stagedCopies
     }
 }

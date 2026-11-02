@@ -116,7 +116,8 @@ public enum ReadingTasks {
     public static func location(ofStatusAt offset: Int, in text: String) -> Location? {
         let source = text as NSString
         guard let statusRange = statusRange(at: offset, in: source) else { return nil }
-        return Location(statusOffset: offset, lineChecksum: checksum(ofLine: lineContentRange(containing: offset, in: source), withoutStatusAt: statusRange, in: source))
+        let line = lineContentRange(containing: offset, in: source)
+        return Location(statusOffset: offset, lineChecksum: checksum(ofLine: line, withoutStatusAt: statusRange, in: source))
     }
 
     /// The edit a tap on a task's checkbox makes, as in Obsidian: a space becomes `x`, and

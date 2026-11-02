@@ -30,20 +30,7 @@ extension WorkspaceModel {
             }
             return
         }
-        if let vaultName = link.vault, !isCurrentVault(named: vaultName) {
-            guard let vault = knownVault(named: vaultName) else {
-                errorMessage = "No vault named “\(vaultName)” is in Graphite's vault list. Open its folder once from the vault list, then try the link again."
-                return
-            }
-            do { try await openVault(vault) } catch {
-                errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
-                return
-            }
-            guard currentVaultIdentifier == vault.id else {
-                reportLinkNotFollowed(into: vault)
-                return
-            }
-        }
+        if let vaultName = link.vault, !isCurrentVault(named: vaultName), await !openVaultOfLink(named: vaultName) { return }
         guard store != nil else {
             errorMessage = "Open a vault first, then try the link again."
             return
@@ -157,6 +144,23 @@ extension WorkspaceModel {
             errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
             return nil
         }
+    }
+
+    /// Opens the vault a link names. False, with the reason shown, when it is not open afterwards.
+    private func openVaultOfLink(named vaultName: String) async -> Bool {
+        guard let vault = knownVault(named: vaultName) else {
+            errorMessage = "No vault named “\(vaultName)” is in Graphite's vault list. Open its folder once from the vault list, then try the link again."
+            return false
+        }
+        do { try await openVault(vault) } catch {
+            errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
+            return false
+        }
+        guard currentVaultIdentifier == vault.id else {
+            reportLinkNotFollowed(into: vault)
+            return false
+        }
+        return true
     }
 
     /// A newer choice of vault replaced the switch a link waited for: the link acts in nothing,

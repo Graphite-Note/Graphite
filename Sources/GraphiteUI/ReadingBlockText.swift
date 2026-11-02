@@ -103,8 +103,8 @@ struct RenderedBlockNoteReading: Equatable {
         self.lineOffsets = lineOffsets
         func isInBlock(_ range: NSRange) -> Bool { range.location >= sourceRange.location && NSMaxRange(range) <= NSMaxRange(sourceRange) }
         footnoteReferences = snapshot.footnoteReferences.filter { reference in isInBlock(reference.range) }.map { reference in
-            FootnoteReference(range: NSRange(location: lineOffsets.markdownOffset(ofSourceOffset: reference.range.location - sourceRange.location), length: reference.range.length),
-                number: reference.number)
+            let location = lineOffsets.markdownOffset(ofSourceOffset: reference.range.location - sourceRange.location)
+            return FootnoteReference(range: NSRange(location: location, length: reference.range.length), number: reference.number)
         }
         referenceDefinitions = snapshot.referenceDefinitions
         var occurrences: [Int: Int] = [:]

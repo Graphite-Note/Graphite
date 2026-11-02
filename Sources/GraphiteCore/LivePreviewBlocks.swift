@@ -100,7 +100,8 @@ public enum LivePreviewBlockScanner {
                 NSIntersectionRange(commentRange, writtenRange).length > 0
                     && (commentRange.location < writtenRange.location || NSMaxRange(commentRange) > NSMaxRange(writtenRange))
             }
-            return LivePreviewBlock(kind: kind, range: range, markdown: rendered, writtenLines: written == rendered ? nil : written, isCutByComment: isCutByComment)
+            return LivePreviewBlock(kind: kind, range: range, markdown: rendered, writtenLines: written == rendered ? nil : written,
+                                    isCutByComment: isCutByComment)
         }
         while lineIndex < lines.count {
             let content = lines[lineIndex].content

@@ -407,7 +407,8 @@ private struct MarkdownTableLineLayout {
     ///   - written: The source as it is.
     ///   - keepsCommentsInCells: Whether a cell's text reaches to a comment at its ends. A delimiter row's does
     ///     not: its text is rewritten as a whole by a change of alignment, which leaves the comment.
-    static func make(units: [UInt16], written: [UInt16], keepsCommentsInCells: Bool = true, contentRange: Range<Int>, endingRange: Range<Int>) -> MarkdownTableLineLayout? {
+    static func make(units: [UInt16], written: [UInt16], keepsCommentsInCells: Bool = true,
+                     contentRange: Range<Int>, endingRange: Range<Int>) -> MarkdownTableLineLayout? {
         var trimmedStart = contentRange.lowerBound
         var trimmedEnd = contentRange.upperBound
         while trimmedStart < trimmedEnd, MarkdownTableUnit.isSpace(units[trimmedStart]) { trimmedStart += 1 }
@@ -508,12 +509,14 @@ private struct MarkdownTableLayout {
         }
         guard rawLines.count >= 2,
               let header = MarkdownTableLineLayout.make(units: structure, written: units, contentRange: rawLines[0].content, endingRange: rawLines[0].ending),
-              let delimiter = MarkdownTableLineLayout.make(units: structure, written: units, keepsCommentsInCells: false, contentRange: rawLines[1].content, endingRange: rawLines[1].ending),
+              let delimiter = MarkdownTableLineLayout.make(units: structure, written: units, keepsCommentsInCells: false,
+                                                           contentRange: rawLines[1].content, endingRange: rawLines[1].ending),
               MarkdownTableSyntax.startsTable(trimmedHeaderUnits: structure[header.trimmedRange], trimmedDelimiterUnits: structure[delimiter.trimmedRange])
         else { return nil }
         var lines = [header, delimiter]
         for rawLine in rawLines.dropFirst(2) {
-            guard let line = MarkdownTableLineLayout.make(units: structure, written: units, contentRange: rawLine.content, endingRange: rawLine.ending) else { break }
+            guard let line = MarkdownTableLineLayout.make(units: structure, written: units, contentRange: rawLine.content,
+                                                          endingRange: rawLine.ending) else { break }
             lines.append(line)
         }
         self.units = units
