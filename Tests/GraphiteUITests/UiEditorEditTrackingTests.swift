@@ -83,20 +83,20 @@ final class UiEditorEditTrackingTests: XCTestCase {
         guard case .ranges = textState.takeRestylePlan(revealedRange: nil) else { return XCTFail("Return restyled the whole note") }
     }
 
-    /// Typing `>` at the start of the line after a callout extends the callout; the whole
+    /// Typing `>` on the empty line after a callout extends the callout; the whole
     /// callout is restyled, not only the typed line, so none of it stays concealed.
     func testExtendingACalloutRestylesTheWholeCallout() {
-        let source = "> [!note] Title\n> body line\nnext"
+        let source = "> [!note] Title\n> body line\n\nnext"
         let textState = textState(for: source)
         XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 28)])
         let (newText, typing) = edit(source, replacing: NSRange(location: 28, length: 0), with: ">")
-        textState.recordCharacterEdit(typing, revealedRange: NSRange(location: 28, length: 4))
+        textState.recordCharacterEdit(typing, revealedRange: NSRange(location: 28, length: 1))
         textState.update(source: newText, findsBlocks: true, isRendered: { _ in true })
-        XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 33)])
-        guard case .ranges(let ranges) = textState.takeRestylePlan(revealedRange: newText.lineRange(for: NSRange(location: 29, length: 0))) else {
+        XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 30)])
+        guard case .ranges(let ranges) = textState.takeRestylePlan(revealedRange: newText.lineRange(for: NSRange(location: 28, length: 0))) else {
             return XCTFail("Expected a partial restyle")
         }
-        XCTAssertTrue(ranges.contains { range in NSIntersectionRange(range, NSRange(location: 0, length: 33)) == NSRange(location: 0, length: 33) })
+        XCTAssertTrue(ranges.contains { range in NSIntersectionRange(range, NSRange(location: 0, length: 30)) == NSRange(location: 0, length: 30) })
     }
 
     func testOpeningACodeFenceRestylesEverything() {

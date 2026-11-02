@@ -335,9 +335,12 @@ final class UiMarkdownPaneFixTests: XCTestCase {
     /// index answers; the editor moves the edit past that key.
     func testFileSuggestionStillInsertsWhenAKeyIsTypedDuringTheLookup() async throws {
         let (session, _) = try await makeSession(contents: Data("[[".utf8))
-        let workspace = WorkspaceModel()
-        workspace.index = try VaultIndex(databaseURL: vaultDirectory.appendingPathComponent("index.sqlite"))
-        workspace.hasCompletedIndexScan = true
+        // The suggestion lists recent files that exist, so the file is in the vault that is open.
+        try FileManager.default.createDirectory(at: vaultDirectory.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+        try Data("Notes".utf8).write(to: vaultDirectory.appendingPathComponent("Folder/Notes.md"))
+        let workspace = try IsolatedWorkspaceDevice.make(for: self).makeWorkspace()
+        try await workspace.openFolderAsVault(vaultDirectory)
+        try await waitUntil { workspace.hasCompletedIndexScan }
         workspace.recentFiles = RecentFiles(paths: [try VaultPath("Folder/Notes.md")])
         session.completion.suggest(from: workspace, for: session)
         var performedEdits: [MarkdownTextEdit] = []

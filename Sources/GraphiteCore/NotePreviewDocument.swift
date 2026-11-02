@@ -230,7 +230,7 @@ public enum NotePreviewDocument {
     /// The characters a link cannot hold (`LinkCompletion.linkFragment(forHeading:)`) count as
     /// spaces, so a link written without them meets its heading.
     public static func anchor(forHeading text: String) -> String {
-        text.lowercased().split { character in character.isWhitespace || "|#^[]".contains(character) }.joined(separator: " ")
+        text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     private static let forbiddenHeadingLinkCharacters = NotePreviewDocumentPattern.forbiddenHeadingLinkCharacters.compiled()
