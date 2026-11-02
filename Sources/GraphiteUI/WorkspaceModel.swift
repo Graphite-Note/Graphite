@@ -163,6 +163,9 @@ final class WorkspaceModel {
     var searchQuery = ""
     /// Increases when a command asks for the sidebar's search field.
     var searchFocusRequest = 0
+    /// Increases when results the sidebar shows were asked for from a view outside it, such as a tag
+    /// in the note's inspector; the root view brings the sidebar forward, without focusing its field.
+    var searchResultsRevealRequest = 0
     /// A file "Reveal current file" asked the sidebar to show; the root view shows the sidebar,
     /// and the sidebar scrolls to the file and clears the request.
     var fileRevealRequest: FileRevealRequest?
@@ -189,6 +192,12 @@ final class WorkspaceModel {
     /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
     /// none of them can affect do not run again.
     @ObservationIgnored var lastIndexChange: BaseContentChange?
+    /// The `indexVersion` of the newest change that may have altered what the graph, the Tags view
+    /// and the Properties view show: files, links, tags, aliases or properties. Typing in a note's
+    /// text moves `indexVersion` and not this.
+    var structureVersion = 0
+    /// The files each recent change touched (`recordIndexChange`).
+    var indexChangeLog = IndexChangeLog()
     /// Changes when Graphite writes `.obsidian/types.json`, so lists of property types reload.
     var propertyTypesVersion = 0
     var vaultSettings = ObsidianSettings()
@@ -216,13 +225,13 @@ final class WorkspaceModel {
     let editorMenus = EditorMenuRegistry()
     /// Obsidian's bookmarks, from `.obsidian/bookmarks.json`.
     var bookmarks = BookmarkList()
-    /// The whole vault's graph, built once per index change.
-    @ObservationIgnored var graphCache: (indexVersion: Int, graph: LinkGraph)?
+    /// The whole vault's graph, built once per change of the vault's files, links, tags and aliases.
+    @ObservationIgnored var graphCache: (structureVersion: Int, graph: LinkGraph)?
     /// Where the graph view left its nodes, so it opens as it was.
     @ObservationIgnored var graphPositions: [String: SIMD2<Double>] = [:]
     /// Whether the graph view is on screen.
     /// The notes the map places, read once per index change.
-    @ObservationIgnored var placedNotesCache: (indexVersion: Int, propertyNames: [String], notes: [PlacedNote])?
+    @ObservationIgnored var placedNotesCache: (structureVersion: Int, propertyNames: [String], notes: [PlacedNote])?
     /// Whether the map view is on screen.
     var isMapPresented = false
     /// Whether the vault list is on screen. Settings asks for it too, from its own window on the Mac.
@@ -808,7 +817,7 @@ final class WorkspaceModel {
             // Everything keyed on the index runs again for this, so a scan that found the
             // vault as the index has it changes nothing shown.
             if report.changedAnything {
-                indexVersion += 1
+                recordIndexChange(paths: nil)
                 if !searchQuery.isEmpty { await search() }
             }
             isIndexing = isAnotherScanQueued
@@ -935,15 +944,19 @@ final class WorkspaceModel {
 
     /// Updates only the given files, for Graphite's own saves.
     func refreshIndex(for paths: [VaultPath]) {
+        guard index != nil, folderAccess?.root != nil, !paths.isEmpty else { return }
+        Task(priority: .utility) { await refreshIndexAndRecordChange(for: paths) }
+    }
+
+    /// `refreshIndex(for:)`, done when the index has taken the files in and the change is recorded.
+    func refreshIndexAndRecordChange(for paths: [VaultPath]) async {
         guard let index, let root = folderAccess?.root, !paths.isEmpty else { return }
-        Task(priority: .utility) {
-            do {
-                try await index.refresh(paths: paths, root: root)
-                lastIndexChange = BaseContentChange(version: indexVersion + 1, paths: Set(paths))
-                indexVersion += 1
-                if !isIndexing, hasCompletedIndexScan, self.index === index { describeIndex(fileCount: try await index.fileCount()) }
-            } catch { indexingMessage = "Index needs attention" }
-        }
+        do {
+            let change = try await index.refreshReportingChange(paths: paths, root: root)
+            lastIndexChange = BaseContentChange(version: indexVersion + 1, paths: Set(paths))
+            recordIndexChange(paths: Set(paths), changedStructure: change.changedStructure, changedNames: change.changedNames)
+            if !isIndexing, hasCompletedIndexScan, self.index === index { describeIndex(fileCount: try await index.fileCount()) }
+        } catch { indexingMessage = "Index needs attention" }
     }
 
     private func describeIndex(fileCount: Int) {
@@ -1018,6 +1031,12 @@ final class WorkspaceModel {
     /// link to a file that does not exist creates the note, as in Obsidian.
     func follow(_ target: String, from source: VaultPath, isWiki: Bool = true, placement: TabPlacement = .currentTab) async {
         guard let index else { return }
+        // A web address is no file of the vault: creating a note for it made folders out of
+        // its slashes. The views that show one open it in the browser; this must not guess.
+        guard !WikiLinkResolver.isExternalAddress(target, isWiki: isWiki) else {
+            errorMessage = "“\(target)” is a web address, not a file in this vault."
+            return
+        }
         let parts = target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         let headingAnchor = parts.count == 2 && !parts[1].hasPrefix("^") ? NotePreviewDocument.anchor(forHeading: parts[1]) : nil
         if parts[0].isEmpty, let headingAnchor {

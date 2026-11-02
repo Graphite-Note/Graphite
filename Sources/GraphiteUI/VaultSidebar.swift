@@ -105,6 +105,8 @@ struct VaultSidebar: View {
     private enum SidebarChoice: Hashable {
         case panel(SidebarPanel)
         case pluginView(String)
+        /// Search results are shown in place of every list; the picker has no segment for them, so none is lit.
+        case searchResults
     }
 
     /// Plugins' sidebar views the picker offers: the first three and the one shown, so the
@@ -120,7 +122,8 @@ struct VaultSidebar: View {
     private static let maximumPluginSegments = 3
 
     private var pickerChoice: Binding<SidebarChoice> {
-        Binding(get: { shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) }, set: { choice in
+        Binding(get: { workspace.searchQuery.isEmpty ? shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) : .searchResults },
+                set: { choice in
             // A search would keep hiding the chosen list.
             workspace.searchQuery = ""
             switch choice {
@@ -129,6 +132,8 @@ struct VaultSidebar: View {
                 storedPanel = newPanel
             case .pluginView(let identifier):
                 chosenPluginView = identifier
+            case .searchResults:
+                break
             }
         })
     }
@@ -158,7 +163,7 @@ struct VaultSidebar: View {
             if isCompactWidth { VaultSwitcherMenuItems(workspace: workspace) { showsVaultManager = true } }
         }
         #endif
-        .task(id: "\(panel.rawValue)-\(workspace.indexVersion)-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
+        .task(id: "\(panel.rawValue)-\(panel.reloadVersion(indexVersion: workspace.indexVersion, structureVersion: workspace.structureVersion))-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
             await overview.load(panel, workspace: workspace, showsNestedTags: showsNestedTags)
         }
         // A plugin asked to show one of its sidebar views (`revealLeaf`).

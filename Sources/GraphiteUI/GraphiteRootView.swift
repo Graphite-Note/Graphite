@@ -263,6 +263,7 @@ struct GraphiteRootView: View {
         }
         // A search asked for from anywhere (⇧⌘F, a tag, a link) shows where it happens.
         .onChange(of: workspace.searchFocusRequest) { showSidebar() }
+        .onChange(of: workspace.searchResultsRevealRequest) { showSidebar() }
         // A plugin's sidebar view asked to be shown.
         .onChange(of: workspace.communityPlugins.sidebarViewRequest) { _, request in if request != nil { showSidebar() } }
         // "Reveal current file", from the palette, a tab's menu or the file list's menu.
@@ -508,7 +509,8 @@ struct GraphiteRootView: View {
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
-                Button("Quick Switcher", systemImage: "magnifyingglass") { activePalette = .quickSwitcher }.tint(.primary)
+                // A page with a magnifier: it finds a file by name, and the sidebar's field is the search of text.
+                Button("Quick Switcher", systemImage: "doc.text.magnifyingglass") { activePalette = .quickSwitcher }.tint(.primary)
             }
             .visibilityPriority(.high)
             ToolbarSpacer(.flexible, placement: .bottomBar)

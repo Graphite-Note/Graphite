@@ -131,15 +131,21 @@ extension WorkspaceModel {
             errorMessage = unreadableSettingsMessage
             return
         }
-        let calendar = Calendar(identifier: .gregorian)
-        let reference = selection.flatMap { path in settings.date(ofNoteAt: path) } ?? calendar.startOfDay(for: .now)
+        guard let reader = MomentDateReader(format: settings.format) else {
+            errorMessage = forward ? "There is no later daily note." : "There is no earlier daily note."
+            return
+        }
+        let reference = selection.flatMap { path in settings.date(ofNoteAt: path, using: reader) } ?? Calendar(identifier: .gregorian).startOfDay(for: .now)
         let folder = settings.folder.isEmpty ? VaultPath.root : ((try? VaultPath(settings.folder)) ?? .root)
         do {
             let candidates = try await index.paths(inside: folder)
-            let dated = candidates.compactMap { path in settings.date(ofNoteAt: path).map { date in (path, date) } }
-            let adjacent = forward
-                ? dated.filter { _, date in date > reference }.min { first, second in first.1 < second.1 }
-                : dated.filter { _, date in date < reference }.max { first, second in first.1 < second.1 }
+            // Every path of the vault is read against the format: off the main actor, with the format prepared once.
+            let adjacent = await Task.detached(priority: .userInitiated) { () -> (VaultPath, Date)? in
+                let dated = candidates.compactMap { path in settings.date(ofNoteAt: path, using: reader).map { date in (path, date) } }
+                return forward
+                    ? dated.filter { _, date in date > reference }.min { first, second in first.1 < second.1 }
+                    : dated.filter { _, date in date < reference }.max { first, second in first.1 < second.1 }
+            }.value
             guard let (path, _) = adjacent else {
                 errorMessage = forward ? "There is no later daily note." : "There is no earlier daily note."
                 return
