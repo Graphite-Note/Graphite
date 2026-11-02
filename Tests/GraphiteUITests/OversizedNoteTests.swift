@@ -289,7 +289,7 @@ final class OversizedNoteTests: XCTestCase {
 
     // MARK: What else reads notes
 
-    func testALinkPreviewOfAnOversizedNoteShowsNoCardAndDoesNotReadIt() async throws {
+    func testALinkPreviewOfAnOversizedNoteShowsNoCard() async throws {
         let (workspace, _) = try await makeWorkspace(largeNotes: ["Big.md": Self.nineMegabytes], files: ["Source.md": "[[Big]]"])
         let reading = try XCTUnwrap(workspace.linkPreviewReading(at: .large))
         let request = LinkPreviewRequest(target: "Big", isWiki: true, sourceNote: try VaultPath("Source.md"), anchor: .zero, trigger: .press, source: .reading)

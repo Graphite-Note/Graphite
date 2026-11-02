@@ -12,6 +12,7 @@
 #if os(iOS)
 import XCTest
 import SwiftUI
+import GraphiteApple
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -19,20 +20,20 @@ import GraphiteIndex
 @MainActor
 final class OversizedNoteHostedTests: XCTestCase {
     private var window: UIWindow?
-    private var vaultDirectory: URL?
+    private var temporaryVault: TemporaryVault?
 
     override func tearDown() async throws {
         window?.isHidden = true
         window?.rootViewController = nil
         window = nil
-        if let vaultDirectory { try? FileManager.default.removeItem(at: vaultDirectory) }
-        vaultDirectory = nil
+        temporaryVault?.remove()
+        temporaryVault = nil
     }
 
     func testAnOversizedNoteShowsItsFirstPagesWithoutAnEditorAndEditAnywayBringsTheEditor() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("OversizedNote-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        vaultDirectory = directory
+        let vault = try TemporaryVault(prefix: "OversizedNote")
+        temporaryVault = vault
+        let directory = vault.root
         let line = Data("A line of the note, grown by a paste.\n".utf8)
         var bytes = Data(capacity: 9 * 1_048_576 + line.count)
         while bytes.count < 9 * 1_048_576 { bytes.append(line) }

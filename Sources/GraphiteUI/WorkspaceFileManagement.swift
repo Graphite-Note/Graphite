@@ -5,7 +5,7 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.23
+ * Version: 0.24
  * Date: 02/11/2026
  */
 
@@ -285,24 +285,30 @@ extension WorkspaceModel {
             // lists every indexed file inside a moved folder.
             let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
             refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths)
-            let changedNotes = Set(report.updatedNotes + keptEditPaths)
-            for document in tabDocuments.values {
-                if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-                if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-            }
+            await checkOpenDocuments(changedByMove: Set(report.updatedNotes + keptEditPaths))
             await refreshDirectory()
-            var problems = editProblems + pdfProblems
-            if !report.failures.isEmpty {
-                problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: destination.name))
-            }
-            if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
-            if !report.notesNotChecked.isEmpty, updatesLinks {
-                notice = Self.describeNotesNotChecked(report.notesNotChecked, movedItemName: destination.name)
-            }
+            tellAbout(report, problems: editProblems + pdfProblems, movedItemName: destination.name, updatesLinks: updatesLinks)
             return .moved
         } catch {
             errorMessage = error.localizedDescription
             return .refused(.failed(message: error.localizedDescription))
+        }
+    }
+
+    /// Open documents whose files the move wrote read them again.
+    private func checkOpenDocuments(changedByMove changedNotes: Set<VaultPath>) async {
+        for document in tabDocuments.values {
+            if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
+            if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
+        }
+    }
+
+    private func tellAbout(_ report: MoveReport, problems: [String], movedItemName: String, updatesLinks: Bool) {
+        var problems = problems
+        if !report.failures.isEmpty { problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: movedItemName)) }
+        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
+        if !report.notesNotChecked.isEmpty, updatesLinks {
+            notice = Self.describeNotesNotChecked(report.notesNotChecked, movedItemName: movedItemName)
         }
     }
 

@@ -5,7 +5,7 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.16
+ * Version: 0.17
  * Date: 02/11/2026
  */
 
@@ -145,13 +145,6 @@ final class MarkdownSession {
     /// cursor at the end of the note it appended to); the editor on screen takes it.
     var selectionRequest: NSRange?
 
-    /// Moves the cursor or selection of the editor on screen, or the one a new editor of the
-    /// note starts with.
-    func requestSelection(_ range: NSRange) {
-        selection = range
-        selectionRequest = range
-    }
-
     /// The last heading or match request an editor or reading view of this note showed,
     /// so switching tabs or views does not jump to it again.
     @ObservationIgnored var handledHeadingScrollToken: UUID?
@@ -230,16 +223,7 @@ final class MarkdownSession {
     /// Saves the current text. A save already in flight is awaited first, so autosave,
     /// navigation, and the keyboard shortcut never race or report a spurious error.
     func save() async throws {
-        // Another window's save of the note is awaited too: it sets the revision this one expects.
-        var awaitedSaves: Set<Task<Void, Error>> = []
-        while let previousSave = ([activeSave] + siblings.map(\.activeSave)).compactMap({ save in save }).first(where: { save in !awaitedSaves.contains(save) }) {
-            awaitedSaves.insert(previousSave)
-            _ = try? await previousSave.value
-            // Whichever waiter resumes first clears the finished save. Awaiting a finished
-            // task does not suspend, so a waiter that left it in place would spin on the
-            // main actor and the saver that owns it would never run again.
-            if activeSave == previousSave { activeSave = nil }
-        }
+        await waitForSavesInFlight()
         // A move let go of this session while it waited; what it had is in a copy by then.
         guard !wasLeftBehindByMove else { return }
         bringWaitingTextIntoNote()
@@ -278,6 +262,19 @@ final class MarkdownSession {
             errorMessage = error.localizedDescription
             await keepUnsavedTextInDraft()
             throw error
+        }
+    }
+
+    /// Another window's save of the note is awaited too: it sets the revision this one expects.
+    private func waitForSavesInFlight() async {
+        var awaitedSaves: Set<Task<Void, Error>> = []
+        while let previousSave = ([activeSave] + siblings.map(\.activeSave)).compactMap({ save in save }).first(where: { save in !awaitedSaves.contains(save) }) {
+            awaitedSaves.insert(previousSave)
+            _ = try? await previousSave.value
+            // Whichever waiter resumes first clears the finished save. Awaiting a finished
+            // task does not suspend, so a waiter that left it in place would spin on the
+            // main actor and the saver that owns it would never run again.
+            if activeSave == previousSave { activeSave = nil }
         }
     }
 
@@ -447,13 +444,6 @@ final class MarkdownSession {
         if loadedTypes != declaredPropertyTypes { declaredPropertyTypes = loadedTypes }
     }
 
-    /// Rewrites only the frontmatter, in Obsidian's property format, and saves through
-    /// the normal autosave path. The properties were parsed with `declaredPropertyTypes`,
-    /// so unchanged values keep their exact YAML.
-    func replaceProperties(_ properties: [NoteProperty]) {
-        text = NoteProperties.replacingFrontmatter(in: text, with: properties, declaredTypes: declaredPropertyTypes)
-    }
-
     /// Folded headings and list items (`NoteFolding` keys). As in Obsidian, folds are kept
     /// on the device, not written into the note.
     var foldedKeys: Set<String> = [] {
@@ -498,29 +488,6 @@ final class MarkdownSession {
         }
     }
 
-    /// Inserts `content` at `range` of the current text, or at the cursor.
-    func insert(_ content: String, at range: NSRange? = nil) {
-        let target = insertionTarget(for: range)
-        request(EditorInsertion(text: content, range: target.range))
-    }
-
-    /// Inserts a block such as an embed on its own line. Blank lines around the cursor
-    /// are kept, so paragraphs never merge and a following `---` never turns the
-    /// block into a heading.
-    /// - Parameter separatedByBlankLines: Keeps an empty line around the block (quotes).
-    func insertBlock(_ block: String, at range: NSRange? = nil, separatedByBlankLines: Bool = false) {
-        let target = insertionTarget(for: range)
-        let insertionRange = target.range
-        let source = target.text
-        // Never split the frontmatter: Obsidian would stop reading the note's properties.
-        let frontmatterLength = FrontmatterLocator.length(in: source)
-        let location = max(min(insertionRange.location, source.length), frontmatterLength)
-        let endLocation = max(min(insertionRange.location + insertionRange.length, source.length), location)
-        let insertion = MarkdownBlockInsertion.text(inserting: block, into: source, replacing: NSRange(location: location, length: endLocation - location),
-                                                    separatedByBlankLines: separatedByBlankLines)
-        request(EditorInsertion(text: insertion, range: NSRange(location: location, length: endLocation - location)))
-    }
-
     /// Applies an editing command's result, computed on the current text, through the
     /// editor, so it can be undone.
     func apply(_ edit: MarkdownTextEdit) {
@@ -547,16 +514,6 @@ final class MarkdownSession {
         // past closing markers. Keep its offset within the unchanged replacement instead.
         let selectionAfter = edit.selectionAfter.shifted(by: replacementRange.location - edit.range.location)
         request(EditorInsertion(text: edit.replacement, range: replacementRange, selectionAfter: selectionAfter))
-    }
-
-    /// Ticks or unticks the task at `location`, as a tap on its checkbox in reading view
-    /// does, leaving the cursor where it is. False when the text no longer has the task
-    /// there.
-    @discardableResult
-    func toggleTask(at location: ReadingTasks.Location) -> Bool {
-        guard let edit = ReadingTasks.togglingEdit(at: location, in: text, selection: selection) else { return false }
-        apply(edit)
-        return true
     }
 
     func request(_ insertion: EditorInsertion) {
@@ -604,17 +561,6 @@ final class MarkdownSession {
         let replacedRange = Self.clamped(insertion.range, toLength: source.length)
         text = source.replacingCharacters(in: replacedRange, with: insertion.text)
         selection = insertion.selectionAfter ?? NSRange(location: replacedRange.location + (insertion.text as NSString).length, length: 0)
-    }
-
-    /// Opens the find bar in the editor, leaving reading view first: it searches the text.
-    func requestFind(_ request: FindRequest, editingMode: EditingMode) {
-        if viewMode == .reading { viewMode = editingMode == .source ? .source : .livePreview }
-        findRequest = request
-    }
-
-    /// Obsidian's "Toggle reading view": reading, or back to the editing mode.
-    func toggleReadingView(editingMode: EditingMode) {
-        viewMode = viewMode != .reading ? .reading : (editingMode == .source ? .source : .livePreview)
     }
 
     func markInsertionApplied(_ insertion: EditorInsertion) {

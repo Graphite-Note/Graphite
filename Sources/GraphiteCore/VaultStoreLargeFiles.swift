@@ -17,20 +17,6 @@ public struct FileStamp: Equatable, Sendable {
     public let modificationDate: Date?
 }
 
-public extension AtomicFileWriter {
-    /// Runs `body` on `url` under a coordinated read.
-    func readingCoordinated<Value>(_ url: URL, _ body: (URL) throws -> Value) throws -> Value {
-        var coordinationError: NSError?
-        var readResult: Result<Value, Error>?
-        makeCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { location in
-            readResult = Result { try body(location) }
-        }
-        if let coordinationError { throw coordinationError }
-        guard let readResult else { throw GraphiteError.unavailable("The file provider did not grant access.") }
-        return try readResult.get()
-    }
-}
-
 public extension VaultStore {
     /// The file's revision, hashed a megabyte at a time.
     func revision(of path: VaultPath) throws -> FileRevision {

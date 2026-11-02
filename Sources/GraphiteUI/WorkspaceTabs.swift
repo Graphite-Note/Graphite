@@ -5,7 +5,7 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.31
+ * Version: 0.32
  * Date: 02/11/2026
  */
 
@@ -459,23 +459,7 @@ extension WorkspaceModel {
                     newMarkdown = nil; newPDF = nil
                     break
                 }
-                newMarkdown = try MarkdownSession(path: path, snapshot: snapshot, store: store, openNotes: processServices.openNotes) { [weak self] savedPath in
-                    self?.refreshIndex(for: [savedPath])
-                }
-                // An edit while the note is read: reading goes on at the same sentence.
-                newMarkdown?.textDidChange = { [weak self, weak newMarkdown] in
-                    guard let self, let newMarkdown else { return }
-                    readAloud?.noteTextDidChange(path: newMarkdown.path, text: newMarkdown.text,
-                        hiddenRanges: ReadAloudFolding.hiddenRanges(in: newMarkdown.text, foldedKeys: newMarkdown.foldedKeys,
-                                                                    calloutExpansion: calloutFolds.expansion(for: newMarkdown.path.rawValue)))
-                }
-                if let newMarkdown {
-                    await restoreUnsavedDraft(into: newMarkdown)
-                    restoreViewMode(of: newMarkdown); restoreFolds(of: newMarkdown)
-                    returnToRememberedPlace(of: newMarkdown); watchForRecovery(newMarkdown)
-                    newMarkdown.maximumBytesRead = maximumBytes
-                    if snapshot.data.count > MarkdownSession.maximumEditableBytes { newMarkdown.errorMessage = MarkdownSession.grownTooLargeMessage }
-                }
+                newMarkdown = try await openNoteSession(at: path, snapshot: snapshot, store: store, maximumBytesRead: maximumBytes)
                 newPDF = nil
             case .pdf:
                 let location = try path.url(in: folderAccess.root)

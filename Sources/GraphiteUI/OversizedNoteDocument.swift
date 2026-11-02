@@ -92,8 +92,10 @@ final class OversizedNoteDocument {
         let size = ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .binary)
         let limit = MarkdownSession.maximumEditableBytes / 1_048_576
         if canEditAnyway {
-            return "This note is \(size), too large to edit here: Graphite edits notes up to \(limit) MB, to stay within its memory. It is shown as plain text, read-only."
+            return "This note is \(size), too large to edit here: Graphite edits notes up to \(limit) MB, to stay within its memory. "
+                + "It is shown as plain text, read-only."
         }
-        return "This note is \(size), too large to edit in Graphite, even for trimming: another app can do that. It is shown as plain text, read-only."
+        return "This note is \(size), too large to edit in Graphite, even for trimming: another app can do that. "
+            + "It is shown as plain text, read-only."
     }
 }

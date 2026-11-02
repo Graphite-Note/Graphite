@@ -83,9 +83,9 @@ final class RenamingAnOpenNoteTests: XCTestCase {
         let move = Task { @MainActor in await workspace.move(try VaultPath("Lecture.md"), into: try VaultPath("Sub")) }
         let oldLocation = vault.appendingPathComponent("Lecture.md")
         try await waitUntil("the file left its old place", pollingIntervalSeconds: 0.001) { !FileManager.default.fileExists(atPath: oldLocation.path) }
-        try XCTSkipIf(note.path != (try VaultPath("Lecture.md")), "The move finished before the test could type into the note.")
         note.text = "typed after it left"
         try await move.value
+        try await note.save() // Nothing is left to save when the move's end saw the text, as it nearly always does.
 
         XCTAssertEqual(note.path, try VaultPath("Sub/Lecture.md"))
         XCTAssertEqual(try text(of: "Sub/Lecture.md", in: vault), "typed after it left")

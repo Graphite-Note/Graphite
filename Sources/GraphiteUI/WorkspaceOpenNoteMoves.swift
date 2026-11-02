@@ -34,8 +34,7 @@ final class SavesHeldDuringMove {
 
     /// Waits for saves that started before the hold, so the file moves with them in it.
     func waitForSavesInFlight() async {
-        // A failed save reports to whoever started it, and its text stays in the session.
-        for save in savesInFlight { _ = try? await save.value }
+        for save in savesInFlight { _ = try? await save.value } // A failed save reports to whoever started it, and its text stays in the session.
     }
 
     func release() {
@@ -89,15 +88,15 @@ extension WorkspaceModel {
             document.unload()
         }
         if let currentVaultIdentifier, let lastOpenedDocument = vaultLibrary.vault(withIdentifier: currentVaultIdentifier)?.lastOpenedDocument,
-           lastOpenedDocument.isInside(oldPath), let movedPath = try? lastOpenedDocument.replacingPrefix(oldPath, with: newPath) { // Cannot be named there: left for the check at launch.
+           lastOpenedDocument.isInside(oldPath),
+           let movedPath = try? lastOpenedDocument.replacingPrefix(oldPath, with: newPath) { // Cannot be named there: left for the check at launch.
             vaultLibrary.setLastOpenedDocument(movedPath, inVault: currentVaultIdentifier)
         }
     }
 
     /// Saves what the notes that followed a move have not saved yet.
     func saveTextOfNotes(_ notes: [MarkdownSession]) async {
-        // A failure shows in the note's banner, and its draft keeps the text.
-        for note in notes where note.hasUnsavedChanges { try? await note.save() }
+        for note in notes where note.hasUnsavedChanges { try? await note.save() } // A failure shows in the note's banner, and its draft keeps the text.
     }
 
     /// The revisions at the new place of the files of the notes open inside `oldPath`.
@@ -105,8 +104,9 @@ extension WorkspaceModel {
         guard let store else { return [:] }
         var revisions: [VaultPath: FileRevision] = [:]
         for session in tabDocuments.values.compactMap(\.markdownSession) where session.path.isInside(oldPath) {
-            guard let newNotePath = try? session.path.replacingPrefix(oldPath, with: newPath) else { continue } // No revision: text not saved goes beside the file.
-            revisions[newNotePath] = try? await store.revision(of: newNotePath) // No revision: text not saved goes beside the file.
+            // No revision, here or below: text not saved goes beside the file.
+            guard let newNotePath = try? session.path.replacingPrefix(oldPath, with: newPath) else { continue } // see above
+            revisions[newNotePath] = try? await store.revision(of: newNotePath) // see above
         }
         return revisions
     }

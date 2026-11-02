@@ -84,9 +84,7 @@ private struct OversizedNotePageRow: View {
             }
             .task {
                 let pageText: String
-                do { pageText = try await note.text(ofPage: pageIndex) } catch {
-                    pageText = "This part of the note could not be read. " + error.localizedDescription
-                }
+                do { pageText = try await note.text(ofPage: pageIndex) } catch { pageText = "This part of the note could not be read." }
                 guard !Task.isCancelled else { return }
                 // A page's own last line break would show as an empty line before the next page.
                 text = pageText.last?.isNewline == true ? String(pageText.dropLast()) : pageText
