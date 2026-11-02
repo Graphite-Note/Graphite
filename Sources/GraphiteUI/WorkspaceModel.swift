@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.81
+ * Version: 0.83
  * Date: 02/11/2026
  */
 
@@ -1601,13 +1601,8 @@ final class WorkspaceModel {
     // MARK: Navigation
 
     /// Keeps tabs, their histories, and recent files pointing at a moved file or folder.
-    /// Tabs of moved files load them again from their new place.
     func followMoveInNavigation(from oldPath: VaultPath, to newPath: VaultPath) {
-        let movedDocuments = layout.allTabs.filter { tab in tab.path?.isInside(oldPath) == true }.compactMap { tab in tabDocuments[tab.id] }
-        // As every other way a session goes: the note reopens at the line and cursor it left,
-        // and `followMoveInPlaces` below carries that to the new path.
-        rememberPlaces(of: movedDocuments)
-        for document in movedDocuments { document.unload() }
+        followMoveInOpenDocuments(from: oldPath, to: newPath)
         followMoveInConflictVersions(from: oldPath, to: newPath)
         changingTabsForFileManagement { layout.replacePrefix(oldPath, with: newPath) }
         recentFiles.replacePrefix(oldPath, with: newPath)
@@ -1787,6 +1782,7 @@ final class WorkspaceModel {
                 document.pdfSession = reloadedSession
             } catch { pdfSession.errorMessage = error.localizedDescription }
         }
+        await openAgainNotesThatChangedSize(limitedTo: changedPaths)
     }
 
     /// Shows `location` in the tab whose PDF conflicted: the separate copy just saved, or
@@ -1820,6 +1816,8 @@ extension WorkspaceModel {
             let remembered = readAloudNavigator.rememberedLocation(for: pdf.location.path) ?? 0
             let first = min(max(0, remembered), max(0, pdf.pageCount - 1))
             readAloud.readPDF(pdf, firstPageIndex: first, lastPageIndex: max(first, pdf.pageCount - 1))
+        } else if activeDocument.oversizedNote != nil {
+            errorMessage = "This note is too large to read aloud."
         }
     }
 }

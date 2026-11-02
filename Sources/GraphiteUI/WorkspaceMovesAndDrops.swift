@@ -6,8 +6,8 @@
  *              and what a drop of dragged items on a folder does.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -64,6 +64,12 @@ extension WorkspaceModel {
               // A file put in the old place again is a save by replacing it, not a move.
               (try? await store.fileExists(newPath)) == true, // Cannot be checked: not followed.
               (try? await store.fileExists(oldPath)) == false else { return } // Cannot be checked: not followed.
+        let revisionsAtNewPlace = await revisionsOfOpenNotes(inside: oldPath, movedTo: newPath)
+        // In one turn from here. A note goes on at the new place in its own session, unless the
+        // file also changed under text not saved yet: that text is written beside the file, below.
+        let notesFollowing = followMoveInOpenNotes(from: oldPath, to: newPath) { session, newNotePath in
+            !session.hasUnsavedChanges || revisionsAtNewPlace[newNotePath] == session.revision
+        }
         // Read before the tabs let go of their sessions, with no suspension in between.
         let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.revision) }
             + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.revision) }) { firstRevision, _ in firstRevision }
@@ -74,6 +80,10 @@ extension WorkspaceModel {
         expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(oldPath, with: newPath)) ?? folder }) // Outside it: unchanged.
         followMoveInNavigation(from: oldPath, to: newPath)
         moveDrafts(from: oldPath, to: newPath)
+        await saveTextOfNotes(notesFollowing)
+        // A save that was running as the file moved found it gone, which is no conflict; a file
+        // that changed as it moved is shown as any other app's change.
+        for session in notesFollowing { await session.checkExternalChange() }
         let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(edits)
         let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsWithEdits, from: oldPath, to: newPath)
         refreshIndexFollowingMove([oldPath, newPath] + keptEditPaths + keptPDFPaths)

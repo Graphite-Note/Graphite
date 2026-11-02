@@ -1,3 +1,14 @@
+/**
+ * File: AtomicFileWriter.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: File revisions, and coordinated reads and whole-or-nothing writes of the person's files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import CryptoKit
 
@@ -41,17 +52,22 @@ public struct AtomicFileWriter: Sendable {
     public func makeCoordinator() -> NSFileCoordinator { NSFileCoordinator(filePresenter: filePresenter) }
 
     public func read(_ url: URL, maximumBytes: Int? = nil) throws -> FileSnapshot {
-        var coordinationError: NSError?
-        var readResult: Result<FileSnapshot, Error>?
-        makeCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { location in
-            readResult = Result {
-                if let maximumBytes {
-                    let size = try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                    guard size <= maximumBytes else { throw GraphiteError.oversized("This file exceeds the current editor's memory budget.") }
-                }
-                let data = try Data(contentsOf: location)
-                return FileSnapshot(data: data, revision: FileRevision.of(data))
+        try readingCoordinated(url) { location in
+            if let maximumBytes {
+                let size = try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size <= maximumBytes else { throw GraphiteError.oversized("This file exceeds the current editor's memory budget.") }
             }
+            let data = try Data(contentsOf: location)
+            return FileSnapshot(data: data, revision: FileRevision.of(data))
+        }
+    }
+
+    /// Runs `body` on `url` under a coordinated read.
+    public func readingCoordinated<Value>(_ url: URL, _ body: (URL) throws -> Value) throws -> Value {
+        var coordinationError: NSError?
+        var readResult: Result<Value, Error>?
+        makeCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { location in
+            readResult = Result { try body(location) }
         }
         if let coordinationError { throw coordinationError }
         guard let readResult else { throw GraphiteError.unavailable("The file provider did not grant access.") }

@@ -6,8 +6,8 @@
  *              cannot reach the file.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -95,5 +95,5 @@ extension MarkdownSession {
         for session in sessions { session.draftEditVersion = nil }
     }
 
-    static let grownTooLargeMessage = "This note is saved, but it is now over 8 MB, the most Graphite can open for editing. Once it is closed it will not open here until it is smaller; Obsidian can open it."
+    static let grownTooLargeMessage = "This note is over 8 MB, the most Graphite opens for editing. It stays open here; once it is closed it opens read-only until it is smaller."
 }

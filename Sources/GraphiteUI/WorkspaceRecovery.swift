@@ -5,8 +5,8 @@
  * Description: File recovery for the open vault: copies of notes taken before they are replaced or deleted, and kept outside the vault.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -25,9 +25,9 @@ extension WorkspaceModel {
 
     /// Keeps a copy of a note's saved text when a save or a reload is about to replace it.
     func watchForRecovery(_ session: MarkdownSession) {
-        let path = session.path
-        session.willReplaceSavedText = { [weak self] replacedText, replacement in
-            guard let self, self.preferences.isEnabled(.fileRecovery), let fileRecovery = self.fileRecovery else { return }
+        session.willReplaceSavedText = { [weak self, weak session] replacedText, replacement in
+            guard let self, let session, self.preferences.isEnabled(.fileRecovery), let fileRecovery = self.fileRecovery else { return }
+            let path = session.path
             let interval = replacement == .bySave ? self.snapshotInterval : 0
             Task.detached(priority: .utility) {
                 _ = try? fileRecovery.takeSnapshot(of: replacedText, for: path, minimumInterval: interval)

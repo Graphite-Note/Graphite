@@ -684,7 +684,9 @@ struct TabDocumentView: View {
     }
 
     @ViewBuilder private func loadedContent(_ path: VaultPath) -> some View {
-        if let session = document.markdownSession {
+        if let note = document.oversizedNote {
+            OversizedNotePane(note: note) { Task { await workspace.editOversizedNoteAnyway(inTab: tab.id) } }
+        } else if let session = document.markdownSession {
             // The same pane shows the next note; it makes its editor again (see `MarkdownPane`).
             MarkdownPane(session: session, workspace: workspace, document: document, tabID: tab.id, isFocused: isFocused,
                          showsLinksInspector: $showsLinksInspector)
