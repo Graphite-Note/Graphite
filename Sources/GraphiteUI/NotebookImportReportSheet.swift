@@ -1,3 +1,14 @@
+/**
+ * File: NotebookImportReportSheet.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: The sheet that reports what a notebook import brought in and what it left out.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import NotebookImport
@@ -32,7 +43,7 @@ struct NotebookImportReportSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done", action: done) }
             }
         }
-        .frame(minWidth: 420, minHeight: 360)
+        .sheetMinimumSize(width: 420, height: 360)
     }
 }
 

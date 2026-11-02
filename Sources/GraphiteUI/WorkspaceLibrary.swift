@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceLibrary.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: What the library view reads from and asks of a window.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -7,6 +18,7 @@ import GraphiteApple
 extension WorkspaceModel {
     var libraryVault: LibraryVault {
         LibraryVault(source: librarySource, title: title, sortOrder: vaultSettings.fileSortOrder, listingVersion: directoryVersion,
+            folderListingVersions: folderListingVersions,
                      firstCreatedKind: preferences.library.firstCreatedKind, isPluginEnabled: preferences.isEnabled,
                      presentation: preferences.library.presentation, confirmsDeletion: vaultSettings.confirmsDeletion,
                      deletionMethod: vaultSettings.deletionMethod)
@@ -18,11 +30,9 @@ extension WorkspaceModel {
         guard let root = folderAccess?.root else { return nil }
         let index = index
         return LibraryPreviewLoader(root: root) { target, notePath in
-            // An unresolved or ambiguous picture leaves the note's tile without one.
+            // An unresolved picture leaves the note's tile without one.
             guard let index else { return nil }
-            let matches = try? await index.resolve(target, from: notePath) // A failed lookup is no picture.
-            guard let matches, matches.count == 1 else { return nil }
-            return matches[0]
+            return (try? await index.resolve(target, from: notePath))?.first // A failed lookup is no picture.
         }
     }
 
@@ -96,7 +106,7 @@ extension WorkspaceModel {
     func receiveDrop(_ providers: [NSItemProvider], into folder: VaultPath) -> Bool {
         guard LibraryDropReader.canRead(providers) else { return false }
         Task {
-            let plan = LibraryDropPlan.make(from: await LibraryDropReader.read(providers), into: folder)
+            let plan = LibraryDropPlan.make(from: await LibraryDropReader.read(providers, vaultRoot: folderAccess?.root), into: folder)
             for path in plan.movedPaths { await move(path, into: folder) }
             guard !plan.droppedFiles.isEmpty else { return }
             let batch = DroppedFileBatch(files: plan.droppedFiles)

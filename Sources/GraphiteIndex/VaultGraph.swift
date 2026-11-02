@@ -1,3 +1,14 @@
+/**
+ * File: VaultGraph.swift
+ * ----------------------
+ * Layer: Index
+ * Description: Builds the graph view's data, and resolves links over names held in memory.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore
@@ -8,7 +19,7 @@ extension VaultIndex {
     /// Links resolve as they do everywhere else; a link that could mean several files is
     /// left out rather than drawn to one of them.
     public func linkGraph() throws -> LinkGraph {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             let resolver = try GraphLinkResolver(database: database)
             let files = resolver.paths.compactMap { path in try? VaultPath(path) }
             let rows = try Row.fetchAll(database, sql: "SELECT source, target, isWiki FROM links UNION SELECT path, target, 1 FROM property_links")
@@ -30,7 +41,7 @@ extension VaultIndex {
                     resolved = resolver.resolve(target, from: source, isWiki: isWiki)
                     resolvedByKey[cacheKey] = resolved
                 }
-                if resolved.count == 1, let destination = resolved.first.flatMap({ path in try? VaultPath(path) }) {
+                if let destination = resolved.first.flatMap({ path in try? VaultPath(path) }) {
                     links.append((source, destination))
                 } else if resolved.isEmpty {
                     unresolvedLinks.append((source, target))
@@ -44,9 +55,30 @@ extension VaultIndex {
         }
     }
 
+    /// The notes that embed any of `notes`, or embed a note that does, up to `levels` embeds
+    /// away: what must draw again when these notes change. A superset, since an embed is matched
+    /// by what it writes and not resolved; a note wrongly in it only draws once more.
+    public nonisolated func notesEmbedding(_ notes: [VaultPath], throughLevels levels: Int) async throws -> Set<VaultPath> {
+        try await databasePool.read { database in
+            var embeddingNotes: Set<VaultPath> = []
+            var notesThisLevel = notes
+            for _ in 0..<levels where !notesThisLevel.isEmpty {
+                var candidates: [String] = []
+                for note in notesThisLevel { candidates += try Self.foldedLinkTargetCandidates(for: note, in: database) }
+                let sources = try String.fetchAll(database,
+                    sql: "SELECT DISTINCT source FROM links WHERE isEmbed = 1 AND folded_target IN (\(databaseQuestionMarks(count: candidates.count)))",
+                                                  arguments: StatementArguments(candidates)).compactMap { source in
+                    try? VaultPath(source) // A row with no valid path embeds nothing.
+                }
+                notesThisLevel = sources.filter { source in embeddingNotes.insert(source).inserted }
+            }
+            return embeddingNotes
+        }
+    }
+
     /// The resolver the graph uses, for tests that compare it with `resolve`.
     func graphLinkResolver() throws -> GraphLinkResolver {
-        try databaseQueue.read { database in try GraphLinkResolver(database: database) }
+        try databasePool.read { database in try GraphLinkResolver(database: database) }
     }
 
     static func isExternalLink(_ target: String) -> Bool {
@@ -60,7 +92,7 @@ extension VaultIndex {
 /// `VaultIndex.resolvedPaths` over names held in memory: the graph resolves every link in
 /// the vault, and a query per link takes seconds for a large vault. Names compare by the
 /// folded keys the index stores (`VaultIndex.foldedKey`), ignoring case for every letter.
-struct GraphLinkResolver {
+struct GraphLinkResolver: Sendable {
     /// Every file, sorted as SQLite sorts them.
     let paths: [String]
     private let pathsByFoldedPath: [String: [String]]
@@ -103,7 +135,7 @@ struct GraphLinkResolver {
     func resolve(_ target: String, from source: VaultPath, isWiki: Bool) -> [String] {
         for candidate in WikiLinkResolver.directCandidates(target: target, source: source, isWiki: isWiki) {
             // Files whose names differ only by case prefer the exact spelling, and are
-            // otherwise returned together as ambiguous.
+            // otherwise returned together.
             let matches = Array((pathsByFoldedPath[VaultIndex.foldedKey(candidate.rawValue)] ?? []).prefix(50))
             guard !matches.isEmpty else { continue }
             let candidateKey = WikiLinkResolver.comparisonKey(candidate.rawValue)
@@ -125,12 +157,26 @@ struct GraphLinkResolver {
                     if foldedPath == pathSuffix || (!isFromRoot && foldedPath.hasSuffix("/" + pathSuffix)) { matches.insert(path) }
                 }
             } else {
-                matches.formUnion(pathsByFoldedName[VaultIndex.foldedKey(fileName)] ?? [])
+                // A file's own name goes before another note's alias, as in the index.
+                let namedPaths = pathsByFoldedName[VaultIndex.foldedKey(fileName)] ?? []
+                if !namedPaths.isEmpty { return WikiLinkResolver.closestFirst(namedPaths, toNoteAt: source) }
                 if isWiki { matches.formUnion(pathsByFoldedAlias[VaultIndex.foldedKey(part)] ?? []) }
             }
-            if !matches.isEmpty { return Array(matches.sorted().prefix(50)) }
+            if !matches.isEmpty { return WikiLinkResolver.closestFirst(Array(matches), toNoteAt: source) }
         }
         return []
+    }
+
+    /// The files a link counts as a backlink of, by the rules of `VaultIndex.backlinkSources`:
+    /// a target that spells a file's whole path names it, from any folder, and any other target
+    /// names the one file it resolves to.
+    func backlinkDestinations(ofTarget target: String, from source: VaultPath, isWiki: Bool) -> [String] {
+        let foldedTarget = VaultIndex.foldedKey(target)
+        var destinations = pathsByFoldedPath[foldedTarget] ?? []
+        if target.hasPrefix("/") { destinations += pathsByFoldedPath[VaultIndex.foldedKey(String(target.dropFirst()))] ?? [] }
+        let resolvedPaths = resolve(target, from: source, isWiki: isWiki)
+        destinations += resolvedPaths.prefix(1)
+        return destinations
     }
 
     private static func lastComponent(of foldedPath: String) -> String {

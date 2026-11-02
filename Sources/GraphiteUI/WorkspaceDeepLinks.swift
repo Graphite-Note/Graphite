@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceDeepLinks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -140,7 +151,7 @@ extension WorkspaceModel {
                 case .unique:
                     path = try await store.uniquePath(directory: path.parent, stem: path.stem, extension: "md")
                     _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
-                    await refreshDirectory()
+                    await showInListings(path)
                 case .append, .overwrite:
                     try await replaceText(of: path, keepingCopy: mode == .overwrite) { existing in
                         mode == .append ? VaultURI.appending(content, to: existing) : content
@@ -149,7 +160,7 @@ extension WorkspaceModel {
             } else {
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
-                await refreshDirectory()
+                await showInListings(path)
             }
             refreshIndex(for: [path])
             if opensNote { await open(path) }

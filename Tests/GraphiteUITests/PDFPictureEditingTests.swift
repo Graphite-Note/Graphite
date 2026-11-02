@@ -82,7 +82,8 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(turned.bounds.height, placed.bounds.width, accuracy: 0.01)
         XCTAssertEqual(turned.bounds.midX, placed.bounds.midX, accuracy: 0.01)
         XCTAssertEqual(turned.bounds.midY, placed.bounds.midY, accuracy: 0.01)
-        XCTAssertNotEqual(turned.imageData, placed.imageData)
+        XCTAssertEqual(turned.imageData, placed.imageData, "Turning keeps every byte of the picture")
+        XCTAssertNotEqual(turned.quarterTurns, placed.quarterTurns)
         XCTAssertEqual(session.undoAvailability.undoActionName, "Rotate Image Right")
 
         session.undoAvailability.undo()

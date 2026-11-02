@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceConflictVersions.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: The versions a file provider keeps beside a file: listing them and deciding about them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -19,9 +30,8 @@ struct ConflictVersionListing: Equatable, Sendable {
 /// two places: finding the files that have them, and the three things the person can do
 /// with one. Nothing here removes a version unless the person chose it.
 extension WorkspaceModel {
-    /// The most paths that wait to be checked. Beyond it the oldest requests are given
-    /// up, so a huge folder cannot queue work without end; its files are checked again
-    /// the next time they are listed or opened.
+    /// The most paths that wait to be checked, so a huge folder cannot queue work without end.
+    /// A file given up is checked when its row comes on screen or it opens.
     static let maximumPendingConflictChecks = 5_000
     /// Files checked between two looks at whether the check is still wanted.
     static let conflictChecksPerBatch = 100
@@ -29,14 +39,53 @@ extension WorkspaceModel {
     // MARK: Finding
 
     /// Looks for kept versions of these files, off the main thread, and marks the files
-    /// that have them. Only files the sidebar lists or a tab shows are ever asked about.
+    /// that have them. Only files the sidebar lists or a tab shows are ever asked about. These
+    /// are files that changed, or a tab shows, so the oldest requests are the ones given up.
     func checkConflictVersions(of paths: some Sequence<VaultPath>) {
         guard folderAccess != nil else { return }
-        var waitingPaths = Set(pendingConflictChecks)
-        for path in paths where waitingPaths.insert(path).inserted { pendingConflictChecks.append(path) }
-        if pendingConflictChecks.count > Self.maximumPendingConflictChecks {
-            pendingConflictChecks.removeFirst(pendingConflictChecks.count - Self.maximumPendingConflictChecks)
+        for path in paths where pendingConflictCheckPaths.insert(path).inserted {
+            pendingConflictChecks.append(path)
+            conflictCheckedPaths.insert(path)
         }
+        if pendingConflictChecks.count > Self.maximumPendingConflictChecks {
+            let givenUpCount = pendingConflictChecks.count - Self.maximumPendingConflictChecks
+            for path in pendingConflictChecks.prefix(givenUpCount) { forgetPendingCheck(of: path) }
+            pendingConflictChecks.removeFirst(givenUpCount)
+        }
+        startPendingConflictChecks()
+    }
+
+    /// Asks about the files of a listing that were not asked about since the vault opened: a
+    /// version a file gains or loses is reported as a change to it, which asks again. A listing
+    /// larger than the most that can wait keeps its first files, the rows a list starts with, and
+    /// a file beyond them is asked about when its row comes on screen (`checkConflictVersionsOfRowShown`).
+    func checkConflictVersions(ofListedFiles paths: some Sequence<VaultPath>) {
+        guard folderAccess != nil else { return }
+        for path in paths where !conflictCheckedPaths.contains(path) {
+            guard pendingConflictChecks.count < Self.maximumPendingConflictChecks else { break }
+            pendingConflictCheckPaths.insert(path)
+            pendingConflictChecks.append(path)
+            conflictCheckedPaths.insert(path)
+        }
+        startPendingConflictChecks()
+    }
+
+    /// A file's row came on screen: it is asked about next, unless it already was.
+    func checkConflictVersionsOfRowShown(_ path: VaultPath) {
+        guard folderAccess != nil, !conflictCheckedPaths.contains(path) else { return }
+        pendingConflictChecks.insert(path, at: 0)
+        pendingConflictCheckPaths.insert(path)
+        conflictCheckedPaths.insert(path)
+        if pendingConflictChecks.count > Self.maximumPendingConflictChecks { forgetPendingCheck(of: pendingConflictChecks.removeLast()) }
+        startPendingConflictChecks()
+    }
+
+    private func forgetPendingCheck(of path: VaultPath) {
+        pendingConflictCheckPaths.remove(path)
+        conflictCheckedPaths.remove(path)
+    }
+
+    private func startPendingConflictChecks() {
         guard conflictCheckTask == nil, !pendingConflictChecks.isEmpty else { return }
         conflictCheckTask = Task(priority: .utility) { [weak self] in await self?.runPendingConflictChecks() }
     }
@@ -45,6 +94,8 @@ extension WorkspaceModel {
     func resetConflictVersions() {
         conflictCheckTask?.cancel(); conflictCheckTask = nil
         pendingConflictChecks = []
+        pendingConflictCheckPaths = []
+        conflictCheckedPaths = []
         if !conflictedPaths.isEmpty { conflictedPaths = [] }
         conflictVersionsRequest = nil
     }
@@ -54,6 +105,7 @@ extension WorkspaceModel {
             guard let root = folderAccess?.root else { break }
             let batch = Array(pendingConflictChecks.prefix(Self.conflictChecksPerBatch))
             pendingConflictChecks.removeFirst(batch.count)
+            pendingConflictCheckPaths.subtract(batch)
             let states = await Self.conflictStates(of: batch, root: root, store: conflictVersionStore)
             // Another vault may have opened meanwhile; its check starts afresh.
             guard !Task.isCancelled, folderAccess?.root == root else { return }
@@ -143,14 +195,46 @@ extension WorkspaceModel {
         guard let store, let root = folderAccess?.root else { throw GraphiteError.unavailable("No vault is open.") }
         // Edits made since the listing are saved, which changes the file, so the
         // replacement is refused below and the person sees them compared first.
-        try await saveOpenDocument(at: path)
+        var keptCopies: [VaultPath] = []
+        do { try await saveOpenDocument(at: path) } catch GraphiteError.conflict {
+            // The open text is in conflict with another app's edit and cannot be saved, and
+            // these versions are what settles that. It goes to a copy, so choosing one loses
+            // nothing, and that leaves the file as it was listed.
+            keptCopies = try await copyEditsInConflict(at: path)
+        }
+        await copyCurrentVersionForRecovery(of: path)
         let location = try path.url(in: root)
         let conflictVersionStore = conflictVersionStore, writer = store.writer
         let replacedLocation = try await Task.detached(priority: .userInitiated) {
             try conflictVersionStore.replaceFile(at: location, withVersion: version.id, expecting: listing.currentStamp, using: writer)
         }.value
-        await filesDidChangeByResolvingVersions([path] + [vaultPath(for: replacedLocation)].compactMap { replacedPath in replacedPath })
+        await filesDidChangeByResolvingVersions([path] + keptCopies + [vaultPath(for: replacedLocation)].compactMap { replacedPath in replacedPath })
         await refreshConflictState(of: path)
+        if let keptCopy = keptCopies.first { notice = "The text you had not saved in “\(path.name)” is kept in “\(keptCopy.name)”." }
+    }
+
+    /// Writes the unsaved edits of `path`'s open note or canvas beside it, which ends its
+    /// conflict. A PDF's cannot be left behind that way, so the person is told what to do.
+    private func copyEditsInConflict(at path: VaultPath) async throws -> [VaultPath] {
+        var copies: [VaultPath] = []
+        for document in tabDocuments.values where document.loadedPath == path {
+            if let note = document.markdownSession, note.hasUnsavedChanges { copies.append(try await note.saveSeparateCopy()) }
+            if let canvas = document.canvasSession, canvas.hasUnsavedChanges { copies.append(try await canvas.saveSeparateCopy()) }
+            if document.pdfSession?.hasUnsavedChanges == true {
+                throw SeparateCopyRefusal.pdfHasUnsavedEdits(fileName: path.name)
+            }
+        }
+        return copies
+    }
+
+    /// Keeps the note's text in File recovery before a chosen version replaces it, whether or
+    /// not the note is open.
+    private func copyCurrentVersionForRecovery(of path: VaultPath) async {
+        guard preferences.isEnabled(.fileRecovery), let fileRecovery, let store, DocumentKind(path: path) == .markdown,
+              let snapshot = try? await store.read(path, maximumBytes: FileRecoveryStore.maximumSnapshotBytes), // Unreadable or too large: no copy to take.
+              let text = String(data: snapshot.data, encoding: .utf8) else { return }
+        // Best effort: the person confirmed replacing this version.
+        _ = try? await Task.detached(priority: .utility) { try fileRecovery.takeSnapshot(of: text, for: path, minimumInterval: 0) }.value
     }
 
     /// Keeps `version` as a file of its own beside the current one, named as a conflict

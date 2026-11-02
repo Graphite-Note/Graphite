@@ -1,3 +1,14 @@
+/**
+ * File: EmbeddedPDFViewer.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import GraphiteCore
@@ -362,8 +373,11 @@ struct EmbeddedPDFViewer: View {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     let _ = session.pageListVersion
-                    ForEach(PDFThumbnailListPage.pages(of: session.document)) { listPage in
-                        thumbnailButton(for: listPage, in: session)
+                    // Only the rows on screen ask PDFKit for their page.
+                    ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
+                        if let page = session.document.page(at: pageIndex) {
+                            thumbnailButton(for: PDFThumbnailListPage(pageIndex: pageIndex, page: page), in: session)
+                        }
                     }
                 }
                 .padding(.vertical, 8)

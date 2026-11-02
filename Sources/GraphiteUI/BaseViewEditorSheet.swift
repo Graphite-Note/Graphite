@@ -1,3 +1,14 @@
+/**
+ * File: BaseViewEditorSheet.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: The sheet that edits one view of a base, with the options of a view a plugin draws.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -22,6 +33,8 @@ struct BaseViewDraft: Equatable, Sendable {
     var markerIconProperty: BasePropertyIdentifier?
     var markerColorProperty: BasePropertyIdentifier?
     var defaultZoom: Double?
+    /// The options of a plugin's view, as the file writes them.
+    var pluginOptions: [String: BaseViewOptionValue]
 
     init(view: BaseView) {
         name = view.name
@@ -42,6 +55,7 @@ struct BaseViewDraft: Equatable, Sendable {
         markerIconProperty = view.map.markerIconProperty
         markerColorProperty = view.map.markerColorProperty
         defaultZoom = view.map.defaultZoom.flatMap { zoom in zoom.isFinite ? zoom : nil }
+        pluginOptions = view.pluginOptions
     }
 
     /// Applies the fields that differ from `original`, leaving everything else as written.
@@ -65,6 +79,9 @@ struct BaseViewDraft: Equatable, Sendable {
         if markerIconProperty != original.markerIconProperty { try editor.setOption("markerIcon", text: markerIconProperty?.rawValue, forViewAt: viewPosition) }
         if markerColorProperty != original.markerColorProperty { try editor.setOption("markerColor", text: markerColorProperty?.rawValue, forViewAt: viewPosition) }
         if defaultZoom != original.defaultZoom { try editor.setOption("defaultZoom", number: defaultZoom, forViewAt: viewPosition) }
+        for key in Set(pluginOptions.keys).union(original.pluginOptions.keys) where pluginOptions[key] != original.pluginOptions[key] {
+            try editor.setOption(key, value: pluginOptions[key], forViewAt: viewPosition)
+        }
     }
 
     static let limitRange = 1...100_000
@@ -106,64 +123,6 @@ struct BaseViewDraft: Equatable, Sendable {
     }
 }
 
-/// The view editor's draft and the view it was made from. The base can be loaded again
-/// while the sheet is open, after an edit in another app. Saving writes the fields that
-/// differ from `original`, so a draft kept across such a change would revert it, or be
-/// written over another view that moved into its place.
-struct BaseViewEditing: Equatable {
-    enum FileChange: Equatable {
-        case viewChanged, viewRemoved
-    }
-
-    var draft: BaseViewDraft
-    private(set) var original: BaseViewDraft
-    /// The view's position in the file's `views` list (`BaseView.id`) when the draft was made.
-    private(set) var viewPosition: Int
-    /// Set when the file changed under an edited draft, which can then not be saved.
-    private(set) var fileChange: FileChange?
-
-    init(view: BaseView) {
-        let viewDraft = BaseViewDraft(view: view)
-        draft = viewDraft
-        original = viewDraft
-        viewPosition = view.id
-    }
-
-    /// Marked as removed when the definition has no view at `viewIndex`, which can
-    /// happen when the base was loaded again just before the sheet opened.
-    init(viewAt viewIndex: Int, in definition: BaseDefinition) {
-        guard definition.views.indices.contains(viewIndex) else {
-            self.init(view: BaseView(id: viewIndex, type: .table, name: ""))
-            fileChange = .viewRemoved
-            return
-        }
-        self.init(view: definition.views[viewIndex])
-    }
-
-    var hasChanges: Bool { draft != original }
-
-    /// Follows the file after it was loaded again. A draft without changes starts over
-    /// from the view as it is now; an edited one is kept but marked as out of date.
-    mutating func fileLoaded(_ view: BaseView?) {
-        guard let view else {
-            fileChange = .viewRemoved
-            return
-        }
-        if view.id == viewPosition && BaseViewDraft(view: view) == original {
-            fileChange = nil
-        } else if hasChanges {
-            fileChange = .viewChanged
-        } else {
-            self = BaseViewEditing(view: view)
-        }
-    }
-
-    /// Drops the changes and edits the view as the file has it now.
-    mutating func discardChanges(reloading view: BaseView) {
-        self = BaseViewEditing(view: view)
-    }
-}
-
 struct BaseViewEditorSheet: View {
     private static let editableTypes: [BaseViewType] = [.table, .cards, .list, .kanban, .map]
     private static let fileProperties: [BasePropertyIdentifier] = ["name", "basename", "path", "folder", "ext", "size", "ctime", "mtime", "tags", "links", "embeds", "backlinks"].map(BasePropertyIdentifier.file)
@@ -171,6 +130,8 @@ struct BaseViewEditorSheet: View {
     let definition: BaseDefinition
     let viewIndex: Int
     let availablePropertyKeys: [String]
+    /// The view types plugins registered, offered as layouts, with the options each has.
+    let pluginViews: [String: CommunityPluginBasesViewRegistration]
     /// Saves the draft into the view at the given position of the file's `views` list and
     /// returns nil, or returns why the base was not saved. The sheet stays open with the
     /// draft until the save succeeds.
@@ -180,11 +141,12 @@ struct BaseViewEditorSheet: View {
     @State private var isSaving = false
     @State private var failureMessage: String?
 
-    init(definition: BaseDefinition, viewIndex: Int, availablePropertyKeys: [String],
+    init(definition: BaseDefinition, viewIndex: Int, availablePropertyKeys: [String], pluginViews: [String: CommunityPluginBasesViewRegistration] = [:],
          saveEdit: @escaping (_ draft: BaseViewDraft, _ original: BaseViewDraft, _ viewPosition: Int) async -> String?) {
         self.definition = definition
         self.viewIndex = viewIndex
         self.availablePropertyKeys = availablePropertyKeys
+        self.pluginViews = pluginViews
         self.saveEdit = saveEdit
         _editing = State(initialValue: BaseViewEditing(viewAt: viewIndex, in: definition))
     }
@@ -248,7 +210,10 @@ struct BaseViewEditorSheet: View {
                     TextField("Name", text: $editing.draft.name)
                     Picker("Layout", selection: $editing.draft.type) {
                         ForEach(Self.editableTypes, id: \.rawValue) { type in Label(type.defaultViewName, systemImage: type.systemImage).tag(type) }
-                        if case .unsupported(let name) = original.type { Text(name).tag(original.type) }
+                        ForEach(pluginViews.values.sorted { first, second in first.name < second.name }, id: \.viewType) { registration in
+                            Label(registration.name, systemImage: registration.systemImage).tag(BaseViewType(rawValue: registration.viewType))
+                        }
+                        if case .unsupported(let name) = original.type, pluginViews[name] == nil { Text(name).tag(original.type) }
                     }
                     Toggle("Limit Results", isOn: $editing.draft.hasLimit)
                     if draft.hasLimit {
@@ -267,6 +232,7 @@ struct BaseViewEditorSheet: View {
                 filtersSection
                 if draft.type == .cards { cardsSection }
                 if draft.type == .map { mapSection }
+                pluginOptionsSection
             }
             .formStyle(.grouped)
             .navigationTitle("Edit View")
@@ -429,6 +395,19 @@ struct BaseViewEditorSheet: View {
             Text("Filters for This View")
         } footer: {
             Text("A file is shown when all of these are true, together with the filters that apply to every view.")
+        }
+    }
+
+    /// The options a plugin's view offers (`registerBasesView`'s `options`), which the view
+    /// reads from the file, as Obsidian's view menu shows them.
+    @ViewBuilder private var pluginOptionsSection: some View {
+        if case .unsupported(let typeName) = draft.type, let registration = pluginViews[typeName], !registration.options.isEmpty {
+            Section(registration.name) {
+                ForEach(registration.options) { option in
+                    BaseViewPluginOptionRow(option: option, value: Binding(get: { draft.pluginOptions[option.key] },
+                        set: { value in draft.pluginOptions[option.key] = value }))
+                }
+            }
         }
     }
 

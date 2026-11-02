@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 21/10/2026
+ * Version: 0.27
+ * Date: 01/11/2026
  */
 
 import Foundation
@@ -51,6 +51,12 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
         }
+    }
+
+    /// The summary for a window with no room for the right sidebar, as on a phone, where
+    /// the panels are in the Links and Outline sheet.
+    func summary(hasRightSidebar: Bool) -> String {
+        hasRightSidebar ? summary : summary.replacingOccurrences(of: "in the right sidebar", with: "in the Links and Outline sheet")
     }
 
     var summary: String {

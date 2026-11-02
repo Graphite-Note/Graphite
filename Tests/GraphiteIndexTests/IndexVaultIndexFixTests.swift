@@ -1,3 +1,15 @@
+/**
+ * File: IndexVaultIndexFixTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: Link resolution and backlinks: partial paths, aliases and case differences in any
+ *              script.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 import SQLite3
@@ -143,7 +155,7 @@ final class IndexVaultIndexLinkTests: XCTestCase {
     /// direct link candidate, and the prune read every row of the search table.
     func testLookupsUseIndexesRatherThanTableScans() async throws {
         func queryPlan(_ sql: String) async throws -> String {
-            try await index.databaseQueue.read { database in
+            try await index.databasePool.read { database in
                 try Row.fetchAll(database, sql: "EXPLAIN QUERY PLAN " + sql, arguments: ["a"]).map { row in row["detail"] as String }.joined(separator: "\n")
             }
         }
@@ -153,7 +165,7 @@ final class IndexVaultIndexLinkTests: XCTestCase {
         XCTAssertTrue(nameLookupPlan.contains("files_folded_name"), nameLookupPlan)
         let backlinkPlan = try await queryPlan("SELECT DISTINCT source, target, isWiki FROM links WHERE folded_target IN (?)")
         XCTAssertTrue(backlinkPlan.contains("links_folded_target"), backlinkPlan)
-        let prunePlan = try await queryPlan(VaultIndex.staleSearchRowDeletion)
+        let prunePlan = try await queryPlan(VaultIndex.searchRowDeletion)
         // FTS5 reports a rowid lookup as an index constraint ("INDEX 0:=") and a full scan as "INDEX 0:".
         XCTAssertFalse(prunePlan.split(separator: "\n").contains { line in line.hasSuffix("VIRTUAL TABLE INDEX 0:") }, prunePlan)
     }
@@ -181,7 +193,7 @@ final class IndexVaultIndexLinkTests: XCTestCase {
         }
         try databaseQueue.close()
         let migratedIndex = try VaultIndex(databaseURL: databaseURL)
-        let folded = try await migratedIndex.databaseQueue.read { database in
+        let folded = try await migratedIndex.databasePool.read { database in
             [try String.fetchOne(database, sql: "SELECT folded_path FROM files"), try String.fetchOne(database, sql: "SELECT folded_name FROM files"),
              try String.fetchOne(database, sql: "SELECT folded_alias FROM aliases"), try String.fetchOne(database, sql: "SELECT folded_target FROM links"),
              try String.fetchOne(database, sql: "SELECT folded_target FROM property_links")]
@@ -367,7 +379,7 @@ final class IndexVaultIndexScanTests: XCTestCase {
     /// growing batch and the scan threw, leaving the rest of the vault unindexed.
     func testFailedWriteCostsOnlyTheFailingFile() async throws {
         for noteNumber in 0..<200 { try write("# Note \(noteNumber)", to: String(format: "n%04d.md", noteNumber)) }
-        try await index.databaseQueue.write { database in
+        try await index.databasePool.write { database in
             try database.execute(sql: """
                 CREATE TRIGGER simulated_write_failure BEFORE INSERT ON files WHEN NEW.path = 'n0003.md'
                 BEGIN SELECT RAISE(ABORT, 'simulated write failure'); END
@@ -378,7 +390,7 @@ final class IndexVaultIndexScanTests: XCTestCase {
         XCTAssertTrue(report.failedPaths.first?.hasPrefix("n0003.md: ") == true, "\(report.failedPaths)")
         let fileCount = try await index.fileCount()
         XCTAssertEqual(fileCount, 199)
-        try await index.databaseQueue.write { database in try database.execute(sql: "DROP TRIGGER simulated_write_failure") }
+        try await index.databasePool.write { database in try database.execute(sql: "DROP TRIGGER simulated_write_failure") }
         try FileManager.default.removeItem(at: vault.appendingPathComponent("n0100.md"))
         _ = try await index.reconcile(root: vault)
         let resolution = try await index.resolve("n0003", from: .root)

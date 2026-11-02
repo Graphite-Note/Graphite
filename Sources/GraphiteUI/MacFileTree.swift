@@ -1,3 +1,14 @@
+/**
+ * File: MacFileTree.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The Mac's file tree on AppKit's outline view, with its dragging and dropping.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI
@@ -35,6 +46,7 @@ struct MacFileTree: NSViewRepresentable {
             expandedFolders: workspace.expandedFolders,
             selection: workspace.selection,
             directoryVersion: workspace.directoryVersion,
+            folderListingVersions: workspace.folderListingVersions,
             sortOrder: workspace.vaultSettings.fileSortOrder,
             conflictedPaths: workspace.conflictedPaths,
             showsFileExtensions: workspace.preferences.showsFileExtensions,
@@ -73,6 +85,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         var expandedFolders: Set<VaultPath> = []
         var selection: VaultPath?
         var directoryVersion = 0
+        var folderListingVersions: [VaultPath: Int] = [:]
         var sortOrder = FileSortOrder.alphabetical
         var conflictedPaths: Set<VaultPath> = []
         var showsFileExtensions = false
@@ -147,12 +160,14 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         state = newState
         isApplyingState = true
         defer { isApplyingState = false }
-        let listsAgain = newState.directoryVersion != previousState.directoryVersion || newState.sortOrder != previousState.sortOrder
-        if newState.rootEntries != previousState.rootEntries || listsAgain {
+        // The root's rows reload when what it lists changed, and folders list themselves off the
+        // main thread and update only when they differ; nothing here costs a row otherwise.
+        let sortOrderChanged = newState.sortOrder != previousState.sortOrder
+        let listsEveryFolderAgain = newState.directoryVersion != previousState.directoryVersion || sortOrderChanged
+        if listsEveryFolderAgain { forgetContentsOfFoldersOutsideTree() }
+        if newState.rootEntries != previousState.rootEntries || sortOrderChanged {
             rootNodes = nodes(for: newState.rootEntries, parent: nil, reusing: rootNodes)
-            if listsAgain { forgetContentsOfFoldersOutsideTree() }
             outlineView.reloadData()
-            if listsAgain { listExpandedFoldersAgain() }
             expandFolders(newState.expandedFolders)
         } else if newState.expandedFolders != previousState.expandedFolders {
             for path in previousState.expandedFolders.subtracting(newState.expandedFolders) {
@@ -163,6 +178,11 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
                     || newState.typography != previousState.typography {
             // Only what the rows draw changed: the rows on screen are drawn again.
             outlineView.reloadData(forRowIndexes: IndexSet(integersIn: 0..<outlineView.numberOfRows), columnIndexes: IndexSet(integer: 0))
+        }
+        if listsEveryFolderAgain {
+            listExpandedFoldersAgain()
+        } else if newState.folderListingVersions != previousState.folderListingVersions {
+            listAgain(foldersChangedBetween: previousState.folderListingVersions, and: newState.folderListingVersions)
         }
         selectOpenFile()
     }
@@ -190,15 +210,26 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     /// A folder folded while the vault changed is listed again when it next expands.
     private func forgetContentsOfFoldersOutsideTree() {
-        for node in nodesByPath.values where node.children != nil && !state.expandedFolders.contains(node.path) {
-            for child in node.children ?? [] { forget(child) }
-            node.children = nil
-        }
+        for node in nodesByPath.values where node.children != nil && !state.expandedFolders.contains(node.path) { forgetContents(of: node) }
+    }
+
+    private func forgetContents(of node: FileTreeNode) {
+        for child in node.children ?? [] { forget(child) }
+        node.children = nil
     }
 
     private func listExpandedFoldersAgain() {
         for path in state.expandedFolders {
             if let node = nodesByPath[path], node.children != nil { list(node) }
+        }
+    }
+
+    /// Lists again only the folders a change named: at once when expanded, and when next
+    /// expanded when folded.
+    private func listAgain(foldersChangedBetween previousVersions: [VaultPath: Int], and newVersions: [VaultPath: Int]) {
+        for (folder, version) in newVersions where previousVersions[folder] != version {
+            guard let node = nodesByPath[folder], node.children != nil else { continue }
+            if state.expandedFolders.contains(folder) { list(node) } else { forgetContents(of: node) }
         }
     }
 
@@ -244,7 +275,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     private func show(_ listedEntries: [VaultEntry], in node: FileTreeNode) {
         guard nodesByPath[node.path] === node, let outlineView else { return }
-        workspace.checkConflictVersions(of: listedEntries.lazy.filter { entry in !entry.isDirectory }.map(\.path))
+        workspace.checkConflictVersions(ofListedFiles: listedEntries.lazy.filter { entry in !entry.isDirectory }.map(\.path))
         if let children = node.children, children.map(\.entry) == listedEntries { return revealPendingFile() }
         isApplyingState = true
         defer { isApplyingState = false }
@@ -315,6 +346,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
         guard let node = item as? FileTreeNode else { return nil }
+        if !node.entry.isDirectory { workspace.checkConflictVersionsOfRowShown(node.path) }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? FileTreeCellView ?? FileTreeCellView()
         cell.identifier = Self.cellIdentifier
         cell.configure(title: node.entry.isDirectory ? node.path.name : node.path.stem, extensionSuffix: extensionSuffix(of: node.entry),
@@ -384,7 +416,8 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Dragging
 
     func outlineView(_ outlineView: NSOutlineView, pasteboardWriterForItem item: Any) -> (any NSPasteboardWriting)? {
-        guard let node = item as? FileTreeNode, let data = try? JSONEncoder().encode(VaultItemTransfer(path: node.path.rawValue)) else { return nil }
+        guard let node = item as? FileTreeNode,
+              let data = try? JSONEncoder().encode(VaultItemTransfer(path: node.path.rawValue, vaultRoot: workspace.folderAccess?.root)) else { return nil }
         let pasteboardItem = NSPasteboardItem()
         pasteboardItem.setData(data, forType: Self.vaultItemType)
         return pasteboardItem
@@ -394,18 +427,16 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     /// elsewhere, to the vault's root. The folder that would receive the drop is highlighted.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: any NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let destination = dropDestination(for: item as? FileTreeNode)
-        let paths = draggedPaths(in: info)
-        guard paths.contains(where: { path in Self.canMove(path, into: destination?.path ?? .root) }) else { return [] }
+        let paths = draggedItems(in: info).compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }
+        let hasItemOfAnotherVault = draggedItems(in: info).contains { item in item.isFromAnotherVault(than: workspace.folderAccess?.root) }
+        guard hasItemOfAnotherVault || paths.contains(where: { path in Self.canMove(path, into: destination?.path ?? .root) }) else { return [] }
         outlineView.setDropItem(destination, dropChildIndex: NSOutlineViewDropOnItemIndex)
         return .move
     }
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: any NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         let folder = dropDestination(for: item as? FileTreeNode)?.path ?? .root
-        let paths = draggedPaths(in: info).filter { path in Self.canMove(path, into: folder) }
-        guard !paths.isEmpty else { return false }
-        Task { for path in paths { await workspace.move(path, into: folder) } }
-        return true
+        return workspace.takeDroppedItems(draggedItems(in: info), into: folder) { path in Self.canMove(path, into: folder) }
     }
 
     private func dropDestination(for node: FileTreeNode?) -> FileTreeNode? {
@@ -413,13 +444,13 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         return node.entry.isDirectory ? node : node.parent
     }
 
-    private func draggedPaths(in info: any NSDraggingInfo) -> [VaultPath] {
+    private func draggedItems(in info: any NSDraggingInfo) -> [VaultItemTransfer] {
         (info.draggingPasteboard.pasteboardItems ?? []).compactMap { pasteboardItem in
-            guard let data = pasteboardItem.data(forType: Self.vaultItemType),
-                  let item = try? JSONDecoder().decode(VaultItemTransfer.self, from: data) else { return nil }
-            return try? VaultPath(item.path)
+            guard let data = pasteboardItem.data(forType: Self.vaultItemType) else { return nil }
+            return try? JSONDecoder().decode(VaultItemTransfer.self, from: data) // An unreadable item moves nothing.
         }
     }
+
 
     /// An item moves only to another folder, and never into itself.
     static func canMove(_ path: VaultPath, into folder: VaultPath) -> Bool {
@@ -427,91 +458,4 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     }
 }
 
-/// The file tree's outline view, which asks its controller for the clicked row's menu.
-final class FileTreeOutlineView: NSOutlineView {
-    weak var controller: FileTreeController?
-
-    override func menu(for event: NSEvent) -> NSMenu? {
-        // The outline view records the clicked row, and draws its outline, while finding its own menu.
-        _ = super.menu(for: event)
-        guard clickedRow >= 0 else { return nil }
-        return controller?.menu(forRow: clickedRow)
-    }
-}
-
-/// A row of the file tree: the name, the extension muted after it, and a mark for a file
-/// that has other versions. Laid out by hand rather than with constraints, as NetNewsWire's
-/// sidebar cells are: there is one per visible row, and they are laid out as the list scrolls.
-final class FileTreeCellView: NSTableCellView {
-    private let titleField = NSTextField(labelWithString: "")
-    private let conflictMarker = NSImageView()
-    private var title = ""
-    private var extensionSuffix: String?
-    private var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        titleField.lineBreakMode = .byTruncatingTail
-        titleField.cell?.truncatesLastVisibleLine = true
-        titleField.allowsDefaultTighteningForTruncation = false
-        // Not the cell's `textField`: the table gives that field a single color, which drew
-        // the muted extension in the name's color. The selected style is set here instead.
-        titleField.allowsEditingTextAttributes = true
-        addSubview(titleField)
-        conflictMarker.image = NSImage(systemSymbolName: "square.on.square", accessibilityDescription: ConflictVersionsText.markerDescription)
-        conflictMarker.contentTintColor = .systemOrange
-        conflictMarker.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
-        conflictMarker.isHidden = true
-        addSubview(conflictMarker)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
-
-    func configure(title: String, extensionSuffix: String?, hasConflictVersions: Bool, font: NSFont) {
-        let changed = title != self.title || extensionSuffix != self.extensionSuffix || font != self.font
-        self.title = title
-        self.extensionSuffix = extensionSuffix
-        self.font = font
-        if changed { updateTitle() }
-        if conflictMarker.isHidden == hasConflictVersions {
-            conflictMarker.isHidden = !hasConflictVersions
-            needsLayout = true
-        }
-    }
-
-    /// The title as drawn, name and extension.
-    var drawnTitle: NSAttributedString { titleField.attributedStringValue }
-
-    /// A selected row is drawn in the accent color, where the muted extension turns white too.
-    override var backgroundStyle: NSView.BackgroundStyle {
-        didSet { if backgroundStyle != oldValue { updateTitle() } }
-    }
-
-    private func updateTitle() {
-        let isEmphasized = backgroundStyle == .emphasized
-        let attributedTitle = NSMutableAttributedString(string: title, attributes: [
-            .font: font, .foregroundColor: isEmphasized ? NSColor.alternateSelectedControlTextColor : NSColor.labelColor,
-        ])
-        if let extensionSuffix {
-            attributedTitle.append(NSAttributedString(string: extensionSuffix, attributes: [
-                .font: font, .foregroundColor: isEmphasized ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75) : NSColor.secondaryLabelColor,
-            ]))
-        }
-        titleField.attributedStringValue = attributedTitle
-        needsLayout = true
-    }
-
-    override func layout() {
-        super.layout()
-        let markerWidth: CGFloat = conflictMarker.isHidden ? 0 : 18
-        let titleHeight = ceil(titleField.intrinsicContentSize.height)
-        let titleFrame = NSRect(x: 2, y: floor((bounds.height - titleHeight) / 2), width: max(0, bounds.width - 4 - markerWidth), height: titleHeight)
-        if titleField.frame != titleFrame { titleField.frame = titleFrame }
-        if !conflictMarker.isHidden {
-            let markerFrame = NSRect(x: bounds.width - markerWidth, y: floor((bounds.height - 16) / 2), width: 16, height: 16)
-            if conflictMarker.frame != markerFrame { conflictMarker.frame = markerFrame }
-        }
-    }
-}
 #endif

@@ -6,8 +6,8 @@
  *              New button that opens it and carries out the choice once the menu has closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 21/10/2026
+ * Version: 0.6
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -111,6 +111,18 @@ struct NewItemPicker: View {
 
     var body: some View {
         let offered = CreatableItem.offered(firstKind: firstKind, isEnabled: isEnabled, canScanDocuments: canScanDocuments, canTakePhoto: canTakePhoto)
+        // The whole list where it fits, as in a popover; scrolling where it does not, so the
+        // sheet's half height on a phone (about 420 points of the 520 the rows need) does not
+        // cut off the last kinds, and a drag inside it moves the rows, not the sheet.
+        ViewThatFits(in: .vertical) {
+            list(of: offered)
+            ScrollView { list(of: offered) }
+        }
+        .frame(idealWidth: 380)
+        .presentationDetents([.medium, .large])
+    }
+
+    private func list(of offered: (large: [CreatableItem], others: [CreatableItem])) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 12) {
                 ForEach(offered.large) { item in largeChoice(item) }
@@ -124,8 +136,6 @@ struct NewItemPicker: View {
             .background(.fill.quaternary, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .padding(16)
-        .frame(idealWidth: 380)
-        .presentationDetents([.medium, .large])
     }
 
     private func largeChoice(_ item: CreatableItem) -> some View {

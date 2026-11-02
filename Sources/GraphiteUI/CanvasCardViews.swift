@@ -1,3 +1,14 @@
+/**
+ * File: CanvasCardViews.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The cards of a canvas: text, notes, images, PDFs and bases.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
@@ -201,6 +212,7 @@ struct CanvasMarkdownContent: View {
             }
         }
         .environment(\.baseEmbedContext, environment.baseContext)
+        .environment(\.communityPluginCodeBlocks, environment.pluginHost)
         .environment(\.readingImageActions, environment.imageActions)
         .task(id: BuildTaskKey(source: source, drawingVersion: configuration.drawingVersion, renderingHash: configuration.hashValueForReload,
                                indexVersion: build?.hasMissingEmbeds == false ? -1 : configuration.indexVersion)) {
@@ -306,6 +318,7 @@ private struct CanvasFileCardContent: View {
             case .base where environment.baseContext != nil:
                 ScrollView {
                     BaseFileEmbedView(path: vaultPath, viewName: fragment, context: environment.baseContext, openWithoutContext: environment.open).padding(12)
+                        .environment(\.communityPluginCodeBlocks, environment.pluginHost)
                 }
                 .scrollDisabled(!isScrollable)
             default:

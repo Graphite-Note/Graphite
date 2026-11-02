@@ -1,3 +1,16 @@
+/**
+ * File: DrawingPicturesEncodingTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: How a picture to draw on, and a picture edited on a drawing or a PDF page, is prepared:
+ *              orientation applied, at most two pixels per point, JPEG at 0.9 for an opaque picture and
+ *              PNG for one with transparency, and edited pictures staying JPEG (0.97, high enough that a
+ *              few edits do not show) or PNG.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
 import XCTest
 import CoreGraphics
 import ImageIO
@@ -7,7 +20,7 @@ import GraphiteCore
 
 /// How a picture to draw on, and a picture edited on a drawing or a PDF page, is prepared:
 /// orientation applied, at most two pixels per point, JPEG at 0.9 for an opaque picture and PNG
-/// for one with transparency, and edited pictures staying JPEG (0.92) or PNG.
+/// for one with transparency, and edited pictures staying JPEG (0.97, high enough that a few edits do not show) or PNG.
 final class DrawingPicturesEncodingTests: XCTestCase {
     private static let jpegSignature: [UInt8] = [0xFF, 0xD8]
     private static let pngSignature: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
@@ -50,7 +63,7 @@ final class DrawingPicturesEncodingTests: XCTestCase {
     func testTheSharpnessAndQualityConstantsAreTwoPixelsPerPointAndNinetyAndNinetyTwoPercent() {
         XCTAssertEqual(DrawingPictures.pixelsPerPoint, 2)
         XCTAssertEqual(DrawingPictures.photographQuality, 0.9)
-        XCTAssertEqual(PictureEditing.photographQuality, 0.92)
+        XCTAssertEqual(PictureEditing.photographQuality, 0.97)
     }
 
     func testAnOpaquePictureIsPreparedAsAJPEGAndOneWithTransparencyAsAPNG() throws {
@@ -95,7 +108,7 @@ final class DrawingPicturesEncodingTests: XCTestCase {
         XCTAssertTrue(cropped.starts(with: Self.jpegSignature))
         let source = try XCTUnwrap(CGImageSourceCreateWithData(photograph as CFData, nil))
         let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
-        XCTAssertEqual(cropped, try Self.encoded(decoded, as: .jpeg, quality: 0.92), "The picture is written again at 0.92.")
+        XCTAssertEqual(cropped, try Self.encoded(decoded, as: .jpeg, quality: 0.97), "The picture is written again at 0.97.")
         XCTAssertNotEqual(cropped, try Self.encoded(decoded, as: .jpeg, quality: 0.9), "Not the 0.9 of a picture prepared to draw on.")
 
         let turned = try PictureEditing.rotatedClockwise(photograph)

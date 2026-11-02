@@ -1,3 +1,14 @@
+/**
+ * File: PDFSession.swift
+ * ----------------------
+ * Layer: UI
+ * Description: An open PDF: its pages, edits, saving and conflicts.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.17
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import PDFKit
@@ -563,10 +574,14 @@ final class PDFSession {
         try await save()
     }
 
-    func saveSeparateCopy() async throws -> URL {
-        let directory = location.deletingLastPathComponent()
-        let filename = location.deletingPathExtension().lastPathComponent + " Graphite edits " + UUID().uuidString.prefix(8) + ".pdf"
+    /// Writes the edits to a new PDF beside this one, or in `folder`, as when the PDF has
+    /// moved while its session still points at the old place.
+    func saveSeparateCopy(inFolder folder: URL? = nil) async throws -> URL {
+        let directory = folder ?? location.deletingLastPathComponent()
+        let filename = FileNameRules.separateCopyStem(of: location.deletingPathExtension().lastPathComponent) + " " + UUID().uuidString.prefix(8) + ".pdf"
         let destination = directory.appendingPathComponent(filename)
+        // The copy has a place even when another app renamed or removed the PDF's folder.
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         writePendingInkRecords()
         let currentBaseline = baseline
         _ = try await fileService.saveCopy(baselineURL: currentBaseline.location, edits: edits, destination: destination)
