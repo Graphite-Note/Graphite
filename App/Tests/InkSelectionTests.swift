@@ -158,6 +158,9 @@ final class InkSelectionTests: XCTestCase {
     /// A closed loop of a finger through UIKit's own event path, around a rectangle of the drawing, so it goes through
     /// the lasso's own recognizer, `handleLoop`, and the conversion from the touch to the drawing at the zoom shown.
     private func drawLoopOfTouches(around drawingRectangle: CGRect, on canvas: PDFPageCanvasView, in window: UIWindow) async throws {
+        let shapeBefore = LassoShape.stored
+        LassoShape.stored = .freehand
+        defer { LassoShape.stored = shapeBefore }
         let corners = loop(around: drawingRectangle).map { drawingPoint in canvas.convert(canvasPoint(drawingPoint, on: canvas), to: window) }
         let touches = SynthesizedTouches(window: window)
         let closedLoop = corners + [corners[0]]

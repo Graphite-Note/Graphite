@@ -129,7 +129,7 @@ struct GraphiteRootView: View {
         }
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
         // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
-        .tint(.primary)
+        .tint(Color.primary)
         // Links' preview cards, while the core plugin Page Preview is on.
         .modifier(LinkPreviewLayer(isEnabled: workspace.preferences.isEnabled(.pagePreview), vault: workspace.linkPreviewVault))
         // Once per device, over the reopened vault or the welcome screen.
@@ -155,7 +155,7 @@ struct GraphiteRootView: View {
         .modifier(LibraryModeSidebarVisibility(presentation: workspace.preferences.library.presentation, isCompactWidth: isCompactWidth,
                                                columnVisibility: $columnVisibility))
         .environment(\.accent, workspace.preferences.accentColor)
-        .environment(\.isSidebarBesideDocuments, !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar))
+        .environment(\.isSidebarBesideDocuments, isSidebarBesideDocuments)
         .environment(library)
         .environment(tabOverview)
         .environment(\.libraryWindowActions, libraryWindowActions)
@@ -702,6 +702,10 @@ struct GraphiteRootView: View {
 
     private static func isSidebarHidden(_ visibility: NavigationSplitViewVisibility, automaticHidesSidebar: Bool) -> Bool {
         visibility == .detailOnly || (visibility == .automatic && automaticHidesSidebar)
+    }
+
+    private var isSidebarBesideDocuments: Bool {
+        !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
     }
 
     /// In automatic mode an iPad shows only the detail column while the window is taller

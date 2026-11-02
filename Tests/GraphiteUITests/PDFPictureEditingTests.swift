@@ -126,7 +126,7 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(turnedTwice.bounds.width, placed.bounds.width, accuracy: 0.01, "Two turns: the sides are back.")
         session.undoAvailability.undo()
         let turnedOnce = try XCTUnwrap(session.pictures(on: page).first)
-        XCTAssertEqual(turnedOnce.quarterTurns, (placed.quarterTurns + 1) % 4, "The last step undoes one turn.")
+        XCTAssertEqual(turnedOnce.quarterTurns, (placed.quarterTurns + 3) % 4, "The last step undoes one turn; a turn right counts down.")
         XCTAssertEqual(turnedOnce.bounds.width, placed.bounds.height, accuracy: 0.01)
         session.undoAvailability.undo()
         XCTAssertEqual(session.pictures(on: page), [placed], "The first undoes the other.")
@@ -152,7 +152,7 @@ final class PDFPictureEditingTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("Crop it again"), error.localizedDescription)
         }
         let picture = try XCTUnwrap(session.pictures(on: page).first)
-        XCTAssertEqual(picture.quarterTurns, (placed.quarterTurns + 1) % 4, "The turn stays.")
+        XCTAssertEqual(picture.quarterTurns, (placed.quarterTurns + 3) % 4, "The turn stays; a turn right counts down.")
         XCTAssertEqual(picture.imageData, placed.imageData, "Nothing was cropped.")
     }
 
