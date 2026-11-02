@@ -898,8 +898,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             /// `occurrence` picks one of several headings that read the same, from zero.
             case heading(anchor: String, occurrence: Int = 0)
             case textRange(NSRange)
-            /// Back where the note was left, as when switching tabs.
-            case topOfCharacter(Int)
+            /// Back where the note was left, as when switching tabs. A line can be taller than the
+            /// view, with a block's reserved space in it: `distanceIntoLine` is how far into it the top was.
+            case topOfCharacter(Int, distanceIntoLine: CGFloat = 0)
         }
         var pendingJump: Jump?
         private var isPendingJumpScheduled = false
@@ -934,6 +935,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// it is instant while nothing else changed the session's text, because both share
         /// one storage; comparing with the text view's text reads the whole note each update.
         var lastSynchronizedText = ""
+        /// The text when the composition under way began. UIKit reports each change of marked text,
+        /// so a composition reaches the session as it goes while nothing else changed the note. A
+        /// change from elsewhere then replaces those first characters too, and what is carried over
+        /// when the composition ends is all of it, measured from here (HUNT-063).
+        private var textBeforeComposition: String?
         /// The text, its rendered blocks, and the edits styling has not caught up with. Every
         /// character edit reaches it from the text storage before UIKit reports the new
         /// selection, so nothing styles the new text with ranges found in the old one.
@@ -1438,6 +1444,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// so the change joins the undo history instead of clearing it, and the cursor
         /// stays on the same character.
         func replaceText(with newText: String, in textView: UITextView) {
+            textBeforeComposition = nil
             let oldSource = NSString(string: textView.textStorage.string)
             let newSource = newText as NSString
             guard let (replacedRange, replacementRange) = TextDifference.changedRanges(from: oldSource, to: newSource) else {
@@ -1883,11 +1890,16 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // run or is waiting out a composition; see `TextDifference.carryingEdit`.
             if session.text != lastSynchronizedText, session.text != text {
                 guard textView.markedTextRange == nil else { return }
-                let merged = TextDifference.carryingEdit(from: lastSynchronizedText, to: text, onto: session.text)
+                let merged = TextDifference.carryingEdit(from: textBeforeComposition ?? lastSynchronizedText, to: text, onto: session.text)
                 session.text = merged
                 lastSynchronizedText = merged
                 replaceText(with: merged, in: textView)
                 return
+            }
+            if textView.markedTextRange == nil {
+                textBeforeComposition = nil
+            } else if textBeforeComposition == nil {
+                textBeforeComposition = lastSynchronizedText
             }
             session.text = text
             lastSynchronizedText = text
@@ -2111,10 +2123,10 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         /// Restyles the whole note and returns to the line at the top of the view.
         private func restyleEverythingHoldingTopLine(in textView: UITextView) {
-            let topLine = topCharacter(of: textView)
+            let heldLine = topLine(of: textView)
             restyleEverything(in: textView)
-            guard let topLine, pendingJump == nil else { return }
-            pendingJump = .topOfCharacter(topLine)
+            guard let heldLine, pendingJump == nil else { return }
+            pendingJump = .topOfCharacter(heldLine.location, distanceIntoLine: heldLine.distanceIntoLine)
             performPendingJumpIfReady(in: textView)
         }
 
@@ -2402,7 +2414,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             switch jump {
             case .heading(let anchor, let occurrence): scroll(to: anchor, occurrence: occurrence, in: textView)
             case .textRange(let range): reveal(range, in: textView)
-            case .topOfCharacter(let characterLocation): scrollToTop(of: min(characterLocation, textView.textStorage.length), in: textView)
+            case .topOfCharacter(let characterLocation, let distanceIntoLine):
+                scrollToTop(of: min(characterLocation, textView.textStorage.length), distanceIntoLine: distanceIntoLine, in: textView)
             }
         }
 
@@ -2481,7 +2494,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 guard let laidOutFragment = textLayoutManager.textLayoutFragment(for: location), laidOutFragment.state == .layoutAvailable else { return }
                 fragment = laidOutFragment
             }
-            let targetOffset = fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12
+            let targetOffset = fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12 + pinnedHeading.distanceIntoLine
             let clampedOffset = min(max(-textView.adjustedContentInset.top, targetOffset), maximumContentOffset(of: textView, layoutManager: textLayoutManager))
             if abs(textView.contentOffset.y - clampedOffset) > 1 {
                 textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: clampedOffset), animated: false)
@@ -2510,14 +2523,30 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// The first character of the line at the top of the view; nil at the note's top,
         /// which needs no return to, and while the view is not on screen.
         func topCharacter(of textView: UITextView) -> Int? {
-            guard textView.window != nil, textView.contentOffset.y > -textView.adjustedContentInset.top + 1, let textLayoutManager = textView.textLayoutManager,
-                  let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 0, y: textView.contentOffset.y + 12 - textView.textContainerInset.top)),
-                  let manager = textLayoutManager.textContentManager else { return nil }
-            return manager.offset(from: manager.documentRange.location, to: fragment.rangeInElement.location)
+            topLine(of: textView)?.location
         }
 
-        func scrollToTop(of characterLocation: Int, in textView: UITextView) {
-            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: ProcessInfo.processInfo.systemUptime)
+        /// `scrollToTop` puts a line 12 points below the top, but the scroll view rounds its offset to
+        /// whole pixels and a pin leaves a point or less uncorrected, which would put the probe in the
+        /// line above: each return to the line would then land a line higher. As on the Mac.
+        private static let scrollAlignmentAllowance: CGFloat = 1.5
+
+        /// The line at the top of the view, and how far past where `scrollToTop` puts it the view is
+        /// scrolled. Properties taller than the window are one line of the text with their space in
+        /// it, so this is the place within them; going back to the line alone went to their start.
+        private func topLine(of textView: UITextView) -> (location: Int, distanceIntoLine: CGFloat)? {
+            let probeY = textView.contentOffset.y + 12 + Self.scrollAlignmentAllowance - textView.textContainerInset.top
+            guard textView.window != nil, textView.contentOffset.y > -textView.adjustedContentInset.top + 1, let textLayoutManager = textView.textLayoutManager,
+                  let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 0, y: probeY)),
+                  let manager = textLayoutManager.textContentManager else { return nil }
+            let location = manager.offset(from: manager.documentRange.location, to: fragment.rangeInElement.location)
+            let distance = textView.contentOffset.y - (fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12)
+            return (location, distance > Self.scrollAlignmentAllowance ? distance : 0)
+        }
+
+        func scrollToTop(of characterLocation: Int, distanceIntoLine: CGFloat = 0, in textView: UITextView) {
+            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: ProcessInfo.processInfo.systemUptime,
+                                           distanceIntoLine: distanceIntoLine)
             guard let textLayoutManager = textView.textLayoutManager,
                   let contentStorage = textLayoutManager.textContentManager as? NSTextContentStorage,
                   let location = contentStorage.location(contentStorage.documentRange.location, offsetBy: characterLocation),
@@ -2525,7 +2554,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // Positions before the heading must be real, not estimated, for the jump to land.
             textLayoutManager.ensureLayout(for: precedingRange)
             guard let fragment = textLayoutManager.textLayoutFragment(for: location) else { return }
-            let targetOffset = fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12
+            let targetOffset = fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12 + distanceIntoLine
             let maximumOffset = maximumContentOffset(of: textView, layoutManager: textLayoutManager)
             textView.setContentOffset(CGPoint(x: textView.contentOffset.x, y: min(max(-textView.adjustedContentInset.top, targetOffset), maximumOffset)), animated: false)
             textView.setNeedsLayout()

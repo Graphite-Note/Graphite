@@ -6,7 +6,7 @@
  *              saved, counted, since scrolling or pausing on a full page must not stutter.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 #if os(iOS)
@@ -18,12 +18,14 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// An annotation that counts how often its Graphite keys are read, to count the walks over a page.
+/// An annotation that counts how often its Graphite keys are read on the main thread, to count
+/// the walks over a page. PDFKit reads annotations on its own queues too, as it analyzes a page
+/// it has drawn; those stutter nothing, and asserting the main actor there stopped the process.
 private final class CountingInkAnnotation: PDFAnnotation {
     @MainActor static var readsByKey: [String: Int] = [:]
 
     override func value(forAnnotationKey key: PDFAnnotationKey) -> Any? {
-        MainActor.assumeIsolated { Self.readsByKey[key.rawValue, default: 0] += 1 }
+        if Thread.isMainThread { MainActor.assumeIsolated { Self.readsByKey[key.rawValue, default: 0] += 1 } }
         return super.value(forAnnotationKey: key)
     }
 }

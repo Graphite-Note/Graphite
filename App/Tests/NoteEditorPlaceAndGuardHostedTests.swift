@@ -5,8 +5,8 @@
  * Description: The iPad's note editor keeps its place through mode, width, fold and appearance changes, and its edits leave properties and folds whole.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 
 #if os(iOS)
@@ -77,6 +77,17 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         editor.delegate?.textViewDidChangeSelection?(editor)
     }
 
+    /// Types as the keyboard does: the editor is asked about the text first, which is where the
+    /// guards act. `insertText` and `deleteBackward` called from code do not ask.
+    private func typeAsKeyboard(_ text: String, in editor: MarkdownTextView) {
+        if editor.delegate?.textView?(editor, shouldChangeTextIn: editor.selectedRange, replacementText: text) != false { editor.insertText(text) }
+    }
+
+    private func pressBackspace(in editor: MarkdownTextView) {
+        let deletedRange = NSRange(location: editor.selectedRange.location - 1, length: 1)
+        if editor.delegate?.textView?(editor, shouldChangeTextIn: deletedRange, replacementText: "") != false { editor.deleteBackward() }
+    }
+
     /// A long note whose paragraphs wrap, so a new width moves everything, with tables that
     /// change height with the mode.
     private static let longNote: String = {
@@ -105,8 +116,10 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let coordinator = try coordinator(of: editor)
         session.viewMode = .source
         try await waitUntil { coordinator.configuration.mode == .source && coordinator.pendingJump == nil && coordinator.topCharacter(of: editor) == top }
+        XCTAssertEqual(coordinator.topCharacter(of: editor), top, "In Source")
         session.viewMode = .livePreview
         try await waitUntil { coordinator.configuration.mode == .livePreview && coordinator.pendingJump == nil && coordinator.topCharacter(of: editor) == top }
+        XCTAssertEqual(coordinator.topCharacter(of: editor), top, "Back in Live Preview")
     }
 
     // MARK: HUNT-065
@@ -139,7 +152,8 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let text = "---\ntitle: x\n---\nBody\n"
         let (editor, session) = try await openNote(text)
         try await startEditing(editor, at: (text as NSString).range(of: "Body").location)
-        editor.deleteBackward()
+        pressBackspace(in: editor)
+        XCTAssertEqual(editor.text, text)
         XCTAssertEqual(session.text, text)
         XCTAssertEqual(FrontmatterLocator.length(in: session.text as NSString), 17)
     }
@@ -148,7 +162,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let text = "---\ntitle: x\n---\nBody\n"
         let (editor, session) = try await openNote(text)
         try await startEditing(editor, at: (text as NSString).range(of: "x\n").location + 1)
-        editor.deleteBackward()
+        pressBackspace(in: editor)
         try await waitUntil { session.text == "---\ntitle: \n---\nBody\n" }
     }
 
@@ -158,7 +172,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let text = "---\ntitle: x\n---"
         let (editor, session) = try await openNote(text)
         try await startEditing(editor, at: (text as NSString).length)
-        editor.insertText("H")
+        typeAsKeyboard("H", in: editor)
         try await waitUntil { session.text == "---\ntitle: x\n---\nH" }
         XCTAssertEqual(FrontmatterLocator.length(in: session.text as NSString), 17)
     }
@@ -228,7 +242,9 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let interaction = try XCTUnwrap(editor.findInteraction)
         interaction.presentFindNavigator(showingReplace: false)
         try await waitUntil { interaction.activeFindSession != nil }
+        // The search text only fills in the field; the session searches when asked, as the field asks it.
         interaction.searchText = "hidden word"
+        interaction.activeFindSession?.performSearch(query: "hidden word", options: nil)
         try await waitUntil { (interaction.activeFindSession?.resultCount ?? 0) > 0 }
         interaction.findNext()
         try await waitUntil { !session.foldedKeys.contains(where: { key in key.hasPrefix("h1|# One") }) }
@@ -248,6 +264,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         editor.unmarkText()
         editor.delegate?.textViewDidChange?(editor)
         try await waitUntil { session.text == "startかき\nend from another device\n" }
+        XCTAssertEqual(session.text, "startかき\nend from another device\n")
         XCTAssertEqual(editor.text, session.text)
     }
 
