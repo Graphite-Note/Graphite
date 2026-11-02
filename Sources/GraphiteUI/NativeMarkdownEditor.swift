@@ -233,8 +233,14 @@ final class MarkdownTextView: UITextView {
     /// The find navigator closed or started a new search.
     var didClearFoundText: (() -> Void)?
 
-    override func decorate(foundTextRange range: UITextRange, in document: UITextSearchDocumentIdentifier?, usingStyle style: UITextSearchFoundTextStyle) {
-        super.decorate(foundTextRange: range, in: document, usingStyle: style)
+    /// `UITextSearching`'s `decorate(foundTextRange:document:usingStyle:)`, which Swift sees as
+    /// closed to overriding, under its Objective-C selector, calling `UITextView`'s own.
+    @objc(decorateFoundTextRange:inDocument:usingStyle:)
+    func decorateFoundText(_ range: UITextRange, document: AnyObject?, style: UITextSearchFoundTextStyle) {
+        let selector = #selector(decorateFoundText(_:document:style:))
+        typealias Implementation = @convention(c) (AnyObject, Selector, UITextRange, AnyObject?, UITextSearchFoundTextStyle) -> Void
+        guard let method = class_getInstanceMethod(UITextView.self, selector) else { return }
+        unsafeBitCast(method_getImplementation(method), to: Implementation.self)(self, selector, range, document, style)
         guard style == .highlighted else { return }
         let location = offset(from: beginningOfDocument, to: range.start)
         revealFoundText?(NSRange(location: location, length: offset(from: range.start, to: range.end)))

@@ -1,3 +1,14 @@
+/**
+ * File: UiMarkdownPaneFixTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Regression tests of the note pane and its suggestions.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import SwiftUI
 import GraphiteCore

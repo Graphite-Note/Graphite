@@ -220,17 +220,34 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
             let end = try XCTUnwrap(editor.position(from: start, offset: range.length))
             return try XCTUnwrap(editor.textRange(from: start, to: end))
         }
-        editor.decorate(foundTextRange: try foundRange("hidden word"), in: nil, usingStyle: .highlighted)
+        editor.decorate(foundTextRange: try foundRange("hidden word"), document: nil, usingStyle: .highlighted)
         try await waitUntil { !session.foldedKeys.contains(where: { key in key.hasPrefix("h1|# One") }) }
 
         session.foldedKeys = []
         try await waitUntil { coordinator.appliedFoldedKeys.isEmpty }
         let cellLocation = (session.text as NSString).range(of: "cell").location
         XCTAssertTrue(coordinator.styling.concealedEntries(in: editor).contains { entry in NSLocationInRange(cellLocation, entry.range) })
-        editor.decorate(foundTextRange: try foundRange("cell"), in: nil, usingStyle: .highlighted)
+        editor.decorate(foundTextRange: try foundRange("cell"), document: nil, usingStyle: .highlighted)
         try await waitUntil { !coordinator.styling.concealedEntries(in: editor).contains { entry in NSLocationInRange(cellLocation, entry.range) } }
         editor.clearAllDecoratedFoundText()
         try await waitUntil { coordinator.styling.concealedEntries(in: editor).contains { entry in NSLocationInRange(cellLocation, entry.range) } }
+    }
+
+    /// The system's own find navigator reaches the same place.
+    func testTheFindNavigatorOpensAFoldItMovesInto() async throws {
+        let text = "# One\nhidden word\n# Two\n\nEnd\n"
+        let (editor, session) = try await openNote(text)
+        let coordinator = try coordinator(of: editor)
+        session.foldAll()
+        try await waitUntil { coordinator.appliedFoldedKeys == session.foldedKeys }
+        let interaction = try XCTUnwrap(editor.findInteraction)
+        interaction.presentFindNavigator(showingReplace: false)
+        try await waitUntil { interaction.activeFindSession != nil }
+        interaction.searchText = "hidden word"
+        try await Task.sleep(for: .milliseconds(300))
+        interaction.findNext()
+        try await waitUntil { !session.foldedKeys.contains(where: { key in key.hasPrefix("h1|# One") }) }
+        interaction.dismissFindNavigator()
     }
 
     // MARK: HUNT-063

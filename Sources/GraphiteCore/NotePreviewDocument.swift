@@ -1,3 +1,14 @@
+/**
+ * File: NotePreviewDocument.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: The reading view's blocks and headings, parsed from a note.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Markdown
 

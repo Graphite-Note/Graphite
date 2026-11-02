@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownStyleScanner.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: The line-oriented scanner that finds what the editor styles, and the block state from line to line.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Presentation roles for Markdown source text. The editor maps roles to fonts and

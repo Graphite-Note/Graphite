@@ -1,3 +1,14 @@
+/**
+ * File: EditorCompletion.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The suggestions at the cursor and where they come from.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex

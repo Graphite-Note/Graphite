@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownEditorStyling.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 #else

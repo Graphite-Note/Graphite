@@ -16,7 +16,7 @@ import GraphiteCore
 
 @MainActor
 final class NoteEditorWorkCountTests: XCTestCase {
-    private func entries(in source: NSString) -> [LivePreviewBlockEntry] {
+    private func blockEntries(in source: NSString) -> [LivePreviewBlockEntry] {
         let blocks = LivePreviewBlockScanner.blocks(in: source)
         return zip(blocks, LivePreviewBlockKey.keys(for: blocks)).map { block, key in LivePreviewBlockEntry(block: block, range: block.range, key: key) }
     }
@@ -64,7 +64,7 @@ final class NoteEditorWorkCountTests: XCTestCase {
 
     func testTypingInAFormulaFindsOnlyThatBlockAgain() throws {
         let before = "Above\n\n$$E=mc^2$$\n\n$$\nx\n$$\n\nBelow\n" as NSString
-        let entries = entries(in: before)
+        let entries = blockEntries(in: before)
         XCTAssertEqual(entries.filter { entry in entry.block.kind == .mathBlock }.count, 2)
         for location in [before.range(of: "mc^2").location, before.range(of: "\nx\n").location + 2] {
             let after = before.replacingCharacters(in: NSRange(location: location, length: 0), with: "q") as NSString
@@ -72,8 +72,8 @@ final class NoteEditorWorkCountTests: XCTestCase {
             XCTAssertNil(LivePreviewBlockShifting.entries(entries, across: edit, sourceBeforeEdit: before, source: after))
             let moved = try XCTUnwrap(LivePreviewBlockShifting.entriesFindingEditedCalloutAgain(entries, across: edit, sourceBeforeEdit: before, source: after, isRendered: { _ in true }),
                                       "Each key would scan the whole note for blocks.")
-            XCTAssertEqual(moved.map(\.range), entries(in: after).map(\.range))
-            XCTAssertEqual(moved.map(\.key), entries(in: after).map(\.key))
+            XCTAssertEqual(moved.map(\.range), blockEntries(in: after).map(\.range))
+            XCTAssertEqual(moved.map(\.key), blockEntries(in: after).map(\.key))
         }
     }
 
@@ -84,10 +84,10 @@ final class NoteEditorWorkCountTests: XCTestCase {
     func testTypingOnALineThatOnlyLooksLikeABlockScansNothing() throws {
         for line in ["**Definition.** text", "$x$ is a number", "> a quote", "`code` first", "_note_ here", ".5 of it", "-5 degrees", "*word* first", "!important", "~tilde", ":smile:"] {
             let (edit, before, after) = typing(on: line)
-            let entries = entries(in: before)
+            let entries = blockEntries(in: before)
             let moved = LivePreviewBlockShifting.entries(entries, across: edit, sourceBeforeEdit: before, source: after)
             XCTAssertNotNil(moved, "\(line) scanned the note.")
-            XCTAssertEqual(moved?.map(\.range), entries(in: after).map(\.range), line)
+            XCTAssertEqual(moved?.map(\.range), blockEntries(in: after).map(\.range), line)
         }
     }
 

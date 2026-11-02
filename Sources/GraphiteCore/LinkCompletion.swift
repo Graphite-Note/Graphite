@@ -1,3 +1,14 @@
+/**
+ * File: LinkCompletion.swift
+ * --------------------------
+ * Layer: Core
+ * Description: Suggestions for what is being typed as a link or tag, and finding the link around a character.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// What the text before the cursor is in the middle of typing, for Obsidian's suggestions.

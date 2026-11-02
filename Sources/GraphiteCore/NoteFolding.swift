@@ -1,3 +1,14 @@
+/**
+ * File: NoteFolding.swift
+ * -----------------------
+ * Layer: Core
+ * Description: What folds in a note: heading sections and list items, and how their regions follow typing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// A part of a note that folds, as in Obsidian: a heading's section, up to the next
@@ -208,7 +219,7 @@ public enum NoteFolding {
             return text.substring(with: NSRange(location: start, length: contentsEnd - start))
         }
         let lineBefore = lineText(before, containing: replacedRange), lineAfter = lineText(after, containing: insertedRange)
-        guard let structure = structure(of: lineBefore), structure == self.structure(of: lineAfter), indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
+        guard let lineStructure = structure(of: lineBefore), lineStructure == structure(of: lineAfter), indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
         // A line that underlines the one above it (`===`), or is underlined by the one below,
         // is part of a setext heading, so editing it can change a region or its key.
         func nextLineText(_ text: NSString, after range: NSRange) -> String? {
@@ -227,7 +238,7 @@ public enum NoteFolding {
         func movedEnd(_ location: Int) -> Int { location >= editEnd ? location + change : location }
         let lineStart = before.lineRange(for: replacedRange).location
         var newKeyOfEditedLine: String?
-        if let keyBase = structure.keyBase(ofLine: lineBefore), let newKeyBase = structure.keyBase(ofLine: lineAfter), keyBase != newKeyBase {
+        if let keyBase = lineStructure.keyBase(ofLine: lineBefore), let newKeyBase = lineStructure.keyBase(ofLine: lineAfter), keyBase != newKeyBase {
             // Keys count the lines of the same text, so one that shares either text moves others'.
             let othersShareAKey = regions.contains { region in
                 region.headerRange.location != lineStart && (hasKey(region.key, withBase: keyBase) || hasKey(region.key, withBase: newKeyBase))

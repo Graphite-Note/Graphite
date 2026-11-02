@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownBlockInsertion.swift
+ * ----------------------------------
+ * Layer: Core
+ * Description: The line breaks a block needs to sit on its own lines in existing Markdown.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Markdown
 

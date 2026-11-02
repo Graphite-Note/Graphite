@@ -1,3 +1,14 @@
+/**
+ * File: CodeFormatting.swift
+ * --------------------------
+ * Layer: Core
+ * Description: Formatting the code in a fenced block when the cursor leaves it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Tidies the code of a fenced block: indentation by its structure, trailing spaces, runs

@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewTableEditing.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Editing a rendered table's cells in place.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import Textual

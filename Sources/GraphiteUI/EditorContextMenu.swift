@@ -1,3 +1,14 @@
+/**
+ * File: EditorContextMenu.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The Color, Format, Paragraph and Insert submenus of the note editor's context menu.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 #if canImport(UIKit)

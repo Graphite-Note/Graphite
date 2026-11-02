@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownEditing.swift
+ * ---------------------------
+ * Layer: Core
+ * Description: Obsidian's editing commands on a note's text, each as one edit that leaves the rest unchanged.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One replacement in note text, with where the selection goes afterwards.

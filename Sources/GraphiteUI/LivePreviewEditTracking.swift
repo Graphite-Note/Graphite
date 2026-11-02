@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewEditTracking.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 

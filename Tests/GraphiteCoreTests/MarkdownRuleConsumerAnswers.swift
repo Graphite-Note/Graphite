@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownRuleConsumerAnswers.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: What each reader of Markdown answers to the rule parity questions.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteFixtures
 @testable import GraphiteCore
