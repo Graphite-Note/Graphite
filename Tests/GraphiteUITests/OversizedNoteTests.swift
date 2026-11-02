@@ -367,7 +367,8 @@ final class OversizedNoteTests: XCTestCase {
         window.showInvisibly()
         defer { window.orderOut(nil); window.contentView = nil }
 
-        try await waitUntil("the page left at the top to be read") { note.lastPageRead.map { page in abs(page - 100) < 5 } ?? false }
+        // Pages read near it, in whatever order the rows come: not those at the top of the note.
+        try await waitUntil("the page left at the top to be read") { note.lastPageRead.map { page in (95..<140).contains(page) } ?? false }
     }
     #endif
 

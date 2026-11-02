@@ -20,6 +20,13 @@ struct OversizedNotePane: View {
     /// The page at the top, kept in `note` for when a tab comes back to it.
     @State private var topPageIndex: Int?
 
+    init(note: OversizedNoteDocument, editAnyway: @escaping () -> Void, reload: @escaping () -> Void) {
+        self.note = note
+        self.editAnyway = editAnyway
+        self.reload = reload
+        _topPageIndex = State(initialValue: note.topPageIndex)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             notice
@@ -34,7 +41,6 @@ struct OversizedNotePane: View {
                 .padding(.horizontal, 20).padding(.vertical, 12)
             }
             .scrollPosition(id: $topPageIndex, anchor: .top)
-            .onAppear { topPageIndex = note.topPageIndex }
             .onChange(of: topPageIndex) { _, newPageIndex in
                 if let newPageIndex { note.topPageIndex = newPageIndex }
             }
