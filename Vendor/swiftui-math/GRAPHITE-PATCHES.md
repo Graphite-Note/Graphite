@@ -109,3 +109,46 @@ Regression test: `AppProjectTextualPatchTests.testSpacesAndStyleChangesHaveNoCla
 `Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`preprocessMathList`), `Typesetter+DecoratedList.swift` (`boldOrdinarySymbol`): `\nabla`, `\partial`, `\epsilon`, `\vartheta`, `\phi`, `\varrho` and `\varpi` take their bold forms under `\bm` and `\mathbf`. Upstream's bold alphabets skipped them, as they are not letters to it, and the owner's vault has `\boldsymbol{\nabla}` 844 times. `\nabla` is upright, as in MathJax. Symbols with no bold form in Latin Modern, such as `\times` and `\ell`, stay regular, where MathJax draws them bold.
 
 Regression test: `AppProjectTextualPatchTests.testBoldSymbolsHaveTheirBoldForms`.
+
+## 17. Named colors, as MathJax reads them
+
+`Sources/SwiftUIMath/Internal/Helpers/FormulaColor.swift` (new, replacing `CGColor+HexString.swift`), `Internal/Display/DisplayNode.swift`, `DisplayNode+Outlines.swift`, `Typesetter.swift`: the argument of `\textcolor`, `\color` and `\colorbox` is read as MathJax 3.2.2 reads it. A name is looked up in its exact case among the 68 dvips names of MathJax's `color` package; anything else goes to CSS, so a name in any case or `#rgb` or `#rrggbb` is valid and anything else leaves the color around it. So `red` is CSS's `#FF0000` and `Red` is the package's `#ED1B23`. Upstream read only hex, so `\textcolor{red}{x}` drew in the text color; the owner's vault has red, blue, grey, orange, green, violet, magenta and brown about 190 times. The dvips table is generated from MathJax's `ColorConstants.ts`, and both tables were checked against what MathJax draws in a browser.
+
+Black and white are Graphite's own decision: by any name (`black`, `Black`, `white`) or as pure hex (`#000000`, `#000`, `#fff`), `\textcolor` and `\color` mean the formula's text color, where MathJax draws them literally. The vault has `\color{black}` 2,042 times and `\color{#000000}` 103 times, ending a colored passage, and `\color{white}` 3 times, for the formula inside a colored `\boxed`: each was written against one background, and the literal color would disappear on the other. Since `LaTeXCommandRewriting` nests what follows a `\color` in its group, this has to end the color around it, not inherit it: `DisplayNode.resetsToTextColor`, read by `MathOutlines`. `\colorbox{black}` stays black, as it is a background. `CGContext+DisplayNode.swift` is not called and does not read the reset (patch 5).
+
+Not read: a `\textcolor[rgb]{…}` model and CSS's `rgb(…)`, which cannot be parsed (the vault has neither), and `\definecolor`. `\colorbox`'s background is parsed and has never been drawn, in upstream or here (the vault has none).
+
+Regression tests: `AppProjectTextualPatchTests.testNamedColorsAreReadAsMathJaxReadsThem`, `testBlackAndWhiteAreTheTextColorEvenInsideAColor`. They read the pixels `Math` draws.
+
+## 18. `\dfrac`, `\tfrac`, `\dbinom`, `\tbinom` set the whole fraction in their style
+
+`Sources/SwiftUIMath/Internal/Syntax/Atoms/Fraction.swift` (`wholeStyle`), `Internal/Syntax/Parser.swift`, `Internal/Display/Typesetter.swift` (`makeFraction`): as in amsmath and MathJax (`AmsMethods.Genfrac`), these commands set the whole fraction in display or text style, whatever is around it: its shifts, gaps and delimiters are that style's, and its parts one style smaller. So `\tfrac{a}{b}` has script-size parts, and is the same fraction in display and inline math, in an exponent too. Upstream put `\textstyle` or `\displaystyle` in the numerator and denominator of a fraction in the surrounding style, so `\tfrac` in display math was as large as `\frac` (the vault has it 2,754 times), and inline `\dfrac` kept inline's tighter shifts. Patch 14's `\tbinom` put `\scriptstyle` in its parts, in the surrounding style's parentheses.
+
+`\frac` itself follows the same rule since patch 19.
+
+Regression test: `AppProjectTextualPatchTests.testFractionStylesSetTheWholeFractionInTheirStyle`.
+
+## 19. A fraction's parts are one style smaller than the fraction
+
+`Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`fractionStyle`, `makeFraction`), `Internal/Syntax/AtomFactory.swift` (`setCellsInDisplayStyle`), `Internal/Syntax/Parser.swift`: as in TeX and MathJax, `\frac`, `\binom`, `\over`, `\atop` and `\choose` set their parts one style smaller than the style around them: display to text, text to script, script to script of script. Upstream kept them in the surrounding style, on purpose, so inline `\frac{a}{b}` (about 7,600 times in the owner's vault) was at full size, and a `\frac` nested in a fraction (more than 240 times in display math) did not shrink. An inline formula's fraction is now as tall as MathJax's (0.71 em above the baseline, 0.35 em below), which lowers the lines around it in the reading view and Live Preview.
+
+Two things leaned on upstream's choice and now do what MathJax does:
+
+- `\cfrac` has `\strut\textstyle` in each part (`AmsMethods.CFrac`), where upstream had display style and no strut. MathJax's `\strut` (0.86 em above the baseline, 0.3 em below) stands before the `\textstyle`, so it has the size of a plain fraction's part: full in display math, script size inline. `\cfrac[l]` still centers its parts, as upstream never read the alignment.
+- `aligned`, `split`, `gathered`, `gather`, `displaylines` and `eqnarray` (with `align`, which `LaTeXCompatibility` rewrites to `aligned`) set their cells in display style, inline too. Upstream's cells took the style around them, which inline had hidden only because a fraction's parts stayed full size.
+
+Regression test: `AppProjectTextualPatchTests.testAFractionsPartsAreOneStyleSmallerThanTheFraction`.
+
+## 20. Limits stack in display style, or after `\limits`
+
+`Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`stacksLimits`), `Internal/Syntax/Atoms/LargeOperator.swift` (`stacksLimitsInEveryStyle`), `Internal/Syntax/Parser.swift` (`applyModifier`, `atomListToString`): as in TeX and MathJax, the limits of `\sum`, `\lim`, `\max` and `\operatorname*` stack in display style and stand at the side in every other. Upstream stacked them in text style too, so inline `\sum_{i}` stacked, and `\dfrac{\sum_{i=1}^n x_i}{n}` was 3.25 em tall against MathJax's 2.29. `\limits` stacks them in every style, in an exponent too, where upstream set them at the side; `\nolimits` keeps them at the side; the last of the two counts. `\overset`, `\underset`, `\stackrel`, `\underbrace` and `\overbrace` are not limits and stay above and below.
+
+Regression test: `AppProjectTextualPatchTests.testLimitsStackInDisplayStyleOrAfterTheLimitsCommand`.
+
+## 21. Room at a fraction's sides, and how it is spaced
+
+`Sources/SwiftUIMath/Internal/Display/DisplayFraction.swift` (`nullDelimiterSpace`, `ruleOverhang`), `Typesetter.swift` (`makeFraction`, `interElementSpaceArray`), `DisplayNode+Outlines.swift`, `CGContext+DisplayNode.swift`: the amounts are MathJax's, read from `CommonMfrac` and measured from its output. Each side of a fraction has `\nulldelimiterspace` (0.12 em, in em of the fraction's own style) left empty, and its rule reaches 0.1 em past the wider part, 0.22 em in all. A fraction without a rule (`\atop`) has only the 0.12 em, and one with delimiters (`\binom`, `\choose`) has none, as they stand there instead. So `a+\tfrac{b}{c}+d` is 4.24 em wide, as in MathJax, against upstream's 3.80. Upstream's rule stopped at the wider part.
+
+A fraction has its own row and column in the spacing table. Upstream spaced it as `\left…\right`, with thin spaces beside ordinary symbols, which with the new room would stand 0.39 em from a letter where MathJax has 0.22 em. MathJax spaces it as an ordinary symbol, and with no space beside `\left…\right`, so `x\frac{a}{b}y` is 2.03 em wide and `\frac{1}{2}\left(x\right)` has no extra gap. One place keeps TeX's rule against MathJax's: `\frac{a}{b}\sin x` has a thin space before the `\sin`, where MathJax has none because its `\sin` is an identifier and its `\lim` an operator; both are one class here.
+
+Regression test: `AppProjectTextualPatchTests.testAFractionHasRoomAtItsSidesAsInMathJax`.
