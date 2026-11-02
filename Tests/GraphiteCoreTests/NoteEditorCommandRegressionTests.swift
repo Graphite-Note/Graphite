@@ -187,6 +187,86 @@ final class NoteEditorCommandRegressionTests: XCTestCase {
         XCTAssertEqual(concealed, [NSRange(location: 0, length: 1), NSRange(location: 6, length: 1)])
     }
 
+    // MARK: HUNT-048
+
+    func testCodeUnderAListItemKeepsItsIndentationWhenFormatted() throws {
+        let code = "    {\n\"a\": 1\n    }\n"
+        let formatted = try XCTUnwrap(CodeFormatter.formatted(code, language: try XCTUnwrap(CodeLanguage.named("json")), fenceIndentation: "    "))
+        let lines = formatted.components(separatedBy: "\n")
+        XCTAssertEqual(lines.first, "    {")
+        XCTAssertTrue(lines[1].hasPrefix("     "), "The code's own indentation goes on top of the fence's: \(lines[1])")
+        XCTAssertEqual(lines[2], "    }")
+        XCTAssertEqual(lines.last, "", "The last line break stays.")
+    }
+
+    func testCodeAtTheMarginFormatsAsBefore() throws {
+        let language = try XCTUnwrap(CodeLanguage.named("json"))
+        let code = "{\n\"a\": 1\n}\n"
+        XCTAssertEqual(CodeFormatter.formatted(code, language: language, fenceIndentation: ""), CodeFormatter.formatted(code, language: language))
+    }
+
+    // MARK: HUNT-052
+
+    func testAHeadingsLinkPartHoldsNothingThatBreaksALink() {
+        XCTAssertEqual(LinkCompletion.linkFragment(forHeading: "P | Q"), "P Q")
+        XCTAssertEqual(LinkCompletion.linkFragment(forHeading: "Use [x] here"), "Use x here")
+        XCTAssertEqual(LinkCompletion.linkFragment(forHeading: "C# and ^1"), "C and 1")
+        XCTAssertEqual(LinkCompletion.linkFragment(forHeading: "Plain heading"), "Plain heading")
+    }
+
+    func testALinkWrittenWithoutThoseCharactersMeetsItsHeading() {
+        for heading in ["P | Q", "Use [x] here", "C# and ^1"] {
+            let body = "# First\n\n## \(heading)\n\nText\n"
+            let fragment = LinkCompletion.linkFragment(forHeading: heading)
+            let location = NotePreviewDocument.headingLineLocation(ofHeadingWithAnchor: NotePreviewDocument.anchor(forHeading: fragment), in: body)
+            XCTAssertEqual(location, (body as NSString).range(of: "## ").location, heading)
+            XCTAssertEqual(LinkLocator.link(in: "[[Note#\(fragment)]]", at: 3, includesEnd: false), .note(target: "Note#\(fragment)", isWiki: true), heading)
+        }
+    }
+
+    // MARK: HUNT-054, folding
+
+    /// Before: each key on a heading or list item read every line of the note. Now: none does
+    /// unless the line takes another's text; the regions move and the line's key is made anew.
+    func testTypingOnAHeadingOrListItemMovesTheRegions() throws {
+        let before = "# One\nbody\n## Two\nmore\n- item\n    - sub\n- other\n"
+        for (line, typed) in [("# One", "x"), ("## Two", " again"), ("- item", "s"), ("- other", "wise")] {
+            let source = before as NSString
+            let lineRange = source.range(of: line + "\n")
+            let location = lineRange.location + (line as NSString).length
+            let after = source.replacingCharacters(in: NSRange(location: location, length: 0), with: typed)
+            let moved = try XCTUnwrap(NoteFolding.regions(NoteFolding.regions(in: before), across: NSRange(location: location, length: 0), replacementLength: typed.utf16.count,
+                                                          before: source, after: after as NSString), line)
+            XCTAssertEqual(moved, NoteFolding.regions(in: after), line)
+        }
+    }
+
+    func testALineTakingAnothersTextFindsTheRegionsAgain() {
+        // Keys count lines of the same text, so these cannot only move.
+        let before = "# One\nbody\n# Onex\nmore\n"
+        let source = before as NSString
+        let after = source.replacingCharacters(in: NSRange(location: 5, length: 0), with: "x")
+        XCTAssertNil(NoteFolding.regions(NoteFolding.regions(in: before), across: NSRange(location: 5, length: 0), replacementLength: 1, before: source, after: after as NSString))
+    }
+
+    func testANewMarkerFindsTheRegionsAgain() {
+        let before = "# One\nbody\n"
+        let source = before as NSString
+        let after = source.replacingCharacters(in: NSRange(location: 1, length: 0), with: "#")
+        XCTAssertNil(NoteFolding.regions(NoteFolding.regions(in: before), across: NSRange(location: 1, length: 0), replacementLength: 1, before: source, after: after as NSString))
+    }
+
+    // MARK: HUNT-077
+
+    func testAnEditCoveringTheHeadersLineBreakTouchesTheFold() throws {
+        let text = "# One\nhidden\n# Two\n"
+        let region = try XCTUnwrap(NoteFolding.regions(in: text).first)
+        XCTAssertTrue(NoteFolding.edit(replacing: NSRange(location: 5, length: 1), touchesHiddenTextOf: region), "Forward Delete at the end of the folded line.")
+        XCTAssertTrue(NoteFolding.edit(replacing: NSRange(location: 7, length: 1), touchesHiddenTextOf: region))
+        XCTAssertFalse(NoteFolding.edit(replacing: NSRange(location: 5, length: 0), touchesHiddenTextOf: region), "Typing at the end of the header line stays there.")
+        XCTAssertFalse(NoteFolding.edit(replacing: NSRange(location: 4, length: 1), touchesHiddenTextOf: region))
+    }
+
     // MARK: HUNT-078
 
     func testAddressPastedOverWordsWithAColonLinksThem() throws {

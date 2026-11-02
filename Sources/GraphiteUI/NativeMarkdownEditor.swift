@@ -971,6 +971,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         init(session: MarkdownSession, configuration: EditorConfiguration) {
             self.session = session
+            lastSynchronizedText = session.text
             // The properties show their YAML while the cursor is in it, as any block's source.
             styling = MarkdownEditorStyling(configuration: configuration, propertiesSource: .whileTheCursorIsInIt, detachedViewsBudgetMegabytes: 24)
             super.init()
@@ -1550,10 +1551,20 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             case .moveLinesUp, .moveLinesDown:
                 // A folded section moves and is moved past as one unit, its fold with it.
                 let foldedSections = NoteFolding.foldedSections(foldedRegions)
-                guard let edit = MarkdownEditing.movingLines(up: command == .moveLinesUp, in: currentSource(of: textView), selection: textView.selectedRange, foldedSections: foldedSections) else { return }
+                var movesUp = false
+                if case .moveLinesUp = command { movesUp = true }
+                guard let edit = MarkdownEditing.movingLines(up: movesUp, in: currentSource(of: textView), selection: textView.selectedRange, foldedSections: foldedSections) else { return }
+                if let propertiesEnd = renderedPropertiesEnd, NativeMarkdownEditor.cutsIntoRenderedProperties(edit.range, propertiesEnd: propertiesEnd) { return }
                 isMovingLines = true
                 perform(edit, in: textView)
                 isMovingLines = false
+                // A line that lands at the end of a folded heading's section is part of it now,
+                // and must not vanish into the fold.
+                let hiding = NoteFolding.regions(hiding: edit.selectionAfter.location, in: foldedRegions)
+                guard !hiding.isEmpty else { return }
+                session.foldedKeys.subtract(hiding.map(\.key))
+                applyFolds(in: textView)
+                textView.selectedRange = edit.selectionAfter
             default:
                 guard let edit = MarkdownEditing.edit(for: command, in: currentSource(of: textView), selection: textView.selectedRange,
                                                       indentUnit: configuration.editingBehavior.indentUnit, tabSize: configuration.editingBehavior.tabSize) else { return }
@@ -3310,6 +3321,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
 
         init(session: MarkdownSession, configuration: EditorConfiguration) {
             self.session = session
+            lastSynchronizedText = session.text
             // The properties show their YAML after "Edit Source", as Obsidian keeps them above the note.
             styling = MarkdownEditorStyling(configuration: configuration, propertiesSource: .afterEditSource(isShown: false), detachedViewsBudgetMegabytes: 64)
             super.init()
@@ -3644,7 +3656,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 return true
             }
             let propertiesEntry = concealedPropertiesEntry(in: textView)
-            if !isMakingCommandEdit, let propertiesEntry, NativeMarkdownEditor.cutsIntoRenderedProperties(affectedCharRange, propertiesEnd: NSMaxRange(propertiesEntry.range)) { return false }
+            if let propertiesEntry, NativeMarkdownEditor.cutsIntoRenderedProperties(affectedCharRange, propertiesEnd: NSMaxRange(propertiesEntry.range)) { return false }
             // Characters only, not an attribute change; and the note's own typing, not the find
             // bar's replace, which keeps the keyboard.
             if !isMakingCommandEdit, let replacementString, !textView.hasMarkedText(), textView.window?.firstResponder === textView,
@@ -4147,10 +4159,20 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 // A folded section moves and is moved past as one unit, its fold with it.
                 foldTracking.scanIfWaiting()
                 let foldedSections = NoteFolding.foldedSections(foldTracking.folded(foldedKeys: session.foldedKeys))
-                guard let edit = MarkdownEditing.movingLines(up: command == .moveLinesUp, in: currentSource(of: textView), selection: textView.selectedRange(), foldedSections: foldedSections) else { return false }
+                var movesUp = false
+                if case .moveLinesUp = command { movesUp = true }
+                guard let edit = MarkdownEditing.movingLines(up: movesUp, in: currentSource(of: textView), selection: textView.selectedRange(), foldedSections: foldedSections) else { return false }
                 isMovingLines = true
                 perform(edit, in: textView)
                 isMovingLines = false
+                // A line that lands at the end of a folded heading's section is part of it now,
+                // and must not vanish into the fold.
+                let hiding = NoteFolding.regions(hiding: edit.selectionAfter.location, in: foldTracking.folded(foldedKeys: session.foldedKeys))
+                if !hiding.isEmpty {
+                    session.foldedKeys.subtract(hiding.map(\.key))
+                    applyFolds(in: textView)
+                    textView.setSelectedRange(edit.selectionAfter)
+                }
                 return true
             case .heading, .wrap, .bulletList, .numberedList, .task, .indent, .outdent,
                  .insertWikilink, .insertTag, .insertMarkdownLink:

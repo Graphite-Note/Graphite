@@ -312,6 +312,26 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         XCTAssertEqual(applying(try XCTUnwrap(performedEdits.first), to: session.text), "[[Folder/Notes]]")
     }
 
+    /// HUNT-072: the Return was taken, and the link must still arrive when a key comes while the
+    /// index answers; the editor moves the edit past that key.
+    func testFileSuggestionStillInsertsWhenAKeyIsTypedDuringTheLookup() async throws {
+        let (session, _) = try await makeSession(contents: Data("[[".utf8))
+        let workspace = WorkspaceModel()
+        workspace.index = try VaultIndex(databaseURL: vaultDirectory.appendingPathComponent("index.sqlite"))
+        workspace.hasCompletedIndexScan = true
+        workspace.recentFiles = RecentFiles(paths: [try VaultPath("Folder/Notes.md")])
+        session.completion.suggest(from: workspace, for: session)
+        var performedEdits: [MarkdownTextEdit] = []
+        session.completion.performEdits = { edits in performedEdits = edits }
+        session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: 2), caretRect: .zero)
+        try await waitUntil { session.completion.isVisible }
+        session.completion.accept()
+        await Task.yield() // The suggestion is now waiting for the index.
+        session.text += "x"
+        try await waitUntil { !performedEdits.isEmpty }
+        XCTAssertEqual(performedEdits.first?.replacement, "Folder/Notes]]")
+    }
+
     func testCompletionTitleHighlightsOnlyRangesInsideTheTitle() {
         let highlighted = CompletionPopup.highlightedTitle("Ideas", highlights: [0..<1, 3..<5, 7..<12], accent: .blue)
         XCTAssertEqual(String(highlighted.characters), "Ideas")
