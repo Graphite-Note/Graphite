@@ -8,9 +8,9 @@ Last updated: 2026-11-02.
 
 The 306 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That file is the record: it says per item what was built, which test covers it and what is still to be checked.
 
-- **State:** 209 ticked (207 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone), 97 open. Of the open ones, 93 carry a fix and name the check they wait for. Four have no fix: HUNT-007 could not be reproduced without a device, HUNT-280 needs a look at the real menu, and HUNT-146 and HUNT-154 are the owner's choice. Eleven open items ask the owner a question.
-- **Automated tests, passing on macOS:** the full package suite on the merged code. The hosted test target compiles.
-- **Not run on this Mac:** the hosted iPad tests. Local runs never start the test runner, with or without other builds running, so GitHub runs them.
+- **State:** 225 ticked (223 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone), 81 open. Of the open ones, 77 carry a fix and name the check they wait for. Four have no fix: HUNT-007 could not be reproduced without a device, HUNT-280 needs a look at the real menu, and HUNT-146 and HUNT-154 are the owner's choice. Eleven open items ask the owner a question.
+- **Automated tests:** the full package suite passes on the merged code on the Mac. The hosted iPad suite passes on GitHub (451 tests, 41 skipped; run 41481009257).
+- **Not run on this Mac:** the hosted iPad tests. Local runs never start the test runner, with or without other builds running, so only GitHub runs them. They run on an iPad simulator only, so what they prove about the iPhone is limited. `testAFontSizeStep…` can pass through a fallback, so it doesn't prove VoiceOver works, and the iPad half of `testALabelSits…` checks the field's position, not that the label is drawn.
 - **Not checked:** nothing here was tried with a real Pencil, iPad or iPhone, including the ink width at zoom (HUNT-004) and PDF stutter (HUNT-015, HUNT-017). Speed fixes are proved by counts of work on generated data, not by timings, and not on the owner's vault.
 
 ### Defects a code reader found in those fixes

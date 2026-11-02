@@ -5,8 +5,8 @@
  * Description: Vault switching, link following, external changes, and attachment saving in the
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.12
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -411,10 +411,13 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         for noteNumber in 1...200 { notes["Notes/Note \(noteNumber).md"] = "Note \(noteNumber) links [[Note \(noteNumber + 1)]]" }
         let vault = try makeVault(files: notes)
         let workspace = try await openedWorkspace(vault)
-        XCTAssertTrue(workspace.isIndexing)
         let indexVersionBeforeScans = workspace.indexVersion
         let index = try XCTUnwrap(workspace.index)
 
+        // The scan of opening may be over on a fast machine. Nothing is awaited between these two
+        // requests, so the second one always arrives while the first is under way.
+        workspace.startIndexing()
+        XCTAssertTrue(workspace.isIndexing)
         workspace.startIndexing()
         // Written after the running scan may have passed it: only the scan that follows finds it.
         try Data("late".utf8).write(to: vault.appendingPathComponent("Notes/Note 0.md"))
