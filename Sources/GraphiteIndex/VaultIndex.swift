@@ -5,8 +5,8 @@
  * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -58,6 +58,8 @@ enum IndexedContentState: Int {
 
 public struct IndexingReport: Sendable {
     public let discoveredFiles: Int
+    /// Files this scan listed and looked at, which a scan of one folder keeps to that folder's.
+    public let examinedFiles: Int
     public let updatedFiles: Int
     public let pendingContentFiles: Int
     public let failedPaths: [String]
@@ -774,7 +776,7 @@ public actor VaultIndex {
         if !isInventoryIncomplete { state.prunedFiles = try pruneFilesNotSeen(state.seenPaths, inside: folder) }
         guard folder == nil else { return try partialReport(of: state) }
         if !isInventoryIncomplete { try recordFinishedScan() }
-        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles,
+        return IndexingReport(discoveredFiles: state.discoveredFiles, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
@@ -786,7 +788,7 @@ public actor VaultIndex {
              try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'",
                  arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
         }
-        return IndexingReport(discoveredFiles: fileCount, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount,
+        return IndexingReport(discoveredFiles: fileCount, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 

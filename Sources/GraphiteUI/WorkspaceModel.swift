@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.73
- * Date: 01/11/2026
+ * Version: 0.74
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -49,6 +49,8 @@ final class WorkspaceModel {
     /// The root folder's own date just before its last listing, and when, on `clock`, the
     /// window last stopped being in front; together they tell whether coming back needs a listing.
     @ObservationIgnored var rootDateAtLastListing: Date?
+    /// Another app changed what cannot be named, and the next scan says whether it shows.
+    @ObservationIgnored var isRefreshWaitingForScan = false
     @ObservationIgnored var timeLeftFront: Duration?
     /// The vault's settings files when they were last read.
     @ObservationIgnored var settingsFilesRevisionAtLastReading: [String: SettingsFileStamp]?
@@ -592,7 +594,7 @@ final class WorkspaceModel {
         pendingExternalChanges.removeAll(); firstPendingExternalChangeTime = nil
         indexingMessage = ""
         rootEntries = []; hasListedRoot = false; folderListingVersions = [:]
-        rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; settingsFilesRevisionAtLastReading = nil
+        rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; isRefreshWaitingForScan = false; settingsFilesRevisionAtLastReading = nil
         reportedSettingsProblems = [:]
         readAloud?.clear()
         readAloudNavigator?.clearQueueHistoryAndPenMarks()
@@ -816,10 +818,7 @@ final class WorkspaceModel {
             describeIndex(fileCount: report.discoveredFiles)
             // Everything keyed on the index runs again for this, so a scan that found the
             // vault as the index has it changes nothing shown.
-            if report.changedAnything {
-                recordIndexChange(paths: nil)
-                if !searchQuery.isEmpty { await search() }
-            }
+            if report.changedAnything { await indexScanFoundChanges() }
             isIndexing = isAnotherScanQueued
         case .scanCancelled:
             indexingMessage = "Indexing paused"; isIndexing = false
