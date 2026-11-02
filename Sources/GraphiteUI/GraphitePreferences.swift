@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.28
- * Date: 01/11/2026
+ * Version: 0.29
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -264,6 +264,8 @@ final class GraphitePreferences {
     let notebookCreation: NotebookCreationDefaults
     /// The options the last note was exported to PDF with.
     let notePDFExport: NotePDFExportDefaults
+    /// The language of month and weekday names in dates.
+    let dateNames: DateNamePreferences
 
     var drawingFormat: DrawingFormat { didSet { defaults.set(drawingFormat.rawValue, forKey: Key.drawingFormat) } }
     var drawingBackground: DrawingBackground { didSet { defaults.set(drawingBackground.rawValue, forKey: Key.drawingBackground) } }
@@ -432,6 +434,7 @@ final class GraphitePreferences {
         library = NotebookLibraryPreferences(defaults: defaults)
         notebookCreation = NotebookCreationDefaults(defaults: defaults)
         notePDFExport = NotePDFExportDefaults(defaults: defaults)
+        dateNames = DateNamePreferences(defaults: defaults)
         drawingFormat = defaults.string(forKey: Key.drawingFormat).flatMap(DrawingFormat.init(rawValue:)) ?? .png
         drawingBackground = defaults.string(forKey: Key.drawingBackground).flatMap(DrawingBackground.init(rawValue:)) ?? .white
         drawsOnPencilDoubleTap = defaults.object(forKey: Key.drawsOnPencilDoubleTap) as? Bool ?? true

@@ -5,8 +5,8 @@
  * Description: Template and Daily notes settings, and template variables written with Moment date formats.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -80,16 +80,18 @@ public struct DailyNoteSettings: Equatable, Sendable {
     }
 
     /// Where the daily note of `date` is: the folder, then the date in the format.
-    public func notePath(for date: Date, timeZone: TimeZone = .current) throws -> VaultPath {
-        let name = MomentDateFormat.string(from: date, format: format, timeZone: timeZone)
+    /// - Parameter language: The language of month and weekday names. It is a setting of the device, as in Obsidian, so
+    ///   it is not in this file.
+    public func notePath(for date: Date, timeZone: TimeZone = .current, language: MomentDateLanguage = .english) throws -> VaultPath {
+        let name = MomentDateFormat.string(from: date, format: format, timeZone: timeZone, language: language)
         guard !name.isEmpty else { throw GraphiteError.invalidPath(format) }
         let relativePath = (folder.isEmpty ? "" : folder + "/") + name + ".md"
         return try VaultPath(relativePath)
     }
 
     /// The day a note in the daily notes folder is for, from its path.
-    public func date(ofNoteAt path: VaultPath, timeZone: TimeZone = .current) -> Date? {
-        MomentDateReader(format: format).flatMap { reader in date(ofNoteAt: path, using: reader, timeZone: timeZone) }
+    public func date(ofNoteAt path: VaultPath, timeZone: TimeZone = .current, languages: [MomentDateLanguage] = [.english]) -> Date? {
+        MomentDateReader(format: format, languages: languages).flatMap { reader in date(ofNoteAt: path, using: reader, timeZone: timeZone) }
     }
 
     /// `date(ofNoteAt:)` with the format prepared once (`MomentDateReader(format:)`), to read the names of a whole folder.
@@ -141,7 +143,8 @@ enum PluginConfiguration {
 public enum TemplateRenderer {
     private static let variablePattern = TemplateRendererPattern.variablePattern.compiled()
 
-    public static func render(_ template: String, title: String, date: Date, dateFormat: String, timeFormat: String, timeZone: TimeZone = .current) -> String {
+    public static func render(_ template: String, title: String, date: Date, dateFormat: String, timeFormat: String, timeZone: TimeZone = .current,
+                              language: MomentDateLanguage = .english) -> String {
         guard date.timeIntervalSinceReferenceDate.isFinite else { return template }
         let source = template as NSString
         var result = ""
@@ -173,7 +176,7 @@ public enum TemplateRenderer {
                 day = shiftedDay
             }
             let defaultFormat = name == "time" ? timeFormat : dateFormat
-            result += MomentDateFormat.string(from: day, format: format.flatMap { format in format.isEmpty ? nil : format } ?? defaultFormat, timeZone: timeZone)
+            result += MomentDateFormat.string(from: day, format: format.flatMap { format in format.isEmpty ? nil : format } ?? defaultFormat, timeZone: timeZone, language: language)
         }
         return result + source.substring(from: location)
     }

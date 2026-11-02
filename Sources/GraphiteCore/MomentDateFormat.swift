@@ -5,21 +5,19 @@
  * Description: Dates written and read with the format strings Obsidian uses (Moment.js), such as YYYY-MM-DD.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import Foundation
 
 /// Dates written with the format strings Obsidian uses (Moment.js), such as
-/// `YYYY-MM-DD` or `dddd, MMMM Do YYYY`, in Moment's default English locale, as Obsidian's
-/// Templates and Daily notes plugins write them.
+/// `YYYY-MM-DD` or `dddd, MMMM Do YYYY`, as Obsidian's Templates and Daily notes plugins write
+/// them: in Moment's default English locale, or the `MomentDateLanguage` asked for.
 public enum MomentDateFormat {
     public static let defaultDateFormat = "YYYY-MM-DD"
     public static let defaultTimeFormat = "HH:mm"
 
-    static let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     /// Moment's tokens. `sortedTokens` tries the longest first, so `YYYY` is not read as two `YY`.
     private static let tokens = [
         "YYYYYY", "YYYYY", "YYYY", "YY", "Y", "Qo", "Q", "MMMM", "MMM", "MM", "Mo", "M", "DDDD", "DDDo", "DDD", "DD", "Do", "D",
@@ -37,6 +35,7 @@ public enum MomentDateFormat {
         "llll": "ddd, MMM D, YYYY h:mm A", "lll": "MMM D, YYYY h:mm A", "ll": "MMM D, YYYY", "l": "M/D/YYYY",
     ]
     private static let sortedLongDateFormatKeys = longDateFormats.keys.sorted { first, second in first.count > second.count }
+    private static let monthAfterDayExpression = MomentDateFormatPattern.monthAfterDay.compiled()
     private static let eraNames = (annoDomini: "Anno Domini", beforeChrist: "Before Christ", annoDominiAbbreviation: "AD", beforeChristAbbreviation: "BC")
 
     enum Piece: Equatable, Sendable {
@@ -45,38 +44,40 @@ public enum MomentDateFormat {
     }
 
     /// The date written in `format`.
-    public static func string(from date: Date, format: String, timeZone: TimeZone = .current) -> String {
-        string(from: date, pieces: pieces(of: format), timeZone: timeZone)
+    public static func string(from date: Date, format: String, timeZone: TimeZone = .current,
+                              language: MomentDateLanguage = .english) -> String {
+        let monthFollowsDay = language.takesMonthAfterDayOnlyRightAfterIt ? format.contains("D MMMM") : monthFollowsDay(in: format)
+        let calendar = gregorianCalendar(timeZone: timeZone, language: language)
+        let written = pieces(of: format).map { piece in
+            switch piece {
+            case .literal(let text): text
+            case .token(let token):
+                value(of: token, for: date, calendar: calendar, timeZone: timeZone, language: language, monthFollowsDay: monthFollowsDay)
+            }
+        }.joined()
+        return language.inOwnDigits(written)
     }
 
     /// The day a text written in `format` names, for file names such as daily notes. Only
     /// formats made of years, months, days, weekday names and literal text can be read. To
     /// read many names, build a `MomentDateReader` once.
-    public static func date(from text: String, format: String, timeZone: TimeZone = .current) -> Date? {
-        MomentDateReader(format: format)?.date(from: text, timeZone: timeZone)
-    }
-
-    /// The date written with already split pieces.
-    static func string(from date: Date, pieces: [Piece], timeZone: TimeZone) -> String {
-        let calendar = gregorianCalendar(timeZone: timeZone)
-        return pieces.map { piece in
-            switch piece {
-            case .literal(let text): text
-            case .token(let token): value(of: token, for: date, calendar: calendar, timeZone: timeZone)
-            }
-        }.joined()
+    public static func date(from text: String, format: String, timeZone: TimeZone = .current, languages: [MomentDateLanguage] = [.english]) -> Date? {
+        MomentDateReader(format: format, languages: languages)?.date(from: text, timeZone: timeZone)
     }
 
     // MARK: Private
 
-    static func gregorianCalendar(timeZone: TimeZone) -> Calendar {
+    static func gregorianCalendar(timeZone: TimeZone, language: MomentDateLanguage = .english) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         calendar.locale = Locale(identifier: "en_US_POSIX")
-        // Moment's English locale: weeks start on Sunday, and week 1 holds January 1.
-        calendar.firstWeekday = 1
-        calendar.minimumDaysInFirstWeek = 1
+        calendar.firstWeekday = language.firstWeekday
+        calendar.minimumDaysInFirstWeek = language.minimumDaysInFirstWeek
         return calendar
+    }
+
+    private static func monthFollowsDay(in format: String) -> Bool {
+        monthAfterDayExpression.firstMatch(in: format, range: NSRange(format.startIndex..., in: format)) != nil
     }
 
     static func pieces(of format: String) -> [Piece] {
@@ -128,7 +129,8 @@ public enum MomentDateFormat {
         return (written.replacingOccurrences(of: "\\", with: ""), text.dropFirst(written.count))
     }
 
-    private static func value(of token: String, for date: Date, calendar: Calendar, timeZone: TimeZone) -> String {
+    static func value(of token: String, for date: Date, calendar: Calendar, timeZone: TimeZone, language: MomentDateLanguage,
+                      monthFollowsDay: Bool) -> String {
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond, .weekday, .weekOfYear, .yearForWeekOfYear], from: date)
         let year = components.year ?? 0, month = components.month ?? 1, day = components.day ?? 1
         let hour = components.hour ?? 0, minute = components.minute ?? 0, second = components.second ?? 0
@@ -148,29 +150,30 @@ public enum MomentDateFormat {
         case "YY": return padded(year % 100, 2)
         case "Y": return String(year)
         case "Q": return String((month - 1) / 3 + 1)
-        case "Qo": return ordinal((month - 1) / 3 + 1)
-        case "MMMM": return monthNames[month - 1]
-        case "MMM": return String(monthNames[month - 1].prefix(3))
+        case "Qo": return language.ordinal((month - 1) / 3 + 1)
+        case "MMMM": return (monthFollowsDay ? language.monthsAfterDay : language.months)[month - 1]
+        case "MMM": return language.abbreviatedMonths[month - 1]
         case "MM": return padded(month, 2)
-        case "Mo": return ordinal(month)
+        case "Mo": return language.ordinal(month)
         case "M": return String(month)
         case "DDDD": return padded(dayOfYear, 3)
-        case "DDDo": return ordinal(dayOfYear)
+        case "DDDo": return language.ordinal(dayOfYear)
         case "DDD": return String(dayOfYear)
         case "DD": return padded(day, 2)
-        case "Do": return ordinal(day)
+        case "Do": return language.ordinal(day)
         case "D": return String(day)
-        case "dddd": return weekdayNames[weekdayIndex]
-        case "ddd": return String(weekdayNames[weekdayIndex].prefix(3))
-        case "dd": return String(weekdayNames[weekdayIndex].prefix(2))
-        case "do": return ordinal(weekdayIndex)
-        case "d", "e": return String(weekdayIndex)
+        case "dddd": return language.weekdays[weekdayIndex]
+        case "ddd": return language.abbreviatedWeekdays[weekdayIndex]
+        case "dd": return language.shortestWeekdays[weekdayIndex]
+        case "do": return language.ordinal(weekdayIndex)
+        case "d": return String(weekdayIndex)
+        case "e": return String((weekdayIndex - (language.firstWeekday - 1) + 7) % 7)
         case "E": return String(weekdayIndex == 0 ? 7 : weekdayIndex)
         case "ww": return padded(components.weekOfYear ?? 1, 2)
-        case "wo": return ordinal(components.weekOfYear ?? 1)
+        case "wo": return language.ordinal(components.weekOfYear ?? 1)
         case "w": return String(components.weekOfYear ?? 1)
         case "WW": return padded(isoComponents.weekOfYear ?? 1, 2)
-        case "Wo": return ordinal(isoComponents.weekOfYear ?? 1)
+        case "Wo": return language.ordinal(isoComponents.weekOfYear ?? 1)
         case "W": return String(isoComponents.weekOfYear ?? 1)
         case "ggggg": return padded(components.yearForWeekOfYear ?? year, 5)
         case "gggg": return padded(components.yearForWeekOfYear ?? year, 4)
@@ -204,19 +207,13 @@ public enum MomentDateFormat {
         case "N", "NN", "NNN", "NNNNN": return year > 0 ? eraNames.annoDominiAbbreviation : eraNames.beforeChristAbbreviation
         case "NNNN": return year > 0 ? eraNames.annoDomini : eraNames.beforeChrist
         case "y", "yy", "yyy", "yyyy": return padded(year > 0 ? year : 1 - year, token.count)
-        case "yo": return ordinal(year > 0 ? year : 1 - year)
+        case "yo": return language.ordinal(year > 0 ? year : 1 - year)
         default: return token
         }
     }
+}
 
-    private static func ordinal(_ number: Int) -> String {
-        let lastTwoDigits = number % 100
-        if (11...13).contains(lastTwoDigits) { return "\(number)th" }
-        switch number % 10 {
-        case 1: return "\(number)st"
-        case 2: return "\(number)nd"
-        case 3: return "\(number)rd"
-        default: return "\(number)th"
-        }
-    }
+enum MomentDateFormatPattern: String, StaticPatternSet {
+    /// Moment's test for the form of a month that follows a day, over the whole format: `D[oD]?`, spaces or bracketed text, `MMM`.
+    case monthAfterDay = "D[oD]?(\\[[^\\[\\]]*\\]|\\s)+MMMM?"
 }
