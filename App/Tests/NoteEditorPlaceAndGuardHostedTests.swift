@@ -5,7 +5,7 @@
  * Description: The iPad's note editor keeps its place through mode, width, fold and appearance changes, and its edits leave properties and folds whole.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 02/11/2026
  */
 
@@ -143,7 +143,24 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         try await waitUntil { editor.layoutIfNeeded(); return coordinator.topCharacter(of: editor) == top }
         let styleBefore = editor.traitCollection.userInterfaceStyle
         editor.overrideUserInterfaceStyle = styleBefore == .dark ? .light : .dark
-        try await waitUntil { editor.traitCollection.userInterfaceStyle != styleBefore && coordinator.topCharacter(of: editor) == top }
+        try await waitUntil("the note takes the new appearance") { editor.traitCollection.userInterfaceStyle != styleBefore }
+        try await waitUntil("the line is at the top in the new appearance") { coordinator.topCharacter(of: editor) == top }
+        XCTAssertEqual(coordinator.topCharacter(of: editor), top, "The first character of the line at the top; the value shows the line it went to.")
+    }
+
+    /// A jump keeps its line at the top, but the blocks above can move the text in the turn before
+    /// the layout pass that puts it back. The line the offset falls on then is not the place held.
+    func testAChangeOfAppearanceWhileAJumpKeepsItsLineHoldsThatLine() async throws {
+        let (editor, _) = try await openNote(Self.longNote)
+        let top = try await scrollToSection(150, in: editor)
+        let coordinator = try coordinator(of: editor)
+        let styleBefore = editor.traitCollection.userInterfaceStyle
+        editor.setContentOffset(CGPoint(x: editor.contentOffset.x, y: editor.contentOffset.y + 80), animated: false)
+        XCTAssertNotEqual(coordinator.topCharacter(of: editor), top, "The text has moved under the top of the view.")
+        editor.overrideUserInterfaceStyle = styleBefore == .dark ? .light : .dark
+        editor.updateTraitsIfNeeded()
+        try await waitUntil("the note takes the new appearance") { editor.traitCollection.userInterfaceStyle != styleBefore }
+        try await waitUntil("the line is back at the top") { editor.layoutIfNeeded(); return coordinator.topCharacter(of: editor) == top }
     }
 
     // MARK: HUNT-062

@@ -5,7 +5,7 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.70
+ * Version: 0.72
  * Date: 02/11/2026
  */
 
@@ -2124,11 +2124,21 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         /// Restyles the whole note and returns to the line at the top of the view.
         private func restyleEverythingHoldingTopLine(in textView: UITextView) {
-            let heldLine = topLine(of: textView)
+            let heldLine = lineKeptAtTop() ?? topLine(of: textView)
             restyleEverything(in: textView)
             guard let heldLine, pendingJump == nil else { return }
             pendingJump = .topOfCharacter(heldLine.location, distanceIntoLine: heldLine.distanceIntoLine)
             performPendingJumpIfReady(in: textView)
+        }
+
+        /// The line a jump is keeping at the top, while it does. The blocks above can have moved
+        /// the text since a layout pass last put the line back, so the line the offset falls on
+        /// is not the person's place then, and holding it would keep the wrong line for good.
+        private func lineKeptAtTop() -> (location: Int, distanceIntoLine: CGFloat)? {
+            guard var pinnedHeading else { return nil }
+            let isBlockAboveAwaitingHeight = renderedBlocks.hasPlacedBlockAwaitingHeight(before: pinnedHeading.location, in: blockEntries)
+            guard pinnedHeading.holds(atUptime: ProcessInfo.processInfo.systemUptime, isBlockAboveAwaitingHeight: isBlockAboveAwaitingHeight) else { return nil }
+            return (pinnedHeading.location, pinnedHeading.distanceIntoLine)
         }
 
         func toggleFold(_ key: String, in textView: UITextView) {

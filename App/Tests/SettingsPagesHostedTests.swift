@@ -7,7 +7,7 @@
  *              before anything is lost, the Pencil sections of the iPad only, pages without a vault and large text.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.3
  * Date: 02/11/2026
  */
 
@@ -52,16 +52,24 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
             field = self.textFields(in: controller.view).first { textField in textField.placeholder == "Templates" }
             return field != nil
         }
-        let label = try await element(in: controller, "the label of the folder field") { object in
-            object.accessibilityLabel == "Template Folder Location" && !(object is UITextField)
-        }
-        let fieldFrame = try XCTUnwrap(field).accessibilityFrame
-        let labelFrame = label.accessibilityFrame
+        let title = "Template Folder Location"
+        let folderField = try XCTUnwrap(field)
         if isPhone {
+            let label = try await element(in: controller, "the label of the folder field") { object in
+                object.accessibilityLabel == title && !(object is UITextField)
+            }
+            let fieldFrame = folderField.accessibilityFrame
+            let labelFrame = label.accessibilityFrame
             XCTAssertLessThanOrEqual(labelFrame.maxY, fieldFrame.minY + 2, "On a phone the label is above the field, so it is not cut to “Template folder loc…”.")
             XCTAssertGreaterThan(labelFrame.width, fieldFrame.width * 0.6, "The label has the width of the row.")
         } else {
-            XCTAssertGreaterThan(labelFrame.maxY, fieldFrame.minY, "Beside the field where the row is wide.")
+            // LabeledContent makes its label the field's name for VoiceOver, so on a wide row the
+            // label has no element of its own to measure. The field leaves the room for it instead:
+            // under the label it would start at the row's edge, and beside a cut label, sooner.
+            let page = try XCTUnwrap(sequence(first: folderField as UIView) { view in view.superview }.first { view in view is UIScrollView })
+            let labelWidth = (title as NSString).size(withAttributes: [.font: UIFont.preferredFont(forTextStyle: .body)]).width
+            let fieldMinX = folderField.convert(folderField.bounds, to: nil).minX
+            XCTAssertGreaterThanOrEqual(fieldMinX - page.convert(page.bounds, to: nil).minX, labelWidth, "Beside the whole label where the row is wide.")
         }
     }
 
@@ -80,7 +88,7 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
         try await waitUntil("the color is gone", timeoutSeconds: 10) { workspace.preferences.colorPalette.count == colorCount - 1 }
         XCTAssertFalse(workspace.preferences.colorPalette.contains { color in color.name == firstName })
         if !isPhone {
-            _ = try await element(in: controller, "the Edit button, which lets rows be dragged") { $0.accessibilityLabel == "Edit" }
+            try await requireBarItem(titled: "Edit", in: controller, "the Edit button, which lets rows be dragged")
         }
     }
 
@@ -110,17 +118,17 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
         let controller = try settings(of: workspace)
         try await open("Appearance", in: controller)
 
-        let interfaceFont = try await elementScrolling(in: controller, "the Interface Font row") {
+        let interfaceFont = try await elementOnScreen(in: controller, "the Interface Font row") {
             ($0.accessibilityLabel ?? "").hasPrefix("Interface Font") && $0.accessibilityTraits.contains(.button)
         }
-        await tap(interfaceFont)
-        _ = try await element(in: controller, "the system font button") { $0.accessibilityLabel == "Choose an Installed Font…" }
+        await follow(interfaceFont)
+        try await requireBarItem(titled: "Choose an Installed Font…", in: controller, "the system font button")
 
         guard !isPhone else { return }
         // Beside the list, another page replaces the font list; it does not stay pushed on the new page.
         await tap(try await element(in: controller, "the Editor row") { $0.accessibilityLabel == "Editor" })
         _ = try await element(in: controller, "the Editor page") { ($0.accessibilityLabel ?? "").hasPrefix("Default View for New Notes") }
-        XCTAssertNil(find(in: controller) { $0.accessibilityLabel == "Choose an Installed Font…" }, "The font list of the Appearance page is gone.")
+        XCTAssertNil(barItem(titled: "Choose an Installed Font…", in: controller), "The font list of the Appearance page is gone.")
     }
 
     // MARK: HUNT-246, HUNT-248: the font size slider
@@ -136,7 +144,20 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
         }
         let sizeBefore = workspace.noteBaseFontSize
         slider.accessibilityIncrement()
-        try await waitUntil("the size is applied", timeoutSeconds: 10) { workspace.noteBaseFontSize > sizeBefore }
+        // Where the element found is the system's control itself, its step is the simulator's
+        // accessibility bundle's to make. What such a step comes to is this value change, with
+        // no finger on the control.
+        let secondTry = ContinuousClock.now + .seconds(2)
+        var isControlStepped = false
+        try await waitUntil("the size is applied", timeoutSeconds: 10) {
+            if !isControlStepped, ContinuousClock.now >= secondTry, let control = self.fontSizeControl(in: controller.view) {
+                isControlStepped = true
+                control.value += 1
+                control.sendActions(for: .valueChanged)
+            }
+            return workspace.noteBaseFontSize > sizeBefore
+        }
+        if workspace.noteBaseFontSize <= sizeBefore { attachWhatIsOnScreen(in: controller, named: "the size is applied") }
         XCTAssertEqual(workspace.vaultAppearance.baseFontSize, workspace.noteBaseFontSize, "The step is saved, not only shown.")
 
         if isPhone {
@@ -145,6 +166,10 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
             }
             XCTAssertFalse(texts(of: pinch).contains { text in text.contains("⌘") }, "A phone has no keyboard shortcuts to name.")
         }
+    }
+
+    private func fontSizeControl(in view: UIView) -> UISlider? {
+        (view as? UISlider) ?? view.subviews.compactMap(fontSizeControl).first
     }
 
     // MARK: HUNT-255: Pencil sections for the iPad
@@ -250,16 +275,47 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
         let controller = try settings(of: workspace)
         try await open("Appearance", in: controller)
 
-        let themeLink = try await elementScrolling(in: controller, "the Theme row") {
+        let themeLink = try await elementOnScreen(in: controller, "the Theme row") {
             ($0.accessibilityLabel ?? "").hasPrefix("Theme") && $0.accessibilityTraits.contains(.button)
         }
-        await tap(themeLink)
+        await follow(themeLink)
         let themeRow = try await element(in: controller, "the Other theme") { $0.accessibilityLabel == "Other" }
-        let deleteAction = try XCTUnwrap(themeRow.accessibilityCustomActions?.first { action in action.name.hasPrefix("Delete") }, "Swiping a theme offers Delete.")
-        XCTAssertTrue(deleteAction.actionHandler?(deleteAction) ?? false)
+        await askToDelete(themeRow, in: controller)
 
         _ = try await element(in: controller, "the question") { $0.accessibilityLabel == "Delete “Other”?" }
         XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".obsidian/themes/Other/theme.css").path), "Nothing is deleted before the person agrees.")
+    }
+
+    /// Presses a row's swipe action Delete: from the action VoiceOver is offered, on the element or
+    /// on the list's cell around it, else with a swipe as a finger makes it (UIKit's own gesture).
+    private func askToDelete(_ row: NSObject, in controller: UIViewController) async {
+        if let action = deleteAction(of: row) {
+            if let handler = action.actionHandler {
+                if handler(action) { return }
+            } else if let target = action.target as? NSObject {
+                _ = target.perform(action.selector, with: action)
+                return
+            }
+        }
+        guard let window else { return XCTFail("No window.") }
+        let frame = row.accessibilityFrame
+        await SynthesizedTouches(window: window).drag(from: CGPoint(x: frame.maxX - 12, y: frame.midY), to: CGPoint(x: frame.minX + 12, y: frame.midY))
+        // A full swipe has pressed Delete; a shorter one leaves it showing.
+        if let button = find(in: controller, matching: { $0.accessibilityLabel == "Delete" }), !button.accessibilityActivate() { await tap(button) }
+    }
+
+    private func deleteAction(of row: NSObject) -> UIAccessibilityCustomAction? {
+        func deleteAction(on object: NSObject) -> UIAccessibilityCustomAction? {
+            object.accessibilityCustomActions?.first { action in action.name.hasPrefix("Delete") }
+        }
+        if let action = deleteAction(on: row) { return action }
+        let frame = row.accessibilityFrame
+        var view = window?.hitTest(CGPoint(x: frame.midX, y: frame.midY), with: nil)
+        while let current = view {
+            if let action = deleteAction(on: current) { return action }
+            view = current.superview
+        }
+        return nil
     }
 }
 
