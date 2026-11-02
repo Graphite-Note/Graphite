@@ -1,3 +1,14 @@
+/**
+ * File: DiagramLabelDecoderTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: How the text written for a node, an edge or a group becomes the lines drawn.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import MermaidDiagrams
 
@@ -8,6 +19,11 @@ final class DiagramLabelDecoderTests: XCTestCase {
 
     func testEveryLineBreakTagAndLineBreakEndsALine() {
         XCTAssertEqual(lines("one<br>two<BR/>three<br />four\nfive"), ["one", "two", "three", "four", "five"])
+    }
+
+    func testALineBreakTagWithExtraSpacesOrAttributesEndsALineToo() {
+        XCTAssertEqual(lines("first<br  />second<BR\t/>third<br class=\"x\">fourth<br/ >fifth"), ["first", "second", "third", "fourth", "fifth"])
+        XCTAssertEqual(lines("<brand>kept as a tag</brand> word<br"), ["kept as a tag word<br"])
     }
 
     func testOtherTagsAreDroppedAndALessThanSignThatStartsNoTagStays() {

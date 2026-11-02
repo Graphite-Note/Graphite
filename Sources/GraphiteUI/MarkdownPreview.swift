@@ -469,13 +469,8 @@ actor ReadingViewBuilder {
                 rendered.append(.pluginCodeBlock(id: identifier(), language: language, source: source, note: note,
                                                  firstLine: taskSource.noteLine(ofBodyOffset: locatedBlock.startOffset), lineCount: locatedBlock.lineCount))
             case .mermaidDiagram(let source):
-                if let diagram = ReadingDiagram(source: source, typography: typography(for: configuration)) {
-                    rendered.append(.diagram(id: identifier(), diagram: diagram))
-                } else {
-                    // A type not drawn natively yet stays code, as before.
-                    let code = try await prepared("```mermaid\n" + source + "\n```", note: note, root: root, index: index, configuration: configuration)
-                    rendered.append(.markdown(id: identifier(), text: code))
-                }
+                // A type or a feature not drawn natively yet is the source with a line saying so (`ReadingDiagram.unreadable`).
+                rendered.append(.diagram(id: identifier(), diagram: ReadingDiagram(source: source, typography: typography(for: configuration))))
             }
         }
         return rendered

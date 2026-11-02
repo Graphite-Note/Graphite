@@ -1,3 +1,14 @@
+/**
+ * File: DiagramLabelDecoder.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: Turns the text written for a node, an edge or a group into the lines drawn.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 /// Turns the text written for a node, an edge or a group into the plain lines that are drawn: `<br>` and line breaks
 /// end lines, other HTML tags are dropped, Mermaid's entity codes (`#quot;`, `#9829;`) and HTML's (`&lt;`) become
 /// their characters, a Markdown string loses its emphasis markers, and runs of spaces become one.
@@ -61,11 +72,16 @@ enum DiagramLabelDecoder {
         return lines
     }
 
-    /// The length of a `<br>` tag at the start of `scalars`, or nil when it is not one.
+    /// The length of a `<br>` tag at the start of `scalars`, or nil when it is not one: `<br`, in any case, then a `>`,
+    /// or a space or a `/` and whatever else is written inside the tag (`<br />`, `<br  />`, `<br class="x">`) up to the
+    /// `>`. `<brand>` is another tag.
     private static func lineBreakTagLength(in scalars: Substring.UnicodeScalarView.SubSequence) -> Int? {
-        let lowercased = String(String.UnicodeScalarView(scalars.prefix(6))).lowercased()
-        for tag in ["<br>", "<br/>", "<br />"] where lowercased.hasPrefix(tag) { return tag.unicodeScalars.count }
-        return nil
+        let nameLength = 3
+        guard String(String.UnicodeScalarView(scalars.prefix(nameLength))).lowercased() == "<br" else { return nil }
+        let afterName = scalars.index(scalars.startIndex, offsetBy: nameLength)
+        guard let next = scalars[afterName...].first, next == ">" || next == "/" || next.properties.isWhitespace else { return nil }
+        guard let closing = scalars[afterName...].firstIndex(of: ">") else { return nil }
+        return scalars.distance(from: scalars.startIndex, to: closing) + 1
     }
 
     /// The line without HTML tags: a `<` followed by a letter or `/` up to the next `>`. A `<` that starts no tag, as in

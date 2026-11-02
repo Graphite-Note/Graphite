@@ -1,3 +1,14 @@
+/**
+ * File: ReadingDiagramTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: The reading view's mermaid blocks: flowcharts, unreadable diagrams, types not drawn yet.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -25,8 +36,14 @@ final class ReadingDiagramTests: XCTestCase {
         XCTAssertEqual(titled.title, "Named")
     }
 
-    func testATypeNotDrawnYetStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "requirementDiagram\n  requirement test_req {\n  }", typography: typography))
+    /// HUNT-236: a type not drawn yet was a bare code block, with no word that the diagram was meant to be drawn.
+    func testATypeNotDrawnYetShowsTheSourceAndSaysSo() {
+        let source = "requirementDiagram\n  requirement test_req {\n  }"
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
+        XCTAssertEqual(shownSource, source)
+        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
+        XCTAssertTrue(failure.explanation.contains("requirementDiagram"))
+        XCTAssertTrue(failure.explanation.contains("not drawn yet"))
     }
 
     func testAFlowchartWithSubgraphsIsDrawnWithItsBoxes() throws {
@@ -39,9 +56,12 @@ final class ReadingDiagramTests: XCTestCase {
         XCTAssertEqual(flowchart.nodeTexts, ["X", "A", "B", "The group"], "The node standing for the group is its box, read by its title")
     }
 
-    func testAFlowchartWhoseSubgraphsAreNotLaidOutStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "flowchart TD\nsubgraph one\nA\nend\nA --> one", typography: typography))
+    func testAFlowchartWhoseSubgraphsAreNotLaidOutShowsTheSourceAndWhy() {
+        for source in ["flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }", "flowchart TD\nsubgraph one\nA\nend\nA --> one"] {
+            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
+            XCTAssertEqual(shownSource, source)
+            XCTAssertEqual(failure, .layout(.subgraphsNotLaidOut))
+        }
     }
 
     func testAFlowchartThatCannotBeReadKeepsItsSourceAndWhy() throws {

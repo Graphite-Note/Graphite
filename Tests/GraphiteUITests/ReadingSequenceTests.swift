@@ -1,3 +1,14 @@
+/**
+ * File: ReadingSequenceTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: The reading view's sequence diagrams.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -29,10 +40,16 @@ final class ReadingSequenceTests: XCTestCase {
         XCTAssertEqual(titled.accessibilityValue, "Alice, Bob. Alice to Bob: Hello there. Bob to Alice")
     }
 
-    func testADiagramWithStatementsNotLaidOutStaysCode() {
+    func testADiagramWithStatementsNotLaidOutShowsTheSourceAndWhy() {
         for statement in ["box Team\nparticipant A\nend", "create participant C\nA->>C: Hi", "A-|\\B: Half", "link A: Wiki @ https://example.com",
                           "participant A@{ \"type\": \"database\" }", "A()->>B: Circle", "destroy A\nA->>B: Bye"] {
-            XCTAssertNil(ReadingDiagram(source: "sequenceDiagram\n\(statement)", typography: typography), statement)
+            guard case .unreadable(_, let failure) = ReadingDiagram(source: "sequenceDiagram\n\(statement)", typography: typography) else {
+                XCTFail("Shown with why: \(statement)")
+                continue
+            }
+            guard case .sequenceLayout(.statementsNotLaidOut(let statements)) = failure else { XCTFail("\(failure)"); continue }
+            XCTAssertFalse(statements.isEmpty, statement)
+            XCTAssertTrue(failure.explanation.hasSuffix("are not drawn yet."), failure.explanation)
         }
     }
 

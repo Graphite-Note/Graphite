@@ -1,3 +1,14 @@
+/**
+ * File: ReadingEntityRelationshipDiagramTests.swift
+ * -------------------------------------------------
+ * Layer: Tests
+ * Description: The reading view's entity relationship diagrams.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -30,8 +41,11 @@ final class ReadingEntityRelationshipDiagramTests: XCTestCase {
         XCTAssertEqual(summarized.summary, ["CUSTOMER", "ORDER", "INVOICE", "CUSTOMER places ORDER", "ORDER INVOICE"])
     }
 
-    func testADiagramWithSubgraphsStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "erDiagram\nsubgraph group\nA\nend", typography: typography))
+    func testADiagramWithSubgraphsShowsTheSourceAndWhy() {
+        guard case .unreadable(_, let failure) = ReadingDiagram(source: "erDiagram\nsubgraph group\nA\nend", typography: typography) else {
+            return XCTFail("Shown with why")
+        }
+        XCTAssertEqual(failure, .entityRelationshipLayout(.subgraphsNotLaidOut))
     }
 
     func testADiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {
@@ -50,6 +64,6 @@ final class ReadingEntityRelationshipDiagramTests: XCTestCase {
              .unclosedAttributeBlock(entity: "BOOK")].map { problem in .reading(.invalidSyntax(line: 1, problem: problem)) }
         XCTAssertEqual(Set(failures.map(\.explanation)).count, failures.count)
         XCTAssertEqual(ReadingDiagramFailure.entityRelationshipLayout(.subgraphsNotLaidOut).explanation,
-                       ReadingDiagramFailure.layout(.subgraphsNotLaidOut).explanation)
+                       "Entity relationship diagrams with subgraphs are not drawn yet.")
     }
 }
