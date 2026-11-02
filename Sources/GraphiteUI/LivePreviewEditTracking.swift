@@ -5,8 +5,8 @@
  * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.14
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -219,7 +219,8 @@ struct LivePreviewBlockKey: Hashable {
     static func keys(for blocks: [LivePreviewBlock]) -> [LivePreviewBlockKey] {
         var occurrences: [String: Int] = [:]
         return blocks.map { block in
-            let baseIdentity = kindName(of: block.kind) + "|" + block.markdown
+            // The lines as the note has them: a view kept for a table whose comment changed would write the old comment back.
+            let baseIdentity = kindName(of: block.kind) + "|" + block.sourceLines
             let occurrence = occurrences[baseIdentity, default: 0]
             occurrences[baseIdentity] = occurrence + 1
             return LivePreviewBlockKey(identity: baseIdentity + "|" + String(occurrence))

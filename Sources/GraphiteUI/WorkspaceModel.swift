@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.74
+ * Version: 0.81
  * Date: 02/11/2026
  */
 
@@ -408,6 +408,8 @@ final class WorkspaceModel {
         try await openVault(identifier: nil, location: VaultLocator.location(forPickedFolder: folder))
     }
 
+    /// Returns without opening it when a newer choice replaced this one while it waited its turn
+    /// (`VaultSwitchQueue`): a caller that goes on to act in the vault checks `currentVaultIdentifier`.
     func openVault(_ vault: KnownVault) async throws {
         // While another vault opens, the open one may be the later choice.
         guard vault.id != currentVaultIdentifier || vaultSwitches.isBusy else { return }

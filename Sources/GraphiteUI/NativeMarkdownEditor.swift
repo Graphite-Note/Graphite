@@ -5,8 +5,8 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.57
- * Date: 01/11/2026
+ * Version: 0.67
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -2031,7 +2031,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 self.renderedBlocks.beginEditingInView(blockWithKey: key, at: entry.range.location, owner: editor)
             }, setDraftCommit: { [weak self] editor, commit in
                 self?.session.draftCommitsOfViews[editor] = commit
-            }))
+            }), currentLocation: { [weak self] in
+                self?.blockEntries.first { candidate in candidate.key == key }?.range.location
+            })
         }
 
         /// Replaces a rendered block's source with what its view made of it, as a table's cell
@@ -3852,7 +3854,9 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 self.renderedBlocks.beginEditingInView(blockWithKey: key, at: entry.range.location, owner: editor)
             }, setDraftCommit: { [weak self] editor, commit in
                 self?.session.draftCommitsOfViews[editor] = commit
-            }))
+            }), currentLocation: { [weak self] in
+                self?.textState.blockEntries.first { candidate in candidate.key == key }?.range.location
+            })
         }
 
         /// Replaces a rendered block's source with what its view made of it, as a table's cell

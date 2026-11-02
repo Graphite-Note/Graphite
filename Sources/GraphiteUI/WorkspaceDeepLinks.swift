@@ -5,8 +5,8 @@
  * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -37,6 +37,10 @@ extension WorkspaceModel {
             }
             do { try await openVault(vault) } catch {
                 errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
+                return
+            }
+            guard currentVaultIdentifier == vault.id else {
+                reportLinkNotFollowed(into: vault)
                 return
             }
         }
@@ -144,11 +148,21 @@ extension WorkspaceModel {
         }
         do {
             try await openVault(vault)
+            guard currentVaultIdentifier == vault.id else {
+                reportLinkNotFollowed(into: vault)
+                return nil
+            }
             return path
         } catch {
             errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
             return nil
         }
+    }
+
+    /// A newer choice of vault replaced the switch a link waited for: the link acts in nothing,
+    /// above all not in the vault that happens to be open, and what it carried is not lost silently.
+    private func reportLinkNotFollowed(into vault: KnownVault) {
+        errorMessage = "Another vault was chosen while a link waited for “\(vault.name)” to open, so the link was not followed. Try it again."
     }
 
     private func createNoteFromLink(name: String?, file: String?, content: String, opensNote: Bool, mode: VaultURI.NewNoteMode) async {

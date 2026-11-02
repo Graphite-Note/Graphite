@@ -5,8 +5,8 @@
  * Description: A damaged index is made again, and a refresh says what it changed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -97,6 +97,13 @@ final class IndexRecoveryAndChangeTests: XCTestCase {
         XCTAssertFalse(VaultIndex.isDamagedDatabase(DatabaseError(resultCode: .SQLITE_FULL)))
         XCTAssertFalse(VaultIndex.isDamagedDatabase(DatabaseError(resultCode: .SQLITE_CANTOPEN)))
         XCTAssertFalse(VaultIndex.isDamagedDatabase(CocoaError(.fileWriteNoPermission)))
+        // What the moment or the machine answers has a code of its own, so a large vault is not read again for it.
+        for transient in [ResultCode.SQLITE_LOCKED, .SQLITE_IOERR, .SQLITE_READONLY, .SQLITE_INTERRUPT, .SQLITE_NOMEM, .SQLITE_PERM] {
+            XCTAssertFalse(VaultIndex.isDamagedDatabase(DatabaseError(resultCode: transient)), "\(transient)")
+        }
+        // A migration that failed on what the file holds: only a new file cures it.
+        XCTAssertTrue(VaultIndex.isDamagedDatabase(DatabaseError(resultCode: .SQLITE_ERROR)), "table already exists, no such column")
+        XCTAssertTrue(VaultIndex.isDamagedDatabase(DatabaseError(resultCode: .SQLITE_CONSTRAINT)), "old rows break a new unique index")
     }
 
     // MARK: What a refresh changed

@@ -5,8 +5,8 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.15
- * Date: 01/11/2026
+ * Version: 0.22
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -473,20 +473,26 @@ extension WorkspaceModel {
     /// Goodnotes' Import does. The originals stay where they are. A file of a type an importer
     /// of `DroppedFileImporters` takes goes to it; a text file becomes a note. A file that fails
     /// is reported; the others are still copied.
-    /// - Parameter stagedCopies: Temporary copies of dropped files that `chosenSources` point into. They are removed when
-    ///   the import is done with them: at the end of this call, or, when notebooks are converted, only when that
-    ///   conversion has ended, since it reads them long after this call returns.
-    func importFiles(from chosenSources: [URL], into directory: VaultPath, stagedCopies: DroppedFileBatch? = nil) async {
-        var notebookImportHoldsStagedCopies = false
-        defer { if !notebookImportHoldsStagedCopies { stagedCopies?.discard() } }
+    /// - Parameter stagedCopies: Temporary copies of dropped files that `chosenSources` point into. Each is removed when
+    ///   the import is done with it: at the end of this call, or, for a notebook being converted, only when that
+    ///   conversion has ended, since it reads it long after this call returns. The conversion's end says nothing about
+    ///   the other files of the drop, which this call may still be copying.
+    /// - Parameter importers: Asked before the plain copy, as `DroppedFileImporters.registered` is.
+    func importFiles(from chosenSources: [URL], into directory: VaultPath, stagedCopies: DroppedFileBatch? = nil,
+                     importers: [FileTypeImporter] = DroppedFileImporters.registered) async {
+        var copiesThisCallRemoves = stagedCopies
+        defer { copiesThisCallRemoves?.discard() }
         guard let store, let root = folderAccess?.root else { return }
         // Goodnotes and Notability notebooks, and folders of them, are converted rather than copied.
         let notebookSources = notebookImportSources(in: chosenSources)
         if !notebookSources.isEmpty {
-            notebookImportHoldsStagedCopies = importNotebooks(notebookSources, into: directory, whenEnded: { stagedCopies?.discard() })
+            let copies = stagedCopies?.split(at: notebookSources)
+            if importNotebooks(notebookSources, into: directory, whenEnded: { copies?.atLocations.discard() }) {
+                copiesThisCallRemoves = copies?.others
+            }
         }
         let routing = DroppedFileImporters.route(chosenSources.filter { source in !notebookSources.contains(source) },
-                                                 through: DroppedFileImporters.registered)
+                                                 through: importers)
         for routed in routing.routed { await routed.importer.importFiles(routed.files, directory) }
         let sources = routing.remaining
         var importedPaths: [VaultPath] = []

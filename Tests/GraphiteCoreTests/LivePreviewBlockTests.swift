@@ -5,8 +5,8 @@
  * Description: What Live Preview draws as rendered blocks: properties, tables, math, embeds, callouts, rules.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -110,5 +110,51 @@ final class LivePreviewBlockTests: XCTestCase {
         XCTAssertNil(LivePreviewBlockScanner.onlyPluginCodeBlock(language: "dataview", code: "LIST", in: note + "```dataview\nLIST\n```\n"),
                      "Two matching blocks: a plugin must not be given either's lines.")
         XCTAssertNil(LivePreviewBlockScanner.onlyPluginCodeBlock(language: "dataview", code: "TASK", in: note))
+    }
+
+    // MARK: A block's lines as the note has them
+
+    /// What is drawn has no comment; what an edit starts from has it, or the edit would write the note without it.
+    func testATableIsDrawnWithoutItsCommentsAndEditedWithThem() throws {
+        let note = "Intro\n| a %% x | y %% | b |\n| - | - |\n| 1 %%n%% | 2 |\n\nAfter\n"
+        let table = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        XCTAssertFalse(table.markdown.contains("%%"), table.markdown)
+        XCTAssertEqual(table.sourceLines, "| a %% x | y %% | b |\n| - | - |\n| 1 %%n%% | 2 |")
+        XCTAssertFalse(table.isCutByComment)
+        XCTAssertEqual(MarkdownTable.parse(table.sourceLines)?.columnCount, MarkdownTable.parse(table.markdown)?.columnCount,
+                       "The cells edited are the cells drawn.")
+        XCTAssertEqual(MarkdownTable.parse(table.sourceLines)?.rows.count, MarkdownTable.parse(table.markdown)?.rows.count)
+    }
+
+    /// The Markdown section's fix: a comment hides what is in it from what a callout draws.
+    func testACalloutKeepsItsCommentsOutOfWhatItDraws() throws {
+        let note = "> [!note] T\n> shown %%hidden[^1] ![[e.png]]%%\n> more\n"
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        XCTAssertEqual(callout.kind, .callout)
+        XCTAssertEqual(callout.markdown, "> [!note] T\n> shown " + String(repeating: " ", count: "%%hidden[^1] ![[e.png]]%%".utf16.count) + "\n> more")
+        XCTAssertEqual(callout.sourceLines, "> [!note] T\n> shown %%hidden[^1] ![[e.png]]%%\n> more")
+    }
+
+    func testAWindowsNotesBlockHasItsLinesAsTheNoteHasThem() throws {
+        let note = "Text\r\n> [!todo] T\r\n> - [ ] one\r\n\r\n| a |\r\n| - |\r\n"
+        let blocks = LivePreviewBlockScanner.blocks(in: note as NSString)
+        XCTAssertEqual(blocks.map(\.markdown), ["> [!todo] T\n> - [ ] one", "| a |\n| - |"])
+        XCTAssertEqual(blocks.map(\.sourceLines), ["> [!todo] T\r\n> - [ ] one", "| a |\r\n| - |"])
+    }
+
+    func testABlockWithNothingToKeepHasItsMarkdownAsItsLines() throws {
+        let table = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| a |\n| - |\n" as NSString).first)
+        XCTAssertEqual(table.sourceLines, table.markdown)
+        XCTAssertFalse(table.isCutByComment)
+    }
+
+    /// The lines alone would not say a comment is one, so their cells would not be the ones drawn.
+    func testACommentRunningPastATablesEdgeCutsIt() throws {
+        let past = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| a | b |\n| - | - |\n| 1 %% x | 2 |\n\nAfter %% end\n" as NSString).first)
+        XCTAssertEqual(past.kind, .table)
+        XCTAssertTrue(past.isCutByComment)
+        XCTAssertEqual(MarkdownTable.parse(past.markdown)?.rows[1].count, 1, "The rest of the row is hidden.")
+        let before = LivePreviewBlockScanner.blocks(in: "Start %% hidden\nmore %% | a | b |\n| - | - |\n" as NSString).first { block in block.kind == .table }
+        XCTAssertEqual(before?.isCutByComment, true)
     }
 }

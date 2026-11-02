@@ -5,8 +5,8 @@
  * Description: Text boxes on PDF pages: adding, typing in, arranging and removing them as steps of the PDF's history.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -108,9 +108,15 @@ extension PDFSession {
     }
 
     /// Gives the document the box as typed so far, as the one step of `step`.
-    func commitTextBox(_ typed: PDFTextBox, in step: PDFTextBoxEditStep) throws {
-        // A box with no text is deleted, whatever entries another application kept in it: they go with it.
-        let next: PDFTextBox? = typed.isEmpty ? nil : typed
+    /// - Parameter typingContinues: The commit is for a save while typing pauses, not its end. A box
+    ///   emptied at that moment keeps the text the document last took: the next key may fill it, and
+    ///   taking the box away would close its editor under the person typing.
+    func commitTextBox(_ typed: PDFTextBox, in step: PDFTextBoxEditStep, typingContinues: Bool = false) throws {
+        if typed.isEmpty, typingContinues { return }
+        // A box whose text was removed is deleted, whatever entries another application kept in it:
+        // they go with it. One that had no text when typing began, as another application can write
+        // a box with empty `/Contents`, was emptied by no one: it stays as it was.
+        let next: PDFTextBox? = typed.isEmpty ? (step.before?.isEmpty == true ? step.before : nil) : typed
         guard next != step.after else { return }
         try transitionTextBox(from: step.after, to: next, on: step.page)
         step.after = next

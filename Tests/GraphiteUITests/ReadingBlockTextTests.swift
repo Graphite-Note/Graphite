@@ -6,8 +6,8 @@
  *              tasks, callout fold keys, raw HTML, tags, reference links and nested heading links.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -91,13 +91,95 @@ final class ReadingBlockTextTests: XCTestCase {
         let tasks = attributed.runs.compactMap { run in attributed[run.range].runs.first?[ReadingTaskAttribute.self] }
         XCTAssertEqual(tasks.map(\.isChecked), [false, true])
         let location = try XCTUnwrap(tasks.first?.location, "A checkbox with no place is a picture.")
-        let edit = try XCTUnwrap(ReadingTasks.togglingEdit(at: location, in: note, selection: NSRange(location: 0, length: 0)))
+        let edit = try XCTUnwrap(ReadingTasks.togglingEdit(at: location.inNote(blockStart: calloutStart), in: note, selection: NSRange(location: 0, length: 0)))
         XCTAssertEqual((note as NSString).replacingCharacters(in: edit.range, with: edit.replacement),
                        "Before\n\n> [!todo]\n> - [x] write it\n> - [x] done\n\nAfter\n")
         // Without a place the checkbox stays a picture, as before.
         let picture = LivePreviewText.prepared(markdown, colorsEnabled: false, paletteHexByName: [:])
         let pictureTasks = try ObsidianMarkdownParser(baseURL: vault, textSize: 17).attributedString(for: picture)
         XCTAssertNil(pictureTasks.runs.compactMap { run in pictureTasks[run.range].runs.first?[ReadingTaskAttribute.self]?.location }.first)
+    }
+
+    // MARK: Tasks of a rendered block that moved, or of a Windows note
+
+    /// The tasks a rendered callout's body draws, each with the place its checkbox was given.
+    private func tasksDrawn(in block: LivePreviewBlock, note: String) throws -> [ReadingTasks.MarkedTask] {
+        let reading = RenderedBlockNoteReading(noteText: note, sourceMarkdown: block.markdown, sourceLines: block.sourceLines, sourceRange: block.range)
+        let located = try XCTUnwrap(NotePreviewDocument.locatedBlocks(from: block.markdown).first?.body.first)
+        guard case .markdown(let markdown) = located.block else { throw GraphiteError.unavailable("\(located.block)") }
+        let prepared = LivePreviewText.prepared(markdown, colorsEnabled: false, paletteHexByName: [:], place: RenderedBlockPlace(reading: reading, lineOffsets: located.lineStartOffsets))
+        let attributed = try ObsidianMarkdownParser(baseURL: vault, textSize: 17).attributedString(for: prepared)
+        return attributed.runs.compactMap { run in attributed[run.range].runs.first?[ReadingTaskAttribute.self] }
+    }
+
+    private func ticking(_ task: ReadingTasks.MarkedTask, blockStart: Int, in note: String) throws -> String {
+        let location = try XCTUnwrap(task.location, "A checkbox with no place is a picture.")
+        let edit = try XCTUnwrap(ReadingTasks.togglingEdit(at: location.inNote(blockStart: blockStart), in: note, selection: NSRange(location: 0, length: 0)),
+                                 "The note has no such task there.")
+        return (note as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
+    }
+
+    /// The view of a callout stays while typing above moves it, keeping the place it was given.
+    func testATaskOfACalloutThatMovedIsTickedWhereItIsNow() throws {
+        let note = "Before\n\n> [!todo]\n> - [ ] same\n> - [ ] same\n"
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        let tasks = try tasksDrawn(in: callout, note: note)
+        guard tasks.count == 2 else { return XCTFail("\(tasks)") }
+        // Just as long as a task's line, so the second task's old place is now the first task, which reads the same.
+        let typed = "123456789012\n"
+        let noteAfterTyping = typed + note
+        XCTAssertEqual(try ticking(tasks[1], blockStart: callout.range.location + (typed as NSString).length, in: noteAfterTyping),
+                       typed + "Before\n\n> [!todo]\n> - [ ] same\n> - [x] same\n")
+    }
+
+    func testTheTapOfARenderedBlocksCheckboxAsksWhereTheBlockIsNow() async throws {
+        var ticked: [ReadingTasks.Location] = []
+        var environment = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: false, paletteHexByName: [:], drawingVersion: 0,
+                                                 resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        environment.toggleTask = { location in ticked.append(location); return true }
+        var blockStart: Int? = 100
+        let context = try XCTUnwrap(ReadingTaskContext.ofRenderedBlock(environment: environment) { blockStart })
+        let tapped = ReadingTasks.Location(statusOffset: 7, lineChecksum: 9)
+        let didTickAt100 = await context.toggle(context.note, tapped)
+        XCTAssertTrue(didTickAt100)
+        blockStart = 250
+        let didTickAt250 = await context.toggle(context.note, tapped)
+        XCTAssertTrue(didTickAt250)
+        XCTAssertEqual(ticked.map(\.statusOffset), [107, 257])
+        blockStart = nil
+        let didTickWithoutABlock = await context.toggle(context.note, tapped)
+        XCTAssertFalse(didTickWithoutABlock, "A block no longer in the note ticks nothing.")
+        XCTAssertEqual(ticked.count, 2)
+    }
+
+    func testEveryTaskOfACalloutInAWindowsNoteIsTickedOnItsOwnLine() throws {
+        let note = "Before\r\n\r\n> [!todo]\r\n> - [ ] one\r\n> - [ ] two\r\n\r\nAfter\r\n"
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        let tasks = try tasksDrawn(in: callout, note: note)
+        guard tasks.count == 2 else { return XCTFail("\(tasks)") }
+        XCTAssertEqual(try ticking(tasks[0], blockStart: callout.range.location, in: note), "Before\r\n\r\n> [!todo]\r\n> - [x] one\r\n> - [ ] two\r\n\r\nAfter\r\n")
+        XCTAssertEqual(try ticking(tasks[1], blockStart: callout.range.location, in: note), "Before\r\n\r\n> [!todo]\r\n> - [ ] one\r\n> - [x] two\r\n\r\nAfter\r\n")
+    }
+
+    /// A line's checksum is of the line the note has, comment included.
+    func testATaskWithACommentOnItsLineCanBeTicked() throws {
+        let note = "> [!todo]\n> - [ ] one %%why%%\n> - [ ] two\n"
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        let tasks = try tasksDrawn(in: callout, note: note)
+        guard tasks.count == 2 else { return XCTFail("\(tasks)") }
+        XCTAssertEqual(try ticking(tasks[0], blockStart: 0, in: note), "> [!todo]\n> - [x] one %%why%%\n> - [ ] two\n")
+        XCTAssertEqual(try ticking(tasks[1], blockStart: 0, in: note), "> [!todo]\n> - [ ] one %%why%%\n> - [x] two\n")
+    }
+
+    func testAFootnoteReferenceInACalloutOfAWindowsNoteHasItsNumber() throws {
+        let note = "> [!note]\r\n> first\r\n> Claim[^a]\r\n\r\n[^a]: Alpha\r\n"
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first)
+        let reading = RenderedBlockNoteReading(noteText: note, sourceMarkdown: callout.markdown, sourceLines: callout.sourceLines, sourceRange: callout.range)
+        let located = try XCTUnwrap(NotePreviewDocument.locatedBlocks(from: callout.markdown).first?.body.first)
+        guard case .markdown(let markdown) = located.block else { return XCTFail("\(located.block)") }
+        let prepared = LivePreviewText.prepared(markdown, colorsEnabled: false, paletteHexByName: [:], place: RenderedBlockPlace(reading: reading, lineOffsets: located.lineStartOffsets))
+        XCTAssertFalse(prepared.contains("[^a]"), prepared)
+        XCTAssertTrue(prepared.contains(GraphiteOpenLink.footnoteDestination(number: 1)), prepared)
     }
 
     func testRenderedBlockReadsTheRestOfTheNoteForItsReferenceLinks() throws {

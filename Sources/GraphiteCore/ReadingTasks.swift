@@ -1,3 +1,14 @@
+/**
+ * File: ReadingTasks.swift
+ * ------------------------
+ * Layer: Core
+ * Description: Tasks as reading view draws them: where each is in its note, and the edit a tap on its checkbox makes.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// Where the characters of a text made by replacing ranges of another text were in that
@@ -98,6 +109,14 @@ public enum ReadingTasks {
         let statusRange = match.range(at: 2)
         guard source.substring(with: statusRange).unicodeScalars.elementsEqual([status]) else { return nil }
         return Location(statusOffset: statusRange.location, lineChecksum: checksum(ofLine: line, withoutStatusAt: statusRange, in: source))
+    }
+
+    /// The task whose status character is at `offset` of `text`, when brackets enclose it there,
+    /// with the checksum of its line in `text`.
+    public static func location(ofStatusAt offset: Int, in text: String) -> Location? {
+        let source = text as NSString
+        guard let statusRange = statusRange(at: offset, in: source) else { return nil }
+        return Location(statusOffset: offset, lineChecksum: checksum(ofLine: lineContentRange(containing: offset, in: source), withoutStatusAt: statusRange, in: source))
     }
 
     /// The edit a tap on a task's checkbox makes, as in Obsidian: a space becomes `x`, and

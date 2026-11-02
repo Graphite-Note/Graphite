@@ -7,8 +7,8 @@
  *              breaks, links to notes, footnote numbers, reference links, tasks and callout fold keys.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -79,8 +79,10 @@ struct RenderedBlockNoteReading: Equatable {
 
     /// The Markdown the block is drawn from, as the editor found it in the note.
     let sourceMarkdown: String
-    /// Where the block starts in the note.
-    let sourceOffset: Int
+    /// The block's lines as the note has them (`LivePreviewBlock.sourceLines`), which a task's
+    /// place and checksum are of.
+    let sourceLines: String
+    let lineOffsets: RenderedBlockLineOffsets
     let footnoteReferences: [FootnoteReference]
     let referenceDefinitions: [ReferenceLinkDefinitions.Definition]
     /// The position among callouts of the same type and title (`ReadAloudFolding.calloutOccurrences`)
@@ -88,23 +90,26 @@ struct RenderedBlockNoteReading: Equatable {
     let calloutOccurrencesByLineStart: [Int: Int]
 
     /// Reads the parts of `noteText` that the block at `sourceRange` needs.
-    init(noteText: String, sourceMarkdown: String, sourceRange: NSRange) {
-        self.init(snapshot: NoteReadingSnapshot(noteText: noteText), sourceMarkdown: sourceMarkdown, sourceRange: sourceRange)
+    init(noteText: String, sourceMarkdown: String, sourceLines: String? = nil, sourceRange: NSRange) {
+        self.init(snapshot: NoteReadingSnapshot(noteText: noteText), sourceMarkdown: sourceMarkdown, sourceLines: sourceLines, sourceRange: sourceRange)
     }
 
     /// The same from what the note's text was already read for.
-    init(snapshot: NoteReadingSnapshot, sourceMarkdown: String, sourceRange: NSRange) {
+    init(snapshot: NoteReadingSnapshot, sourceMarkdown: String, sourceLines: String? = nil, sourceRange: NSRange) {
         self.sourceMarkdown = sourceMarkdown
-        sourceOffset = sourceRange.location
+        let sourceLines = sourceLines ?? sourceMarkdown
+        self.sourceLines = sourceLines
+        let lineOffsets = RenderedBlockLineOffsets(markdown: sourceMarkdown, sourceLines: sourceLines)
+        self.lineOffsets = lineOffsets
         func isInBlock(_ range: NSRange) -> Bool { range.location >= sourceRange.location && NSMaxRange(range) <= NSMaxRange(sourceRange) }
         footnoteReferences = snapshot.footnoteReferences.filter { reference in isInBlock(reference.range) }.map { reference in
-            FootnoteReference(range: NSRange(location: reference.range.location - sourceRange.location, length: reference.range.length),
+            FootnoteReference(range: NSRange(location: lineOffsets.markdownOffset(ofSourceOffset: reference.range.location - sourceRange.location), length: reference.range.length),
                 number: reference.number)
         }
         referenceDefinitions = snapshot.referenceDefinitions
         var occurrences: [Int: Int] = [:]
         for (lineStart, occurrence) in snapshot.calloutOccurrencesByLineStart where lineStart >= sourceRange.location && lineStart < NSMaxRange(sourceRange) {
-            occurrences[lineStart - sourceRange.location] = occurrence
+            occurrences[lineOffsets.markdownOffset(ofSourceOffset: lineStart - sourceRange.location)] = occurrence
         }
         calloutOccurrencesByLineStart = occurrences
     }
@@ -120,7 +125,45 @@ struct RenderedBlockNoteReading: Equatable {
     /// A short text that changes when anything a block reads from its note does.
     var key: String {
         let numbers = footnoteReferences.map { reference in "\(reference.range.location):\(reference.number)" }.joined(separator: ",")
-        return "\(sourceOffset)|\(numbers)|\(referenceDefinitions.map(\.line).joined(separator: "\n"))"
+        return "\(numbers)|\(referenceDefinitions.map(\.line).joined(separator: "\n"))"
+    }
+}
+
+/// Offsets of a rendered block's Markdown, whose lines end at a line feed, and of its lines as
+/// the note has them, where a Windows note's end at "\r\n". They are the same lines, so only
+/// what each such line break adds differs.
+struct RenderedBlockLineOffsets: Equatable {
+    /// Where in the Markdown each line after a "\r\n" starts; empty for most notes.
+    private let markdownStartsAfterWindowsBreaks: [Int]
+
+    init(markdown: String, sourceLines: String) {
+        guard markdown.utf16.count != sourceLines.utf16.count else {
+            markdownStartsAfterWindowsBreaks = []
+            return
+        }
+        var starts: [Int] = []
+        var markdownOffset = 0
+        var previousUnit: UInt16?
+        for unit in sourceLines.utf16 {
+            if unit == 0x0A, previousUnit == 0x0D {
+                starts.append(markdownOffset)
+            } else {
+                markdownOffset += 1
+            }
+            previousUnit = unit
+        }
+        markdownStartsAfterWindowsBreaks = starts
+    }
+
+    func sourceOffset(ofMarkdownOffset offset: Int) -> Int {
+        offset + markdownStartsAfterWindowsBreaks.prefix { start in start <= offset }.count
+    }
+
+    func markdownOffset(ofSourceOffset offset: Int) -> Int {
+        // A line's start is later in the source by the "\r\n" breaks up to and including the one before it.
+        var breaksBefore = 0
+        for (position, start) in markdownStartsAfterWindowsBreaks.enumerated() where start + position + 1 <= offset { breaksBefore = position + 1 }
+        return offset - breaksBefore
     }
 }
 
@@ -143,11 +186,14 @@ struct RenderedBlockPlace: Equatable {
         return offsets
     }
 
-    /// Where the task on a line of the run is in the note, as the reading view finds it.
+    /// Where the task on a line of the run is, as the reading view finds it, counted from the
+    /// start of the block's lines as the note has them, with the checksum of its line there. The
+    /// block moves with edits above it while its view stays, so the note's offset is worked out
+    /// when the checkbox is tapped (`ReadingTasks.Location.inNote(blockStart:)`).
     func taskLocation(lineIndex: Int, status: Unicode.Scalar) -> ReadingTasks.Location? {
         guard lineOffsets.indices.contains(lineIndex),
               let location = ReadingTasks.location(ofTaskStartingAt: lineOffsets[lineIndex], status: status, in: reading.sourceMarkdown) else { return nil }
-        return ReadingTasks.Location(statusOffset: location.statusOffset + reading.sourceOffset, lineChecksum: location.lineChecksum)
+        return ReadingTasks.location(ofStatusAt: reading.lineOffsets.sourceOffset(ofMarkdownOffset: location.statusOffset), in: reading.sourceLines)
     }
 
     /// `markdown` with each footnote reference in it written as the raised number that
@@ -201,5 +247,28 @@ final class NoteReadingSnapshots {
         recent.insert((noteText, snapshot), at: 0)
         if recent.count > 2 { recent.removeLast() }
         return snapshot
+    }
+}
+
+extension ReadingTasks.Location {
+    /// A rendered block's task, whose offset is counted from the block's start
+    /// (`RenderedBlockPlace.taskLocation`), in the note, where the block now starts at `blockStart`.
+    func inNote(blockStart: Int) -> ReadingTasks.Location {
+        ReadingTasks.Location(statusOffset: statusOffset + blockStart, lineChecksum: lineChecksum)
+    }
+}
+
+extension ReadingTaskContext {
+    /// What ticks the tasks of a rendered Live Preview block. Its view stays while its block moves
+    /// with edits above it, so where the block starts is asked when the tap comes; nil, when the
+    /// block is no longer in the note, ticks nothing. Nil without a way to tick.
+    @MainActor
+    static func ofRenderedBlock(environment: LivePreviewEnvironment, blockStart: @escaping @MainActor () -> Int?) -> ReadingTaskContext? {
+        environment.toggleTask.map { toggleTask in
+            ReadingTaskContext(note: environment.notePath ?? VaultPath.root) { _, location in
+                guard let blockStart = blockStart() else { return false }
+                return await toggleTask(location.inNote(blockStart: blockStart))
+            }
+        }
     }
 }

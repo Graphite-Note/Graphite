@@ -6,7 +6,7 @@
  *
  * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.33
- * Date: 01/11/2026
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -118,6 +118,9 @@ struct LivePreviewWidgetView: View {
     let reportHeight: (CGFloat) -> Void
     /// How a table's view edits its cells; nil for other blocks.
     var sourceEditing: RenderedBlockSourceEditing? = nil
+    /// Where the block starts in the note now; `block.range` says where it was found. Nil once it
+    /// is no longer in the note.
+    var currentLocation: (@MainActor () -> Int?)? = nil
     @State private var parsedSource = LivePreviewParsedSource()
     @State private var readingSnapshot: LivePreviewReadingSnapshot?
     @State private var tableEditor = LivePreviewTableEditor()
@@ -169,7 +172,7 @@ struct LivePreviewWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // The block's menu gives points in this space, the hosting view's own.
         .coordinateSpace(.named(LivePreviewTableEditor.blockCoordinateSpaceName))
-        .modifier(LivePreviewNoteReadingModifier(block: block, environment: environment, noteReading: $noteReading))
+        .modifier(LivePreviewNoteReadingModifier(block: block, environment: environment, currentLocation: currentLocation, noteReading: $noteReading))
         .environment(\.readingActiveSourceRange, readingRange)
         .environment(\.readingFollowsSource, environment.readingContext.map { context in context.controller.shouldFollow(context.path) } ?? false)
         .textual.readingHighlight(readingRange, coordinateSpace: ReadingCoordinateSpace.name)
@@ -210,7 +213,7 @@ struct LivePreviewWidgetView: View {
             if let sourceEditing {
                 // A tap edits the cell under it, in place; "Edit Source" in the menu shows the
                 // Markdown, and the menu also adds, moves and removes rows and columns.
-                let _ = tableEditor.update(source: block.markdown, textSize: environment.textSize, sourceEditing: sourceEditing)
+                let _ = tableEditor.update(source: block.sourceLines, textSize: environment.textSize, sourceEditing: sourceEditing)
                 RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens, place: tablePlace)
                     .environment(\.livePreviewTableEditor, tableEditor)
                     .onAppear {
@@ -266,24 +269,27 @@ struct LivePreviewWidgetView: View {
 private struct LivePreviewNoteReadingModifier: ViewModifier {
     let block: LivePreviewBlock
     let environment: LivePreviewEnvironment
+    let currentLocation: (@MainActor () -> Int?)?
     @Binding var noteReading: RenderedBlockNoteReading?
 
     /// Changes when the block, or where it is in the note, does; nil for blocks that read nothing from the note.
     private var key: String? {
         guard environment.noteText != nil, block.kind == .table || block.kind == .callout else { return nil }
-        return "\(block.range.location)|\(block.markdown)"
+        return "\(block.range.location)|\(block.sourceLines)"
     }
 
     func body(content: Content) -> some View {
-        content
-            .environment(\.readingTaskContext, environment.toggleTask.map { toggleTask in
-                ReadingTaskContext(note: environment.notePath ?? VaultPath.root) { _, location in await toggleTask(location) }
-            })
+        let block = block
+        let blockStart: @MainActor () -> Int? = currentLocation ?? { block.range.location }
+        return content
+            .environment(\.readingTaskContext, ReadingTaskContext.ofRenderedBlock(environment: environment, blockStart: blockStart))
             .environment(\.readingTagSearch, environment.searchTag)
             .task(id: key) {
                 guard key != nil, let noteText = environment.noteText?() else { noteReading = nil; return }
                 let snapshot = environment.noteSnapshots?.snapshot(for: noteText) ?? NoteReadingSnapshot(noteText: noteText)
-                noteReading = RenderedBlockNoteReading(snapshot: snapshot, sourceMarkdown: block.markdown, sourceRange: block.range)
+                // The note's text is as it is now, so the block is looked for where it is now.
+                noteReading = RenderedBlockNoteReading(snapshot: snapshot, sourceMarkdown: block.markdown, sourceLines: block.sourceLines,
+                                                       sourceRange: NSRange(location: blockStart() ?? block.range.location, length: block.range.length))
             }
     }
 }
