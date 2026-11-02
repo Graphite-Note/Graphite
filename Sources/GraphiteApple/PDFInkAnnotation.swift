@@ -5,8 +5,8 @@
  * Description: Standard PDF ink for one Pencil stroke.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -288,6 +288,49 @@ public struct PDFEditableInkGroup: Sendable, Equatable {
     public var hasStrokeNames: Bool { !record.strokeNames.isEmpty }
 }
 
+/// What a page's annotations say about its ink, as they were read: nothing of it is decoded
+/// yet and it refers to no annotation, so decoding it can leave the actor that owns the
+/// document. A full page's record is megabytes of text and thousands of names (HUNT-015).
+public struct PDFStoredInk: Sendable {
+    /// A group whose first annotation carries a drawing.
+    struct Candidate: Sendable {
+        let group: String
+        let encodedDrawing: String
+        let encodedNames: String?
+        let annotationNames: [String]
+        let multipliedNames: [String]
+    }
+
+    let candidates: [Candidate]
+    let usesDefaultGroup: Bool
+
+    /// Whether any group on the page may be editable; decoding it says which.
+    public var mayHaveEditableGroup: Bool { !candidates.isEmpty }
+
+    /// The group for new ink on the page, as `PDFInkGroups.newGroup(on:)` gives it.
+    public func newGroup() -> String { PDFInkGroups.newGroup(usesDefaultGroup: usesDefaultGroup) }
+
+    /// The first group that qualifies, as `PDFInkGroups.editableGroup(on:)` tells it.
+    public func editableGroup() -> PDFEditableInkGroup? {
+        for candidate in candidates {
+            guard candidate.encodedDrawing.utf8.count <= PDFInkGroups.maximumEncodedDrawingBytes,
+                  let drawingData = Data(base64Encoded: candidate.encodedDrawing) else { continue }
+            guard let encodedNames = candidate.encodedNames else {
+                return PDFEditableInkGroup(group: candidate.group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: []))
+            }
+            guard encodedNames.utf8.count <= PDFInkGroups.maximumEncodedStrokeNameBytes else { continue }
+            let strokeNames = PDFInkGroups.decodeStrokeNames(encodedNames)
+            let annotationNames = candidate.annotationNames
+            let namedStrokes = strokeNames.filter { name in !name.isEmpty }
+            guard !strokeNames.isEmpty, !annotationNames.contains(""), Set(annotationNames).count == annotationNames.count,
+                  Set(namedStrokes).count == namedStrokes.count, Set(namedStrokes) == Set(annotationNames) else { continue }
+            return PDFEditableInkGroup(group: candidate.group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: strokeNames),
+                                       multipliedStrokeNames: Set(candidate.multipliedNames))
+        }
+        return nil
+    }
+}
+
 public enum PDFInkGroups {
     public static let defaultGroup = "GraphitePageInkV1"
     /// Bounds the re-editing metadata read from a file before it is decoded.
@@ -300,6 +343,12 @@ public enum PDFInkGroups {
     /// added, or renamed by another application make the group read-only: its visible
     /// ink stays exactly as it is and new strokes go into a new group.
     public static func editableGroup(on page: PDFPage) -> PDFEditableInkGroup? {
+        storedInk(on: page).editableGroup()
+    }
+
+    /// What the page's annotations say about its ink, read once: on the actor that owns the
+    /// document, and with nothing decoded, which `PDFStoredInk.editableGroup()` does anywhere.
+    public static func storedInk(on page: PDFPage) -> PDFStoredInk {
         var groupsInOrder: [String] = []
         var annotationsByGroup: [String: [PDFAnnotation]] = [:]
         for annotation in page.annotations {
@@ -307,27 +356,22 @@ public enum PDFInkGroups {
             if annotationsByGroup[group] == nil { groupsInOrder.append(group) }
             annotationsByGroup[group, default: []].append(annotation)
         }
+        var candidates: [PDFStoredInk.Candidate] = []
         for group in groupsInOrder {
             guard let groupAnnotations = annotationsByGroup[group], let carrier = groupAnnotations.first,
-                  let encodedDrawing = carrier.value(forAnnotationKey: PDFPageManager.drawingKey) as? String,
-                  encodedDrawing.utf8.count <= maximumEncodedDrawingBytes,
-                  let drawingData = Data(base64Encoded: encodedDrawing) else { continue }
+                  let encodedDrawing = carrier.value(forAnnotationKey: PDFPageManager.drawingKey) as? String else { continue }
             let encodedNames = carrier.value(forAnnotationKey: PDFPageManager.strokeNamesKey) as? String
-            guard let encodedNames else {
-                return PDFEditableInkGroup(group: group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: []))
+            guard encodedNames != nil else {
+                candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: nil, annotationNames: [], multipliedNames: []))
+                continue
             }
-            guard encodedNames.utf8.count <= maximumEncodedStrokeNameBytes else { continue }
-            let strokeNames = decodeStrokeNames(encodedNames)
-            let annotationNames = groupAnnotations.map { annotation in annotation.persistentName ?? "" }
-            let namedStrokes = strokeNames.filter { name in !name.isEmpty }
-            guard !strokeNames.isEmpty, !annotationNames.contains(""), Set(annotationNames).count == annotationNames.count,
-                  Set(namedStrokes).count == namedStrokes.count, Set(namedStrokes) == Set(annotationNames) else { continue }
             let multipliedNames = groupAnnotations.filter
                 { annotation in annotation.value(forAnnotationKey: PDFPageManager.inkMultipliesKey) != nil }.compactMap(\.persistentName)
-            return PDFEditableInkGroup(group: group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: strokeNames),
-                                       multipliedStrokeNames: Set(multipliedNames))
+            candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: encodedNames,
+                                                     annotationNames: groupAnnotations.map { annotation in annotation.persistentName ?? "" },
+                                                     multipliedNames: multipliedNames))
         }
-        return nil
+        return PDFStoredInk(candidates: candidates, usesDefaultGroup: annotationsByGroup[defaultGroup] != nil)
     }
 
     /// The group for new ink on a page without an editable group. It never reuses a
@@ -336,7 +380,11 @@ public enum PDFInkGroups {
         let usesDefaultGroup = page.annotations.contains { annotation in
             annotation.value(forAnnotationKey: PDFPageManager.groupKey) as? String == defaultGroup
         }
-        return usesDefaultGroup ? "GraphitePageInk-" + UUID().uuidString : defaultGroup
+        return newGroup(usesDefaultGroup: usesDefaultGroup)
+    }
+
+    fileprivate static func newGroup(usesDefaultGroup: Bool) -> String {
+        usesDefaultGroup ? "GraphitePageInk-" + UUID().uuidString : defaultGroup
     }
 
     static func encodeStrokeNames(_ strokeNames: [String]) -> String {

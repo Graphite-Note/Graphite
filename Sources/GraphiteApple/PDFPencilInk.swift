@@ -5,8 +5,8 @@
  * Description: Identifies a PencilKit stroke's visible state without comparing its points.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 02/11/2026
  */
 import Foundation
 import PencilKit
@@ -29,7 +29,7 @@ import AppKit
 ///
 /// Built for every stroke of the page on every change, so it stores only values and
 /// references, never arrays.
-struct PDFStrokeFingerprint: Hashable {
+struct PDFStrokeFingerprint: Hashable, @unchecked Sendable { // CGPath is immutable; the mask is never changed in place.
     let creationDate: Date
     let randomSeed: UInt32
     let pointCount: Int
@@ -93,6 +93,19 @@ struct PDFStrokeFingerprint: Hashable {
     }
 }
 
+/// A page's drawing and stroke names as of one update, to archive as its re-editing record on
+/// any thread: archiving grows with the page's strokes, and a stroke begun meanwhile must not wait.
+public struct PDFDeferredInkRecordArchive: Sendable {
+    fileprivate let drawing: PKDrawing
+    fileprivate let strokeNames: [String]
+    fileprivate let updateCount: Int
+
+    /// The record, or nil for a page with no strokes left.
+    public func archived() -> PDFEditableInkRecord? {
+        drawing.strokes.isEmpty ? nil : PDFEditableInkRecord(drawingData: drawing.dataRepresentation(), strokeNames: strokeNames)
+    }
+}
+
 /// Converts PencilKit strokes on one PDF page into standard ink annotations, remembering
 /// which annotation shows which stroke so that each change converts only new strokes.
 ///
@@ -101,7 +114,7 @@ struct PDFStrokeFingerprint: Hashable {
 /// work proportional to the page, and a stroke just drawn after the others skips the
 /// comparison (`updateAppending`). Updates can defer the archiving, which then happens
 /// once in `deferredEditableRecordUpdate(for:pageIndex:)` instead of at every change.
-public struct PDFPageInkTracker {
+public struct PDFPageInkTracker: Sendable {
     public let group: String
     private var namesByFingerprint: [PDFStrokeFingerprint: [String]] = [:]
     /// False until the strokes are matched to annotations; the next update then
@@ -114,6 +127,8 @@ public struct PDFPageInkTracker {
     /// Highlights saved as a solid band, read from a file: the next update writes them again,
     /// multiplied into the page. Viewing a page changes nothing in its file.
     private var strokeNamesToRewrite: Set<String> = []
+    /// Counts the updates, so a record archived in the background is known to be still the right one.
+    private var updateCount = 0
 
     /// A tracker for an editable group read from a file, and the drawing to show.
     /// Returns nil when the stored drawing cannot be decoded.
@@ -156,6 +171,7 @@ public struct PDFPageInkTracker {
     /// archived; `deferredEditableRecordUpdate(for:pageIndex:)` must then write the record
     /// before the document is saved or its ink is read for re-editing (see `PDFInkUpdate`).
     public mutating func update(for drawing: PKDrawing, pageIndex: Int, coordinates: PageCoordinates, defersEditableRecord: Bool = false) -> PDFInkUpdate {
+        updateCount += 1
         var unmatchedNames = knowsAnnotationNames ? namesByFingerprint : [:]
         // A stroke to write again matches no name: its annotation goes, and it gets a new one.
         if !strokeNamesToRewrite.isEmpty {
@@ -201,6 +217,7 @@ public struct PDFPageInkTracker {
     /// or it last saw another number of them; the caller then makes the full update.
     public mutating func updateAppending(_ stroke: PKStroke, at strokeIndex: Int, pageIndex: Int, coordinates: PageCoordinates) -> PDFInkUpdate? {
         guard knowsAnnotationNames, strokeNamesToRewrite.isEmpty, strokeIndex == strokeNamesInDrawingOrder.count else { return nil }
+        updateCount += 1
         let portableStroke = Self.portableStroke(for: stroke, name: UUID().uuidString, coordinates: coordinates)
         // A stroke with nothing visible has no annotation, as in `update`.
         let name = portableStroke?.name ?? ""
@@ -220,8 +237,23 @@ public struct PDFPageInkTracker {
         return PDFInkUpdate(pageIndex: pageIndex, group: group, removal: .strokes([]), addedStrokes: [], editableRecord: editableRecord(for: drawing))
     }
 
+    /// What it takes to archive the deferred record away from the actor that owns the tracker, or
+    /// nil when none is pending. `drawing` is the drawing last passed to `update`.
+    public func deferredRecordArchive(for drawing: PKDrawing) -> PDFDeferredInkRecordArchive? {
+        guard hasDeferredEditableRecord else { return nil }
+        return PDFDeferredInkRecordArchive(drawing: drawing, strokeNames: strokeNamesInDrawingOrder, updateCount: updateCount)
+    }
+
+    /// The update that writes a record archived in the background, or nil when an update came
+    /// after it was asked for: the record is then out of date and stays deferred.
+    public mutating func deferredEditableRecordUpdate(archived record: PDFEditableInkRecord?, from archive: PDFDeferredInkRecordArchive, pageIndex: Int) -> PDFInkUpdate? {
+        guard hasDeferredEditableRecord, archive.updateCount == updateCount else { return nil }
+        hasDeferredEditableRecord = false
+        return PDFInkUpdate(pageIndex: pageIndex, group: group, removal: .strokes([]), addedStrokes: [], editableRecord: record)
+    }
+
     private func editableRecord(for drawing: PKDrawing) -> PDFEditableInkRecord? {
-        drawing.strokes.isEmpty ? nil : PDFEditableInkRecord(drawingData: drawing.dataRepresentation(), strokeNames: strokeNamesInDrawingOrder)
+        PDFDeferredInkRecordArchive(drawing: drawing, strokeNames: strokeNamesInDrawingOrder, updateCount: updateCount).archived()
     }
 
     /// One stroke as standard ink in page space: its visible pieces as `/InkList`
