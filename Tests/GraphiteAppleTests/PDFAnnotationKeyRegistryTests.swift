@@ -1,3 +1,13 @@
+/**
+ * File: PDFAnnotationKeyRegistryTests.swift
+ * -----------------------------------------
+ * Layer: Tests
+ * Description: The key names Graphite writes into PDF annotations.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -6,11 +16,12 @@ import GraphiteCore
 /// The key names Graphite writes into PDF annotations. Files saved by earlier builds, and
 /// by other readers that keep unknown keys, are found again only by these exact names.
 final class PDFAnnotationKeyRegistryTests: XCTestCase {
-    func testGraphiteKeysAreExactlyTheseThirteenNames() {
+    func testGraphiteKeysAreExactlyTheseFourteenNames() {
         let keysByName: [(key: PDFAnnotationKey, name: String)] = [
             (PDFPageManager.drawingKey, "GraphitePencilDrawingV1"),
             (PDFPageManager.groupKey, "GraphiteInkGroup"),
             (PDFPageManager.strokeNamesKey, "GraphiteInkStrokeNamesV1"),
+            (PDFPageManager.inkMultipliesKey, "GraphiteInkMultiplies"),
             (PDFPageManager.annotationNameKey, "GraphiteAnnotationName"),
             (PDFPageManager.pictureKey, "GraphitePictureV1"),
             (PDFPageManager.turnedPictureKey, "GraphitePictureV2"),
@@ -23,7 +34,7 @@ final class PDFAnnotationKeyRegistryTests: XCTestCase {
             (PDFPageManager.textBoxLinkOwnerKey, "GraphiteTextBoxLinkOwner"),
         ]
         for (key, name) in keysByName { XCTAssertEqual(key.rawValue, name) }
-        XCTAssertEqual(Set(keysByName.map(\.name)).count, 13)
+        XCTAssertEqual(Set(keysByName.map(\.name)).count, 14)
         XCTAssertEqual(PDFPageManager.defaultStyleKey.rawValue, "/DS", "The standard keys of a text box PDFKit keeps but does not read.")
         XCTAssertEqual(PDFPageManager.rotateKey.rawValue, "/Rotate")
         XCTAssertEqual(PDFPageManager.storedPictureKeys.map(\.rawValue), ["GraphitePictureV2", "GraphitePictureV1"],

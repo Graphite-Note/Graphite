@@ -1,3 +1,13 @@
+/**
+ * File: HistoryCanvasView.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.26
+ * Date: 01/11/2026
+ */
 #if canImport(UIKit)
 import UIKit
 import PencilKit
@@ -53,6 +63,13 @@ class HistoryCanvasView: PKCanvasView {
         view.isFirstResponder || view.subviews.contains { subview in containsFirstResponder(in: subview) }
     }
 
+    /// Ends what is under way on the canvas, before the undo history reads its drawing: a drag
+    /// of the lasso's selection shows the drawing without the strokes it drags, which is not a
+    /// drawing any step knows, and the step would fail and leave the history (HUNT-005).
+    func endInteractionsBeforeHistory() {
+        if hasInkSelection { inkSelection.clearSelection() }
+    }
+
     /// Shows a drawing the undo history produced. The canvas reports it like any change,
     /// so what depends on the drawing follows, but it is not recorded as a new step.
     func showDrawingFromHistory(_ drawing: PKDrawing) {
@@ -81,11 +98,18 @@ class HistoryCanvasView: PKCanvasView {
     private var paletteToolFollower: PaletteToolFollower?
 
     /// The tool the canvas draws with for a tool chosen in the palette or the bar: the same
-    /// one, except for the highlighter while it ignores tilt, and on a canvas zoomed to draw
-    /// sharper (`PDFPageCanvasView`). While the highlighter ignores tilt, the canvas draws
-    /// with an invisible stand-in and shows the stroke itself (`EvenHighlighter`): PencilKit's
+    /// one, except for the highlighter while it ignores tilt. PencilKit stores a stroke at the
+    /// tool's width in the drawing whatever the canvas's zoom (INK-22), so a pen is as wide on
+    /// the page at any zoom without any change to the tool. The pixel eraser is the other way
+    /// round: it cuts its width on the screen, whatever the canvas's own zoom, so it is given the
+    /// chosen width times the zoom on screen. PencilKit makes it no wider than 80.4 points, so
+    /// at a high zoom a broad eraser cuts 80 points of the screen, less than it would on the
+    /// page. While the highlighter ignores tilt, the canvas draws with an invisible stand-in and shows the stroke itself (`EvenHighlighter`): PencilKit's
     /// live stroke follows the Pencil's tilt, and changed at the lift into the even one.
     func toolForDrawing(_ chosenTool: PKTool) -> PKTool {
+        if let eraser = chosenTool as? PKEraserTool, eraser.eraserType != .vector, zoomScale > 0 {
+            return PKEraserTool(eraser.eraserType, width: eraser.width * screenPointsPerDrawingPoint)
+        }
         isEvenHighlighterPreferenceOn = EvenHighlighterPreference.isOn()
         guard isEvenHighlighterPreferenceOn, let highlighter = chosenTool as? PKInkingTool, highlighter.inkType == .marker,
               highlighter.color.cgColor.alpha > 0 else {
@@ -94,21 +118,6 @@ class HistoryCanvasView: PKCanvasView {
         }
         evenHighlighterColor = highlighter.color
         return EvenHighlighter.invisibleStandIn(for: highlighter)
-    }
-
-    /// The tool at `scale` times its width: PencilKit draws a tool as wide on screen at any
-    /// zoom of its canvas, so a canvas that keeps a stroke as wide in its drawing at any zoom
-    /// draws with the chosen width times its zoom. PencilKit gives the pen, the pencil and
-    /// the highlighter no more than their widest width.
-    static func tool(_ tool: PKTool, scaledBy scale: CGFloat) -> PKTool {
-        guard scale > 0, scale != 1 else { return tool }
-        if let inkingTool = tool as? PKInkingTool {
-            return PKInkingTool(inkingTool.inkType, color: inkingTool.color, width: inkingTool.width * scale, azimuth: inkingTool.azimuth)
-        }
-        if let eraserTool = tool as? PKEraserTool {
-            return PKEraserTool(eraserTool.eraserType, width: eraserTool.width * scale)
-        }
-        return tool
     }
 
     /// The topmost of the canvas's own views under PencilKit's ink, such as the drawing
@@ -144,13 +153,18 @@ class HistoryCanvasView: PKCanvasView {
 
     /// Draws with the tool `toolForDrawing` makes of a chosen one.
     private func drawWith(_ chosenTool: PKTool) {
-        prepareToDraw(with: chosenTool)
         tool = toolForDrawing(chosenTool)
     }
 
-    /// Called before the canvas takes a chosen tool, by a canvas whose drawing scale depends
-    /// on the tool (`PDFPageCanvasView`).
-    func prepareToDraw(with chosenTool: PKTool) {}
+    /// How large a point of the drawing is on screen, through the canvas's zoom and whatever
+    /// scales the canvas itself, as a PDF view scales its pages.
+    private var screenPointsPerDrawingPoint: CGFloat {
+        guard window != nil else { return zoomScale }
+        return zoomScale * convert(CGRect(x: 0, y: 0, width: 1, height: 1), to: nil).width
+    }
+
+    /// The zoom the canvas's eraser was last made for.
+    private var eraserZoomScale: CGFloat = 1
 
     /// The tool chosen in the fixed bar or the palette, before `toolForDrawing` changes it;
     /// nil when the bar's choice draws no ink, or nothing is followed yet.
@@ -373,6 +387,10 @@ class HistoryCanvasView: PKCanvasView {
     override func layoutSubviews() {
         super.layoutSubviews()
         if hasInkSelection { inkSelection.canvasDidChangeScale() }
+        if zoomScale != eraserZoomScale {
+            eraserZoomScale = zoomScale
+            if tool is PKEraserTool { retakeChosenTool() }
+        }
     }
 
     /// Gives the canvas a drawing it made from its own, as when Graphite's lasso moves,
@@ -499,11 +517,10 @@ class HistoryCanvasView: PKCanvasView {
         let isInvisible = EvenHighlighter.isInvisible(stroke.ink)
         guard let ink = evenHighlighterInk ?? (isInvisible ? PKInk(.marker, color: evenHighlighterColor ?? stroke.ink.color.withAlphaComponent(1)) : nil),
               zoomScale > 0 else { return nil }
-        // PencilKit draws a tool as wide on screen at any zoom of its canvas, so in the
-        // drawing's points the stroke is the tool's width over the zoom.
+        // The tool's width is the stroke's in the drawing, at any zoom of the canvas.
         let toolWidth = (tool as? PKInkingTool).map { inkingTool in inkingTool.inkType == .marker ? inkingTool.width : nil } ?? nil
-        let drawnWidth = Array(stroke.path).first.map { point in point.size.width * EvenHighlighter.chiselLengthPerPointSize * zoomScale } ?? 0
-        return EvenHighlighter.evenStroke(stroke, width: (toolWidth ?? drawnWidth) / zoomScale, ink: ink)
+        let drawnWidth = Array(stroke.path).first.map { point in point.size.width * EvenHighlighter.chiselLengthPerPointSize } ?? 0
+        return EvenHighlighter.evenStroke(stroke, width: toolWidth ?? drawnWidth, ink: ink)
     }
 
     // MARK: Footprints
@@ -581,7 +598,7 @@ class HistoryCanvasView: PKCanvasView {
         heldShape = .overStroke(shape: shape, drawingShape: drawingShape, heldPoint: heldPoint)
         // The shape shows instead of the highlighter's band, which comes back if the stroke goes on.
         removeEvenStrokeLayer()
-        showShapePreview(shape, color: shownColor(of: inkingTool.ink), width: Self.footprint(of: inkingTool)?.size.width ?? inkingTool.width)
+        showShapePreview(shape, color: shownColor(of: inkingTool.ink), width: Self.drawnWidth(of: inkingTool))
         // Apple Pencil Pro taps when the stroke snaps to its shape.
         shapeFeedback.pathCompleted(at: heldPoint)
     }
@@ -601,10 +618,12 @@ class HistoryCanvasView: PKCanvasView {
             }
             discardStrokeBeingDrawn()
             heldShape = .dragged(shape: shape, heldPoint: heldPoint, draggedPoint: point, ink: inkingTool.ink, footprint: footprint)
-            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: inkingTool.ink), width: footprint.size.width)
+            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: inkingTool.ink),
+                width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: inkingTool.inkType))
         case .dragged(let shape, let heldPoint, _, let ink, let footprint):
             heldShape = .dragged(shape: shape, heldPoint: heldPoint, draggedPoint: point, ink: ink, footprint: footprint)
-            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: ink), width: footprint.size.width)
+            showShapePreview(shape.dragging(from: heldPoint, to: point), color: shownColor(of: ink),
+                width: PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width, inkType: ink.inkType))
         case nil:
             break
         }
@@ -663,7 +682,14 @@ class HistoryCanvasView: PKCanvasView {
         return true
     }
 
-    /// Shows a shape, given in the canvas's own coordinates, in the ink's color.
+    /// How wide the tool's strokes draw in the drawing: its last stroke's footprint as PencilKit
+    /// draws it, or its width before it has drawn one.
+    private static func drawnWidth(of inkingTool: PKInkingTool) -> CGFloat {
+        footprint(of: inkingTool).map { footprint in PencilStrokeSampler.drawnWidth(ofPointSize: footprint.size.width,
+            inkType: inkingTool.inkType) } ?? inkingTool.width
+    }
+
+    /// Shows a shape, given in the canvas's own coordinates, in the ink's color; `width` is in the drawing's points.
     private func showShapePreview(_ shape: RecognizedShape, color: UIColor, width: CGFloat) {
         let outline = shape.outlinePoints(spacing: 3)
         guard let firstPoint = outline.first else { return }
@@ -830,14 +856,16 @@ class HistoryCanvasView: PKCanvasView {
         guard let inkingTool = tool as? PKInkingTool, !isShowingShapePreview else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        evenStrokeLayer.path = EvenHighlighter.bandPath(through: evenStrokePoints + predictedPoints, width: inkingTool.width)
+        // The points are the canvas's, the tool's width the drawing's.
+        let widthOnCanvas = inkingTool.width * zoomScale
+        evenStrokeLayer.path = EvenHighlighter.bandPath(through: evenStrokePoints + predictedPoints, width: widthOnCanvas)
         evenStrokeLayer.fillColor = nil
         // The color the canvas draws the ink in, which PencilKit adapts to a dark canvas.
         evenStrokeLayer.strokeColor = PKInkingTool.convertColor(shownColor(of: inkingTool.ink), from: .light, to: traitCollection.userInterfaceStyle).cgColor
-        evenStrokeLayer.lineWidth = inkingTool.width * EvenHighlighter.bandHeightPerWidth
+        evenStrokeLayer.lineWidth = widthOnCanvas * EvenHighlighter.bandHeightPerWidth
         // PencilKit softens a marker's edges in the drawing's own points, so how strong the
         // band's middle is follows its width in the drawing, not on screen.
-        evenStrokeLayer.opacity = Float(EvenHighlighter.bandOpacity(forWidth: inkingTool.width / max(zoomScale, 0.01)))
+        evenStrokeLayer.opacity = Float(EvenHighlighter.bandOpacity(forWidth: inkingTool.width))
         evenStrokeLayer.lineCap = .butt
         evenStrokeLayer.lineJoin = .round
         // Under PencilKit's own views, as PencilKit draws a highlight: under the ink it
@@ -918,7 +946,7 @@ final class PencilToolPickerHostView: UIView {
 /// Follows the floating palette for a canvas: gives it the palette's tool as
 /// `toolForDrawing` makes it, in the same turn as the palette's choice changes, and the
 /// palette's ruler. The canvas does not observe the palette itself: PencilKit would give
-/// it the palette's tool as it is, too narrow on the page of a zoomed canvas, and gives it
+/// it the palette's tool as it is, without the even highlighter's stand-in, and gives it
 /// again at moments no observer hears of (a canvas added as an observer takes it at once).
 /// So the palette, like the fixed bar, puts the tool on the canvas only through
 /// `toolForDrawing`, from the first stroke after a choice on.

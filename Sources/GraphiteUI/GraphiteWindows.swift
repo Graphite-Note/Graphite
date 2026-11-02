@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteWindows.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Windows of the app: what each opens on, and dragging items to open a new one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore
@@ -53,8 +64,9 @@ public struct GraphiteWindowContent: Codable, Hashable, Sendable {
 extension View {
     /// A file or folder of the sidebar, dragged within Graphite (`VaultItemTransfer`); a file
     /// dragged to the edge of the iPad's screen opens in a new window on the vault.
-    func draggableVaultEntry<Preview: View>(_ entry: VaultEntry, inVault vaultIdentifier: UUID?, @ViewBuilder preview: @escaping () -> Preview) -> some View {
-        draggable(VaultItemTransfer(path: entry.path.rawValue), contentType: .graphiteVaultItem,
+    func draggableVaultEntry<Preview: View>(_ entry: VaultEntry, inVault vaultIdentifier: UUID?, atRoot vaultRoot: URL?,
+                                            @ViewBuilder preview: @escaping () -> Preview) -> some View {
+        draggable(VaultItemTransfer(path: entry.path.rawValue, vaultRoot: vaultRoot), contentType: .graphiteVaultItem,
                   opening: entry.isDirectory ? nil : .showing(entry.path, inVault: vaultIdentifier), preview: preview)
     }
 
@@ -186,7 +198,9 @@ public struct GraphiteWindowScene: View {
         if !copied.isEmpty {
             sentences.append("A closed window's edits could not be saved in place, so they were saved as " + copied.joined(separator: ", ") + ".")
         }
-        if !notCopied.isEmpty { sentences.append("The edits to " + notCopied.joined(separator: ", ") + " in a closed window could not be saved.") }
+        if !notCopied.isEmpty {
+            sentences.append("The edits to " + notCopied.joined(separator: ", ") + " in a closed window could not be saved. Notes and canvases get them back when they open again.")
+        }
         return sentences.isEmpty ? nil : sentences.joined(separator: " ")
     }
 }

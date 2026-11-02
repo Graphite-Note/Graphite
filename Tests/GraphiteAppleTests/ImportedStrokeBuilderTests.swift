@@ -1,3 +1,14 @@
+/**
+ * File: ImportedStrokeBuilderTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: An imported stroke as a PencilKit stroke: PencilKit draws each sample's planned width in
+ *              every ink, and the samples are the control points as planned.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
 import XCTest
 import CoreGraphics
 import PencilKit
@@ -134,22 +145,15 @@ final class ImportedStrokeBuilderTests: XCTestCase {
         XCTAssertEqual(Set(timeOffsets).count, timeOffsets.count, "Strictly increasing.")
     }
 
-    /// Graphite's PDF ink and vector drawings sample a stroke back with `PencilStrokeSampler`: the monoline, the pen
-    /// and the pencil at the width PencilKit draws, so an imported stroke edited later is written as wide as planned;
-    /// the fountain pen and the highlighter, whose drawn width turns with the nib, at the point size.
-    func testPencilStrokeSamplerReadsTheDrawnWidthWhereItDoesNotTurnWithTheNib() throws {
-        for (ink, plannedWidth) in [(ImportedStroke.Ink.monoline, 1.0), (.pen, 3), (.pencil, 4)] {
+    /// Graphite's PDF ink and vector drawings sample a stroke back with `PencilStrokeSampler`, at the width PencilKit
+    /// draws, so an imported stroke edited later is written as wide as planned: the fountain pen and the highlighter
+    /// too, whose nib `ImportedStrokeBuilder` turns across the stroke.
+    func testPencilStrokeSamplerReadsTheDrawnWidthOfEveryInk() throws {
+        for (ink, plannedWidth) in [(ImportedStroke.Ink.monoline, 1.0), (.pen, 3), (.pencil, 4), (.fountainPen, 5), (.highlighter, 20)] {
             let stroke = try built(straightStroke(ink, width: plannedWidth, from: CGPoint(x: 20, y: 50), to: CGPoint(x: 120, y: 50)))
             let sampledWidths = PencilStrokeSampler.centerLineSamples(of: stroke).map(\.width)
             XCTAssertFalse(sampledWidths.isEmpty)
             for sampledWidth in sampledWidths { XCTAssertEqual(sampledWidth, plannedWidth, accuracy: 0.01, "\(ink)") }
-        }
-        for (ink, plannedWidth) in [(ImportedStroke.Ink.fountainPen, 5.0), (.highlighter, 20)] {
-            let stroke = try built(straightStroke(ink, width: plannedWidth, from: CGPoint(x: 20, y: 50), to: CGPoint(x: 120, y: 50)))
-            let pointSize = PencilInkRenderedWidth.pointSize(forRenderedWidth: plannedWidth, ink: ink)
-            for sampledWidth in PencilStrokeSampler.centerLineSamples(of: stroke).map(\.width) {
-                XCTAssertEqual(sampledWidth, pointSize, accuracy: 0.001, "\(ink)")
-            }
         }
     }
 

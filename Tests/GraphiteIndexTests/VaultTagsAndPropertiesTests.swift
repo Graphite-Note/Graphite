@@ -1,3 +1,14 @@
+/**
+ * File: VaultTagsAndPropertiesTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: The vault's tags and properties, and the link graph built from the index.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteIndex
 import GraphiteCore
@@ -66,7 +77,8 @@ final class VaultGraphTests: XCTestCase {
             GraphEdge(source: "Course/Lecture.md", target: "Missing"),
             GraphEdge(source: "Course/Lecture.md", target: "#course"),
             GraphEdge(source: "Course/Sampling.md", target: "Course/Lecture.md"),
-        ], "The property link and the text link are one edge; the ambiguous Twin and the web link are left out.")
+            GraphEdge(source: "Course/Lecture.md", target: "A/Twin.md"),
+        ], "The property link and the text link are one edge; Twin means one of its files, as in Obsidian; the web link is left out.")
         XCTAssertEqual(graph.nodes.first { node in node.id == "Course/figure.png" }?.kind, .attachment)
         XCTAssertEqual(graph.nodes.first { node in node.id == "Missing" }?.kind, .unresolved)
         XCTAssertEqual(graph.nodes.filter { node in node.kind == .note }.count, 5)

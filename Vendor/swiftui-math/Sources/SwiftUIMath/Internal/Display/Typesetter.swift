@@ -421,6 +421,9 @@ extension Math {
       let last = lastAtom?.indexRange ?? NSMakeRange(0, 0)
       let line = DisplayList(
         children: typesetter.displayAtoms, range: NSMakeRange(0, NSMaxRange(last)))
+      // Graphite patch: a space at the end of a formula counts in its width, as in TeX.
+      // Textual ends a piece of inline math with its operator's space (`a +\>`).
+      line.width = max(line.width, typesetter.currentPosition.x)
       return line
     }
 
@@ -456,6 +459,10 @@ extension Math {
       var prevNode: Atom! = nil
       preprocessed.reserveCapacity(ml!.atoms.count)
       for atom in ml!.atoms {
+        if atom.type == .ordinary, let boldSymbol = boldOrdinarySymbol(atom.nucleus, fontStyle: atom.fontStyle) {
+          // Graphite patch: `\boldsymbol{\nabla}`, `\mathbf{\phi}`.
+          atom.nucleus = boldSymbol
+        }
         if atom.type == .variable || atom.type == .number {
           // This is not a TeX type node. TeX does this during parsing the input.
           // switch to using the italic math font
@@ -468,11 +475,12 @@ extension Math {
           atom.type = .ordinary
         }
 
-        if atom.type == .ordinary {
+        // Graphite patch: a decorated list is never merged; it is ordinary only as a class.
+        if atom.type == .ordinary, !(atom is DecoratedList) {
           // This is Rule 14 to merge ordinary characters.
           // combine ordinary atoms together
           if prevNode != nil && prevNode.type == .ordinary && prevNode.`subscript` == nil
-            && prevNode.superscript == nil
+            && prevNode.superscript == nil && !(prevNode is DecoratedList)
           {
             prevNode.fuse(with: atom)
             // skip the current node, we are done here.
@@ -955,6 +963,34 @@ extension Math {
         // Get next atoms for look-ahead (up to 3 atoms ahead)
         let nextAtoms = Array(
           preprocessed.suffix(from: min(index + 1, preprocessed.count)).prefix(3))
+        if let decorated = atom as? DecoratedList {
+          // Graphite patch: a decorated list, laid out as one atom of its class and broken
+          // before like other complex displays.
+          let display = self.makeDecoratedList(decorated)
+          let shouldBreak = shouldBreakBeforeDisplay(
+            display, prevNode: prevNode, displayType: decorated.type)
+          if currentLine.length > 0 {
+            self.addDisplayLine()
+          }
+          if shouldBreak {
+            performLineBreak()
+          } else {
+            self.addInterElementSpace(prevNode, currentType: decorated.type)
+          }
+          display.position = currentPosition
+          displayAtoms.append(display)
+          if currentLineStartIndex > 0 {
+            adjustPositionToAvoidOverlap(display)
+          }
+          currentPosition.x += display.width
+          if decorated.`subscript` != nil || decorated.superscript != nil {
+            self.makeScripts(
+              decorated, display: display, index: UInt(decorated.indexRange.location), delta: 0)
+          }
+          lastType = decorated.type
+          prevNode = decorated
+          continue
+        }
         switch atom.type {
         case .number, .variable, .unaryOperator:
           // These should never appear as they should have been removed by preprocessing
@@ -2537,6 +2573,22 @@ extension Math {
         inner!.leftBoundary != nil || inner!.rightBoundary != nil,
         "Inner should have a boundary to call this function")
 
+      // Graphite patch: a `\middle` delimiter is as tall as the pair, which needs the height of
+      // the list without it; the list is measured in a copy, since typesetting changes it.
+      let middleDelimiters = (inner!.innerList?.atoms ?? []).compactMap { atom in
+        (atom as? DecoratedList).flatMap { decorated in
+          if case .middleDelimiter = decorated.decoration { decorated } else { nil }
+        }
+      }
+      if !middleDelimiters.isEmpty, let innerList = inner!.innerList {
+        let measured = Typesetter.createLineForMathList(
+          AtomList(innerList), font: font, style: style, cramped: cramped, spaced: true)
+        let axisHeight = styleFont.metrics.axisHeight
+        let delta = max((measured?.ascent ?? 0) - axisHeight, (measured?.descent ?? 0) + axisHeight)
+        let height = max((delta / 500) * Typesetter.kDelimiterFactor, 2 * delta - Typesetter.kDelimiterShortfallPoints)
+        for middle in middleDelimiters { middle.stretchedHeight = height }
+      }
+
       let innerListDisplay = Typesetter.createLineForMathList(
         inner!.innerList, font: font, style: style, cramped: cramped, spaced: true,
         maxWidth: maxWidth)
@@ -2853,7 +2905,9 @@ extension Math {
 
       // Position all the rows
       self.positionRows(rowDisplays, forTable: table)
-      let tableDisplay = DisplayList(children: rowDisplays, range: table!.indexRange)
+      // Graphite patch: `\hline` and an array's `|`.
+      let rules = self.makeTableRules(table!, rows: rowDisplays, columnWidths: columnWidths)
+      let tableDisplay = DisplayList(children: rowDisplays + rules, range: table!.indexRange)
       tableDisplay.position = currentPosition
       return tableDisplay
     }
@@ -2917,7 +2971,7 @@ extension Math {
       var prevRowDescent = CGFloat(0)
       var ascent = CGFloat(0)
       var first = true
-      for row in rows {
+      for (rowIndex, row) in rows.enumerated() {
         if first {
           row.position = CGPointZero
           ascent += row.ascent
@@ -2930,6 +2984,8 @@ extension Math {
           }
           // We are going down so we decrease the y value.
           currPos -= skip
+          // Graphite patch: the height `\\[2pt]` adds.
+          currPos -= (table!.extraHeightsAboveRowsInEm[rowIndex] ?? 0) * styleFont.font.size
           row.position = CGPointMake(0, currPos)
         }
         prevRowDescent = row.descent

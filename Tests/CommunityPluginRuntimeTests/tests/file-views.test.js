@@ -1,3 +1,15 @@
+/**
+ * File: file-views.test.js
+ * ------------------------
+ * Layer: Tests
+ * Description: Plugins' views of files, views split beside the note, live views, paste and drop, and plugins' Bases
+ *              views.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 // Plugin views for files (`registerExtensions`, and notes a plugin shows in its own view),
 // views split beside the note, live views, paste and drop events, and plugins' Bases views:
 // the gaps the community plugin sweep found (Docs/Community-plugins.md).
@@ -178,7 +190,7 @@ module.exports = ExamplePlugin;`;
         assert.deepEqual(plain(await installAndLoadPlugin(harness, { manifest, mainSource: source })), { isLoaded: true });
         await settle();
         assert.equal(harness.app.plugins.plugins.example.registered, true);
-        assert.deepEqual(plain(harness.host.notificationsOf('basesViews.changed').at(-1).views), [{ viewType: 'example-list', name: 'Example list', pluginIdentifier: 'example' }]);
+        assert.deepEqual(plain(harness.host.notificationsOf('basesViews.changed').at(-1).views), [{ viewType: 'example-list', name: 'Example list', pluginIdentifier: 'example', icon: 'list', options: [] }]);
         const opened = plain(await harness.send({ operation: 'basesView.open', viewType: 'example-list', viewName: 'Open', viewIndex: 0, baseFilePath: 'Tasks.base', groups: [{ key: null, paths: ['First.md'] }], properties: ['note.status'] }));
         assert.equal(opened.isOpened, true);
         const content = harness.app.workspace.getLeafById(opened.leafIdentifier).view.contentEl;

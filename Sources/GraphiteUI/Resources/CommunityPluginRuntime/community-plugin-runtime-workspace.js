@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-workspace.js
+ * -------------------------------------------
+ * Layer: UI
+ * Description: Obsidian's Workspace, leaves, views and editor for plugins.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
+
 // Obsidian's workspace for plugins. Graphite's own tabs show notes and PDFs natively; the
 // runtime mirrors the focused note as the active `MarkdownView`, whose `Editor` works on a
 // copy of the note's text that Graphite sends. Edits a plugin makes are sent back as one
@@ -881,7 +892,10 @@
             }
             const previousPath = this.activeFilePath;
             this.activeFilePath = path;
+            // The person is at work here: this note's metadata comes first, the vault's later.
+            this.app.metadataCache.holdBackgroundReads();
             if (file && file.extension === 'md') {
+                this.app.metadataCache.readOnDemand(file);
                 if (!(this.markdownLeaf.view instanceof MarkdownView)) this.markdownLeaf.view = new MarkdownView(this.markdownLeaf);
                 const view = this.markdownLeaf.view;
                 view.file = file;

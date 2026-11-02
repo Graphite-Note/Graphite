@@ -46,8 +46,9 @@ final class MarkdownSessionConcurrencyTests: XCTestCase {
         session.insert(" plus an attachment", at: NSRange(location: 8, length: 0))
         try Data("external".utf8).write(to: noteLocation)
         await session.checkExternalChange()
-        XCTAssertEqual(session.text, "original")
-        XCTAssertNotNil(session.pendingInsertion)
+        // The queued insertion goes into the note's text, and so into the draft, not onto the other version.
+        XCTAssertEqual(session.text, "original plus an attachment")
+        XCTAssertNil(session.pendingInsertion)
         XCTAssertTrue(session.hasExternalConflict)
     }
 

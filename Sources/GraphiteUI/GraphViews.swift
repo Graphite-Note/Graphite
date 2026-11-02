@@ -1,3 +1,14 @@
+/**
+ * File: GraphViews.swift
+ * ----------------------
+ * Layer: UI
+ * Description: The whole-vault graph, the local graph of a note, and their settings.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.15
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -38,7 +49,7 @@ struct LocalGraphPanel: View {
             if let localGraph {
                 if localGraph.nodes.count <= 1 {
                     ContentUnavailableView("No Links", systemImage: "point.3.connected.trianglepath.dotted",
-                                           description: Text(workspace.hasCompletedIndexScan ? "This note has no links yet, in either direction." : "Still reading the vault."))
+                                           description: Text(workspace.isIndexUsable ? "This note has no links yet, in either direction." : "Still reading the vault."))
                 } else {
                     GraphCanvas(graph: localGraph, highlightedIdentifier: session.path.rawValue, alwaysShowsLabels: localGraph.nodes.count <= 60,
                                 open: { node in Task { await workspace.open(node, from: session.path) } }, fitRequest: fitRequest, chosenTag: $chosenTag,
@@ -230,7 +241,8 @@ struct VaultGraphView: View {
             displaySettings
             forceSettings
         }
-        .frame(minWidth: 360, idealWidth: 380, minHeight: 640, idealHeight: 760)
+        .frame(idealWidth: 380, idealHeight: 760)
+        .sheetMinimumSize(width: 360, height: 640)
     }
 
     private var displaySettings: some View {

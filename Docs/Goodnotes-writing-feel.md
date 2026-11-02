@@ -70,6 +70,7 @@ The ink is 0.9 mm on the paper at both zooms; zooming in only lets the hand make
 
 **Graphite does the same on PDF pages, within limits, and not in drawings:**
 
+- **Superseded 2026-11-01 (INK-22): the two points below rest on an assumption that measurement disproved. PencilKit stores a stroke at the tool's width at any canvas zoom, so the tool is no longer scaled.**
 - On a PDF page the canvas draws at a zoom of 1 to 3 in steps of a half (`PDFPageOverlayView.renderingScale`), and the tool's width is multiplied by it (`PDFPageCanvasView.toolForDrawing`), so the width on the page stays the same. But PencilKit clamps each ink's width (`PencilInk.widthRange`): monoline at 4 points, pencil at 16, the pen at 25. A 3-point monoline at a zoom of 3 asks for 9 and gets 4, so it lands on the page 1.33 points wide instead of 3: the narrow inks write thinner as the page is zoomed in, which is the opposite of an even cheat sheet. The pen's 25 is only reached by its widest settings.
 - The drawing editor (`InfiniteCanvasView`, zoom up to 4 times its fitted size) does not correct the width. By the note on `PDFPageCanvasView.toolForDrawing`, PencilKit keeps a tool as wide on screen at any zoom, so a drawing written zoomed in comes out finer on the drawing, up to a quarter of the tool's width. This is read from the code and needs confirming on the iPad.
 
