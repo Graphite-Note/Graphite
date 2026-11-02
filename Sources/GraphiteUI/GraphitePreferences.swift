@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.28
- * Date: 01/11/2026
+ * Version: 0.29
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -220,6 +220,8 @@ final class GraphitePreferences {
         static let embedsRecordingsInNote = "GraphiteEmbedsRecordingsInNote"
         static let recordingCamera = "GraphiteRecordingCamera"
         static let accentHex = "GraphiteAccentColor"
+        static let dateNameLanguage = "GraphiteDateNameLanguage"
+        static let earlierDateNameLanguages = "GraphiteEarlierDateNameLanguages"
         static let showsInlineTitle = "GraphiteShowsInlineTitle"
         static let showsFileExtensions = "GraphiteShowsFileExtensions"
         static let searchSortOrder = "GraphiteSearchSortOrder"
@@ -285,6 +287,30 @@ final class GraphitePreferences {
     /// `appearance.json`, or nil when none was chosen. A vault whose file sets no size is
     /// shown at it, so notes keep their size until a size is chosen for the vault.
     let legacyChosenTextSize: Double?
+    /// The language of month and weekday names in dates written with Moment formats, for daily note names and template
+    /// dates. On this device, as Obsidian's Language is: it is not in the vault, and English keeps a vault's names as they are.
+    var dateNameLanguage: MomentDateLanguage {
+        didSet {
+            guard dateNameLanguage != oldValue else { return }
+            defaults.set(dateNameLanguage.id, forKey: Key.dateNameLanguage)
+            earlierDateNameLanguageCodes = Array(([oldValue.id] + earlierDateNameLanguageCodes.filter { code in code != oldValue.id && code != dateNameLanguage.id }).prefix(Self.maximumEarlierDateNameLanguages))
+            defaults.set(earlierDateNameLanguageCodes, forKey: Key.earlierDateNameLanguages)
+            dateNameReadingLanguages = Self.readingLanguages(chosen: dateNameLanguage, earlierCodes: earlierDateNameLanguageCodes)
+        }
+    }
+    /// The languages chosen before on this device, the last one first, whose notes are still read.
+    private var earlierDateNameLanguageCodes: [String]
+    private static let maximumEarlierDateNameLanguages = 4
+    /// The languages a daily note's name is read in: the chosen one first, then the earlier ones and English, so a note
+    /// named before the choice changed is still found by date.
+    private(set) var dateNameReadingLanguages: [MomentDateLanguage]
+
+    private static func readingLanguages(chosen: MomentDateLanguage, earlierCodes: [String]) -> [MomentDateLanguage] {
+        var languages = [chosen]
+        for language in earlierCodes.map(MomentDateLanguage.named) + [.english] where !languages.contains(language) { languages.append(language) }
+        return languages
+    }
+
     var usesSpellChecking: Bool { didSet { defaults.set(usesSpellChecking, forKey: Key.usesSpellChecking) } }
     /// Whether a code block is formatted when the cursor leaves it after an edit.
     var formatsCodeBlocks: Bool { didSet { defaults.set(formatsCodeBlocks, forKey: Key.formatsCodeBlocks) } }
@@ -456,6 +482,11 @@ final class GraphitePreferences {
         appearanceMode = defaults.string(forKey: Key.appearanceMode).flatMap(AppearanceMode.init(rawValue:)) ?? .system
         let storedTextSize = defaults.double(forKey: Key.textSize)
         legacyChosenTextSize = (12...28).contains(storedTextSize) ? storedTextSize : nil
+        let storedDateNameLanguage = MomentDateLanguage.named(defaults.string(forKey: Key.dateNameLanguage))
+        dateNameLanguage = storedDateNameLanguage
+        let storedEarlierDateNameLanguages = defaults.stringArray(forKey: Key.earlierDateNameLanguages) ?? []
+        earlierDateNameLanguageCodes = storedEarlierDateNameLanguages
+        dateNameReadingLanguages = Self.readingLanguages(chosen: storedDateNameLanguage, earlierCodes: storedEarlierDateNameLanguages)
         usesSpellChecking = defaults.object(forKey: Key.usesSpellChecking) as? Bool ?? true
         formatsCodeBlocks = defaults.object(forKey: Key.formatsCodeBlocks) as? Bool ?? true
         codeColorTheme = defaults.string(forKey: Key.codeColorTheme).flatMap(CodeColorTheme.init(rawValue:)) ?? .obsidian

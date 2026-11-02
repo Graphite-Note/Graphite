@@ -5,7 +5,7 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.37
+ * Version: 0.38
  * Date: 02/11/2026
  */
 
@@ -649,7 +649,7 @@ private struct TemplatesSettingsPage: View {
                 SettingsTextField(title: "Date Format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.dateFormat, submit: save)
                 SettingsTextField(title: "Time Format", prompt: MomentDateFormat.defaultTimeFormat, text: $draft.timeFormat, submit: save)
             } footer: {
-                Text("{{date}} is written as “\(MomentDateFormat.string(from: .now, format: draft.dateFormat.isEmpty ? MomentDateFormat.defaultDateFormat : draft.dateFormat))” and {{time}} as “\(MomentDateFormat.string(from: .now, format: draft.timeFormat.isEmpty ? MomentDateFormat.defaultTimeFormat : draft.timeFormat))”. A variable can take its own format, as in {{date:dddd, MMMM Do}}. Formats use Moment.js tokens, as in Obsidian.")
+                Text("{{date}} is written as “\(MomentDateFormat.string(from: .now, format: draft.dateFormat.isEmpty ? MomentDateFormat.defaultDateFormat : draft.dateFormat, language: workspace.preferences.dateNameLanguage))” and {{time}} as “\(MomentDateFormat.string(from: .now, format: draft.timeFormat.isEmpty ? MomentDateFormat.defaultTimeFormat : draft.timeFormat))”. A variable can take its own format, as in {{date:dddd, MMMM Do}}. Formats use Moment.js tokens, as in Obsidian.")
                     .formFooterAlignment()
             }
         }
@@ -690,6 +690,7 @@ private struct DailyNotesSettingsPage: View {
                 Text(pathFooter)
                     .formFooterAlignment()
             }
+            DateNameLanguageSection(preferences: workspace.preferences)
             Section {
                 Toggle("Open Daily Note on Startup", isOn: Binding(get: { draft.opensOnStartup }, set: { opensOnStartup in
                     draft.opensOnStartup = opensOnStartup
@@ -710,7 +711,7 @@ private struct DailyNotesSettingsPage: View {
         var settings = draft
         if settings.format.trimmingCharacters(in: .whitespaces).isEmpty { settings.format = MomentDateFormat.defaultDateFormat }
         settings.folder = settings.folder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        let example = (try? settings.notePath(for: .now).rawValue) ?? "an invalid path"
+        let example = (try? settings.notePath(for: .now, language: workspace.preferences.dateNameLanguage).rawValue) ?? "an invalid path"
         var footer = "Today's note is “\(example)”. A “/” in the format makes folders, as in YYYY/MM/YYYY-MM-DD."
         if let templatePath = settings.templatePath, (try? templatePath.url(in: workspace.folderAccess?.root ?? URL(fileURLWithPath: "/"))).map({ location in FileManager.default.fileExists(atPath: location.path) }) != true {
             footer += " There is no note “\(templatePath.rawValue)” in this vault yet."

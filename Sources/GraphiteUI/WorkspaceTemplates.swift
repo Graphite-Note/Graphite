@@ -5,8 +5,8 @@
  * Description: Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -84,7 +84,8 @@ extension WorkspaceModel {
         do {
             let snapshot = try await store.read(template, maximumBytes: MarkdownSession.maximumEditableBytes)
             guard let templateText = String(data: snapshot.data, encoding: .utf8) else { throw GraphiteError.invalidFile("“\(template.name)” is not UTF-8 text.") }
-            let rendered = TemplateRenderer.render(templateText, title: session.path.stem, date: .now, dateFormat: settings.dateFormat, timeFormat: settings.timeFormat)
+            let rendered = TemplateRenderer.render(templateText, title: session.path.stem, date: .now, dateFormat: settings.dateFormat, timeFormat: settings.timeFormat,
+                                                   language: preferences.dateNameLanguage)
             let declaredTypes = await store.propertyTypes()
             session.apply(TemplateInsertion.edit(inserting: rendered, into: session.text, at: session.selection, declaredTypes: declaredTypes))
         } catch { errorMessage = error.localizedDescription }
@@ -99,7 +100,7 @@ extension WorkspaceModel {
             return
         }
         do {
-            let path = try settings.notePath(for: date)
+            let path = try await existingDailyNote(for: date, settings: settings, store: store) ?? settings.notePath(for: date, language: preferences.dateNameLanguage)
             if try await !store.fileExists(path) {
                 var content = ""
                 if let templatePath = settings.templatePath {
@@ -110,7 +111,7 @@ extension WorkspaceModel {
                     let templateText = String(data: snapshot.data, encoding: .utf8) ?? ""
                     // The note's own date, not today's, so earlier and later notes are right.
                     content = TemplateRenderer.render(templateText, title: path.stem, date: date,
-                                                      dateFormat: settings.format, timeFormat: templateSettings.timeFormat)
+                                                      dateFormat: settings.format, timeFormat: templateSettings.timeFormat, language: preferences.dateNameLanguage)
                 }
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
@@ -123,6 +124,25 @@ extension WorkspaceModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
+    /// The note `date` already has under another name, when its name can be written in more than one way: in a language
+    /// chosen earlier, or with Obsidian's abbreviation where Foundation's differs. Nil in English, where the one name to
+    /// look for is the one about to be written, and when nothing is there.
+    private func existingDailyNote(for date: Date, settings: DailyNoteSettings, store: VaultStore) async throws -> VaultPath? {
+        let languages = preferences.dateNameReadingLanguages
+        guard languages != [.english] else { return nil }
+        for language in languages {
+            let path = try settings.notePath(for: date, language: language)
+            if try await store.fileExists(path) { return path }
+        }
+        guard let index, let reader = MomentDateReader(format: settings.format, languages: languages), reader.readsNames else { return nil }
+        let folder = settings.folder.isEmpty ? VaultPath.root : ((try? VaultPath(settings.folder)) ?? .root)
+        let candidates = try await index.paths(inside: folder)
+        return await Task.detached(priority: .userInitiated) {
+            let calendar = Calendar(identifier: .gregorian)
+            return candidates.first { path in settings.date(ofNoteAt: path, using: reader).map { noteDate in calendar.isDate(noteDate, inSameDayAs: date) } ?? false }
+        }.value
+    }
+
     /// The daily note before or after the one open, or before or after today when the open
     /// file is not a daily note, skipping days without a note, as Obsidian does.
     func openAdjacentDailyNote(forward: Bool) async {
@@ -131,7 +151,7 @@ extension WorkspaceModel {
             errorMessage = unreadableSettingsMessage
             return
         }
-        guard let reader = MomentDateReader(format: settings.format) else {
+        guard let reader = MomentDateReader(format: settings.format, languages: preferences.dateNameReadingLanguages) else {
             errorMessage = forward ? "There is no later daily note." : "There is no earlier daily note."
             return
         }
