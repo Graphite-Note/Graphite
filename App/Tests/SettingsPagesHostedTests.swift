@@ -157,7 +157,7 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
 
         if isPhone {
             _ = try await element(in: controller, "the Paper section") { $0.accessibilityLabel == "Paper" }
-            while scrollDown(in: controller) { try await Task.sleep(for: .milliseconds(100)) }
+            try await scrollToEnd(in: controller)
             for pencilOnly in ["Palm Rejection", "Hold to Make a Shape", "Pencil Tools", "Highlighter Ignores Tilt"] {
                 XCTAssertNil(find(in: controller) { object in self.texts(of: object).contains(pencilOnly) }, "\(pencilOnly) has no effect on a phone.")
             }

@@ -90,24 +90,27 @@ class SettingsHostedTestCase: XCTestCase {
 
     /// The element, after scrolling the page down to it: a list builds the rows near the screen only.
     func elementScrolling(in controller: UIViewController, _ description: String, matching matches: @escaping (NSObject) -> Bool) async throws -> NSObject {
-        for _ in 0..<20 {
-            if let found = find(in: controller, matching: matches) { return found }
-            try await Task.sleep(for: .milliseconds(100))
+        var found: NSObject?
+        try await waitUntil(description, timeoutSeconds: 40, pollingIntervalSeconds: 0.2) {
+            found = self.find(in: controller, matching: matches)
+            if found == nil { _ = self.scrollDown(in: controller) }
+            return found != nil
         }
-        while scrollDown(in: controller) {
-            try await Task.sleep(for: .milliseconds(150))
-            if let found = find(in: controller, matching: matches) { return found }
-        }
-        return try await element(in: controller, description, matching: matches)
+        return try XCTUnwrap(found)
     }
 
-    /// Scrolls the tallest scrolling list by most of a screen; false once it is at its end.
+    /// Scrolls the page to its end, a screen at a time.
+    func scrollToEnd(in controller: UIViewController) async throws {
+        try await waitUntil("the end of the page", timeoutSeconds: 40, pollingIntervalSeconds: 0.2) { !self.scrollDown(in: controller) }
+    }
+
+    /// Scrolls the tallest scrolling list by half a screen; false once it is at its end.
     func scrollDown(in controller: UIViewController) -> Bool {
         let scrollable = scrollViews(in: controller.view).filter { scrollView in scrollView.contentSize.height > scrollView.bounds.height + 1 }
         guard let page = scrollable.max(by: { first, second in first.bounds.width * first.bounds.height < second.bounds.width * second.bounds.height }) else { return false }
         let end = page.contentSize.height - page.bounds.height + page.adjustedContentInset.bottom
         guard page.contentOffset.y < end - 1 else { return false }
-        page.setContentOffset(CGPoint(x: page.contentOffset.x, y: min(end, page.contentOffset.y + page.bounds.height * 0.7)), animated: false)
+        page.setContentOffset(CGPoint(x: page.contentOffset.x, y: min(end, page.contentOffset.y + page.bounds.height * 0.5)), animated: false)
         return true
     }
 
