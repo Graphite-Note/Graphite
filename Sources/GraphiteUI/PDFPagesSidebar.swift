@@ -1,3 +1,14 @@
+/**
+ * File: PDFPagesSidebar.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
@@ -12,6 +23,8 @@ struct PDFPagesSidebar: View {
     @Bindable var session: PDFSession
     let commands: PDFPageCommands
     let renderer: PDFThumbnailRenderer
+    /// Called after a page is chosen to read, so a sheet that holds the list can close.
+    var didChoosePage: (() -> Void)?
     @State private var content = Content.pages
     @State private var isSelecting = false
     @State private var selectedPages = PDFPageSelection()
@@ -44,8 +57,11 @@ struct PDFPagesSidebar: View {
                     LazyVStack(spacing: 14) {
                         // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
                         let _ = session.pageListVersion
-                        ForEach(PDFThumbnailListPage.pages(of: session.document)) { listPage in
-                            pageRow(page: listPage.page, pageIndex: listPage.pageIndex, isBookmarked: bookmarkedPages.contains(listPage.pageIndex))
+                        // Only the rows on screen ask PDFKit for their page.
+                        ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
+                            if let page = session.document.page(at: pageIndex) {
+                                pageRow(page: page, pageIndex: pageIndex, isBookmarked: bookmarkedPages.contains(pageIndex))
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -66,6 +82,7 @@ struct PDFPagesSidebar: View {
                 selectedPages.toggle(page)
             } else {
                 session.go(to: pageIndex)
+                didChoosePage?()
             }
         } label: {
             VStack(spacing: 6) {
@@ -177,7 +194,10 @@ struct PDFPagesSidebar: View {
         } else {
             List(entries) { entry in
                 Button {
-                    if let pageIndex = entry.pageIndex { session.go(to: pageIndex) }
+                    if let pageIndex = entry.pageIndex {
+                        session.go(to: pageIndex)
+                        didChoosePage?()
+                    }
                 } label: {
                     HStack {
                         if entry.isBookmark { Image(systemName: "bookmark.fill").foregroundStyle(.red).imageScale(.small) }
@@ -253,8 +273,9 @@ struct PDFCurrentPageFollower: View {
     }
 
     private func scrollToCurrentPage(animated: Bool) {
-        guard let page = session.document.page(at: session.currentPageIndex) else { return }
-        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(ObjectIdentifier(page), anchor: .center) }
+        // A row is known by its page's index, so nothing asks PDFKit for pages to scroll.
+        guard session.document.pageCount > session.currentPageIndex else { return }
+        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(session.currentPageIndex, anchor: .center) }
     }
 }
 

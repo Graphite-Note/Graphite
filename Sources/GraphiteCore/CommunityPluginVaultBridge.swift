@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginVaultBridge.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: The vault as plugins reach it: file operations answered from the open vault, large listings page by
+ *              page.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The vault as Obsidian community plugins reach it: the file operations of the plugin
@@ -20,6 +32,9 @@ public struct CommunityPluginVaultBridge: Sendable {
     public static let maximumListedEntries = 250_000
     /// The largest file a plugin can read or write in one message.
     public static let maximumTransferredBytes = 64 * 1_048_576
+
+    /// What is left of each listing asked for page by page.
+    let openListings = CommunityPluginOpenListings()
 
     public init(store: VaultStore, deletionMethod: @escaping @Sendable () async -> DeletionMethod) {
         self.store = store
@@ -49,6 +64,10 @@ public struct CommunityPluginVaultBridge: Sendable {
         switch operation {
         case "vault.list":
             let request = try decoder.decode(ListRequest.self, from: messageData)
+            if let nextPage = request.nextPage {
+                guard let remaining = await openListings.take(nextPage) else { throw CommunityPluginListingProblem.listingIsClosed }
+                return try await listingAnswer(for: remaining, isTruncated: false)
+            }
             return try await listVault(under: VaultPath(request.folder ?? ""))
         case "vault.listFolder":
             return try listFolder(VaultPath(try decoder.decode(PathRequest.self, from: messageData).path))
@@ -80,7 +99,7 @@ public struct CommunityPluginVaultBridge: Sendable {
     // MARK: Requests
 
     private struct PathRequest: Decodable { let path: String }
-    private struct ListRequest: Decodable { let folder: String? }
+    private struct ListRequest: Decodable { let folder: String?; let nextPage: String? }
     private struct ReadRequest: Decodable {
         let path: String
         let encoding: String
@@ -115,44 +134,22 @@ public struct CommunityPluginVaultBridge: Sendable {
     private func listVault(under folder: VaultPath) async throws -> [String: Any] {
         let root = store.root
         let folderLocation = try folder.url(in: root)
-        let listing = try await Task.detached(priority: .utility) { () throws -> (entries: [ListedEntry], isTruncated: Bool) in
+        let listing = try await Task.detached(priority: .utility) { () throws -> (entries: [CommunityPluginListedEntry], isTruncated: Bool) in
             let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
             guard let enumerator = FileManager.default.enumerator(at: folderLocation, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]) else {
                 throw GraphiteError.unavailable("Graphite could not list “\(folder.rawValue)”.")
             }
-            var entries: [ListedEntry] = []
+            var entries: [CommunityPluginListedEntry] = []
             while let location = enumerator.nextObject() as? URL {
                 try Task.checkCancellation()
                 guard let values = try? location.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
                       let path = Self.vaultPath(of: location, under: folderLocation, folder: folder) else { continue }
                 if entries.count == Self.maximumListedEntries { return (entries, true) }
-                entries.append(ListedEntry(path: path, values: values))
+                entries.append(CommunityPluginListedEntry(path: path, values: values))
             }
             return (entries, false)
         }.value
-        let entries = listing.entries.map { entry -> [String: Any] in
-            var dictionary = Self.statDictionary(isFolder: entry.isFolder, size: entry.size, modified: entry.modified, created: entry.created)
-            dictionary["path"] = entry.path.rawValue
-            return dictionary
-        }
-        return ["entries": entries, "isTruncated": listing.isTruncated]
-    }
-
-    /// One listed item, made off the main thread and turned into JSON afterwards.
-    private struct ListedEntry: Sendable {
-        let path: VaultPath
-        let isFolder: Bool
-        let size: Int
-        let modified: Date
-        let created: Date
-
-        init(path: VaultPath, values: URLResourceValues) {
-            self.path = path
-            isFolder = values.isDirectory == true
-            size = values.fileSize ?? 0
-            modified = values.contentModificationDate ?? .distantPast
-            created = values.creationDate ?? modified
-        }
+        return try await listingAnswer(for: listing.entries[...], isTruncated: listing.isTruncated)
     }
 
     /// The direct children of `folder`, hidden ones included, as Obsidian's adapter lists them.
@@ -320,7 +317,7 @@ public struct CommunityPluginVaultBridge: Sendable {
         return statDictionary(isFolder: values.isDirectory == true, size: values.fileSize ?? 0, modified: modified, created: values.creationDate ?? modified)
     }
 
-    private static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
+    static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
         [
             "isFolder": isFolder,
             "size": isFolder ? 0 : size,

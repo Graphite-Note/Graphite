@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceNoteViews.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Which view a note opens in, and what each note and vault remembers of it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -46,7 +57,7 @@ extension WorkspaceModel {
         case .perNote: noteViewsByPath[path.rawValue].flatMap(NoteViewMode.init(rawValue:))
         case .perVault: vaultNoteView
         }
-        session.viewMode = rememberedView ?? preferences.initialNoteViewMode
+        session.viewMode = rememberedView ?? initialNoteViewMode
         session.didChangeViewMode = { [weak self] viewMode in
             guard let self else { return }
             switch preferences.noteViewMemory {

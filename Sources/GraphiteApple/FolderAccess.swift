@@ -1,3 +1,14 @@
+/**
+ * File: FolderAccess.swift
+ * ------------------------
+ * Layer: Apple
+ * Description: Finds and opens vault folders, and watches a vault for changes other apps and windows make.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Synchronization
 import GraphiteCore
@@ -138,13 +149,17 @@ public final class VaultMonitor: NSObject, NSFilePresenter, @unchecked Sendable 
     private let vaultURL: Mutex<URL>
     private let onChange: @Sendable (URL?) -> Void
     private let onVaultMove: (@Sendable (URL?) -> Void)?
+    private let onItemMove: (@Sendable (URL, URL) -> Void)?
     /// `onChange` receives changed items inside the vault. `onVaultMove` receives the vault
     /// folder's new URL when it is moved or renamed, or nil when it is deleted; changes
-    /// inside it keep being reported at its new place.
-    public init(root: URL, onChange: @escaping @Sendable (URL?) -> Void, onVaultMove: (@Sendable (URL?) -> Void)? = nil) {
+    /// inside it keep being reported at its new place. `onItemMove` receives an item's old
+    /// and new URLs when another app or window moved it, besides both being changes.
+    public init(root: URL, onChange: @escaping @Sendable (URL?) -> Void, onVaultMove: (@Sendable (URL?) -> Void)? = nil,
+                onItemMove: (@Sendable (URL, URL) -> Void)? = nil) {
         vaultURL = Mutex(root)
         self.onChange = onChange
         self.onVaultMove = onVaultMove
+        self.onItemMove = onItemMove
         let operationQueue = OperationQueue()
         operationQueue.maxConcurrentOperationCount = 1
         operationQueue.qualityOfService = .utility
@@ -163,7 +178,11 @@ public final class VaultMonitor: NSObject, NSFilePresenter, @unchecked Sendable 
     }
     public func presentedSubitemDidChange(at url: URL) { report(url) }
     public func presentedSubitemDidAppear(at url: URL) { report(url) }
-    public func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) { report(oldURL); report(newURL) }
+    public func presentedSubitem(at oldURL: URL, didMoveTo newURL: URL) {
+        if !Self.isGraphiteStagingFile(oldURL), !Self.isGraphiteStagingFile(newURL) { onItemMove?(oldURL, newURL) }
+        report(oldURL)
+        report(newURL)
+    }
     public func accommodatePresentedSubitemDeletion(at url: URL, completionHandler: @escaping (Error?) -> Void) {
         report(url); completionHandler(nil)
     }

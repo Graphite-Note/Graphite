@@ -1,3 +1,14 @@
+/**
+ * File: VaultStoreFolderStyles.swift
+ * ----------------------------------
+ * Layer: Core
+ * Description: Graphite's folder colors and symbols, read and written as bookmarks are.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CryptoKit
 
@@ -49,7 +60,7 @@ extension VaultStore {
         let directory = try VaultPath(FolderPicture.directory)
         guard try fileExists(directory) else { return }
         let usedPictures = Set(styles.styles.values.compactMap(\.picture?.path))
-        for entry in try children(of: directory) where !entry.isDirectory && !usedPictures.contains(entry.path) && Self.isSavedPictureName(entry.path.name) {
+        for entry in try listedChildren(of: directory) where !entry.isDirectory && !usedPictures.contains(entry.path) && Self.isSavedPictureName(entry.path.name) {
             _ = try delete(entry.path, method: .permanent)
         }
     }

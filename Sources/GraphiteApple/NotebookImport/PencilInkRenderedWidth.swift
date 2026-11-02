@@ -1,3 +1,14 @@
+/**
+ * File: PencilInkRenderedWidth.swift
+ * ----------------------------------
+ * Layer: Apple
+ * Description: How wide PencilKit draws a stroke point of a given size, for each ink an imported stroke
+ *              uses.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
 import Foundation
 import PencilKit
 import GraphiteCore
@@ -73,11 +84,59 @@ enum PencilInkRenderedWidth {
         return lower.renderedWidth + (pointSize - lower.pointSize) * (upper.renderedWidth - lower.renderedWidth) / (upper.pointSize - lower.pointSize)
     }
 
+    /// The tables of every ink measured, turning inks included, with their nib across the stroke.
+    private static func acrossMeasurements(forInkType inkType: PKInkingTool.InkType) -> [Measurement]? {
+        switch inkType {
+        case .pen, .monoline, .fountainPen: solidInkMeasurements
+        case .pencil: pencilMeasurements
+        case .marker: markerMeasurements
+        default: nil
+        }
+    }
+
+    private static func interpolatedWidth(forPointSize pointSize: Double, in table: [Measurement]) -> Double {
+        guard let narrowest = table.first, table.count > 1 else { return pointSize }
+        if pointSize <= narrowest.pointSize { return narrowest.renderedWidth * pointSize / narrowest.pointSize }
+        let upperIndex = max(table.firstIndex { measurement in measurement.pointSize >= pointSize } ?? table.count - 1, 1)
+        let lower = table[upperIndex - 1], upper = table[upperIndex]
+        return lower.renderedWidth + (pointSize - lower.pointSize) * (upper.renderedWidth - lower.renderedWidth) / (upper.pointSize - lower.pointSize)
+    }
+
+    /// How wide PencilKit draws a point of a stroke across its way, for saved outlines: a turning
+    /// ink draws as `renderedWidth(forPointSize:inkType:)` tells with its nib across the stroke
+    /// and a part of it with its nib along (the fountain pen a quarter, the marker about a
+    /// third). `nibAcrossness` is 1 with the nib across and 0 along. An ink not measured keeps
+    /// its point size.
+    static func drawnWidth(forPointSize pointSize: Double, inkType: PKInkingTool.InkType, nibAcrossness: Double) -> Double {
+        guard pointSize.isFinite, pointSize > 0, let table = acrossMeasurements(forInkType: inkType) else { return pointSize }
+        let across = interpolatedWidth(forPointSize: pointSize, in: table)
+        switch inkType {
+        case .fountainPen: return across * (0.25 + 0.75 * nibAcrossness)
+        case .marker: return across * (1.0 / 3 + 2.0 / 3 * nibAcrossness)
+        default: return across
+        }
+    }
+
+    /// The point size that draws a stroke `scale` times as wide as a point of `pointSize` draws:
+    /// a point's size is not its drawn width, so multiplying it would not scale what is seen
+    /// (a pen's point of 4.8 draws 5.6; at half the size 2.4 draws 0.8, and below 2 nothing).
+    /// An ink not measured, and a point too small to draw, go by the scale.
+    static func pointSize(_ pointSize: Double, forDrawnWidthScaledBy scale: Double, inkType: PKInkingTool.InkType) -> Double {
+        guard scale.isFinite, scale > 0, pointSize.isFinite, pointSize > 0, let table = acrossMeasurements(forInkType: inkType) else
+            { return pointSize * scale }
+        let drawnWidth = interpolatedWidth(forPointSize: pointSize, in: table)
+        guard drawnWidth > 0 else { return pointSize * scale }
+        return Self.pointSize(forRenderedWidth: drawnWidth * scale, in: table)
+    }
+
     /// The point size PencilKit draws `renderedWidth` points wide in this ink: interpolated between the two nearest
     /// measurements, beyond the widest along the last two, and below the narrowest towards nothing. A width that is
     /// not a positive number gives the size of the narrowest measurement.
     static func pointSize(forRenderedWidth renderedWidth: Double, ink: ImportedStroke.Ink) -> Double {
-        let table = measurements(for: ink)
+        pointSize(forRenderedWidth: renderedWidth, in: measurements(for: ink))
+    }
+
+    private static func pointSize(forRenderedWidth renderedWidth: Double, in table: [Measurement]) -> Double {
         guard let narrowest = table.first, table.count > 1 else { return 0 }
         guard renderedWidth.isFinite, renderedWidth > 0 else { return narrowest.pointSize }
         if renderedWidth <= narrowest.renderedWidth, narrowest.renderedWidth > 0 {

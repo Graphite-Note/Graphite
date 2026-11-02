@@ -1,3 +1,14 @@
+/**
+ * File: FileRecoverySheet.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The sheet that lists a note's saved snapshots, to read, restore or copy.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import os
 import GraphiteCore
@@ -101,7 +112,7 @@ struct FileRecoverySheet: View {
                 NoteSnapshotList(workspace: workspace, path: path) { dismiss() }
             }
         }
-        .frame(minWidth: 520, minHeight: 560)
+        .sheetMinimumSize(width: 520, height: 560)
         .task {
             if let path = request.path { navigationPath = [path] }
             await loadNotes()

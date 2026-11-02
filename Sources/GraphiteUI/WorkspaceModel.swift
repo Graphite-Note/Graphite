@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceModel.swift
+ * --------------------------
+ * Layer: UI
+ * Description: The open vault's workspace: its files, tabs, index and services.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.63
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -22,6 +33,25 @@ final class WorkspaceModel {
     var store: VaultStore?
     var index: VaultIndex?
     var rootEntries: [VaultEntry] = []
+    /// False from the moment a vault opens until its root was first listed: an empty
+    /// `rootEntries` then says nothing about the vault.
+    var hasListedRoot = false
+    /// Counts the changes known to each folder, which rows and the library showing it list
+    /// again for (`WorkspaceDirectoryListing.swift`).
+    var folderListingVersions: [VaultPath: Int] = [:]
+    /// The file list's rows, on the platforms that draw them with SwiftUI; replaced with the vault.
+    @ObservationIgnored var fileTreeContents = FileTreeContents()
+    /// Which root listing is the latest asked for: an older one finishing later is dropped.
+    @ObservationIgnored var rootListingNumber = 0
+    /// Those waiting for the scan under way to end (`isIndexCompleteAfterRunningScan`).
+    @ObservationIgnored var runningScanWaits: [AsyncStream<Void>.Continuation] = []
+    @ObservationIgnored var rootListingInFlight: Task<Void, Never>?
+    /// The root folder's own date just before its last listing, and when, on `clock`, the
+    /// window last stopped being in front; together they tell whether coming back needs a listing.
+    @ObservationIgnored var rootDateAtLastListing: Date?
+    @ObservationIgnored var timeLeftFront: Duration?
+    /// The vault's settings files when they were last read.
+    @ObservationIgnored var settingsFilesRevisionAtLastReading: [String: SettingsFileStamp]?
     /// Folders open in the sidebar, remembered per vault as Obsidian remembers them.
     var expandedFolders: Set<VaultPath> = [] {
         didSet {
@@ -45,6 +75,8 @@ final class WorkspaceModel {
     /// Files and folders with a move or rename under way; a second request for one is
     /// ignored (the title bar can report the same rename twice).
     var pathsBeingMoved: Set<VaultPath> = []
+    /// The index learning where the last moves put things, which the next move waits for.
+    @ObservationIgnored var indexRefreshFollowingMoves: Task<Void, Never>?
     /// How each move that waited for the person's "Update links?" answer ended, by the moved
     /// path, until whoever waited for it (a plugin's rename) takes it.
     @ObservationIgnored var answeredMoveOutcomes: [VaultPath: FileMoveOutcome] = [:]
@@ -133,6 +165,8 @@ final class WorkspaceModel {
     var indexingMessage = ""
     var isIndexing = false
     var directoryVersion = 0
+    /// Moves when a theme or snippet file is added, changed or removed, which no listing shows.
+    var styleFilesVersion = 0
     /// Changes whenever a drawing file is rewritten, so previews reload its image.
     var drawingVersion = 0
     /// Changes after the index takes in new file contents, so open bases run again, and the
@@ -140,6 +174,9 @@ final class WorkspaceModel {
     var indexVersion = 0 {
         didSet { schedulePostgreSQLMirrorCopy() }
     }
+    /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
+    /// none of them can affect do not run again.
+    @ObservationIgnored var lastIndexChange: BaseContentChange?
     /// Changes when Graphite writes `.obsidian/types.json`, so lists of property types reload.
     var propertyTypesVersion = 0
     var vaultSettings = ObsidianSettings()
@@ -186,6 +223,11 @@ final class WorkspaceModel {
     /// The provider's kept versions; tests replace it with versions of their own making.
     @ObservationIgnored var conflictVersionStore: any ConflictVersionStore = FileProviderConflictVersions()
     @ObservationIgnored var pendingConflictChecks: [VaultPath] = []
+    /// The same paths as `pendingConflictChecks`, to tell at once whether one is waiting.
+    @ObservationIgnored var pendingConflictCheckPaths: Set<VaultPath> = []
+    /// Files asked about since the vault opened; a file listed again is not asked again, since
+    /// a version it gains or loses is reported as a change to it.
+    @ObservationIgnored var conflictCheckedPaths: Set<VaultPath> = []
     @ObservationIgnored var conflictCheckTask: Task<Void, Never>?
     var drawingEditorRequest: DrawingEditorRequest?
     /// The note the image shown full screen came from, so the viewer can offer to draw on it.
@@ -226,11 +268,21 @@ final class WorkspaceModel {
         isRecording: { [weak self] in self?.recording.state.isActive ?? false },
         isReadingAloud: { [weak self] in self?.readAloud?.isReading ?? false },
         stopReadingAloud: { [weak self] in self?.readAloud?.stop(); self?.readAloud?.showsReader = false },
-        saveOpenDocuments: { [weak self] in try await self?.saveOpenDocuments() },
+        saveOpenDocuments: { [weak self] in
+            // First: a plugin's view of a file is saved even when a note cannot be.
+            await self?.communityPlugins.saveOpenFileViews()
+            try await self?.saveOpenDocuments()
+        },
+        keepUnsavedDocuments: { [weak self] writesPDFCopies in await self?.keepUnsavedDocumentsBeforeQuitting(writesPDFCopies: writesPDFCopies) ?? true },
         presentProblem: { [weak self] problem in self?.errorMessage = problem })
     /// Set by indexing when a scan of the whole vault finishes; tests that fill the index
     /// themselves set it too.
     var hasCompletedIndexScan = false
+    /// The index finished a scan on an earlier launch: it is complete but for what changed since.
+    var indexFinishedAnEarlierScan = false
+    /// Whether what the index answers can be shown as the vault's: after a scan this launch, or
+    /// from the last one. Acting on a name no file has still asks for `hasCompletedIndexScan`.
+    var isIndexUsable: Bool { hasCompletedIndexScan || indexFinishedAnEarlierScan }
     private var monitor: VaultMonitor?
     /// This window's hold on the open vault's index, which every window on the vault shares
     /// with its scans (`VaultIndexRegistry`).
@@ -350,6 +402,7 @@ final class WorkspaceModel {
         if let fileRecovery = try? FileRecoveryStore.forVault(identifier: vault.id, in: applicationFolders.applicationSupportFolder) {
             Task.detached(priority: .utility) { try? fileRecovery.removeAllSnapshots() }
         }
+        processServices.unsavedDrafts.removeAll(inVault: vault.id)
         VaultIndex.removeIndex(forVault: vault.id, in: applicationFolders.cachesFolder)
         CommunityPluginHost.forgetVault(vault.id, defaults: deviceDefaults)
         // Opening the folder again makes a new identifier, so nothing would read these again.
@@ -392,18 +445,15 @@ final class WorkspaceModel {
             Task { @MainActor in self?.scheduleExternalRefresh(changedLocation) }
         }, onVaultMove: { [weak self] newLocation in
             Task { @MainActor in await self?.vaultFolderDidMove(to: newLocation) }
+        }, onItemMove: { [weak self] oldLocation, newLocation in
+            Task { @MainActor in await self?.followExternalMove(from: oldLocation, to: newLocation) }
         })
         // Writes coordinated with our own presenter are not reported back as external.
         let vaultStore = VaultStore(root: root, filePresenter: vaultMonitor)
-        let entries: [VaultEntry]
-        let vaultIndexLease: VaultIndexLease
-        // Read first so the root is listed once, in this vault's order. A failed read is
-        // reported when the settings are read again below, and Obsidian's defaults apply.
-        let settings = (try? await vaultStore.settings()) ?? ObsidianSettings()
+        // A vault that cannot be read is refused here, with the open one still open. What is in
+        // it is read after the switch, behind the documents (`fillInVaultBehindDocuments`).
         do {
-            entries = try await vaultStore.children(of: .root, sortedBy: settings.fileSortOrder)
-            // The index another window has open on this vault, or this vault's own.
-            vaultIndexLease = try await processServices.vaultIndexes.lease(forVault: vaultIdentifier, root: root)
+            try await vaultStore.checkFolderCanBeListed()
         } catch {
             vaultMonitor.stop()
             throw error
@@ -416,7 +466,6 @@ final class WorkspaceModel {
             await saveVaultAppearanceNow()
         } catch {
             vaultMonitor.stop()
-            vaultIndexLease.end()
             throw error
         }
         // The plugins of the vault being left unload before anything of it closes, unless
@@ -429,21 +478,18 @@ final class WorkspaceModel {
             for document in tabDocuments.values { try await document.saveAllChanges() }
         } catch {
             vaultMonitor.stop()
-            vaultIndexLease.end()
             joinVaultsPlugins()
             throw error
         }
         forgetStateOfVaultBeingLeft()
         folderAccess = access; store = vaultStore; monitor = vaultMonitor
-        useIndex(vaultIndexLease)
         readAloud?.vaultRoot = access.root
         embeddedPDFSessions.useVault(root: root, saving: embeddedPDFSaving(writer: vaultStore.writer))
-        rootEntries = entries
-        checkConflictVersions(of: entries.lazy.filter { entry in !entry.isDirectory }.map(\.path))
         hasCompletedIndexScan = false
+        indexFinishedAnEarlierScan = false
         // If this vault's settings cannot be read, Obsidian's defaults apply, rather than
         // the last vault's deletion or link settings.
-        vaultSettings = settings
+        vaultSettings = ObsidianSettings()
         // The last vault's fonts and accent do not carry over while this vault's are read.
         applyVaultAppearance(ObsidianAppearance())
         currentVaultIdentifier = vaultLibrary.recordOpening(identifier: vaultIdentifier, root: root, location: refreshedLocation ?? location)
@@ -458,9 +504,11 @@ final class WorkspaceModel {
             try? FileRecoveryStore.forVault(identifier: identifier, in: applicationFolders.applicationSupportFolder)
         }
         pruneRecoverySnapshots()
-        await reloadVaultSettings()
-        // Another window's scan of this vault, finished or running, serves this one.
-        startIndexing(.unlessScanned)
+        // The settings decide the note's fonts and the root's order, and normally take a moment.
+        // A file iCloud has evicted makes its read wait for a download, which the note does not.
+        let settingsReading = Task { await reloadVaultSettings() }
+        await waitBriefly(for: settingsReading)
+        guard store === vaultStore else { return }
         // Returns to where the user left this vault, as Obsidian restores its workspace. A
         // window opened from another starts empty, and saves its tabs once they change.
         switch tabs {
@@ -468,9 +516,45 @@ final class WorkspaceModel {
         case .window(let windowLayout): restoreTabLayout(windowLayout)
         case .none: layoutVaultIdentifier = currentVaultIdentifier
         }
+        await fillInVaultBehindDocuments(vaultIdentifier: vaultIdentifier, root: root, vaultStore: vaultStore, settingsReading: settingsReading)
+        guard store === vaultStore else { return }
         checkForUnfinishedRecordings()
+        await recoverDraftsLeftBehind()
         joinVaultsPlugins()
         if preferences.isEnabled(.dailyNotes), dailyNoteSettings.opensOnStartup { await openDailyNote() }
+    }
+
+    /// How long a note's first showing waits for the vault's settings, so it does not draw in
+    /// the wrong fonts and change a moment later.
+    private static let settingsWaitBeforeFirstNote = Duration.milliseconds(150)
+
+    private func waitBriefly(for settingsReading: Task<Void, Never>) async {
+        let (firstToEnd, ended) = AsyncStream.makeStream(of: Void.self)
+        let readingWatch = Task { await settingsReading.value; ended.finish() }
+        let timeLimit = Task { [clock] in try? await clock.sleep(for: Self.settingsWaitBeforeFirstNote); ended.finish() } // Cancelled: the settings came first.
+        for await _ in firstToEnd {}
+        readingWatch.cancel(); timeLimit.cancel()
+    }
+
+    /// Reads what the documents already showing do not need: the index, the root's listing and
+    /// the rest of the settings. A vault left meanwhile takes none of it.
+    private func fillInVaultBehindDocuments(vaultIdentifier: UUID, root: URL, vaultStore: VaultStore, settingsReading: Task<Void, Never>) async {
+        do {
+            // The index another window has open on this vault, or this vault's own.
+            let vaultIndexLease = try await processServices.vaultIndexes.lease(forVault: vaultIdentifier, root: root)
+            guard store === vaultStore else { return vaultIndexLease.end() }
+            indexFinishedAnEarlierScan = (try? await vaultIndexLease.index.hasFinishedAScan()) ?? false // Unknown: the first scan's messages show.
+            guard store === vaultStore else { return vaultIndexLease.end() }
+            useIndex(vaultIndexLease)
+            // Another window's scan of this vault, finished or running, serves this one.
+            startIndexing(.unlessScanned)
+        } catch {
+            // The index is a cache: the vault's documents open without it.
+            indexingMessage = "Index needs attention"
+            errorMessage = "Graphite couldn't open this vault's index, so search and links are unavailable. Rebuilding the index in Settings may help."
+        }
+        await listRoot()
+        await settingsReading.value
     }
 
     /// Stops hearing the vault being left and drops what this window showed of it: its index,
@@ -479,6 +563,8 @@ final class WorkspaceModel {
         monitor?.stop(); stopIndexing(); externalChangeTask?.cancel()
         pendingExternalChanges.removeAll(); firstPendingExternalChangeTime = nil
         indexingMessage = ""
+        rootEntries = []; hasListedRoot = false; folderListingVersions = [:]
+        rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; settingsFilesRevisionAtLastReading = nil
         readAloud?.clear()
         readAloudNavigator?.clearQueueHistoryAndPenMarks()
         calloutFolds.forgetEveryNote()
@@ -534,6 +620,7 @@ final class WorkspaceModel {
 
     func reloadVaultSettings() async {
         guard let store else { return }
+        settingsFilesRevisionAtLastReading = await store.settingsFilesRevision()
         // Each file is read on its own, and a file that cannot be read replaces what the last
         // vault's file said: its settings are never used in this vault.
         templateSettingsReading = await Self.settingsReading { try await store.templateSettings() }
@@ -544,9 +631,12 @@ final class WorkspaceModel {
         await reloadVaultAppearance()
         do {
             let settings = try await store.settings()
+            // Another vault may have opened while the file was read.
+            guard store === self.store else { return }
             let sortOrderChanged = settings.fileSortOrder != vaultSettings.fileSortOrder
             vaultSettings = settings
-            if sortOrderChanged { await refreshDirectory() }
+            // While a vault opens the root is listed next, in this order.
+            if sortOrderChanged, hasListedRoot { await refreshDirectory() }
         } catch { errorMessage = "Graphite could not read the Obsidian settings in this vault. " + error.localizedDescription }
     }
 
@@ -660,25 +750,6 @@ final class WorkspaceModel {
         if let firstFailure { throw firstFailure }
     }
 
-    func refreshDirectory() async {
-        guard let store else { return }
-        do {
-            let entries = try await store.children(of: .root, sortedBy: vaultSettings.fileSortOrder)
-            // Expanded folders list their contents again whatever happened at the root.
-            directoryVersion += 1
-            // An unchanged listing asks the file provider about nothing again. Every listed
-            // file was queued for a conflict check, up to 5,000 of a 24,712-file root, each
-            // time anything in the vault changed, which Obsidian does every few seconds to
-            // its `.obsidian` files when it runs beside Graphite (measured 2026-10-16).
-            guard entries != rootEntries else { return }
-            let listedPaths = Set(rootEntries.lazy.map(\.path))
-            rootEntries = entries
-            // Files listed before were already asked about; a version a file gains or loses
-            // is reported as a change to that file, which checks it again.
-            checkConflictVersions(of: entries.lazy.filter { entry in !entry.isDirectory && !listedPaths.contains(entry.path) }.map(\.path))
-        } catch { errorMessage = error.localizedDescription }
-    }
-
     // MARK: Index
 
     /// Asks for a scan of the open vault, which every window on it hears of. A scan asked
@@ -686,7 +757,8 @@ final class WorkspaceModel {
     /// folders that changed.
     func startIndexing(_ request: VaultIndexScanRequest = .always) {
         guard let indexLease else { return }
-        isIndexing = true; indexingMessage = "Indexing…"
+        // A spaced scan may start later, and says so when it does.
+        if case .spaced = request {} else { isIndexing = true; indexingMessage = "Indexing…" }
         indexLease.requestScan(request)
     }
 
@@ -710,10 +782,14 @@ final class WorkspaceModel {
             isIndexing = true; indexingMessage = "Indexing…"
         case .scanFinished(let report, let isAnotherScanQueued):
             hasCompletedIndexScan = true
-            indexVersion += 1
             pendingContentFileCount = report.pendingContentFiles
             describeIndex(fileCount: report.discoveredFiles)
-            if !searchQuery.isEmpty { await search() }
+            // Everything keyed on the index runs again for this, so a scan that found the
+            // vault as the index has it changes nothing shown.
+            if report.changedAnything {
+                indexVersion += 1
+                if !searchQuery.isEmpty { await search() }
+            }
             isIndexing = isAnotherScanQueued
         case .scanCancelled:
             indexingMessage = "Indexing paused"; isIndexing = false
@@ -722,11 +798,19 @@ final class WorkspaceModel {
         case .emptied:
             // An index being emptied is not complete: a link followed meanwhile creates no note.
             hasCompletedIndexScan = false
+            indexFinishedAnEarlierScan = false
         }
+        if !isIndexing { endRunningScanWaits() }
+    }
+
+    private func endRunningScanWaits() {
+        for wait in runningScanWaits { wait.finish() }
+        runningScanWaits = []
     }
 
     /// Lets go of the open vault's index: it closes when no other window has the vault open.
     private func stopIndexing() {
+        endRunningScanWaits()
         indexEventsTask?.cancel(); indexEventsTask = nil
         indexLease?.end(); indexLease = nil
         isIndexing = false
@@ -834,6 +918,7 @@ final class WorkspaceModel {
         Task(priority: .utility) {
             do {
                 try await index.refresh(paths: paths, root: root)
+                lastIndexChange = BaseContentChange(version: indexVersion + 1, paths: Set(paths))
                 indexVersion += 1
                 if !isIndexing, hasCompletedIndexScan, self.index === index { describeIndex(fileCount: try await index.fileCount()) }
             } catch { indexingMessage = "Index needs attention" }
@@ -900,12 +985,12 @@ final class WorkspaceModel {
 
     // MARK: Links
 
-    /// The vault file an embed or link target refers to, if exactly one does.
+    /// The vault file an embed or link target refers to. A name several files share means
+    /// one of them, as in Obsidian (`WikiLinkResolver.closestFirst`).
     func resolveLink(_ target: String, from source: VaultPath, isWiki: Bool = true) async -> VaultPath? {
         guard let folderAccess else { return nil }
         if let file = WikiLinkResolver.existingDirectFile(target: target, source: source, isWiki: isWiki, in: folderAccess.root) { return storedPath(for: file) }
-        let matches = (try? await index?.resolve(target, from: source, isWiki: isWiki)) ?? []
-        return matches.count == 1 ? matches.first : nil
+        return (try? await index?.resolve(target, from: source, isWiki: isWiki))?.first
     }
 
     /// Follows a link: to a heading or block of a note, a page of a PDF, or any file. A
@@ -941,14 +1026,19 @@ final class WorkspaceModel {
             return
         }
         do {
-            let matches = try await index.resolve(target, from: source, isWiki: isWiki)
-            if matches.isEmpty {
-                // As in Obsidian, following a link to a note that does not exist creates it.
-                // Until the first scan finishes the note may exist unindexed, so nothing is created then.
-                if hasCompletedIndexScan { await createNote(forLink: target, from: source, isWiki: isWiki) }
-                else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
+            // The lookup again, as an index that cannot be read must not look like a link
+            // with no match, which would create a note.
+            guard try await index.resolve(target, from: source, isWiki: isWiki).isEmpty else { return }
+            // As in Obsidian, following a link to a note that does not exist creates it.
+            // Until a scan finishes the note may exist unindexed, as one synced since the
+            // last launch. An index complete from then is checked in a moment, so this
+            // waits for that scan instead of asking the person to try again.
+            if await isIndexCompleteAfterRunningScan() {
+                let matchesAfterScan = try await index.resolve(target, from: source, isWiki: isWiki)
+                if matchesAfterScan.isEmpty { await createNote(forLink: target, from: source, isWiki: isWiki) } else { await follow(target,
+                    from: source, isWiki: isWiki, placement: placement) }
             }
-            else { searchQuery = WikiLinkResolver.pathPart(target); await search(); notice = "Several files match “\(target)”. Choose the intended file in search." }
+            else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -964,9 +1054,10 @@ final class WorkspaceModel {
             // Empty, as in Obsidian: the inline title shows the name.
             _ = try await store.save(Data(), at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await refreshDirectory(); await open(path)
+            await open(path)
             // Ready to type, as in Obsidian.
             openMarkdownSession(at: path)?.startsEditingWhenShown = true
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1010,8 +1101,8 @@ final class WorkspaceModel {
             let path = try directory.appending(stem + ".md")
             _ = try await store.save(Data(), at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1031,14 +1122,16 @@ final class WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "base")
             _ = try await store.save(Data("views:\n  - type: table\n    name: Table\n".utf8), at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await refreshDirectory(); await open(path)
+            await open(path)
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
     /// What bases inside `note` need to run; nil when Bases are turned off or no vault is open.
     func baseEmbedContext(for note: VaultPath) -> BaseEmbedContext? {
         guard preferences.isEnabled(.bases), let store, let index else { return nil }
-        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, isIndexComplete: hasCompletedIndexScan,
+        return BaseEmbedContext(store: store, index: index, embeddingNote: note, contentVersion: indexVersion, contentChange: lastIndexChange,
+            isIndexComplete: isIndexUsable,
                                 open: { [weak self] path in Task { await self?.open(path) } },
                                 filesChanged: { [weak self] paths in self?.filesSavedOutsideEditors(paths) },
                                 openBase: { [weak self] basePath, viewName in Task { await self?.openBase(basePath, viewName: viewName) } },
@@ -1074,7 +1167,8 @@ final class WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "pdf")
             try await writeNotebook(options, titled: name, at: path, store: store, root: root)
             refreshIndex(for: [path])
-            await refreshDirectory(); await open(path)
+            await open(path)
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1093,7 +1187,7 @@ final class WorkspaceModel {
             _ = try await Task.detached { try writer.copy(from: source, to: destination, expecting: .absent) }.value
             insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: nil, chosenIn: session.text)
             refreshIndex(for: [path])
-            await refreshDirectory()
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1111,7 +1205,7 @@ final class WorkspaceModel {
             let path = try await saveUnderFreeName(data, in: directory, stem: stem, fileExtension: fileExtension, store: store)
             insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
-            await refreshDirectory()
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -1322,6 +1416,20 @@ final class WorkspaceModel {
         await refreshDirectory()
     }
 
+    /// Keeps a drawing whose file changed elsewhere in a new file beside it, and tells the
+    /// person its name, since the notes keep embedding the original.
+    func saveDrawingAsNewFile(_ content: DrawingContent, format: DrawingFormat, for request: DrawingEditorRequest) async throws {
+        guard let store, let root = folderAccess?.root, case .existingDrawing(let path, _, _) = request.target else {
+            throw SeparateCopyRefusal.drawingHasNoFile
+        }
+        let newPath = try await store.separateCopyPath(of: path, fileExtension: format.fileExtension)
+        _ = try await DrawingFileService(writer: store.writer).save(content, format: format, to: try newPath.url(in: root), expecting: .absent)
+        refreshIndex(for: [newPath])
+        drawingVersion += 1
+        await refreshDirectory()
+        notice = "Your drawing is saved as “\(newPath.name)”. The notes still embed “\(path.name)”, which has the other app's version."
+    }
+
     /// Encodes a copy for sharing; nothing is written into the vault.
     func exportDrawingCopy(_ content: DrawingContent, format: DrawingFormat, title: String) async throws -> URL {
         let fileData = try await DrawingFileService().fileData(for: content, format: format)
@@ -1449,7 +1557,11 @@ final class WorkspaceModel {
     /// Keeps tabs, their histories, and recent files pointing at a moved file or folder.
     /// Tabs of moved files load them again from their new place.
     func followMoveInNavigation(from oldPath: VaultPath, to newPath: VaultPath) {
-        for tab in layout.allTabs where tab.path?.isInside(oldPath) == true { tabDocuments[tab.id]?.unload() }
+        let movedDocuments = layout.allTabs.filter { tab in tab.path?.isInside(oldPath) == true }.compactMap { tab in tabDocuments[tab.id] }
+        // As every other way a session goes: the note reopens at the line and cursor it left,
+        // and `followMoveInPlaces` below carries that to the new path.
+        rememberPlaces(of: movedDocuments)
+        for document in movedDocuments { document.unload() }
         followMoveInConflictVersions(from: oldPath, to: newPath)
         layout.replacePrefix(oldPath, with: newPath)
         recentFiles.replacePrefix(oldPath, with: newPath)
@@ -1503,25 +1615,9 @@ final class WorkspaceModel {
             if changedLocations.contains(where: Self.isAppearanceFile) { await reloadVaultAppearance() }
             // A theme or snippet file was added, changed or removed.
             if changedLocations.contains(where: ObsidianStyleFiles.isStyleFile) { communityPlugins.vaultStylesDidChange(); scheduleThemeRefresh() }
-            // Only the open documents another app is known to have changed are read again.
-            switch refresh {
-            case .nothingShown: break
-            case .files(let changedPaths):
-                await checkOpenDocumentsForExternalChanges(limitedTo: Set(changedPaths))
-                // A provider reports a version it gained or lost as a change to the file.
-                checkConflictVersions(of: changedPaths)
-            case .wholeVault:
-                await checkOpenDocumentsForExternalChanges()
-                checkConflictVersions(of: tabDocuments.values.compactMap(\.loadedPath))
-            }
-            await refreshDirectory()
-            // A new drawing version rebuilds every embed and image shown, so it waits for a
-            // change previews can show; Obsidian rewrites `.obsidian` files constantly.
-            switch refresh {
-            case .nothingShown: break
-            case .files(let changedPaths): drawingVersion += 1; refreshIndex(for: changedPaths)
-            case .wholeVault: drawingVersion += 1; startIndexing()
-            }
+            // Theme settings list these hidden folders.
+            if changedLocations.contains(where: ObsidianStyleFiles.isStyleFile) { styleFilesVersion += 1 }
+            await applyExternalChanges(refresh)
         }
     }
 
@@ -1656,58 +1752,8 @@ final class WorkspaceModel {
             let document = document(for: tabID)
             document.pdfSession = replacement; document.markdownSession = nil; document.loadedPath = path
             layout.show(path, inTab: tabID, recordsHistory: path != layout.tab(withID: tabID)?.path)
-            await refreshDirectory()
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
-    }
-}
-
-/// What a batch of changes reported by other apps needs refreshed.
-enum ExternalChangeRefresh: Equatable {
-    /// Only files the vault does not show changed, such as Obsidian's own `.obsidian` files.
-    case nothingShown
-    /// These files changed, and are refreshed one by one.
-    case files([VaultPath])
-    /// Folders, many files, or places that cannot be named changed; one reconciling scan
-    /// finds what they were.
-    case wholeVault
-
-    init(changedLocations: Set<URL>, root: URL, maximumFileCount: Int) {
-        // Resolving a path touches the file system for each of its folders, so the root is
-        // resolved once, and each location at most once.
-        let rootPath = WorkspaceModel.comparablePath(of: root)
-        var changedPaths: [VaultPath] = []
-        var hasItemLocation = false
-        // Every answer other than refreshing files one by one is a whole-vault scan, so the
-        // first location that calls for one decides, and the rest are not resolved.
-        for location in changedLocations {
-            let locationPath = WorkspaceModel.comparablePath(of: location)
-            // The vault folder itself is reported along with the items that changed in it,
-            // and those items tell what changed.
-            guard locationPath != rootPath else { continue }
-            hasItemLocation = true
-            guard let path = WorkspaceModel.vaultPath(forComparablePath: locationPath, rootPath: rootPath) else {
-                self = .wholeVault
-                return
-            }
-            // Hidden folders and files, like `.obsidian` and `.trash`, are neither listed
-            // nor indexed, as in Obsidian.
-            guard !path.rawValue.split(separator: "/").contains(where: { component in component.hasPrefix(".") }) else { continue }
-            if (try? location.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
-                self = .wholeVault
-                return
-            }
-            changedPaths.append(path)
-            if changedPaths.count > maximumFileCount {
-                self = .wholeVault
-                return
-            }
-        }
-        // The vault folder reported alone gives no way to tell what changed.
-        guard hasItemLocation else {
-            self = .wholeVault
-            return
-        }
-        self = changedPaths.isEmpty ? .nothingShown : .files(changedPaths.sorted())
     }
 }
 

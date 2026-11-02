@@ -6,8 +6,8 @@
  *              More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 21/10/2026
+ * Version: 0.10
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -33,6 +33,7 @@ struct CanvasPane: View {
     @Environment(\.renameDocument) private var renameDocument
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
+    @Environment(\.isActiveInItsSide) private var isActiveInItsSide
 
     private var preferences: GraphitePreferences { workspace.preferences }
     private var usesDocumentControlRow: Bool {
@@ -58,7 +59,7 @@ struct CanvasPane: View {
         }
         #if canImport(UIKit)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isFocused {
+            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isActiveInItsSide {
                 DocumentControlRow(isWriting: $session.isWriting) {
                     if session.isWriting { UndoRedoButtons(availability: session.undoAvailability) }
                 }
@@ -95,7 +96,8 @@ struct CanvasPane: View {
             imageActions: ReadingImageActions(providerIdentity: ObjectIdentifier(workspace), viewImage: { [workspace] path in
                 workspace.viewedImageNote = nil
                 workspace.viewedImage = path
-            }, editDrawing: nil))
+            }, editDrawing: nil),
+            pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn)
     }
 
     /// How Markdown on cards reads: as in reading view, without the properties, which an
@@ -123,15 +125,8 @@ struct CanvasPane: View {
 
     @ViewBuilder private var banner: some View {
         if session.hasExternalConflict {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("This canvas changed in another app. Your changes are still here.").font(.callout)
-                Spacer()
-                Button("Save a Copy") { Task { await saveCopy() } }
-                Button("Use Other Version") { showsReloadConfirmation = true }
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
-            .background(.orange.opacity(0.12))
+            ExternalChangeBanner(message: "This canvas changed in another app. Your changes are still here.",
+                                 saveCopy: { Task { await saveCopy() } }, useOtherVersion: { showsReloadConfirmation = true })
         } else if let errorMessage = session.errorMessage {
             HStack(spacing: 12) {
                 Label(errorMessage, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
@@ -202,8 +197,8 @@ struct CanvasPane: View {
     private func saveCopy() async {
         do {
             let path = try await session.saveSeparateCopy()
-            await workspace.refreshDirectory()
             await workspace.open(path)
+            await workspace.showInListings(path)
         } catch { workspace.errorMessage = error.localizedDescription }
     }
 }
@@ -610,6 +605,6 @@ struct CanvasFilePicker: View {
                 } catch { workspace.errorMessage = error.localizedDescription }
             }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }

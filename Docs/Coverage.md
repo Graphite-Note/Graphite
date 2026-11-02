@@ -44,6 +44,13 @@ Three of upstream's choices in `Vendor/swiftui-math` now do what TeX and MathJax
   - Inline `\binom`'s parentheses are 0.08 em narrower, tall `\left(` sizes differ by a step, and `cases` and matrices are up to 0.2 em wider.
   - `\cfrac[l]` and `\cfrac[r]` are centered, and `\boxed` has KaTeX's padding.
 
+
+## The Mac editor's tests keep one width: 2026-11-02
+
+`MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` failed once in CI on #128, at character 2185 instead of 1690, in a run where it took 24.8 seconds rather than 0.2. Reproduced on this Mac by waiting between the jump and the check: with classic scroll bars, `MacMarkdownEditorFixture`'s scroller appears at the window's next layout and narrows the text view from 600 to 583 points, TextKit 2 replaces its layout with estimates (the note's height goes from 8010 to 6668 points), and the scroll offset stays, so another line is at the top. 72 runs under full CPU load did not show it; only the wait did. The fixture now has no vertical scroller, so its width does not change, and the line stays in place through the same wait.
+
+Not fixed: this comes from the editor, not only the fixture. In the fixture with its scroller on, narrowing the window after a jump moved the top of the view from character 1690 to 2257 in a 300-line note. Not checked in the app itself.
+
 ## MathJax's other commands typeset in formulas: 2026-11-01
 
 About 5 % of the formulas in the owner's vault showed as LaTeX source in the reading view and Live Preview, where Obsidian draws them. Measured on the vault at this date, with Textual's tokenizer and `MathAttachment.canTypeset` after Graphite's rewriting: 16,796 of 316,950 could not be typeset before, 54 now (0.02 %).
@@ -74,7 +81,14 @@ Two faults reported from the owner's Mac in `Advanced Analog ic/3_SmallSignalAna
 - A figure caption showed `$R_G \rightsquigarrow R_G/4$` as its LaTeX source while the caption's other formulas were typeset: SwiftUIMath knew only the plain arrows. It now typesets KaTeX's other arrows that Latin Modern has glyphs for, `\leadsto`, hooks, harpoons, doubled and struck-through arrows among them (`Vendor/swiftui-math/GRAPHITE-PATCHES.md`, 8). `AppProjectTextualPatchTests.testKaTeXArrowsAreTypesetAsOneRelation` typesets each one and the caption's formula. Rendered in a Debug build of the Mac app: the caption's arrow and five others drawn in a demo note.
 - Switching from reading view to editing showed the editor where it had been (line 861) rather than the passage read (line 454), and switching back to reading returned to line 454. The Mac editor took the reading place only in its SwiftUI update, which reaches a kept editor before it is in the window; the place then waited until the next update, the click back to reading. The editor now takes it when it enters the window, as the iPad's does (BUG-EDITOR-04, `ED-27`). `MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` follows the pane's order and fails without the fix. Reproduced and checked in a Debug build of the Mac app with the note and its figures: three switches from reading to editing each opened the editor at the passage read, with a log of each hand-off.
 - **Automated tests, passing on macOS:** `AppProjectTextualPatchTests` and `MacMarkdownEditorReadingReturnTests` (28 tests). The full package suite was not run locally (no-sound rule); CI runs it.
-- **Found on the way, not fixed:** a formula that breaks rows inside nested `\textcolor{…}{…}` groups in an `aligned` environment crashes Graphite in SwiftUIMath's `Parser.buildTable` (index out of range, Release builds too); the owner's vault has one in `Analyse 2/1.Equarions Différentielles Ordinaires.md`. A minus right after a relation and spaces (`\quad \rightarrow \quad -\frac…`) stops Debug builds on an `assert` in `Typesetter.getInterElementSpace`. Across the owner's vault, 16,826 of 312,170 formulas still fail to typeset after Graphite's LaTeX rewriting and show as source; the commands most often missing are `\boldsymbol`, `\boxed`, `\leqslant`, `\geqslant`, the `\big` family, `\dots`, `\underset`, `\overset`, `\lvert`, `\rvert`, `\xrightarrow` and `\cancel`.
+- **Found on the way, not fixed:** a minus right after a relation and spaces (`\quad \rightarrow \quad -\frac…`) stops Debug builds on an `assert` in `Typesetter.getInterElementSpace`. Across the owner's vault, 16,826 of 312,170 formulas still fail to typeset after Graphite's LaTeX rewriting and show as source; the commands most often missing are `\boldsymbol`, `\boxed`, `\leqslant`, `\geqslant`, the `\big` family, `\dots`, `\underset`, `\overset`, `\lvert`, `\rvert`, `\xrightarrow` and `\cancel`.
+
+## A formula with row breaks inside colour groups no longer crashes Graphite: 2026-10-24
+
+A display formula in the owner's vault (`Analyse 2/1.Equarions Différentielles Ordinaires.md`) writes each row of an `aligned` environment inside its own `\textcolor{…}{…}` groups, so its row breaks sit inside braces. SwiftUIMath's parser then read past the end of the table's rows and Graphite crashed as it drew the note, in reading view and Live Preview, Release builds too (`EXC_BREAKPOINT` in `Parser.buildTable`, reproduced in a Debug build of the Mac app with a one-formula demo note). The table now gets a row for every row break (`Vendor/swiftui-math/GRAPHITE-PATCHES.md`, 9); the formula is still not one the parser can read, so it shows as its source.
+
+- `AppProjectTextualPatchTests.testRowBreaksInsideColorGroupsOfAnAlignedFormulaDoNotCrash` crashed the test process before the patch and passes with it; plain `aligned` rows are drawn as before.
+- Not checked in the app after the fix, nor on the iPad.
 
 ## Fourteen diagram types and Live Preview, in the iPad simulator: 2026-10-23
 
@@ -2196,6 +2210,7 @@ One regression test per defect of the SOLID audit's "Fix before the cleanup star
 | Defect | Suite | Test |
 | --- | --- | --- |
 | BUG-SHELL-03 | GraphiteUITests | `QuitSaveDecisionTests.testStaysOpenWhenASaveFailedAndCarriesTheFailureToShow` |
+| BUG-SHELL-03 | GraphiteUITests | `UnsavedDocumentDraftTests.testQuittingWithTextThatCannotBeSavedKeepsItInADraftAndSaysSoOnReopening` |
 | BUG-MDCORE-01 | GraphiteCoreTests | `NotePreviewDocumentTests.testRunsNestedPastTheSafeDepthStayWholeInsteadOfBeingParsedIntoSections` |
 | BUG-CANVAS-01 | GraphiteUITests | `CanvasSessionTests.testUndoWhileTypingInATextCardUndoesTheTypingFirstAndRedoBringsItBack` |
 | BUG-VOICE-V01 | GraphiteCoreTests | `ReadAloudPronunciationVaultFileReadingTests.testAFileThatCannotBeReadIsReportedAsReadFailedAndIsNeverRewritten` |

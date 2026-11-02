@@ -1,3 +1,14 @@
+/**
+ * File: VaultPicturePicker.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The sheet that picks a picture from the vault.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import CoreGraphics
 import GraphiteCore
@@ -45,6 +56,6 @@ struct VaultPicturePicker: View {
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
             .task(id: query) { paths = await findPictures(query.trimmingCharacters(in: .whitespaces)) }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }

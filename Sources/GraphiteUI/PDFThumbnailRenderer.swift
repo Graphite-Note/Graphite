@@ -1,3 +1,14 @@
+/**
+ * File: PDFThumbnailRenderer.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: Renders and caches small page images for the pages sidebar.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import GraphiteApple
@@ -325,15 +336,15 @@ extension PDFPage {
 
 /// A page in a thumbnail list. Rows are identified by the page object, not its index,
 /// so inserting or moving pages never shows one page's image for another.
-struct PDFThumbnailListPage: Identifiable {
+struct PDFThumbnailListPage {
     let pageIndex: Int
     let page: PDFPage
-    var id: ObjectIdentifier { ObjectIdentifier(page) }
 
-    @MainActor static func pages(of document: PDFDocument) -> [PDFThumbnailListPage] {
-        (0..<document.pageCount).compactMap { pageIndex in
-            document.page(at: pageIndex).map { page in PDFThumbnailListPage(pageIndex: pageIndex, page: page) }
-        }
+    /// The rows of a thumbnail list, one per page, known by index so that the list needs no page
+    /// but those of the rows it shows: a textbook of 1,000 pages asks PDFKit for all of them
+    /// otherwise, on the main thread, each time the list is drawn.
+    @MainActor static func rowIndices(of document: PDFDocument) -> Range<Int> {
+        0..<document.pageCount
     }
 }
 
