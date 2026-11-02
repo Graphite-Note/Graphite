@@ -2,7 +2,7 @@
 
 Created: 2026-11-01. Line numbers are those of commit `710283d3` (`origin/main`), frozen for the hunt; later commits move them.
 
-Status on 2026-11-02: 209 of 305 ticked, 96 open (92 of them fixed and waiting for the check they name; see each item). Full detail of each finding (evidence, second reader's reason, device checks): [Docs/solid/reviews/2026-11-01-bug-hunt.jsonl](solid/reviews/2026-11-01-bug-hunt.jsonl). Where each cause belongs in the rewrite: [Docs/solid/reviews/2026-11-01-bug-hunt.md](solid/reviews/2026-11-01-bug-hunt.md).
+Status on 2026-11-02: 208 of 305 ticked, 97 open (93 of them fixed and waiting for the check they name; see each item). Full detail of each finding (evidence, second reader's reason, device checks): [Docs/solid/reviews/2026-11-01-bug-hunt.jsonl](solid/reviews/2026-11-01-bug-hunt.jsonl). Where each cause belongs in the rewrite: [Docs/solid/reviews/2026-11-01-bug-hunt.md](solid/reviews/2026-11-01-bug-hunt.md).
 
 ## Request
 
@@ -745,7 +745,7 @@ Where it lands in the rewrite: Phase 8 and Phase 10.
 - [x] **HUNT-236** (low, ui, traced) Common Mermaid diagrams (state diagram with a composite state, sequence diagram with box/create/destroy, class namespace, flowchart edge from a group to itself, and new types like block, C4, architecture, kanban) show as an unexplained raw code block. `Sources/GraphiteUI/ReadingDiagram.swift:44`. Known as: #48.
   Cause: init?(source:typography:) returns nil for unsupportedDiagramType, subgraphsNotLaidOut, compositeStatesNotLaidOut, namespacesNotLaidOut and statementsNotLaidOut; LivePreviewDiagramContent.code then draws the fenced source with no message, unlike the .unreadable case which explains why Fix: Show the source with a short line saying this diagram type or feature is not drawn yet, as .unreadable does
   Done 2026-11-01: `ReadingDiagram` is no longer failable: a type, or a feature of a type, not drawn yet shows the source with a line saying so (new reasons for sequence, Git graph and Sankey), in the reading view and Live Preview (`ReadingDiagramTests`, `ReadingViewBuilderDiagramTests`, `LivePreviewDiagramPreparationTests` and each type's test).
-
+- [ ] **HUNT-306** (low, bug, traced) Found by the review of the merged fixes: in a rendered block of a Live Preview note, the Read Aloud highlight uses the block's stored range, which goes stale after typing above it, and counts offsets from the LF-joined Markdown, so it is off in CRLF notes. Not fixed.
 
 ## 12. Settings
 

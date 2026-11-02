@@ -28,7 +28,7 @@
     "shared-singletons": 0,
     "static-pattern-sets-tested": 0,
     "task-sleep-in-sources": 46,
-    "task-sleep-in-tests": 203,
+    "task-sleep-in-tests": 199,
     "temporary-directory-in-tests": 76,
     "test-round-names": 30,
     "try-force": 0,
