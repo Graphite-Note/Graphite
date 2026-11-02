@@ -194,11 +194,11 @@ final class UiEditorMacPropertiesTests: XCTestCase {
         XCTAssertEqual(Coordinator.selection(NSRange(location: 3, length: 30), keptBelowConcealedPropertiesEndingAt: end), NSRange(location: 20, length: 13))
         XCTAssertEqual(Coordinator.selection(NSRange(location: 0, length: 40), keptBelowConcealedPropertiesEndingAt: end), NSRange(location: 0, length: 40))
         XCTAssertEqual(Coordinator.selection(NSRange(location: 25, length: 2), keptBelowConcealedPropertiesEndingAt: end), NSRange(location: 25, length: 2))
-        XCTAssertTrue(Coordinator.cutsIntoConcealedProperties(NSRange(location: 19, length: 1), propertiesEnd: end), "A backspace at the text's start")
-        XCTAssertTrue(Coordinator.cutsIntoConcealedProperties(NSRange(location: 10, length: 15), propertiesEnd: end))
-        XCTAssertFalse(Coordinator.cutsIntoConcealedProperties(NSRange(location: 0, length: 25), propertiesEnd: end), "Replacing the whole YAML")
-        XCTAssertFalse(Coordinator.cutsIntoConcealedProperties(NSRange(location: 5, length: 3), propertiesEnd: end), "An edit inside it")
-        XCTAssertFalse(Coordinator.cutsIntoConcealedProperties(NSRange(location: 20, length: 1), propertiesEnd: end), "A forward delete at the text's start")
+        XCTAssertTrue(NativeMarkdownEditor.cutsIntoRenderedProperties(NSRange(location: 19, length: 1), propertiesEnd: end), "A backspace at the text's start")
+        XCTAssertTrue(NativeMarkdownEditor.cutsIntoRenderedProperties(NSRange(location: 10, length: 15), propertiesEnd: end))
+        XCTAssertFalse(NativeMarkdownEditor.cutsIntoRenderedProperties(NSRange(location: 0, length: 25), propertiesEnd: end), "Replacing the whole YAML")
+        XCTAssertFalse(NativeMarkdownEditor.cutsIntoRenderedProperties(NSRange(location: 5, length: 3), propertiesEnd: end), "An edit inside it")
+        XCTAssertFalse(NativeMarkdownEditor.cutsIntoRenderedProperties(NSRange(location: 20, length: 1), propertiesEnd: end), "A forward delete at the text's start")
     }
 }
 #endif
