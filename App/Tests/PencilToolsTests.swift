@@ -5,7 +5,7 @@
  * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
  *
  * Authors: Bahey Shalash
- * Version: 0.18
+ * Version: 0.19
  * Date: 01/11/2026
  */
 #if os(iOS)
@@ -479,9 +479,16 @@ final class PencilToolsTests: XCTestCase {
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank)).write(to: location)
         temporaryLocations.append(location)
         let session = try await PDFSession.open(location)
+        PencilToolRowForm.lastShown = nil
         let controller = try host(AnyView(NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) }))
+        // The whole row with the default palette needs 899 points; a portrait iPad's 834 rightly
+        // puts the colors behind the bar's one control, so this hosts at a landscape width,
+        // whichever way the simulator happens to be held.
+        let window = try XCTUnwrap(controller.view.window)
+        window.frame = CGRect(x: 0, y: 0, width: 1_100, height: window.bounds.height)
         let defaultRed = (red: 0xe9, green: 0x31, blue: 0x47)
         let brown = (red: 0xa0, green: 0x5a, blue: 0x2c)
+        try await waitUntil { PencilToolRowForm.lastShown?.form == .full }
         try await waitUntil { (try? self.showsColor(defaultRed, in: controller, withinTop: 240)) == true }
         XCTAssertFalse(try showsColor(brown, in: controller, withinTop: 240))
 
