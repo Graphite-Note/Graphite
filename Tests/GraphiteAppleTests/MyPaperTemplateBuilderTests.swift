@@ -1,3 +1,14 @@
+/**
+ * File: MyPaperTemplateBuilderTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: Building notebooks and previews from the person's own paper templates, and thumbnails of turned pages.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
 import CoreText

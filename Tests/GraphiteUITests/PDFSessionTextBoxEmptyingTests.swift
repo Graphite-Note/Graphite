@@ -30,6 +30,13 @@ final class PDFSessionTextBoxEmptyingTests: XCTestCase {
         return session
     }
 
+    /// One step of the PDF's history, as the editor makes it.
+    private func inOneStep(in session: PDFSession, _ operation: () throws -> Void) rethrows {
+        session.undoManager.beginUndoGrouping()
+        defer { session.undoManager.endUndoGrouping() }
+        try operation()
+    }
+
     private func box(preservedEntries: [String: PDFPreservedValue]) -> PDFTextBox {
         PDFTextBox(runs: [PDFTextRun(text: "Typed", attributes: .plain)], origin: CGPoint(x: 50, y: 500), width: 200, height: 40, preservedEntries: preservedEntries)
     }
@@ -40,13 +47,13 @@ final class PDFSessionTextBoxEmptyingTests: XCTestCase {
         let page = try XCTUnwrap(session.document.page(at: 0))
         let historyPage = session.historyPage(for: page)
         let foreign = box(preservedEntries: ["IT": .name("FreeTextTypeWriter"), "Subj": .text("Typewriter")])
-        try session.changeTextBox(from: nil, to: foreign, on: historyPage, actionName: "Add Text Box")
+        try inOneStep(in: session) { try session.changeTextBox(from: nil, to: foreign, on: historyPage, actionName: "Add Text Box") }
         XCTAssertEqual(session.textBoxes(on: page).count, 1)
 
         var emptied = foreign
         emptied.runs = []
         let step = PDFTextBoxEditStep(before: foreign, page: historyPage)
-        try session.commitTextBox(emptied, in: step)
+        try inOneStep(in: session) { try session.commitTextBox(emptied, in: step) }
 
         XCTAssertTrue(session.textBoxes(on: page).isEmpty)
         XCTAssertNil(step.after)
@@ -57,10 +64,11 @@ final class PDFSessionTextBoxEmptyingTests: XCTestCase {
         let page = try XCTUnwrap(session.document.page(at: 0))
         let historyPage = session.historyPage(for: page)
         let own = box(preservedEntries: [:])
-        try session.changeTextBox(from: nil, to: own, on: historyPage, actionName: "Add Text Box")
+        try inOneStep(in: session) { try session.changeTextBox(from: nil, to: own, on: historyPage, actionName: "Add Text Box") }
         var emptied = own
         emptied.runs = []
-        try session.commitTextBox(emptied, in: PDFTextBoxEditStep(before: own, page: historyPage))
+        let step = PDFTextBoxEditStep(before: own, page: historyPage)
+        try inOneStep(in: session) { try session.commitTextBox(emptied, in: step) }
         XCTAssertTrue(session.textBoxes(on: page).isEmpty)
     }
 }

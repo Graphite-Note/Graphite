@@ -1,3 +1,14 @@
+/**
+ * File: IndexSearchFixTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: Paging, cancellation, text matching and error reporting of search and the quick switcher.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 @testable import GraphiteIndex

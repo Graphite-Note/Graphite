@@ -495,7 +495,7 @@ extension VaultIndex {
 
     /// The SQL condition (starting with " AND ") keeping files with one of `fileExtensions`, and its arguments; none when
     /// there is no limit on extensions.
-    private static func fileExtensionCondition(for fileExtensions: Set<String>?) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
+    private static func fileExtensionCondition(for fileExtensions: Set<String>?) -> (sql: String, arguments: [String]) {
         guard let fileExtensions else { return ("", []) }
         let sortedExtensions = fileExtensions.sorted()
         let conditions = sortedExtensions.map { _ in "lower(path) LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
@@ -521,8 +521,8 @@ extension VaultIndex {
             let closeness = Self.quickSwitcherClosenessOrder(of: trimmedQuery, on: column)
             let rows = try Row.fetchAll(database,
                 sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column))\(extensionCondition.sql) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
-                                        arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible }
-                                            + extensionCondition.arguments + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
+                                        arguments: StatementArguments((candidatePattern.arguments + extensionCondition.arguments).map { argument in argument as any DatabaseValueConvertible }
+                                            + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
             // Stored paths and names are already normalized, so candidates are ranked by
             // their text, and only those shown become `VaultPath`s.
             var candidates: [(pathText: String, alias: String?, score: Double, matchedRanges: [Range<Int>])] = []

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceImportFilesTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Import and drops from other apps: copies into a folder, never moves the source.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex

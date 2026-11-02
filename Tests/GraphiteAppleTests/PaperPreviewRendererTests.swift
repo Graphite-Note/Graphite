@@ -1,3 +1,14 @@
+/**
+ * File: PaperPreviewRendererTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: The pictures of paper the New Notebook sheet shows, and the library thumbnail of a dotted notebook.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
 import PDFKit

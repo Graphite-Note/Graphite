@@ -1,3 +1,14 @@
+/**
+ * File: NotebookImportRunTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: An import of notebooks into a vault: where they go, what they are called, and what is left behind.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteApple

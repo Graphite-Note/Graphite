@@ -1,3 +1,14 @@
+/**
+ * File: SettingsAndAttachmentTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Obsidian's file and attachment settings, and the order and dates a file listing shows.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport

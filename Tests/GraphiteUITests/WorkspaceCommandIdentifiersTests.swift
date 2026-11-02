@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCommandIdentifiersTests.swift
+ * --------------------------------------------
+ * Layer: Tests
+ * Description: The command palette's commands and the sidebar panels some of them show.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
