@@ -483,13 +483,7 @@ private struct MarkdownTableLayout {
 
     init?(source: String) {
         let units = Array(source.utf16)
-        var structure = units
-        for commentRange in ObsidianComments.commentRanges(in: source) {
-            for location in commentRange.location..<NSMaxRange(commentRange)
-            where units[location] != MarkdownTableUnit.lineFeed && units[location] != MarkdownTableUnit.carriageReturn {
-                structure[location] = MarkdownTableUnit.space
-            }
-        }
+        let structure = Self.unitsWithCommentsReadAsSpaces(units, of: source)
         var rawLines: [(content: Range<Int>, ending: Range<Int>)] = []
         var lineStart = 0
         while lineStart < units.count {
@@ -522,6 +516,18 @@ private struct MarkdownTableLayout {
         self.units = units
         self.lines = lines
         self.lineEnding = Array(units[header.endingRange])
+    }
+
+    /// `units` with each `%%` comment written over by spaces, its line breaks kept.
+    private static func unitsWithCommentsReadAsSpaces(_ units: [UInt16], of source: String) -> [UInt16] {
+        var structure = units
+        for commentRange in ObsidianComments.commentRanges(in: source) {
+            for location in commentRange.location..<NSMaxRange(commentRange)
+            where units[location] != MarkdownTableUnit.lineFeed && units[location] != MarkdownTableUnit.carriageReturn {
+                structure[location] = MarkdownTableUnit.space
+            }
+        }
+        return structure
     }
 
     var table: MarkdownTable {
