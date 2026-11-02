@@ -234,7 +234,11 @@ final class OpenNotesDuringSlowMovesTests: XCTestCase {
 
         XCTAssertTrue(moved.siblings.isEmpty, "The moved note is not one text with the other.")
         XCTAssertEqual(moved.path, try VaultPath("B.md"))
-        try await waitUntil("the other note's text to reach its copy") { self.exists("B Graphite edits.md", in: vault) }
+        // The file is written first; the session, its tab and the message follow it.
+        try await waitUntil("the other note's tab to go on with its copy") {
+            self.exists("B Graphite edits.md", in: vault) && stale.path.rawValue == "B Graphite edits.md"
+                && workspace.errorMessage?.contains("B Graphite edits.md") == true
+        }
         XCTAssertEqual(try text(of: "B Graphite edits.md", in: vault), "b typed")
         XCTAssertEqual(stale.path, try VaultPath("B Graphite edits.md"), "Its tab goes on with the copy, with its undo history.")
         XCTAssertEqual(workspace.tabDocuments.values.first { document in document.markdownSession === stale }?.loadedPath, stale.path)
