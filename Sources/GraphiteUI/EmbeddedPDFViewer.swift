@@ -5,8 +5,8 @@
  * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 01/11/2026
+ * Version: 0.15
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -374,11 +374,18 @@ struct EmbeddedPDFViewer: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
-                    let _ = session.pageListVersion
+                    let pageListVersion = session.pageListVersion
+                    let placeholderSize = session.document.page(at: 0)?.thumbnailSize(fitting: Self.thumbnailSize) ?? Self.thumbnailSize
                     // Only the rows on screen ask PDFKit for their page.
                     ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
-                        if let page = session.document.page(at: pageIndex) {
+                        PDFThumbnailListRow(document: session.document, pageIndex: pageIndex, pageListVersion: pageListVersion) { page in
                             thumbnailButton(for: PDFThumbnailListPage(pageIndex: pageIndex, page: page), in: session)
+                        } placeholder: {
+                            VStack(spacing: 3) {
+                                Color.clear.frame(width: placeholderSize.width, height: placeholderSize.height)
+                                Text("\(pageIndex + 1)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                            }
+                            .padding(4)
                         }
                     }
                 }
