@@ -222,17 +222,34 @@ final class MacEditorParityTests: XCTestCase {
         XCTAssertEqual(editor.textView.selectedRange().location, source.range(of: "line\n").location + 1)
     }
 
-    func testMoveLineUpBelowThePropertiesLeavesThemWhole() async throws {
-        let text = "---\ntitle: x\n---\nBody\n"
-        let editor = try await makeEditor(text: text, cursor: 18)
+    /// A note's editor in Live Preview, its properties rendered.
+    private func makeEditorWithRenderedProperties(text: String, cursor: Int) async throws -> MacMarkdownEditorFixture {
+        let editor = try await makeEditor(text: text, cursor: cursor)
         var configuration = editor.coordinator.configuration
         configuration.mode = .livePreview
         editor.coordinator.configuration = configuration
-        editor.coordinator.environment = LivePreviewEnvironment(root: try TemporaryVault.make(prefix: "Vault", for: self).root, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
-                                                                resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: { _ in })
+        editor.coordinator.environment = LivePreviewEnvironment(root: try TemporaryVault.make(prefix: "Vault", for: self).root, textSize: 17, colorsEnabled: true,
+                                                                paletteHexByName: [:], drawingVersion: 0, resolve: { _, _ in nil }, open: { _ in },
+                                                                follow: { _, _ in }, updateProperties: { _ in })
         editor.coordinator.restyleEverything(in: editor.textView, forcesBlockScan: true)
+        return editor
+    }
+
+    func testMoveLineUpBelowThePropertiesLeavesThemWhole() async throws {
+        let text = "---\ntitle: x\n---\nBody\n"
+        let editor = try await makeEditorWithRenderedProperties(text: text, cursor: 18)
         _ = editor.coordinator.runKeyCommand(.moveLinesUp, in: editor.textView)
         XCTAssertEqual(editor.textView.string, text)
+    }
+
+    /// HUNT-068: the first letter typed in a note that holds only properties.
+    func testTheFirstLetterBelowClosingPropertiesKeepsThem() async throws {
+        let text = "---\ntitle: x\n---"
+        let editor = try await makeEditorWithRenderedProperties(text: text, cursor: 16)
+        editor.textView.insertText("H", replacementRange: editor.textView.selectedRange())
+        XCTAssertEqual(editor.textView.string, "---\ntitle: x\n---\nH")
+        XCTAssertEqual(FrontmatterLocator.length(in: editor.textView.string as NSString), 17)
+        XCTAssertEqual(editor.textView.selectedRange(), NSRange(location: 18, length: 0))
     }
 
     /// HUNT-067: the find bar moved to a match in a folded section.
