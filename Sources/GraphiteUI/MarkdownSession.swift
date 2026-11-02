@@ -365,10 +365,13 @@ final class MarkdownSession {
     /// nothing to keep (nil), is over, and its tab shows the moved note.
     @ObservationIgnored var didLoseFileToMove: (@MainActor (MarkdownSession, VaultPath?) -> Void)?
 
-    /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.
-    func showConflict() {
-        hasExternalConflict = true
-        errorMessage = GraphiteError.conflict.localizedDescription
+    func takeMovedFile(at newLocation: URL, fileKey newFileKey: String) {
+        guard let newPath = WorkspaceModel.vaultPath(for: newLocation, root: store.root) else { return }
+        openNotes?.moveSession(self, fromFile: fileKey, toFile: newFileKey)
+        fileKey = newFileKey
+        if draftEditVersion != nil { draftKeeper?.moveDraft(to: newPath) }
+        draftKeeper = draftKeeper?.following(to: newPath)
+        path = newPath
     }
 
     /// A draft's edits are made over `revision`, so saves expect that version and no newer one.

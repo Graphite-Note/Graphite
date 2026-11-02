@@ -42,16 +42,20 @@ private final class FileHoldingPresenter: NSObject, NSFilePresenter, @unchecked 
             return hasLetGo
         }
         if letGoAlready { writer(nil) }
+        // A test that goes wrong fails rather than waiting for ever.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 60) { self.letGo() }
     }
 
     func letGo() {
-        let waitingWriter = lock.withLock {
-            hasLetGo = true
-            defer { writer = nil }
-            return writer
+        let (isFirstTime, waitingWriter) = lock.withLock {
+            defer {
+                hasLetGo = true
+                writer = nil
+            }
+            return (!hasLetGo, writer)
         }
         waitingWriter?(nil)
-        NSFileCoordinator.removeFilePresenter(self)
+        if isFirstTime { NSFileCoordinator.removeFilePresenter(self) }
     }
 }
 
@@ -149,6 +153,7 @@ final class OpenNotesDuringSlowMovesTests: XCTestCase {
         let other = try await open("Other.md", in: workspace)
 
         XCTAssertEqual(other.text, "other")
+        XCTAssertTrue(presenter.isHoldingAWriter, "It opened while the move was still waiting.")
         presenter.letGo()
         try await move.value
         XCTAssertTrue(exists("Renamed.md", in: vault))

@@ -88,6 +88,12 @@ extension MarkdownSession {
         return true
     }
 
+    /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.
+    func showConflict() {
+        hasExternalConflict = true
+        errorMessage = GraphiteError.conflict.localizedDescription
+    }
+
     /// Lets go of the draft, for this session and any other window's on the note: the text
     /// reached the file, or the person chose another version.
     func discardDraft() {

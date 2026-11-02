@@ -2,8 +2,8 @@
  * File: WorkspaceOpenNoteMoves.swift
  * ----------------------------------
  * Layer: UI
- * Description: Carrying out a move of a file or folder, and what it does to the notes open inside it: their saves
- *              wait, and their live sessions go on at the new place with text, cursor, editor and undo history.
+ * Description: What a move of a file or folder does to the notes open inside it: their saves wait, and their
+ *              live sessions go on at the new place with text, cursor, editor and undo history.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -73,118 +73,6 @@ final class SavesHeldDuringMove {
 }
 
 extension WorkspaceModel {
-    /// Whether the window still has the vault `fileOperations` acts on. Paths mean nothing in
-    /// another one, where the same path can name another file.
-    func isVaultOpen(_ fileOperations: VaultFileOperations) -> Bool {
-        store === fileOperations.store
-    }
-
-    func refuseMoveInClosedVault(of path: VaultPath) -> FileMoveOutcome {
-        let refusal = FileMoveRefusal.vaultClosed(movedName: path.name)
-        errorMessage = refusal.message
-        return .refused(refusal)
-    }
-
-    func completeMove(_ path: VaultPath, to destination: VaultPath, plan: LinkUpdatePlan, updatesLinks: Bool,
-                      through fileOperations: VaultFileOperations) async -> FileMoveOutcome {
-        guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
-        let vaultIdentifier = currentVaultIdentifier
-        let stopShowingProgress = startShowingMoveProgress(of: path)
-        defer { stopShowingProgress() }
-        do {
-            // Changes made while the question was open are saved before anything moves.
-            try await saveOpenDocuments()
-            guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
-            // Before anything can suspend: from here until the file has its new place, no save
-            // aims at the old path. Typing goes on, and is saved once the move is over.
-            let heldSaves = holdSavesOfOpenNotes(inside: path)
-            defer { heldSaves.release() }
-            await heldSaves.waitForSavesInFlight()
-            let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
-            let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
-            guard isVaultOpen(fileOperations) else {
-                return finishMoveInClosedVault(vaultIdentifier, report, from: path, to: destination, updatesLinks: updatesLinks)
-            }
-            // A note goes on at the new place in its own session, undo history included; one
-            // whose file the move itself rewrote under typing is left behind, below.
-            let notesFollowing = followMoveInOpenNotes(from: path, to: destination) { session, newPath in
-                !session.hasUnsavedChanges || !report.updatedNotes.contains(newPath)
-            }
-            // After those notes put aside the drafts that must not reach the new place.
-            moveDrafts(from: path, to: destination)
-            // Read before the tabs let go of their sessions, with no suspension in between,
-            // so every keystroke made during the move is kept.
-            let editsDuringMove = unsavedEdits(inside: path, movedTo: destination, revisionsBeforeMove: revisionsBeforeMove)
-            let pdfsEditedDuringMove = pdfSessionsWithEdits(inside: path)
-            expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(path, with: destination)) ?? folder })
-            // Tabs whose session could not follow load their files again from the new place.
-            followMoveInNavigation(from: path, to: destination)
-            heldSaves.release()
-            await saveTextOfNotes(notesFollowing)
-            let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(editsDuringMove, in: fileOperations.store)
-            let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsEditedDuringMove, from: path, to: destination, in: fileOperations.store)
-            // Without link updates the report lists only the moved item itself; the plan
-            // lists every indexed file inside a moved folder.
-            let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
-            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths)
-            await checkOpenDocuments(changedByMove: Set(report.updatedNotes + keptEditPaths))
-            await refreshDirectory()
-            tellAbout(report, problems: editProblems + pdfProblems, movedItemName: destination.name, updatesLinks: updatesLinks)
-            return .moved
-        } catch {
-            errorMessage = error.localizedDescription
-            return .refused(.failed(message: error.localizedDescription))
-        }
-    }
-
-    /// Another vault opened as this one's file moved. Its paths mean nothing to the tabs and
-    /// sessions here now, so only the drafts of the vault it left follow.
-    private func finishMoveInClosedVault(_ vaultIdentifier: UUID?, _ report: MoveReport, from path: VaultPath, to destination: VaultPath,
-                                         updatesLinks: Bool) -> FileMoveOutcome {
-        if let vaultIdentifier { processServices.unsavedDrafts.moveDrafts(from: path, to: destination, inVault: vaultIdentifier) }
-        tellAbout(report, problems: [], movedItemName: destination.name, updatesLinks: updatesLinks)
-        return .moved
-    }
-
-    func pdfSessionsWithEdits(inside path: VaultPath) -> [PDFSession] {
-        tabDocuments.values.compactMap(\.pdfSession).filter { session in
-            session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(path) == true
-        }
-    }
-
-    /// Open documents whose files the move wrote read them again.
-    private func checkOpenDocuments(changedByMove changedNotes: Set<VaultPath>) async {
-        for document in tabDocuments.values {
-            if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-            if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-        }
-    }
-
-    private func tellAbout(_ report: MoveReport, problems: [String], movedItemName: String, updatesLinks: Bool) {
-        var problems = problems
-        if !report.failures.isEmpty { problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: movedItemName)) }
-        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
-        if !report.notesNotChecked.isEmpty, updatesLinks {
-            notice = Self.describeNotesNotChecked(report.notesNotChecked, movedItemName: movedItemName)
-        }
-    }
-
-    /// The file revisions of open notes and canvases inside `path`, just before it moves.
-    private func revisionsOfOpenDocuments(inside path: VaultPath) async -> [VaultPath: FileRevision] {
-        guard let store else { return [:] }
-        var revisions: [VaultPath: FileRevision] = [:]
-        for session in tabDocuments.values.compactMap(\.markdownSession) where session.path.isInside(path) {
-            // A note that cannot be read now has no revision to write over; text typed into
-            // it during the move is kept as a separate copy instead.
-            revisions[session.path] = try? await store.read(session.path, maximumBytes: MarkdownSession.maximumEditableBytes).revision
-        }
-        for session in tabDocuments.values.compactMap(\.canvasSession) where session.path.isInside(path) {
-            // As for a note: a canvas that cannot be read now is kept as a separate copy.
-            revisions[session.path] = try? await store.read(session.path, maximumBytes: CanvasFile.maximumSourceBytes).revision
-        }
-        return revisions
-    }
-
     func holdSavesOfOpenNotes(inside path: VaultPath) -> SavesHeldDuringMove {
         let sessions = tabDocuments.values.compactMap(\.markdownSession).filter { session in session.path.isInside(path) }
         var sessionsAndSiblings: [ObjectIdentifier: MarkdownSession] = [:]

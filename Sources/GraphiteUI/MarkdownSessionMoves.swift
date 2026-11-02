@@ -62,15 +62,6 @@ extension MarkdownSession {
         for session in [self] + siblings { session.takeMovedFile(at: newLocation, fileKey: newFileKey) }
     }
 
-    private func takeMovedFile(at newLocation: URL, fileKey newFileKey: String) {
-        guard let newPath = WorkspaceModel.vaultPath(for: newLocation, root: store.root) else { return }
-        openNotes?.moveSession(self, fromFile: fileKey, toFile: newFileKey)
-        fileKey = newFileKey
-        if draftEditVersion != nil { draftKeeper?.moveDraft(to: newPath) }
-        draftKeeper = draftKeeper?.following(to: newPath)
-        path = newPath
-    }
-
     // MARK: Another note moved to this note's path
 
     /// Sessions already open at `newPath`, where the file of this note is about to arrive, hold

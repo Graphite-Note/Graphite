@@ -656,7 +656,7 @@ Phase 0 (2026-10-19) added characterization tests for 161 rows of priorities 1 t
 | D-27 | Pinned | VaultStoreConfigurationReadingTests; WorkspaceBookmarksUnreadableFileTests | FIXED 877045a |
 | D-28 | Pinned | ReadAloudPronunciationVaultFileReadingTests; ReadAloudPronunciationVaultFileWritingTests; ReadAloudPronunciationVaultFileTests | FIXED a31ce63, 57f6042, 1b6f5ae (BUG-VOICE-11) |
 | D-29 | Pinned | UnsavedDocumentDraftTests | HUNT-080, HUNT-081 |
-| D-30 | Pinned | RenamingAnOpenNoteTests; UiFileManagementFixTests | HUNT-093 |
+| D-30 | Pinned | RenamingAnOpenNoteTests; OpenNotesDuringSlowMovesTests; UiFileManagementFixTests | HUNT-093 |
 | D-31 | Pinned | OversizedNoteTests; OversizedNoteHostedTests | HUNT-102 |
 | ED-01 | Partly pinned | MacMarkdownEditorCreationTests (Mac half) | GAP: the iPad makeUIView half needs the hosted iPad suite. |
 | ED-02 | Pinned | MarkdownEditorStylingCharacterEditTests; MacMarkdownEditorCharacterEditTests |  |
