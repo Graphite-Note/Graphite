@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.82
+ * Version: 0.83
  * Date: 02/11/2026
  */
 
@@ -1782,6 +1782,7 @@ final class WorkspaceModel {
                 document.pdfSession = reloadedSession
             } catch { pdfSession.errorMessage = error.localizedDescription }
         }
+        await openAgainNotesThatChangedSize(limitedTo: changedPaths)
     }
 
     /// Shows `location` in the tab whose PDF conflicted: the separate copy just saved, or
@@ -1815,6 +1816,8 @@ extension WorkspaceModel {
             let remembered = readAloudNavigator.rememberedLocation(for: pdf.location.path) ?? 0
             let first = min(max(0, remembered), max(0, pdf.pageCount - 1))
             readAloud.readPDF(pdf, firstPageIndex: first, lastPageIndex: max(first, pdf.pageCount - 1))
+        } else if activeDocument.oversizedNote != nil {
+            errorMessage = "This note is too large to read aloud."
         }
     }
 }

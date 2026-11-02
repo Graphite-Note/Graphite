@@ -5,11 +5,17 @@
  * Description: Looking at a file of any size without holding it in memory: its size, its revision, and a run of its bytes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
 import Foundation
+
+/// What a file's metadata says of its version, cheaply: a change of either means another version.
+public struct FileStamp: Equatable, Sendable {
+    public let size: Int
+    public let modificationDate: Date?
+}
 
 public extension AtomicFileWriter {
     /// Runs `body` on `url` under a coordinated read.
@@ -31,10 +37,11 @@ public extension VaultStore {
         try writer.readingCoordinated(path.url(in: root)) { location in try FileRevision.read(location) }
     }
 
-    /// The file's size in bytes, from its metadata.
-    func fileSize(of path: VaultPath) throws -> Int {
+    /// The file's size and date, from its metadata alone.
+    func fileStamp(of path: VaultPath) throws -> FileStamp {
         try writer.readingCoordinated(path.url(in: root)) { location in
-            try location.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            let values = try location.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            return FileStamp(size: values.fileSize ?? 0, modificationDate: values.contentModificationDate)
         }
     }
 

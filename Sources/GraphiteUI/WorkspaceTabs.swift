@@ -5,7 +5,7 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.30
+ * Version: 0.31
  * Date: 02/11/2026
  */
 
@@ -24,6 +24,8 @@ final class TabDocument {
     var markdownSession: MarkdownSession?
     var pdfSession: PDFSession?
     var canvasSession: CanvasSession?
+    /// A note too large to edit, shown read-only in place of a session.
+    var oversizedNote: OversizedNoteDocument?
     /// A heading to show once the note is open (from `[[Note#Heading]]` or the outline).
     var headingScrollRequest: HeadingScrollRequest?
     /// The node the graph's tab centers on, asked for by a note's local graph.
@@ -66,7 +68,7 @@ final class TabDocument {
 
     /// Forgets the sessions after their file moved; the tab loads the file again.
     func unload() {
-        loadedPath = nil; markdownSession = nil; pdfSession = nil; canvasSession = nil
+        loadedPath = nil; markdownSession = nil; pdfSession = nil; canvasSession = nil; oversizedNote = nil
     }
 
     func save() async throws {
@@ -429,8 +431,10 @@ extension WorkspaceModel {
 
     /// Opens `path` in a tab, replacing what it showed, and returns whether it did.
     /// - Parameter reportsFailure: False to show a failure only in the tab, not in an alert.
+    /// - Parameter editsOversizedNote: True for Edit Anyway: a note over the limit for editing loads into the editor.
     @discardableResult
-    func load(_ path: VaultPath, into tabID: UUID, pdfPageIndex: Int?, recordsHistory: Bool, reportsFailure: Bool = true) async -> Bool {
+    func load(_ path: VaultPath, into tabID: UUID, pdfPageIndex: Int?, recordsHistory: Bool, reportsFailure: Bool = true,
+              editsOversizedNote: Bool = false) async -> Bool {
         guard let store, let folderAccess else { return false }
         let document = document(for: tabID)
         // A page asked for, as by a link, is shown at its top; otherwise the PDF opens where
@@ -446,9 +450,15 @@ extension WorkspaceModel {
             let newMarkdown: MarkdownSession?
             let newPDF: PDFSession?
             var newCanvas: CanvasSession?
+            var newOversizedNote: OversizedNoteDocument?
             switch DocumentKind(path: path) {
             case .markdown:
-                let snapshot = try await store.read(path, maximumBytes: MarkdownSession.maximumEditableBytes)
+                let maximumBytes = editsOversizedNote ? MarkdownSession.maximumBytesEditableAnyway : MarkdownSession.maximumEditableBytes
+                guard let snapshot = try await snapshotUnlessTooLarge(path, maximumBytes: maximumBytes, in: store) else {
+                    newOversizedNote = try await OversizedNoteDocument.open(path, in: store)
+                    newMarkdown = nil; newPDF = nil
+                    break
+                }
                 newMarkdown = try MarkdownSession(path: path, snapshot: snapshot, store: store, openNotes: processServices.openNotes) { [weak self] savedPath in
                     self?.refreshIndex(for: [savedPath])
                 }
@@ -463,6 +473,8 @@ extension WorkspaceModel {
                     await restoreUnsavedDraft(into: newMarkdown)
                     restoreViewMode(of: newMarkdown); restoreFolds(of: newMarkdown)
                     returnToRememberedPlace(of: newMarkdown); watchForRecovery(newMarkdown)
+                    newMarkdown.maximumBytesRead = maximumBytes
+                    if snapshot.data.count > MarkdownSession.maximumEditableBytes { newMarkdown.errorMessage = MarkdownSession.grownTooLargeMessage }
                 }
                 newPDF = nil
             case .pdf:
@@ -500,6 +512,7 @@ extension WorkspaceModel {
             document.loadFailure = nil
             document.releasedPDFPage = nil
             document.markdownSession = newMarkdown; document.pdfSession = newPDF; document.canvasSession = newCanvas; document.loadedPath = path
+            document.oversizedNote = newOversizedNote
             // The editor of the note this tab showed before goes with its session.
             markdownEditorRetention.discardStaleEditors()
             layout.show(path, inTab: tabID, recordsHistory: recordsHistory)
@@ -507,6 +520,7 @@ extension WorkspaceModel {
             if let currentVaultIdentifier { vaultLibrary.setLastOpenedDocument(path, inVault: currentVaultIdentifier) }
             releaseHiddenPDFSessions()
             checkConflictVersions(of: [path])
+            if let newOversizedNote { await tellAboutDraft(ofOversizedNote: newOversizedNote) }
             return true
         } catch let passwordRequired as PDFPasswordRequired {
             // The tab asks for the password; an alert would add nothing.

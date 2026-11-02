@@ -5,7 +5,7 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.15
+ * Version: 0.16
  * Date: 02/11/2026
  */
 
@@ -15,7 +15,14 @@ import GraphiteCore
 
 @MainActor @Observable
 final class MarkdownSession {
+    /// The largest note that opens in the editor; a larger one opens read-only (`OversizedNoteDocument`).
     static let maximumEditableBytes = 8 * 1_048_576
+    /// The largest note that Edit Anyway loads into the editor, for trimming.
+    static let maximumBytesEditableAnyway = 32 * 1_048_576
+    /// The most of its file this session reads again: more than `maximumEditableBytes` after Edit Anyway.
+    @ObservationIgnored var maximumBytesRead = MarkdownSession.maximumEditableBytes
+    /// Another app took the file past `maximumBytesRead`, so the text shown is an old version.
+    @ObservationIgnored private(set) var fileOutgrewEditor = false
     /// The note's place in the vault. It changes only as the file moves (`followFile(to:)`), so
     /// closures read it when they run rather than keeping it.
     private(set) var path: VaultPath
@@ -278,7 +285,7 @@ final class MarkdownSession {
         guard !isSaving else { return }
         let revisionBeforeRead = revision
         do {
-            let snapshot = try await store.read(path, maximumBytes: Self.maximumEditableBytes)
+            let snapshot = try await store.read(path, maximumBytes: maximumBytesRead)
             guard !isSaving, revision == revisionBeforeRead else { return }
             guard snapshot.revision != revision else {
                 // The file went back to the version these edits were made over, so the
@@ -294,9 +301,27 @@ final class MarkdownSession {
                 showConflict()
                 await keepUnsavedTextInDraft()
             } else { try adopt(snapshot) }
+        } catch GraphiteError.oversized {
+            guard !isSaving, revision == revisionBeforeRead else { return }
+            await checkFileTooLargeToRead()
         } catch {
             guard !isSaving, revision == revisionBeforeRead else { return }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// The file is larger than this session reads, so it is hashed instead, a megabyte at a time.
+    /// The session's own save may have made it that large, which is no change. Another app's
+    /// version is a conflict under text not saved, and otherwise opens read-only in the tab.
+    private func checkFileTooLargeToRead() async {
+        let revisionBeforeRead = revision
+        guard let fileRevision = try? await store.revision(of: path) else { return } // Cannot be looked at now: the next check tries again.
+        guard !isSaving, revision == revisionBeforeRead, fileRevision != revision else { return }
+        if hasUnsavedChanges {
+            showConflict()
+            await keepUnsavedTextInDraft()
+        } else {
+            fileOutgrewEditor = true
         }
     }
 
@@ -304,7 +329,7 @@ final class MarkdownSession {
         let versionBeforeRead = editVersion
         let revisionBeforeRead = revision
         guard try await store.fileExists(path) else { throw Self.removedExternallyError }
-        let snapshot = try await store.read(path, maximumBytes: Self.maximumEditableBytes)
+        let snapshot = try await store.read(path, maximumBytes: maximumBytesRead)
         guard editVersion == versionBeforeRead, revision == revisionBeforeRead, !isSaving else {
             showConflict()
             await keepUnsavedTextInDraft()
