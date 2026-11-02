@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.63
+ * Version: 0.64
  * Date: 01/11/2026
  */
 
@@ -262,6 +262,8 @@ final class WorkspaceModel {
     var newWindowRequest: GraphiteWindowContent?
     /// The PDFs embedded in this window's notes, which its views read from the environment.
     let embeddedPDFSessions = EmbeddedPDFSessions()
+    /// Takes turns for opening vaults, so a second pick while the first opens does not interleave with it.
+    private let vaultSwitches = VaultSwitchQueue()
     /// This window among the process's windows (`OpenWindows`), for what one window runs at a time.
     @ObservationIgnored private(set) lazy var openWindow = OpenWindow(
         name: { [weak self] in self?.windowName ?? "" },
@@ -379,7 +381,8 @@ final class WorkspaceModel {
     }
 
     func openVault(_ vault: KnownVault) async throws {
-        guard vault.id != currentVaultIdentifier else { return }
+        // While another vault opens, the open one may be the later choice.
+        guard vault.id != currentVaultIdentifier || vaultSwitches.isBusy else { return }
         try await openVault(identifier: vault.id, location: vault.location)
     }
 
@@ -436,6 +439,9 @@ final class WorkspaceModel {
     }
 
     private func openVault(identifier: UUID?, location: VaultLocation, tabs: WindowTabsToRestore = .vaultsLast) async throws {
+        // Only the latest of several picks opens; the earlier ones wait their turn and are skipped.
+        guard await vaultSwitches.begin() else { return }
+        defer { vaultSwitches.end() }
         try await prepareToLeaveCurrentVault(isReopeningCurrentVault: identifier != nil && identifier == currentVaultIdentifier)
         let (access, refreshedLocation) = try await VaultLocator.accessInBackground(location)
         let root = access.root

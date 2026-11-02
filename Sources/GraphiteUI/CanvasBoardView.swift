@@ -5,7 +5,7 @@
  * Description: The board of a canvas: its grid, groups, connections, cards in view and selection.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 01/11/2026
  */
 
@@ -136,7 +136,8 @@ private struct CanvasBackdropLayer: View {
             drawPlaceholders(for: nodes.filter { node in !node.isGroup && !detailedIdentifiers.contains(node.id) && node.frame.intersects(visibleFrame) },
                              in: &context, viewport: viewport)
         }
-        .task(id: session.changeVersion) { await groupBackgrounds.load(for: session.file.nodes, root: environment.root) }
+        // A picture file changed by a drawing session or another app shows as it now is.
+        .task(id: "\(session.changeVersion)-\(environment.configuration.drawingVersion)") { await groupBackgrounds.load(for: session.file.nodes, root: environment.root) }
         .accessibilityHidden(true)
     }
 
@@ -307,13 +308,14 @@ final class CanvasGroupBackgrounds {
         }
         var loadedImages: [String: CGImage] = [:]
         for path in paths.prefix(Self.maximumImageCount) {
-            if let image = images[path] { loadedImages[path] = image; continue }
+            // The cache answers from its copy while the file is as it was, and reads the file again when it changed.
             guard let vaultPath = try? VaultPath(path), DocumentKind(path: vaultPath) == .image, let location = try? vaultPath.url(in: root),
                   let thumbnail = try? await ReadingImageCache.shared.thumbnail(for: location, kind: .block) else { continue }
             loadedImages[path] = thumbnail.image
         }
         if Task.isCancelled { return }
-        if Set(loadedImages.keys) != Set(images.keys) { images = loadedImages }
+        let hasChanged = Set(loadedImages.keys) != Set(images.keys) || loadedImages.contains { path, image in images[path] !== image }
+        if hasChanged { images = loadedImages }
     }
 }
 

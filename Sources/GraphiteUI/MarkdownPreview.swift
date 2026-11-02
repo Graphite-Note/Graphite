@@ -6,7 +6,7 @@
  *              with Textual in a lazy stack, keeps the reading position, folds headings, and follows the word read aloud.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.46
+ * Version: 0.47
  * Date: 01/11/2026
  */
 
@@ -3038,6 +3038,8 @@ struct EmbeddedMediaPlayer: View {
     @State private var durationSeconds: Double?
     /// False for a video the system cannot play, such as WebM.
     @State private var isPlayable = true
+    /// The video the poster, length and shape above are of.
+    @State private var shownPosterLocation: URL?
 
     var body: some View {
         Group {
@@ -3117,25 +3119,39 @@ struct EmbeddedMediaPlayer: View {
     }
 
     private func loadPoster() async {
+        // The row may now show another video: nothing of the one before stays on it while this one loads.
+        if shownPosterLocation != location {
+            posterImage = nil; durationSeconds = nil; aspectRatio = 16 / 9; isPlayable = true
+        }
         let asset = AVURLAsset(url: location)
         if let isPlayable = try? await asset.load(.isPlayable), !isPlayable {
+            guard !Task.isCancelled else { return }
             self.isPlayable = false
+            shownPosterLocation = location
             return
         }
-        isPlayable = true
-        if let duration = try? await asset.load(.duration), duration.seconds.isFinite { durationSeconds = duration.seconds }
+        var loadedDuration: Double?
+        if let duration = try? await asset.load(.duration), duration.seconds.isFinite { loadedDuration = duration.seconds }
+        var loadedAspectRatio: CGFloat = 16 / 9
         if let track = try? await asset.loadTracks(withMediaType: .video).first,
            let (naturalSize, transform) = try? await track.load(.naturalSize, .preferredTransform) {
             let displayedSize = naturalSize.applying(transform)
-            if abs(displayedSize.height) > 0 { aspectRatio = abs(displayedSize.width) / abs(displayedSize.height) }
+            if abs(displayedSize.height) > 0 { loadedAspectRatio = abs(displayedSize.width) / abs(displayedSize.height) }
         }
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 1600, height: 1600)
         // A frame a little way in avoids the black or title frames recordings often start with.
-        let length = durationSeconds ?? 0
+        let length = loadedDuration ?? 0
         let posterTime = CMTime(seconds: min(length / 2, max(1, min(length * 0.05, 20))), preferredTimescale: 600)
-        posterImage = try? await generator.image(at: posterTime).image
+        let loadedPoster = try? await generator.image(at: posterTime).image
+        // A run replaced by a newer one (another video, or the row shown again) leaves the newer run's values alone.
+        guard !Task.isCancelled else { return }
+        isPlayable = true
+        durationSeconds = loadedDuration
+        aspectRatio = loadedAspectRatio
+        posterImage = loadedPoster
+        shownPosterLocation = location
     }
 }
 
@@ -3151,7 +3167,8 @@ struct EmbeddedAudioPlayer: View {
     private static let endToleranceSeconds = 0.25
     @State private var elapsedSeconds: Double = 0
     @State private var durationSeconds: Double = 0
-    @State private var timeObserver: Any?
+    /// The observer that moves the slider, kept with the player that has it.
+    @State private var timeObservation = PlayerTimeObservation()
 
     private var player: AVPlayer? { playback?.player }
 
@@ -3179,17 +3196,20 @@ struct EmbeddedAudioPlayer: View {
             // A row shown again, after it was scrolled out of view, finds its player where it was.
             // The note keeps a player once it plays, so rows never played hold none.
             let audioPlayback = playback?.location == location ? playback : nil
+            // The row may now show another recording: the length and the end belong to the one before.
+            if audioPlayback == nil { durationSeconds = 0; hasFinished = false }
             let currentPlayback = audioPlayback ?? mediaPlayers?.existingPlayback(for: location) ?? EmbeddedMediaPlayback(location: location)
             playback = currentPlayback
             let audioPlayer = currentPlayback.player
             isPlaying = audioPlayer.rate != 0
             let currentSeconds = audioPlayer.currentTime().seconds
             elapsedSeconds = currentSeconds.isFinite ? currentSeconds : 0
-            if let duration = try? await audioPlayer.currentItem?.asset.load(.duration) { durationSeconds = duration.seconds.isFinite ? duration.seconds : 0 }
-            // The view may have gone while the duration loaded; its observer would never be removed.
+            let loadedDuration = try? await audioPlayer.currentItem?.asset.load(.duration)
+            // The view may have gone while the duration loaded, or the row may show another recording by now:
+            // a stale length would replace the new one, and an observer added now would never be removed.
             guard !Task.isCancelled else { return }
-            if let timeObserver { audioPlayer.removeTimeObserver(timeObserver) }
-            timeObserver = audioPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { time in
+            if let loadedDuration { durationSeconds = loadedDuration.seconds.isFinite ? loadedDuration.seconds : 0 }
+            timeObservation.start(on: audioPlayer, intervalSeconds: 0.5) { time in
                 Task { @MainActor in elapsedSeconds = time.seconds }
             }
             // The button follows the player, which stops by itself at the end of the
@@ -3205,8 +3225,7 @@ struct EmbeddedAudioPlayer: View {
         // Playback goes on out of view while the note keeps the player; one it does not keep,
         // such as in Live Preview, stops as the row goes.
         .onDisappear {
-            if let timeObserver { player?.removeTimeObserver(timeObserver) }
-            timeObserver = nil
+            timeObservation.stop()
             guard let playback, mediaPlayers?.isKept(playback) != true else { return }
             playback.player.pause()
             isPlaying = false
@@ -3286,9 +3305,14 @@ private struct ReadingImageBlock: View {
         }
         .task(id: "\(location.path)-\(version)-\(displayPixelWidth ?? 0)") {
             do {
-                loadedThumbnail = try await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth)
+                let thumbnail = try await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth)
+                // A run replaced by a newer one (the note's width changed) neither fails nor shows its picture.
+                guard !Task.isCancelled else { return }
+                loadedThumbnail = thumbnail
+                didFail = false
             } catch {
-                didFail = true
+                // A task cancelled while it waited for a decoding slot ends in an error; it is not a failure of the picture.
+                if !Task.isCancelled { didFail = true }
             }
         }
     }

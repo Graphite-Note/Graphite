@@ -5,7 +5,7 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.26
+ * Version: 0.27
  * Date: 01/11/2026
  */
 #if canImport(UIKit)
@@ -140,6 +140,15 @@ class HistoryCanvasView: PKCanvasView {
                 self.retakeChosenTool()
             }
         }
+    }
+
+    /// Whether the canvas hears of a change in the preference: while it is in a window.
+    var isFollowingEvenHighlighterPreference: Bool { evenHighlighterPreferenceObserver != nil }
+
+    /// A canvas out of a window shows nothing; its registration would otherwise last as long as the process.
+    private func stopFollowingEvenHighlighterPreference() {
+        if let evenHighlighterPreferenceObserver { NotificationCenter.default.removeObserver(evenHighlighterPreferenceObserver) }
+        evenHighlighterPreferenceObserver = nil
     }
 
     /// Takes the chosen tool again, after what `toolForDrawing` returns has changed.
@@ -580,7 +589,7 @@ class HistoryCanvasView: PKCanvasView {
         super.didMoveToWindow()
         if window != nil, strokeHoldRecognizer.view == nil { addGestureRecognizer(strokeHoldRecognizer) }
         if window != nil, evenStrokeFollower.view == nil { addGestureRecognizer(evenStrokeFollower) }
-        if window != nil { followEvenHighlighterPreference() }
+        if window != nil { followEvenHighlighterPreference() } else { stopFollowingEvenHighlighterPreference() }
         // Another window has modes of its own.
         if let windowScene = window?.windowScene, windowScene !== paletteWindowScene { takePaletteInkSelection() }
     }
@@ -934,6 +943,13 @@ final class PencilToolPickerHostView: UIView {
             DispatchQueue.main.async { [weak self] in self?.takeFirstResponderBackFromSelection() }
         }
         return didResign
+    }
+
+    /// Gives up first responder on the next turn of the main queue, for a view SwiftUI is taking down.
+    /// A first responder change in the middle of SwiftUI's update makes it ask its views about focus,
+    /// which left the app computing without end; the queued turn holds the host until then.
+    func resignFirstResponderOnNextTurn() {
+        DispatchQueue.main.async { self.resignFirstResponder() }
     }
 
     private func takeFirstResponderBackFromSelection() {

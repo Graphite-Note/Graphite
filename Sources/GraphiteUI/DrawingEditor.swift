@@ -5,7 +5,7 @@
  * Description: The full-screen drawing editor and its canvas controller.
  *
  * Authors: Bahey Shalash
- * Version: 0.22
+ * Version: 0.23
  * Date: 01/11/2026
  */
 
@@ -1337,7 +1337,8 @@ private struct DrawingCanvas: UIViewRepresentable {
         coordinator.toolPickerHost.takesFirstResponderBackFromSelections = false
         canvasView.stopFollowing(coordinator.toolPicker)
         coordinator.stopObservingToolbox()
-        coordinator.toolPickerHost.resignFirstResponder()
+        // SwiftUI is updating its views as it dismantles this one.
+        coordinator.toolPickerHost.resignFirstResponderOnNextTurn()
         coordinator.controller.history.removeAllActions()
     }
 

@@ -6,7 +6,7 @@
  *              and map.
  *
  * Authors: felixchvl
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -122,9 +122,14 @@ struct NoteLinksInspector: View {
             do {
                 try await Task.sleep(for: .milliseconds(250))
                 let text = session.text
+                let path = session.path
                 let semantics = try await Task.detached { try MarkdownSemantics.parse(text) }.value
+                // A detached task goes on after this one is cancelled, and its result is for the note it was started on.
+                guard !Task.isCancelled, session.path == path else { return }
+                let listedFootnotes = await Task.detached { Footnotes.listed(in: text) }.value
+                guard !Task.isCancelled, session.path == path else { return }
                 outgoing = Self.outgoingLinks(in: semantics.links); tags = semantics.tags
-                footnotes = await Task.detached { Footnotes.listed(in: text) }.value
+                footnotes = listedFootnotes
                 outline = Self.outlineHeadings(in: semantics.body)
             } catch is CancellationError {
             } catch { workspace.errorMessage = error.localizedDescription }

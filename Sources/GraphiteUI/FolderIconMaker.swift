@@ -1,3 +1,14 @@
+/**
+ * File: FolderIconMaker.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Graphite's icon maker: a picture made into a folder icon with templates, framing and background removal.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import CoreGraphics
@@ -139,12 +150,19 @@ struct FolderIconMaker: View {
         defer { isRemovingBackground = false }
         let source = picture
         do {
-            picture = try await Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }.value
+            let pictureWithoutBackground = try await Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }.value
+            picture = Self.picture(afterEditOf: source, resultingIn: pictureWithoutBackground, current: picture)
         } catch PictureBackgroundRemoval.Failure.noForeground {
             problem = .noForeground
         } catch {
             problem = .backgroundRemovalUnavailable
         }
+    }
+
+    /// The picture to show when an edit of `source` finishes: the edit's result, unless a picture dropped meanwhile
+    /// replaced `source`, which the person chose later and keeps.
+    static func picture(afterEditOf source: CGImage, resultingIn editedPicture: CGImage, current: CGImage) -> CGImage {
+        current === source ? editedPicture : current
     }
 
     /// A picture replaces the picture; on the Mac a folder gets the icon as Finder's custom icon.
