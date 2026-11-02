@@ -55,11 +55,11 @@ final class NoteEditorWorkCountTests: XCTestCase {
         guard case .everything = unstyled.restylePlan(source: after, revealedRange: nil, blockRanges: []) else { return XCTFail("A formula left open changes every line below.") }
     }
 
-    func testAKeyAfterAClosingDelimiterInAMathBlockRestylesTheWholeNote() {
+    func testDeletingAClosingDelimiterInAMathBlockRestylesTheWholeNote() {
         let before = "$$\nx\ny $$\nBelow\n" as NSString
-        let location = before.range(of: "y $$").location + 4
-        let after = before.replacingCharacters(in: NSRange(location: location, length: 0), with: "z") as NSString
-        let unstyled = UnstyledEdit(edit: CharacterEdit(editedRange: NSRange(location: location, length: 1), changeInLength: 1), sourceBeforeEdit: before, revealedRange: nil, blockRanges: [])
+        let location = before.range(of: "y $$").location + 3
+        let after = before.replacingCharacters(in: NSRange(location: location, length: 1), with: "") as NSString
+        let unstyled = UnstyledEdit(edit: CharacterEdit(editedRange: NSRange(location: location, length: 0), changeInLength: -1), sourceBeforeEdit: before, revealedRange: nil, blockRanges: [])
         guard case .everything = unstyled.restylePlan(source: after, revealedRange: nil, blockRanges: []) else { return XCTFail("The line no longer closes the block.") }
     }
 

@@ -101,9 +101,9 @@ final class NoteFoldingTests: XCTestCase {
         }
         XCTAssertGreaterThan(acceptedEdits, 100, "Typing in plain lines is moved, not found again.")
         let headingLine = text.range(of: "# One")
-        XCTAssertNil(NoteFolding.regions(regions, across: NSRange(location: headingLine.location + 2, length: 0), replacementLength: 1,
-                                         before: text, after: text.replacingCharacters(in: NSRange(location: headingLine.location + 2, length: 0), with: "x") as NSString),
-                     "An edit in a heading changes its key, so the regions are found again.")
+        let headingEdited = text.replacingCharacters(in: NSRange(location: headingLine.location + 2, length: 0), with: "x") as NSString
+        XCTAssertEqual(NoteFolding.regions(regions, across: NSRange(location: headingLine.location + 2, length: 0), replacementLength: 1, before: text, after: headingEdited),
+                       NoteFolding.regions(in: headingEdited as String), "An edit in a heading gives its region a new key, without reading every line.")
         // The text storage may report the whole line, line break included, as edited.
         let line = text.range(of: "Body two\n")
         let typed = text.replacingCharacters(in: line, with: "Body twox\n") as NSString

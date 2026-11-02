@@ -1881,7 +1881,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             let text = currentSource(of: textView) as String
             // The session's text changed elsewhere, and the update that brings it here has not
             // run or is waiting out a composition; see `TextDifference.carryingEdit`.
-            if session.text != lastSynchronizedText {
+            if session.text != lastSynchronizedText, session.text != text {
                 guard textView.markedTextRange == nil else { return }
                 let merged = TextDifference.carryingEdit(from: lastSynchronizedText, to: text, onto: session.text)
                 session.text = merged
@@ -3656,7 +3656,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             let text = currentSource(of: textView) as String
             // The session's text changed elsewhere, and the update that brings it here has not
             // run or is waiting out a composition; see `TextDifference.carryingEdit`.
-            if session.text != lastSynchronizedText {
+            if session.text != lastSynchronizedText, session.text != text {
                 guard !textView.hasMarkedText() else { return }
                 let merged = TextDifference.carryingEdit(from: lastSynchronizedText, to: text, onto: session.text)
                 session.text = merged

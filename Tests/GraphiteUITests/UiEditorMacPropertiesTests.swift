@@ -1,3 +1,14 @@
+/**
+ * File: UiEditorMacPropertiesTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: The Mac note editor with properties: what shows, and what edits may reach their YAML.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI

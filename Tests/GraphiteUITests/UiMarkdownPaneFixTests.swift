@@ -340,7 +340,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         await Task.yield() // The suggestion is now waiting for the index.
         session.text += "x"
         try await waitUntil { !performedEdits.isEmpty }
-        XCTAssertEqual(performedEdits.first?.replacement, "Folder/Notes]]")
+        XCTAssertEqual(performedEdits.first?.replacement, "Notes]]")
     }
 
     func testCompletionTitleHighlightsOnlyRangesInsideTheTitle() {

@@ -428,9 +428,9 @@ final class MacEditorParityTests: XCTestCase {
         pasteboard.setString("<h2>Title</h2><p>See <a href=\"https://example.com\">this</a></p>", forType: .html)
         pasteboard.setString("Title See this", forType: .string)
         editor.textView.pastingPasteboard = pasteboard
+        editor.textView.convertsPastedHTML = true
         editor.textView.paste(nil)
-        let deadline = Date.now.addingTimeInterval(5)
-        while editor.textView.string.isEmpty, Date.now < deadline { turnRunLoop(0.02) }
+        try await waitUntil("the converted text is in the note", timeoutSeconds: 10) { !editor.textView.string.isEmpty }
         XCTAssertTrue(editor.textView.string.contains("## Title"), editor.textView.string)
         XCTAssertTrue(editor.textView.string.contains("[this](https://example.com)"), editor.textView.string)
     }
