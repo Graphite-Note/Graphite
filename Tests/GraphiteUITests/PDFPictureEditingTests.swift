@@ -6,7 +6,7 @@
  *              step of the PDF's history, and the saved file shows the result.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 02/11/2026
  */
 import XCTest
@@ -103,6 +103,57 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(session.pictures(on: page), [turned])
         try await session.save()
         XCTAssertEqual(PDFPageManager.pictures(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))), [turned])
+    }
+
+    /// HUNT-208: two quick taps of Rotate Image Right, each its own step with no wait between. Turning is synchronous on
+    /// the main actor, so the second reads the picture the first turned: two turns, two steps, each undoing one turn.
+    func testTwoQuickTurnsTurnThePictureTwiceAndUndoOneTurnEach() async throws {
+        let (session, _) = try await openSession()
+        try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        let selection = try XCTUnwrap(session.selectedPicture)
+
+        session.undoManager.beginUndoGrouping()
+        try session.rotatePictureRight(selection)
+        session.undoManager.endUndoGrouping()
+        session.undoManager.beginUndoGrouping()
+        try session.rotatePictureRight(selection)
+        session.undoManager.endUndoGrouping()
+
+        let turnedTwice = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedTwice.quarterTurns, (placed.quarterTurns + 2) % 4, "Both taps turned it.")
+        XCTAssertEqual(turnedTwice.bounds.width, placed.bounds.width, accuracy: 0.01, "Two turns: the sides are back.")
+        session.undoAvailability.undo()
+        let turnedOnce = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedOnce.quarterTurns, (placed.quarterTurns + 1) % 4, "The last step undoes one turn.")
+        XCTAssertEqual(turnedOnce.bounds.width, placed.bounds.height, accuracy: 0.01)
+        session.undoAvailability.undo()
+        XCTAssertEqual(session.pictures(on: page), [placed], "The first undoes the other.")
+    }
+
+    /// A crop reads the picture and then waits for its image: a turn in that time stays, and the crop says it did not
+    /// happen, where it put the unturned picture back (the same shape as HUNT-208, in the one edit that still waits).
+    func testATurnWhileACropIsWorkedOutIsKeptAndTheCropIsRefused() async throws {
+        let (session, _) = try await openSession()
+        try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        let selection = try XCTUnwrap(session.selectedPicture)
+        let cropRegion = CGRect(x: placed.bounds.minX, y: placed.bounds.minY, width: placed.bounds.width / 2, height: placed.bounds.height)
+
+        let crop = Task { @MainActor in try await session.cropPicture(selection, to: cropRegion) }
+        await Task.yield()
+        try await step(in: session) { try session.rotatePictureRight(selection) }
+        do {
+            try await crop.value
+            XCTFail("The crop would have put the unturned picture back.")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Crop it again"), error.localizedDescription)
+        }
+        let picture = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(picture.quarterTurns, (placed.quarterTurns + 1) % 4, "The turn stays.")
+        XCTAssertEqual(picture.imageData, placed.imageData, "Nothing was cropped.")
     }
 
     /// Rotate Right on a page draws the picture a quarter turn further and never encodes it again

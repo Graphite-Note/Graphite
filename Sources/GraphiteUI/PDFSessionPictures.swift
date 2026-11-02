@@ -5,8 +5,8 @@
  * Description: The picture of a PDF page that is selected for moving, resizing or removing.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 02/11/2026
  */
 import Foundation
 import PDFKit
@@ -173,6 +173,10 @@ extension PDFSession {
         let pictureData = picture.imageData
         var cropped = picture
         cropped.imageData = try await Task.detached(priority: .userInitiated) { try PictureEditing.cropped(pictureData, to: imageRegion) }.value
+        // The bar is back while the crop is worked out; a picture turned or moved meanwhile is not put back as it was.
+        guard try pageAndPicture(of: selection).1 == picture else {
+            throw GraphiteError.unavailable("This image changed while it was being cropped. Crop it again.")
+        }
         // The part kept stays where it was shown: a picture of its own, turned as the
         // picture was, about its own middle. Page coordinates count upward, where a
         // clockwise turn is a negative angle.

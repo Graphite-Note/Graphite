@@ -6,8 +6,8 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.13
- * Date: 01/11/2026
+ * Version: 0.14
+ * Date: 02/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -151,6 +151,78 @@ final class InkSelectionTests: XCTestCase {
         let around = stroke.renderBounds.insetBy(dx: -12, dy: -12)
         let loop = [CGPoint(x: around.minX, y: around.minY), CGPoint(x: around.maxX, y: around.minY), CGPoint(x: around.maxX, y: around.maxY), CGPoint(x: around.minX, y: around.maxY), CGPoint(x: around.minX, y: around.minY)]
         canvas.inkSelection.selectContents(enclosedBy: loop.map { point in CGPoint(x: point.x * canvas.zoomScale, y: point.y * canvas.zoomScale) })
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
+    }
+
+    /// A closed loop of a finger through UIKit's own event path, around a rectangle of the drawing, so it goes through
+    /// the lasso's own recognizer, `handleLoop`, and the conversion from the touch to the drawing at the zoom shown.
+    private func drawLoopOfTouches(around drawingRectangle: CGRect, on canvas: PDFPageCanvasView, in window: UIWindow) async throws {
+        let corners = loop(around: drawingRectangle).map { drawingPoint in canvas.convert(canvasPoint(drawingPoint, on: canvas), to: window) }
+        let touches = SynthesizedTouches(window: window)
+        let closedLoop = corners + [corners[0]]
+        touches.begin(at: [closedLoop[0]])
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 16)
+        for (start, end) in zip(closedLoop, closedLoop.dropFirst()) {
+            for point in SynthesizedStrokes.line(from: start, to: end, steps: 10).dropFirst() {
+                touches.moveTo([point])
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 16)
+            }
+        }
+        touches.end()
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 50)
+    }
+
+    /// HUNT-007 through the real path: a stroke drawn at 3.27 and one drawn at the fitted zoom, each taken at 0.91 by a
+    /// loop of touches, whichever is around it, with a loop around neither marking an area.
+    func testALoopOfTouchesAtAnotherZoomTakesAStrokeDrawnWhileZoomedIn() async throws {
+        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, _) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 0.91
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        let middleAtFit = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnAtFit = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleAtFit.x - 100, y: middleAtFit.y - 200), to: CGPoint(x: middleAtFit.x + 100, y: middleAtFit.y - 200)), in: window)
+        pdfView.scaleFactor = 3.27
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        let middleZoomed = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnZoomed = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleZoomed.x - 100, y: middleZoomed.y), to: CGPoint(x: middleZoomed.x + 100, y: middleZoomed.y)), in: window)
+        let strokeAtFit = try XCTUnwrap(drawnAtFit), strokeZoomed = try XCTUnwrap(drawnZoomed)
+        pdfView.scaleFactor = 0.91
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        canvas.selectsInk = true
+
+        try await drawLoopOfTouches(around: strokeZoomed.renderBounds.insetBy(dx: -30, dy: -30), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [1], "The stroke drawn zoomed in is taken at another zoom.")
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea, "Its menu has Cut, Copy and Duplicate, not only an area's.")
+
+        try await drawLoopOfTouches(around: strokeAtFit.renderBounds.insetBy(dx: -30, dy: -30), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+    }
+
+    /// HUNT-007 for ink already in files: a stroke as the code before the width fix saved it, 2.7 times as wide, read back
+    /// from its saved form, is selected at another zoom by a loop of touches. Its points are where they always were.
+    func testALoopOfTouchesTakesAStrokeSavedAtTheOldWidth() async throws {
+        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, page) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        let saved = try PKDrawing(data: PKDrawing(strokes: [stroke(from: CGPoint(x: 150, y: 300), to: CGPoint(x: 250, y: 300), width: 4 * 2.7)]).dataRepresentation())
+        try await draw(saved.strokes, on: canvas, page: page, session: session)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 1.4
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        pdfView.go(to: CGRect(x: 100, y: page.bounds(for: .cropBox).height - 400, width: 300, height: 200), on: page)
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+        canvas.selectsInk = true
+
+        try await drawLoopOfTouches(around: CGRect(x: 120, y: 270, width: 160, height: 60), on: canvas, in: window)
         XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
         XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
     }

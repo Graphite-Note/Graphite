@@ -6,8 +6,8 @@
  *              sideways and the smallest zoom.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 #if os(iOS)
@@ -268,6 +268,130 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         }
         for button in buttons {
             XCTAssertGreaterThanOrEqual(button.bounds.height, 43.5, "\(button.accessibilityLabel ?? "A button") is a 44-point target.")
+        }
+    }
+
+    /// What the navigation bar shows: whether a control with this system image is on it, and the frames of its titles
+    /// and buttons. UIKit's bar buttons carry no label of their own a test can read.
+    private func navigationBarContents(in window: UIWindow) -> (symbolNames: [String], titles: [CGRect], buttons: [CGRect]) {
+        var symbolNames: [String] = [], titles: [CGRect] = [], buttons: [CGRect] = []
+        func visit(_ view: UIView) {
+            guard !view.isHidden, view.alpha > 0.01 else { return }
+            let kind = String(describing: type(of: view))
+            if kind.contains("TitleControl") { titles.append(view.convert(view.bounds, to: window)) }
+            if kind.contains("ButtonBarButton") { buttons.append(view.convert(view.bounds, to: window)) }
+            if let imageView = view as? UIImageView, let image = imageView.image { symbolNames.append(image.description) }
+            view.subviews.forEach(visit)
+        }
+        descendants(of: window, matching: UINavigationBar.self).forEach(visit)
+        return (symbolNames, titles, buttons)
+    }
+
+    /// HUNT-146: a portrait iPad with the sidebar open, the documents about 430 points wide: pages and find are on the
+    /// bar beside the title and More, adding pages is in More, and nothing covers the title.
+    func testAPDFsBarKeepsPagesAndFindWithTheSidebarOpenInPortrait() async throws {
+        let directory = try makeDirectory("PortraitSidebar")
+        let (workspace, session) = try await pdfWorkspace(in: directory)
+        let (window, _) = try host(workspace, size: CGSize(width: 750, height: 1000), horizontalSizeClass: .regular)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
+        workspace.searchResultsRevealRequest += 1
+        let pdfView = try XCTUnwrap(session.pdfView)
+        try await waitUntil("the sidebar opens beside the PDF") { pdfView.convert(pdfView.bounds, to: window).minX > 200 }
+        try await waitUntilSettled("the bar has laid out") { pdfView.bounds.width }
+        XCTAssertEqual(pdfView.bounds.width, 430, accuracy: 40, "The width of the report.")
+        try await waitUntil("pages and find reach the bar") {
+            let names = self.navigationBarContents(in: window).symbolNames
+            return names.contains { name in name.contains("magnifyingglass") } && names.contains { name in name.contains("square.grid.2x2") }
+        }
+        attachScreenshot(of: window, named: "PDF bar with the sidebar open, 430 points")
+        let bar = navigationBarContents(in: window)
+        XCTAssertTrue(bar.symbolNames.contains { name in name.contains("ellipsis") }, "More stays.")
+        XCTAssertFalse(bar.symbolNames.contains { name in name.contains("plus.rectangle.on.rectangle") }, "Adding pages is in More.")
+        for title in bar.titles {
+            XCTAssertGreaterThanOrEqual(title.width, 60, "The title shortens but stays readable.")
+            XCTAssertFalse(bar.buttons.contains { button in button.intersects(title.insetBy(dx: 1, dy: 1)) }, "No button covers the title.")
+        }
+        for button in bar.buttons { XCTAssertLessThanOrEqual(button.maxX, window.bounds.width + 0.5, "Every button is inside the window.") }
+    }
+
+    /// The relative contrast of two colors, as WCAG defines it, resolved in dark appearance.
+    private func darkContrast(of color: UIColor, against background: UIColor) -> Double {
+        let dark = UITraitCollection(userInterfaceStyle: .dark)
+        func luminance(_ color: UIColor) -> Double {
+            var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0
+            color.resolvedColor(with: dark).getRed(&red, green: &green, blue: &blue, alpha: nil)
+            func linear(_ component: CGFloat) -> Double {
+                component <= 0.03928 ? Double(component) / 12.92 : pow((Double(component) + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+        let (first, second) = (luminance(color), luminance(background))
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    /// Every window of the scene in one picture, in their order: a menu shows in a window of its own or over the bar.
+    private func attachScreenshotOfEveryWindow(in scene: UIWindowScene, size: CGSize, named name: String) {
+        let screenshot = UIGraphicsImageRenderer(size: size).image { _ in
+            for window in scene.windows.sorted(by: { first, second in first.windowLevel < second.windowLevel }) where !window.isHidden {
+                window.drawHierarchy(in: window.frame, afterScreenUpdates: true)
+            }
+        }
+        let attachment = XCTAttachment(image: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// HUNT-280: the icons of the bar's three-dot menu read in dark appearance. The bars take the label color, the
+    /// documents keep the accent. The picture is what proves it; the contrast is checked where the menu's icons can be found.
+    func testTheThreeDotMenusIconsReadInDarkAppearance() async throws {
+        let directory = try makeDirectory("DarkMenu")
+        let (workspace, session) = try await pdfWorkspace(in: directory)
+        let windowScene = try scene
+        let size = CGSize(width: 834, height: 1194)
+        let (window, _) = try host(workspace, size: size, horizontalSizeClass: .regular)
+        window.overrideUserInterfaceStyle = .dark
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
+        try await waitUntil("More shows") { self.navigationBarContents(in: window).symbolNames.contains { name in name.contains("ellipsis") } }
+        func showsMore(_ view: UIView) -> Bool {
+            (view as? UIImageView)?.image?.description.contains("ellipsis") == true || view.subviews.contains(where: showsMore)
+        }
+        let bar = try XCTUnwrap(descendants(of: window, matching: UINavigationBar.self).first { bar in !bar.isHidden && showsMore(bar) })
+        let accent = try XCTUnwrap(UIColor.graphiteAccent(hex: workspace.preferences.accentHex))
+        XCTAssertGreaterThan(darkContrast(of: try XCTUnwrap(bar.tintColor), against: accent), 1.1, "The bar does not take the accent, whose icons were dark blue on the dark menu.")
+        // The menu's material in dark appearance, about this gray; 3 to 1 is what a graphic needs to be made out (WCAG 1.4.11).
+        let platter = UIColor(white: 0.17, alpha: 1)
+
+        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        var moreButtonFrame: CGRect?
+        func findMore(_ view: UIView) {
+            if let imageView = view as? UIImageView, imageView.image?.description.contains("ellipsis") == true {
+                moreButtonFrame = imageView.convert(imageView.bounds, to: window)
+            }
+            view.subviews.forEach(findMore)
+        }
+        findMore(bar)
+        let frame = try XCTUnwrap(moreButtonFrame)
+        let middle = CGPoint(x: frame.midX, y: frame.midY)
+        await SynthesizedTouches(window: window).move(paths: [(middle, middle)], steps: 1, stepSeconds: 0.03, holdSeconds: 0.05)
+
+        // The menu's icons are image views inside UIKit's menu, whose class names say so.
+        func menuIcons() -> [UIImageView] {
+            func icons(in view: UIView, insideMenu: Bool) -> [UIImageView] {
+                let isMenu = insideMenu || String(describing: type(of: view)).contains("Menu")
+                let own = isMenu ? [view].compactMap { candidate in candidate as? UIImageView }.filter { icon in icon.image?.isSymbolImage == true } : []
+                return own + view.subviews.flatMap { child in icons(in: child, insideMenu: isMenu) }
+            }
+            return windowScene.windows.flatMap { sceneWindow in icons(in: sceneWindow, insideMenu: false) }
+        }
+        try? await waitUntil("the menu opens", timeoutSeconds: 5) { menuIcons().count >= 3 }
+        attachScreenshotOfEveryWindow(in: windowScene, size: size, named: "Three-dot menu of a PDF, dark appearance")
+        let icons = menuIcons()
+        try XCTSkipIf(icons.isEmpty, "UIKit's menu icons were not found: the picture attached is the check.")
+        for icon in icons {
+            XCTAssertGreaterThanOrEqual(darkContrast(of: icon.tintColor, against: platter), 3, "A menu icon reads: \(icon.image?.description ?? "")")
         }
     }
 }

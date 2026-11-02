@@ -5,7 +5,7 @@
  * Description: Vault switching, link following, external changes, and attachment saving in the
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.12
+ * Version: 0.13
  * Date: 02/11/2026
  */
 
@@ -354,6 +354,24 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertNil(workspace.errorMessage)
         XCTAssertEqual(workspace.selection, try VaultPath("Homework 2.1.md"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Homework 2.1.md").path))
+    }
+
+    /// HUNT-159: a link to a name several files share opens the closest one, as in Obsidian, with no search left in a
+    /// sidebar the person may not see and no notice pointing at it.
+    func testFollowingALinkToASharedNameOpensTheClosestWithNoSearchOrNotice() async throws {
+        let vault = try makeVault(files: ["Course/Source.md": "[[Summary]]", "Course/Summary.md": "near\n", "Other/Far/Summary.md": "far\n"])
+        let workspace = try await openedWorkspace(vault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let searchFocusRequests = workspace.searchFocusRequest, searchRevealRequests = workspace.searchResultsRevealRequest
+
+        await workspace.follow("Summary", from: try VaultPath("Course/Source.md"))
+
+        XCTAssertEqual(workspace.selection, try VaultPath("Course/Summary.md"))
+        XCTAssertEqual(workspace.searchQuery, "")
+        XCTAssertNil(workspace.notice)
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertEqual(workspace.searchFocusRequest, searchFocusRequests)
+        XCTAssertEqual(workspace.searchResultsRevealRequest, searchRevealRequests)
     }
 
     /// A missing attachment is not created as a note.

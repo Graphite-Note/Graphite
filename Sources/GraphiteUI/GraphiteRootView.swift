@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.61
- * Date: 01/11/2026
+ * Version: 0.62
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -111,8 +111,10 @@ struct GraphiteRootView: View {
                 .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
                 // The library is the file browser in Library mode: no button opens a sidebar beside it.
                 .toolbar(removing: isLibraryWindow ? .sidebarToggle : nil)
+                .tint(workspace.preferences.accentColor)
         } detail: {
             detailColumn
+                .tint(workspace.preferences.accentColor)
                 .overlay {
                     // Both exist only while the Read Aloud core plugin is on.
                     if usesFloatingPlayer, let reader = workspace.readAloud, let navigator = workspace.readAloudNavigator,
@@ -125,7 +127,9 @@ struct GraphiteRootView: View {
         .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > geometry.size.width } action: { isTallerThanWide in
             isWindowTallerThanWide = isTallerThanWide
         }
-        .tint(workspace.preferences.accentColor)
+        // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
+        // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
+        .tint(.primary)
         // Links' preview cards, while the core plugin Page Preview is on.
         .modifier(LinkPreviewLayer(isEnabled: workspace.preferences.isEnabled(.pagePreview), vault: workspace.linkPreviewVault))
         // Once per device, over the reopened vault or the welcome screen.
@@ -151,6 +155,7 @@ struct GraphiteRootView: View {
         .modifier(LibraryModeSidebarVisibility(presentation: workspace.preferences.library.presentation, isCompactWidth: isCompactWidth,
                                                columnVisibility: $columnVisibility))
         .environment(\.accent, workspace.preferences.accentColor)
+        .environment(\.isSidebarBesideDocuments, !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar))
         .environment(library)
         .environment(tabOverview)
         .environment(\.libraryWindowActions, libraryWindowActions)
