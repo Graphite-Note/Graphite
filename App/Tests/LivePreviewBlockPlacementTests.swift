@@ -218,11 +218,9 @@ final class LivePreviewBlockPlacementTests: XCTestCase {
         // The view keeps its 300 point estimate until the diagram has reported its height, which on a loaded machine comes
         // after the placement has looked settled.
         let laidOutHeight = flowchart.layout.size.height * diagramScale + blockVerticalPadding
-        let heightDeadline = Date().addingTimeInterval(8)
-        while abs(diagramView.frame.height - laidOutHeight) > 1, Date() < heightDeadline {
-            try await Task.sleep(for: .milliseconds(50))
+        try await waitUntil("the view holds the laid-out diagram, not its code", timeoutSeconds: 8) {
+            abs(diagramView.frame.height - laidOutHeight) <= 1
         }
-        XCTAssertEqual(diagramView.frame.height, laidOutHeight, accuracy: 1, "The view holds the laid-out diagram, not its code.")
         let lineAfter = try XCTUnwrap(lineFrame(atCharacter: source.range(of: "Text after").location, in: editor))
         XCTAssertLessThanOrEqual(diagramView.frame.maxY, lineAfter.minY + 1, "The diagram covers the text after it.")
 
