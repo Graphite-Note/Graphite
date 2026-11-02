@@ -113,6 +113,7 @@ enum ReadingInlineMarking {
 
 /// The constant patterns of `ReadingInlineMarking`; `StaticPatternTests` compiles every case.
 enum ReadingInlineMarkingPattern: String, StaticPatternSet {
-    case highlightPattern = #"(?<![=~])==(?![\s=~])([^=\n]+?)(?<!\s)==(?!=)"#
+    /// `\=` is how a formula's `=` reads here, after `ReadingMathPreparation` protected it.
+    case highlightPattern = #"(?<![=~])==(?![\s=~])((?:[^=\n]|\\=)+?)(?<!\s)==(?!=)"#
     case blockIdentifierPattern = #"(?:[ \t]+|^)\^[A-Za-z0-9-]+[ \t]*$"#
 }

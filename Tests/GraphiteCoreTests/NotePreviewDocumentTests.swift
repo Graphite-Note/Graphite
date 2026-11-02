@@ -212,6 +212,14 @@ final class NotePreviewDocumentInlineMarkupTests: XCTestCase {
         XCTAssertEqual(ReadingInlineMarking.markingHighlights(in: "==a== `==b==`\n==c=="), "\(start)a\(end) `==b==`\n\(start)c\(end)")
     }
 
+    /// `ReadingMathPreparation` has written a formula's `=` as `\=` by the time highlights are found.
+    func testHighlightHoldsAFormulaWithAnEqualsSign() {
+        let start = String(ReadingMarkers.highlightStartMarker)
+        let end = String(ReadingMarkers.highlightEndMarker)
+        XCTAssertEqual(ObsidianInlineMarkup.preparedForReading("==a $x=1$ b== c", colorsEnabled: false, paletteHexByName: [:]), #"\#(start)a $x\=1$ b\#(end) c"#)
+        XCTAssertEqual(ObsidianInlineMarkup.preparedForReading("==$x==1$==", colorsEnabled: false, paletteHexByName: [:]), #"\#(start)$x\=\=1$\#(end)"#)
+    }
+
     func testSoftLineBreaksKeepCRLFLineEndings() {
         XCTAssertEqual(ObsidianPreviewText.applyingSoftLineBreaks(to: "Line one\r\nLine two\r\n"), "Line one  \r\nLine two  \r\n")
         XCTAssertEqual(ObsidianPreviewText.applyingSoftLineBreaks(to: "one\r\ntwo\r\n```\r\ncode\r\n```\r\nthree"), "one  \r\ntwo  \r\n```\r\ncode\r\n```\r\nthree  ")

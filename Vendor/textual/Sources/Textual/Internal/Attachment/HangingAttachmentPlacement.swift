@@ -70,15 +70,28 @@ extension AnyAttachment {
   }
 }
 
+/// How far text in a font reaches above and below its baseline, as `Text.Layout.Run` reports a run
+/// of it (measured on macOS 27: a run at 17 points has exactly these, unrounded).
+struct FontVerticalExtent: Hashable, Sendable {
+  let ascent: CGFloat
+  let descent: CGFloat
+}
+
 extension TextEnvironmentValues {
   /// The descent a line in this font has, rounded as SwiftUI rounds it. Without the API that tells
   /// (no system Graphite runs on), it is 0, and a line reserves the font's descent on top of the
   /// attachment's as it did before.
   var fontLineDescent: CGFloat {
-    guard #available(iOS 26, macOS 26, tvOS 26, watchOS 26, visionOS 26, *) else { return 0 }
+    fontVerticalExtent?.descent.rounded() ?? 0
+  }
+
+  /// Nil without the API that tells, no system Graphite runs on.
+  var fontVerticalExtent: FontVerticalExtent? {
+    guard #available(iOS 26, macOS 26, tvOS 26, watchOS 26, visionOS 26, *) else { return nil }
     var environment = EnvironmentValues()
     environment.dynamicTypeSize = dynamicTypeSize
     environment.legibilityWeight = legibilityWeight
-    return CTFontGetDescent((font ?? .body).resolve(in: environment.fontResolutionContext).ctFont).rounded()
+    let font = (font ?? .body).resolve(in: environment.fontResolutionContext).ctFont
+    return FontVerticalExtent(ascent: CTFontGetAscent(font), descent: CTFontGetDescent(font))
   }
 }

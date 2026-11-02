@@ -136,7 +136,12 @@ extension Text {
       }
 
       if let roundedBackground = run[RoundedRunBackgroundAttribute.self] {
-        text = text.customAttribute(RoundedRunBackgroundText(background: roundedBackground))
+        text = text.customAttribute(
+          RoundedRunBackgroundText(
+            background: roundedBackground,
+            attachmentFontExtent: key == nil ? nil : runEnvironment.fontVerticalExtent
+          )
+        )
       }
 
       return text

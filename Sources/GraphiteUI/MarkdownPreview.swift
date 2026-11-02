@@ -2024,7 +2024,12 @@ struct ObsidianMarkdownParser: MarkupParser {
         }
         let themeColors = themeColors, textSize = textSize
         Self.applyMarkers(start: ReadingMarkers.highlightStartMarker, hexEnd: nil, end: ReadingMarkers.highlightEndMarker, to: &attributed) { _, range, text in
-            guard let themeColors else { text[range].backgroundColor = Color.yellow.opacity(0.35); return }
+            // Not `backgroundColor`: SwiftUI draws that for a run's text, and a formula in the
+            // highlight is a placeholder image, so the highlight had a gap behind it.
+            guard let themeColors else {
+                text[range][RoundedRunBackgroundAttribute.self] = RoundedRunBackground(color: Color.yellow.opacity(0.35), cornerRadius: 0, horizontalPadding: 0)
+                return
+            }
             // The theme's highlight, with its rounded ends and text color.
             text[range][RoundedRunBackgroundAttribute.self] = RoundedRunBackground(
                 color: themeColors.highlight, cornerRadius: NoteThemeStyle.scaled(themeColors.highlightRadius, textSize: textSize), horizontalPadding: 1)
