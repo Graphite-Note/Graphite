@@ -1,3 +1,14 @@
+/**
+ * File: BaseEmbedding.swift
+ * -------------------------
+ * Layer: UI
+ * Description: What a base inside a note needs from the app, and the code block and embed views that show it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
@@ -11,6 +22,8 @@ public struct BaseEmbedContext {
     public let embeddingNote: VaultPath
     /// Change it after vault files or the index change, so the bases run again.
     public let contentVersion: Int
+    /// Which files changed for `contentVersion`, when known.
+    public let contentChange: BaseContentChange?
     public let isIndexComplete: Bool
     public let open: (VaultPath) -> Void
     public let filesChanged: ([VaultPath]) -> Void
@@ -20,13 +33,15 @@ public struct BaseEmbedContext {
     /// Keeps the results of bases scrolled out of sight; see `EmbeddedBaseModelCache`.
     public let modelCache: EmbeddedBaseModelCache?
 
-    public init(store: VaultStore, index: VaultIndex, embeddingNote: VaultPath, contentVersion: Int, isIndexComplete: Bool,
+    public init(store: VaultStore, index: VaultIndex, embeddingNote: VaultPath, contentVersion: Int, contentChange: BaseContentChange? = nil,
+        isIndexComplete: Bool,
                 open: @escaping (VaultPath) -> Void, filesChanged: @escaping ([VaultPath]) -> Void = { _ in },
                 openBase: ((VaultPath, String?) -> Void)? = nil, modelCache: EmbeddedBaseModelCache? = nil) {
         self.store = store
         self.index = index
         self.embeddingNote = embeddingNote
         self.contentVersion = contentVersion
+        self.contentChange = contentChange
         self.isIndexComplete = isIndexComplete
         self.open = open
         self.filesChanged = filesChanged
@@ -64,7 +79,8 @@ public struct BaseCodeBlockView: View {
     public var body: some View {
         if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(yaml: yaml, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
-                             contentVersion: activeContext.contentVersion, isIndexComplete: activeContext.isIndexComplete,
+                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
+                                 isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, filesChanged: activeContext.filesChanged, modelCache: activeContext.modelCache)
         } else {
             Text(yaml)
@@ -96,7 +112,8 @@ public struct BaseFileEmbedView: View {
     public var body: some View {
         if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(basePath: path, viewName: viewName, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
-                             contentVersion: activeContext.contentVersion, isIndexComplete: activeContext.isIndexComplete,
+                             contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
+                                 isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, openBase: activeContext.openBase, filesChanged: activeContext.filesChanged,
                              modelCache: activeContext.modelCache)
         } else if let openWithoutContext {

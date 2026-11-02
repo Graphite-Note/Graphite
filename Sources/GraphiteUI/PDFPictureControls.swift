@@ -1,3 +1,13 @@
+/**
+ * File: PDFPictureControls.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Where an image to place on a PDF page comes from.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
 #if canImport(UIKit)
 import SwiftUI
 import UIKit
@@ -102,7 +112,7 @@ struct PDFPictureArrangementBar: View {
                     .lineLimit(2)
                 Spacer(minLength: 8)
                 PictureEditingButtons(isEnabled: session.selectedPicture != nil, canReorder: pictureCountOnSelectedPage > 1,
-                                      rotateRight: { run { if let selection = session.selectedPicture { try await session.rotatePictureRight(selection) } } },
+                                      rotateRight: { run { if let selection = session.selectedPicture { try session.rotatePictureRight(selection) } } },
                                       crop: { beginCropping() },
                                       moveInOrder: { toFront in run { if let selection = session.selectedPicture { try session.movePictureInOrder(selection, toFront: toFront) } } },
                                       delete: { run { if let selection = session.selectedPicture { try session.removePicture(selection) } } })
@@ -232,12 +242,26 @@ final class PDFPictureSelectionController {
         selection.cropLimits = session.pictureCrop == nil ? nil : pictureFrame
         selection.unrotatedFrame = session.pictureCrop.map { crop in pdfView.convert(crop, from: page) } ?? pictureFrame
         selection.centerLimits = pdfView.convert(page.bounds(for: .cropBox), from: page)
-        // The preview is the picture as placed; on a page turned since, only the frame moves.
+        // The preview is the picture as it is shown: turned by the page's quarter turns less
+        // those it was placed at or turned back by with Rotate Right. It keeps until it changes.
         let pageTurns = ((page.rotation / 90) % 4 + 4) % 4
-        selection.dragPreview = pageTurns == picture.quarterTurns ? UIImage(data: picture.imageData) : nil
+        let previewKey = PreviewKey(pictureName: picture.name, imageByteCount: picture.imageData.count, quarterTurnsClockwise: pageTurns - picture.quarterTurns)
+        if previewKey != shownPreviewKey {
+            shownPreviewKey = previewKey
+            selection.dragPreview = UIImage(data: picture.imageData).map { image in LassoAreaCapture.turned(image,
+                quarterTurnsClockwise: previewKey.quarterTurnsClockwise) }
+        }
     }
 
+    private struct PreviewKey: Equatable {
+        let pictureName: String
+        let imageByteCount: Int
+        let quarterTurnsClockwise: Int
+    }
+    private var shownPreviewKey: PreviewKey?
+
     private func makeSelectionView(in pdfView: PDFView) -> SelectionFrameView {
+        shownPreviewKey = nil
         let selection = SelectionFrameView(frame: .zero)
         selection.allowsRotation = true
         selection.frameChangeDidEnd = { [weak self] frame in self?.selectionFrameChangeDidEnd(frame) }

@@ -2140,6 +2140,7 @@ One regression test per defect of the SOLID audit's "Fix before the cleanup star
 | Defect | Suite | Test |
 | --- | --- | --- |
 | BUG-SHELL-03 | GraphiteUITests | `QuitSaveDecisionTests.testStaysOpenWhenASaveFailedAndCarriesTheFailureToShow` |
+| BUG-SHELL-03 | GraphiteUITests | `UnsavedDocumentDraftTests.testQuittingWithTextThatCannotBeSavedKeepsItInADraftAndSaysSoOnReopening` |
 | BUG-MDCORE-01 | GraphiteCoreTests | `NotePreviewDocumentTests.testRunsNestedPastTheSafeDepthStayWholeInsteadOfBeingParsedIntoSections` |
 | BUG-CANVAS-01 | GraphiteUITests | `CanvasSessionTests.testUndoWhileTypingInATextCardUndoesTheTypingFirstAndRedoBringsItBack` |
 | BUG-VOICE-V01 | GraphiteCoreTests | `ReadAloudPronunciationVaultFileReadingTests.testAFileThatCannotBeReadIsReportedAsReadFailedAndIsNeverRewritten` |

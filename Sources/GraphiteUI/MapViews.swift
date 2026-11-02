@@ -1,3 +1,14 @@
+/**
+ * File: MapViews.swift
+ * --------------------
+ * Layer: UI
+ * Description: The open note and the notes it links to, or that link to it, on a map in the right
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -36,7 +47,7 @@ struct LocalMapPanel: View {
             if let localNotes {
                 if localNotes.isEmpty {
                     ContentUnavailableView("No Places", systemImage: "map",
-                                           description: Text(workspace.hasCompletedIndexScan
+                                           description: Text(workspace.isIndexUsable
                                                              ? "This note and the notes it links to have no coordinates property." : "Still reading the vault."))
                 } else {
                     NotesMapView(notes: localNotes, title: { path in path.stem }, highlightedPath: session.path,

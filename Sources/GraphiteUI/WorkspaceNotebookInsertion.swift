@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceNotebookInsertion.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: Notebooks created from inside a note.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -38,7 +49,7 @@ extension WorkspaceModel {
             let insertedText = placement.insertedText(fromEmbed: await embed(for: path, in: session.path, settings: settings))
             insertEmbed(insertedText, of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
-            await refreshDirectory()
+            await showInListings(path)
         } catch {
             errorMessage = "The notebook “\(name)” could not be created. Nothing was added to the note."
         }

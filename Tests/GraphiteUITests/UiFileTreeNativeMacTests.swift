@@ -6,8 +6,8 @@
  *              and each row's menu, Reveal in Finder included.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.5
- * Date: 21/10/2026
+ * Version: 0.6
+ * Date: 01/11/2026
  */
 
 #if os(macOS)
@@ -80,6 +80,33 @@ final class UiFileTreeNativeMacTests: XCTestCase {
         outlineView.collapseItem(course)
         XCTAssertFalse(workspace.expandedFolders.contains(try VaultPath("Course")))
         XCTAssertEqual(outlineView.numberOfRows, 2)
+    }
+
+    /// HUNT-037: a refresh that finds the root as it was reloads no row, and a change named in
+    /// one folder lists only that folder.
+    func testARefreshOfAnUnchangedRootReloadsNoRowAndAChangeListsOnlyItsFolder() async throws {
+        let workspace = try makeWorkspace(files: ["Course/Week 1.md", "Other/Old.md", "Root.md"])
+        await workspace.refreshDirectory()
+        let store = try XCTUnwrap(workspace.store)
+        let course = try VaultPath("Course"), other = try VaultPath("Other")
+        workspace.expandedFolders.formUnion([course, other])
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 5 }
+        let fileTree = try XCTUnwrap(outlineView as? FileTreeOutlineView)
+        let reloadsBefore = fileTree.fullReloadCount
+
+        await workspace.refreshDirectory()
+        await ManualClock.letResumedTasksRun()
+        XCTAssertEqual(fileTree.fullReloadCount, reloadsBefore, "Every refresh used to reload all rows, 24,712 at the owner's root.")
+
+        // Listed anew by name: a change in Course lists Course and nothing else.
+        let vault = try XCTUnwrap(workspace.folderAccess?.root)
+        try Data("new".utf8).write(to: vault.appendingPathComponent("Course/Week 2.md"))
+        let listingsBefore = store.directoryListingCount
+        await workspace.refreshListings(changedItems: [try VaultPath("Course/Week 2.md")], foldersToListAgain: [course])
+        try await waitUntil { outlineView.numberOfRows == 6 }
+        XCTAssertEqual(store.directoryListingCount, listingsBefore + 1)
+        XCTAssertEqual(fileTree.fullReloadCount, reloadsBefore)
     }
 
     /// A row dragged into a note becomes a link to it: the editor reads the same item.

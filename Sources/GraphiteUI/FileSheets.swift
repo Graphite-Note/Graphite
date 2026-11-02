@@ -1,3 +1,14 @@
+/**
+ * File: FileSheets.swift
+ * ----------------------
+ * Layer: UI
+ * Description: The Rename, New Folder and Move sheets of the file tree.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -103,7 +114,7 @@ private struct RenameSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Rename", action: rename).disabled(problem != nil) }
             }
         }
-        .frame(minWidth: 380, minHeight: 220)
+        .sheetMinimumSize(width: 380, height: 220)
         .onAppear {
             name = originalName
             isNameFocused = true
@@ -163,7 +174,7 @@ private struct NewFolderSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Create", action: create).disabled(problem != nil) }
             }
         }
-        .frame(minWidth: 380, minHeight: 220)
+        .sheetMinimumSize(width: 380, height: 220)
         .onAppear { isNameFocused = true }
     }
 
@@ -223,7 +234,7 @@ private struct MoveSheet: View {
             #endif
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
-        .frame(minWidth: 380, minHeight: 480)
+        .sheetMinimumSize(width: 380, height: 480)
         .task {
             guard let root = workspace.folderAccess?.root else { return }
             folders = await Task.detached(priority: .userInitiated) { Self.folders(in: root) }.value

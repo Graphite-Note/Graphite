@@ -1,4 +1,16 @@
+/**
+ * File: VaultStore.swift
+ * ----------------------
+ * Layer: Core
+ * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
+import Synchronization
 
 public struct VaultEntry: Sendable, Identifiable, Hashable {
     public var id: VaultPath { path }
@@ -49,6 +61,17 @@ public enum FileNameRules {
     /// characters (".md", ".base", ".markdown") and a number that tells it from an
     /// existing file (" 100000" at most).
     static let reservedSuffixBytes = 16
+    /// What the name of a copy of edits that could not be saved adds to the file's own.
+    static let separateCopySuffix = " Graphite edits"
+
+    /// The stem of a copy of a file's edits: the file's own, shortened when it would otherwise
+    /// make a name no file system stores, as a name that is already the longest allowed would.
+    public static func separateCopyStem(of stem: String) -> String {
+        let maximumStemBytes = maximumFileNameBytes - reservedSuffixBytes - separateCopySuffix.utf8.count
+        var shortenedStem = stem
+        while shortenedStem.utf8.count > maximumStemBytes { shortenedStem.removeLast() }
+        return shortenedStem + separateCopySuffix
+    }
 
     /// Why `name` cannot be used, or nil when it can.
     public static func problem(with name: String, isNote: Bool) -> String? {
@@ -63,10 +86,28 @@ public enum FileNameRules {
     }
 }
 
+/// Why edits that could not be saved did not go to a copy.
+public enum SeparateCopyRefusal: LocalizedError, Equatable {
+    case vaultFolderIsGone(fileName: String)
+    /// A drawing can only be saved as a new file when it has a file already.
+    case drawingHasNoFile
+    /// A PDF's edits cannot be left behind by choosing a version; it has its own Save a Copy.
+    case pdfHasUnsavedEdits(fileName: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .vaultFolderIsGone(let fileName): "The vault's folder is no longer where it was, so a copy cannot be written beside “\(fileName)”."
+        case .drawingHasNoFile: "This drawing cannot be saved as a new file."
+        case .pdfHasUnsavedEdits(let fileName): "“\(fileName)” has edits that could not be saved. Use Save a Copy in its banner first, then choose a version."
+        }
+    }
+}
+
 public actor VaultStore {
     public nonisolated let root: URL
     public nonisolated let writer: AtomicFileWriter
-    private static let applicationConfigurationPath = ".obsidian/app.json"
+    nonisolated let directoryListings = Mutex(0)
+    static let applicationConfigurationPath = ".obsidian/app.json"
     private static let maximumConfigurationBytes = 1_048_576
     /// The Obsidian settings Graphite last read or saved, which a save without an explicit
     /// starting point compares against: only the keys that differ are written, so a key
@@ -78,20 +119,6 @@ public actor VaultStore {
     public init(root: URL, filePresenter: (any NSFilePresenter & Sendable)? = nil) {
         self.root = root
         writer = AtomicFileWriter(filePresenter: filePresenter)
-    }
-
-    public func children(of directory: VaultPath, sortedBy sortOrder: FileSortOrder = .alphabetical) throws -> [VaultEntry] {
-        let url = try directory.url(in: root)
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
-        let entries = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles]).compactMap { child -> VaultEntry? in
-            // One child that vanished since the listing, or that has a name no vault path
-            // can hold, is left out instead of failing the whole folder.
-            guard let values = try? child.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
-                  let childPath = try? directory.appending(child.lastPathComponent) else { return nil }
-            return VaultEntry(path: childPath, isDirectory: values.isDirectory == true, size: values.fileSize ?? 0,
-                              modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
-        }
-        return sortOrder.sorted(entries)
     }
 
     public func read(_ path: VaultPath, maximumBytes: Int? = nil) throws -> FileSnapshot {
@@ -348,29 +375,6 @@ public actor VaultStore {
         return firstIdentifier.isEqual(secondIdentifier)
     }
 
-    /// Copies a file or folder beside itself as "Name 1", like Obsidian's "Make a copy".
-    public func duplicate(_ path: VaultPath) throws -> VaultPath {
-        let sourceLocation = try path.url(in: root)
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: sourceLocation.path, isDirectory: &isDirectory) else { throw GraphiteError.unavailable("“\(path.name)” is no longer in the vault.") }
-        let copyPath = try availablePath(in: path.parent, stem: isDirectory.boolValue ? path.name : path.stem,
-                                         extension: isDirectory.boolValue ? "" : (path.name as NSString).pathExtension, firstSuffix: 1)
-        let copyLocation = try copyPath.url(in: root)
-        if isDirectory.boolValue {
-            var coordinationError: NSError?
-            var copyResult: Result<Void, Error>?
-            writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
-                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedCopy) }
-            }
-            if let coordinationError { throw coordinationError }
-            guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }
-            try copyResult.get()
-        } else {
-            try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
-        }
-        return copyPath
-    }
-
     /// Creates an empty folder; fails if something already has that name.
     public func createFolder(named name: String, in directory: VaultPath) throws -> VaultPath {
         if let problem = FileNameRules.problem(with: name, isNote: false) { throw GraphiteError.unavailable(problem) }
@@ -449,6 +453,45 @@ public actor VaultStore {
         throw GraphiteError.unavailable("Choose another name.")
     }
 
+    /// Copies a file or folder beside itself as "Name 1", like Obsidian's "Make a copy".
+    public func duplicate(_ path: VaultPath) async throws -> VaultPath {
+        let sourceLocation = try path.url(in: root)
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: sourceLocation.path, isDirectory: &isDirectory) else { throw GraphiteError.unavailable("“\(path.name)” is no longer in the vault.") }
+        let copyPath = try availablePath(in: path.parent, stem: isDirectory.boolValue ? path.name : path.stem,
+                                         extension: isDirectory.boolValue ? "" : (path.name as NSString).pathExtension, firstSuffix: 1)
+        let copyLocation = try copyPath.url(in: root)
+        // Off the actor: a copy of gigabytes must not hold back every save waiting behind it.
+        let writer = writer
+        let isFolder = isDirectory.boolValue
+        try await Task.detached(priority: .userInitiated) {
+            guard isFolder else {
+                try writer.copy(from: sourceLocation, to: copyLocation, expecting: .absent)
+                return
+            }
+            var coordinationError: NSError?
+            var copyResult: Result<Void, Error>?
+            writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
+                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedCopy) }
+            }
+            if let coordinationError { throw coordinationError }
+            guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }
+            try copyResult.get()
+        }.value
+        return copyPath
+    }
+
+    /// A free path beside `path` for edits that could not be saved into it. Its folder is made
+    /// again when another app renamed or removed it, so the copy always has a place. The vault's
+    /// own folder is not: one that moved would come back empty beside the real one.
+    public func separateCopyPath(of path: VaultPath, fileExtension: String) throws -> VaultPath {
+        guard FileManager.default.fileExists(atPath: root.path) else {
+            throw SeparateCopyRefusal.vaultFolderIsGone(fileName: path.name)
+        }
+        try createDirectory(path.parent)
+        return try uniquePath(directory: path.parent, stem: FileNameRules.separateCopyStem(of: path.stem), extension: fileExtension)
+    }
+
     /// "Name.ext", else "Name 1.ext", "Name 2.ext"…, the names Obsidian gives new files.
     /// A file without an extension gets no trailing dot, and leading dots are dropped from
     /// the stem, since a hidden file would vanish from Files and the sidebar while a note
@@ -458,5 +501,23 @@ public actor VaultStore {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedStem.isEmpty, !trimmedStem.contains("/"), !trimmedStem.contains("\\"), !trimmedStem.contains("\n") else { throw GraphiteError.invalidPath(stem) }
         return try availablePath(in: directory, stem: trimmedStem, extension: fileExtension, firstSuffix: nil)
+    }
+}
+
+/// Reads one folder of the vault, as `VaultStore.children` lists it.
+enum VaultFolderReader {
+    static func children(of directory: VaultPath, in root: URL, sortedBy sortOrder: FileSortOrder) throws -> [VaultEntry] {
+        let url = try directory.url(in: root)
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey]
+        let children = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])
+        let entries = children.compactMap { child -> VaultEntry? in
+            // One child that vanished since the listing, or that has a name no vault path
+            // can hold, is left out instead of failing the whole folder.
+            guard let values = try? child.resourceValues(forKeys: Set(keys)), values.isSymbolicLink != true,
+                  let childPath = try? directory.appending(child.lastPathComponent) else { return nil }
+            return VaultEntry(path: childPath, isDirectory: values.isDirectory == true, size: values.fileSize ?? 0,
+                              modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
+        }
+        return sortOrder.sorted(entries)
     }
 }
