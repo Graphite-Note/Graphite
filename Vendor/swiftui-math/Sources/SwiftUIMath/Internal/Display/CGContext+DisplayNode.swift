@@ -30,6 +30,8 @@ extension CGContext {
       draw(accent, foregroundColor: foregroundColor)
     case let brace as Math.DisplayHorizontalBrace:
       draw(brace, foregroundColor: foregroundColor)
+    case let stroke as Math.DisplayStroke:
+      draw(stroke, foregroundColor: foregroundColor)
     default:
       break
     }
@@ -199,6 +201,20 @@ extension CGContext {
     setLineCap(.round)
     setLineJoin(.round)
     addPath(brace.centerLine)
+    strokePath()
+
+    restoreGState()
+  }
+
+  /// Graphite patch: a frame, a strike-out or an arrow's shaft, stroked with butt ends.
+  private func draw(_ stroke: Math.DisplayStroke, foregroundColor: CGColor) {
+    saveGState()
+
+    translateBy(x: stroke.position.x, y: stroke.position.y)
+    setStrokeColor(foregroundColor)
+    setLineWidth(stroke.thickness)
+    setLineCap(.butt)
+    addPath(stroke.path)
     strokePath()
 
     restoreGState()

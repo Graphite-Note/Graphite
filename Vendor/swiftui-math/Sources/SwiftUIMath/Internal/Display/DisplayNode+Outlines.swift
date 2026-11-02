@@ -69,6 +69,9 @@ struct MathOutlines {
       let braceTransform = CGAffineTransform(translationX: brace.position.x, y: brace.position.y).concatenating(transform)
       let outline = brace.centerLine.copy(strokingWithWidth: brace.thickness, lineCap: .round, lineJoin: .round, miterLimit: 10)
       path(for: color).addPath(outline, transform: braceTransform)
+    case let stroke as Math.DisplayStroke:
+      let strokeTransform = CGAffineTransform(translationX: stroke.position.x, y: stroke.position.y).concatenating(transform)
+      path(for: color).addPath(stroke.outline, transform: strokeTransform)
     case let largeOperator as Math.DisplayLargeOperator:
       if let upperLimit = largeOperator.upperLimit { add(upperLimit, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }
       if let lowerLimit = largeOperator.lowerLimit { add(lowerLimit, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }

@@ -7,7 +7,7 @@
  *              before anything is lost, the Pencil sections of the iPad only, pages without a vault and large text.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 02/11/2026
  */
 
@@ -128,7 +128,10 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
         // Beside the list, another page replaces the font list; it does not stay pushed on the new page.
         await tap(try await element(in: controller, "the Editor row") { $0.accessibilityLabel == "Editor" })
         _ = try await element(in: controller, "the Editor page") { ($0.accessibilityLabel ?? "").hasPrefix("Default View for New Notes") }
-        XCTAssertNil(barItem(titled: "Choose an Installed Font…", in: controller), "The font list of the Appearance page is gone.")
+        // The old stack leaves the screen a moment after the new page arrives.
+        try await waitUntil("the font list of the Appearance page is gone", timeoutSeconds: 10) {
+            self.barItem(titled: "Choose an Installed Font…", in: controller) == nil
+        }
     }
 
     // MARK: HUNT-246, HUNT-248: the font size slider

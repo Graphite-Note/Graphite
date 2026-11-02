@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 24/10/2026
+ * Version: 0.8
+ * Date: 01/11/2026
  */
 
 import XCTest
@@ -372,6 +372,284 @@ final class AppProjectTextualPatchTests: XCTestCase {
         XCTAssertGreaterThan(narrowest.bounds.width, 40)
         let wordsInTheSentence = CGFloat(sentence.split(separator: " ").count)
         XCTAssertLessThanOrEqual(narrowest.rowBounds(1).height, unwrapped.rowBounds(1).height * wordsInTheSentence + 1, "one word on each line at most")
+    }
+
+    // MARK: SwiftUIMath patches 10 to 16, MathJax's other commands
+
+    /// A formula's width and height at 20 points, which any of these formulas must have.
+    private func mathMetrics(_ latex: String, file: StaticString = #filePath, line: UInt = #line) throws -> DisplayMathRendering.Metrics {
+        try XCTUnwrap(DisplayMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: Self.mathFontSize), latex, file: file, line: line)
+    }
+
+    private static let mathFontSize: CGFloat = 20
+
+    /// How many pixels of a formula have ink, drawn as `Math` draws it (patch 5) at twice its size.
+    private func inkPixelCount(_ latex: String) throws -> Int {
+        let drawn = LaTeXCompatibility.normalized(latex)
+        let renderer = ImageRenderer(content: Math(drawn).mathFont(.init(name: .latinModern, size: Self.mathFontSize)).foregroundStyle(.black).padding(10).background(.white))
+        renderer.scale = 2
+        let image = try XCTUnwrap(renderer.cgImage, latex)
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        var pixels = [UInt8](repeating: 255, count: image.width * image.height)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width, space: colorSpace, bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return pixels.filter { pixel in pixel < 128 }.count
+    }
+
+    /// Patch 10. The vault has formulas typed with `δ` and `≤`: the parser skipped those letters,
+    /// so `$δ$` could not be typeset and `$κ(x)$` lost its `κ`.
+    func testCharactersTypedInAFormulaAreDrawnAsTheirCommands() throws {
+        XCTAssertEqual(try mathMetrics("δ + ξ ≤ θ").width, try mathMetrics(#"\delta + \xi \leq \theta"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics("κ(x)").width, try mathMetrics(#"\kappa(x)"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\cosθ"#).width, try mathMetrics(#"\cos\theta"#).width, accuracy: 0.01, "A command's name ends at a letter that is not ASCII.")
+        XCTAssertEqual(try mathMetrics("a\\\nb").width, try mathMetrics(#"a\ b"#).width, accuracy: 0.01, "A backslash before a line break is a space.")
+        XCTAssertTrue(MathAttachment.canTypeset(#"1 \,\&\, 1"#))
+        XCTAssertTrue(MathAttachment.canTypeset("日本語 x"), "A character the font lacks is left to a fallback font.")
+        XCTAssertFalse(MathAttachment.canTypeset("\u{200B}"), "An invisible character draws nothing.")
+    }
+
+    /// Patch 11. Each is drawn with a glyph Latin Modern has, in its class.
+    func testKaTeXSymbolsAreTypesetInTheirClasses() throws {
+        let relation = try mathMetrics(#"a = b"#).width - mathMetrics(#"="#).width
+        for symbol in ["leqslant", "geqslant", "lesssim", "gtrsim", "succeq", "preceq", "triangleq", "therefore", "because", "vdash", "lll", "ggg", "subsetneq", "nmid"] {
+            XCTAssertEqual(try mathMetrics(#"a \\#(symbol) b"#).width - (try mathMetrics(#"\\#(symbol)"#).width), relation, accuracy: 0.01, symbol)
+        }
+        for symbol in ["diamond", "blacksquare", "varnothing", "checkmark", "llbracket", "rrbracket", "circledast", "barwedge", "bigcirc", "oiint", "oiiint", "lozenge", "complement", "sharp", "flat", "bigstar", "blacklozenge"] {
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(symbol)"#).width, 0, symbol)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"\left\llbracket \frac{a}{b} \right\rrbracket"#).ascent, try mathMetrics(#"\frac{a}{b}"#).ascent - 1, "As delimiters too.")
+        XCTAssertGreaterThan(try mathMetrics(#"\mathring{A}"#).ascent, try mathMetrics("A").ascent)
+        XCTAssertEqual(try mathMetrics(#"a \not\leq b"#).width, try mathMetrics(#"a \leq b"#).width, accuracy: 2)
+    }
+
+    /// Patch 12. The owner's vault had 2,341 formulas with `\boxed`, drawn as their source.
+    func testFramesAndCirclesStandAroundWhatTheyHold() throws {
+        let fontSize = Self.mathFontSize
+        let letter = try mathMetrics("x")
+        let framed = try mathMetrics(#"\boxed{x}"#)
+        XCTAssertEqual(framed.width, letter.width + 2 * 0.34 * fontSize, accuracy: 0.01, "0.3 em of room and a line of 0.04 em on each side")
+        XCTAssertEqual(framed.ascent, letter.ascent + 0.34 * fontSize, accuracy: 0.01)
+        XCTAssertEqual(framed.descent, letter.descent + 0.34 * fontSize, accuracy: 0.01)
+        XCTAssertGreaterThan(try mathMetrics(#"\boxed{\frac{a}{b}}"#).ascent, try mathMetrics(#"\textstyle\frac{a}{b}"#).ascent, "It sets its content in display style.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\boxed{x}"#), try inkPixelCount("x") * 2, "The frame is drawn.")
+        XCTAssertGreaterThan(try mathMetrics(#"\boxed{x}^2"#).width, framed.width, "It takes a script.")
+        XCTAssertGreaterThan(try mathMetrics(#"\fbox{some text}"#).width, try mathMetrics(#"\text{some text}"#).width)
+        XCTAssertGreaterThan(try mathMetrics(#"\textcircled{1}"#).width, 1.1 * fontSize)
+        XCTAssertGreaterThan(try inkPixelCount(#"\textcircled{a}"#), try inkPixelCount(#"\text{a}"#))
+    }
+
+    func testStrikeOutsCrossWhatTheyHold() throws {
+        let fontSize = Self.mathFontSize
+        for command in ["cancel", "bcancel", "xcancel"] {
+            XCTAssertEqual(try mathMetrics(#"\\#(command){ab}"#).width, try mathMetrics("ab").width + 0.2 * fontSize, accuracy: 0.05, command)
+        }
+        XCTAssertGreaterThan(try inkPixelCount(#"\xcancel{x}"#), try inkPixelCount(#"\cancel{x}"#), "Two strokes, not one.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\cancel{x}"#), try inkPixelCount("x"))
+    }
+
+    func testPhantomsKeepTheRoomOfWhatTheyHideAndDrawNothing() throws {
+        let hidden = try mathMetrics(#"\frac{a}{b}"#)
+        let phantom = try mathMetrics(#"\phantom{\frac{a}{b}}"#)
+        XCTAssertEqual(phantom.width, hidden.width, accuracy: 0.01)
+        XCTAssertEqual(phantom.ascent, hidden.ascent, accuracy: 0.01)
+        XCTAssertEqual(try inkPixelCount(#"\phantom{\frac{a}{b}}"#), 0)
+        XCTAssertEqual(try mathMetrics(#"a\hphantom{\frac{a}{b}}"#).width, try mathMetrics("a").width + hidden.width, accuracy: 0.01)
+        XCTAssertLessThan(try mathMetrics(#"a\hphantom{\frac{a}{b}}"#).ascent, hidden.ascent, "No height.")
+        XCTAssertEqual(try mathMetrics(#"a\vphantom{\frac{a}{b}}"#).width, try mathMetrics("a").width, accuracy: 0.01, "No width.")
+        XCTAssertEqual(try mathMetrics(#"a\vphantom{\frac{a}{b}}"#).ascent, hidden.ascent, accuracy: 0.01)
+    }
+
+    func testOversetUndersetAndStackrelKeepTheClassOfWhatTheyStandOver() throws {
+        let plain = try mathMetrics(#"a = b"#)
+        for stacked in [#"\overset{x}{=}"#, #"\stackrel{x}{=}"#, #"\underset{x}{=}"#] {
+            XCTAssertEqual(try mathMetrics(#"a \#(stacked) b"#).width, plain.width, accuracy: 0.01, "A relation's spaces: \(stacked)")
+            XCTAssertEqual(try mathMetrics(#"a \#(stacked) -b"#).width, try mathMetrics(#"a = -b"#).width, accuracy: 0.01, "The minus after it is a sign: \(stacked)")
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"a \overset{x}{=} b"#).ascent, plain.ascent)
+        XCTAssertGreaterThan(try mathMetrics(#"a \underset{x}{=} b"#).descent, plain.descent)
+        XCTAssertEqual(try mathMetrics(#"a \overset{x}{y} b"#).width, try mathMetrics("ayb").width, accuracy: 0.5, "Over a letter it is a letter.")
+        XCTAssertEqual(try mathMetrics(#"a \overset{x}{+} b"#).width, try mathMetrics("a + b").width, accuracy: 0.01, "Over an operator it is an operator.")
+    }
+
+    func testExtensibleArrowsAreRelationsAsWideAsTheirLabels() throws {
+        let fontSize = Self.mathFontSize
+        let spaces = try mathMetrics(#"a = b"#).width - (try mathMetrics("=").width + (try mathMetrics("ab").width))
+        for command in ["xrightarrow", "xleftarrow"] {
+            let shortLabel = try mathMetrics(#"\\#(command){x}"#)
+            XCTAssertEqual(shortLabel.width, 1.47 * fontSize, accuracy: 0.01, command)
+            XCTAssertEqual(try mathMetrics(#"a \\#(command){x} b"#).width, shortLabel.width + (try mathMetrics("ab").width) + spaces, accuracy: 0.6, "A relation's spaces: \(command)")
+            let longLabel = try mathMetrics(#"\text{a very long label over it}"#)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command){\text{a very long label over it}}"#).width, 0.7 * longLabel.width, command)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command)[y]{x}"#).descent, shortLabel.descent, "The label below: \(command)")
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command)[\text{a very long label}]{x}"#).width, shortLabel.width, "It widens the arrow too: \(command)")
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"\xleftrightarrow{x}"#).width, 1.47 * fontSize, "Never narrower than its two heads.")
+        XCTAssertTrue(MathAttachment.canTypeset(#"\xrightarrow{}"#))
+        // The shaft continues the glyph's: a rule's ink for each point of length, with no gap.
+        let shorter = try inkPixelCount(#"\xrightarrow{\phantom{\text{a long label}}}"#)
+        let longer = try inkPixelCount(#"\xrightarrow{\phantom{\text{a long label a long label}}}"#)
+        let addedWidth = try mathMetrics(#"\xrightarrow{\phantom{\text{a long label a long label}}}"#).width - (try mathMetrics(#"\xrightarrow{\phantom{\text{a long label}}}"#).width)
+        XCTAssertEqual(Double(longer - shorter) / Double(addedWidth * 2), 2.5, accuracy: 1, "One rule's thickness in pixels, thickened as `Math` thickens outlines on the Mac")
+    }
+
+    func testArrowsOverAListSpanIt() throws {
+        let long = try mathMetrics("ABCDEF")
+        for command in ["overrightarrow", "overleftarrow"] {
+            let arrowed = try mathMetrics(#"\\#(command){ABCDEF}"#)
+            XCTAssertEqual(arrowed.width, long.width, accuracy: 0.01, command)
+            XCTAssertGreaterThan(arrowed.ascent, long.ascent, command)
+            XCTAssertEqual(arrowed.descent, long.descent, accuracy: 0.01, command)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command){A}^{ff}"#).width, try mathMetrics(#"\\#(command){A}"#).width, "It takes a script: \(command)")
+        }
+        XCTAssertTrue(MathAttachment.canTypeset(#"\overleftrightarrow{AB}"#))
+        XCTAssertGreaterThan(try inkPixelCount(#"\overrightarrow{ABCDEF}"#), try inkPixelCount("ABCDEF"))
+    }
+
+    func testClassCommandsSpaceTheirArgumentAsTheClass() throws {
+        XCTAssertEqual(try mathMetrics(#"a \mathbin{+} b"#).width, try mathMetrics("a + b").width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a \mathrel{=} b"#).width, try mathMetrics("a = b").width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a \mathord{+} b"#).width, try mathMetrics("a{}b").width + (try mathMetrics("+").width), accuracy: 0.5)
+        XCTAssertTrue(MathAttachment.canTypeset(#"a \mathbin{\overline{\subset}} b \mathopen{(} c \mathclose{)} \mathpunct{,} d"#))
+        XCTAssertGreaterThan(try mathMetrics(#"a \bmod b"#).width, try mathMetrics(#"a\mathrm{mod}b"#).width, "An operator's spaces.")
+    }
+
+    func testSizedDelimitersGrowInKaTeXSteps() throws {
+        let fontSize = Self.mathFontSize
+        var previousHeight: CGFloat = 0
+        for (command, heightInEm) in [("big", 1.2), ("Big", 1.8), ("bigg", 2.4), ("Bigg", 3.0)] as [(String, CGFloat)] {
+            for suffix in ["", "l", "r", "m"] {
+                let metrics = try mathMetrics(#"\\#(command)\#(suffix)("#)
+                XCTAssertGreaterThanOrEqual(metrics.ascent + metrics.descent, heightInEm * fontSize - 0.2, command + suffix)
+                XCTAssertLessThan(metrics.ascent + metrics.descent, (heightInEm + 0.3) * fontSize, command + suffix)
+                XCTAssertGreaterThan(metrics.ascent + metrics.descent, previousHeight, command + suffix)
+            }
+            let metrics = try mathMetrics(#"\\#(command)("#)
+            previousHeight = metrics.ascent + metrics.descent
+        }
+        XCTAssertEqual(try mathMetrics(#"a \bigm| b"#).width - (try mathMetrics(#"\bigm|"#).width), try mathMetrics("a = b").width - (try mathMetrics("=").width), accuracy: 0.01, "\\bigm relates.")
+        for delimiter in [#"\|"#, "|", "[", #"\{"#, #"\langle"#, #"\lfloor"#, #"\vert"#, #"\Vert"#, #"\lvert"#, #"\rVert"#] {
+            XCTAssertTrue(MathAttachment.canTypeset(LaTeXCompatibility.normalized(#"\big\#(delimiter)"#)), delimiter)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"a\big.b"#).width, try mathMetrics("ab").width, "An empty delimiter keeps its small room.")
+        XCTAssertFalse(MathAttachment.canTypeset(#"\big"#), "A size with no delimiter stays as source.")
+    }
+
+    func testMiddleDelimiterIsAsTallAsItsPair() throws {
+        let plain = try mathMetrics(#"\left\{ \frac{a}{b} \middle| \frac{c}{d} \right\}"#)
+        XCTAssertEqual(plain.ascent, try mathMetrics(#"\left\{ \frac{a}{b} \, \frac{c}{d} \right\}"#).ascent, accuracy: 0.5)
+        let formula = #"\left\{ \frac{a}{b} \middle| \frac{c}{d} \right\}"#
+        XCTAssertGreaterThan(try inkPixelCount(formula), try inkPixelCount(#"\left\{ \frac{a}{b} \mid \frac{c}{d} \right\}"#), "A taller bar than a relation's.")
+    }
+
+    /// Patch 13. The vault had 2,290 formulas with `array`.
+    func testArrayAlignsItsColumnsAsItsPreambleSays() throws {
+        let fontSize = Self.mathFontSize
+        let cell = try mathMetrics("a")
+        XCTAssertEqual(try mathMetrics(#"\begin{array}{ll} a & a \end{array}"#).width, 2 * cell.width + fontSize, accuracy: 0.01, "Columns 1 em apart")
+        // A narrow row under a wide one: the rows' widths are the same, the ink stands elsewhere.
+        for preamble in ["l", "c", "r", "p{3cm}", "@{}l", "l@{x}", " l "] {
+            XCTAssertTrue(MathAttachment.canTypeset(#"\begin{array}{\#(preamble)} a \\ bbb \end{array}"#), preamble)
+        }
+        XCTAssertFalse(MathAttachment.canTypeset(#"\begin{array} a \end{array}"#), "An array needs its preamble.")
+        XCTAssertGreaterThan(try mathMetrics(#"\left\{\begin{array}{l} x = 1 \\ y = 2 \end{array}\right."#).width, 0)
+        XCTAssertEqual(try mathMetrics(#"\begin{array}{|c|} a \end{array}"#).width, cell.width + fontSize, accuracy: 0.5, "Half a column gap for each outer rule")
+        XCTAssertGreaterThan(try inkPixelCount(#"\begin{array}{c|c} a & a \end{array}"#), try inkPixelCount(#"\begin{array}{cc} a & a \end{array}"#), "The rule is drawn.")
+        let oneRow = try mathMetrics(#"\begin{array}{c} a \end{array}"#)
+        let ruled = try mathMetrics(#"\begin{array}{c} a \\ \hline \end{array}"#)
+        XCTAssertLessThan(ruled.ascent + ruled.descent, 1.5 * (oneRow.ascent + oneRow.descent) + fontSize / 2, "A rule at the end begins no row.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\begin{array}{c} a \\ \hline a \end{array}"#), try inkPixelCount(#"\begin{array}{c} a \\ a \end{array}"#))
+    }
+
+    func testRowBreakLengthAddsHeightAndIsNotDrawn() throws {
+        let fontSize = Self.mathFontSize
+        let plain = try mathMetrics(#"\begin{pmatrix} a \\ b \end{pmatrix}"#)
+        let spaced = try mathMetrics(#"\begin{matrix} a \\[1em] b \end{matrix}"#)
+        let unspaced = try mathMetrics(#"\begin{matrix} a \\ b \end{matrix}"#)
+        XCTAssertEqual(spaced.ascent + spaced.descent, unspaced.ascent + unspaced.descent + fontSize, accuracy: 0.01)
+        XCTAssertEqual(spaced.width, unspaced.width, accuracy: 0.01, "`[1em]` is not text in the cell.")
+        XCTAssertEqual(try mathMetrics(#"\begin{pmatrix} a \\[2pt] b \end{pmatrix}"#).width, plain.width, accuracy: 0.01)
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{matrix} a \\ [b,c] \end{matrix}"#).width, unspaced.width, "A bracket after a space is the next row's.")
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{matrix} a \\[b,c] \end{matrix}"#).width, unspaced.width, "So are brackets that hold no length.")
+    }
+
+    func testCasesGatheredAndSubstackInAnEnvironment() throws {
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{cases} a & b & c \\ d & e & f \end{cases}"#).width, try mathMetrics(#"\begin{cases} a & b \\ d & e \end{cases}"#).width, "Any number of columns")
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{gathered} a \\ b \end{gathered}"#).ascent, try mathMetrics("a").ascent)
+        // The substack's row break belongs to it, not to the `aligned` around it.
+        XCTAssertTrue(MathAttachment.canTypeset(#"\begin{aligned} a &\underset{\substack{x \\ y}}{=} b \\ c &= d \end{aligned}"#))
+    }
+
+    /// Patch 14.
+    func testBinomialStylesStarredOperatorNamesAndHorizontalSpaces() throws {
+        let fontSize = Self.mathFontSize
+        XCTAssertGreaterThan(try mathMetrics(#"\dbinom{n}{k}"#).ascent, try mathMetrics(#"\tbinom{n}{k}"#).ascent - 0.01)
+        XCTAssertGreaterThan(try inkPixelCount(#"\dbinom{n}{k}"#), try inkPixelCount(#"\tbinom{n}{k}"#))
+        for name in ["max", "m a x", #"arg\,max"#] {
+            XCTAssertGreaterThan(try mathMetrics(#"\operatorname*{\#(name)}_x"#).descent, try mathMetrics(#"\operatorname{max}_x"#).descent, "Its limit goes below: \(name)")
+        }
+        XCTAssertTrue(MathAttachment.canTypeset(#"\operatorname*{x^2}_y"#), "Not a plain name: drawn upright, without limits.")
+        XCTAssertEqual(try mathMetrics(#"a\hspace{1em}b"#).width, try mathMetrics("ab").width + fontSize, accuracy: 0.6)
+        XCTAssertEqual(try mathMetrics(#"a\hspace{10pt}b"#).width, try mathMetrics(#"a\hspace{1em}b"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a\hspace*{ 1 em }b"#).width, try mathMetrics(#"a\hspace{1em}b"#).width, accuracy: 0.01)
+        XCTAssertFalse(MathAttachment.canTypeset(#"a\hspace{wide}b"#))
+    }
+
+    /// Patch 15. `= \quad -x` stopped Debug builds on an assert: a binary operator right after
+    /// a relation has no spacing, and the space hid the relation from the rule that makes it a sign.
+    func testSpacesAndStyleChangesHaveNoClass() throws {
+        XCTAssertEqual(try mathMetrics(#"a \rightarrow \quad -\frac{1}{2}"#).width, try mathMetrics(#"a \rightarrow \quad {}{-}\frac{1}{2}"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\begin{matrix} -1 \end{matrix}"#).width, try mathMetrics("-1").width, accuracy: 0.01, "A sign at the start of a cell has no spaces.")
+        XCTAssertEqual(try mathMetrics(#"1\,000"#).width, try mathMetrics("1000").width + 3.0 / 18.0 * Self.mathFontSize, accuracy: 0.01, "Numbers on either side of a space do not merge.")
+        XCTAssertEqual(try mathMetrics(#"a + \quad b"#).width, try mathMetrics(#"a+b"#).width + Self.mathFontSize, accuracy: 0.01, "An operator keeps its spaces around one.")
+    }
+
+    /// Patch 16. The vault has `\boldsymbol{\nabla}` 844 times.
+    func testBoldSymbolsHaveTheirBoldForms() throws {
+        for symbol in ["nabla", "partial", "epsilon", "vartheta", "phi", "varrho", "varpi"] {
+            XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{\\#(symbol)}"#), try inkPixelCount(#"\\#(symbol)"#), symbol)
+            XCTAssertGreaterThan(try inkPixelCount(#"\mathbf{\\#(symbol)}"#), try inkPixelCount(#"\\#(symbol)"#), symbol)
+        }
+        XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{x}"#), try inkPixelCount("x"))
+        XCTAssertGreaterThan(try inkPixelCount(#"\pmb{\alpha}"#), try inkPixelCount(#"\alpha"#))
+        XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{1}"#), try inkPixelCount("1"))
+    }
+
+    /// Commands rewritten for the typesetter reach it as text it can draw.
+    func testCommandsLaTeXCompatibilityRewritesAreTypeset() throws {
+        for formula in [#"1, \dots, n"#, #"a + \dots + b"#, #"\lvert x \rvert \lVert y \rVert"#, #"\left\lvert x \right\rvert"#, #"\mathscr{L}"#, #"a \bmod b"#, #"\varDelta \varGamma"#,
+                        #"{\sf H}_2{\bf O} {\rm d} {\it a} {\tt b} {\cal L}"#, #"\dag \ddag \thinspace \medspace \thickspace \enspace x"#, #"\sqrt{\small x}"#, #"a \: b"#,
+                        #"\begin{pmatrix} \color{red} a \color{black} & b \\ c & \color{blue} d \end{pmatrix}"#, #"\left( \color{red} x \right) y"#] {
+            XCTAssertTrue(MathAttachment.canTypeset(LaTeXCompatibility.normalized(formula)), formula)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"1,\ldots,n"#).width, try mathMetrics(#"1,...,n"#).width, "Low dots as far apart as TeX sets them.")
+    }
+
+    /// A formula wider than its column breaks between the new constructs and after them, as
+    /// it breaks around a fraction (patch 2).
+    func testFormulasWithTheNewCommandsBreakToFitTheirWidth() throws {
+        let formulas = [
+            #"\boxed{a+b+c} + \cancel{d+e+f} + \boxed{g+h+i} + \cancel{j+k+l} + \boxed{m+n+o}"#,
+            #"a \overset{b}{=} cdefghijklmnop \xrightarrow{q} rstuvwxyz \underset{a}{=} bcdefghijkl \xrightarrow{m} nopqrstuvwxyz"#,
+            #"\boxed{abcdefghijklmnop} qrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"#,
+            #"\big(abcdefgh\big) + \big(ijklmnop\big) + \big(qrstuvwx\big) + \big(yzabcdef\big) + \big(ghijklmn\big)"#,
+        ]
+        for formula in formulas {
+            let latex = LaTeXCompatibility.normalized(formula)
+            let natural = try XCTUnwrap(DisplayMathRendering.metrics(for: latex, fontSize: Self.mathFontSize), formula)
+            let width = natural.width * 0.6
+            let broken = try XCTUnwrap(DisplayMathRendering.metrics(for: latex, fontSize: Self.mathFontSize, fittingWidth: width), formula)
+            // An operator after a display may hang past the width, as after a fraction or a root.
+            XCTAssertLessThanOrEqual(broken.width, width + Self.mathFontSize, formula)
+            XCTAssertGreaterThan(broken.ascent + broken.descent, 1.5 * (natural.ascent + natural.descent), formula)
+        }
+    }
+
+    /// Inline math is drawn in pieces (Textual patch 21): a piece must not cut a new construct.
+    func testInlineFormulasWithTheNewCommandsStayOneFormula() throws {
+        for formula in [#"\boxed{a + b} + c"#, #"\xrightarrow[a+b]{c} + d"#, #"\big( a + b \big) + c"#, #"\overset{a+b}{=} c + d"#, #"\cancel{a + b} + c"#] {
+            let drawn = LaTeXCompatibility.normalized(formula)
+            XCTAssertEqual(try mathAttachmentCount(inMarkdown: "before $\(drawn)$ after"), 1, formula)
+        }
     }
 
     // MARK: Patch 21, inline math breaks after its operators

@@ -6,8 +6,8 @@
  *              canvas's own drawing recognizer of stand-in touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 #if os(iOS)
 import SwiftUI
@@ -56,7 +56,8 @@ enum SynthesizedStrokes {
         }
         touch.move(to: windowPoints.last ?? firstPoint, phase: .ended)
         recognizer.touchesEnded([touch], with: event)
-        for _ in 0..<40 where canvas.drawing.strokes.count <= strokeCountBefore {
+        // PencilKit finishes a stroke in its own time, and a busy machine has taken over a second.
+        for _ in 0..<200 where canvas.drawing.strokes.count <= strokeCountBefore {
             try await waitForPageToDraw(milliseconds: 25)
         }
         return canvas.drawing.strokes.count > strokeCountBefore ? canvas.drawing.strokes.last : nil

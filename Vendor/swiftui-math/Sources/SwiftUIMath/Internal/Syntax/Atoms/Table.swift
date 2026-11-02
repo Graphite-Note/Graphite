@@ -13,6 +13,14 @@ extension Math {
     var environment: String
     var interColumnSpacing: CGFloat
     var interRowAdditionalSpacing: CGFloat
+    /// Graphite patch: `\hline`: the rows a horizontal rule stands before, the number of rows
+    /// for one after the last, a row listed twice for a double rule.
+    var horizontalRuleRows: [Int] = []
+    /// Graphite patch: an array preamble's `|`: the columns a vertical rule stands before,
+    /// the number of columns for one after the last, a column listed twice for a double rule.
+    var verticalRuleColumns: [Int] = []
+    /// Graphite patch: `\\[2pt]`: the height added above a row, in em, by row.
+    var extraHeightsAboveRowsInEm: [Int: CGFloat] = [:]
 
     override var finalized: Math.Atom {
       let finalized = super.finalized
@@ -34,6 +42,9 @@ extension Math {
       self.environment = table.environment
       self.interColumnSpacing = table.interColumnSpacing
       self.interRowAdditionalSpacing = table.interRowAdditionalSpacing
+      self.horizontalRuleRows = table.horizontalRuleRows
+      self.verticalRuleColumns = table.verticalRuleColumns
+      self.extraHeightsAboveRowsInEm = table.extraHeightsAboveRowsInEm
 
       super.init(table)
     }
