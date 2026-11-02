@@ -589,6 +589,12 @@ public enum MarkdownStyleScanner {
         for match in TagSyntax.pattern.matches(in: lineString, range: range) where isUnclaimed(match.range) {
             add(match.range, .tag, in: match.range)
         }
+        // `\*` reads as a star: only the backslash is markup.
+        if line.range(of: "\\", options: .literal, range: range).location != NSNotFound {
+            for match in Patterns.backslashEscape.matches(in: lineString, range: range) where isUnclaimed(match.range) {
+                add(NSRange(location: match.range.location, length: 1), .concealableMarker, in: match.range)
+            }
+        }
         return spans
     }
 
@@ -614,6 +620,7 @@ public enum MarkdownStyleScanner {
         static let emphasis = MarkdownStyleScannerPattern.emphasis.compiled()
         static let strikethrough = MarkdownStyleScannerPattern.strikethrough.compiled()
         static let highlight = MarkdownStyleScannerPattern.highlight.compiled()
+        static let backslashEscape = MarkdownStyleScannerPattern.backslashEscape.compiled()
     }
 }
 
@@ -626,10 +633,12 @@ enum MarkdownStyleScannerPattern: String, StaticPatternSet {
     case wikilink = #"(!?)\[\[[^\]\n]+\]\]"#
     case footnoteDefinition = #"^\[\^[^\]\s]+\]:"#
     case markdownLink = #"(!?)\[([^\]\n]*)\]\((?:[^()\n]|\([^()\n]*\))*\)"#
-    case strong = #"(?<![*_])(\*\*|__)(?!\s)[^\n]+?(?<!\s)\1(?![*_])"#
-    case emphasis = #"(?<![*\w])([*_])(?![\s*_])[^*_\n]+?(?<![\s])\1(?![*\w])"#
-    case strikethrough = #"~~(?!\s)[^~\n]+?(?<!\s)~~"#
-    case highlight = #"==(?!\s)[^=\n]+?(?<!\s)=="#
+    case strong = #"(?<![*_])(?<!(?<!\\)(?:\\\\){0,8}\\)(\*\*|__)(?!\s)[^\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)\1(?![*_])"#
+    case emphasis = #"(?<![*\w])(?<!(?<!\\)(?:\\\\){0,8}\\)([*_])(?![\s*_])[^*_\n]+?(?<![\s])(?<!(?<!\\)(?:\\\\){0,8}\\)\1(?![*\w])"#
+    case strikethrough = #"(?<!(?<!\\)(?:\\\\){0,8}\\)~~(?!\s)[^~\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)~~"#
+    case highlight = #"(?<!(?<!\\)(?:\\\\){0,8}\\)==(?!\s)[^=\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)=="#
+    /// A backslash before ASCII punctuation: the backslash hides, as Markdown reads it.
+    case backslashEscape = #"\\[!-/:-@\[-`{-~]"#
 
     /// Every pattern reads one line at a time, so `^` and `$` match at each line's ends.
     var options: NSRegularExpression.Options { [.anchorsMatchLines] }
