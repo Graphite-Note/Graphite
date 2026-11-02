@@ -1,3 +1,14 @@
+/**
+ * File: BaseKanbanView.swift
+ * --------------------------
+ * Layer: UI
+ * Description: The Kanban view of a base.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -124,7 +135,7 @@ struct BaseKanbanView: View {
             default:
                 Text(Self.emptyColumnTitle).font(.headline).foregroundStyle(.secondary)
             }
-            Text("\(group.rows.count)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            Text(group.rows.count.formatted()).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 4)

@@ -1,3 +1,14 @@
+/**
+ * File: NewNotebookSheet.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The New Notebook sheet: name, size and paper of a new notebook.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -103,7 +114,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 6) {
             NotebookSettingsCard {
-                TextField("Untitled Notebook", text: $name)
+                TextField(CreationKind.notebook.untitledName, text: $name)
                     .submitLabel(.done)
                     .onSubmit(createIfValid)
                     .accessibilityLabel("Name")
@@ -157,7 +168,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
 
     private var chosenName: String {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? "Untitled Notebook" : trimmedName
+        return trimmedName.isEmpty ? CreationKind.notebook.untitledName : trimmedName
     }
 
     private func createIfValid() {

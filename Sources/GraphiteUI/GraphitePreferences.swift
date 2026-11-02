@@ -6,7 +6,7 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.27
+ * Version: 0.28
  * Date: 01/11/2026
  */
 
@@ -388,9 +388,9 @@ final class GraphitePreferences {
     }
     /// The accent exactly as chosen, for the color picker.
     var chosenAccentColor: Color { Color(graphiteHex: accentHex) ?? Color(graphiteHex: GraphiteTheme.defaultAccentHex) ?? .blue }
-    /// File recovery's "Snapshot interval": at most one copy of a note per this many minutes.
+    /// File recovery's "Snapshot Interval": at most one copy of a note per this many minutes.
     var snapshotIntervalMinutes: Int { didSet { defaults.set(snapshotIntervalMinutes, forKey: Key.snapshotIntervalMinutes) } }
-    /// File recovery's "History length": copies older than this many days are removed.
+    /// File recovery's "History Length": copies older than this many days are removed.
     var snapshotHistoryDays: Int { didSet { defaults.set(snapshotHistoryDays, forKey: Key.snapshotHistoryDays) } }
     /// Double-tapping Apple Pencil in a note being written starts a drawing at the cursor.
     var drawsOnPencilDoubleTap: Bool { didSet { defaults.set(drawsOnPencilDoubleTap, forKey: Key.drawsOnPencilDoubleTap) } }

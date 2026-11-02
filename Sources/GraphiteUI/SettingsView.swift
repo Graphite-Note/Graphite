@@ -5,7 +5,7 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.34
+ * Version: 0.36
  * Date: 01/11/2026
  */
 
@@ -602,8 +602,8 @@ private struct FileRecoverySettingsPage: View {
     var body: some View {
         Form {
             Section {
-                Stepper("Snapshot interval: \(preferences.snapshotIntervalMinutes) min", value: $preferences.snapshotIntervalMinutes, in: 1...60)
-                Stepper("History length: \(preferences.snapshotHistoryDays) days", value: Binding(get: { preferences.snapshotHistoryDays }, set: { days in
+                Stepper("Snapshot Interval: \(preferences.snapshotIntervalMinutes) min", value: $preferences.snapshotIntervalMinutes, in: 1...60)
+                Stepper("History Length: \(preferences.snapshotHistoryDays) days", value: Binding(get: { preferences.snapshotHistoryDays }, set: { days in
                     workspace.changeSnapshotHistoryDays(days)
                 }), in: 1...365)
             } footer: {
@@ -639,14 +639,14 @@ private struct TemplatesSettingsPage: View {
         Form {
             if workspace.store == nil { SettingsNeedAVault(what: "template settings") }
             Section {
-                SettingsTextField(title: "Template folder location", prompt: "Templates", text: $draft.folder, submit: save)
+                SettingsTextField(title: "Template Folder Location", prompt: "Templates", text: $draft.folder, submit: save)
             } footer: {
                 Text(folderFooter)
                     .formFooterAlignment()
             }
             Section {
-                SettingsTextField(title: "Date format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.dateFormat, submit: save)
-                SettingsTextField(title: "Time format", prompt: MomentDateFormat.defaultTimeFormat, text: $draft.timeFormat, submit: save)
+                SettingsTextField(title: "Date Format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.dateFormat, submit: save)
+                SettingsTextField(title: "Time Format", prompt: MomentDateFormat.defaultTimeFormat, text: $draft.timeFormat, submit: save)
             } footer: {
                 Text("{{date}} is written as “\(MomentDateFormat.string(from: .now, format: draft.dateFormat.isEmpty ? MomentDateFormat.defaultDateFormat : draft.dateFormat))” and {{time}} as “\(MomentDateFormat.string(from: .now, format: draft.timeFormat.isEmpty ? MomentDateFormat.defaultTimeFormat : draft.timeFormat))”. A variable can take its own format, as in {{date:dddd, MMMM Do}}. Formats use Moment.js tokens, as in Obsidian.")
                     .formFooterAlignment()
@@ -682,9 +682,9 @@ private struct DailyNotesSettingsPage: View {
         Form {
             if workspace.store == nil { SettingsNeedAVault(what: "daily notes settings") }
             Section {
-                SettingsTextField(title: "Date format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.format, submit: save)
-                SettingsTextField(title: "New file location", prompt: "Vault folder", text: $draft.folder, submit: save)
-                SettingsTextField(title: "Template file location", prompt: "Templates/Daily", text: $draft.template, submit: save)
+                SettingsTextField(title: "Date Format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.format, submit: save)
+                SettingsTextField(title: "New File Location", prompt: "Vault folder", text: $draft.folder, submit: save)
+                SettingsTextField(title: "Template File Location", prompt: "Templates/Daily", text: $draft.template, submit: save)
             } footer: {
                 Text(pathFooter)
                     .formFooterAlignment()

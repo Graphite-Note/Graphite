@@ -5,7 +5,7 @@
  * Description: File recovery for the open vault: copies of notes taken before they are replaced or deleted, and kept outside the vault.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.7
  * Date: 01/11/2026
  */
 
@@ -63,7 +63,7 @@ extension WorkspaceModel {
         return Task.detached(priority: .background) { try? fileRecovery.pruneSnapshots(olderThan: historyLength) }
     }
 
-    /// Settings › File Recovery › History length: keeps the new length and removes the copies
+    /// Settings › File Recovery › History Length: keeps the new length and removes the copies
     /// it makes too old at once, not at the next time a vault opens.
     @discardableResult
     func changeSnapshotHistoryDays(_ days: Int) -> Task<Void, Never>? {

@@ -6,7 +6,7 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.24
+ * Version: 0.27
  * Date: 01/11/2026
  */
 
@@ -859,7 +859,7 @@ struct PDFPageActionsMenuContent: View {
 
     var body: some View {
         if pageIndices.count == 1, let pageIndex = pageIndices.first {
-            Button(isBookmarked ? "Remove Bookmark" : "Add Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 commands.toggleBookmark(page: pageIndex)
             }
         }

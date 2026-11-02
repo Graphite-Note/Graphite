@@ -8,6 +8,7 @@ import GraphiteCore
 final class StaticPatternTests: XCTestCase {
     func testEveryConstantPatternCompiles() {
         assertEveryCaseCompiles(LivePreviewTextPattern.self)
+        assertEveryCaseCompiles(NoteWordCountPattern.self)
         assertEveryCaseCompiles(ObsidianMarkdownParserPattern.self)
         assertEveryCaseCompiles(ParagraphEditingPattern.self)
         assertEveryCaseCompiles(PropertyDateTextPattern.self)

@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.63
+ * Version: 0.73
  * Date: 01/11/2026
  */
 
@@ -200,6 +200,8 @@ final class WorkspaceModel {
     var dailyNoteSettingsReading = VaultSettingsReading.read(DailyNoteSettings())
     /// The vault's keyboard shortcuts, with its changes in `.obsidian/hotkeys.json`.
     let keyboardShortcuts = VaultKeyboardShortcuts()
+    /// The Format and Insert menus of the note being edited, which the Mac's menu bar shows.
+    let editorMenus = EditorMenuRegistry()
     /// Obsidian's bookmarks, from `.obsidian/bookmarks.json`.
     var bookmarks = BookmarkList()
     /// The whole vault's graph, built once per index change.

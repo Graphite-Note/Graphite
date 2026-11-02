@@ -6,7 +6,7 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.40
+ * Version: 0.45
  * Date: 01/11/2026
  */
 
@@ -853,7 +853,7 @@ private struct EmptyTabView: View {
                     Text("No file is open")
                         .font(.title3.weight(.semibold))
                         .padding(.bottom, 4)
-                    action("Create new note", shortcut: "⌘N") { focusThen { create(CreationRequest(kind: .note)) } }
+                    action("Create new note", shortcut: shownShortcut(.newNote)) { focusThen { create(CreationRequest(kind: .note)) } }
                     action("Create new notebook") { focusThen { create(CreationRequest(kind: .notebook)) } }
                     if workspace.preferences.isEnabled(.bases) {
                         action("Create new base") { focusThen { create(CreationRequest(kind: .base)) } }
@@ -861,9 +861,9 @@ private struct EmptyTabView: View {
                     if workspace.preferences.isEnabled(.canvas) {
                         action("Create new canvas") { focusThen { create(CreationRequest(kind: .canvas)) } }
                     }
-                    action("Go to file", shortcut: "⌘O") { focusThen(showQuickSwitcher) }
+                    action("Go to file", shortcut: shownShortcut(.quickSwitcher)) { focusThen(showQuickSwitcher) }
                     if canClose {
-                        action("Close", shortcut: "⌘W") { Task { await workspace.closeTab(tabID) } }
+                        action("Close", shortcut: shownShortcut(.closeTab)) { Task { await workspace.closeTab(tabID) } }
                     }
                 }
                 // Looked up once per update: each looks for every recent file on disk.
@@ -904,6 +904,11 @@ private struct EmptyTabView: View {
             .padding(.vertical, 56)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    /// The vault's own shortcut for a command, so a rebinding shows here.
+    private func shownShortcut(_ command: GraphiteCommand) -> String? {
+        workspace.keyboardShortcuts.shownShortcut(for: command)
     }
 
     /// A link in the accent, with its keyboard shortcut muted beside it where it has one.

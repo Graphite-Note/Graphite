@@ -5,7 +5,7 @@
  * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.9
  * Date: 01/11/2026
  */
 
@@ -148,6 +148,11 @@ struct PDFPagesSidebar: View {
         PDFPageActionsMenuContent(commands: commands, pageIndices: [pageIndex], isBookmarked: isBookmarked)
     }
 
+    /// "1 page", "12 pages", "1,200 pages".
+    static func pageCountText(_ pageCount: Int) -> String {
+        pageCount == 1 ? "1 page" : "\(pageCount.formatted()) pages"
+    }
+
     @ViewBuilder private var selectionBar: some View {
         HStack {
             if isSelecting {
@@ -167,10 +172,10 @@ struct PDFPagesSidebar: View {
                     selectedPages = PDFPageSelection(pages: [session.document.page(at: session.currentPageIndex)].compactMap { page in page })
                 }
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             } else {
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .font(.callout)

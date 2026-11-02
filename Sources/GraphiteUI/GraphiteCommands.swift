@@ -5,12 +5,15 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.12
+ * Version: 0.13
  * Date: 01/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// What the menu bar's commands act on: the focused window's workspace and the parts of
 /// the window only its view can show.
@@ -61,12 +64,7 @@ public struct GraphiteCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Group { fileCommands }.disabled(workspace == nil)
         }
-        CommandGroup(replacing: .saveItem) {
-            // Saving is automatic; the shortcut is for people who save out of habit.
-            Button("Save") { actions?.save() }
-                .keyboardShortcut(shortcut(.save))
-                .disabled(workspace == nil)
-        }
+        CommandGroup(replacing: .saveItem) { saveItems }
         CommandGroup(replacing: .printItem) {
             Button("Export as PDF…") { notePDFExport?.start(nil, .save) }
                 .keyboardShortcut(shortcut(.exportToPDF))
@@ -82,21 +80,71 @@ public struct GraphiteCommands: Commands {
                 .keyboardShortcut(shortcut(.openSettings))
         }
         #endif
-        CommandGroup(after: .textEditing) {
-            Button("Search in All Files") { workspace?.searchFocusRequest += 1 }
-                .keyboardShortcut(shortcut(.searchAllFiles))
-                .disabled(workspace == nil)
-            if workspace?.preferences.isEnabled(.templates) == true {
-                Button("Insert Template…") { actions?.window.showTemplatePicker() }
-                    .keyboardShortcut(shortcut(.insertTemplate))
-                    .disabled(workspace?.markdownSession == nil)
-            }
-        }
+        CommandGroup(after: .textEditing) { findAndSearchItems }
         CommandGroup(before: .sidebar) {
             viewCommands
         }
+        #if os(macOS)
+        // As in Obsidian, the same items as the note's right-click menu and toolbar.
+        CommandGroup(replacing: .textFormatting) {
+            editorMenu(\.format)
+        }
+        CommandMenu("Insert") {
+            editorMenu(\.insert)
+        }
+        #endif
         CommandMenu("Go") {
             goCommands
+        }
+    }
+
+    #if os(macOS)
+    private func requestFindInNote(_ request: MarkdownSession.FindRequest) {
+        guard let workspace else { return }
+        workspace.markdownSession?.requestFind(request, editingMode: workspace.defaultEditingMode)
+    }
+
+    /// One of the editor menus for the note being edited in the focused side; dimmed while there is none.
+    @ViewBuilder private func editorMenu(_ items: KeyPath<EditorMenuEntries, [EditorContextMenuEntry]>) -> some View {
+        if let entries = actions?.workspace.editorMenus.entries {
+            EditorMenuEntriesView(entries: entries[keyPath: items])
+        } else {
+            Button("Available While Editing a Note") {}
+                .disabled(true)
+        }
+    }
+    #endif
+
+    @ViewBuilder private var saveItems: some View {
+        #if os(macOS)
+        // ⌘W closes a tab, so the window, which the system's Close item would have closed, keeps ⇧⌘W.
+        // Also in front of the Settings window, which has no workspace.
+        Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+            .keyboardShortcut("w", modifiers: [.command, .shift])
+        #endif
+        // Saving is automatic; the shortcut is for people who save out of habit.
+        Button("Save") { actions?.save() }
+            .keyboardShortcut(shortcut(.save))
+            .disabled(workspace == nil)
+    }
+
+    @ViewBuilder private var findAndSearchItems: some View {
+        #if os(macOS)
+        // The text view finds, but only a menu item makes Find part of the Edit menu.
+        Button("Find in Note…") { requestFindInNote(.find) }
+            .keyboardShortcut(shortcut(.findInNote))
+            .disabled(workspace?.markdownSession == nil)
+        Button("Find and Replace in Note…") { requestFindInNote(.findAndReplace) }
+            .keyboardShortcut(shortcut(.findAndReplaceInNote))
+            .disabled(workspace?.markdownSession == nil)
+        #endif
+        Button("Search in All Files") { workspace?.searchFocusRequest += 1 }
+            .keyboardShortcut(shortcut(.searchAllFiles))
+            .disabled(workspace == nil)
+        if workspace?.preferences.isEnabled(.templates) == true {
+            Button("Insert Template…") { actions?.window.showTemplatePicker() }
+                .keyboardShortcut(shortcut(.insertTemplate))
+                .disabled(workspace?.markdownSession == nil)
         }
     }
 

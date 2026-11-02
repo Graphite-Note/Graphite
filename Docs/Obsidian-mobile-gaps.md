@@ -76,7 +76,7 @@ Status: **Missing**, **Partial**, or **Done**. "Desktop only" items are left out
 | Tags view | Done | Every tag with its count in the left sidebar, nested or flat, sorted by name or frequency; tap to search. No tag renaming (Obsidian has none either) |
 | Templates | Done | `{{title}}`, `{{date}}`, `{{time}}` with formats; properties merged; no Templater syntax |
 | Unique note creator | Missing | |
-| Word count | Done | Whitespace splitting miscounts Chinese, Japanese and Korean; no selection count |
+| Word count | Done | Counts words by Obsidian's own rule (checked against its pattern), so both apps show the same number; no selection count |
 | Workspaces | Missing | Tabs exist; saved named layouts do not |
 | Publish, Sync | Missing | Paid Obsidian services; out of scope. Vaults sync through iCloud Drive or other file providers |
 
