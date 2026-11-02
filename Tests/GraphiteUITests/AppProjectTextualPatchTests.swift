@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -687,12 +687,13 @@ final class AppProjectTextualPatchTests: XCTestCase {
             XCTAssertEqual(inDisplay.descent, inline.descent, accuracy: 0.01, fraction)
         }
         XCTAssertEqual(try mathMetrics(#"\tfrac{a}{b}"#).width, try mathMetrics(#"\frac{\scriptstyle a}{\scriptstyle b}"#).width, accuracy: 0.01, "The parts of \\tfrac are script size.")
-        XCTAssertEqual(try inlineMathMetrics(#"\dfrac{a}{b}"#).width, try inlineMathMetrics(#"\frac{a}{b}"#).width, accuracy: 0.01, "The parts of \\dfrac are text size.")
+        XCTAssertEqual(try inlineMathMetrics(#"\dfrac{a}{b}"#).width, try mathMetrics(#"\frac{a}{b}"#).width, accuracy: 0.01, "The parts of \\dfrac are text size.")
         XCTAssertGreaterThan(try inlineMathMetrics(#"\dfrac{a}{b}"#).ascent, try inlineMathMetrics(#"\frac{a}{b}"#).ascent, "Display style's larger shifts, inline too.")
 
         let textFraction = try mathMetrics(#"\tfrac{a}{b}"#)
         let displayFraction = try mathMetrics(#"\dfrac{a}{b}"#)
-        XCTAssertEqual(textFraction.width / displayFraction.width, 0.7, accuracy: 0.05, "Latin Modern's script size is 70 %.")
+        let sideRoomWidth = 0.44 * Self.mathFontSize
+        XCTAssertEqual((textFraction.width - sideRoomWidth) / (displayFraction.width - sideRoomWidth), 0.7, accuracy: 0.05, "Latin Modern's script size is 70 %.")
         XCTAssertLessThan(textFraction.ascent + textFraction.descent, 0.75 * (displayFraction.ascent + displayFraction.descent))
         XCTAssertGreaterThan(try mathMetrics(#"x^{\dfrac{a}{b}}"#).width, try mathMetrics(#"x^{\tfrac{a}{b}}"#).width, "Display style in an exponent, as in TeX.")
         XCTAssertLessThan(try mathMetrics(#"\tbinom{n}{k}"#).ascent, try mathMetrics(#"\dbinom{n}{k}"#).ascent, "The parentheses follow the style.")
@@ -705,6 +706,170 @@ final class AppProjectTextualPatchTests: XCTestCase {
         let broken = try XCTUnwrap(DisplayMathRendering.metrics(for: long, fontSize: Self.mathFontSize, fittingWidth: width))
         XCTAssertLessThanOrEqual(broken.width, width + Self.mathFontSize)
         XCTAssertGreaterThan(broken.ascent + broken.descent, 1.5 * (natural.ascent + natural.descent), "Wrapping keeps it small.")
+    }
+
+    /// A formula's size in em, against what MathJax 3.2.2 measures for it (its SVG output's view box).
+    private func assertMathJaxSize(_ latex: String, inline: Bool, width: CGFloat, ascent: CGFloat, descent: CGFloat,
+                                   accuracyInEm: CGFloat = 0.05, file: StaticString = #filePath, line: UInt = #line) throws {
+        let label = "\(latex) \(inline ? "inline" : "in display math")"
+        let measured = inline
+            ? { (metrics: InlineMathRendering.Metrics) in (metrics.width, metrics.ascent, metrics.descent) }(try inlineMathMetrics(latex, file: file, line: line))
+            : { (metrics: DisplayMathRendering.Metrics) in (metrics.width, metrics.ascent, metrics.descent) }(try mathMetrics(latex, file: file, line: line))
+        XCTAssertEqual(measured.0 / Self.mathFontSize, width, accuracy: accuracyInEm, "Width of \(label)", file: file, line: line)
+        XCTAssertEqual(measured.1 / Self.mathFontSize, ascent, accuracy: accuracyInEm, "Ascent of \(label)", file: file, line: line)
+        XCTAssertEqual(measured.2 / Self.mathFontSize, descent, accuracy: accuracyInEm, "Descent of \(label)", file: file, line: line)
+    }
+
+    /// Patch 19. The vault has `\frac` inline about 7,600 times, at full size where MathJax has script
+    /// size, and more than 240 times nested in display math, where it did not shrink.
+    func testAFractionsPartsAreOneStyleSmallerThanTheFraction() throws {
+        try assertMathJaxSize(#"\frac{a}{b}"#, inline: false, width: 0.97, ascent: 1.12, descent: 0.70)
+        try assertMathJaxSize(#"\frac{a}{b}"#, inline: true, width: 0.81, ascent: 0.71, descent: 0.35)
+        try assertMathJaxSize(#"\frac{\frac{a}{b}}{c}"#, inline: false, width: 1.25, ascent: 1.52, descent: 0.70, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\frac{\frac{a}{b}}{c}"#, inline: true, width: 1.02, ascent: 1.09, descent: 0.35)
+        try assertMathJaxSize(#"\frac{\frac{\frac{a}{b}}{c}}{d}"#, inline: true, width: 1.24, ascent: 1.52, descent: 0.35, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"x^{\frac{a}{b}}"#, inline: true, width: 1.23, ascent: 0.86, descent: 0.01)
+        try assertMathJaxSize(#"\frac{a^2}{b_i}"#, inline: true, width: 1.12, ascent: 0.98, descent: 0.46, accuracyInEm: 0.07)
+
+        let plain = #"\frac{a}{b}"#
+        XCTAssertEqual(try mathMetrics(plain).ascent, try mathMetrics(#"\dfrac{a}{b}"#).ascent, accuracy: 0.01, "In display math \\frac is \\dfrac.")
+        XCTAssertEqual(try inlineMathMetrics(plain).width, try inlineMathMetrics(#"\tfrac{a}{b}"#).width, accuracy: 0.01, "Inline, \\frac is \\tfrac.")
+        XCTAssertEqual(try inlineMathMetrics(plain).ascent, try inlineMathMetrics(#"\tfrac{a}{b}"#).ascent, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\binom{n}{k}"#).width, try mathMetrics(#"\dbinom{n}{k}"#).width, accuracy: 0.01, "\\binom follows the same rule.")
+        XCTAssertEqual(try inlineMathMetrics(#"\binom{n}{k}"#).width, try inlineMathMetrics(#"\tbinom{n}{k}"#).width, accuracy: 0.01)
+        XCTAssertEqual(try inlineMathMetrics(#"{a\over b}"#).width, try inlineMathMetrics(plain).width, accuracy: 0.01, "\\over follows the same rule.")
+        try assertMathJaxSize(#"{a\atop b}"#, inline: true, width: 0.61, ascent: 0.76, descent: 0.35)
+        try assertMathJaxSize(#"{n\choose k}"#, inline: false, width: 2.07, ascent: 1.45, descent: 0.95)
+
+        // `\cfrac` has `\strut\textstyle` in each part, whatever is around it.
+        try assertMathJaxSize(#"\cfrac{a}{b}"#, inline: false, width: 0.97, ascent: 1.62, descent: 1.12, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\cfrac{a}{b}"#, inline: true, width: 0.97, ascent: 1.16, descent: 0.75)
+        try assertMathJaxSize(#"\cfrac{\frac{a}{b}}{c}"#, inline: false, width: 1.25, ascent: 1.67, descent: 1.12, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\cfrac{1}{1+\cfrac{1}{x}}"#, inline: false, width: 3.17, ascent: 1.62, descent: 1.84, accuracyInEm: 0.15)
+
+        // Matrix and array cells are in text style, equation environments in display style, inline too.
+        try assertMathJaxSize(#"\begin{array}{c}\frac{a}{b}\end{array}"#, inline: false, width: 0.81, ascent: 0.80, descent: 0.30)
+        try assertMathJaxSize(#"\begin{pmatrix}\frac{a}{b}\end{pmatrix}"#, inline: false, width: 1.59, ascent: 0.80, descent: 0.30, accuracyInEm: 0.08)
+        for environment in ["aligned", "split", "align"] {
+            try assertMathJaxSize(#"\begin{\#(environment)}a&=\frac{b}{c}\end{\#(environment)}"#, inline: true, width: 2.74, ascent: 1.28, descent: 0.78)
+        }
+        for environment in ["gathered", "gather"] {
+            try assertMathJaxSize(#"\begin{\#(environment)}\frac{b}{c}\end{\#(environment)}"#, inline: true, width: 0.87, ascent: 1.28, descent: 0.78)
+        }
+        try assertMathJaxSize(#"\begin{equation}\frac{b}{c}\end{equation}"#, inline: true, width: 0.75, ascent: 0.89, descent: 0.35)
+        XCTAssertTrue(MathAttachment.canTypeset(#"\begin{aligned}a&=-b\\c&=\frac{d}{e}\end{aligned}"#))
+
+        // What decides a line's height: an inline fraction is about as tall as a line of text.
+        XCTAssertLessThan(try inlineMathMetrics(plain).ascent, 0.75 * Self.mathFontSize)
+        XCTAssertLessThan(try inlineMathMetrics(plain).descent, 0.4 * Self.mathFontSize)
+    }
+
+    /// Patch 20. Inline `\sum_{i}` and `\dfrac{\sum_{i=1}^n x_i}{n}` stacked their limits, the second
+    /// 3.25 em tall against MathJax's 2.29.
+    func testLimitsStackInDisplayStyleOrAfterTheLimitsCommand() throws {
+        try assertMathJaxSize(#"\sum_{i=1}^n x_i"#, inline: true, width: 3.35, ascent: 0.79, descent: 0.34, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\sum_{i=1}^n x_i"#, inline: false, width: 2.51, ascent: 1.56, descent: 1.25, accuracyInEm: 0.17)
+        try assertMathJaxSize(#"\dfrac{\sum_{i=1}^n x_i}{n}"#, inline: true, width: 3.79, ascent: 1.59, descent: 0.70, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\frac{\sum_{i=1}^n x_i}{n}"#, inline: true, width: 2.81, ascent: 1.14, descent: 0.35, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\lim_{x\to 0} f"#, inline: true, width: 3.65, ascent: 0.70, descent: 0.20, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\max_x y"#, inline: true, width: 3.00, ascent: 0.45, descent: 0.20, accuracyInEm: 0.1)
+
+        // `\limits` stacks them in every style, inline and in an exponent, on any operator.
+        try assertMathJaxSize(#"\sum\limits_{i=1}^n x_i"#, inline: true, width: 2.21, ascent: 1.36, descent: 1.05, accuracyInEm: 0.17)
+        try assertMathJaxSize(#"\lim\limits_{x\to0} f"#, inline: true, width: 2.18, ascent: 0.70, descent: 0.75, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"x^{\sum\limits_{i}}"#, inline: true, width: 1.40, ascent: 1.34, descent: 0.01, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\int\limits_a^b x"#, inline: false, width: 1.69, ascent: 2.15, descent: 1.57, accuracyInEm: 0.11)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"x^{\sum\limits_{i}}"#).ascent, try inlineMathMetrics(#"x^{\sum_{i}}"#).ascent)
+
+        // `\nolimits` keeps them at the side, in display math too.
+        try assertMathJaxSize(#"\sum\nolimits_{i=1}^n x_i"#, inline: false, width: 3.74, ascent: 0.99, descent: 0.54, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\lim\nolimits_{x\to0} f"#, inline: false, width: 3.65, ascent: 0.70, descent: 0.20, accuracyInEm: 0.11)
+        let lastCommandWins = try mathMetrics(#"\sum\limits\nolimits_{i}"#)
+        XCTAssertEqual(lastCommandWins.width, try mathMetrics(#"\sum\nolimits_{i}"#).width, accuracy: 0.01, "The last of \\limits and \\nolimits counts.")
+
+        // `\operatorname*` is as `\lim`: stacked in display style, at the side inline.
+        try assertMathJaxSize(#"\operatorname*{argmax}_x f"#, inline: false, width: 3.97, ascent: 0.70, descent: 0.91, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"\operatorname*{argmax}_x f"#, inline: true, width: 4.46, ascent: 0.70, descent: 0.25, accuracyInEm: 0.1)
+
+        // The style decides, not whether the formula is inline.
+        try assertMathJaxSize(#"\displaystyle\sum_i x"#, inline: true, width: 2.18, ascent: 0.95, descent: 1.19, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"\textstyle\sum_i x"#, inline: false, width: 2.12, ascent: 0.75, descent: 0.29, accuracyInEm: 0.12)
+        try assertMathJaxSize(#"\begin{aligned}\sum_{i} x\end{aligned}"#, inline: true, width: 2.18, ascent: 1.32, descent: 0.82, accuracyInEm: 0.06)
+        try assertMathJaxSize(#"\begin{pmatrix}\sum_{i} x\end{pmatrix}"#, inline: false, width: 2.90, ascent: 0.77, descent: 0.27, accuracyInEm: 0.12)
+
+        // Labels are not limits: they stay above and below, inline too.
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\overset{a}{b}"#).ascent, 1.1 * Self.mathFontSize)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\underbrace{ab}_{c}"#).descent, 1 * Self.mathFontSize)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\sum_{\substack{i<j\\k}} x"#).descent, 0.8 * Self.mathFontSize)
+    }
+
+    /// The pixels of a formula with ink, in columns of points from the left edge of its box.
+    private func inkColumnsInPoints(_ latex: String) throws -> ClosedRange<CGFloat> {
+        let scale: CGFloat = 8
+        let renderer = ImageRenderer(content: Math(LaTeXCompatibility.normalized(latex)).mathFont(.init(name: .latinModern, size: Self.mathFontSize)).foregroundStyle(.black).background(.white))
+        renderer.scale = scale
+        let image = try XCTUnwrap(renderer.cgImage, latex)
+        var pixels = [UInt8](repeating: 255, count: image.width * image.height)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let columnsWithInk = (0..<image.width).filter { column in
+            (0..<image.height).contains { row in pixels[row * image.width + column] < 128 }
+        }
+        let first = try XCTUnwrap(columnsWithInk.first, latex)
+        let last = try XCTUnwrap(columnsWithInk.last, latex)
+        return (CGFloat(first) / scale)...(CGFloat(last + 1) / scale)
+    }
+
+    /// Patch 21. `a+\tfrac{b}{c}+d` was 3.80 em wide against MathJax's 4.24: 0.12 em of each side
+    /// stays empty (`\nulldelimiterspace`) and the rule reaches 0.1 em past the wider part.
+    func testAFractionHasRoomAtItsSidesAsInMathJax() throws {
+        try assertMathJaxSize(#"a+\tfrac{b}{c}+d"#, inline: true, width: 4.24, ascent: 0.89, descent: 0.35)
+        try assertMathJaxSize(#"a+\frac{b}{c}+d"#, inline: false, width: 4.37, ascent: 1.37, descent: 0.70)
+
+        // The room is in em of the fraction's own style.
+        try assertMathJaxSize(#"x^{\tfrac{a}{b}}"#, inline: true, width: 1.47, ascent: 1.17, descent: 0.01)
+        try assertMathJaxSize(#"x^{\frac{a}{b}}"#, inline: true, width: 1.23, ascent: 0.86, descent: 0.01)
+
+        // Without a rule only the empty room, and with delimiters none: they stand there instead.
+        try assertMathJaxSize(#"{a\atop b}"#, inline: false, width: 0.77, ascent: 1.12, descent: 0.70)
+        try assertMathJaxSize(#"\binom{n}{k}"#, inline: false, width: 2.07, ascent: 1.45, descent: 0.95)
+
+        // The rule has the empty room outside it, and reaches past the parts.
+        let width = try mathMetrics(#"\dfrac{a}{b}"#).width
+        let ink = try inkColumnsInPoints(#"\dfrac{a}{b}"#)
+        let em = Self.mathFontSize
+        XCTAssertEqual(ink.lowerBound, 0.12 * em, accuracy: 0.25, "Empty room before the rule.")
+        XCTAssertEqual(ink.upperBound, width - 0.12 * em, accuracy: 0.25, "Empty room after the rule.")
+        let partInk = try inkColumnsInPoints(#"{\displaystyle a\atop\displaystyle b}"#)
+        XCTAssertGreaterThan(partInk.lowerBound, 0.12 * em - 0.25, "Without a rule, nothing reaches into the room.")
+
+        // MathJax spaces a fraction as an ordinary symbol, and without a space next to \left…\right.
+        for (formula, widthInEm) in [(#"x\frac{a}{b}y"#, 2.03), (#"2\frac{1}{2}"#, 1.44), (#"\frac{1}{2}mv^2"#, 2.74), (#"\frac{a}{b}\frac{a}{b}"#, 1.94),
+                                      (#"\frac{a}{b}\left(x\right)"#, 2.32), (#"\left(x\right)\frac{a}{b}"#, 2.32), (#"\frac{a}{b}("#, 1.36), (#")\frac{a}{b}"#, 1.36),
+                                      (#"\frac{a}{b},"#, 1.25), (#",\frac{a}{b}"#, 1.41), (#"x\binom{a}{b}"#, 2.57), (#"\sqrt{x}\frac{a}{b}"#, 2.39),
+                                      (#"\sin\frac{a}{b}"#, 2.36), (#"\frac{a}{b}\sum"#, 2.58), (#"\frac{a}{b}+x"#, 2.76), (#"x=\frac{a}{b}"#, 2.88)] as [(String, CGFloat)] {
+            XCTAssertEqual(try mathMetrics(formula).width / em, widthInEm, accuracy: 0.05, formula)
+        }
+        XCTAssertEqual(try inlineMathMetrics(#"x\frac{a}{b}"#).width / em, 1.39, accuracy: 0.05)
+    }
+
+    /// The height the reading view gives a paragraph at 17 points, wide enough for one line.
+    private func readingViewHeight(ofMarkdown markdown: String) -> CGFloat {
+        let paragraph = StructuredText(markdown: markdown, syntaxExtensions: [.math]).font(.system(size: 17))
+        let hostingView = NSHostingView(rootView: paragraph.frame(width: 800, alignment: .leading))
+        hostingView.layoutSubtreeIfNeeded()
+        return hostingView.fittingSize.height
+    }
+
+    /// Patches 19 and 20: a line with an inline fraction or sum is far less tall in the reading view.
+    /// `\\dfrac` is the fraction drawn tall on purpose, and stays as it was.
+    func testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView() {
+        let plain = readingViewHeight(ofMarkdown: "Some words here")
+        func addedHeight(_ latex: String) -> CGFloat { readingViewHeight(ofMarkdown: "Some $\(latex)$ words") - plain }
+        XCTAssertLessThan(addedHeight(#"\frac{a}{b}"#), 18, "It added 23 points.")
+        XCTAssertLessThan(addedHeight(#"\sum_{i=1}^n x_i"#), 25, "It added 48 points.")
+        XCTAssertLessThan(addedHeight(#"\lim_{x\to 0} f"#), 15, "It added 26 points.")
+        XCTAssertGreaterThan(addedHeight(#"\dfrac{a}{b}"#), 30)
     }
 
     /// Commands rewritten for the typesetter reach it as text it can draw.

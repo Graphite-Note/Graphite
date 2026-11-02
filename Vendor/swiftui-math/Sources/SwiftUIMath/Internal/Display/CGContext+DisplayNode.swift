@@ -1,3 +1,14 @@
+/**
+ * File: CGContext+DisplayNode.swift
+ * ---------------------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Draws a typeset formula into a Core Graphics context.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import CoreGraphics
 import CoreText
 import Foundation
@@ -118,11 +129,11 @@ extension CGContext {
     setLineWidth(fraction.lineThickness)
 
     let lineStart = CGPoint(
-      x: fraction.position.x,
+      x: fraction.ruleStartX,
       y: fraction.position.y + fraction.linePosition
     )
     let lineEnd = CGPoint(
-      x: fraction.position.x + fraction.width,
+      x: fraction.ruleEndX,
       y: lineStart.y
     )
 

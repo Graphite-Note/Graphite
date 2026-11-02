@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownTextStyler.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Styles Markdown source in place, with attributes only, for the editor.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.19
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import SwiftUI
 import GraphiteCore
@@ -786,21 +797,25 @@ struct MarkdownTextStyler {
         return metrics.map { metrics in InlineMathLayout(latex: latex, fontSize: fontSize, metrics: metrics) }
     }
 
-    /// Hides the source and makes room for the formula after its last character:
+    /// Hides the source and makes room for the formula before its last character:
     /// `ConcealedReplacementLayoutFragment` draws the formula in that room.
     private func drawInlineMath(_ layout: InlineMathLayout, over range: NSRange, in textStorage: NSTextStorage) {
         conceal(range, in: textStorage)
         textStorage.addAttribute(ConcealedReplacement.attributeKey, value: ConcealedReplacement.inlineMath.rawValue, range: range)
         textStorage.addAttribute(ConcealedReplacement.mathAttributeKey, value: layout, range: range)
         let lastCharacter = NSRange(location: NSMaxRange(range) - 1, length: 1)
-        textStorage.addAttribute(.kern, value: layout.metrics.width + 2 * InlineMathLayout.horizontalPadding, range: lastCharacter)
+        let characterBeforeLast = (textStorage.string as NSString).rangeOfComposedCharacterSequence(at: lastCharacter.location - 1)
+        // The room follows the character before the last. After the last, it could not fit at the
+        // end of a line and would move the closing `$` alone to the next, as a line may break
+        // between `}` and `$`, and the two characters below must stay on one line.
+        textStorage.addAttribute(.kern, value: layout.metrics.width + 2 * InlineMathLayout.horizontalPadding, range: characterBeforeLast)
         // TextKit sizes a line from the ascent and descent of its characters, moved by their
         // baseline offsets. Raising the hidden last character by the formula's ascent, and
         // lowering the one before it by its descent, makes a tall formula's line tall enough
         // for it instead of overlapping the lines around it. A formula's source has at least
-        // three characters (`$x$`), and no line break falls between its last two.
+        // three characters (`$x$`).
         textStorage.addAttribute(.baselineOffset, value: layout.metrics.ascent, range: lastCharacter)
-        textStorage.addAttribute(.baselineOffset, value: -layout.metrics.descent, range: NSRange(location: lastCharacter.location - 1, length: 1))
+        textStorage.addAttribute(.baselineOffset, value: -layout.metrics.descent, range: characterBeforeLast)
     }
 
     /// The text of a task after its checkbox, to the end of its line.
