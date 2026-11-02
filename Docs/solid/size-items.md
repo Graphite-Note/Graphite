@@ -236,7 +236,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     46  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseCardsView.card
     46  function review  Sources/GraphiteUI/GraphViews.swift  VaultGraphScreen.body
     46  function review  Sources/GraphiteUI/LivePreviewTableEditing.swift  LivePreviewTableEditor.menuItems
-    46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
+    56  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
     46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  NativeMarkdownEditor.update
     46  function review  Sources/GraphiteUI/SettingsView.swift  GeneralSettingsPage.body
     45  function review  Sources/GraphiteCore/BaseEvaluator.swift  BaseEvaluator.field
