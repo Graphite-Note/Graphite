@@ -1,3 +1,15 @@
+/**
+ * File: ConcealedReplacementLayoutFragment.swift
+ * ----------------------------------------------
+ * Layer: UI
+ * Description: Draws what Live Preview shows over hidden markup: bullets, task boxes, quote bars,
+ *              inline formulas.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.9
+ * Date: 02/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 #else
@@ -266,9 +278,12 @@ final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
             guard let layout = value as? InlineMathLayout else { return }
             var formulaRange = NSRange(location: NSNotFound, length: 0)
             _ = attributedString.attribute(ConcealedReplacement.mathAttributeKey, at: range.location, longestEffectiveRange: &formulaRange, in: wholeString)
-            let lastCharacterLocation = NSMaxRange(formulaRange) - 1
-            guard formulaRange.length > 0, NSLocationInRange(lastCharacterLocation, lineFragment.characterRange) else { return }
-            let roomStartX = lineOrigin.x + lineFragment.locationForCharacter(at: lastCharacterLocation).x
+            guard formulaRange.length > 1 else { return }
+            // The room follows the character before the last (`MarkdownTextStyler.drawInlineMath`),
+            // which is hidden and as good as no width.
+            let characterBeforeLastLocation = (attributedString.string as NSString).rangeOfComposedCharacterSequence(at: NSMaxRange(formulaRange) - 2).location
+            guard NSLocationInRange(characterBeforeLastLocation, lineFragment.characterRange) else { return }
+            let roomStartX = lineOrigin.x + lineFragment.locationForCharacter(at: characterBeforeLastLocation).x
             Self.draw(layout, atX: roomStartX + InlineMathLayout.horizontalPadding, baseline: baseline)
         }
     }

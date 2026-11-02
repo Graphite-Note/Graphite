@@ -44,6 +44,42 @@ The 306 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That f
 - **Row commands cannot split a comment that spans rows.** A comment over a line break in a table sets `isCutByComment`, which leaves that table to source editing. Package test: `LivePreviewBlockTests.testACommentOverARowBreakLeavesTheTableToSourceEditing`.
 - **Checked and left alone:** `VaultIndex.isDamagedDatabase` keeps `SQLITE_ERROR` and `SQLITE_CONSTRAINT`. Opening the index runs only fixed pragmas and migrations, and locks, I/O, space and permissions have their own codes, so neither comes from a passing condition; both are what a failed migration reports. `IndexRecoveryAndChangeTests.testWhichErrorsCountAsDamage` lists them.
 
+## Fractions, limits and side room drawn as in MathJax: 2026-11-02
+
+Three of upstream's choices in `Vendor/swiftui-math` now do what TeX and MathJax 3.2.2 do (`Vendor/swiftui-math/GRAPHITE-PATCHES.md`, 19 to 21). This changes how most fractions in the vault look. PR for the owner's review, with the comparison sheet linked from it.
+
+- **A fraction's parts are one style smaller (patch 19):** `\frac`, `\binom`, `\over`, `\atop`, `\choose`. Inline `\frac{a}{b}` (about 7,600 uses) is 1.06 em tall as in MathJax, against 1.35 em, and a `\frac` nested in display math (240+ uses) shrinks. `\cfrac` now has MathJax's `\strut` and text-style parts. `aligned`, `split`, `gathered`, `gather`, `displaylines` and `eqnarray` are in display style inline too, as an inline `aligned` would otherwise have become smaller than MathJax's.
+- **Limits stack in display style, or after `\limits` (patch 20):** inline `\sum_{i}` and `\lim_{x}` set their limits at the side, and `\dfrac{\sum_{i=1}^n x_i}{n}` is 2.37 em tall against MathJax's 2.29, down from 3.24. `\limits` stacks them in an exponent too. `\operatorname*` is as `\lim`, stacked in display style and at the side inline.
+- **Room at a fraction's sides (patch 21):** read from MathJax's `CommonMfrac` and measured from its output: 0.12 em left empty on each side, and the rule reaching 0.1 em past the wider part. `\atop` has only the 0.12 em and `\binom` none. `a+\tfrac{b}{c}+d` is 4.24 em wide as in MathJax. A fraction is also spaced as an ordinary symbol now, as measured from MathJax: `x\frac{a}{b}y` had thin spaces, and is 2.03 em wide.
+- **Line spacing, measured in both views' layouts on macOS at 17-point text, added to a 20-point line:**
+
+  | Inline formula | Reading view, before and now | Live Preview, before and now |
+  | --- | --- | --- |
+  | `\frac{a}{b}` | 23, 14 points | 7.6, 3.2 points |
+  | `\frac{x^2+1}{\sqrt{y}}` | 45, 28 points | 22.3, 11.9 points |
+  | `\sum_{i=1}^n x_i` | 48, 20 points | 24.0, 6.2 points |
+  | `\lim_{x\to 0} f` | 26, 10 points | 9.2, 1.4 points |
+  | `\dfrac{a}{b}` | 37, 37 points | 17.0, 17.0 points |
+
+  Lines are lower everywhere and none is taller. **The reading view still adds about four times what Live Preview adds for the same formula.** That comes from how the reading view sets an attachment on its baseline, it is older than these patches, and its cause was not traced.
+- **Live Preview's room for a formula moved:** the changed widths exposed an older fault. The room followed the closing `$`, so at some widths the `$` alone moved to the next line and the formula lost its descent's room (`testTallInlineMathMakesItsLineTallEnough`, at 200 points). The room now follows the character before it.
+- **Automated tests, passing on macOS:** new, and all failing on the typesetter without the patches: `testAFractionsPartsAreOneStyleSmallerThanTheFraction`, `testLimitsStackInDisplayStyleOrAfterTheLimitsCommand`, `testAFractionHasRoomAtItsSidesAsInMathJax`, against sizes measured from MathJax. New: `testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView`, `testInlineFractionsAndLimitsKeepTheirLineLow`, `testTheRoomForAFormulaIsBeforeItsClosingDollar`, `testAFormulaIsDrawnInItsRoom` (reads the pixels the editor's layout fragment draws). The filtered classes that ran are listed in the PR; the full package suite was not run locally (no-sound rule); CI runs it.
+- **Compared with MathJax 3.2.2:** a sheet of 44 formulas drawn through `Math` before and after the patches beside MathJax's own output, in display and inline math, on light and dark pages. **Vault scan on these patches:** 316,950 formulas, 54 not typeset, the same count as before, with no crash, wrapped at two widths and turned into outlines in a Debug build.
+- **Not checked in the app** on the Mac, iPad or iPhone. The line heights and the formula's place in Live Preview are measured from the layouts and drawing code on macOS, not on a device.
+- **Still drawn differently from MathJax, not fixed:**
+  - The fraction rule is 0.04 em thick, Latin Modern's value, against MathJax's 0.06 em, so nested fractions are up to 0.1 em shorter.
+  - Side scripts on `\sum` and `\int` sit up to 0.1 em further out, from Latin Modern's metrics, and stacked limits have about 0.1 em less room outside them.
+  - `\left(x\right)y` keeps a thin space and `\sqrt{x}y` a medium one, where MathJax has none. `\frac{a}{b}\sin x` keeps TeX's thin space, which MathJax drops.
+  - Inline `\binom`'s parentheses are 0.08 em narrower, tall `\left(` sizes differ by a step, and `cases` and matrices are up to 0.2 em wider.
+  - `\cfrac[l]` and `\cfrac[r]` are centered, and `\boxed` has KaTeX's padding.
+
+
+## The Mac editor's tests keep one width: 2026-11-02
+
+`MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` failed once in CI on #128, at character 2185 instead of 1690, in a run where it took 24.8 seconds rather than 0.2. Reproduced on this Mac by waiting between the jump and the check: with classic scroll bars, `MacMarkdownEditorFixture`'s scroller appears at the window's next layout and narrows the text view from 600 to 583 points, TextKit 2 replaces its layout with estimates (the note's height goes from 8010 to 6668 points), and the scroll offset stays, so another line is at the top. 72 runs under full CPU load did not show it; only the wait did. The fixture now has no vertical scroller, so its width does not change, and the line stays in place through the same wait.
+
+Not fixed: this comes from the editor, not only the fixture. In the fixture with its scroller on, narrowing the window after a jump moved the top of the view from character 1690 to 2257 in a 300-line note. Not checked in the app itself.
+
 ## MathJax's other commands typeset in formulas: 2026-11-01
 
 About 5 % of the formulas in the owner's vault showed as LaTeX source in the reading view and Live Preview, where Obsidian draws them. Measured on the vault at this date, with Textual's tokenizer and `MathAttachment.canTypeset` after Graphite's rewriting: 16,796 of 316,950 could not be typeset before, 54 now (0.02 %).
@@ -54,7 +90,18 @@ About 5 % of the formulas in the owner's vault showed as LaTeX source in the rea
 - **Checked by eye:** a sheet of these commands drawn through `MathOutlines` beside MathJax 3.2.2 in a browser, row by row. Every vault formula was also typeset unwrapped and at two widths and turned into outlines in a Debug build, with no crash. **Not checked in the app** on the Mac, iPad or iPhone.
 - **What still shows as source:** 54 formulas. Most are not valid MathJax either: `\Log`, `\cotg`, `\tg`, `\logit`, `\circled`, `\overbar` (25), malformed groups, stray `\]` or `\)`, `\bgroup` and `\overrightharpoon` (16), and an empty `\textcolor{…}{}` alone (9), which MathJax draws as nothing. Valid ones not typeset: `\xRightarrow`, `\xrightleftharpoons`, `\nleqslant`, `\not =`.
 - **Drawn differently from MathJax:** `\middle` is spaced as an ordinary atom; `\hdashline` is solid and a preamble's `:` is not drawn; symbols with no bold form in Latin Modern, such as `\boldsymbol{\times}`, stay regular; `\textcircled`, `\llbracket` and `\oiint` are drawn where MathJax reports an error, as KaTeX draws them.
-- **Found on the way, not fixed:** named colors are not read: `\textcolor{red}` draws in the text color (hex colors work), which the vault has about 190 times. `\tfrac` in display math is as large as `\frac` (2,754 uses). An operator right after a display may hang past the column when a formula wraps, as after a fraction or a root.
+- **Found on the way, not fixed:** an operator right after a display may hang past the column when a formula wraps, as after a fraction or a root. Named colors and `\tfrac`, also found here, are fixed in the next section.
+
+## Named colors and fraction styles drawn as in MathJax: 2026-11-01
+
+Two faults where a formula was typeset but drawn differently from Obsidian's MathJax 3.2.2 (`Vendor/swiftui-math/GRAPHITE-PATCHES.md`, 17 and 18).
+
+- **Named colors (patch 17):** `\textcolor{red}` and `\color{blue}` drew in the text color; only hex was read. Names are now read as MathJax reads them: its 68 dvips names in their exact case, then CSS's 148 in any case, so `Red` is `#ED1B23` and `red` is `#FF0000`, and `#rgb` is read as CSS reads it. A name neither knows keeps the color around it. The vault has these names about 190 times.
+- **Black and white are the text color (our decision, not MathJax's):** `\color{black}` (2,042 times in the vault), `\color{#000000}` (103) and `\color{white}` (3) end a colored passage or set the formula inside a colored `\boxed`. MathJax draws them literally, so they vanish on one background; Graphite draws them in the formula's text color, in both themes, ending the color around them. A dark color other than pure black, such as `\textcolor{navy}` or `\textcolor{blue}`, stays as dim on a dark page as it is in MathJax.
+- **Fraction styles (patch 18):** `\tfrac`, `\dfrac`, `\tbinom` and `\dbinom` set the whole fraction in their style, as in TeX and MathJax. `\tfrac` was as large as `\frac` in display math and inline (2,754 uses: 1,324 display, 1,430 inline) and now has script-size parts; inline `\dfrac` (2,391 uses) now has display style's shifts. Each is the same fraction in display and inline math.
+- **Automated tests, passing on macOS:** `AppProjectTextualPatchTests` (with `testNamedColorsAreReadAsMathJaxReadsThem`, `testBlackAndWhiteAreTheTextColorEvenInsideAColor` and `testFractionStylesSetTheWholeFractionInTheirStyle`, all three failing on the source without these patches), `LaTeXCompatibilityTests`, `NumberedEquationTests`, `NotePreviewDocumentTests`, `CorePreviewTypesetterCompatibilityTests`, `ParserNestingLimitsTests`, `StaticPatternTests`, `UiNumberedEquationTests`, `InlineMathRuleTests`, `DisplayMathEscapedDollarTests`. The full package suite was not run locally (no-sound rule); CI runs it.
+- **Compared with MathJax 3.2.2:** a sheet of 42 formulas drawn through `Math` beside MathJax in a browser, in display and inline math: the 21 colors on dark and light pages, the 21 fractions on a dark page and the first 12 on a light one too. All 216 color names were read back from what MathJax draws, with no difference from Graphite's tables. Fraction heights agree within about 0.1 em (`\tfrac{a}{b}` 1.06 against 1.06, `\dfrac{a}{b}` 1.82 against 1.81, `\dbinom{n}{k}` 2.39 against 2.40). **Not checked in the app** on the Mac, iPad or iPhone. The vault scan was not run again on these patches.
+- **Still drawn differently from MathJax after this section:** `\colorbox`'s background has never been drawn (none in the vault). The three other differences listed here were fixed by patches 19 to 21, in the section above.
 
 ## KaTeX arrows typeset, and the Mac editor opens at the passage read: 2026-10-24
 

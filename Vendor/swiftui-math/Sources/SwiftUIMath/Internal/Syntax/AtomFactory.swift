@@ -1,3 +1,14 @@
+/**
+ * File: AtomFactory.swift
+ * -----------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Makes the atoms and environments of a formula from their LaTeX names.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 extension Math {
@@ -897,6 +908,7 @@ extension Math {
               table.cells[i][1].insert(spacer, at: 0)
             }
           }
+          setCellsInDisplayStyle(table)
 
           table.interRowAdditionalSpacing = 1
           table.interColumnSpacing = 0
@@ -932,6 +944,7 @@ extension Math {
           table.interColumnSpacing = 0
 
           table.setAlignment(.center, forColumn: 0)
+          setCellsInDisplayStyle(table)
 
           return table
         } else if env == "eqnarray" {
@@ -949,6 +962,7 @@ extension Math {
           table.setAlignment(.right, forColumn: 0)
           table.setAlignment(.center, forColumn: 1)
           table.setAlignment(.left, forColumn: 2)
+          setCellsInDisplayStyle(table)
 
           return table
         } else if env == "cases" {
@@ -982,6 +996,18 @@ extension Math {
         }
       }
       return nil
+    }
+
+    /// Graphite patch: as in TeX and MathJax, the equation environments set their cells in display
+    /// style, inline too. Upstream's left them in the style around them, which since a fraction's
+    /// parts follow the style (patch 19) would draw an inline `aligned` smaller than MathJax does.
+    private static func setCellsInDisplayStyle(_ table: Table) {
+      let style = Style(level: .display)
+      for row in 0..<table.cells.count {
+        for column in 0..<table.cells[row].count {
+          table.cells[row][column].insert(style, at: 0)
+        }
+      }
     }
 
     private static func textToLatexSymbolNameValue() -> [String: String] {
