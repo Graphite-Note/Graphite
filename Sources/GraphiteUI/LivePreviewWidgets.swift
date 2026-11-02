@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math and embeds.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.33
+ * Version: 0.34
  * Date: 02/11/2026
  */
 
@@ -134,9 +134,10 @@ struct LivePreviewWidgetView: View {
 
     private var readingRange: NSRange? {
         guard let context = environment.readingContext, let range = context.controller.highlight(in: context.path) else { return nil }
-        let overlap = NSIntersectionRange(range, block.range)
-        guard overlap.length > 0 else { return nil }
-        return NSRange(location: overlap.location - block.range.location, length: overlap.length)
+        // The block's view stays while typing above moves the block, so where it starts is asked now.
+        let blockStart: Int? = if let currentLocation { currentLocation() } else { block.range.location }
+        guard let blockStart else { return nil }
+        return block.readingRange(ofNoteRange: range, blockStart: blockStart)
     }
 
     private var hasReadingSession: Bool {
