@@ -163,7 +163,8 @@ public struct MomentDateReader: Sendable {
             return capture.nameMeanings.isEmpty || dayParts.weekday.map { weekday in capture.nameMeanings.contains(weekday - 1) } ?? false
         case "Do": return dayParts.day.map(capture.nameMeanings.contains) ?? false
         default:
-            let written = MomentDateFormat.value(of: capture.token, for: date, calendar: calendar, timeZone: timeZone, language: language, monthFollowsDay: false)
+            let written = MomentDateFormat.value(of: capture.token, for: date, calendar: calendar, timeZone: timeZone, language: language,
+                                                 monthFollowsDay: false)
             return written == capture.text
         }
     }
