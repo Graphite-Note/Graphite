@@ -2533,15 +2533,18 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// scrolled. Properties taller than the window are one line of the text with their space in
         /// it, so this is the place within them; going back to the line alone went to their start.
         private func topLine(of textView: UITextView) -> (location: Int, distanceIntoLine: CGFloat)? {
+            let probeY = textView.contentOffset.y + 12 + Self.scrollAlignmentAllowance - textView.textContainerInset.top
             guard textView.window != nil, textView.contentOffset.y > -textView.adjustedContentInset.top + 1, let textLayoutManager = textView.textLayoutManager,
-                  let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 0, y: textView.contentOffset.y + 12 + Self.scrollAlignmentAllowance - textView.textContainerInset.top)),
+                  let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 0, y: probeY)),
                   let manager = textLayoutManager.textContentManager else { return nil }
+            let location = manager.offset(from: manager.documentRange.location, to: fragment.rangeInElement.location)
             let distance = textView.contentOffset.y - (fragment.layoutFragmentFrame.minY + textView.textContainerInset.top - 12)
-            return (manager.offset(from: manager.documentRange.location, to: fragment.rangeInElement.location), distance > Self.scrollAlignmentAllowance ? distance : 0)
+            return (location, distance > Self.scrollAlignmentAllowance ? distance : 0)
         }
 
         func scrollToTop(of characterLocation: Int, distanceIntoLine: CGFloat = 0, in textView: UITextView) {
-            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: ProcessInfo.processInfo.systemUptime, distanceIntoLine: distanceIntoLine)
+            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: ProcessInfo.processInfo.systemUptime,
+                                           distanceIntoLine: distanceIntoLine)
             guard let textLayoutManager = textView.textLayoutManager,
                   let contentStorage = textLayoutManager.textContentManager as? NSTextContentStorage,
                   let location = contentStorage.location(contentStorage.documentRange.location, offsetBy: characterLocation),
