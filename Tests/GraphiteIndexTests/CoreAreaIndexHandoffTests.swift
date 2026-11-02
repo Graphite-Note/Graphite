@@ -1,3 +1,14 @@
+/**
+ * File: CoreAreaIndexHandoffTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Regressions for changes other groups handed to the index files: the base pre-filter
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
@@ -177,7 +188,7 @@ final class CoreAreaIndexHandoffTests: XCTestCase {
         XCTAssertEqual(kelvin.all, ["Sign.md"])
         XCTAssertEqual(kelvin.prefiltered, kelvin.all)
         let destination = try VaultPath("People/Émile.md")
-        let condition = try await index.databaseQueue.read { database in try VaultIndex.linkCondition(for: .path(destination), in: database) }
+        let condition = try await index.databasePool.read { database in try VaultIndex.linkCondition(for: .path(destination), in: database) }
         XCTAssertNotNil(condition, "A name outside ASCII still narrows the query.")
     }
 

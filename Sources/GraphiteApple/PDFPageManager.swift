@@ -1,3 +1,13 @@
+/**
+ * File: PDFPageManager.swift
+ * --------------------------
+ * Layer: Apple
+ * Description: Where a replaced picture goes among the pictures Graphite placed on its page.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.16
+ * Date: 01/11/2026
+ */
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -89,6 +99,8 @@ public enum PDFPageManager {
     public static let groupKey = PDFAnnotationKey(rawValue: "GraphiteInkGroup")
     /// Written with the drawing: the annotation name of each PencilKit stroke, in order.
     public static let strokeNamesKey = PDFAnnotationKey(rawValue: "GraphiteInkStrokeNamesV1")
+    /// On a highlight's annotation whose appearance multiplies it into the page.
+    public static let inkMultipliesKey = PDFAnnotationKey(rawValue: "GraphiteInkMultiplies")
     /// Repeats the annotation's `/NM` name. PDFKit drops `/NM` when a save also changes the
     /// page tree (inserting, deleting, or moving pages), but keeps custom keys.
     public static let annotationNameKey = PDFAnnotationKey(rawValue: "GraphiteAnnotationName")
@@ -316,7 +328,8 @@ public enum PDFPageManager {
         guard !update.addedStrokes.isEmpty else { return }
         let textBoxesOnTop = takeTextBoxesOffTop(of: page)
         for stroke in update.addedStrokes {
-            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, drawsOutline: drawsInkOutlines) else { continue }
+            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines)
+                else { continue }
             page.addAnnotation(annotation)
         }
         for annotation in textBoxesOnTop { page.addAnnotation(annotation) }

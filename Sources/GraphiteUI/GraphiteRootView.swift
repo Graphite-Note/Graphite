@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 21/10/2026
+ * Version: 0.55
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -59,6 +59,7 @@ struct GraphiteRootView: View {
     @State private var isRestoringVault = true
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     /// Which window is in front, for the Settings window (`GraphiteMacScenes`).
@@ -72,6 +73,13 @@ struct GraphiteRootView: View {
     /// the bottom bar, which also moves between files, and the navigation bar holds only the
     /// document's own controls.
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
+
+    /// A phone held sideways (a Plus or Max one is a regular width, but not a regular height) has about 400 points
+    /// of height. While the keyboard is up the note then gets the format toolbar as its only chrome: the navigation
+    /// bar and the tab bar would leave it one line of text. They come back with the keyboard's going.
+    private var hidesChromeWhileTyping: Bool {
+        DocumentToolbarLayout.hidesChromeWhileTyping(verticalSizeClass: verticalSizeClass, isKeyboardShown: isKeyboardShown)
+    }
 
     /// The root view of one window of a launch in `launchMode`, over the window's workspace
     /// (`GraphiteWindowScene` makes it once per window).
@@ -121,7 +129,7 @@ struct GraphiteRootView: View {
         // Links' preview cards, while the core plugin Page Preview is on.
         .modifier(LinkPreviewLayer(isEnabled: workspace.preferences.isEnabled(.pagePreview), vault: workspace.linkPreviewVault))
         // Once per device, over the reopened vault or the welcome screen.
-        .modifier(FirstLaunchWelcomeTour(isReadyToShow: presentsWelcomeTour && !isRestoringVault))
+        .modifier(FirstLaunchWelcomeTour(isReadyToShow: presentsWelcomeTour && !isRestoringVault, fetchesPicturesAtLaunch: presentsWelcomeTour))
         // The settings the views keep with `@AppStorage` are read from the preferences the
         // workspace writes to: the standard ones in the app, a private suite in a hosted run.
         .defaultAppStorage(workspace.deviceDefaults)
@@ -174,7 +182,7 @@ struct GraphiteRootView: View {
         .sheet(isPresented: $workspace.isVaultManagerPresented) {
             NavigationStack { VaultManagerView(workspace: workspace) }
                 .tint(workspace.preferences.accentColor)
-                .frame(minWidth: 480, minHeight: 360)
+                .sheetMinimumSize(width: 480, height: 360)
         }
         // Closes by itself when Read Aloud is turned off: there is no reader to show.
         .sheet(isPresented: Binding(get: { workspace.readAloud?.showsReader ?? false },
@@ -212,16 +220,20 @@ struct GraphiteRootView: View {
             }
         }
         .fullScreenCover(item: $workspace.drawingEditorRequest) { request in
-            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request)) { content, format in
+            DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request), clock: workspace.clock) { content, format in
                 try await workspace.saveDrawing(content, format: format, for: request)
+            } saveAsNewDrawing: { content, format in
+                try await workspace.saveDrawingAsNewFile(content, format: format, for: request)
             } exportCopy: { content, format in
                 try await workspace.exportDrawingCopy(content, format: format, title: request.title)
             } preserveDraft: { content in
                 guard let vaultIdentifier = workspace.currentVaultIdentifier else { return }
                 workspace.processServices.drawingDrafts.markOpenInThisProcess(request.id)
-                workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
+                let backgroundTask = BackgroundTaskAssertion(name: "Keep drawing draft")
+                let write = workspace.processServices.drawingDrafts.preserve(DrawingEditorDraft(request: request, vaultIdentifier: vaultIdentifier)) {
                     try await DrawingFileService().draftFileData(for: content)
                 }
+                Task { await write?.value; backgroundTask.end() }
             } removeDraft: {
                 workspace.processServices.drawingDrafts.removeDraft(withIdentifier: request.id)
             }
@@ -334,6 +346,7 @@ struct GraphiteRootView: View {
             .toolbar { detailToolbar }
             #if canImport(UIKit)
             .toolbar { compactBottomBar }
+            .toolbar(hidesChromeWhileTyping ? .hidden : .automatic, for: .navigationBar)
             #endif
             .environment(\.showTemplatePicker, templatePickerAction)
             .environment(\.showTabOverview, TabOverviewAction(show: showTabOverview))
@@ -506,7 +519,7 @@ struct GraphiteRootView: View {
                     NotePDFPaletteCommands(hasNoteInFront: workspace.markdownSession != nil) { noteCommands in
                         let recentCommandIdentifiers = Binding(get: { workspace.preferences.recentCommandIdentifiers },
                                                                set: { identifiers in workspace.preferences.recentCommandIdentifiers = identifiers })
-                        CommandPalette(commands: WorkspaceCommandList.commands(for: workspace, window: windowActions) + noteCommands,
+                        CommandPalette(commands: WorkspaceCommandList.commands(for: workspace, window: windowActions, offersSplit: !isCompactWidth) + noteCommands,
                                        recentCommandIdentifiers: recentCommandIdentifiers) {
                             self.activePalette = nil
                         }
@@ -527,7 +540,7 @@ struct GraphiteRootView: View {
             WorkspacePanes(workspace: workspace, showsLinksInspector: $showsInspector,
                            create: { request in creation = request },
                            showQuickSwitcher: { activePalette = .quickSwitcher },
-                           acceptsFocusTouches: activePalette == nil, showsTabBar: !focusMode.isActive && !isCompactWidth)
+                           acceptsFocusTouches: activePalette == nil, showsTabBar: !focusMode.isActive && !isCompactWidth && !hidesChromeWhileTyping)
         }
     }
 
@@ -625,6 +638,8 @@ struct GraphiteRootView: View {
         // Drive, as soon as the app is off screen, and end the app before it finishes.
         let backgroundTask = BackgroundTaskAssertion(name: "Save open documents")
         Task {
+            // First, as it is quick and local: the save may be refused, or slow enough for iPadOS to end the app.
+            _ = await workspace.keepUnsavedTextInDrafts()
             await save()
             // Plugins' views of files (an Excalidraw drawing) save what they hold too, as when
             // Obsidian closes; their writes go through the vault like any plugin write.

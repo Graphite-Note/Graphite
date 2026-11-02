@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolbox.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.19
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -17,6 +28,15 @@ enum PencilToolbarStyle: String, CaseIterable, Identifiable {
     }
 
     static let preferenceKey = "GraphitePencilToolbarStyle"
+
+    /// The style that shows. The system's palette hangs from the window, not from a side: with
+    /// two sides shown it floats over both and over the sidebar's edge, and it follows the
+    /// focus, so the side not focused has none. A split therefore uses the fixed bar, which
+    /// belongs to its side's tab bar, whatever the Settings choice is.
+    /// - Parameter sharesWindowWithOtherSide: Whether the window shows two sides at once.
+    func inEffect(sharesWindowWithOtherSide: Bool) -> PencilToolbarStyle {
+        sharesWindowWithOtherSide ? .fixed : self
+    }
 }
 
 /// Every ink PencilKit draws with, under the names of the system's palette.
@@ -315,9 +335,13 @@ final class PencilToolbox {
 
     /// Takes up the tool in use before the last change, as a double tap or squeeze of Apple
     /// Pencil does when set to switch to the previous tool. A preset removed meanwhile is
-    /// replaced by the one in use.
+    /// replaced by the one in use. With no earlier tool, as just after launch, the gesture
+    /// still answers: it takes up the eraser, which is what a double tap does by default.
     func switchToPreviousTool() {
-        guard let previousTool else { return }
+        guard let previousTool else {
+            use(.eraser)
+            return
+        }
         let presetIndex = presets.firstIndex { preset in preset.id == previousTool.presetIdentifier } ?? presetInUseIndex
         changeTool {
             if presetInUseIndex != presetIndex { presetInUseIndex = presetIndex }

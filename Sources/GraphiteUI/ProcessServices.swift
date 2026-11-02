@@ -1,3 +1,14 @@
+/**
+ * File: ProcessServices.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: What every window of the app shares, built once per process.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
@@ -33,10 +44,17 @@ public final class ProcessServices {
     let vaultIndexes: VaultIndexRegistry
     /// The unsaved strokes of drawing editors, kept in Application Support for every window.
     let drawingDrafts: DrawingEditorDraftStore
+    /// Text of notes and canvases that could not reach their files, kept in Application
+    /// Support for every window.
+    let unsavedDrafts: UnsavedDocumentDraftStore
     /// The open windows, for what only one of them may run at a time.
     let openWindows = OpenWindows()
     /// The notes open in every window, so a note open in two windows is one text.
     let openNotes = OpenNoteFiles()
+    /// The page Settings was last left on, so it opens there again (`SettingsOpening`).
+    let settingsPageMemory = SettingsPageMemory()
+    /// Obsidian's list of community themes once loaded, for the Theme page.
+    let themeDirectoryCache = ThemeDirectoryCache()
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the
@@ -46,7 +64,7 @@ public final class ProcessServices {
     let makeReadAloudController: @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController
 
     /// Services over `defaults` and `applicationFolders`.
-    init(defaults: UserDefaults, applicationFolders: ApplicationFolders,
+    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30),
          makeReadAloudController: @escaping @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController) {
         self.defaults = defaults
         // Before the preferences read the switches: a device that used Read Aloud keeps it on.
@@ -56,8 +74,9 @@ public final class ProcessServices {
         documentPlaceStore = DocumentPlaceStore(defaults: defaults)
         self.applicationFolders = applicationFolders
         addOns = .standard(applicationFolders: applicationFolders)
-        vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder)
+        vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
+        unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
         self.makeReadAloudController = makeReadAloudController
     }

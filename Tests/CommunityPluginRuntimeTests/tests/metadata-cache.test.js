@@ -1,3 +1,14 @@
+/**
+ * File: metadata-cache.test.js
+ * ----------------------------
+ * Layer: Tests
+ * Description: The plugin runtime's metadata cache against a vault on disk, in jsdom.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 'use strict';
 
 const test = require('node:test');
@@ -61,7 +72,7 @@ test('a note is read into Obsidian\'s cached metadata with positions', async () 
     }
 });
 
-test('links resolve as in Obsidian: beside the note, from the root, then by name, ignoring case', async () => {
+test('links resolve as in Obsidian: from the root, then near the note, then by name, ignoring case', async () => {
     const harness = await startRuntime({ files: {
         'A/Topic.md': 'beside',
         'Topic.md': 'root',
@@ -69,18 +80,24 @@ test('links resolve as in Obsidian: beside the note, from the root, then by name
         'Images/Photo.PNG': 'png',
         'A/Source.md': '[[Topic]] [[unique name]] [[Nested/Unique Name]] [[photo.png]] [[Missing]] [[../Topic]]',
         'B/Source.md': '[[Topic]]',
+        'Near/Sub/Shared.md': 'near but deeper',
+        'Far/Shared.md': 'far but shorter',
+        'Near/Source.md': '[[Shared]]',
     } });
     try {
         await harness.waitForMetadata();
         const metadataCache = harness.app.metadataCache;
-        assert.equal(metadataCache.getFirstLinkpathDest('Topic', 'A/Source.md').path, 'A/Topic.md');
+        assert.equal(metadataCache.getFirstLinkpathDest('Topic', 'A/Source.md').path, 'Topic.md');
+        assert.equal(metadataCache.getFirstLinkpathDest('./Topic', 'A/Source.md').path, 'A/Topic.md');
+        assert.equal(metadataCache.getFirstLinkpathDest('Shared', 'Near/Source.md').path, 'Near/Sub/Shared.md');
+        assert.equal(metadataCache.getFirstLinkpathDest('Shared', 'Source.md').path, 'Far/Shared.md');
         assert.equal(metadataCache.getFirstLinkpathDest('Topic', 'B/Source.md').path, 'Topic.md');
         assert.equal(metadataCache.getFirstLinkpathDest('unique name', 'A/Source.md').path, 'Deep/Nested/Unique Name.md');
         assert.equal(metadataCache.getFirstLinkpathDest('Nested/Unique Name', 'A/Source.md').path, 'Deep/Nested/Unique Name.md');
         assert.equal(metadataCache.getFirstLinkpathDest('photo.png', 'A/Source.md').path, 'Images/Photo.PNG');
         assert.equal(metadataCache.getFirstLinkpathDest('../Topic', 'A/Source.md').path, 'Topic.md');
         assert.equal(metadataCache.getFirstLinkpathDest('Missing', 'A/Source.md'), null);
-        assert.deepEqual(plain(metadataCache.resolvedLinks['A/Source.md']), { 'A/Topic.md': 1, 'Deep/Nested/Unique Name.md': 2, 'Images/Photo.PNG': 1, 'Topic.md': 1 });
+        assert.deepEqual(plain(metadataCache.resolvedLinks['A/Source.md']), { 'Deep/Nested/Unique Name.md': 2, 'Images/Photo.PNG': 1, 'Topic.md': 2 });
         assert.deepEqual(plain(metadataCache.unresolvedLinks['A/Source.md']), { Missing: 1 });
         assert.equal(metadataCache.fileToLinktext(harness.app.vault.getFileByPath('Deep/Nested/Unique Name.md'), 'A/Source.md'), 'Unique Name');
         assert.equal(metadataCache.fileToLinktext(harness.app.vault.getFileByPath('A/Topic.md'), 'B/Source.md'), 'A/Topic', 'a name two files share is written as a path');

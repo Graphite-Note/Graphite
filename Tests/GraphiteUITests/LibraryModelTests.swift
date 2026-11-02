@@ -1,3 +1,14 @@
+/**
+ * File: LibraryModelTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: A look chosen in Graphite on the Mac is written where Finder reads it, so the tile
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
 import GraphiteCore
@@ -33,6 +44,7 @@ final class LibraryModelTests: XCTestCase {
         await library.show(try VaultPath("Courses"))
         XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Summary.md", "Week 1.pdf"])
         library.filter = .notebooks
+        await library.filterTask?.value
         XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Week 1.pdf"])
     }
 

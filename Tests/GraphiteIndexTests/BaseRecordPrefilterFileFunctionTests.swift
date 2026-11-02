@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordPrefilterFileFunctionTests.swift
+ * ------------------------------------------------
+ * Layer: Tests
+ * Description: The index's prefilter for bases keeps every row the evaluator would keep, for filters using file().
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
@@ -51,7 +62,7 @@ final class BaseRecordPrefilterFileFunctionTests: XCTestCase {
     }
 
     func testFileFunctionWithABareNameKeepsRowsThatLinkToTheNoteBesideThem() async throws {
-        try write("Note.md", "the note at the vault root")
+        try write("Elsewhere/Deep/Note.md", "another note of the name, further from the row")
         try write("A/Note.md", "the note beside the linking note")
         try write("A/X.md", "[[A/Note]]")
         try write("Unrelated.md", "[[Elsewhere]]")
@@ -62,7 +73,7 @@ final class BaseRecordPrefilterFileFunctionTests: XCTestCase {
     }
 
     func testFileFunctionWithAFullPathKeepsTheRowsThatLinkToThatFile() async throws {
-        try write("Note.md", "the note at the vault root")
+        try write("Elsewhere/Deep/Note.md", "another note of the name, further from the row")
         try write("A/Note.md", "the note beside the linking note")
         try write("A/X.md", "[[A/Note]]")
         try write("B/Y.md", "[[Note]]")

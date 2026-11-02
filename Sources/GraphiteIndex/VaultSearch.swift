@@ -1,3 +1,14 @@
+/**
+ * File: VaultSearch.swift
+ * -----------------------
+ * Layer: Index
+ * Description: Places in the note that matched, in order. Empty when only the name matched.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore
@@ -120,14 +131,14 @@ extension VaultIndex {
         let expression = SearchQueryParser.parse(query)
         if let expression { try Self.validateRegularExpressions(in: expression) }
         do {
-            var page = try await databaseQueue.read { database in
+            var page = try await databasePool.read { database in
                 try Self.searchPage(for: expression, sortOrder: sortOrder, maximumResults: maximumResults, after: continuation, in: database)
             }
             // Callers read an empty page as "no matches", so a search with candidates left
             // keeps reading. Each read is bounded, so saves and other lookups get the
             // database between reads, and only cancellation stops a search with no results.
             while page.results.isEmpty, let nextContinuation = page.continuation {
-                page = try await databaseQueue.read { database in
+                page = try await databasePool.read { database in
                     try Self.searchPage(for: expression, sortOrder: sortOrder, maximumResults: maximumResults, after: nextContinuation, in: database)
                 }
             }
@@ -488,10 +499,15 @@ extension VaultIndex {
         guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
         let matchesPath = trimmedQuery.contains("/")
         let candidatePattern = FuzzyCandidatePattern(query: trimmedQuery)
-        return try await databaseQueue.read { database in
+        return try await databasePool.read { database in
             let column = matchesPath ? "coalesce(path_key, path)" : "coalesce(name_key, basename)"
-            let rows = try Row.fetchAll(database, sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY length(path) LIMIT ?",
-                                        arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + [Self.maximumQuickSwitcherCandidates]))
+            // Which candidates reach the ranking goes by how well the text matches and how
+            // little else it holds, not by how deep the file is: an exact name in a deep folder
+            // is never dropped for weak matches with short paths.
+            let closeness = Self.quickSwitcherClosenessOrder(of: trimmedQuery, on: column)
+            let rows = try Row.fetchAll(database,
+                sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
+                                        arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
             // Stored paths and names are already normalized, so candidates are ranked by
             // their text, and only those shown become `VaultPath`s.
             var candidates: [(pathText: String, alias: String?, score: Double, matchedRanges: [Range<Int>])] = []
@@ -521,6 +537,16 @@ extension VaultIndex {
                 QuickSwitcherMatch(path: try VaultPath(candidate.pathText), alias: candidate.alias, score: candidate.score, matchedRanges: candidate.matchedRanges)
             }
         }
+    }
+
+    /// An SQL order putting the name equal to the query first, with or without `.md`, then those
+    /// starting with it, then those holding it, then the rest. LIKE folds ASCII letters; a name
+    /// with other letters written differently falls to its length among the rest.
+    private static func quickSwitcherClosenessOrder(of query: String, on column: String) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
+        let escapedQuery = escapedForLike(query)
+        let sql = "CASE WHEN \(column) LIKE ? ESCAPE '\\' OR \(column) LIKE ? ESCAPE '\\' THEN 0 "
+            + "WHEN \(column) LIKE ? ESCAPE '\\' THEN 1 WHEN \(column) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
+        return (sql, [escapedQuery, escapedQuery + ".%", escapedQuery + "%", "%" + escapedQuery + "%"])
     }
 
     /// A note's name without `.md`, or another file's full name, as the switcher shows it.
@@ -664,7 +690,7 @@ extension VaultIndex {
         // LIKE ignores case for ASCII letters only, so any other character of the query
         // matches any text here, and the comparison below decides.
         let pattern = "%" + query.map { character in character.isASCII ? Self.escapedForLike(String(character)) : "%" }.joined() + "%"
-        return try await databaseQueue.read { database in
+        return try await databasePool.read { database in
             // SQLite groups spellings that differ in ASCII capitals; other capitals, such
             // as `#Été` and `#été`, are grouped here.
             let rows = try Row.fetchAll(database, sql: "SELECT tag, COUNT(DISTINCT path) AS fileCount FROM tags WHERE tag LIKE ? ESCAPE '\\' GROUP BY tag COLLATE NOCASE",
@@ -698,7 +724,7 @@ extension VaultIndex {
     /// Every level of every tag (`course` and `course/math` for `#course/math`), each with
     /// the notes that have it or a tag nested under it, for the Tags view's nested list.
     public func nestedTagCounts() throws -> [TagCount] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             let rows = try Row.fetchAll(database, sql: """
                 WITH RECURSIVE levels(tag, rest, path) AS (
                   SELECT CASE WHEN instr(tag, '/') > 0 THEN substr(tag, 1, instr(tag, '/') - 1) ELSE tag END,
@@ -727,7 +753,7 @@ extension VaultIndex {
     /// Every property name in the vault, names differing only in capitals counted once, as
     /// Obsidian counts them.
     public func propertyUsages(sampleCount: Int = 5) throws -> [PropertyUsage] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             let counts = try Row.fetchAll(database, sql: """
                 SELECT key, COUNT(DISTINCT path) AS fileCount FROM properties GROUP BY key COLLATE NOCASE
                 """)
@@ -753,7 +779,7 @@ extension VaultIndex {
 
     /// Notes with a property named `key`, ignoring capitals.
     public func paths(withPropertyKey key: String) throws -> [VaultPath] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             try String.fetchAll(database, sql: "SELECT DISTINCT path FROM properties WHERE key = ? COLLATE NOCASE ORDER BY path", arguments: [key])
                 .compactMap { rawPath in try? VaultPath(rawPath) }
         }

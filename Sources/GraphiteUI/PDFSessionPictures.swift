@@ -1,3 +1,13 @@
+/**
+ * File: PDFSessionPictures.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The picture of a PDF page that is selected for moving, resizing or removing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -18,8 +28,6 @@ struct PDFPictureSelection: Equatable {
 extension PDFSession {
     /// A new picture is this wide at most, as a fraction of the page as it is shown.
     static let newPictureWidthFraction = 0.6
-    /// How many times a placed picture's pixels a pasted one keeps.
-    static let pastedPictureSharpnessFactor: CGFloat = 2
 
     func pictures(on page: PDFPage) -> [PDFPicture] {
         PDFPageManager.pictures(on: page)
@@ -46,19 +54,14 @@ extension PDFSession {
         // The page as it is read: a page turned a quarter is as wide as its box is tall.
         let shownPageWidth = isSideways ? cropBox.height : cropBox.width
         let shownPictureWidth = shownPageWidth * Self.newPictureWidthFraction
-        // A pasted image, such as a screenshot of a page taken at 4 pixels per point, keeps
-        // twice the pixels a placed picture does, so it is as sharp as the page around it
-        // when the page is zoomed in.
-        let preparedWidth = shownPictureWidth * (preferredWidth == nil ? 1 : Self.pastedPictureSharpnessFactor)
-        let prepared = try await Task.detached(priority: .userInitiated) {
-            try DrawingPictures.picture(from: imageData, canvasWidth: preparedWidth)
-        }.value
-        guard prepared.imageData.count <= PDFPicture.maximumImageBytes else { throw GraphiteError.oversized("This image is too large to place on a page.") }
+        // The picture keeps its own pixels, whatever size it is shown at first: a page is
+        // zoomed far past it, the picture can be made larger later, and no other copy is kept.
+        let prepared = try await Task.detached(priority: .userInitiated) { try DrawingPictures.pagePicture(from: imageData) }.value
         // The page may have changed while the image was prepared.
         guard page.document === document, document.index(for: page) != NSNotFound else { throw GraphiteError.invalidFile("Page no longer exists.") }
-        // Prepared at the widest it is placed, so it stays sharp when made larger later.
-        let shownScale = min(shownPictureWidth, preferredWidth ?? .infinity) / max(prepared.frame.width, 1)
-        let shownSize = CGSize(width: prepared.frame.width * shownScale, height: prepared.frame.height * shownScale)
+        let shownWidth = min(shownPictureWidth, preferredWidth ?? .infinity)
+        let shownSize = CGSize(width: shownWidth, height: shownWidth * prepared.pixelSize.height / max(prepared.pixelSize.width, 1))
+        guard Double(shownSize.height) <= DrawingLimits.maximumCanvasHeight else { throw GraphiteError.oversized("This image is too tall to place on a page.") }
         let sizeOnPage = isSideways ? CGSize(width: shownSize.height, height: shownSize.width) : shownSize
         let center = placement?.pageIndex == document.index(for: page) ? placement?.center : nil
         let middle = center ?? CGPoint(x: cropBox.midX, y: cropBox.midY)
@@ -138,15 +141,16 @@ extension PDFSession {
     }
 
     /// Rotates the picture a quarter turn clockwise as it is shown, about its middle, as
-    /// Rotate Right does in Preview; its angle from the rotate handle stays as it is.
-    func rotatePictureRight(_ selection: PDFPictureSelection) async throws {
+    /// Rotate Right does in Preview; its angle from the rotate handle stays as it is. The
+    /// picture's bytes stay as they are, so turning it four times loses nothing: it is drawn
+    /// a quarter turn further (`PDFPicture.quarterTurns`).
+    func rotatePictureRight(_ selection: PDFPictureSelection) throws {
         let (page, picture) = try pageAndPicture(of: selection)
-        let pictureData = picture.imageData
-        var turned = picture
-        turned.imageData = try await Task.detached(priority: .userInitiated) { try PictureEditing.rotatedClockwise(pictureData) }.value
         let bounds = picture.bounds
-        turned.bounds = Self.keepingCenter(of: CGRect(x: bounds.midX - bounds.height / 2, y: bounds.midY - bounds.width / 2,
-                                                      width: bounds.height, height: bounds.width), inside: page.bounds(for: .cropBox))
+        let turnedBounds = Self.keepingCenter(of: CGRect(x: bounds.midX - bounds.height / 2, y: bounds.midY - bounds.width / 2,
+                                                         width: bounds.height, height: bounds.width), inside: page.bounds(for: .cropBox))
+        let turned = PDFPicture(name: picture.name, imageData: picture.imageData, bounds: turnedBounds, quarterTurns: picture.quarterTurns - 1,
+                                rotationRadians: picture.rotationRadians)
         try replacePicture(picture, with: turned, order: .unchanged, on: selection.page, actionName: "Rotate Image Right")
     }
 

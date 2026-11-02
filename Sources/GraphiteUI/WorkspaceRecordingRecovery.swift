@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecordingRecovery.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: Recordings Graphite did not finish, offered back when their vault is open.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -30,9 +41,9 @@ extension WorkspaceModel {
             try await store.createDirectory(directory)
             let path = try await store.uniquePath(directory: directory, stem: stem, extension: unfinished.kind.fileExtension)
             try await recording.recover(unfinished, to: try path.url(in: root))
-            await refreshDirectory()
             refreshIndex(for: [path])
             await open(path)
+            await showInListings(path)
         } catch { errorMessage = error.localizedDescription }
         checkForUnfinishedRecordings()
     }

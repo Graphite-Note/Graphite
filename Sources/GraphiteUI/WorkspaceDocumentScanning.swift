@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceDocumentScanning.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: Saving a document scan: as a PDF attachment of a note, or as a new PDF notebook.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -21,8 +32,8 @@ extension WorkspaceModel {
             let path = try await saveUnderFreeName(scan.data, in: directory, stem: Self.scannedDocumentStem(scannedAt: scannedAt),
                                                    fileExtension: "pdf", store: store)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
             reportPagesWithoutRecognizedText(in: scan)
         } catch {
             errorMessage = "The scan could not be saved. Scan the document again."
