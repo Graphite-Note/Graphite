@@ -2131,13 +2131,16 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             performPendingJumpIfReady(in: textView)
         }
 
+        /// The time a jump's pin is measured in.
+        private var currentUptime: TimeInterval { ProcessInfo.processInfo.systemUptime }
+
         /// The line a jump is keeping at the top, while it does. The blocks above can have moved
         /// the text since a layout pass last put the line back, so the line the offset falls on
         /// is not the person's place then, and holding it would keep the wrong line for good.
         private func lineKeptAtTop() -> (location: Int, distanceIntoLine: CGFloat)? {
             guard var pinnedHeading else { return nil }
             let isBlockAboveAwaitingHeight = renderedBlocks.hasPlacedBlockAwaitingHeight(before: pinnedHeading.location, in: blockEntries)
-            guard pinnedHeading.holds(atUptime: ProcessInfo.processInfo.systemUptime, isBlockAboveAwaitingHeight: isBlockAboveAwaitingHeight) else { return nil }
+            guard pinnedHeading.holds(atUptime: currentUptime, isBlockAboveAwaitingHeight: isBlockAboveAwaitingHeight) else { return nil }
             return (pinnedHeading.location, pinnedHeading.distanceIntoLine)
         }
 
@@ -2486,7 +2489,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// jump itself does.
         private func keepPinnedHeadingAtTop(in textView: UITextView) {
             guard var pinnedHeading else { return }
-            let uptime = ProcessInfo.processInfo.systemUptime
+            let uptime = currentUptime
             let isBlockAboveAwaitingHeight = renderedBlocks.hasPlacedBlockAwaitingHeight(before: pinnedHeading.location, in: blockEntries)
             let holds = pinnedHeading.holds(atUptime: uptime, isBlockAboveAwaitingHeight: isBlockAboveAwaitingHeight)
             self.pinnedHeading = holds ? pinnedHeading : nil
@@ -2556,8 +2559,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
 
         func scrollToTop(of characterLocation: Int, distanceIntoLine: CGFloat = 0, in textView: UITextView) {
-            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: ProcessInfo.processInfo.systemUptime,
-                                           distanceIntoLine: distanceIntoLine)
+            pinnedHeading = HeadingJumpPin(location: characterLocation, pinnedAtUptime: currentUptime, distanceIntoLine: distanceIntoLine)
             guard let textLayoutManager = textView.textLayoutManager,
                   let contentStorage = textLayoutManager.textContentManager as? NSTextContentStorage,
                   let location = contentStorage.location(contentStorage.documentRange.location, offsetBy: characterLocation),
