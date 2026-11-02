@@ -29,7 +29,7 @@ import AppKit
 ///
 /// Built for every stroke of the page on every change, so it stores only values and
 /// references, never arrays.
-struct PDFStrokeFingerprint: Hashable, @unchecked Sendable { // CGPath is immutable; the mask is never changed in place.
+struct PDFStrokeFingerprint: Hashable {
     let creationDate: Date
     let randomSeed: UInt32
     let pointCount: Int
@@ -114,7 +114,7 @@ public struct PDFDeferredInkRecordArchive: Sendable {
 /// work proportional to the page, and a stroke just drawn after the others skips the
 /// comparison (`updateAppending`). Updates can defer the archiving, which then happens
 /// once in `deferredEditableRecordUpdate(for:pageIndex:)` instead of at every change.
-public struct PDFPageInkTracker: Sendable {
+public struct PDFPageInkTracker {
     public let group: String
     private var namesByFingerprint: [PDFStrokeFingerprint: [String]] = [:]
     /// False until the strokes are matched to annotations; the next update then
@@ -246,7 +246,8 @@ public struct PDFPageInkTracker: Sendable {
 
     /// The update that writes a record archived in the background, or nil when an update came
     /// after it was asked for: the record is then out of date and stays deferred.
-    public mutating func deferredEditableRecordUpdate(archived record: PDFEditableInkRecord?, from archive: PDFDeferredInkRecordArchive, pageIndex: Int) -> PDFInkUpdate? {
+    public mutating func deferredEditableRecordUpdate(archived record: PDFEditableInkRecord?, from archive: PDFDeferredInkRecordArchive,
+                                                      pageIndex: Int) -> PDFInkUpdate? {
         guard hasDeferredEditableRecord, archive.updateCount == updateCount else { return nil }
         hasDeferredEditableRecord = false
         return PDFInkUpdate(pageIndex: pageIndex, group: group, removal: .strokes([]), addedStrokes: [], editableRecord: record)

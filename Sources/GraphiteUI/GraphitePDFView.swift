@@ -603,6 +603,16 @@ private extension UIView {
         }
         return nil
     }
+
+    /// The page canvas this view is, or is inside, as PencilKit's recognizers are.
+    var enclosingPageCanvas: PDFPageCanvasView? {
+        var candidate: UIView? = self
+        while let view = candidate {
+            if let canvas = view as? PDFPageCanvasView { return canvas }
+            candidate = view.superview
+        }
+        return nil
+    }
 }
 
 /// A PencilKit canvas over one PDF page. Its drawing is in the page's points; the canvas
@@ -791,7 +801,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private lazy var presentedScreenObserver = PresentedScreenObserver(view: toolPickerHost) { [weak self] in
         self?.updateToolPickerVisibility()
     }
-    private var canvasesByPage: [ObjectIdentifier: PDFPageCanvasView] = [:]
+    var canvasesByPage: [ObjectIdentifier: PDFPageCanvasView] = [:]
     private var displayedPages: Set<ObjectIdentifier> = []
     private var hiddenCanvasOrder: [ObjectIdentifier] = []
     private var input = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false)
@@ -818,7 +828,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// For tests, which cannot send touches.
     var pictureSelectionController: PDFPictureSelectionController? { pictureSelection }
     /// For tests: how many times a canvas's strokes were all compared with those last recorded.
-    private(set) var everyStrokeComparisonCount = 0
+    var everyStrokeComparisonCount = 0
     /// Held weakly: a recognizer made later at a freed one's address is observed too.
     private let observedScrollRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
     /// The scroll views around this embed that it restricts while annotating.
@@ -826,7 +836,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var hasAppliedInput = false
     private var hasPendingFirstResponderUpdate = false
     /// True once the view is dismantled; the coordinator is not used again.
-    private var isDetached = false
+    var isDetached = false
     /// Watches that the PDF keeps taking touches (`PDFPaneHealthMonitor`).
     private var healthMonitor: PDFPaneHealthMonitor?
 
@@ -893,9 +903,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         self.pictureSelection = pictureSelection
         session.visiblePageCenter = { [weak pictureSelection] in pictureSelection?.visiblePageCenter() }
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
-        session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in await self?.writeDeferredInkRecordsInBackground() }) { [weak self] in
-            self?.writeDeferredInkRecords()
-        }
+        session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
+            await self?.writeDeferredInkRecordsInBackground()
+        }) { [weak self] in self?.writeDeferredInkRecords() }
         zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRenderingScaleUpdate() }
         }
@@ -1421,43 +1431,6 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         return canvas
     }
 
-    /// Reading a page's annotations stays here, on the main actor that owns the document, and
-    /// is done once. All the rest grows with the page's strokes and runs in the background: the
-    /// record's base64 and names, the drawing, and the fingerprint of each stroke (HUNT-015). The
-    /// count of the page's edits says whether undo or redo changed its ink meanwhile.
-    private func restoreStoredInkIfNeeded(on canvas: PDFPageCanvasView, knownStoredInk: PDFStoredInk? = nil) {
-        guard !canvas.hasRestoredStoredInk, let page = canvas.page else { return }
-        canvas.hasRestoredStoredInk = true
-        let storedInk = knownStoredInk ?? PDFInkGroups.storedInk(on: page)
-        guard storedInk.mayHaveEditableGroup else {
-            canvas.delegate = self
-            return
-        }
-        canvas.isRestoringStoredInk = true
-        let editCountWhenRead = session.editCount(of: page)
-        Task { [weak self, weak canvas] in
-            let restored = await Task.detached(priority: .userInitiated) {
-                storedInk.editableGroup().flatMap { editableGroup in PDFPageInkTracker.restoring(editableGroup) }
-            }.value
-            guard let self, let canvas, canvas.page === page, self.canvasesByPage[ObjectIdentifier(page)] === canvas else { return }
-            canvas.isRestoringStoredInk = false
-            guard self.session.editCount(of: page) == editCountWhenRead else {
-                canvas.hasRestoredStoredInk = false
-                self.restoreStoredInkIfNeeded(on: canvas)
-                self.configure(canvas)
-                return
-            }
-            if let restored {
-                canvas.inkTracker = restored.tracker
-                // Set before the delegate, so loading the stored drawing is not recorded as an edit.
-                canvas.drawing = restored.drawing
-                canvas.recordedDrawing = restored.drawing
-            }
-            canvas.delegate = self
-            self.configure(canvas)
-        }
-    }
-
     private func longPressRecognizers(in view: UIView) -> [UILongPressGestureRecognizer] {
         (view.gestureRecognizers ?? []).compactMap { recognizer in recognizer as? UILongPressGestureRecognizer }
             + view.subviews.flatMap { subview in longPressRecognizers(in: subview) }
@@ -1469,7 +1442,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// became a thin opaque line, a pencil lost its grain and every stroke its pressure, and
     /// the page changed each time writing was turned on or off. The annotations, which other
     /// PDF readers show, stay hidden only while a displayed canvas shows the same ink.
-    private func configure(_ canvas: PDFPageCanvasView) {
+    func configure(_ canvas: PDFPageCanvasView) {
         restoreStoredInkIfNeeded(on: canvas)
         canvas.readAloudPenTapped = readAloudPen == nil ? nil : { [weak self] windowPoint in self?.handleReadAloudPenTap(atWindowPoint: windowPoint) }
         canvas.textToolTapped = { [weak self] windowPoint in self?.textBoxInteraction?.handleTextToolTap(atWindowPoint: windowPoint) }
@@ -1525,7 +1498,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     @objc private func drawingGestureChanged(_ recognizer: UIGestureRecognizer) {
-        recognizer.view?.enclosingCanvasForHealth?.mayHoldUnrecordedInk = true
+        recognizer.view?.enclosingPageCanvas?.mayHoldUnrecordedInk = true
     }
 
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
@@ -1581,58 +1554,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
     }
 
-    /// Writes the re-editing records that drawing deferred, for every canvas.
-    func writeDeferredInkRecords() {
-        for canvas in canvasesByPage.values {
-            recordInkIfTheCanvasChanged(canvas)
-            writeDeferredInkRecord(of: canvas)
-        }
-    }
-
-    /// The same for a save, with each record archived away from the main actor: the archive
-    /// grows with the page's strokes, and a stroke begun meanwhile does not wait (HUNT-017). A
-    /// stroke that comes before an archive is done leaves its record deferred.
-    func writeDeferredInkRecordsInBackground() async {
-        for canvas in Array(canvasesByPage.values) {
-            recordInkIfTheCanvasChanged(canvas)
-            guard let archive = canvas.inkTracker.deferredRecordArchive(for: canvas.recordedDrawing) else { continue }
-            let record = await Task.detached(priority: .userInitiated) { archive.archived() }.value
-            guard !isDetached, canvasesByPage.values.contains(where: { keptCanvas in keptCanvas === canvas }), let page = canvas.page else { continue }
-            let pageIndex = session.document.index(for: page)
-            guard pageIndex != NSNotFound,
-                  let update = canvas.inkTracker.deferredEditableRecordUpdate(archived: record, from: archive, pageIndex: pageIndex) else { continue }
-            do {
-                try session.apply(.updateInk(update))
-            } catch {
-                session.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
     // MARK: Health (`PDFPaneHealthMonitor`)
 
     var drawsWithFinger: Bool { input.drawsWithFinger }
     var isWriting: Bool { input.isEnabled }
-
-    /// Records ink a canvas shows that the PDF does not have yet, as when a change of the
-    /// canvas never reached its delegate. A stroke still being drawn is not part of it.
-    func recordUnrecordedInk(of canvas: PDFPageCanvasView) {
-        guard canvas.delegate === self, canvas.hasRestoredStoredInk, !canvas.isRestoringStoredInk else { return }
-        everyStrokeComparisonCount += 1
-        guard PencilDrawingChange(from: canvas.recordedDrawing, to: canvas.drawing) != nil else {
-            canvas.mayHoldUnrecordedInk = false
-            return
-        }
-        canvasViewDrawingDidChange(canvas)
-    }
-
-    /// The same for what happens at every save: the comparison fingerprints every stroke of
-    /// both drawings on the main actor, so it runs only for a canvas something touched since it
-    /// was last recorded (HUNT-017). A canvas going away, or rebuilt, always compares.
-    private func recordInkIfTheCanvasChanged(_ canvas: PDFPageCanvasView) {
-        guard canvas.mayHoldUnrecordedInk || canvas.drawing.strokes.count != canvas.recordedDrawing.strokes.count else { return }
-        recordUnrecordedInk(of: canvas)
-    }
 
     /// Puts right what must hold for every canvas on screen, and says what it changed: the
     /// canvas is the page's own, counted as shown, recording its changes, and taking touches
@@ -1705,19 +1630,6 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
 
     private static func overlays(in view: UIView) -> [PDFPageOverlayView] {
         ((view as? PDFPageOverlayView).map { [$0] } ?? []) + view.subviews.flatMap { subview in overlays(in: subview) }
-    }
-
-    private func writeDeferredInkRecord(of canvas: PDFPageCanvasView) {
-        guard canvas.inkTracker.hasDeferredEditableRecord, let page = canvas.page else { return }
-        let pageIndex = session.document.index(for: page)
-        // A deleted page's ink went with it.
-        guard pageIndex != NSNotFound,
-              let update = canvas.inkTracker.deferredEditableRecordUpdate(for: canvas.recordedDrawing, pageIndex: pageIndex) else { return }
-        do {
-            try session.apply(.updateInk(update))
-        } catch {
-            session.errorMessage = error.localizedDescription
-        }
     }
 
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {

@@ -84,15 +84,16 @@ final class PencilWhileAnnotatingTests: XCTestCase {
     /// HUNT-025: double tap and squeeze were heard only by the bar, so hiding the bar silenced them.
     func testPencilGesturesAreAnsweredWithTheFixedBarHidden() async throws {
         guard UIDevice.current.userInterfaceIdiom == .pad else { return }
-        let defaults = UserDefaults.standard
-        let styleBefore = defaults.object(forKey: PencilToolbarStyle.preferenceKey)
-        let showsToolsBefore = defaults.object(forKey: PDFAnnotationPreferenceKey.showsToolPicker)
+        // What the pane reads, the standard preferences, as `SynthesizedStrokes.letFingersDraw` sets them.
+        let chosenStyle = AppStorage(wrappedValue: PencilToolbarStyle.floating, PencilToolbarStyle.preferenceKey)
+        let showsTools = AppStorage(wrappedValue: true, PDFAnnotationPreferenceKey.showsToolPicker)
+        let styleBefore = chosenStyle.wrappedValue, showsToolsBefore = showsTools.wrappedValue
         defer {
-            defaults.set(styleBefore, forKey: PencilToolbarStyle.preferenceKey)
-            defaults.set(showsToolsBefore, forKey: PDFAnnotationPreferenceKey.showsToolPicker)
+            chosenStyle.wrappedValue = styleBefore
+            showsTools.wrappedValue = showsToolsBefore
         }
-        defaults.set(PencilToolbarStyle.fixed.rawValue, forKey: PencilToolbarStyle.preferenceKey)
-        defaults.set(false, forKey: PDFAnnotationPreferenceKey.showsToolPicker)
+        chosenStyle.wrappedValue = .fixed
+        showsTools.wrappedValue = false
         let location = try makeHostedBlankNotebook(named: "GesturesBarHidden")
         temporaryLocations.append(location)
         let session = try await PDFSession.open(location)

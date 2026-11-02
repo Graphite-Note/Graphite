@@ -362,7 +362,8 @@ public enum PDFInkGroups {
                   let encodedDrawing = carrier.value(forAnnotationKey: PDFPageManager.drawingKey) as? String else { continue }
             let encodedNames = carrier.value(forAnnotationKey: PDFPageManager.strokeNamesKey) as? String
             guard encodedNames != nil else {
-                candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: nil, annotationNames: [], multipliedNames: []))
+                candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: nil,
+                                                         annotationNames: [], multipliedNames: []))
                 continue
             }
             let multipliedNames = groupAnnotations.filter
