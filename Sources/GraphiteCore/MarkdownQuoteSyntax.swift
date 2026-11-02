@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownQuoteSyntax.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: Block quote markers and callout headers, read one line at a time.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Block quote markers and callout headers, read one line at a time.
