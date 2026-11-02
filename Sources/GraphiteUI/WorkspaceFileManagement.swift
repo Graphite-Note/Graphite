@@ -473,11 +473,18 @@ extension WorkspaceModel {
     /// Goodnotes' Import does. The originals stay where they are. A file of a type an importer
     /// of `DroppedFileImporters` takes goes to it; a text file becomes a note. A file that fails
     /// is reported; the others are still copied.
-    func importFiles(from chosenSources: [URL], into directory: VaultPath) async {
+    /// - Parameter stagedCopies: Temporary copies of dropped files that `chosenSources` point into. They are removed when
+    ///   the import is done with them: at the end of this call, or, when notebooks are converted, only when that
+    ///   conversion has ended, since it reads them long after this call returns.
+    func importFiles(from chosenSources: [URL], into directory: VaultPath, stagedCopies: DroppedFileBatch? = nil) async {
+        var notebookImportHoldsStagedCopies = false
+        defer { if !notebookImportHoldsStagedCopies { stagedCopies?.discard() } }
         guard let store, let root = folderAccess?.root else { return }
         // Goodnotes and Notability notebooks, and folders of them, are converted rather than copied.
         let notebookSources = notebookImportSources(in: chosenSources)
-        if !notebookSources.isEmpty { importNotebooks(notebookSources, into: directory) }
+        if !notebookSources.isEmpty {
+            notebookImportHoldsStagedCopies = importNotebooks(notebookSources, into: directory, whenEnded: { stagedCopies?.discard() })
+        }
         let routing = DroppedFileImporters.route(chosenSources.filter { source in !notebookSources.contains(source) },
                                                  through: DroppedFileImporters.registered)
         for routed in routing.routed { await routed.importer.importFiles(routed.files, directory) }

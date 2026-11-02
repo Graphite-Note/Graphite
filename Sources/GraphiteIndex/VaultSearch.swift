@@ -493,10 +493,24 @@ extension VaultIndex {
     /// Candidates ranked between checks for cancellation.
     private static let cancellationCheckInterval = 256
 
+    /// The SQL condition (starting with " AND ") keeping files with one of `fileExtensions`, and its arguments; none when
+    /// there is no limit on extensions.
+    private static func fileExtensionCondition(for fileExtensions: Set<String>?) -> (sql: String, arguments: [String]) {
+        guard let fileExtensions else { return ("", []) }
+        let sortedExtensions = fileExtensions.sorted()
+        let conditions = sortedExtensions.map { _ in "lower(path) LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
+        return (" AND (" + conditions + ")", sortedExtensions.map { fileExtension in "%." + escapedForLike(fileExtension.lowercased()) })
+    }
+
     /// Files whose name, path, or alias contains the query's characters in order, best first.
-    public nonisolated func quickSwitcherMatches(for query: String, limit: Int = 60) async throws -> [QuickSwitcherMatch] {
+    /// - Parameter onlyFileExtensions: Lowercase extensions (without the dot) the files must have, applied before the
+    ///   candidates are ranked, so a kind of file that other files outrank is not cut off by `limit`. Aliases belong to
+    ///   notes only, so none is looked at when this is given.
+    public nonisolated func quickSwitcherMatches(for query: String, limit: Int = 60,
+                                                 onlyFileExtensions: Set<String>? = nil) async throws -> [QuickSwitcherMatch] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
+        guard !trimmedQuery.isEmpty, limit > 0, onlyFileExtensions?.isEmpty != true else { return [] }
+        let extensionCondition = Self.fileExtensionCondition(for: onlyFileExtensions)
         let matchesPath = trimmedQuery.contains("/")
         let candidatePattern = FuzzyCandidatePattern(query: trimmedQuery)
         return try await databasePool.read { database in
@@ -506,8 +520,9 @@ extension VaultIndex {
             // is never dropped for weak matches with short paths.
             let closeness = Self.quickSwitcherClosenessOrder(of: trimmedQuery, on: column)
             let rows = try Row.fetchAll(database,
-                sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
-                                        arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
+                sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column))\(extensionCondition.sql) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
+                                        arguments: StatementArguments((candidatePattern.arguments + extensionCondition.arguments).map { argument in argument as any DatabaseValueConvertible }
+                                            + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
             // Stored paths and names are already normalized, so candidates are ranked by
             // their text, and only those shown become `VaultPath`s.
             var candidates: [(pathText: String, alias: String?, score: Double, matchedRanges: [Range<Int>])] = []
@@ -519,7 +534,7 @@ extension VaultIndex {
                 guard let match = FuzzyMatcher.match(trimmedQuery, in: text) else { continue }
                 candidates.append((pathText, nil, match.score, match.matchedRanges))
             }
-            if !matchesPath {
+            if !matchesPath, onlyFileExtensions == nil {
                 let rows = try Row.fetchAll(database, sql: "SELECT path, alias FROM aliases WHERE \(candidatePattern.sql(on: "alias")) LIMIT ?",
                                             arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + [Self.maximumQuickSwitcherCandidates]))
                 for (rowPosition, row) in rows.enumerated() {

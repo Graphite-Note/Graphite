@@ -1,3 +1,14 @@
+/**
+ * File: VaultPath.swift
+ * ---------------------
+ * Layer: Core
+ * Description: A path inside a vault, the kinds of file a vault holds, and the errors that name what went wrong with one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 public enum GraphiteError: Error, LocalizedError, Equatable {
@@ -159,6 +170,8 @@ public enum DocumentKind: String, Codable, Sendable {
     /// Together they are exactly the files of kind `media`.
     public static let audioFileExtensions: Set<String> = ["m4a", "mp3", "wav", "aac", "ogg", "flac", "3gp"]
     public static let videoFileExtensions: Set<String> = ["mp4", "mov", "m4v", "webm"]
+    /// Lowercase extensions of the files that are pictures: exactly the files of kind `image`.
+    public static let imageFileExtensions: Set<String> = ["png", "jpg", "jpeg", "heic", "gif", "tiff", "webp", "svg"]
     public init(path: VaultPath) {
         self.init(fileExtension: path.fileExtension)
     }
@@ -170,7 +183,7 @@ public enum DocumentKind: String, Codable, Sendable {
         case "base": self = .base
         case "canvas": self = .canvas
         case "pdf": self = .pdf
-        case "png", "jpg", "jpeg", "heic", "gif", "tiff", "webp", "svg": self = .image
+        case _ where Self.imageFileExtensions.contains(lowercasedExtension): self = .image
         default:
             let isPlayable = Self.audioFileExtensions.contains(lowercasedExtension) || Self.videoFileExtensions.contains(lowercasedExtension)
             self = isPlayable ? .media : .other
