@@ -2,8 +2,7 @@
  * File: MarkdownPane.swift
  * ------------------------
  * Layer: UI
- * Description: A note's pane: the editor or reading view, its toolbar and More commands in the system's overflow
- *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
+ * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.56
@@ -28,6 +27,8 @@ struct MarkdownPane: View {
     @Binding var showsLinksInspector: Bool
     /// What the pane holds for the note it shows, replaced whole when it shows another note.
     @State private var noteState = MarkdownPaneNoteState()
+    /// What the note's text says about footnotes and callouts, read once for all its rendered blocks.
+    @State private var noteSnapshots = NoteReadingSnapshots()
     /// Photos picked for the note, taken in and emptied as soon as the picker returns them.
     @State private var pickedPhotos: [PhotosPickerItem] = []
     @Environment(\.showTemplatePicker) private var showTemplatePicker
@@ -86,6 +87,7 @@ struct MarkdownPane: View {
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
                 .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
+                .environment(\.readingTagSearch, searchTag)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // The pane stays when the tab shows another note; its reading view does not.
@@ -392,7 +394,20 @@ struct MarkdownPane: View {
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
             pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
-            notePath: notePath)
+            notePath: notePath,
+            usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+            // Read when a callout or table is drawn, never in a view's body, so typing does not draw them again.
+            noteText: { [session] in session.text },
+            toggleTask: { [session] location in session.toggleTask(at: location) },
+            searchTag: searchTag, noteSnapshots: noteSnapshots)
+    }
+
+    /// Shows the notes with a tag in the sidebar's search, which a tag in the note opens.
+    private var searchTag: (String) -> Void {
+        { [workspace] tag in
+            workspace.searchForTag(tag)
+            workspace.searchFocusRequest += 1
+        }
     }
 
     /// Opens a drawing in the editor, where the platform and preferences allow it.

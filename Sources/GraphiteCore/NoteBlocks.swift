@@ -1,3 +1,14 @@
+/**
+ * File: NoteBlocks.swift
+ * ----------------------
+ * Layer: Core
+ * Description: The blocks of a note a link to a block identifier can name, and what an embed of one shows.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// A block of a note that `[[Note#^id]]` can link to: a paragraph, a list item, or a
@@ -16,6 +27,21 @@ public struct NoteBlock: Equatable, Sendable {
     public let identifier: String?
     /// The range of the `^id` marker (with its leading space or its own line), if any.
     public let identifierRange: NSRange?
+    /// What an embed of the block shows: the block, and for a list item the items nested
+    /// under it. For a list item with an `^id` the text still holds the marker, which
+    /// reading view does not draw.
+    public let embeddedRange: NSRange
+    public let embeddedText: String
+
+    init(kind: Kind, range: NSRange, text: String, identifier: String?, identifierRange: NSRange?, embeddedRange: NSRange? = nil, embeddedText: String? = nil) {
+        self.kind = kind
+        self.range = range
+        self.text = text
+        self.identifier = identifier
+        self.identifierRange = identifierRange
+        self.embeddedRange = embeddedRange ?? range
+        self.embeddedText = embeddedText ?? text
+    }
 
     /// Lists, tables, quotes, callouts, code, and math take their `^id` on a line of their
     /// own after the block; other blocks take it at the end of their last line.
@@ -139,7 +165,17 @@ public enum NoteBlocks {
             }
             if kind == .listItem { isInsideList = true } else if !startsIndented { isInsideList = false }
             let itemEndIndex = endIndex
-            let block = finishedBlock(kind, lines: lines, from: lineIndex, through: &endIndex, source: source)
+            var block = finishedBlock(kind, lines: lines, from: lineIndex, through: &endIndex, source: source)
+            if kind == .listItem, block.identifier != nil {
+                // An embed of the item shows its nested items too, as Obsidian embeds the item with its sub-list.
+                let nestedEndIndex = endOfNestedLines(afterItemEndingAt: itemEndIndex, parentColumns: ListItemContainers.leadingColumns(of: line), in: lines)
+                if nestedEndIndex > itemEndIndex {
+                    let embeddedRange = NSRange(location: block.range.location, length: NSMaxRange(lines[nestedEndIndex].range) - block.range.location)
+                    block = NoteBlock(kind: block.kind, range: block.range, text: block.text, identifier: block.identifier,
+                        identifierRange: block.identifierRange,
+                                      embeddedRange: embeddedRange, embeddedText: source.substring(with: embeddedRange))
+                }
+            }
             blocks.append(block)
             // Obsidian's documented form for a whole list: its `^id` on a line of its own,
             // after a blank line.
@@ -157,6 +193,22 @@ public enum NoteBlocks {
         return blocks
     }
 
+    /// The last line of the items nested under a list item whose own lines end at `itemEndIndex`:
+    /// the lines after it, up to the next that is not indented past the item (blank lines
+    /// inside a loose list do not end it).
+    private static func endOfNestedLines(afterItemEndingAt itemEndIndex: Int, parentColumns: Int, in lines: [(range: NSRange, content: String)]) -> Int {
+        var lastNestedIndex = itemEndIndex
+        var scanIndex = itemEndIndex + 1
+        while scanIndex < lines.count {
+            let content = lines[scanIndex].content
+            if content.trimmingCharacters(in: .whitespaces).isEmpty { scanIndex += 1; continue }
+            guard ListItemContainers.leadingColumns(of: content) > parentColumns else { break }
+            lastNestedIndex = scanIndex
+            scanIndex += 1
+        }
+        return lastNestedIndex
+    }
+
     /// The block spanning the lines from `firstIndex` through `endIndex`, with its `^id`.
     /// `endIndex` moves past an `^id` line that belongs to the block.
     private static func finishedBlock(_ kind: NoteBlock.Kind, lines: [(range: NSRange, content: String)], from firstIndex: Int, through endIndex: inout Int, source: NSString) -> NoteBlock {
@@ -165,7 +217,8 @@ public enum NoteBlocks {
         var identifier: String?
         var identifierRange: NSRange?
         let lastLine = lines[endIndex].content
-        if kind == .paragraph || kind == .listItem, let trailingIdentifier = MarkdownBlockIdentifierSyntax.trailingIdentifier(in: lastLine) {
+        // A quote or callout takes it on the end of its last line as well.
+        if kind == .paragraph || kind == .listItem || kind == .quote, let trailingIdentifier = MarkdownBlockIdentifierSyntax.trailingIdentifier(in: lastLine) {
             identifier = trailingIdentifier.identifier
             let markerRange = NSRange(location: lastRange.location + trailingIdentifier.markerRange.location, length: trailingIdentifier.markerRange.length)
             identifierRange = markerRange
@@ -195,7 +248,7 @@ public enum NoteBlocks {
 
     /// Whether `line` continues the text above it (a lazy continuation line) rather than
     /// ending the block with a blank line or starting a block of its own.
-    private static func continuesTextLazily(_ line: String) -> Bool {
+    static func continuesTextLazily(_ line: String) -> Bool {
         let trimmedLine = line.trimmingCharacters(in: .whitespaces)
         return !trimmedLine.isEmpty && !trimmedLine.hasPrefix(">") && !trimmedLine.hasPrefix("|")
             && MarkdownHeadingSyntax.level(of: line) == nil && MarkdownFenceSyntax.opening(trimmedLine) == nil
@@ -229,7 +282,7 @@ public enum NoteBlocks {
     public static func locatedEmbeddedPart(of body: String, subpath: String?) -> (text: String, location: Int)? {
         guard let subpath, !subpath.isEmpty else { return (body, 0) }
         if subpath.hasPrefix("^") {
-            return block(withIdentifier: String(subpath.dropFirst()), in: body).map { block in (block.text, block.range.location) }
+            return block(withIdentifier: String(subpath.dropFirst()), in: body).map { block in (block.embeddedText, block.embeddedRange.location) }
         }
         return NotePreviewDocument.locatedSectionIfPresent(of: body, headingAnchor: NotePreviewDocument.anchor(forHeading: subpath))
     }

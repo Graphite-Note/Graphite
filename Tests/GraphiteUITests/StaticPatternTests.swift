@@ -1,3 +1,14 @@
+/**
+ * File: StaticPatternTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: Compiles every constant regular expression of GraphiteUI, so a malformed pattern fails here.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import XCTest
 @testable import GraphiteUI
@@ -8,7 +19,6 @@ import GraphiteCore
 final class StaticPatternTests: XCTestCase {
     func testEveryConstantPatternCompiles() {
         assertEveryCaseCompiles(LivePreviewTextPattern.self)
-        assertEveryCaseCompiles(ObsidianMarkdownParserPattern.self)
         assertEveryCaseCompiles(ParagraphEditingPattern.self)
         assertEveryCaseCompiles(PropertyDateTextPattern.self)
     }
