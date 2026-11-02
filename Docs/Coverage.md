@@ -6,9 +6,9 @@ Last updated: 2026-11-02.
 
 ## Bug hunt fixes: 2026-11-02
 
-The 305 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That file is the record: it says per item what was built, which test covers it and what is still to be checked.
+The 306 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That file is the record: it says per item what was built, which test covers it and what is still to be checked.
 
-- **State:** 208 ticked (206 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone), 97 open. Of the open ones, 93 carry a fix and name the check they wait for. Four have no fix: HUNT-007 could not be reproduced without a device, HUNT-280 needs a look at the real menu, and HUNT-146 and HUNT-154 are the owner's choice. Eleven open items ask the owner a question.
+- **State:** 208 ticked (206 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone), 98 open. Of the open ones, 93 carry a fix and name the check they wait for. Five have no fix: HUNT-007 could not be reproduced without a device, HUNT-280 needs a look at the real menu, HUNT-146 and HUNT-154 are the owner's choice, and HUNT-306 was found last. Eleven open items ask the owner a question.
 - **Automated tests, passing on macOS:** the full package suite on the merged code. The hosted test target compiles.
 - **Not run on this Mac:** the hosted iPad tests. Local runs never start the test runner, with or without other builds running, so GitHub runs them.
 - **Not checked:** nothing here was tried with a real Pencil, iPad or iPhone, including the ink width at zoom (HUNT-004) and PDF stutter (HUNT-015, HUNT-017). Speed fixes are proved by counts of work on generated data, not by timings, and not on the owner's vault.
