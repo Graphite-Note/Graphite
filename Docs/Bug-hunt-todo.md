@@ -449,7 +449,9 @@ Where it lands in the rewrite: Phase 3 for the rules, Phase 12 for the views.
   Done 2026-11-01: `ReadingViewBuilder.displayText` splits on every `#`. `ReadingBlockTextTests.testALinkToANestedHeadingNamesEveryHeading`.
 - [ ] **HUNT-137** (low, ui, traced) #tags in the reading view are plain, unstyled and not tappable unless the vault has a theme. `Sources/GraphiteUI/MarkdownPreview.swift:2044`.
   Cause: ObsidianMarkdownParser only styles tags inside applyThemeColors, which runs 'if let themeColors' (nil when no theme). linkAction has no tag case, so there is no search from a tag in reading view either; Live Preview styles tags via MarkdownStyleScanner. With a theme, tagPattern is also narrower than TagSyntax.pattern (no \p{M}, … Fix: Style tags with the accent (pill) in every case, use TagSyntax.pattern, and open a tag:# search on tap.
-  Fixed 2026-11-01, needs: in reading view on the Mac or iPad, tapping a #tag opens the sidebar search for it. Built: Tags are styled with `TagSyntax.pattern` (the accent, or the theme's colors) in every case, skipped in code, and link to a tag search when the pane gives one (`readingTagSearch`). `ReadingBlockTextTests.testTagsAreStyledAndLinkedWithoutATheme`, `testATagInACodeBlockIsNotATag`.## 7. Search, index and graph
+  Fixed 2026-11-01, needs: in reading view on the Mac or iPad, tapping a #tag opens the sidebar search for it. Built: Tags are styled with `TagSyntax.pattern` (the accent, or the theme's colors) in every case, skipped in code, and link to a tag search when the pane gives one (`readingTagSearch`). `ReadingBlockTextTests.testTagsAreStyledAndLinkedWithoutATheme`, `testATagInACodeBlockIsNotATag`.
+
+## 7. Search, index and graph
 
 Issue: [#120](https://github.com/Graphite-Note/Graphite/issues/120)
 
