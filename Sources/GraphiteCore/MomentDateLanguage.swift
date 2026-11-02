@@ -6,7 +6,7 @@
  *              Language setting chooses them on a device.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -16,7 +16,7 @@ import Foundation
 /// per device, so the same format names a different file in another language.
 ///
 /// Abbreviated names (`MMM`, `ddd`, `dd`) are Foundation's. They differ from Moment's in many languages, such as `Sept.`
-/// where Moment has `Sep.` in German; `MomentDateReader` reads both forms, so a note Obsidian wrote is still found.
+/// where Moment has `Sep.` in German; `MomentDateReader` reads both (`MomentDateShortNames`), so a note Obsidian wrote is still found.
 /// Full names (`MMMM`, `dddd`), `Do` and digits match Moment's: `MomentDateLanguageDefinition.all` holds Moment's own
 /// where Foundation's differ. Long formats (`LL`), `A` and era names stay English.
 public struct MomentDateLanguage: Sendable, Identifiable, Equatable {
@@ -34,6 +34,7 @@ public struct MomentDateLanguage: Sendable, Identifiable, Equatable {
     let otherAbbreviatedMonthForms: [[String]]
     let otherWeekdayForms: [[String]]
     let otherAbbreviatedWeekdayForms: [[String]]
+    let otherShortestWeekdayForms: [[String]]
     let firstWeekday: Int
     let minimumDaysInFirstWeek: Int
     /// Polish's Moment takes the form after a day only right after `D MMMM`, where the others allow more.
@@ -88,6 +89,7 @@ public struct MomentDateLanguage: Sendable, Identifiable, Equatable {
         otherAbbreviatedMonthForms = []
         otherWeekdayForms = []
         otherAbbreviatedWeekdayForms = []
+        otherShortestWeekdayForms = []
         // Moment's English locale: weeks start on Sunday, and week 1 holds January 1.
         firstWeekday = 1
         minimumDaysInFirstWeek = 1
@@ -119,9 +121,11 @@ public struct MomentDateLanguage: Sendable, Identifiable, Equatable {
         // Moment's two-letter names have no dot; the system's six-letter pattern often does.
         shortestWeekdays = Self.shortestWeekdayNames(using: formatter, abbreviatedWeekdays: systemAbbreviatedWeekdays)
         otherMonthForms = [systemMonths, systemMonthsAfterDay]
-        otherAbbreviatedMonthForms = [formatter.shortStandaloneMonthSymbols ?? []]
+        let momentShortNames = MomentDateShortNames.byLanguage[definition.code]
+        otherAbbreviatedMonthForms = [formatter.shortStandaloneMonthSymbols ?? [], momentShortNames?.months ?? [], momentShortNames?.monthsAfterDay ?? []]
         otherWeekdayForms = [systemWeekdays, formatter.weekdaySymbols ?? []]
-        otherAbbreviatedWeekdayForms = [formatter.shortStandaloneWeekdaySymbols ?? []]
+        otherAbbreviatedWeekdayForms = [formatter.shortStandaloneWeekdaySymbols ?? [], momentShortNames?.weekdays ?? []]
+        otherShortestWeekdayForms = [momentShortNames?.shortestWeekdays ?? []]
         firstWeekday = definition.firstWeekday
         minimumDaysInFirstWeek = definition.minimumDaysInFirstWeek
         takesMonthAfterDayOnlyRightAfterIt = definition.code == "pl"
@@ -139,21 +143,6 @@ public struct MomentDateLanguage: Sendable, Identifiable, Equatable {
             let name = formatter.string(from: Date(timeIntervalSince1970: Double(3 + weekdayIndex) * 86_400 + 43_200))
             return name.hasSuffix(".") ? String(name.dropLast()) : name
         }
-    }
-
-    /// The start of every full month name that only one month starts with, three code points or more, which is what Moment's
-    /// abbreviations mostly are where they differ from Foundation's: `Sep` for `September`, where Foundation has `Sept`.
-    var monthNameBeginnings: [String: Int] {
-        var monthsByBeginning: [String: Set<Int>] = [:]
-        for forms in [months, monthsAfterDay] + otherMonthForms {
-            for (monthIndex, name) in forms.enumerated() where name.count > 1 {
-                for length in 1..<name.count {
-                    let beginning = name.prefix(length)
-                    if beginning.unicodeScalars.count >= 3 { monthsByBeginning[String(beginning).lowercased(), default: []].insert(monthIndex + 1) }
-                }
-            }
-        }
-        return monthsByBeginning.compactMapValues { months in months.count == 1 ? months.first : nil }
     }
 
     /// `number` as Moment's `Do` writes it in this language.

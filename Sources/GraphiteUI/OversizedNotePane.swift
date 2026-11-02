@@ -5,7 +5,7 @@
  * Description: The read-only view of a note too large to edit: a short notice, and its text as plain text, a page at a time.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -16,6 +16,9 @@ import SwiftUI
 struct OversizedNotePane: View {
     let note: OversizedNoteDocument
     let editAnyway: () -> Void
+    let reload: () -> Void
+    /// The page at the top, kept in `note` for when a tab comes back to it.
+    @State private var topPageIndex: Int?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,10 +30,16 @@ struct OversizedNotePane: View {
                         OversizedNotePageRow(note: note, pageIndex: pageIndex)
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 20).padding(.vertical, 12)
             }
+            .scrollPosition(id: $topPageIndex, anchor: .top)
+            .onAppear { topPageIndex = note.topPageIndex }
+            .onChange(of: topPageIndex) { _, newPageIndex in
+                if let newPageIndex { note.topPageIndex = newPageIndex }
+            }
         }
-        // Another version of the file is another document, with its pages to read again.
+        // Another document is another file, with its pages to read.
         .id(ObjectIdentifier(note))
     }
 
@@ -40,6 +49,7 @@ struct OversizedNotePane: View {
                 symbol
                 Text(note.notice).font(.callout).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
+                reloadButton
                 editAnywayButton
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -47,7 +57,10 @@ struct OversizedNotePane: View {
                     symbol
                     Text(note.notice).font(.callout)
                 }
-                editAnywayButton
+                HStack(spacing: 12) {
+                    reloadButton
+                    editAnywayButton
+                }
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 12)
@@ -57,6 +70,10 @@ struct OversizedNotePane: View {
 
     private var symbol: some View {
         Image(systemName: "lock.doc").foregroundStyle(.orange)
+    }
+
+    @ViewBuilder private var reloadButton: some View {
+        if note.fileChange == .largeStill { Button("Reload", action: reload) }
     }
 
     @ViewBuilder private var editAnywayButton: some View {
@@ -82,7 +99,8 @@ private struct OversizedNotePageRow: View {
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { newHeight in
                 if text != nil { height = newHeight }
             }
-            .task {
+            // Runs as the row appears, and again for another version of the file.
+            .task(id: note.versionShown) {
                 let pageText: String
                 do { pageText = try await note.text(ofPage: pageIndex) } catch { pageText = "This part of the note could not be read." }
                 guard !Task.isCancelled else { return }

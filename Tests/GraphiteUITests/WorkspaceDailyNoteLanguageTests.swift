@@ -5,7 +5,7 @@
  * Description: Opening daily notes in a vault whose Obsidian uses another language makes no second note (HUNT-154).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -91,6 +91,37 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
         await workspace.openAdjacentDailyNote(forward: false)
         await workspace.openAdjacentDailyNote(forward: false)
         XCTAssertEqual(workspace.selection?.rawValue, "Freitag, 30. Oktober 2026.md")
+    }
+
+    /// `2026-11-02 Review.md` was found as that day's note, and opening the day opened Review.
+    func testOpeningTheDayDoesNotOpenAnOrdinaryNoteOfThatDate() async throws {
+        let (workspace, vault) = try await testBed.openedWorkspace(files: [
+            ".obsidian/daily-notes.json": #"{"format": "YYYY-MM-DD ddd"}"#, "2026-11-02 Review.md": "x\n",
+        ])
+        workspace.preferences.dateNames.language = .named("de")
+        workspace.preferences.dateNames.language = .english
+        try await waitUntilIndexed("2026-11-02 Review.md", in: workspace)
+
+        await workspace.openDailyNote(for: try day(2026, 11, 2))
+
+        XCTAssertEqual(try notes(in: vault), ["2026-11-02 Mon.md", "2026-11-02 Review.md"])
+        XCTAssertEqual(workspace.selection?.rawValue, "2026-11-02 Mon.md")
+    }
+
+    /// Opening November 15 opened the March note, so typing went into the wrong file.
+    func testOpeningADayDoesNotOpenTheNoteOfAnotherMonth() async throws {
+        let (workspace, vault) = try await testBed.openedWorkspace(files: [
+            ".obsidian/daily-notes.json": #"{"format": "MMM DD YYYY"}"#, "Mar 15 2024.md": "x\n",
+        ])
+        workspace.preferences.dateNames.language = .named("fi")
+        try await waitUntilIndexed("Mar 15 2024.md", in: workspace)
+
+        await workspace.openDailyNote(for: try day(2024, 11, 15))
+
+        XCTAssertNotEqual(workspace.selection?.rawValue, "Mar 15 2024.md")
+        XCTAssertEqual(try notes(in: vault).count, 2)
+        await workspace.openDailyNote(for: try day(2024, 3, 15))
+        XCTAssertEqual(workspace.selection?.rawValue, "Mar 15 2024.md")
     }
 
     func testTheLanguageIsKeptOnTheDeviceWithTheOnesBeforeIt() throws {

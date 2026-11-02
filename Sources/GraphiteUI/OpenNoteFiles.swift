@@ -5,7 +5,7 @@
  * Description: The notes open in the windows of the process, by file, so one note in several windows is one text.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 02/11/2026
  */
 
@@ -41,6 +41,11 @@ final class OpenNoteFiles {
         let sessionsLeft = sessionsByFile[oldFile, default: []].filter { entry in entry.session != nil && entry.session !== session }
         sessionsByFile[oldFile] = sessionsLeft.isEmpty ? nil : sessionsLeft
         sessionsByFile[newFile, default: []].append(WeakSession(session: session))
+    }
+
+    /// The open sessions of the file.
+    func sessions(ofFile file: String) -> [MarkdownSession] {
+        sessionsByFile[file, default: []].compactMap(\.session)
     }
 
     /// The other open sessions of the file.

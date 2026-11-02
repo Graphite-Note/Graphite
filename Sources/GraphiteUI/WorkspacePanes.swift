@@ -6,7 +6,7 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.46
+ * Version: 0.47
  * Date: 02/11/2026
  */
 
@@ -685,7 +685,8 @@ struct TabDocumentView: View {
 
     @ViewBuilder private func loadedContent(_ path: VaultPath) -> some View {
         if let note = document.oversizedNote {
-            OversizedNotePane(note: note) { Task { await workspace.editOversizedNoteAnyway(inTab: tab.id) } }
+            OversizedNotePane(note: note, editAnyway: { Task { await workspace.editOversizedNoteAnyway(inTab: tab.id) } },
+                              reload: { Task { await workspace.reloadOversizedNote(inTab: tab.id) } })
         } else if let session = document.markdownSession {
             // The same pane shows the next note; it makes its editor again (see `MarkdownPane`).
             MarkdownPane(session: session, workspace: workspace, document: document, tabID: tab.id, isFocused: isFocused,
@@ -770,28 +771,6 @@ extension TabDocumentView {
             addImageToNote: note.map { note in
                 { pngData, name in Task { await workspace.addLassoPicture(pngData, named: name, to: note) } }
             })
-    }
-}
-
-/// Plain text on the system pasteboard.
-enum Pasteboard {
-    static func copy(_ text: String) {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = text
-        #else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
-    }
-
-    /// The text on the pasteboard, if any. On iPad and iPhone, iOS tells the person that
-    /// Graphite read it.
-    static var text: String? {
-        #if canImport(UIKit)
-        UIPasteboard.general.string
-        #else
-        NSPasteboard.general.string(forType: .string)
-        #endif
     }
 }
 

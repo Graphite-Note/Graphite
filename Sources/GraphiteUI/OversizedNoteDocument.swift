@@ -6,11 +6,12 @@
  *              and nothing is ever written to it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
 import Foundation
+import Observation
 import GraphiteCore
 
 /// How a large file is cut into pages of text. Every page starts where the page before it ends,
@@ -49,17 +50,33 @@ enum OversizedNotePaging {
 
 /// What a tab holds for a note over `MarkdownSession.maximumEditableBytes`, in place of a session:
 /// no text in memory beyond the pages on screen, no editor, and no way to write to the file.
-@MainActor
+@MainActor @Observable
 final class OversizedNoteDocument {
+    /// How the file differs from the version shown.
+    enum FileChange: Equatable {
+        case none
+        /// Another version, still too large to edit: the person chooses when to read it.
+        case largeStill
+        /// Small enough to edit now, or gone or unreadable, which opening says.
+        case openAgain
+    }
+
     let path: VaultPath
-    let byteCount: Int
-    let pageCount: Int
-    private let store: VaultStore
-    /// The file as it was when the note opened; another version opens the note again.
-    private let stamp: FileStamp
+    private(set) var byteCount: Int
+    private(set) var pageCount: Int
+    /// Counts the versions shown, so pages on screen read their text again.
+    private(set) var versionShown = 0
+    private(set) var fileChange = FileChange.none
+    /// The page at the top of the view, so a tab shows the note where it was left.
+    @ObservationIgnored var topPageIndex: Int?
+    @ObservationIgnored private let store: VaultStore
+    /// The file as it was when this version was shown.
+    @ObservationIgnored private var stamp: FileStamp
     /// How many pages have been read since the note opened, which shows the file is read as
     /// it is looked at.
-    private(set) var pagesRead = 0
+    @ObservationIgnored private(set) var pagesRead = 0
+    /// The page read last, which shows where the view is.
+    @ObservationIgnored private(set) var lastPageRead: Int?
 
     private init(path: VaultPath, stamp: FileStamp, store: VaultStore) {
         self.path = path
@@ -75,13 +92,30 @@ final class OversizedNoteDocument {
 
     func text(ofPage pageIndex: Int) async throws -> String {
         pagesRead += 1
+        lastPageRead = pageIndex
         let bytes = try await store.readBytes(of: path, at: pageIndex * OversizedNotePaging.pageBytes, count: OversizedNotePaging.bytesReadPerPage)
         return OversizedNotePaging.text(ofPage: pageIndex, pageCount: pageCount, in: bytes)
     }
 
-    /// Whether the file is no longer the one shown: changed, or gone.
-    func fileHasChanged() async -> Bool {
-        (try? await store.fileStamp(of: path)) != stamp // Cannot be looked at: treated as changed, and opening it says why.
+    /// Looks at the file again, costing one look at its size and date.
+    func checkFile() async {
+        let change: FileChange
+        if let currentStamp = try? await store.fileStamp(of: path) { // Cannot be looked at: opening it says why.
+            if currentStamp == stamp { change = .none } else { change = currentStamp.size > MarkdownSession.maximumEditableBytes ? .largeStill : .openAgain }
+        } else {
+            change = .openAgain
+        }
+        if fileChange != change { fileChange = change }
+    }
+
+    /// Shows the file as it is now, keeping the view and its place.
+    func showCurrentVersion() async {
+        guard let currentStamp = try? await store.fileStamp(of: path) else { return } // Cannot be looked at: the next check says so.
+        stamp = currentStamp
+        byteCount = currentStamp.size
+        pageCount = OversizedNotePaging.pageCount(ofFileWith: currentStamp.size)
+        versionShown += 1
+        fileChange = .none
     }
 
     /// Whether the note can be loaded into the editor after all, for trimming. A file much
@@ -89,6 +123,9 @@ final class OversizedNoteDocument {
     var canEditAnyway: Bool { byteCount <= MarkdownSession.maximumBytesEditableAnyway }
 
     var notice: String {
+        guard fileChange != .largeStill else {
+            return "This note has changed since it was shown here. Reload shows the new version, at the same place. It stays read-only."
+        }
         let size = ByteCountFormatter.string(fromByteCount: Int64(byteCount), countStyle: .binary)
         let limit = MarkdownSession.maximumEditableBytes / 1_048_576
         if canEditAnyway {

@@ -5,7 +5,7 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.17
+ * Version: 0.18
  * Date: 02/11/2026
  */
 
@@ -26,7 +26,7 @@ final class MarkdownSession {
     /// The note's place in the vault. It changes only as the file moves (`followFile(to:)`), so
     /// closures read it when they run rather than keeping it.
     private(set) var path: VaultPath
-    private let store: VaultStore
+    let store: VaultStore
     private let didSave: @MainActor (VaultPath) -> Void
     var text: String {
         didSet {
@@ -38,9 +38,9 @@ final class MarkdownSession {
     }
     /// The open notes of every window, where this note's other sessions are found; nil for a
     /// session alone, as in tests.
-    @ObservationIgnored private let openNotes: OpenNoteFiles?
+    @ObservationIgnored let openNotes: OpenNoteFiles?
     /// This note's key among the open notes.
-    @ObservationIgnored private var fileKey: String
+    @ObservationIgnored var fileKey: String
     /// Set while the text comes from another session of the note, so it is not sent back.
     @ObservationIgnored private var isTakingSharedText = false
     /// A window-level consumer can invalidate a reading snapshot even when the
@@ -167,7 +167,7 @@ final class MarkdownSession {
     private(set) var hasByteOrderMark: Bool
     /// The version of the file the text was made over.
     private(set) var revision: FileRevision
-    private var activeSave: Task<Void, Error>?
+    var activeSave: Task<Void, Error>?
     /// Where text that cannot reach the file waits, outside the vault; nil for a session
     /// that is not a tab's, as in tests.
     @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
@@ -223,13 +223,14 @@ final class MarkdownSession {
     /// Saves the current text. A save already in flight is awaited first, so autosave,
     /// navigation, and the keyboard shortcut never race or report a spurious error.
     func save() async throws {
-        await waitForSavesInFlight()
+        try await waitForSavesInFlight()
         // A move let go of this session while it waited; what it had is in a copy by then.
         guard !wasLeftBehindByMove else { return }
         bringWaitingTextIntoNote()
         guard hasUnsavedChanges else {
             // Undone back to what the file holds: there is nothing left to bring back.
             discardDraft()
+            letGoOfLostFile()
             return
         }
         guard !hasExternalConflict else {
@@ -240,13 +241,16 @@ final class MarkdownSession {
         let expectedRevision = revision
         willReplaceSavedText?(savedText, .bySave)
         let dataToSave = NoteTextEncoding.encode(textToSave, hasByteOrderMark: hasByteOrderMark)
-        let saveTask = Task { [store, path] in
-            let newRevision = try await store.save(dataToSave, at: path, expecting: .revision(expectedRevision))
+        let saveTask = Task { [store, path, hasLostFileToMove] in
+            // Another note has this path now, so the text starts a file of its own beside it.
+            let target = hasLostFileToMove ? try await store.separateCopyPath(of: path, fileExtension: "md") : path
+            let newRevision = try await store.save(dataToSave, at: target, expecting: hasLostFileToMove ? .absent : .revision(expectedRevision))
             self.revision = newRevision
             self.savedText = textToSave
             // Before anyone waiting for this save resumes: another window's save of the note,
             // waiting for this one, must expect the new revision.
             self.shareSavedState()
+            if hasLostFileToMove { try self.goOnInCopy(at: target) }
         }
         activeSave = saveTask
         defer { if activeSave == saveTask { activeSave = nil } }
@@ -258,17 +262,26 @@ final class MarkdownSession {
             if !hasUnsavedChanges { discardDraft() }
             didSave(path)
         } catch {
-            if error as? GraphiteError == .conflict { hasExternalConflict = true }
-            errorMessage = error.localizedDescription
+            if error as? GraphiteError == .conflict, !hasLostFileToMove { hasExternalConflict = true }
+            errorMessage = hasLostFileToMove ? Self.lostFileMessage : error.localizedDescription
             await keepUnsavedTextInDraft()
             throw error
         }
     }
 
     /// Another window's save of the note is awaited too: it sets the revision this one expects.
-    private func waitForSavesInFlight() async {
+    /// So is a move of the file, with what the text needs from it (`waitForMove`).
+    private func waitForSavesInFlight() async throws {
         var awaitedSaves: Set<Task<Void, Error>> = []
-        while let previousSave = ([activeSave] + siblings.map(\.activeSave)).compactMap({ save in save }).first(where: { save in !awaitedSaves.contains(save) }) {
+        while true {
+            if let moveHold = ([self] + siblings).lazy.compactMap(\.moveHold).first {
+                bringWaitingTextIntoNote()
+                guard hasUnsavedChanges else { return } // Nothing to write, so nothing to wait for.
+                try await waitForMove(holding: moveHold)
+                continue
+            }
+            let savesRunning = ([activeSave] + siblings.map(\.activeSave)).compactMap { save in save }
+            guard let previousSave = savesRunning.first(where: { save in !awaitedSaves.contains(save) }) else { return }
             awaitedSaves.insert(previousSave)
             _ = try? await previousSave.value
             // Whichever waiter resumes first clears the finished save. Awaiting a finished
@@ -279,7 +292,7 @@ final class MarkdownSession {
     }
 
     func checkExternalChange() async {
-        guard !isSaving else { return }
+        guard !isSaving, !hasLostFileToMove else { return }
         let revisionBeforeRead = revision
         do {
             let snapshot = try await store.read(path, maximumBytes: maximumBytesRead)
@@ -323,6 +336,7 @@ final class MarkdownSession {
     }
 
     func reload() async throws {
+        guard !hasLostFileToMove else { throw GraphiteError.conflict }
         let versionBeforeRead = editVersion
         let revisionBeforeRead = revision
         guard try await store.fileExists(path) else { throw Self.removedExternallyError }
@@ -335,46 +349,21 @@ final class MarkdownSession {
         try adopt(snapshot)
     }
 
-    // MARK: A move of the note's file
+    // MARK: A move of the note's file (`MarkdownSessionMoves.swift`)
 
     /// Set when a move could not take this session along, so it never writes again.
-    @ObservationIgnored private var wasLeftBehindByMove = false
-
-    /// The session goes away as the move ends, with its text already in a copy (`EditDuringMove`).
-    func letGoAfterMove() {
-        wasLeftBehindByMove = true
-    }
-
-    /// Makes every save of this note wait for `gate`, which a move of its file holds until the
-    /// file has its new place, so no save can aim at the old path meanwhile.
-    /// - Returns: The save already running, which the move waits for before it starts.
-    func holdSaves(until gate: Task<Void, Error>) -> Task<Void, Error>? {
-        let saveInFlight = activeSave
-        activeSave = gate
-        return saveInFlight
-    }
-
-    func releaseSaves(heldBy gate: Task<Void, Error>) {
-        if activeSave == gate { activeSave = nil }
-    }
-
-    /// The note's file is now at `newPath`: every session of it, in every window, goes on there
-    /// with its text, cursor, editor, undo history and unsaved state. A session whose vault
-    /// does not hold the new place stays as it is, and finds its file gone.
-    func followFile(to newPath: VaultPath) throws {
-        let newLocation = try newPath.url(in: store.root)
-        let newFileKey = OpenNoteFiles.key(for: newLocation)
-        for session in [self] + siblings { session.takeMovedFile(at: newLocation, fileKey: newFileKey) }
-    }
-
-    private func takeMovedFile(at newLocation: URL, fileKey newFileKey: String) {
-        guard let newPath = WorkspaceModel.vaultPath(for: newLocation, root: store.root) else { return }
-        openNotes?.moveSession(self, fromFile: fileKey, toFile: newFileKey)
-        fileKey = newFileKey
-        if draftEditVersion != nil { draftKeeper?.moveDraft(to: newPath) }
-        draftKeeper = draftKeeper?.following(to: newPath)
-        path = newPath
-    }
+    @ObservationIgnored var wasLeftBehindByMove = false
+    /// The move of the note's file that its saves wait for.
+    @ObservationIgnored var moveHold: SavesHeldDuringMove?
+    /// How long a save waits for a move of the note's file. A big folder's links can take
+    /// longer, and the save then fails with the text kept, which costs nothing but a message.
+    @ObservationIgnored var longestWaitForMove = Duration.seconds(30)
+    /// Set when another note's move took this session's path. What it holds is another text,
+    /// which is never written there: its next save starts a file beside it (`save`).
+    @ObservationIgnored var hasLostFileToMove = false
+    /// Tells the session's window: the session goes on in the copy at this path, or, with
+    /// nothing to keep (nil), is over, and its tab shows the moved note.
+    @ObservationIgnored var didLoseFileToMove: (@MainActor (MarkdownSession, VaultPath?) -> Void)?
 
     /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.
     func showConflict() {
@@ -408,6 +397,10 @@ final class MarkdownSession {
     /// was reloaded. That newer work stays open in conflict. Once the copy is written this
     /// does not throw, so the copy is never reported as failed.
     func saveSeparateCopy() async throws -> VaultPath {
+        if hasLostFileToMove {
+            try await save()
+            return path
+        }
         flushPendingInsertions()
         let bytesToCopy = NoteTextEncoding.encode(text, hasByteOrderMark: hasByteOrderMark)
         let versionToCopy = editVersion
@@ -465,7 +458,7 @@ final class MarkdownSession {
     @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
 
     /// What a save must take in first: the views' drafts, then the insertions waiting.
-    private func bringWaitingTextIntoNote() {
+    func bringWaitingTextIntoNote() {
         for commit in draftCommitsOfViews.values { commit() }
         flushPendingInsertions()
     }

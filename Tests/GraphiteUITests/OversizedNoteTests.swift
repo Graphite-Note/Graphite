@@ -6,7 +6,7 @@
  *              with Edit Anyway; external changes keep working (HUNT-102).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -201,22 +201,59 @@ final class OversizedNoteTests: XCTestCase {
         XCTAssertNil(workspace.errorMessage)
     }
 
-    func testAFileThatChangesButStaysLargeShowsTheNewVersion() async throws {
+    /// A growing log stays where it is read: the same document, so the view keeps its place,
+    /// with Reload offered. Reload shows the new version in that same document.
+    func testAFileThatChangesButStaysLargeOffersReloadAndKeepsThePlace() async throws {
         let (workspace, vault) = try await makeWorkspace(largeNotes: ["Big.md": Self.nineMegabytes], files: ["Other.md": ""])
-        await workspace.open(try VaultPath("Big.md"))
-        let firstVersion = try XCTUnwrap(workspace.activeDocument.oversizedNote)
+        let tabID = try await openTab(try VaultPath("Big.md"), in: workspace)
+        let note = try XCTUnwrap(workspace.activeDocument.oversizedNote)
+        note.topPageIndex = 40
+        XCTAssertEqual(note.fileChange, .none)
+
+        try Data(repeating: UInt8(ascii: "y"), count: Self.nineMegabytes + 100_000).write(to: vault.appendingPathComponent("Big.md"))
+        await workspace.checkOpenDocumentsForExternalChanges()
+
+        XCTAssertTrue(workspace.activeDocument.oversizedNote === note, "The view and its place stay.")
+        XCTAssertEqual(note.fileChange, .largeStill)
+        XCTAssertEqual(note.byteCount, Self.nineMegabytes, "The version shown until the person asks.")
+        XCTAssertTrue(note.notice.contains("Reload"), note.notice)
+
+        await workspace.reloadOversizedNote(inTab: tabID)
+
+        XCTAssertTrue(workspace.activeDocument.oversizedNote === note)
+        XCTAssertEqual(note.fileChange, .none)
+        XCTAssertEqual(note.versionShown, 1)
+        XCTAssertEqual(note.topPageIndex, 40)
+        XCTAssertEqual(note.byteCount, Self.nineMegabytes + 100_000)
+        XCTAssertEqual(note.pageCount, OversizedNotePaging.pageCount(ofFileWith: Self.nineMegabytes + 100_000))
+        let firstPage = try await note.text(ofPage: 0)
+        XCTAssertTrue(firstPage.hasPrefix("yyy"))
+        await workspace.checkOpenDocumentsForExternalChanges()
+        XCTAssertEqual(note.fileChange, .none, "An unchanged file has nothing to offer.")
+    }
+
+    /// Reopening at every refresh raised the draft's alert each time and put a hidden tab's note
+    /// in the recents and as the file last opened.
+    func testARefreshOfAGrowingNoteSaysNothingAndRemembersNothing() async throws {
+        let (workspace, vault) = try await makeWorkspace(largeNotes: ["Big.md": Self.nineMegabytes], files: ["Other.md": ""])
+        let path = try VaultPath("Big.md")
+        let bytes = try Data(contentsOf: vault.appendingPathComponent("Big.md"))
+        let vaultIdentifier = try XCTUnwrap(workspace.currentVaultIdentifier)
+        let isKept = await processServices.unsavedDrafts.keep(
+            UnsavedDocumentDraft(path: path, contents: bytes + Data(" typed".utf8), baseRevision: FileRevision.of(bytes), date: .now), inVault: vaultIdentifier)
+        XCTAssertTrue(isKept)
+        await workspace.open(path)
+        XCTAssertNotNil(workspace.errorMessage, "Said once, as the note opens.")
+        workspace.errorMessage = nil
+        await workspace.open(try VaultPath("Other.md"), placement: .newTab)
+        let recentsBefore = workspace.recentFiles
 
         try Data(repeating: UInt8(ascii: "y"), count: Self.nineMegabytes + 10).write(to: vault.appendingPathComponent("Big.md"))
         await workspace.checkOpenDocumentsForExternalChanges()
 
-        let secondVersion = try XCTUnwrap(workspace.activeDocument.oversizedNote)
-        XCTAssertFalse(firstVersion === secondVersion)
-        XCTAssertEqual(secondVersion.byteCount, Self.nineMegabytes + 10)
-        let firstPage = try await secondVersion.text(ofPage: 0)
-        XCTAssertTrue(firstPage.hasPrefix("yyy"))
-        let unchanged = secondVersion
-        await workspace.checkOpenDocumentsForExternalChanges()
-        XCTAssertTrue(workspace.activeDocument.oversizedNote === unchanged, "An unchanged file is not read again.")
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertEqual(workspace.recentFiles, recentsBefore)
+        XCTAssertEqual(workspace.vaultLibrary.vault(withIdentifier: vaultIdentifier)?.lastOpenedDocument, try VaultPath("Other.md"))
     }
 
     func testAFileThatGoesAwaySaysSoInItsTab() async throws {
@@ -306,7 +343,7 @@ final class OversizedNoteTests: XCTestCase {
         await workspace.open(try VaultPath("Big.md"))
         let note = try XCTUnwrap(workspace.activeDocument.oversizedNote)
         var askedToEdit = false
-        let hostingView = NSHostingView(rootView: OversizedNotePane(note: note) { askedToEdit = true })
+        let hostingView = NSHostingView(rootView: OversizedNotePane(note: note, editAnyway: { askedToEdit = true }, reload: {}))
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: true)
         window.contentView = hostingView
         window.showInvisibly()
@@ -316,6 +353,21 @@ final class OversizedNoteTests: XCTestCase {
 
         XCTAssertLessThan(note.pagesRead, note.pageCount / 4, "Read \(note.pagesRead) of \(note.pageCount) pages.")
         XCTAssertFalse(askedToEdit)
+    }
+
+    /// A tab that comes back shows the read-only note where it was left.
+    func testTheViewStartsAtThePageLeftAtTheTop() async throws {
+        let (workspace, _) = try await makeWorkspace(largeNotes: ["Big.md": Self.nineMegabytes], files: ["Other.md": ""])
+        await workspace.open(try VaultPath("Big.md"))
+        let note = try XCTUnwrap(workspace.activeDocument.oversizedNote)
+        note.topPageIndex = 100
+        let hostingView = NSHostingView(rootView: OversizedNotePane(note: note, editAnyway: {}, reload: {}))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 600), styleMask: [.titled], backing: .buffered, defer: true)
+        window.contentView = hostingView
+        window.showInvisibly()
+        defer { window.orderOut(nil); window.contentView = nil }
+
+        try await waitUntil("the page left at the top to be read") { note.lastPageRead.map { page in abs(page - 100) < 5 } ?? false }
     }
     #endif
 

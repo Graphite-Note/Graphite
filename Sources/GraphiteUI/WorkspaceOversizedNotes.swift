@@ -6,7 +6,7 @@
  *              for editing when the person asks, and opened again as its file changes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 02/11/2026
  */
 
@@ -25,6 +25,7 @@ extension WorkspaceModel {
         let session = try MarkdownSession(path: path, snapshot: snapshot, store: store, openNotes: processServices.openNotes) { [weak self] savedPath in
             self?.refreshIndex(for: [savedPath])
         }
+        session.didLoseFileToMove = { [weak self] session, copyPath in self?.noteLostItsFile(session, keptIn: copyPath) }
         // An edit while the note is read: reading goes on at the same sentence.
         session.textDidChange = { [weak self, weak session] in
             guard let self, let session else { return }
@@ -48,18 +49,39 @@ extension WorkspaceModel {
         await load(note.path, into: tabID, pdfPageIndex: nil, recordsHistory: false, editsOversizedNote: true)
     }
 
-    /// Opens again what changed size for the editor: a read-only note whose file changed, which
-    /// is then edited normally if it is now small enough, and a note in an editor, with nothing
-    /// unsaved, whose file another app took past what the editor reads.
+    /// Reload: the read-only note shows its file as it is now, at the same place, or opens in
+    /// the editor when it has become small enough.
+    func reloadOversizedNote(inTab tabID: UUID) async {
+        let document = document(for: tabID)
+        guard let note = document.oversizedNote else { return }
+        await note.checkFile()
+        switch note.fileChange {
+        case .none: break
+        case .largeStill: await note.showCurrentVersion()
+        case .openAgain: await openAgain(note, in: document, tabID: tabID)
+        }
+    }
+
+    /// A read-only note whose file another app changed, and which is still too large to edit, stays
+    /// where it is read, so an appended log can be read: it offers Reload. One that is now small
+    /// enough, or gone, opens again.
+    private func openAgain(_ note: OversizedNoteDocument, in document: TabDocument, tabID: UUID) async {
+        let didOpen = await load(note.path, into: tabID, pdfPageIndex: nil, recordsHistory: false, reportsFailure: false)
+        // A file that is gone says so in the tab, rather than showing pages it no longer has.
+        if !didOpen { document.unload() }
+    }
+
+    /// Opens again what changed size for the editor: a read-only note whose file changed so that
+    /// it is small enough to edit, and a note in an editor, with nothing unsaved, whose file
+    /// another app took past what the editor reads.
     /// - Parameter changedPaths: The files known to have changed; nil checks every tab.
     func openAgainNotesThatChangedSize(limitedTo changedPaths: Set<VaultPath>?) async {
         for (tabID, document) in Array(tabDocuments) {
             guard let path = document.loadedPath, changedPaths?.contains(path) != false else { continue }
             if let note = document.oversizedNote {
-                guard await note.fileHasChanged(), document.oversizedNote === note else { continue }
-                let didOpen = await load(path, into: tabID, pdfPageIndex: nil, recordsHistory: false, reportsFailure: false)
-                // A file that is gone says so in the tab, rather than showing pages it no longer has.
-                if !didOpen { document.unload() }
+                await note.checkFile()
+                guard document.oversizedNote === note, note.fileChange == .openAgain else { continue }
+                await openAgain(note, in: document, tabID: tabID)
             } else if let session = document.markdownSession, session.fileOutgrewEditor, !session.hasUnsavedChanges {
                 await load(path, into: tabID, pdfPageIndex: nil, recordsHistory: false, reportsFailure: false)
             }

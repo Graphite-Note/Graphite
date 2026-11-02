@@ -6,7 +6,7 @@
  *              cannot reach the file.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 02/11/2026
  */
 
@@ -53,6 +53,8 @@ extension MarkdownSession {
     /// - Returns: Whether the text is safe: saved in the file or in the draft.
     @discardableResult
     func keepUnsavedTextInDraft() async -> Bool {
+        // A move let go of this session; its text is in a copy.
+        guard !wasLeftBehindByMove else { return true }
         flushPendingInsertions()
         guard hasUnsavedChanges else { return true }
         guard draftEditVersion != editVersion else { return true }
