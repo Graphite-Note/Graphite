@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.63
+ * Version: 0.64
  * Date: 01/11/2026
  */
 
@@ -52,6 +52,9 @@ final class WorkspaceModel {
     @ObservationIgnored var timeLeftFront: Duration?
     /// The vault's settings files when they were last read.
     @ObservationIgnored var settingsFilesRevisionAtLastReading: [String: SettingsFileStamp]?
+    /// What the person was last told about each settings file the vault could not read, so
+    /// the same problem is not reported again each time the window comes to the front.
+    @ObservationIgnored var reportedSettingsProblems: [SettingsProblem: String] = [:]
     /// Folders open in the sidebar, remembered per vault as Obsidian remembers them.
     var expandedFolders: Set<VaultPath> = [] {
         didSet {
@@ -95,9 +98,20 @@ final class WorkspaceModel {
             if activeCoreView != layout.activeTab.coreView { activeCoreView = layout.activeTab.coreView }
             if openTabCount != layout.allTabs.count { openTabCount = layout.allTabs.count }
             // Histories are not saved, so moving through them writes nothing.
-            if layout.saved != oldValue.saved { saveTabLayout() }
+            if layout.saved != oldValue.saved {
+                savedLayoutChangeCount += 1
+                saveTabLayout()
+            }
         }
     }
+    /// How many times the tabs that are saved (`layout.saved`) have changed, for views that
+    /// act on such a change without reading `layout`, which would redraw them with every
+    /// move of focus, history step and edit of a background tab.
+    private(set) var savedLayoutChangeCount = 0
+    /// Set when a rename, a move or a deletion changed `selection`, until `GraphiteRootView`
+    /// takes it (`takeSelectionChangeFromFileManagement`): on a phone the file list stays
+    /// in front while the person manages files, and only opening a file shows the document.
+    @ObservationIgnored var selectionChangeIsFromFileManagement = false
     /// The vault `layout` is saved for; nil while a vault is being opened, so the layout
     /// being replaced is not saved over the new vault's.
     var layoutVaultIdentifier: UUID?
@@ -121,15 +135,13 @@ final class WorkspaceModel {
     /// Passwords of protected PDFs unlocked since launch. Kept in memory only, never saved.
     @ObservationIgnored var pdfPasswords: [VaultPath: String] = [:]
     /// Recently opened files, remembered per vault, for the quick switcher.
-    var recentFiles = RecentFiles() {
-        didSet {
-            guard let currentVaultIdentifier, recentFiles != oldValue else { return }
-            deviceDefaults.set(recentFiles.paths.map(\.rawValue), forKey: Self.recentFilesKey(for: currentVaultIdentifier))
+    /// Kept by the process, so windows on one vault share the list (`RecentFilesStore`).
+    var recentFiles: RecentFiles {
+        get { currentVaultIdentifier.map { vaultIdentifier in processServices.recentFilesStore.recentFiles(forVault: vaultIdentifier) } ?? RecentFiles() }
+        set {
+            guard let currentVaultIdentifier else { return }
+            processServices.recentFilesStore.update(newValue, forVault: currentVaultIdentifier)
         }
-    }
-
-    private static func recentFilesKey(for vaultIdentifier: UUID) -> String {
-        "GraphiteRecentFiles." + vaultIdentifier.uuidString
     }
 
     /// The file of the focused tab. Kept in step with `layout`.
@@ -406,13 +418,14 @@ final class WorkspaceModel {
         VaultIndex.removeIndex(forVault: vault.id, in: applicationFolders.cachesFolder)
         CommunityPluginHost.forgetVault(vault.id, defaults: deviceDefaults)
         // Opening the folder again makes a new identifier, so nothing would read these again.
-        let vaultKeys = [Self.expandedFoldersKey(for: vault.id), Self.recentFilesKey(for: vault.id),
+        let vaultKeys = [Self.expandedFoldersKey(for: vault.id),
                          Self.tabLayoutKey(for: vault.id), Self.foldsKey(for: vault.id),
                          Self.noteViewsKey(for: vault.id), Self.vaultNoteViewKey(for: vault.id)]
         for key in vaultKeys {
             deviceDefaults.removeObject(forKey: key)
         }
         processServices.documentPlaceStore.forgetVault(vault.id)
+        processServices.recentFilesStore.forgetVault(vault.id)
         processServices.graphColorGroups.forgetVault(vault.id)
     }
 
@@ -425,14 +438,6 @@ final class WorkspaceModel {
         guard isReopeningCurrentVault || drawingEditorRequest == nil else { throw VaultSwitchRefusal.drawingIsOpen }
         rememberPlacesOfOpenDocuments()
         try await saveOpenDocuments()
-    }
-
-    /// Opens a vault the window was opened on (`GraphiteWindowContent`): with the vault's
-    /// remembered tabs, or with one empty tab, or `file`, for a window opened from another.
-    func openVaultOfWindow(_ vaultIdentifier: UUID, tabs: WindowTabsToRestore, showing file: VaultPath?) async {
-        guard let vault = vaultLibrary.vault(withIdentifier: vaultIdentifier) else { return await restoreVault() }
-        await reopen(vault, tabs: tabs)
-        if let file, currentVaultIdentifier == vaultIdentifier { _ = await open(file) }
     }
 
     private func openVault(identifier: UUID?, location: VaultLocation, tabs: WindowTabsToRestore = .vaultsLast) async throws {
@@ -481,6 +486,10 @@ final class WorkspaceModel {
             joinVaultsPlugins()
             throw error
         }
+        // The vault opened again where it is (its folder moved): this window's own tabs come
+        // back, not those of whichever window saved last.
+        let isReopeningWithOwnLayout = identifier != nil && identifier == currentVaultIdentifier && layoutVaultIdentifier == currentVaultIdentifier
+        let layoutOfVaultReopened = isReopeningWithOwnLayout ? layout.saved : nil
         forgetStateOfVaultBeingLeft()
         folderAccess = access; store = vaultStore; monitor = vaultMonitor
         readAloud?.vaultRoot = access.root
@@ -497,8 +506,7 @@ final class WorkspaceModel {
             // Folders renamed or deleted in the meantime simply stay closed.
             let savedFolders = deviceDefaults.stringArray(forKey: Self.expandedFoldersKey(for: currentVaultIdentifier)) ?? []
             expandedFolders = Set(savedFolders.compactMap { folder in try? VaultPath(folder) })
-            let savedRecentFiles = deviceDefaults.stringArray(forKey: Self.recentFilesKey(for: currentVaultIdentifier)) ?? []
-            recentFiles = RecentFiles(paths: savedRecentFiles.compactMap { path in try? VaultPath(path) })
+            processServices.recentFilesStore.load(forVault: currentVaultIdentifier)
         }
         fileRecovery = currentVaultIdentifier.flatMap { identifier in
             try? FileRecoveryStore.forVault(identifier: identifier, in: applicationFolders.applicationSupportFolder)
@@ -512,7 +520,7 @@ final class WorkspaceModel {
         // Returns to where the user left this vault, as Obsidian restores its workspace. A
         // window opened from another starts empty, and saves its tabs once they change.
         switch tabs {
-        case .vaultsLast: restoreTabLayout()
+        case .vaultsLast: restoreTabLayout(layoutOfVaultReopened)
         case .window(let windowLayout): restoreTabLayout(windowLayout)
         case .none: layoutVaultIdentifier = currentVaultIdentifier
         }
@@ -565,6 +573,7 @@ final class WorkspaceModel {
         indexingMessage = ""
         rootEntries = []; hasListedRoot = false; folderListingVersions = [:]
         rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; settingsFilesRevisionAtLastReading = nil
+        reportedSettingsProblems = [:]
         readAloud?.clear()
         readAloudNavigator?.clearQueueHistoryAndPenMarks()
         calloutFolds.forgetEveryNote()
@@ -605,13 +614,11 @@ final class WorkspaceModel {
         }
     }
 
-    /// Opens the vault used most recently, at launch.
-    func restoreVault() async {
-        guard folderAccess == nil, let vault = vaultLibrary.list.mostRecentlyOpened else { return }
-        await reopen(vault, tabs: .vaultsLast)
-    }
+    /// The window's latest request to open a vault, which the next waits for
+    /// (`inOrderOfWindowOpening`).
+    @ObservationIgnored var windowVaultOpening: Task<Void, Never>?
 
-    private func reopen(_ vault: KnownVault, tabs: WindowTabsToRestore) async {
+    func reopen(_ vault: KnownVault, tabs: WindowTabsToRestore) async {
         do { try await openVault(identifier: vault.id, location: vault.location, tabs: tabs) }
         catch { errorMessage = "Graphite couldn't reopen “\(vault.name)”. " + error.localizedDescription }
     }
@@ -626,7 +633,7 @@ final class WorkspaceModel {
         templateSettingsReading = await Self.settingsReading { try await store.templateSettings() }
         dailyNoteSettingsReading = await Self.settingsReading { try await store.dailyNoteSettings() }
         await reloadKeyboardShortcuts(from: store)
-        if let unreadableSettingsMessage { errorMessage = unreadableSettingsMessage }
+        reportSettingsProblem(.templatesOrDailyNotes, message: unreadableSettingsMessage)
         await reloadBookmarks()
         await reloadVaultAppearance()
         do {
@@ -637,7 +644,10 @@ final class WorkspaceModel {
             vaultSettings = settings
             // While a vault opens the root is listed next, in this order.
             if sortOrderChanged, hasListedRoot { await refreshDirectory() }
-        } catch { errorMessage = "Graphite could not read the Obsidian settings in this vault. " + error.localizedDescription }
+            reportSettingsProblem(.obsidianAppSettings, message: nil)
+        } catch {
+            reportSettingsProblem(.obsidianAppSettings, message: "Graphite could not read the Obsidian settings in this vault. " + error.localizedDescription)
+        }
     }
 
     /// Writes the settings Obsidian shares with Graphite into `.obsidian/app.json`.
@@ -1563,8 +1573,10 @@ final class WorkspaceModel {
         rememberPlaces(of: movedDocuments)
         for document in movedDocuments { document.unload() }
         followMoveInConflictVersions(from: oldPath, to: newPath)
-        layout.replacePrefix(oldPath, with: newPath)
+        changingTabsForFileManagement { layout.replacePrefix(oldPath, with: newPath) }
         recentFiles.replacePrefix(oldPath, with: newPath)
+        // A PDF unlocked before the move opens at its new place without asking again.
+        movePDFPasswords(from: oldPath, to: newPath)
         followMoveInFolds(from: oldPath, to: newPath)
         followMoveInNoteViews(from: oldPath, to: newPath)
         followMoveInPlaces(from: oldPath, to: newPath)
@@ -1579,7 +1591,7 @@ final class WorkspaceModel {
     /// Closes the tabs of a deleted file or folder, without saving into it, and forgets it.
     func forgetInNavigation(_ removedPath: VaultPath) {
         followMoveInConflictVersions(from: removedPath, to: nil)
-        removeTabDocuments(layout.removeTabs(inside: removedPath))
+        changingTabsForFileManagement { removeTabDocuments(layout.removeTabs(inside: removedPath)) }
         recentFiles.remove(inside: removedPath)
         forgetFolds(inside: removedPath)
         forgetNoteViews(inside: removedPath)

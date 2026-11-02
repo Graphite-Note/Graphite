@@ -6,7 +6,7 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.40
+ * Version: 0.41
  * Date: 01/11/2026
  */
 
@@ -14,19 +14,6 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
-
-/// A tab being dragged to another place in a tab bar.
-struct TabTransfer: Codable, Transferable {
-    let tabID: UUID
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .graphiteTab)
-    }
-}
-
-extension UTType {
-    /// Declared in the app's Info.plist; used only for drags inside Graphite.
-    static let graphiteTab = UTType(exportedAs: "com.graphite.study.tab")
-}
 
 /// The documents area: one group of tabs, or two side by side with a divider that can be
 /// dragged, as after Obsidian's "Split right". In a narrow window only the focused side
@@ -42,8 +29,8 @@ struct WorkspacePanes: View {
     var showsTabBar = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    /// The split when a divider drag began.
-    @State private var dragStartFraction: Double?
+    /// The divider drag in progress, whose split the layout takes when it ends.
+    @State private var dividerDrag = SplitDividerDrag()
     /// Where each side is in the window, to focus the side a touch lands on.
     @State private var groupFrames: [UUID: CGRect] = [:]
     /// The documents area's width, which decides where documents put Write, Undo and Redo:
@@ -87,17 +74,15 @@ struct WorkspacePanes: View {
                                                                    splitWidthPoints: geometry.size.width,
                                                                    dividerWidthPoints: SplitDivider.width,
                                                                    allowedRange: TabLayout.splitFractionRange)
-                let fraction = foldFraction ?? workspace.layout.splitFraction
+                let fraction = foldFraction ?? dividerDrag.fraction ?? workspace.layout.splitFraction
                 if groups.count > 1 {
                     HStack(spacing: 0) {
                         pane(for: groups[0])
                             .frame(width: availableWidth * fraction)
                         SplitDivider(fraction: fraction, isHeldByFold: foldFraction != nil) { translation in
-                            let startFraction = dragStartFraction ?? workspace.layout.splitFraction
-                            dragStartFraction = startFraction
-                            workspace.layout.splitFraction = startFraction + translation / availableWidth
+                            _ = dividerDrag.change(translation: translation, availableWidth: availableWidth, layoutFraction: workspace.layout.splitFraction)
                         } endDrag: {
-                            dragStartFraction = nil
+                            if let draggedFraction = dividerDrag.end() { workspace.layout.splitFraction = draggedFraction }
                         } setFraction: { fraction in
                             workspace.layout.splitFraction = fraction
                         }
@@ -181,7 +166,7 @@ private struct TabGroupPane: View {
                 .background {
                     if let tabOverview { TabThumbnailArea(groupID: group.id, thumbnails: tabOverview.thumbnails) }
                 }
-                .onChange(of: tab.id, initial: true) { captureThumbnailOnceSettled(tab) }
+                .onChange(of: TabLoadKey(tabID: tab.id, path: tab.path), initial: true) { captureThumbnailOnceSettled(tab) }
             }
         }
         // Choosing a tab or opening a file on this side steps back from the library.
@@ -246,7 +231,7 @@ extension TabGroupPane {
         guard let tabOverview, !group.isStacked else { return }
         let workspace = workspace
         let groupID = group.id
-        tabOverview.captureWhenSettled(groupID: groupID, tabID: tab.id, vaultIdentifier: workspace.currentVaultIdentifier) {
+        tabOverview.captureWhenSettled(groupID: groupID, tabID: tab.id, file: tab.path, vaultIdentifier: workspace.currentVaultIdentifier) {
             let document = workspace.document(for: tab.id)
             let isLoaded = tab.path == nil || document.loadedPath == tab.path
             let isStacked = workspace.layout.groups.first { candidate in candidate.id == groupID }?.isStacked ?? true
@@ -350,7 +335,7 @@ private struct TabBar: View {
                                 close: { Task { await workspace.closeTab(tab.id) } },
                                 maximumWidth: keepsTabsBesidePencilTools ? DocumentToolbarLayout.minimumTabsWidthBesidePencilTools - 2 * Self.tabsInset : 220)
                             .contextMenu { tabMenu(for: tab) }
-                            .draggable(TabTransfer(tabID: tab.id), contentType: .graphiteTab,
+                            .draggable(TabTransfer(tab: tab, vaultIdentifier: workspace.currentVaultIdentifier), contentType: .graphiteTab,
                                        opening: tab.path.map { path in .showing(path, inVault: workspace.currentVaultIdentifier) }) {
                                 Label(workspace.title(ofTab: tab), systemImage: tab.path.map { path in DocumentKind(path: path).systemImage } ?? "doc")
                                     .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -379,9 +364,18 @@ private struct TabBar: View {
 
     @discardableResult
     private func moveDroppedTabs(_ items: [TabTransfer], to position: Int) -> Bool {
-        guard let item = items.first, layout.tab(withID: item.tabID) != nil else { return false }
-        workspace.moveTab(item.tabID, toGroup: group.id, at: position)
-        return true
+        guard let item = items.first else { return false }
+        switch item.drop(in: layout, vaultIdentifier: workspace.currentVaultIdentifier) {
+        case .moveTab(let tabID):
+            workspace.moveTab(tabID, toGroup: group.id, at: position)
+            return true
+        case .openFile(let path):
+            workspace.focusGroup(group.id)
+            Task { await workspace.open(path, placement: .newTab) }
+            return true
+        case .refused:
+            return false
+        }
     }
 
     @ViewBuilder private var groupButtons: some View {

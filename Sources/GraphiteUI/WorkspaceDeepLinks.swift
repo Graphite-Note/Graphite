@@ -5,7 +5,7 @@
  * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
  *
  * Authors: Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 01/11/2026
  */
 
@@ -20,7 +20,14 @@ extension WorkspaceModel {
             return
         }
         if case .open(_, let path?) = link.action {
-            await openFileSystemPath(path)
+            if let vaultPath = await vaultPathShowingFileSystemPath(path) { await open(vaultPath) }
+            return
+        }
+        // `new?path=`: the note's full path decides the vault and the note, as for `open`.
+        if case .new(_, _, let path?, let content, let opensNote, let mode) = link.action {
+            if let vaultPath = await vaultPathShowingFileSystemPath(path) {
+                await createNoteFromLink(name: nil, file: vaultPath.rawValue, content: content, opensNote: opensNote, mode: mode)
+            }
             return
         }
         if let vaultName = link.vault, !isCurrentVault(named: vaultName) {
@@ -43,7 +50,7 @@ extension WorkspaceModel {
         case .search(let query):
             searchQuery = query
             searchFocusRequest += 1
-        case .new(let name, let file, let content, let opensNote, let mode):
+        case .new(let name, let file, _, let content, let opensNote, let mode):
             await createNoteFromLink(name: name, file: file, content: content, opensNote: opensNote, mode: mode)
         case .daily:
             await openDailyNote()
@@ -64,14 +71,22 @@ extension WorkspaceModel {
     }
 
     /// Obsidian's "Copy Obsidian URL": a link that opens this file from any app.
+    /// The link names the vault by its folder's name, as Obsidian's do, unless another known
+    /// vault has the same name; then it names the vault by its identifier, which only this
+    /// vault has.
     func openingLink(to path: VaultPath) -> String {
-        VaultURI.openingLink(to: path, inVaultNamed: title)
+        let sharesNameWithAnotherVault = vaultLibrary.vaults.contains { vault in vault.name == title && vault.id != currentVaultIdentifier }
+        let vaultReference = sharesNameWithAnotherVault ? (currentVaultIdentifier?.uuidString ?? title) : title
+        return VaultURI.openingLink(to: path, inVaultNamed: vaultReference)
     }
 
     // MARK: Private
 
-    private func isCurrentVault(named name: String) -> Bool {
+    /// Whether a link's vault is the one that is open: its identifier, or its name, which the
+    /// open vault answers to before another vault of the same name.
+    func isCurrentVault(named name: String) -> Bool {
         guard let currentVaultIdentifier else { return false }
+        if currentVaultIdentifier.uuidString.caseInsensitiveCompare(name) == .orderedSame || title == name { return true }
         return knownVault(named: name)?.id == currentVaultIdentifier
     }
 
@@ -111,27 +126,29 @@ extension WorkspaceModel {
         return nil
     }
 
-    /// `open?path=`: a full path, inside the vault that is open or another known vault.
-    private func openFileSystemPath(_ fileSystemPath: String) async {
+    /// `open?path=` and `new?path=`: the vault path of a full file system path, inside the
+    /// vault that is open or another known vault, which is opened first. Nil, with the reason
+    /// shown, when no vault holds it or its vault cannot be opened.
+    private func vaultPathShowingFileSystemPath(_ fileSystemPath: String) async -> VaultPath? {
         let standardized = URL(fileURLWithPath: fileSystemPath).standardizedFileURL.resolvingSymlinksInPath().path
         func vaultPath(inside root: String) -> VaultPath? {
             let prefix = root.hasSuffix("/") ? root : root + "/"
             guard standardized.hasPrefix(prefix) else { return nil }
             return try? VaultPath(String(standardized.dropFirst(prefix.count)))
         }
-        if let root = folderAccess?.root.standardizedFileURL.resolvingSymlinksInPath().path, let path = vaultPath(inside: root) {
-            await open(path)
-            return
-        }
+        if let root = folderAccess?.root.standardizedFileURL.resolvingSymlinksInPath().path, let path = vaultPath(inside: root) { return path }
         guard let vault = vaultLibrary.vaults.first(where: { vault in vaultPath(inside: vault.lastKnownPath) != nil }),
               let path = vaultPath(inside: vault.lastKnownPath) else {
             errorMessage = "“\(fileSystemPath)” is not in a vault Graphite knows."
-            return
+            return nil
         }
         do {
             try await openVault(vault)
-            await open(path)
-        } catch { errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription }
+            return path
+        } catch {
+            errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
+            return nil
+        }
     }
 
     private func createNoteFromLink(name: String?, file: String?, content: String, opensNote: Bool, mode: VaultURI.NewNoteMode) async {

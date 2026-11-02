@@ -5,7 +5,7 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.12
+ * Version: 0.13
  * Date: 01/11/2026
  */
 
@@ -129,7 +129,7 @@ public struct GraphiteCommands: Commands {
             Task { await workspace.reopenClosedTab() }
         }
         .keyboardShortcut(shortcut(.reopenClosedTab))
-        .disabled(workspace?.layout.closedPaths.isEmpty ?? true)
+        .disabled(!(workspace?.layout.canReopenClosedTab ?? false))
     }
 
     /// The core plugins' views of the vault, and of the note in front.
