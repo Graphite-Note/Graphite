@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewBlockTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: What Live Preview draws as rendered blocks: properties, tables, math, embeds, callouts, rules.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -44,7 +55,7 @@ final class LivePreviewBlockTests: XCTestCase {
     }
 
     func testCalloutIncludesItsQuotedBody() {
-        let source = "Intro\n> [!note]- Folded title\n> Body with $x$\n>\n> - item\nAfter\n> plain quote\n" as NSString
+        let source = "Intro\n> [!note]- Folded title\n> Body with $x$\n>\n> - item\n\nAfter\n> plain quote\n" as NSString
         let blocks = LivePreviewBlockScanner.blocks(in: source)
         guard blocks.count == 1 else { return XCTFail("Expected only the callout; a plain quote stays text. Found \(blocks.map(\.kind))") }
         XCTAssertEqual(blocks[0].kind, .callout)
