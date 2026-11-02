@@ -5,7 +5,7 @@
  * Description: Places in the note that matched, in order. Empty when only the name matched.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 01/11/2026
  */
 
@@ -723,8 +723,8 @@ extension VaultIndex {
 
     /// Every level of every tag (`course` and `course/math` for `#course/math`), each with
     /// the notes that have it or a tag nested under it, for the Tags view's nested list.
-    public func nestedTagCounts() throws -> [TagCount] {
-        try databasePool.read { database in
+    public nonisolated func nestedTagCounts() async throws -> [TagCount] {
+        try await databasePool.read { database in
             let rows = try Row.fetchAll(database, sql: """
                 WITH RECURSIVE levels(tag, rest, path) AS (
                   SELECT CASE WHEN instr(tag, '/') > 0 THEN substr(tag, 1, instr(tag, '/') - 1) ELSE tag END,
@@ -752,8 +752,8 @@ public struct PropertyUsage: Sendable {
 extension VaultIndex {
     /// Every property name in the vault, names differing only in capitals counted once, as
     /// Obsidian counts them.
-    public func propertyUsages(sampleCount: Int = 5) throws -> [PropertyUsage] {
-        try databasePool.read { database in
+    public nonisolated func propertyUsages(sampleCount: Int = 5) async throws -> [PropertyUsage] {
+        try await databasePool.read { database in
             let counts = try Row.fetchAll(database, sql: """
                 SELECT key, COUNT(DISTINCT path) AS fileCount FROM properties GROUP BY key COLLATE NOCASE
                 """)

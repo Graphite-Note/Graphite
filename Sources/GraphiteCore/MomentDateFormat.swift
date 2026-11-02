@@ -1,3 +1,14 @@
+/**
+ * File: MomentDateFormat.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: Dates written and read with the format strings Obsidian uses (Moment.js), such as YYYY-MM-DD.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Dates written with the format strings Obsidian uses (Moment.js), such as
@@ -9,17 +20,24 @@ public enum MomentDateFormat {
 
     private static let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
     private static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-    /// Longest first, so `YYYY` is not read as two `YY`.
+    /// Moment's tokens. `sortedTokens` tries the longest first, so `YYYY` is not read as two `YY`.
     private static let tokens = [
-        "YYYY", "YY", "Y", "Qo", "Q", "MMMM", "MMM", "MM", "Mo", "M", "DDDD", "DDDo", "DDD", "DD", "Do", "D",
-        "dddd", "ddd", "dd", "do", "d", "E", "e", "ww", "wo", "w", "WW", "Wo", "W", "gggg", "gg", "GGGG", "GG",
-        "HH", "H", "hh", "h", "kk", "k", "mm", "m", "ss", "s", "SSS", "SS", "S", "A", "a", "X", "x", "ZZ", "Z",
+        "YYYYYY", "YYYYY", "YYYY", "YY", "Y", "Qo", "Q", "MMMM", "MMM", "MM", "Mo", "M", "DDDD", "DDDo", "DDD", "DD", "Do", "D",
+        "dddd", "ddd", "dd", "do", "d", "E", "e", "ww", "wo", "w", "WW", "Wo", "W", "ggggg", "gggg", "gg", "GGGGG", "GGGG", "GG",
+        "HH", "H", "hh", "h", "kk", "k", "mm", "m", "ss", "s", "A", "a", "X", "x", "ZZ", "Z", "zz", "z",
+        "SSSSSSSSS", "SSSSSSSS", "SSSSSSS", "SSSSSS", "SSSSS", "SSSS", "SSS", "SS", "S",
+        "NNNNN", "NNNN", "NNN", "NN", "N", "yyyy", "yyy", "yy", "yo", "y",
     ]
-    /// Moment's English long date formats.
+    private static let sortedTokens = tokens.sorted { first, second in first.count > second.count }
+    /// Moment's English long date formats. The lower-case ones are the short forms of the
+    /// upper-case ones: month and weekday names cut to three letters, month and day without a leading zero.
     private static let longDateFormats = [
         "LLLL": "dddd, MMMM D, YYYY h:mm A", "LLL": "MMMM D, YYYY h:mm A", "LL": "MMMM D, YYYY",
         "LTS": "h:mm:ss A", "LT": "h:mm A", "L": "MM/DD/YYYY",
+        "llll": "ddd, MMM D, YYYY h:mm A", "lll": "MMM D, YYYY h:mm A", "ll": "MMM D, YYYY", "l": "M/D/YYYY",
     ]
+    private static let sortedLongDateFormatKeys = longDateFormats.keys.sorted { first, second in first.count > second.count }
+    private static let eraNames = (annoDomini: "Anno Domini", beforeChrist: "Before Christ", annoDominiAbbreviation: "AD", beforeChristAbbreviation: "BC")
 
     private enum Piece: Equatable {
         case token(String)
@@ -105,31 +123,45 @@ public enum MomentDateFormat {
         }
         while let first = remaining.first {
             if first == "[" {
-                // Text in brackets is written as it is.
-                if let closing = remaining.firstIndex(of: "]") {
-                    appendLiteral(String(remaining[remaining.index(after: remaining.startIndex)..<closing]))
-                    remaining = remaining[remaining.index(after: closing)...]
-                } else {
-                    appendLiteral(String(remaining))
-                    remaining = ""
-                }
-                continue
-            }
-            if let longFormat = longDateFormats.keys.sorted(by: { first, second in first.count > second.count }).first(where: { key in remaining.hasPrefix(key) }),
-               let expansion = longDateFormats[longFormat] {
+                let bracketed = bracketedText(startingAt: remaining)
+                appendLiteral(bracketed.text)
+                remaining = bracketed.rest
+            } else if first == "\\" {
+                let escaped = escapedText(afterBackslashIn: remaining.dropFirst())
+                appendLiteral(escaped.text)
+                remaining = escaped.rest
+            } else if let longFormat = sortedLongDateFormatKeys.first(where: { key in remaining.hasPrefix(key) }),
+                      let expansion = longDateFormats[longFormat] {
                 pieces += Self.pieces(of: expansion)
                 remaining = remaining.dropFirst(longFormat.count)
-                continue
-            }
-            if let token = tokens.first(where: { token in remaining.hasPrefix(token) }) {
+            } else if let token = sortedTokens.first(where: { token in remaining.hasPrefix(token) }) {
                 pieces.append(.token(token))
                 remaining = remaining.dropFirst(token.count)
-                continue
+            } else {
+                appendLiteral(String(first))
+                remaining = remaining.dropFirst()
             }
-            appendLiteral(String(first))
-            remaining = remaining.dropFirst()
         }
         return pieces
+    }
+
+    /// Text in brackets is written as it is, up to the first `]`. A second `[` before it means the
+    /// first one stands alone, as in Moment.
+    private static func bracketedText(startingAt text: Substring) -> (text: String, rest: Substring) {
+        let afterOpening = text.dropFirst()
+        if let stop = afterOpening.firstIndex(where: { character in character == "]" || character == "[" }), afterOpening[stop] == "]" {
+            return (String(afterOpening[..<stop]), afterOpening[afterOpening.index(after: stop)...])
+        }
+        return ("[", afterOpening)
+    }
+
+    /// A backslash writes the token or letter after it as it is. Moment drops every backslash of
+    /// such a piece, so `\\` alone writes nothing.
+    private static func escapedText(afterBackslashIn text: Substring) -> (text: String, rest: Substring) {
+        let written = sortedLongDateFormatKeys.first(where: { key in text.hasPrefix(key) })
+            ?? sortedTokens.first(where: { token in text.hasPrefix(token) })
+            ?? text.first.map { character in String(character) } ?? ""
+        return (written.replacingOccurrences(of: "\\", with: ""), text.dropFirst(written.count))
     }
 
     private static func value(of token: String, for date: Date, calendar: Calendar, timeZone: TimeZone) -> String {
@@ -146,6 +178,8 @@ public enum MomentDateFormat {
             return (number < 0 ? "-" : "") + String(repeating: "0", count: max(0, width - digits.count)) + digits
         }
         switch token {
+        case "YYYYYY": return (year < 0 ? "-" : "+") + padded(abs(year), 6)
+        case "YYYYY": return padded(year, 5)
         case "YYYY": return padded(year, 4)
         case "YY": return padded(year % 100, 2)
         case "Y": return String(year)
@@ -174,8 +208,10 @@ public enum MomentDateFormat {
         case "WW": return padded(isoComponents.weekOfYear ?? 1, 2)
         case "Wo": return ordinal(isoComponents.weekOfYear ?? 1)
         case "W": return String(isoComponents.weekOfYear ?? 1)
+        case "ggggg": return padded(components.yearForWeekOfYear ?? year, 5)
         case "gggg": return padded(components.yearForWeekOfYear ?? year, 4)
         case "gg": return padded((components.yearForWeekOfYear ?? year) % 100, 2)
+        case "GGGGG": return padded(isoComponents.yearForWeekOfYear ?? year, 5)
         case "GGGG": return padded(isoComponents.yearForWeekOfYear ?? year, 4)
         case "GG": return padded((isoComponents.yearForWeekOfYear ?? year) % 100, 2)
         case "HH": return padded(hour, 2)
@@ -188,9 +224,10 @@ public enum MomentDateFormat {
         case "m": return String(minute)
         case "ss": return padded(second, 2)
         case "s": return String(second)
-        case "SSS": return padded((components.nanosecond ?? 0) / 1_000_000, 3)
-        case "SS": return padded((components.nanosecond ?? 0) / 10_000_000, 2)
-        case "S": return String((components.nanosecond ?? 0) / 100_000_000)
+        case let fraction where fraction.allSatisfy({ character in character == "S" }):
+            // Moment keeps milliseconds: digits beyond the third are zeros.
+            let milliseconds = padded((components.nanosecond ?? 0) / 1_000_000, 3)
+            return String((milliseconds + String(repeating: "0", count: 6)).prefix(fraction.count))
         case "A": return hour < 12 ? "AM" : "PM"
         case "a": return hour < 12 ? "am" : "pm"
         case "X": return String(Int(date.timeIntervalSince1970))
@@ -199,6 +236,11 @@ public enum MomentDateFormat {
             let offsetMinutes = timeZone.secondsFromGMT(for: date) / 60
             let sign = offsetMinutes < 0 ? "-" : "+"
             return sign + padded(abs(offsetMinutes) / 60, 2) + (token == "Z" ? ":" : "") + padded(abs(offsetMinutes) % 60, 2)
+        case "z", "zz": return "" // Moment writes a zone name only for UTC; local times have none.
+        case "N", "NN", "NNN", "NNNNN": return year > 0 ? eraNames.annoDominiAbbreviation : eraNames.beforeChristAbbreviation
+        case "NNNN": return year > 0 ? eraNames.annoDomini : eraNames.beforeChrist
+        case "y", "yy", "yyy", "yyyy": return padded(year > 0 ? year : 1 - year, token.count)
+        case "yo": return ordinal(year > 0 ? year : 1 - year)
         default: return token
         }
     }

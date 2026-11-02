@@ -6,7 +6,7 @@
  *              and map.
  *
  * Authors: felixchvl
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -63,6 +63,9 @@ struct NoteLinksInspector: View {
     struct OutgoingLink: Hashable {
         let target: String
         let isWiki: Bool
+
+        /// Where a web or app address opens; nil for a link to a file of the vault.
+        var externalLocation: URL? { WikiLinkResolver.externalLocation(of: target, isWiki: isWiki) }
     }
 
     /// Each distinct link once, in target order.
@@ -129,9 +132,9 @@ struct NoteLinksInspector: View {
             } catch is CancellationError {
             } catch { workspace.errorMessage = error.localizedDescription }
         }
-        // Mentions are in other notes: they change when the index takes in new contents,
-        // not as this note is typed.
-        .task(id: "\(selectedPanel)-\(workspace.indexVersion)-\(session.path.rawValue)") {
+        // Mentions are in other notes: they change when the index takes in new contents of
+        // another note, or this note's name or aliases change, not as this note is typed.
+        .task(id: "\(selectedPanel)-\(workspace.indexChangeLog.newestVersionAffectingBacklinks(of: session.path))-\(session.path.rawValue)") {
             guard selectedPanel == .backlinks else { return }
             await loadLinkedMentions()
             if showsUnlinkedMentions { await loadUnlinkedMentions() }
@@ -281,7 +284,12 @@ struct NoteLinksInspector: View {
             Section("Outgoing Links") {
                 if outgoing.isEmpty { Text("This note has no links").foregroundStyle(.secondary) }
                 ForEach(outgoing, id: \.self) { link in
-                    Button(link.target) { Task { await workspace.follow(link.target, from: session.path, isWiki: link.isWiki) } }
+                    if let location = link.externalLocation {
+                        // A web address opens in the browser; it names no file of the vault.
+                        Link(link.target, destination: location)
+                    } else {
+                        Button(link.target) { Task { await workspace.follow(link.target, from: session.path, isWiki: link.isWiki) } }
+                    }
                 }
             }
         case .footnotes:

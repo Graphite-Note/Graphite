@@ -5,7 +5,7 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
+ * Version: 0.15
  * Date: 01/11/2026
  */
 
@@ -455,7 +455,7 @@ extension WorkspaceModel {
         indexRefreshFollowingMoves = Task(priority: .userInitiated) { [weak self] in
             await previousRefresh?.value
             do { try await index.refresh(paths: uniquePaths, root: root) } catch { self?.indexingMessage = "Index needs attention" }
-            self?.indexVersion += 1
+            self?.recordIndexChange(paths: nil)
         }
     }
 

@@ -6,7 +6,7 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.40
+ * Version: 0.41
  * Date: 01/11/2026
  */
 
@@ -156,7 +156,7 @@ struct VaultSidebar: View {
             if isCompactWidth { VaultSwitcherMenuItems(workspace: workspace) { showsVaultManager = true } }
         }
         #endif
-        .task(id: "\(panel.rawValue)-\(workspace.indexVersion)-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
+        .task(id: "\(panel.rawValue)-\(panel.reloadVersion(indexVersion: workspace.indexVersion, structureVersion: workspace.structureVersion))-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
             await overview.load(panel, workspace: workspace, showsNestedTags: showsNestedTags)
         }
         // A plugin asked to show one of its sidebar views (`revealLeaf`).
