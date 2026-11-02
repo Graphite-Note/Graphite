@@ -5,7 +5,7 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.28
+ * Version: 0.29
  * Date: 01/11/2026
  */
 
@@ -314,8 +314,16 @@ extension WorkspaceModel {
         markdownEditorRetention.discardStaleEditors()
     }
 
+    /// Whether the vault has a file or folder at `path` now, as another app may have removed it.
+    func fileExistsInVault(_ path: VaultPath) -> Bool {
+        guard let root = folderAccess?.root, let location = try? path.url(in: root) else { return false } // A path outside the vault names nothing.
+        return FileManager.default.fileExists(atPath: location.path)
+    }
+
+    /// Opens the file of the tab closed last again, skipping those open again and those
+    /// deleted in another app.
     func reopenClosedTab() async {
-        guard let path = layout.popClosedPath() else { return }
+        guard let path = layout.popClosedPath(fileExists: fileExistsInVault) else { return }
         await open(path, placement: .newTab)
     }
 
@@ -352,7 +360,7 @@ extension WorkspaceModel {
     /// running, or a conflict is kept. A released tab reopens its PDF, at the same page,
     /// when it is shown again, which loses PDFKit's undo history for it.
     private func releaseHiddenPDFSessions() {
-        let visibleTabIDs = Set(layout.groups.map(\.activeTabID))
+        let visibleTabIDs = layout.shownTabIDs
         let now = ContinuousClock.now
         for tabID in visibleTabIDs { tabDocuments[tabID]?.lastVisibleTime = now }
         let hiddenPDFDocuments = tabDocuments.filter { tabID, document in !visibleTabIDs.contains(tabID) && document.pdfSession != nil }
@@ -534,11 +542,8 @@ extension WorkspaceModel {
     /// - Parameter windowLayout: The tabs this window had, kept with the window by the
     ///   system; nil for the vault's tabs as last left on this device, in any window.
     func restoreTabLayout(_ windowLayout: SavedTabLayout? = nil) {
-        guard let currentVaultIdentifier, let root = folderAccess?.root else { return }
-        let fileExists: (VaultPath) -> Bool = { path in
-            guard let location = try? path.url(in: root) else { return false }
-            return FileManager.default.fileExists(atPath: location.path)
-        }
+        guard let currentVaultIdentifier, folderAccess != nil else { return }
+        let fileExists = fileExistsInVault
         if let saved = windowLayout ?? deviceDefaults.data(forKey: Self.tabLayoutKey(for: currentVaultIdentifier))
             .flatMap({ data in try? JSONDecoder().decode(SavedTabLayout.self, from: data) }) { // tabs saved by another build start the vault afresh
             layout = TabLayout(saved: saved, fileExists: fileExists)

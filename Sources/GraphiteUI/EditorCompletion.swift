@@ -1,3 +1,14 @@
+/**
+ * File: EditorCompletion.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Suggestions while typing a link or a tag, and the popup that lists them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
@@ -189,7 +200,8 @@ struct CompletionProvider {
         let highlightsTitle = !notePart.contains("/")
         var entries: [(path: VaultPath, alias: String?, highlights: [Range<Int>])] = []
         if notePart.trimmingCharacters(in: .whitespaces).isEmpty {
-            entries = workspace.recentFiles.paths.filter { path in path != session.path }.prefix(Self.maximumItemCount).map { path in (path, nil, []) }
+            // Files deleted or renamed in another app are left out, as in the quick switcher.
+            entries = workspace.existingRecentFiles(limit: Self.maximumItemCount, excluding: [session.path]).map { path in (path, nil, []) }
         } else if let matches = try? await index.quickSwitcherMatches(for: notePart, limit: Self.maximumItemCount) {
             entries = matches.map { match in (match.path, match.alias, highlightsTitle ? match.matchedRanges : []) }
         }

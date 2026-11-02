@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.55
+ * Version: 0.56
  * Date: 01/11/2026
  */
 
@@ -139,6 +139,9 @@ struct GraphiteRootView: View {
                 columnVisibility = requestedVisibility
             }
         }
+        .onChange(of: isCompactWidth) { _, isCompact in
+            focusMode.widthDidChange(isCompactWidth: isCompact, columnVisibility: &columnVisibility, showsInspector: &showsInspector)
+        }
         .onChange(of: showsInspector) { _, requestedInspector in
             if focusMode.isActive, requestedInspector {
                 focusMode.leave(columnVisibility: &columnVisibility, showsInspector: &showsInspector)
@@ -265,8 +268,10 @@ struct GraphiteRootView: View {
         // "Reveal current file", from the palette, a tab's menu or the file list's menu.
         .onChange(of: workspace.fileRevealRequest) { _, request in if request != nil { showSidebar() } }
         // A file opened from the list, a link or a search shows on a phone at once.
+        // A rename, a move or a deletion that changes the selection leaves the file list in front.
         .onChange(of: workspace.selection) { _, selection in
-            if selection != nil { showDocumentColumn() }
+            let followsFileManagement = workspace.takeSelectionChangeFromFileManagement()
+            if selection != nil, !followsFileManagement { showDocumentColumn() }
         }
         // So does the graph, opened from the file list's button or the palette.
         .onChange(of: workspace.activeCoreView) { _, coreView in if coreView != nil { showDocumentColumn() } }
@@ -278,7 +283,10 @@ struct GraphiteRootView: View {
             if isVaultRestored { Task { await workspace.handle(url) } } else { pendingLinks.append(url) }
         }
         // The scene keeps the window's tabs, for its own restoration after a relaunch.
-        .onChange(of: workspace.layout.saved) { keptWindowTabs = workspace.windowTabsToKeep() }
+        .onChange(of: workspace.savedLayoutChangeCount) {
+            keptWindowTabs = workspace.windowTabsToKeep()
+            tabOverview.thumbnails.keepThumbnails(of: workspace.layout.allTabs)
+        }
         #if os(macOS)
         .onChange(of: controlActiveState, initial: true) { _, state in
             if state == .key { frontmostWindow?.workspace = workspace; workspace.windowCameToFront() }
@@ -545,7 +553,10 @@ struct GraphiteRootView: View {
     }
 
     private var windowActions: WindowActions {
-        WindowActions(showQuickSwitcher: { activePalette = .quickSwitcher },
+        // Focus is offered where it can be seen and ended; a compact width has neither.
+        var focusModeAction: (() -> Void)?
+        if WorkspaceFocusMode.isOffered(isCompactWidth: isCompactWidth) { focusModeAction = { toggleFocusMode() } }
+        return WindowActions(showQuickSwitcher: { activePalette = .quickSwitcher },
                       showSettings: showSettings,
                       showVaultManager: { workspace.isVaultManagerPresented = true },
                       toggleLinksInspector: { showsInspector.toggle() },
@@ -561,7 +572,7 @@ struct GraphiteRootView: View {
                       create: { kind in creation = CreationRequest(kind: kind) },
                       showTemplatePicker: showTemplatePicker,
                       showTabOverview: showTabOverview,
-                      toggleFocusMode: toggleFocusMode)
+                      toggleFocusMode: focusModeAction)
     }
 
     private func showTabOverview() { workspace.presentTabOverview(tabOverview) }

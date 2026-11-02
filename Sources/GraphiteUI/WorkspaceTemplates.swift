@@ -5,12 +5,17 @@
  * Description: Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 01/11/2026
  */
 
 import Foundation
 import GraphiteCore
+
+/// A vault settings file that can fail to read, for `reportSettingsProblem`.
+enum SettingsProblem {
+    case templatesOrDailyNotes, obsidianAppSettings
+}
 
 /// Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
 extension WorkspaceModel {
@@ -26,6 +31,19 @@ extension WorkspaceModel {
         guard !reasons.isEmpty else { return nil }
         return "Graphite could not read the Templates or Daily notes settings in this vault, so templates and daily notes "
             + "are not used until it can. " + reasons.joined(separator: " ")
+    }
+
+    /// Tells the person that a settings file cannot be read, once: the same message is not
+    /// shown again while the problem lasts, as the window comes to the front or the files
+    /// are read again. A message of nil says the file reads fine, so a later failure is new.
+    func reportSettingsProblem(_ problem: SettingsProblem, message: String?) {
+        guard let message else {
+            reportedSettingsProblems[problem] = nil
+            return
+        }
+        guard reportedSettingsProblems[problem] != message else { return }
+        reportedSettingsProblems[problem] = message
+        errorMessage = message
     }
 
     /// What `read` gives for one settings file: its settings, or why it could not be read.

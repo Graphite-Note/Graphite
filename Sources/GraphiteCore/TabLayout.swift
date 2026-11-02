@@ -1,3 +1,14 @@
+/**
+ * File: TabLayout.swift
+ * ---------------------
+ * Layer: Core
+ * Description: The open tabs, in one group or two side by side, and how opening, closing and moving them changes the layout.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One tab: the file it shows (none in a new tab), whether it is pinned, and its own back
@@ -306,12 +317,26 @@ public struct TabLayout: Equatable, Sendable {
         return group.tabs.map(\.id)
     }
 
-    /// The file of the most recently closed tab that is not open again, removed from the list.
-    public mutating func popClosedPath() -> VaultPath? {
+    /// The file of the most recently closed tab that is not open again and still exists,
+    /// removed from the list. Paths passed over are dropped: a file open again needs no
+    /// reopening, and one deleted elsewhere cannot be reopened.
+    public mutating func popClosedPath(fileExists: (VaultPath) -> Bool) -> VaultPath? {
         while let path = closedPaths.popLast() {
-            if tabID(showing: path) == nil { return path }
+            if tabID(showing: path) == nil, fileExists(path) { return path }
         }
         return nil
+    }
+
+    /// Whether a closed tab's file can be reopened: some closed file is not open again. Whether
+    /// it still exists is found out when it is reopened.
+    public var canReopenClosedTab: Bool {
+        closedPaths.contains { path in tabID(showing: path) == nil }
+    }
+
+    /// The tabs a window shows at once: each side's active tab, and every tab of a side whose
+    /// tabs are stacked, since a stacked side shows its tabs side by side.
+    public var shownTabIDs: Set<UUID> {
+        Set(groups.flatMap { group in group.isStacked ? group.tabs.map(\.id) : [group.activeTabID] })
     }
 
     // MARK: Moving tabs

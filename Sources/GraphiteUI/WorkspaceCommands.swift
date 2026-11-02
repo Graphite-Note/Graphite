@@ -5,7 +5,7 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.15
+ * Version: 0.16
  * Date: 01/11/2026
  */
 
@@ -211,7 +211,7 @@ enum WorkspaceCommandList {
                                        systemImage: layout.focusedGroup.isStacked ? "rectangle" : "rectangle.stack") {
             workspace.toggleStackedTabs()
         })
-        if !layout.closedPaths.isEmpty {
+        if layout.canReopenClosedTab {
             commands.append(PaletteCommand(id: "reopen-tab", command: .reopenClosedTab, systemImage: "arrow.uturn.backward") {
                 Task { await workspace.reopenClosedTab() }
             })
