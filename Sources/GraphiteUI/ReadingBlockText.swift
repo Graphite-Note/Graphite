@@ -7,7 +7,7 @@
  *              breaks, links to notes, footnote numbers, reference links, tasks and callout fold keys.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 02/11/2026
  */
 
@@ -247,6 +247,21 @@ final class NoteReadingSnapshots {
         recent.insert((noteText, snapshot), at: 0)
         if recent.count > 2 { recent.removeLast() }
         return snapshot
+    }
+}
+
+extension LivePreviewBlock {
+    /// The part of a Read Aloud highlight, a range of the note, that lies in this block, as a range of
+    /// its `markdown`; nil when none does. Offsets are counted from where the block starts in the note
+    /// now, `blockStart` (its view stays while typing above moves it), and through the block's lines as
+    /// the note has them, so a Windows note's "\r\n" breaks, which `markdown` writes as one, do not shift it.
+    func readingRange(ofNoteRange highlight: NSRange, blockStart: Int) -> NSRange? {
+        let overlap = NSIntersectionRange(highlight, NSRange(location: blockStart, length: range.length))
+        guard overlap.length > 0 else { return nil }
+        let lineOffsets = RenderedBlockLineOffsets(markdown: markdown, sourceLines: sourceLines)
+        let start = lineOffsets.markdownOffset(ofSourceOffset: overlap.location - blockStart)
+        let end = lineOffsets.markdownOffset(ofSourceOffset: NSMaxRange(overlap) - blockStart)
+        return end > start ? NSRange(location: start, length: end - start) : nil
     }
 }
 
