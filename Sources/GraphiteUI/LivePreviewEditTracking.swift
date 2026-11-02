@@ -500,15 +500,15 @@ enum LivePreviewBlockShifting {
         guard touchedIndices.count == 1, let calloutIndex = touchedIndices.first else { return nil }
         let calloutRange = entries[calloutIndex].range
         guard NSMaxRange(lineBeforeEdit) <= NSMaxRange(calloutRange) else { return nil }
-        switch entries[calloutIndex].block.kind {
-        case .callout:
+        if entries[calloutIndex].block.kind == .callout {
             // A body line: the header's `[!type]` decides whether the lines are a callout at all.
             guard lineBeforeEdit.location > calloutRange.location,
                   isCalloutBodyLine(sourceBeforeEdit, lineRange: lineBeforeEdit), isCalloutBodyLine(source, lineRange: lineAfterEdit) else { return nil }
-        case .mathBlock:
+        } else if entries[calloutIndex].block.kind == .mathBlock {
             guard !UnstyledEdit.containsLineAffectingFollowingLines(source, in: lineAfterEdit),
-                  UnstyledEdit.displayMathEffects(sourceBeforeEdit, in: lineBeforeEdit) == UnstyledEdit.displayMathEffects(source, in: lineAfterEdit) else { return nil }
-        default:
+                  UnstyledEdit.displayMathEffects(sourceBeforeEdit, in: lineBeforeEdit)
+                    == UnstyledEdit.displayMathEffects(source, in: lineAfterEdit) else { return nil }
+        } else {
             return nil
         }
         let newCalloutRange = NSRange(location: calloutRange.location, length: calloutRange.length + edit.changeInLength)
@@ -839,7 +839,8 @@ enum TextDifference {
             return other.replacingCharacters(in: typed.replacedRange, with: typedText)
         }
         if typed.replacedRange.location >= NSMaxRange(elsewhere.replacedRange) {
-            return other.replacingCharacters(in: NSRange(location: typed.replacedRange.location + lengthChange, length: typed.replacedRange.length), with: typedText)
+            let movedRange = NSRange(location: typed.replacedRange.location + lengthChange, length: typed.replacedRange.length)
+            return other.replacingCharacters(in: movedRange, with: typedText)
         }
         return other.replacingCharacters(in: NSRange(location: NSMaxRange(elsewhere.replacementRange), length: 0), with: typedText)
     }

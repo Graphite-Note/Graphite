@@ -35,30 +35,11 @@ final class MacEditorFoldButtons {
         var keysInUse = Set<String>()
         textLayoutManager.enumerateTextLayoutFragments(from: viewportRange.location, options: []) { fragment in
             let fragmentStart = contentManager.offset(from: documentStart, to: fragment.rangeInElement.location)
-            if let region = regionsByStart[fragmentStart], NSMaxRange(region.headerRange) <= source.length,
-               let firstLine = fragment.textLineFragments.first, let lastLine = fragment.textLineFragments.last {
+            if let region = regionsByStart[fragmentStart], NSMaxRange(region.headerRange) <= source.length {
                 keysInUse.insert(region.key)
                 let pair = buttons[region.key] ?? makeButtons(for: region.key, in: textView)
                 buttons[region.key] = pair
-                let isFolded = foldedKeys.contains(region.key)
-                let fragmentOrigin = CGPoint(x: origin.x + fragment.layoutFragmentFrame.minX, y: origin.y + fragment.layoutFragmentFrame.minY)
-                let header = source.substring(with: region.headerRange)
-                let indentLength = (header.prefix { character in character == " " || character == "\t" } as Substring).utf16.count
-                let textStartX = firstLine.locationForCharacter(at: min(indentLength, max(0, firstLine.characterRange.length - 1))).x
-                let firstLineBounds = firstLine.typographicBounds
-                pair.chevron.frame = CGRect(x: max(2, fragmentOrigin.x + textStartX - Self.chevronSize - 4),
-                                            y: fragmentOrigin.y + firstLineBounds.minY + (firstLineBounds.height - Self.chevronSize) / 2,
-                                            width: Self.chevronSize, height: Self.chevronSize)
-                pair.chevron.image = NSImage(systemSymbolName: isFolded ? "chevron.right" : "chevron.down", accessibilityDescription: nil)
-                pair.chevron.alphaValue = isFolded ? 1 : 0.4
-                let headerText = header.trimmingCharacters(in: .whitespaces).drop { character in character == "#" }.trimmingCharacters(in: .whitespaces)
-                pair.chevron.setAccessibilityLabel(isFolded ? "Unfold \(headerText)" : "Fold \(headerText)")
-                pair.ellipsis.isHidden = !isFolded
-                if isFolded {
-                    let lastLineBounds = lastLine.typographicBounds
-                    pair.ellipsis.frame = CGRect(x: fragmentOrigin.x + lastLineBounds.maxX + 6, y: fragmentOrigin.y + lastLineBounds.minY + (lastLineBounds.height - Self.chevronSize) / 2,
-                                                 width: 28, height: Self.chevronSize)
-                }
+                position(pair, of: region, isFolded: foldedKeys.contains(region.key), on: fragment, origin: origin, source: source)
             }
             return fragment.rangeInElement.location.compare(viewportRange.endLocation) == .orderedAscending
         }
@@ -67,6 +48,29 @@ final class MacEditorFoldButtons {
             pair.ellipsis.removeFromSuperview()
             buttons[key] = nil
         }
+    }
+
+    private func position(_ pair: (chevron: NSButton, ellipsis: NSButton), of region: FoldableRegion, isFolded: Bool, on fragment: NSTextLayoutFragment,
+                          origin: CGPoint, source: NSString) {
+        guard let firstLine = fragment.textLineFragments.first, let lastLine = fragment.textLineFragments.last else { return }
+        let fragmentOrigin = CGPoint(x: origin.x + fragment.layoutFragmentFrame.minX, y: origin.y + fragment.layoutFragmentFrame.minY)
+        let header = source.substring(with: region.headerRange)
+        let indentLength = (header.prefix { character in character == " " || character == "\t" } as Substring).utf16.count
+        let textStartX = firstLine.locationForCharacter(at: min(indentLength, max(0, firstLine.characterRange.length - 1))).x
+        let firstLineBounds = firstLine.typographicBounds
+        pair.chevron.frame = CGRect(x: max(2, fragmentOrigin.x + textStartX - Self.chevronSize - 4),
+                                    y: fragmentOrigin.y + firstLineBounds.minY + (firstLineBounds.height - Self.chevronSize) / 2,
+                                    width: Self.chevronSize, height: Self.chevronSize)
+        pair.chevron.image = NSImage(systemSymbolName: isFolded ? "chevron.right" : "chevron.down", accessibilityDescription: nil)
+        pair.chevron.alphaValue = isFolded ? 1 : 0.4
+        let headerText = header.trimmingCharacters(in: .whitespaces).drop { character in character == "#" }.trimmingCharacters(in: .whitespaces)
+        pair.chevron.setAccessibilityLabel(isFolded ? "Unfold \(headerText)" : "Fold \(headerText)")
+        pair.ellipsis.isHidden = !isFolded
+        guard isFolded else { return }
+        let lastLineBounds = lastLine.typographicBounds
+        pair.ellipsis.frame = CGRect(x: fragmentOrigin.x + lastLineBounds.maxX + 6,
+                                     y: fragmentOrigin.y + lastLineBounds.minY + (lastLineBounds.height - Self.chevronSize) / 2,
+                                     width: 28, height: Self.chevronSize)
     }
 
     func removeAll() {

@@ -29,4 +29,14 @@ enum MacEditorClickOutcome: Equatable {
         return .released
     }
 }
+
+extension MarkdownMacTextView {
+    /// What the press `event` turns out to be, reading the events that follow it.
+    func outcomeOfPress(_ event: NSEvent) -> MacEditorClickOutcome {
+        let nextEvent = nextEventAfterPress ?? { [weak self] in
+            self?.window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]).map { next in (next.type, next.locationInWindow) }
+        }
+        return MacEditorClickOutcome.following(pressAt: event.locationInWindow, nextEvent: nextEvent)
+    }
+}
 #endif

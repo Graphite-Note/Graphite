@@ -47,7 +47,9 @@ public enum MarkdownEditing {
             return (start, (line as NSString).substring(from: start))
         }
         let headingLines = lines.filter { line in !isSkipped(line.content) }
-        let removes = !headingLines.isEmpty && headingLines.allSatisfy { line in MarkdownHeadingSyntax.level(of: headingText(line.content).text) == clampedLevel }
+        let removes = !headingLines.isEmpty && headingLines.allSatisfy { line in
+            MarkdownHeadingSyntax.level(of: headingText(line.content).text) == clampedLevel
+        }
         let marker = removes ? "" : String(repeating: "#", count: clampedLevel) + " "
         return transformingLines(in: text, selection: selection) { line in
             guard !isSkipped(line) else { return nil }

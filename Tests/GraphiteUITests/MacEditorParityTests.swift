@@ -228,7 +228,7 @@ final class MacEditorParityTests: XCTestCase {
         var configuration = editor.coordinator.configuration
         configuration.mode = .livePreview
         editor.coordinator.configuration = configuration
-        editor.coordinator.environment = LivePreviewEnvironment(root: FileManager.default.temporaryDirectory, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+        editor.coordinator.environment = LivePreviewEnvironment(root: try TemporaryVault.make(prefix: "Vault", for: self).root, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
                                                                 resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: { _ in })
         editor.coordinator.restyleEverything(in: editor.textView, forcesBlockScan: true)
         _ = editor.coordinator.runKeyCommand(.moveLinesUp, in: editor.textView)
@@ -296,7 +296,7 @@ final class MacEditorParityTests: XCTestCase {
             if let textView = findTextView(in: host) { return (textView, session, host) }
             turnRunLoop(0.01)
         }
-        throw XCTSkip("SwiftUI did not make the editor within 20 s.")
+        return (try XCTUnwrap(nil as MarkdownMacTextView?, "SwiftUI did not make the editor within 20 s."), session, host)
     }
 
     /// Turning spell checking off reaches a note already open.

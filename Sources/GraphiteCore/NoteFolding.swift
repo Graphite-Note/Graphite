@@ -219,7 +219,8 @@ public enum NoteFolding {
             return text.substring(with: NSRange(location: start, length: contentsEnd - start))
         }
         let lineBefore = lineText(before, containing: replacedRange), lineAfter = lineText(after, containing: insertedRange)
-        guard let lineStructure = structure(of: lineBefore), lineStructure == structure(of: lineAfter), indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
+        guard let lineStructure = structure(of: lineBefore), lineStructure == structure(of: lineAfter),
+              indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
         // A line that underlines the one above it (`===`), or is underlined by the one below,
         // is part of a setext heading, so editing it can change a region or its key.
         func nextLineText(_ text: NSString, after range: NSRange) -> String? {

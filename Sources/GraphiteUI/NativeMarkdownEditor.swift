@@ -1469,7 +1469,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// Where the frontmatter ends while it is rendered as properties.
         private var renderedPropertiesEnd: Int? {
             guard styling.rendersProperties, !textState.cachesDescribeOldText else { return nil }
-            return textState.blockEntries.first { entry in entry.block.kind == .frontmatter && entry.range.location == 0 }.map { entry in NSMaxRange(entry.range) }
+            let frontmatter = textState.blockEntries.first { entry in entry.block.kind == .frontmatter && entry.range.location == 0 }
+            return frontmatter.map { entry in NSMaxRange(entry.range) }
         }
 
         /// Makes an edit through the text view, so it joins the undo history.
@@ -1559,8 +1560,10 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 let foldedSections = NoteFolding.foldedSections(foldedRegions)
                 var movesUp = false
                 if case .moveLinesUp = command { movesUp = true }
-                guard let edit = MarkdownEditing.movingLines(up: movesUp, in: currentSource(of: textView), selection: textView.selectedRange, foldedSections: foldedSections) else { return }
-                if let propertiesEnd = renderedPropertiesEnd, NativeMarkdownEditor.cutsIntoRenderedProperties(edit.range, propertiesEnd: propertiesEnd) { return }
+                guard let edit = MarkdownEditing.movingLines(up: movesUp, in: currentSource(of: textView), selection: textView.selectedRange,
+                                                             foldedSections: foldedSections) else { return }
+                if let propertiesEnd = renderedPropertiesEnd,
+                   NativeMarkdownEditor.cutsIntoRenderedProperties(edit.range, propertiesEnd: propertiesEnd) { return }
                 isMovingLines = true
                 perform(edit, in: textView)
                 isMovingLines = false
@@ -1627,7 +1630,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // The folds are carried from before a composition started: during one, the
             // foldable regions already follow the marked text.
             if textView.markedTextRange == nil {
-                foldTracking.recordEditAboutToBeMade(at: range.location, textLength: textView.textStorage.length, foldedKeys: session.foldedKeys, followsFolds: !isMovingLines)
+                foldTracking.recordEditAboutToBeMade(at: range.location, textLength: textView.textStorage.length,
+                                                     foldedKeys: session.foldedKeys, followsFolds: !isMovingLines)
             }
             return true
         }
@@ -1717,7 +1721,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private func returnToTopLineAfterWidthChange(in textView: MarkdownTextView) {
             guard let topLine = topLineBeforeWidthChange else { return }
             topLineBeforeWidthChange = nil
-            guard abs(textView.contentColumnWidth - topLine.columnWidth) > 0.5, pendingJump == nil, !textView.isDragging, !textView.isDecelerating else { return }
+            guard abs(textView.contentColumnWidth - topLine.columnWidth) > 0.5, pendingJump == nil,
+                  !textView.isDragging, !textView.isDecelerating else { return }
             pendingJump = .topOfCharacter(topLine.location)
             performPendingJumpIfReady(in: textView)
         }
@@ -1738,8 +1743,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         private func observeSceneActivation(of scene: UIScene, textView: MarkdownTextView) {
             guard sceneActivationObserver == nil else { return }
-            sceneActivationObserver = NotificationCenter.default.addObserver(forName: UIScene.didActivateNotification, object: scene, queue: .main) { [weak self, weak textView] _ in
-                MainActor.assumeIsolated {
+            sceneActivationObserver = NotificationCenter.default.addObserver(forName: UIScene.didActivateNotification, object: scene,
+                                                                             queue: .main) { [weak self, weak textView] _ in
+                Task { @MainActor [weak self, weak textView] in
                     guard let self else { return }
                     if let observer = self.sceneActivationObserver { NotificationCenter.default.removeObserver(observer) }
                     self.sceneActivationObserver = nil
@@ -2132,7 +2138,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         /// Where a cursor that landed in a folded section goes instead.
         private func locationOutsideFolds(for selection: NSRange, in textView: UITextView) -> Int? {
-            foldTracking.locationOutsideFolds(for: selection, movedFrom: lastSelectionLocation, textLength: textView.textStorage.length, foldedKeys: session.foldedKeys)
+            foldTracking.locationOutsideFolds(for: selection, movedFrom: lastSelectionLocation, textLength: textView.textStorage.length,
+                                              foldedKeys: session.foldedKeys)
         }
 
         /// Places a chevron beside each heading and list item that folds, and "…" after a
@@ -2746,18 +2753,13 @@ final class MarkdownMacTextView: NSTextView {
             return
         }
         // A press on a link or a box acts on release; one that moves away starts a selection.
-        let nextEvent = nextEventAfterPress ?? { [weak self] in
-            self?.window?.nextEvent(matching: [.leftMouseUp, .leftMouseDragged]).map { next in (next.type, next.locationInWindow) }
-        }
-        guard MacEditorClickOutcome.following(pressAt: event.locationInWindow, nextEvent: nextEvent) == .released else {
+        guard outcomeOfPress(event) == .released else {
             super.mouseDown(with: event)
             return
         }
         if toggleTaskOnClick?(characterIndex) == true { return }
         _ = followLinkOnClick?(characterIndex, event.modifierFlags)
     }
-
-    // MARK: Find
 
     /// Shows the text the find bar moved to, which a fold or a rendered block can hide; set by
     /// the coordinator.
@@ -2768,8 +2770,6 @@ final class MarkdownMacTextView: NSTextView {
         super.scrollRangeToVisible(range)
     }
 
-    // MARK: Inline title
-
     /// The note's name above the text, as on the iPad, drawn by a label the text is inset below.
     var inlineTitle: (text: String, font: NSFont, color: NSColor)? {
         didSet {
@@ -2777,51 +2777,10 @@ final class MarkdownMacTextView: NSTextView {
             updateInlineTitleLabel()
         }
     }
-    private var inlineTitleLabel: NSTextField?
+    var inlineTitleLabel: NSTextField?
     /// The label's measured height, by the width it was measured at: the view's frame changes
     /// with every line typed, and only a new width or title measures it again.
-    private var measuredInlineTitle: (width: CGFloat, height: CGFloat)?
-    private static let topInset: CGFloat = 32
-    private static let inlineTitleSpacing: CGFloat = 20
-
-    private func updateInlineTitleLabel() {
-        measuredInlineTitle = nil
-        guard let inlineTitle else {
-            inlineTitleLabel?.removeFromSuperview()
-            inlineTitleLabel = nil
-            setTopInset(Self.topInset)
-            return
-        }
-        let label = inlineTitleLabel ?? NSTextField(wrappingLabelWithString: inlineTitle.text)
-        label.stringValue = inlineTitle.text
-        label.font = inlineTitle.font
-        label.textColor = inlineTitle.color
-        if label.superview == nil { addSubview(label) }
-        inlineTitleLabel = label
-        layOutInlineTitle()
-    }
-
-    private func layOutInlineTitle() {
-        guard let inlineTitleLabel, frame.width > 0 else { return }
-        let padding = textContainer?.lineFragmentPadding ?? 0
-        let width = max(frame.width - 2 * textContainerInset.width - 2 * padding, 1)
-        let height: CGFloat
-        if let measuredInlineTitle, measuredInlineTitle.width == width {
-            height = measuredInlineTitle.height
-        } else {
-            height = ceil(inlineTitleLabel.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)).height ?? 0)
-            measuredInlineTitle = (width, height)
-        }
-        inlineTitleLabel.frame = NSRect(x: textContainerInset.width + padding, y: Self.topInset, width: width, height: height)
-        setTopInset(Self.topInset + height + Self.inlineTitleSpacing)
-    }
-
-    /// AppKit's inset is the same above and below the text, so a title leaves more room below too.
-    private func setTopInset(_ inset: CGFloat) {
-        guard abs(textContainerInset.height - inset) > 0.5 else { return }
-        textContainerInset = CGSize(width: textContainerInset.width, height: inset)
-        didMoveTextColumn?()
-    }
+    var measuredInlineTitle: (width: CGFloat, height: CGFloat)?
 
     // MARK: Plugins' menu items and paste
 
@@ -3209,14 +3168,17 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         (textView as? MarkdownMacTextView)?.offerPasteToPlugins = coordinator.actions.pluginPaste
         (textView as? MarkdownMacTextView)?.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
         (textView as? MarkdownMacTextView)?.inlineTitle = inlineTitle
-        if textView.isContinuousSpellCheckingEnabled != configuration.usesSpellChecking { textView.isContinuousSpellCheckingEnabled = configuration.usesSpellChecking }
+        if textView.isContinuousSpellCheckingEnabled != configuration.usesSpellChecking {
+            textView.isContinuousSpellCheckingEnabled = configuration.usesSpellChecking
+        }
         let editorActions = actions
         (textView as? MarkdownMacTextView)?.contextMenuEntries = contextMenu.map { menuActions in
             { EditorContextMenuContent.entries(actions: menuActions, editorActions: editorActions) }
         }
         let previousBlockPolicy = coordinator.renderedBlockPolicy
         let hasNewConfiguration = coordinator.configuration != configuration
-        let topLineBeforeRestyle = hasNewConfiguration || coordinator.renderedBlockPolicy != previousBlockPolicy ? coordinator.topCharacter(of: textView) : nil
+        let hasNewBlockPolicy = coordinator.renderedBlockPolicy != previousBlockPolicy
+        let topLineBeforeRestyle = hasNewConfiguration || hasNewBlockPolicy ? coordinator.topCharacter(of: textView) : nil
         coordinator.configuration = configuration
         coordinator.environment = environment
         // Turning the Properties view on or off, or a plugin starting to draw code blocks,
@@ -3295,7 +3257,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             case topOfCharacter(Int)
         }
         var pendingJump: Jump?
-        private var textState: LivePreviewTextState { styling.textState }
+        var textState: LivePreviewTextState { styling.textState }
         /// The markup the styling shows as written in Live Preview; see `RevealedMarkup`.
         var revealedMarkup: RevealedMarkup? { styling.revealedMarkup }
         private var renderedBlocks: LivePreviewRenderedBlocks { styling.renderedBlocks }
@@ -3313,15 +3275,16 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// Set while Graphite changes the text itself, which may change the YAML.
         private var isApplyingOwnEdit = false
         /// Set while a command or a typing helper makes its edit, which is not typing.
-        private var isMakingCommandEdit = false
+        var isMakingCommandEdit = false
         /// Set while lines move: the folds' keys go with their headers.
-        private var isMovingLines = false
+        var isMovingLines = false
         /// What folds in the note, as on the iPad, and its chevrons.
         let foldTracking = EditorFoldTracking()
         let foldButtons = MacEditorFoldButtons()
-        private var postponedFoldScan: DispatchWorkItem?
+        var postponedFoldScan: Task<Void, Never>?
+        var foldScanClock: any ApplicationClock = LiveApplicationClock()
         /// Where the cursor was, to tell which way it moved into a folded section.
-        private var lastSelectionLocation = 0
+        var lastSelectionLocation = 0
         /// The suggestions at the cursor: what they were found for and what plugins heard.
         private var completionTracking = EditorCompletionTracking()
 
@@ -3441,10 +3404,6 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             textView.reportUnreadableItem = { [weak self] in self?.session.errorMessage = NativeMarkdownEditor.unreadableItemMessage }
             textView.currentVaultRoot = session.vaultRoot
             textView.linkPreviews = linkPreviews
-            textView.followLinkOnClick = { [weak self, weak textView] characterIndex, modifierFlags in
-                guard let self, let textView else { return false }
-                return self.followLink(atCharacter: characterIndex, modifierFlags: modifierFlags, in: textView)
-            }
             // Markup and a block's source show at the cursor only while the note has keyboard
             // focus, as on the iPad: a note opened from the file list, its cursor at the start,
             // showed the callout or table there as source until a click in the note.
@@ -3458,23 +3417,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 self.followKeyboardFocus(false, in: textView)
                 self.closeCompletion()
             }
-            textView.toggleTaskOnClick = { [weak self, weak textView] characterIndex in
-                guard let self, let textView else { return false }
-                return self.toggleTask(atCharacter: characterIndex, in: textView)
-            }
-            textView.isClickTarget = { [weak self, weak textView] characterIndex in
-                guard let self, let textView else { return false }
-                return self.taskCheckbox(atCharacter: characterIndex, in: textView) != nil || self.link(atCharacter: characterIndex, in: textView) != nil
-            }
-            textView.revealFoundText = { [weak self, weak textView] range in
-                guard let self, let textView else { return }
-                self.revealFoundText(range, in: textView)
-            }
-            foldButtons.toggle = { [weak self, weak textView] key in
-                guard let self, let textView else { return }
-                if self.session.foldedKeys.contains(key) { self.session.foldedKeys.remove(key) } else { self.session.foldedKeys.insert(key) }
-                self.applyFolds(in: textView)
-            }
+            connectClicksFindAndFolds(of: textView)
             // Bullets, task boxes, quote bars and inline math are drawn over their hidden
             // markup, as on the iPad.
             textView.textLayoutManager?.delegate = self
@@ -3525,7 +3468,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             styling.stopObservingCharacterEdits()
         }
 
-        private func currentSource(of textView: NSTextView) -> NSString {
+        func currentSource(of textView: NSTextView) -> NSString {
             styling.currentSource(of: textView)
         }
 
@@ -3539,26 +3482,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             styling.restyleEverything(in: textView)
         }
 
-        /// Takes in the text: its rendered blocks, and what folds in it. An edit that makes the
-        /// fold regions be found again (a line break) reads every line; with nothing folded,
-        /// only the chevrons depend on them, so that waits for typing to pause, and a burst of
-        /// typing costs one pass instead of one for each Return.
-        private func takeInText(of textView: NSTextView, forcesBlockScan: Bool = false) {
-            let edit = textState.editSinceBlockScan
-            styling.updateTextState(of: textView, forcesBlockScan: forcesBlockScan)
-            foldTracking.update(source: textState.source, editSinceLastUpdate: edit, mayPostponeScan: session.foldedKeys.isEmpty)
-            guard foldTracking.isWaitingForScan else { return }
-            postponedFoldScan?.cancel()
-            let scan = DispatchWorkItem { [weak self, weak textView] in
-                guard let self, let textView else { return }
-                self.foldTracking.scanIfWaiting()
-                self.positionFoldButtons(in: textView)
-            }
-            postponedFoldScan = scan
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: scan)
-        }
-
-        private func restyle(_ range: NSRange, in textView: NSTextView) {
+        func restyle(_ range: NSRange, in textView: NSTextView) {
             styling.restyle(range, in: textView)
         }
 
@@ -3636,7 +3560,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                       toCharacterRange newSelectedCharRange: NSRange) -> NSRange {
             // Folds describe the text before an edit until it settles.
             if !textState.cachesDescribeOldText,
-               let target = foldTracking.locationOutsideFolds(for: newSelectedCharRange, movedFrom: lastSelectionLocation, textLength: textView.textStorage?.length ?? 0, foldedKeys: session.foldedKeys) {
+               let target = foldTracking.locationOutsideFolds(for: newSelectedCharRange, movedFrom: lastSelectionLocation,
+                                                              textLength: textView.textStorage?.length ?? 0, foldedKeys: session.foldedKeys) {
                 return NSRange(location: target, length: 0)
             }
             guard let entry = concealedPropertiesEntry(in: textView) else { return newSelectedCharRange }
@@ -3662,11 +3587,13 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 return true
             }
             let propertiesEntry = concealedPropertiesEntry(in: textView)
-            if let propertiesEntry, NativeMarkdownEditor.cutsIntoRenderedProperties(affectedCharRange, propertiesEnd: NSMaxRange(propertiesEntry.range)) { return false }
+            if let propertiesEntry,
+               NativeMarkdownEditor.cutsIntoRenderedProperties(affectedCharRange, propertiesEnd: NSMaxRange(propertiesEntry.range)) { return false }
             // Characters only, not an attribute change; and the note's own typing, not the find
             // bar's replace, which keeps the keyboard.
             if !isMakingCommandEdit, let replacementString, !textView.hasMarkedText(), textView.window?.firstResponder === textView,
-               let edit = typingEdit(replacing: affectedCharRange, with: replacementString, belowProperties: propertiesEntry != nil, in: textView) {
+               let edit = typingEdit(replacing: affectedCharRange, with: replacementString,
+                                     belowProperties: propertiesEntry != nil, in: textView) {
                 perform(edit, in: textView)
                 return false
             }
@@ -3681,96 +3608,6 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             }
             recordEditAboutToBeMade(replacing: affectedCharRange, in: textView)
             return true
-        }
-
-        /// The folds are carried from before a composition started: while one runs the text
-        /// is not styled, and the regions wait for it to end.
-        private func recordEditAboutToBeMade(replacing range: NSRange, in textView: NSTextView) {
-            guard !textView.hasMarkedText(), !session.foldedKeys.isEmpty else { return }
-            foldTracking.recordEditAboutToBeMade(at: range.location, textLength: textView.textStorage?.length ?? 0, foldedKeys: session.foldedKeys, followsFolds: !isMovingLines)
-        }
-
-        /// What a key does beyond inserting itself, as on the iPad; nil for a plain insertion.
-        private func typingEdit(replacing range: NSRange, with replacement: String, belowProperties: Bool, in textView: NSTextView) -> MarkdownTextEdit? {
-            let source = currentSource(of: textView)
-            if !textState.cachesDescribeOldText, let edit = foldTracking.newLineAfterFoldedSection(replacing: range, with: replacement, in: source as String, foldedKeys: session.foldedKeys) {
-                return edit
-            }
-            if belowProperties, let edit = MarkdownEditing.typingBelowClosingProperties(typed: replacement, in: source, selection: range) { return edit }
-            guard range == textView.selectedRange() || replacement.isEmpty else { return nil }
-            return configuration.editingBehavior.typingEdit(replacing: range, with: replacement, in: source, selection: textView.selectedRange())
-        }
-
-        /// Makes an edit of a command or a typing helper as one change Undo takes back.
-        func perform(_ edit: MarkdownTextEdit, in textView: NSTextView) {
-            guard let textStorage = textView.textStorage, NSMaxRange(edit.range) <= textStorage.length else { return }
-            isMakingCommandEdit = true
-            defer { isMakingCommandEdit = false }
-            if edit.range.length > 0 || !edit.replacement.isEmpty {
-                textView.breakUndoCoalescing()
-                guard textView.shouldChangeText(in: edit.range, replacementString: edit.replacement) else { return }
-                textStorage.replaceCharacters(in: edit.range, with: edit.replacement)
-                textView.didChangeText()
-            }
-            if NSMaxRange(edit.selectionAfter) <= textStorage.length {
-                textView.setSelectedRange(edit.selectionAfter)
-                textView.scrollRangeToVisible(edit.selectionAfter)
-            }
-        }
-
-        // MARK: Folding
-
-        /// Applies the session's folds: restyles the sections whose fold changed, and moves the
-        /// cursor out of what is hidden. Restyling the whole note, for many folds at once,
-        /// re-estimates TextKit's layout, so the view goes back to the line it showed.
-        func applyFolds(in textView: NSTextView) {
-            foldTracking.scanIfWaiting()
-            if !textState.cachesDescribeOldText, let changedSections = foldTracking.sectionsChangingFold(to: session.foldedKeys) {
-                foldTracking.appliedFoldedKeys = session.foldedKeys
-                for section in changedSections { restyle(section, in: textView) }
-            } else {
-                let topLine = topCharacter(of: textView)
-                restyleEverything(in: textView)
-                if let topLine, pendingJump == nil {
-                    pendingJump = .topOfCharacter(topLine)
-                    performPendingJumpIfReady(in: textView)
-                }
-            }
-            if let target = foldTracking.locationOutsideFolds(for: textView.selectedRange(), movedFrom: lastSelectionLocation, textLength: textView.textStorage?.length ?? 0, foldedKeys: session.foldedKeys) {
-                textView.setSelectedRange(NSRange(location: target, length: 0))
-            }
-            schedulePlacement(in: textView)
-            positionFoldButtons(in: textView)
-        }
-
-        /// Places a chevron beside each heading and list item that folds, for the lines TextKit
-        /// has laid out on screen. Mid-edit, the regions describe the text before it, and the
-        /// buttons stay until it settles.
-        func positionFoldButtons(in textView: NSTextView) {
-            guard !textState.cachesDescribeOldText, !foldTracking.isWaitingForScan else { return }
-            foldButtons.place(regionsByStart: foldTracking.regionsByStart(foldedKeys: session.foldedKeys), foldedKeys: session.foldedKeys,
-                              source: currentSource(of: textView), in: textView)
-        }
-
-        /// Unfolds the sections that hide `location`, before a jump or a find shows it.
-        private func unfoldSections(hiding location: Int, in textView: NSTextView) {
-            foldTracking.scanIfWaiting()
-            let hiding = NoteFolding.regions(hiding: location, in: foldTracking.folded(foldedKeys: session.foldedKeys))
-            guard !hiding.isEmpty else { return }
-            session.foldedKeys.subtract(hiding.map(\.key))
-            applyFolds(in: textView)
-        }
-
-        /// Shows the match the find bar moved to: its folded sections open, and a rendered block
-        /// over it shows its source, though the bar holds the keyboard. Markup follows the
-        /// keyboard again when it comes back to the note (`followKeyboardFocus`).
-        func revealFoundText(_ range: NSRange, in textView: NSTextView) {
-            guard !textState.cachesDescribeOldText, !textView.hasMarkedText(), NSMaxRange(range) <= (textView.textStorage?.length ?? 0) else { return }
-            unfoldSections(hiding: range.location, in: textView)
-            guard concealedEntries(in: textView).contains(where: { entry in entry.block.kind != .frontmatter && NSLocationInRange(range.location, entry.range) }) else { return }
-            styling.revealsMarkupAtSelection = true
-            if textView.selectedRange() != range { textView.setSelectedRange(range) }
-            styling.restyleRevealedMarkup(in: textView)
         }
 
         /// Applies every insertion waiting in the session, in order, and tells whether there
@@ -3874,7 +3711,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// The blocks whose source is concealed under their views, in note order: the
         /// properties unless "Edit Source" shows their YAML, as Obsidian keeps them above the
         /// note, and every other block while the selection is outside it, as on the iPad.
-        private func concealedEntries(in textView: NSTextView) -> [LivePreviewBlockEntry] {
+        func concealedEntries(in textView: NSTextView) -> [LivePreviewBlockEntry] {
             styling.concealedEntries(in: textView)
         }
 
@@ -3971,7 +3808,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
 
         /// Places the blocks after a change, on the next turn of the run loop; TextKit's
         /// own layout of the viewport places them too (`MarkdownMacTextView.didLayOutViewport`).
-        private func schedulePlacement(in textView: NSTextView) {
+        func schedulePlacement(in textView: NSTextView) {
             // A block whose source now shows loses its view at once, before its text is drawn.
             if !textState.cachesDescribeOldText {
                 renderedBlocks.detachViews(except: Set(concealedEntries(in: textView).map(\.key)), entries: textState.blockEntries)
@@ -4161,25 +3998,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 return true
             case .undo, .redo, .attach, .draw, .dismissKeyboard, .followLink:
                 return false
-            case .moveLinesUp, .moveLinesDown:
-                // A folded section moves and is moved past as one unit, its fold with it.
-                foldTracking.scanIfWaiting()
-                let foldedSections = NoteFolding.foldedSections(foldTracking.folded(foldedKeys: session.foldedKeys))
-                var movesUp = false
-                if case .moveLinesUp = command { movesUp = true }
-                guard let edit = MarkdownEditing.movingLines(up: movesUp, in: currentSource(of: textView), selection: textView.selectedRange(), foldedSections: foldedSections) else { return false }
-                isMovingLines = true
-                perform(edit, in: textView)
-                isMovingLines = false
-                // A line that lands at the end of a folded heading's section is part of it now,
-                // and must not vanish into the fold.
-                let hiding = NoteFolding.regions(hiding: edit.selectionAfter.location, in: foldTracking.folded(foldedKeys: session.foldedKeys))
-                if !hiding.isEmpty {
-                    session.foldedKeys.subtract(hiding.map(\.key))
-                    applyFolds(in: textView)
-                    textView.setSelectedRange(edit.selectionAfter)
-                }
-                return true
+            case .moveLinesUp: return moveLines(up: true, in: textView)
+            case .moveLinesDown: return moveLines(up: false, in: textView)
             case .heading, .wrap, .bulletList, .numberedList, .task, .indent, .outdent,
                  .insertWikilink, .insertTag, .insertMarkdownLink:
                 guard let edit = MarkdownEditing.edit(for: command, in: currentSource(of: textView), selection: textView.selectedRange(),

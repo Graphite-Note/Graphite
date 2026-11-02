@@ -1,6 +1,6 @@
 /**
- * File: NoteEditorCommandRegressionTests.swift
- * --------------------------------------------
+ * File: NoteEditorCommandTests.swift
+ * ----------------------------------
  * Layer: Tests
  * Description: The note editor's text commands that the bug hunt of 2026-11-01 found broken, each as the person meets it.
  *
@@ -13,7 +13,7 @@ import Foundation
 import XCTest
 @testable import GraphiteCore
 
-final class NoteEditorCommandRegressionTests: XCTestCase {
+final class NoteEditorCommandTests: XCTestCase {
     private func applied(_ edit: MarkdownTextEdit, to text: String) -> String {
         (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement)
     }

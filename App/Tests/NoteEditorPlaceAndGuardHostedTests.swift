@@ -20,20 +20,15 @@ import GraphiteIndex
 @MainActor
 final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
     private var window: UIWindow?
-    private var vaultDirectory: URL?
 
     override func tearDown() async throws {
         window?.isHidden = true
         window?.rootViewController = nil
         window = nil
-        if let vaultDirectory { try? FileManager.default.removeItem(at: vaultDirectory) } // Best-effort removal of a temporary folder.
-        vaultDirectory = nil
     }
 
     private func openNote(_ text: String) async throws -> (MarkdownTextView, MarkdownSession) {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("NoteEditorPlace-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        vaultDirectory = directory
+        let directory = try TemporaryVault.make(prefix: "NoteEditorPlace", for: self).root
         try Data(text.utf8).write(to: directory.appendingPathComponent("Note.md"))
         let workspace = WorkspaceModel()
         workspace.folderAccess = FolderAccess(root: directory)
@@ -80,7 +75,6 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         try await waitUntil { editor.isFirstResponder }
         editor.selectedRange = NSRange(location: location, length: 0)
         editor.delegate?.textViewDidChangeSelection?(editor)
-        try await Task.sleep(for: .milliseconds(80))
     }
 
     /// A long note whose paragraphs wrap, so a new width moves everything, with tables that
@@ -99,9 +93,8 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let coordinator = try coordinator(of: editor)
         let location = (editor.text as NSString).range(of: "## Section \(number)\n").location
         coordinator.scrollToTop(of: location, in: editor)
-        try await Task.sleep(for: .milliseconds(400))
-        editor.layoutIfNeeded()
-        return try XCTUnwrap(coordinator.topCharacter(of: editor))
+        try await waitUntil { editor.layoutIfNeeded(); return coordinator.topCharacter(of: editor) == location }
+        return location
     }
 
     // MARK: HUNT-064
@@ -111,13 +104,9 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let top = try await scrollToSection(150, in: editor)
         let coordinator = try coordinator(of: editor)
         session.viewMode = .source
-        try await waitUntil { coordinator.configuration.mode == .source }
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(coordinator.topCharacter(of: editor), top)
+        try await waitUntil { coordinator.configuration.mode == .source && coordinator.pendingJump == nil && coordinator.topCharacter(of: editor) == top }
         session.viewMode = .livePreview
-        try await waitUntil { coordinator.configuration.mode == .livePreview }
-        try await Task.sleep(for: .milliseconds(800))
-        XCTAssertEqual(coordinator.topCharacter(of: editor), top)
+        try await waitUntil { coordinator.configuration.mode == .livePreview && coordinator.pendingJump == nil && coordinator.topCharacter(of: editor) == top }
     }
 
     // MARK: HUNT-065
@@ -127,9 +116,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let top = try await scrollToSection(150, in: editor)
         let coordinator = try coordinator(of: editor)
         window?.frame.size.width = 500
-        try await Task.sleep(for: .milliseconds(900))
-        XCTAssertLessThan(editor.bounds.width, 510)
-        XCTAssertEqual(coordinator.topCharacter(of: editor), top)
+        try await waitUntil { editor.bounds.width < 510 && coordinator.topCharacter(of: editor) == top }
     }
 
     // MARK: HUNT-066
@@ -140,11 +127,10 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let coordinator = try coordinator(of: editor)
         let folded = try XCTUnwrap(NoteFolding.regions(in: session.text).first { region in region.headerRange.location > top + 400 })
         coordinator.toggleFold(folded.key, in: editor)
-        try await Task.sleep(for: .milliseconds(300))
-        XCTAssertEqual(coordinator.topCharacter(of: editor), top)
-        editor.overrideUserInterfaceStyle = editor.traitCollection.userInterfaceStyle == .dark ? .light : .dark
-        try await Task.sleep(for: .milliseconds(500))
-        XCTAssertEqual(coordinator.topCharacter(of: editor), top)
+        try await waitUntil { editor.layoutIfNeeded(); return coordinator.topCharacter(of: editor) == top }
+        let styleBefore = editor.traitCollection.userInterfaceStyle
+        editor.overrideUserInterfaceStyle = styleBefore == .dark ? .light : .dark
+        try await waitUntil { editor.traitCollection.userInterfaceStyle != styleBefore && coordinator.topCharacter(of: editor) == top }
     }
 
     // MARK: HUNT-062
@@ -154,7 +140,6 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let (editor, session) = try await openNote(text)
         try await startEditing(editor, at: (text as NSString).range(of: "Body").location)
         editor.deleteBackward()
-        try await Task.sleep(for: .milliseconds(100))
         XCTAssertEqual(session.text, text)
         XCTAssertEqual(FrontmatterLocator.length(in: session.text as NSString), 17)
     }
@@ -244,7 +229,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         interaction.presentFindNavigator(showingReplace: false)
         try await waitUntil { interaction.activeFindSession != nil }
         interaction.searchText = "hidden word"
-        try await Task.sleep(for: .milliseconds(300))
+        try await waitUntil { (interaction.activeFindSession?.resultCount ?? 0) > 0 }
         interaction.findNext()
         try await waitUntil { !session.foldedKeys.contains(where: { key in key.hasPrefix("h1|# One") }) }
         interaction.dismissFindNavigator()
@@ -256,11 +241,9 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         let (editor, session) = try await openNote("start\nend\n")
         try await startEditing(editor, at: 5)
         editor.setMarkedText("か", selectedRange: NSRange(location: 1, length: 0))
-        try await Task.sleep(for: .milliseconds(50))
         session.text = "start\nend from another device\n"
-        try await Task.sleep(for: .milliseconds(100))
+        await Task.yield()
         editor.setMarkedText("かき", selectedRange: NSRange(location: 2, length: 0))
-        try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(session.text, "start\nend from another device\n")
         editor.unmarkText()
         editor.delegate?.textViewDidChange?(editor)

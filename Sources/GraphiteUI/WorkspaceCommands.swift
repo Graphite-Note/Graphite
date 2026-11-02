@@ -271,7 +271,9 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "task", command: .insertTask, systemImage: "checklist") { session.insertBlock("- [ ] ") },
             PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) },
             PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) },
-            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") { session.insertBlockFromMenu(EditorContextMenuContent.calloutBlock) },
+            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") {
+                session.insertBlockFromMenu(EditorContextMenuContent.calloutBlock)
+            },
         ]
         let document = workspace.activeDocument
         if document.markdownSession === session {

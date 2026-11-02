@@ -13,6 +13,7 @@ import Foundation
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
+import GraphiteTestSupport
 
 @MainActor
 final class NoteEditorWorkCountTests: XCTestCase {
@@ -158,9 +159,7 @@ final class NoteEditorWorkCountTests: XCTestCase {
 
     /// The draft a save would miss reaches the session's text first.
     func testASaveWritesTheOpenCellsDraft() async throws {
-        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("Drafts-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: vault) } // Best-effort removal of a temporary folder.
+        let vault = try TemporaryVault.make(prefix: "Drafts", for: self).root
         let noteURL = vault.appendingPathComponent("Note.md")
         try Data(Self.table.utf8).write(to: noteURL)
         let store = VaultStore(root: vault)
@@ -182,9 +181,7 @@ final class NoteEditorWorkCountTests: XCTestCase {
     // MARK: Menu blocks: HUNT-056, HUNT-057
 
     private func makeSession(text: String) async throws -> MarkdownSession {
-        let vault = FileManager.default.temporaryDirectory.appendingPathComponent("Blocks-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-        addTeardownBlock { try? FileManager.default.removeItem(at: vault) } // Best-effort removal of a temporary folder.
+        let vault = try TemporaryVault.make(prefix: "Blocks", for: self).root
         try Data(text.utf8).write(to: vault.appendingPathComponent("Note.md"))
         let store = VaultStore(root: vault)
         let path = try VaultPath("Note.md")
