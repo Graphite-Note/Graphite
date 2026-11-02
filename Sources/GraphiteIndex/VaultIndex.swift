@@ -776,7 +776,8 @@ public actor VaultIndex {
         if !isInventoryIncomplete { state.prunedFiles = try pruneFilesNotSeen(state.seenPaths, inside: folder) }
         guard folder == nil else { return try partialReport(of: state) }
         if !isInventoryIncomplete { try recordFinishedScan() }
-        return IndexingReport(discoveredFiles: state.discoveredFiles, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles,
+        return IndexingReport(discoveredFiles: state.discoveredFiles, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles,
+            pendingContentFiles: state.pendingFiles,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
@@ -788,7 +789,8 @@ public actor VaultIndex {
              try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'",
                  arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
         }
-        return IndexingReport(discoveredFiles: fileCount, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount,
+        return IndexingReport(discoveredFiles: fileCount, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles,
+            pendingContentFiles: pendingFileCount,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 

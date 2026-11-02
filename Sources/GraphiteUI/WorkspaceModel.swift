@@ -594,7 +594,8 @@ final class WorkspaceModel {
         pendingExternalChanges.removeAll(); firstPendingExternalChangeTime = nil
         indexingMessage = ""
         rootEntries = []; hasListedRoot = false; folderListingVersions = [:]
-        rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; isRefreshWaitingForScan = false; settingsFilesRevisionAtLastReading = nil
+        rootListingNumber += 1; rootListingInFlight = nil; rootDateAtLastListing = nil; settingsFilesRevisionAtLastReading = nil
+        isRefreshWaitingForScan = false
         reportedSettingsProblems = [:]
         readAloud?.clear()
         readAloudNavigator?.clearQueueHistoryAndPenMarks()

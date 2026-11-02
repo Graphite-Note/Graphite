@@ -59,8 +59,10 @@ final class BaseRecordReadAhead: Sendable {
     /// The paths to read around `path`, half before and half from it, leaving out those remembered.
     func pathsToRead(around path: VaultPath, fileCount: Int, in database: Database) throws -> [String] {
         guard fileCount > 1 else { return [path.rawValue] }
-        let pathsBefore = try String.fetchAll(database, sql: "SELECT path FROM files WHERE path < ? ORDER BY path DESC LIMIT ?", arguments: [path.rawValue, fileCount / 2])
-        let pathsFrom = try String.fetchAll(database, sql: "SELECT path FROM files WHERE path >= ? ORDER BY path LIMIT ?", arguments: [path.rawValue, fileCount - fileCount / 2])
+        let pathsBefore = try String.fetchAll(database, sql: "SELECT path FROM files WHERE path < ? ORDER BY path DESC LIMIT ?",
+                                              arguments: [path.rawValue, fileCount / 2])
+        let pathsFrom = try String.fetchAll(database, sql: "SELECT path FROM files WHERE path >= ? ORDER BY path LIMIT ?",
+                                            arguments: [path.rawValue, fileCount - fileCount / 2])
         return state.withLock { state in (pathsBefore + pathsFrom).filter { nearbyPath in state.recordsByPath[nearbyPath] == nil } }
     }
 }

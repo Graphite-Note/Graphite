@@ -121,6 +121,7 @@ final class BaseRunAtVaultScaleWorkCountTests: XCTestCase {
         let result = try await run(formulas: formula, provider: provider)
 
         XCTAssertLessThan(provider.lookupReadCount, 150, "Was 5,009 with the links in memory.")
+        XCTAssertLessThan(provider.recordsReadAheadCount, 5_100, "Few records beyond those asked about.")
         XCTAssertEqual(answers(result), answers(expected))
         XCTAssertEqual(answers(result)["Book 7"], "7")
     }
