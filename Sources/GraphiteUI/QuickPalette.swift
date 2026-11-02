@@ -6,7 +6,7 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 01/11/2026
  */
 
@@ -264,7 +264,8 @@ struct QuickSwitcher: View {
             .task(id: query) {
                 do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
                 let searchedQuery = query
-                let foundMatches = try? await workspace.index?.quickSwitcherMatches(for: searchedQuery)
+                let noteQuery = SwitcherQuery(searchedQuery).noteQuery
+                let foundMatches = try? await workspace.index?.quickSwitcherMatches(for: noteQuery) // A failed lookup lists nothing.
                 // A lookup cancelled because the query changed found nothing; storing that
                 // would flash "No files match." for the old query.
                 guard !Task.isCancelled else { return }
@@ -274,34 +275,30 @@ struct QuickSwitcher: View {
     }
 
     private var items: [PaletteItem] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
-        if trimmedQuery.isEmpty {
+        let switcher = SwitcherQuery(query)
+        if switcher.noteQuery.isEmpty {
             return workspace.existingRecentFiles(limit: 20, excluding: Set([workspace.selection].compactMap { path in path })).map { path in
-                fileItem(path, title: workspace.preferences.displayName(for: path), highlights: [], alias: nil)
+                fileItem(path, title: workspace.preferences.displayName(for: path), highlights: [], alias: nil, switcher: switcher)
             }
         }
         // Recent files rank a little higher, as Obsidian ranks them.
         let recentPaths = Set(workspace.recentFiles.paths.prefix(10))
         var ranked = Self.uniqueMatches(matches).sorted { leftMatch, rightMatch in
+            if leftMatch.tier != rightMatch.tier { return leftMatch.tier < rightMatch.tier }
             let leftScore = leftMatch.score + (recentPaths.contains(leftMatch.path) ? 1.5 : 0)
             let rightScore = rightMatch.score + (recentPaths.contains(rightMatch.path) ? 1.5 : 0)
             return leftScore > rightScore
         }.map { match in
-            fileItem(match.path, title: Self.title(of: match, foundFor: matchedQuery), highlights: match.matchedRanges, alias: match.alias)
+            fileItem(match.path, title: Self.title(of: match, foundFor: matchedQuery), highlights: match.matchedRanges, alias: match.alias, switcher: switcher)
         }
-        let isExistingNote = matches.contains { match in match.alias == nil && VaultIndex.switcherName(match.path).caseInsensitiveCompare(trimmedQuery) == .orderedSame }
-        if !isExistingNote, FileNameRules.problem(with: trimmedQuery, isNote: true) == nil {
-            // Until the index has seen every file, a note may exist without being found:
-            // Return then does not create a second one.
-            let isIndexComplete = workspace.isIndexUsable
-            var create = PaletteItem(id: "create", title: "Create “\(trimmedQuery)”",
-                                     subtitle: isIndexComplete ? "New note in \(folderDescription)" : "Graphite is still reading the vault; this note may already exist",
-                                     systemImage: "plus") { [workspace] in
-                Task { await workspace.createNote(named: trimmedQuery) }
-            }
-            create.requiresExplicitChoice = !isIndexComplete
-            ranked.append(create)
+        let typedPath = switcher.noteQuery.hasPrefix("/") ? String(switcher.noteQuery.dropFirst()) : switcher.noteQuery
+        let isExistingNote = matches.contains { match in
+            guard match.alias == nil else { return false }
+            let isNameOnly = switcher.folder == nil && !typedPath.contains("/")
+            let existingText = isNameOnly ? VaultIndex.switcherName(match.path) : VaultIndex.switcherPathText(match.path.rawValue)
+            return existingText.caseInsensitiveCompare(typedPath) == .orderedSame
         }
+        if !isExistingNote { ranked.append(creationItem(for: switcher)) }
         return ranked
     }
 
@@ -309,7 +306,7 @@ struct QuickSwitcher: View {
     /// the one being typed, since the match's highlighted ranges are offsets into that text.
     static func title(of match: QuickSwitcherMatch, foundFor matchedQuery: String) -> String {
         if let alias = match.alias { return alias }
-        return matchedQuery.contains("/") ? match.path.rawValue : VaultIndex.switcherName(match.path)
+        return SwitcherQuery(matchedQuery).noteQuery.contains("/") ? match.path.rawValue : VaultIndex.switcherName(match.path)
     }
 
     /// The matches without repeats, since each row's identifier must be unique. A note can
@@ -319,19 +316,25 @@ struct QuickSwitcher: View {
         return matches.filter { match in seenIdentifiers.insert(match.id).inserted }
     }
 
-    private var folderDescription: String {
-        let directory = workspace.newFileDirectory(nil)
-        return directory.rawValue.isEmpty ? workspace.title : directory.rawValue
-    }
-
-    private func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?) -> PaletteItem {
+    private func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?, switcher: SwitcherQuery) -> PaletteItem {
         let folder = path.parent.rawValue
         let subtitle = alias != nil ? workspace.preferences.displayName(for: path) + (folder.isEmpty ? "" : " — " + folder) : (folder.isEmpty ? nil : folder)
         var item = PaletteItem(id: path.rawValue + "|" + (alias ?? ""), title: title, titleHighlights: highlights, subtitle: subtitle,
                                systemImage: alias != nil ? "arrow.turn.down.right" : DocumentKind(path: path).systemImage) { [workspace] in
-            Task { await workspace.open(path) }
+            // `Note#Heading` goes to the heading, `Note#^block` to the block.
+            if let target = switcher.linkTarget(to: path) {
+                Task { await workspace.follow(target, from: path, isWiki: true) }
+            } else {
+                Task { await workspace.open(path) }
+            }
         }
-        item.openElsewhere = { [workspace] placement in Task { await workspace.open(path, placement: placement) } }
+        item.openElsewhere = { [workspace] placement in
+            if let target = switcher.linkTarget(to: path) {
+                Task { await workspace.follow(target, from: path, isWiki: true, placement: placement) }
+            } else {
+                Task { await workspace.open(path, placement: placement) }
+            }
+        }
         return item
     }
 }

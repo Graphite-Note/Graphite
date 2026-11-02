@@ -6,7 +6,7 @@
  *              and map.
  *
  * Authors: felixchvl
- * Version: 0.4
+ * Version: 0.5
  * Date: 01/11/2026
  */
 
@@ -29,6 +29,8 @@ struct NoteLinksInspector: View {
     @State private var outgoing: [OutgoingLink] = []
     @State private var linkedMentions: [MentionGroup] = []
     @State private var unlinkedMentions: [MentionGroup] = []
+    /// Whether there are more notes that mention this one than are listed.
+    @State private var unlinkedMentionsAreCut = false
     @AppStorage("GraphiteShowsUnlinkedMentions") private var showsUnlinkedMentions = false
     @State private var isLoadingUnlinkedMentions = false
     @State private var tags: [String] = []
@@ -146,7 +148,7 @@ struct NoteLinksInspector: View {
         // its own are read.
         .onChange(of: session.path) {
             outline = []; outgoing = []; tags = []; footnotes = []
-            linkedMentions = []; unlinkedMentions = []
+            linkedMentions = []; unlinkedMentions = []; unlinkedMentionsAreCut = false
         }
     }
 
@@ -170,9 +172,10 @@ struct NoteLinksInspector: View {
         defer { isLoadingUnlinkedMentions = false }
         let path = session.path
         let names = workspace.mentionNames(of: path, text: session.text)
-        let groups = await workspace.unlinkedMentions(of: path, names: names)
+        let result = await workspace.unlinkedMentions(of: path, names: names)
         guard !Task.isCancelled, session.path == path else { return }
-        unlinkedMentions = groups
+        unlinkedMentions = result.groups
+        unlinkedMentionsAreCut = result.isCut
     }
 
     private func linkMention(_ match: SearchMatch, in source: VaultPath) {
@@ -272,6 +275,10 @@ struct NoteLinksInspector: View {
                         Text("No other notes name this one without linking it").foregroundStyle(.secondary)
                     }
                     ForEach(unlinkedMentions) { group in mentionGroup(group, linksMentions: true) }
+                    if unlinkedMentionsAreCut {
+                        Text("Showing the first \(unlinkedMentions.count.formatted()) notes. More notes mention this one.")
+                            .foregroundStyle(.secondary).interfaceFont(.caption)
+                    }
                 } label: {
                     Text("Unlinked mentions")
                 }
@@ -315,7 +322,13 @@ struct NoteLinksInspector: View {
         case .tags:
             Section("Tags") {
                 if tags.isEmpty { Text("No tags").foregroundStyle(.secondary) }
-                ForEach(tags, id: \.self) { tag in Button("#" + tag) { workspace.searchQuery = "#" + tag } }
+                ForEach(tags, id: \.self) { tag in
+                    Button("#" + tag) {
+                        // The results are in the sidebar, which this tap brings forward; on a phone the sheet gives way to it.
+                        workspace.searchForTagAndShowResults(tag)
+                        if horizontalSizeClass == .compact { dismiss() }
+                    }
+                }
             }
         case .graph, .map:
             // Drawn in place of the list; see `body`.

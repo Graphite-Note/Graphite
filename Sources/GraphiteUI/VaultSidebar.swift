@@ -6,7 +6,7 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.41
+ * Version: 0.42
  * Date: 01/11/2026
  */
 
@@ -103,6 +103,8 @@ struct VaultSidebar: View {
     private enum SidebarChoice: Hashable {
         case panel(SidebarPanel)
         case pluginView(String)
+        /// Search results are shown in place of every list; the picker has no segment for them, so none is lit.
+        case searchResults
     }
 
     /// Plugins' sidebar views the picker offers: the first three and the one shown, so the
@@ -118,7 +120,8 @@ struct VaultSidebar: View {
     private static let maximumPluginSegments = 3
 
     private var pickerChoice: Binding<SidebarChoice> {
-        Binding(get: { shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) }, set: { choice in
+        Binding(get: { workspace.searchQuery.isEmpty ? shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) : .searchResults },
+                set: { choice in
             // A search would keep hiding the chosen list.
             workspace.searchQuery = ""
             switch choice {
@@ -127,6 +130,8 @@ struct VaultSidebar: View {
                 storedPanel = newPanel
             case .pluginView(let identifier):
                 chosenPluginView = identifier
+            case .searchResults:
+                break
             }
         })
     }

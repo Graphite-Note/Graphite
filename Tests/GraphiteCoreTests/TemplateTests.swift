@@ -70,6 +70,29 @@ final class MomentDateFormatTests: XCTestCase {
         XCTAssertEqual(formatted("ggggg GGGGG"), "02026 02026")
     }
 
+    func testAReaderPreparedOnceReadsTheSameDaysAsReadingEachName() throws {
+        let formats = ["YYYY-MM-DD", "DD.MM.YYYY", "dddd, MMMM Do YYYY", "ll", "YY-M-D"]
+        let names = ["2026-09-24", "24.09.2026", "Thursday, September 24th 2026", "Sep 24, 2026", "26-9-24", "Meeting notes", "2026-04-31", "2026-09-24 09"]
+        for format in formats {
+            let reader = try XCTUnwrap(MomentDateReader(format: format), format)
+            for name in names {
+                XCTAssertEqual(reader.date(from: name, timeZone: zurich), MomentDateFormat.date(from: name, format: format, timeZone: zurich), "\(format) reading \(name)")
+            }
+        }
+        XCTAssertNil(MomentDateReader(format: "YYYY-MM-DD HH"), "Hours are not read.")
+    }
+
+    func testDailyNotesOfAFolderAreReadWithOneReader() throws {
+        let settings = DailyNoteSettings(format: "YYYY-MM-DD", folder: "Daily", template: "", opensOnStartup: false)
+        let reader = try XCTUnwrap(MomentDateReader(format: settings.format))
+        let paths = try ["Daily/2026-09-24.md", "Daily/2026-09-25.md", "Daily/notes.md", "Other/2026-09-24.md", "Daily/2026-09-24.png"].map { path in try VaultPath(path) }
+
+        let dated = paths.compactMap { path in settings.date(ofNoteAt: path, using: reader, timeZone: zurich) }
+
+        XCTAssertEqual(dated.count, 2)
+        XCTAssertEqual(settings.date(ofNoteAt: paths[0], timeZone: zurich), dated.first)
+    }
+
     func testOrdinalsAndTwelveHourClock() {
         let calendar = Calendar(identifier: .gregorian)
         var components = DateComponents(year: 2026, month: 1, day: 11, hour: 0, minute: 30)

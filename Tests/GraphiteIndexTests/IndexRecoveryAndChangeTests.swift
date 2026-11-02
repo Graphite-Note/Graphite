@@ -144,4 +144,37 @@ final class IndexRecoveryAndChangeTests: XCTestCase {
         }, paths: ["Other.md"])
         XCTAssertEqual(removed, IndexRefreshChange(changedStructure: true, changedNames: true))
     }
+
+    // MARK: A note that left for the cloud
+
+    func testANoteEvictedToTheCloudKeepsItsLinksTagsAndSearchableText() async throws {
+        let index = try VaultIndex(databaseURL: caches.appendingPathComponent("evicted.sqlite"))
+        let note = try VaultPath("Cloud.md")
+        let modified = Date(timeIntervalSince1970: 1_700_000_000)
+        try await index.update([IndexedFile(path: note, size: 30, modified: modified, markdown: "---\naliases: [Nimbus]\n---\nSee [[Target]] #weather uniqueword")], generation: "one")
+        try await index.update([IndexedFile(path: try VaultPath("Target.md"), size: 1, modified: modified, markdown: "x")], generation: "one")
+
+        // The system reports the note again after it was evicted: no text can be read now.
+        try await index.update([IndexedFile(path: note, size: 30, modified: modified, created: nil, markdown: nil, isUnreadableAsText: false, isNotDownloaded: true)], generation: "two")
+
+        let backlinks = try await index.backlinks(to: try VaultPath("Target.md"))
+        XCTAssertEqual(backlinks, [note])
+        let tags = try await index.tags(matching: "weather")
+        XCTAssertEqual(tags.map(\.tag), ["weather"])
+        let page = try await index.search("uniqueword")
+        XCTAssertEqual(page.results.map(\.path), [note], "The evicted note is still found by its words.")
+        let resolved = try await index.resolve("Nimbus", from: try VaultPath("Target.md"))
+        XCTAssertEqual(resolved, [note], "Its alias still resolves.")
+    }
+
+    func testANoteNeverReadAndInTheCloudStaysUnread() async throws {
+        let index = try VaultIndex(databaseURL: caches.appendingPathComponent("never-read.sqlite"))
+        let note = try VaultPath("Cloud.md")
+        try await index.update([IndexedFile(path: note, size: 30, modified: .distantPast, created: nil, markdown: nil, isUnreadableAsText: false, isNotDownloaded: true)], generation: "one")
+
+        let page = try await index.search("anything")
+        XCTAssertTrue(page.results.isEmpty)
+        let fileCount = try await index.fileCount()
+        XCTAssertEqual(fileCount, 1, "The note is in the inventory.")
+    }
 }

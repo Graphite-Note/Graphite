@@ -151,4 +151,88 @@ final class SearchPanelsRecomputeTests: XCTestCase {
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: vault.path).sorted(), before, "No folder named https: or example.com.")
         XCTAssertNotNil(workspace.errorMessage)
     }
+
+    // MARK: Bookmarks, tags and mentions
+
+    func testABookmarkAddedElsewhereFollowsARenameBeforeThePanelWasShown() async throws {
+        let (workspace, vault) = try await indexedWorkspace(files: [
+            "Old.md": "text", ".obsidian/bookmarks.json": "{\"items\":[{\"type\":\"file\",\"path\":\"Old.md\"}]}",
+        ])
+        XCTAssertTrue(workspace.bookmarks.allBookmarks.isEmpty, "The copy in memory has not been loaded.")
+
+        await workspace.updateBookmarksFollowingMove(from: try VaultPath("Old.md"), to: try VaultPath("New.md"))
+
+        let saved = try String(contentsOf: vault.appendingPathComponent(".obsidian/bookmarks.json"), encoding: .utf8)
+        XCTAssertTrue(saved.contains("New.md"), saved)
+        XCTAssertFalse(saved.contains("Old.md"), saved)
+    }
+
+    func testATagChosenInTheInspectorSearchesAndBringsTheSidebarForward() async throws {
+        let (workspace, _) = try await indexedWorkspace(files: ["Note.md": "#topic"])
+        let requestBefore = workspace.searchResultsRevealRequest
+
+        workspace.searchForTagAndShowResults("topic")
+
+        XCTAssertEqual(workspace.searchQuery, "tag:#topic")
+        XCTAssertEqual(workspace.searchResultsRevealRequest, requestBefore + 1)
+    }
+
+    func testUnlinkedMentionsPastTheFirstTwoHundredNotesAreFoundAndASmallerListIsNotCut() async throws {
+        var files = ["Zebra.md": "the target", "Zlate.md": "a zebra walks by"]
+        for number in 0..<210 { files[String(format: "A%03d.md", number)] = "[[Zebra]] linked only" }
+        let (workspace, _) = try await indexedWorkspace(files: files)
+
+        let result = await workspace.unlinkedMentions(of: try VaultPath("Zebra.md"), names: ["Zebra"])
+
+        XCTAssertEqual(result.groups.map(\.path.rawValue), ["Zlate.md"], "The 210 notes before it only link, and the search follows its pages to the note after them.")
+        XCTAssertFalse(result.isCut)
+    }
+
+    func testAListLongerThanTheLimitSaysItIsCut() async throws {
+        var files = ["Zebra.md": "the target"]
+        for number in 0..<230 { files[String(format: "B%03d.md", number)] = "a zebra here" }
+        let (workspace, _) = try await indexedWorkspace(files: files)
+
+        let result = await workspace.unlinkedMentions(of: try VaultPath("Zebra.md"), names: ["Zebra"])
+
+        XCTAssertEqual(result.groups.count, 200)
+        XCTAssertTrue(result.isCut)
+    }
+}
+
+final class SwitcherQueryTests: XCTestCase {
+    func testAFolderAndANameMakeANoteInThatFolder() throws {
+        let query = SwitcherQuery("Course/Week 1/New note")
+
+        XCTAssertEqual(query.folder, try VaultPath("Course/Week 1"))
+        XCTAssertEqual(query.newName, "New note")
+        XCTAssertEqual(query.noteQuery, "Course/Week 1/New note")
+        XCTAssertNil(query.creationProblem)
+    }
+
+    func testAPlainNameHasNoFolder() {
+        let query = SwitcherQuery("  Ideas ")
+
+        XCTAssertNil(query.folder)
+        XCTAssertEqual(query.newName, "Ideas")
+        XCTAssertNil(query.fragment)
+    }
+
+    func testAHashOrACaretGoesToAPlaceInTheNote() throws {
+        let heading = SwitcherQuery("Lecture 3#Sampling theorem")
+        XCTAssertEqual(heading.noteQuery, "Lecture 3")
+        XCTAssertEqual(heading.fragment, "Sampling theorem")
+        XCTAssertEqual(heading.linkTarget(to: try VaultPath("Course/Lecture 3.md")), "Course/Lecture 3.md#Sampling theorem")
+
+        let block = SwitcherQuery("Lecture 3#^abc")
+        XCTAssertEqual(block.fragment, "^abc")
+        XCTAssertEqual(SwitcherQuery("Lecture 3^abc").fragment, "^abc")
+        XCTAssertEqual(block.linkTarget(to: try VaultPath("Lecture 3.md")), "Lecture 3.md#^abc")
+    }
+
+    func testNoNoteIsCreatedFromAPlaceAndTheReasonIsGiven() {
+        XCTAssertNotNil(SwitcherQuery("Note#Heading").creationProblem)
+        XCTAssertNotNil(SwitcherQuery("Folder/bad:name").creationProblem)
+        XCTAssertNil(SwitcherQuery("#only").fragment, "A field that starts with # names no note.")
+    }
 }

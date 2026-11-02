@@ -5,7 +5,7 @@
  * Description: Dates written and read with the format strings Obsidian uses (Moment.js), such as YYYY-MM-DD.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -18,8 +18,8 @@ public enum MomentDateFormat {
     public static let defaultDateFormat = "YYYY-MM-DD"
     public static let defaultTimeFormat = "HH:mm"
 
-    private static let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-    private static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    static let monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    static let weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
     /// Moment's tokens. `sortedTokens` tries the longest first, so `YYYY` is not read as two `YY`.
     private static let tokens = [
         "YYYYYY", "YYYYY", "YYYY", "YY", "Y", "Qo", "Q", "MMMM", "MMM", "MM", "Mo", "M", "DDDD", "DDDo", "DDD", "DD", "Do", "D",
@@ -39,15 +39,27 @@ public enum MomentDateFormat {
     private static let sortedLongDateFormatKeys = longDateFormats.keys.sorted { first, second in first.count > second.count }
     private static let eraNames = (annoDomini: "Anno Domini", beforeChrist: "Before Christ", annoDominiAbbreviation: "AD", beforeChristAbbreviation: "BC")
 
-    private enum Piece: Equatable {
+    enum Piece: Equatable, Sendable {
         case token(String)
         case literal(String)
     }
 
     /// The date written in `format`.
     public static func string(from date: Date, format: String, timeZone: TimeZone = .current) -> String {
+        string(from: date, pieces: pieces(of: format), timeZone: timeZone)
+    }
+
+    /// The day a text written in `format` names, for file names such as daily notes. Only
+    /// formats made of years, months, days, weekday names and literal text can be read. To
+    /// read many names, build a `MomentDateReader` once.
+    public static func date(from text: String, format: String, timeZone: TimeZone = .current) -> Date? {
+        MomentDateReader(format: format)?.date(from: text, timeZone: timeZone)
+    }
+
+    /// The date written with already split pieces.
+    static func string(from date: Date, pieces: [Piece], timeZone: TimeZone) -> String {
         let calendar = gregorianCalendar(timeZone: timeZone)
-        return pieces(of: format).map { piece in
+        return pieces.map { piece in
             switch piece {
             case .literal(let text): text
             case .token(let token): value(of: token, for: date, calendar: calendar, timeZone: timeZone)
@@ -55,57 +67,9 @@ public enum MomentDateFormat {
         }.joined()
     }
 
-    /// The day a text written in `format` names, for file names such as daily notes. Only
-    /// formats made of years, months, days, weekday names and literal text can be read.
-    public static func date(from text: String, format: String, timeZone: TimeZone = .current) -> Date? {
-        var pattern = "^"
-        var fields: [String] = []
-        for piece in pieces(of: format) {
-            switch piece {
-            case .literal(let literal):
-                pattern += NSRegularExpression.escapedPattern(for: literal)
-            case .token(let token):
-                switch token {
-                case "YYYY": pattern += "(\\d{4})"; fields.append(token)
-                case "YY": pattern += "(\\d{2})"; fields.append(token)
-                case "MMMM": pattern += "(" + monthNames.joined(separator: "|") + ")"; fields.append(token)
-                case "MMM": pattern += "(" + monthNames.map { name in String(name.prefix(3)) }.joined(separator: "|") + ")"; fields.append(token)
-                case "MM", "DD": pattern += "(\\d{2})"; fields.append(token)
-                case "M", "D": pattern += "(\\d{1,2})"; fields.append(token)
-                case "Do": pattern += "(\\d{1,2})(?:st|nd|rd|th)"; fields.append(token)
-                case "dddd": pattern += "(?:" + weekdayNames.joined(separator: "|") + ")"
-                case "ddd": pattern += "(?:" + weekdayNames.map { name in String(name.prefix(3)) }.joined(separator: "|") + ")"
-                case "dd": pattern += "(?:" + weekdayNames.map { name in String(name.prefix(2)) }.joined(separator: "|") + ")"
-                default: return nil
-                }
-            }
-        }
-        pattern += "$"
-        guard let expression = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive), // From the vault's format; malformed: no date.
-              let match = expression.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) else { return nil }
-        var components = DateComponents()
-        for (fieldIndex, field) in fields.enumerated() {
-            let captured = (text as NSString).substring(with: match.range(at: fieldIndex + 1))
-            switch field {
-            case "YYYY": components.year = Int(captured)
-            case "YY": components.year = Int(captured).map { twoDigits in twoDigits > 68 ? 1900 + twoDigits : 2000 + twoDigits }
-            case "MMMM": components.month = monthNames.firstIndex { name in name.caseInsensitiveCompare(captured) == .orderedSame }.map { index in index + 1 }
-            case "MMM": components.month = monthNames.firstIndex { name in name.prefix(3).caseInsensitiveCompare(captured) == .orderedSame }.map { index in index + 1 }
-            case "MM", "M": components.month = Int(captured)
-            case "DD", "D", "Do": components.day = Int(captured)
-            default: break
-            }
-        }
-        guard components.year != nil, components.month != nil, components.day != nil else { return nil }
-        let calendar = gregorianCalendar(timeZone: timeZone)
-        guard let date = calendar.date(from: components) else { return nil }
-        // Written back the same way, or it named a day that does not exist (31 April).
-        return string(from: date, format: format, timeZone: timeZone).caseInsensitiveCompare(text) == .orderedSame ? date : nil
-    }
-
     // MARK: Private
 
-    private static func gregorianCalendar(timeZone: TimeZone) -> Calendar {
+    static func gregorianCalendar(timeZone: TimeZone) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone
         calendar.locale = Locale(identifier: "en_US_POSIX")
@@ -115,7 +79,7 @@ public enum MomentDateFormat {
         return calendar
     }
 
-    private static func pieces(of format: String) -> [Piece] {
+    static func pieces(of format: String) -> [Piece] {
         var pieces: [Piece] = []
         var remaining = Substring(format)
         func appendLiteral(_ text: String) {

@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.64
+ * Version: 0.65
  * Date: 01/11/2026
  */
 
@@ -151,6 +151,9 @@ final class WorkspaceModel {
     var searchQuery = ""
     /// Increases when a command asks for the sidebar's search field.
     var searchFocusRequest = 0
+    /// Increases when results the sidebar shows were asked for from a view outside it, such as a tag
+    /// in the note's inspector; the root view brings the sidebar forward, without focusing its field.
+    var searchResultsRevealRequest = 0
     /// A file "Reveal current file" asked the sidebar to show; the root view shows the sidebar,
     /// and the sidebar scrolls to the file and clears the request.
     var fileRevealRequest: FileRevealRequest?
@@ -214,7 +217,7 @@ final class WorkspaceModel {
     @ObservationIgnored var graphPositions: [String: SIMD2<Double>] = [:]
     /// Whether the graph view is on screen.
     /// The notes the map places, read once per index change.
-    @ObservationIgnored var placedNotesCache: (indexVersion: Int, propertyNames: [String], notes: [PlacedNote])?
+    @ObservationIgnored var placedNotesCache: (structureVersion: Int, propertyNames: [String], notes: [PlacedNote])?
     /// Whether the map view is on screen.
     var isMapPresented = false
     /// Whether the vault list is on screen. Settings asks for it too, from its own window on the Mac.

@@ -1,3 +1,14 @@
+/**
+ * File: Templates.swift
+ * ---------------------
+ * Layer: Core
+ * Description: Template and Daily notes settings, and template variables written with Moment date formats.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Obsidian's Templates settings, stored in `.obsidian/templates.json`.
@@ -78,13 +89,18 @@ public struct DailyNoteSettings: Equatable, Sendable {
 
     /// The day a note in the daily notes folder is for, from its path.
     public func date(ofNoteAt path: VaultPath, timeZone: TimeZone = .current) -> Date? {
+        MomentDateReader(format: format).flatMap { reader in date(ofNoteAt: path, using: reader, timeZone: timeZone) }
+    }
+
+    /// `date(ofNoteAt:)` with the format prepared once (`MomentDateReader(format:)`), to read the names of a whole folder.
+    public func date(ofNoteAt path: VaultPath, using reader: MomentDateReader, timeZone: TimeZone = .current) -> Date? {
         guard path.fileExtension.lowercased() == "md" else { return nil }
         var relativePath = String(path.rawValue.dropLast(3))
         if !folder.isEmpty {
             guard relativePath.hasPrefix(folder + "/") else { return nil }
             relativePath = String(relativePath.dropFirst(folder.count + 1))
         }
-        return MomentDateFormat.date(from: relativePath, format: format, timeZone: timeZone)
+        return reader.date(from: relativePath, timeZone: timeZone)
     }
 
     public var templatePath: VaultPath? {
