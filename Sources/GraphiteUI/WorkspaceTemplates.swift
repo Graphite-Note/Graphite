@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTemplates.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -86,7 +97,9 @@ extension WorkspaceModel {
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
                 refreshIndex(for: [path])
-                await refreshDirectory()
+                await open(path, placement: placement)
+                await showInListings(path)
+                return
             }
             await open(path, placement: placement)
         } catch { errorMessage = error.localizedDescription }

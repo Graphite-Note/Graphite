@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Plugin lists, manifests, inventory and the vault bridge's answers.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport
@@ -89,7 +100,9 @@ final class CommunityPluginTests: XCTestCase {
                   to: ".obsidian/plugins/sample/main.js")
         try write("{\"id\": \"desk\", \"name\": \"Desk\", \"isDesktopOnly\": true, \"minAppVersion\": \"9.0.0\"}", to: ".obsidian/plugins/desk/manifest.json")
         try write("not json", to: ".obsidian/plugins/broken/manifest.json")
-        let inventory = try await VaultStore(root: vault).installedCommunityPlugins()
+        let listed = try await VaultStore(root: vault).installedCommunityPlugins()
+        XCTAssertEqual(listed.plugins.first { plugin in plugin.id == "sample" }?.compatibility.missingModules, [], "Listing plugins does not read their code.")
+        let inventory = await CommunityPluginModuleScanner().inventory(listed, root: vault, isReadingCode: true)
         XCTAssertEqual(inventory.plugins.map(\.id), ["desk", "sample"])
         let sample = try XCTUnwrap(inventory.plugins.first { plugin in plugin.id == "sample" })
         XCTAssertTrue(sample.compatibility.canLoad)
@@ -127,8 +140,14 @@ final class CommunityPluginTests: XCTestCase {
         try write("b", to: "Course/Lecture.md")
         try write("{}", to: ".obsidian/app.json")
         let answer = try await respond(["operation": "vault.list"])
-        let paths = (answer["entries"] as? [[String: Any]] ?? []).compactMap { entry in entry["path"] as? String }.sorted()
-        XCTAssertEqual(paths, ["Course", "Course/Lecture.md", "Note.md"])
+        let encodedEntries = try XCTUnwrap(answer["encodedEntries"] as? String, "The list crosses into the web view as one text.")
+        let columns = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(encodedEntries.utf8)) as? [String: Any])
+        let paths = try XCTUnwrap(columns["paths"] as? [String])
+        let isFolder = try XCTUnwrap(columns["isFolder"] as? [Int])
+        XCTAssertEqual(paths.sorted(), ["Course", "Course/Lecture.md", "Note.md"])
+        XCTAssertEqual(isFolder[try XCTUnwrap(paths.firstIndex(of: "Course"))], 1)
+        XCTAssertEqual(isFolder[try XCTUnwrap(paths.firstIndex(of: "Note.md"))], 0)
+        XCTAssertEqual((columns["sizes"] as? [Int])?[try XCTUnwrap(paths.firstIndex(of: "Note.md"))], 1)
         XCTAssertEqual(answer["isTruncated"] as? Bool, false)
         let folder = try await respond(["operation": "vault.listFolder", "path": ".obsidian"])
         XCTAssertEqual(folder["files"] as? [String], [".obsidian/app.json"])

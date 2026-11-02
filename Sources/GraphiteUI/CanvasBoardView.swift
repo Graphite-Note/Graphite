@@ -1,3 +1,14 @@
+/**
+ * File: CanvasBoardView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The board of a canvas: its grid, groups, connections, cards in view and selection.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
@@ -54,6 +65,8 @@ struct CanvasCardEnvironment {
     let openPDF: (VaultPath, Int) -> Void
     let baseContext: BaseEmbedContext?
     let imageActions: ReadingImageActions?
+    /// The vault's plugins, which may draw a base's views in a card.
+    var pluginHost: CommunityPluginHost? = nil
 }
 
 /// The board of a canvas: the grid, groups and connections drawn as one picture, the

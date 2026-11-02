@@ -46,6 +46,12 @@ Regression tests: `AppProjectTextualPatchTests.testUnderbraceAndOverbraceAreType
 
 Regression test: `AppProjectTextualPatchTests.testKaTeXArrowsAreTypesetAsOneRelation` typesets each arrow between two letters and checks it is about as wide as `\rightarrow`, and that the caption's formula becomes one attachment.
 
+## 9. Row breaks inside braces do not crash a table
+
+`Sources/SwiftUIMath/Internal/Syntax/Parser.swift` (`buildTable`): the table gets a row for each row break a cell's list brings, not one. A `\\` inside braces in a cell, as in `\textcolor{red}{a &= 1 \\ …}`, counts a row and ends only the braces' list, so a cell whose braces hold two row breaks brought both at once; upstream added one row and then wrote past the end of its rows (index out of range), which ended Graphite, Release builds too. A note in the owner's vault wrote each row of an `aligned` formula inside its own `\textcolor` groups. Such a formula is still not one the parser can read, so Graphite shows its source, as for any formula the typesetter cannot read.
+
+Regression test: `AppProjectTextualPatchTests.testRowBreaksInsideColorGroupsOfAnAlignedFormulaDoNotCrash` crashed the test process before the patch; it checks that formula and one with a break inside a single cell's braces are reported as not typeset, and that plain `aligned` rows and braces holding rows are drawn as before.
+
 ## 10. Characters typed in a formula
 
 `Sources/SwiftUIMath/Internal/Syntax/Parser.swift`, `AtomFactory.swift` (`atom(forTypedCharacter:)`): a character that is not ASCII is drawn as the command that has it as its symbol, with that command's class (`≤` is `\leq`, `δ` is `\delta`), and otherwise as an upright ordinary atom, which the font or a fallback font draws, as MathJax draws it. Upstream dropped such characters in math, so `$δ$` could not be typeset and `$κ(x)$` lost its `κ`. Spaces and invisible characters are still skipped. A command's name is ASCII letters, as in TeX, so `\cosθ` is `\cos` and `θ`; upstream read one unknown command. `\&` is an ampersand, and a backslash before a line break is a space.

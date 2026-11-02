@@ -1,3 +1,14 @@
+/**
+ * File: LibraryDropReader.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Reads what a drop on the library carries from its item providers.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import UniformTypeIdentifiers
 import GraphiteCore
@@ -51,11 +62,18 @@ enum LibraryDropReader {
         providers.contains { provider in isVaultItem(provider) || isFileAddress(provider) || importableType(of: provider) != nil }
     }
 
-    static func read(_ providers: [NSItemProvider]) async -> [LibraryDropSource] {
+    /// - Parameter vaultRoot: The vault dropped into. An item of another window's vault is a
+    ///   file from outside to it: copied in, rather than moving whatever has that path here.
+    static func read(_ providers: [NSItemProvider], vaultRoot: URL? = nil) async -> [LibraryDropSource] {
         var sources: [LibraryDropSource] = []
         for provider in providers {
             if isVaultItem(provider) {
-                if let path = await vaultPath(of: provider) { sources.append(.vaultItem(path)) }
+                guard let transfer = await vaultItem(of: provider) else { continue }
+                if transfer.isFromAnotherVault(than: vaultRoot) {
+                    if let location = transfer.sourceLocation { sources.append(.file(DroppedFile(location: location, stagingFolder: nil))) }
+                } else {
+                    sources.append(.vaultItem(transfer.path))
+                }
             } else if isFileAddress(provider) {
                 if let location = await fileAddress(of: provider) { sources.append(.file(DroppedFile(location: location, stagingFolder: nil))) }
             } else if let type = importableType(of: provider) {
@@ -87,11 +105,11 @@ enum LibraryDropReader {
 
     // MARK: Loading
 
-    private static func vaultPath(of provider: NSItemProvider) async -> String? {
+    private static func vaultItem(of provider: NSItemProvider) async -> VaultItemTransfer? {
         await withCheckedContinuation { continuation in
             provider.loadDataRepresentation(forTypeIdentifier: UTType.graphiteVaultItem.identifier) { data, _ in
                 let transfer = data.flatMap { encoded in try? JSONDecoder().decode(VaultItemTransfer.self, from: encoded) } // An unreadable item moves nothing.
-                continuation.resume(returning: transfer?.path)
+                continuation.resume(returning: transfer)
             }
         }
     }

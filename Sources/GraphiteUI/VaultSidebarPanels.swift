@@ -1,3 +1,14 @@
+/**
+ * File: VaultSidebarPanels.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: What the left sidebar lists, as the tabs of Obsidian's left sidebar.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
@@ -188,11 +199,11 @@ struct VaultTagsList: View {
             }
             if !overview.hasLoadedTags {
                 ProgressView().frame(maxWidth: .infinity)
-            } else if overview.tagCounts.isEmpty && workspace.hasCompletedIndexScan {
+            } else if overview.tagCounts.isEmpty && workspace.isIndexUsable {
                 Text("No tags in this vault yet. Write #tag in a note, or add it to the note's tags property.").foregroundStyle(.secondary)
             }
         } footer: {
-            if !workspace.hasCompletedIndexScan { Text("Still reading the vault; more tags may appear.") }
+            if !workspace.isIndexUsable { Text("Still reading the vault; more tags may appear.") }
         }
     }
 }
@@ -266,11 +277,11 @@ struct VaultPropertiesList: View {
             }
             if !overview.hasLoadedProperties {
                 ProgressView().frame(maxWidth: .infinity)
-            } else if overview.properties.isEmpty && workspace.hasCompletedIndexScan {
+            } else if overview.properties.isEmpty && workspace.isIndexUsable {
                 Text("No properties in this vault yet. Add them to a note from its Properties.").foregroundStyle(.secondary)
             }
         } footer: {
-            if !workspace.hasCompletedIndexScan { Text("Still reading the vault; more properties may appear.") }
+            if !workspace.isIndexUsable { Text("Still reading the vault; more properties may appear.") }
         }
     }
 
@@ -405,7 +416,7 @@ private struct BookmarkRow: View {
 
     var body: some View {
         switch bookmark.type {
-        case "file", "folder", "search":
+        case "file", "folder", "search", "graph":
             Button { Task { await workspace.open(bookmark) } } label: { label(subtitle: isMissing ? "Not in this vault" : nil).contentShape(Rectangle()) }
                 .buttonStyle(.plain)
                 .foregroundStyle(isMissing ? .secondary : .primary)
@@ -416,7 +427,7 @@ private struct BookmarkRow: View {
                 label(subtitle: nil).foregroundStyle(.secondary)
             }
         default:
-            // A graph or another kind Obsidian shows; kept in the file, listed here.
+            // Another kind Obsidian shows; kept in the file, listed here.
             label(subtitle: "Opens in Obsidian").foregroundStyle(.secondary)
         }
     }

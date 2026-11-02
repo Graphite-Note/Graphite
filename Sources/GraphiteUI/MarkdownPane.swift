@@ -5,9 +5,9 @@
  * Description: A note's pane: the editor or reading view, its toolbar and More commands in the system's overflow
  *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.48
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.56
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -36,6 +36,7 @@ struct MarkdownPane: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
+    @Environment(\.isActiveInItsSide) private var isActiveInItsSide
 
     init(session: MarkdownSession, workspace: WorkspaceModel, document: TabDocument, tabID: UUID, isFocused: Bool, showsLinksInspector: Binding<Bool>) {
         self.session = session
@@ -84,7 +85,7 @@ struct MarkdownPane: View {
                                 suspendReadingFollow: { workspace.readAloud?.suspendFollowing(in: session.path.rawValue) })
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
-                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil)
+                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // The pane stays when the tab shows another note; its reading view does not.
@@ -109,7 +110,7 @@ struct MarkdownPane: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isFocused {
+            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isActiveInItsSide {
                 DocumentControlRow(isWriting: isWritingBinding) {
                     #if canImport(UIKit)
                     if isEditing { UndoRedoButtons(availability: session.undoAvailability) }
@@ -217,15 +218,8 @@ struct MarkdownPane: View {
     /// Link and tag suggestions just below the cursor, or above it near the bottom.
     @ViewBuilder private var banner: some View {
         if session.hasExternalConflict {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("This note changed in another app. Your edits are still here.").font(.callout)
-                Spacer()
-                Button("Save a Copy") { Task { await saveCopy() } }
-                Button("Use Other Version") { noteState.showsReloadConfirmation = true }
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
-            .background(.orange.opacity(0.12))
+            ExternalChangeBanner(message: "This note changed in another app. Your edits are still here.",
+                                 saveCopy: { Task { await saveCopy() } }, useOtherVersion: { noteState.showsReloadConfirmation = true })
         } else if let errorMessage = session.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.circle")
                 .font(.callout).foregroundStyle(.red)
@@ -236,7 +230,7 @@ struct MarkdownPane: View {
     }
 
     private var readingConfiguration: ReadingConfiguration {
-        ReadingConfiguration(usesReadableLineLength: preferences.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+        ReadingConfiguration(usesReadableLineLength: workspace.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
                              colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                              showsProperties: preferences.isEnabled(.properties), declaredPropertyTypes: session.declaredPropertyTypes, inlineTitle: inlineTitle,
                              textSize: noteTextSize, drawingVersion: workspace.drawingVersion, indexVersion: workspace.indexVersion,
@@ -252,12 +246,12 @@ struct MarkdownPane: View {
     /// The note's name above its text, written as the tab and the title bar write it, so the
     /// three agree: with `.md` when Settings › Files and Links › Show File Extensions is on.
     private var inlineTitle: String? {
-        preferences.showsInlineTitle ? preferences.displayName(for: session.path) : nil
+        workspace.showsInlineTitle ? preferences.displayName(for: session.path) : nil
     }
 
     private var editorConfiguration: EditorConfiguration {
-        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: preferences.usesReadableLineLength,
-                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: preferences.usesSpellChecking,
+        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: workspace.usesReadableLineLength,
+                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: workspace.usesSpellChecking,
                             formatsCodeBlocks: preferences.formatsCodeBlocks, codeColorTheme: preferences.codeColorTheme, colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                             editingBehavior: EditingBehavior(settings: workspace.vaultSettings), accentHex: preferences.accentHex,
                             inlineTitle: inlineTitle)
@@ -393,10 +387,10 @@ struct MarkdownPane: View {
             baseContext: workspace.baseEmbedContext(for: notePath),
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
-            embeddedImageColumnWidth: preferences.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
+            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
-            pluginCodeBlocks: workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil,
+            pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
             notePath: notePath)
     }
@@ -603,16 +597,16 @@ struct MarkdownPane: View {
                 showsLinksInspector = true
             }
         }
-        FileLocationMenuItems(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root)
-        NotePDFExportButton()
+        // The file's own commands in one submenu: the menu ran to 25 entries, cut off at about 520 points of a
+        // phone's screen, and had neither Move nor Delete.
+        NoteFileMenu(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root,
+                     showFileRecovery: preferences.isEnabled(.fileRecovery) ? { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) } : nil,
+                     move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
             Button(isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 Task { await workspace.toggleBookmark(session.path) }
             }
-        }
-        if preferences.isEnabled(.fileRecovery) {
-            Button("File Recovery…", systemImage: "clock.arrow.circlepath") { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) }
         }
         CommunityPluginFileActionsButton(host: workspace.communityPlugins, path: session.path, source: "more-options")
         WorkspaceMoreMenuItems()
@@ -670,7 +664,7 @@ struct MarkdownPane: View {
 
     private var isWritingBinding: Binding<Bool> {
         Binding(get: { isEditing }, set: { shouldWrite in
-            if shouldWrite != isEditing { session.toggleReadingView(editingMode: preferences.defaultEditingMode) }
+            if shouldWrite != isEditing { session.toggleReadingView(editingMode: workspace.defaultEditingMode) }
         })
     }
 
@@ -696,7 +690,7 @@ struct MarkdownPane: View {
     }
 
     private func saveCopy() async {
-        do { let path = try await session.saveSeparateCopy(); await workspace.refreshDirectory(); await workspace.open(path) }
+        do { let path = try await session.saveSeparateCopy(); await workspace.open(path); await workspace.showInListings(path) }
         catch { workspace.errorMessage = error.localizedDescription }
     }
 
@@ -712,12 +706,8 @@ private struct AutosaveDriver: View {
         Color.clear
             .onChange(of: session.text) { _, _ in textDidChange() }
             .task(id: session.text) {
-            do {
-                try await Task.sleep(for: .milliseconds(900))
-                try await session.save()
-            } catch is CancellationError {
-            } catch { session.errorMessage = error.localizedDescription }
-        }
+                await session.autosave(after: .milliseconds(900)) { delay in try await Task.sleep(for: delay) }
+            }
     }
 }
 
@@ -909,7 +899,7 @@ private struct LinkPicker: View {
                 } catch { workspace.errorMessage = error.localizedDescription }
             }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }
 

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceBookmarks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Bookmarks of the workspace: reading, changing and opening them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -73,6 +84,8 @@ extension WorkspaceModel {
             reveal(folder: path)
         case "search":
             searchQuery = bookmark.query ?? ""
+        case "graph":
+            showGraph()
         default:
             break
         }

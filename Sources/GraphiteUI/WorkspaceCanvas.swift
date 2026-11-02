@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCanvas.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Opening and creating canvases in a window.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -15,8 +26,9 @@ extension WorkspaceModel {
         }
         #if canImport(UIKit)
         // As for notes: "Default view for new tabs" decides between reading and editing.
-        session.isWriting = preferences.initialNoteViewMode != .reading
+        session.isWriting = initialNoteViewMode != .reading
         #endif
+        await restoreUnsavedDraft(into: session)
         return session
     }
 
@@ -30,8 +42,8 @@ extension WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "canvas")
             _ = try await store.save(CanvasFile.emptyFileData, at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
             #if canImport(UIKit)
             if let session = canvasSession, session.path == path { session.isWriting = true }
             #endif

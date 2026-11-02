@@ -1,7 +1,19 @@
+/**
+ * File: PDFPicture.swift
+ * ----------------------
+ * Layer: Apple
+ * Description: A picture placed on a PDF page, as in a paper notebook where a printed figure is glued
+ *              in.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
 import Foundation
 import CoreGraphics
 import ImageIO
 import PDFKit
+import os
 import GraphiteCore
 
 /// A picture placed on a PDF page, as in a paper notebook where a printed figure is glued
@@ -116,7 +128,8 @@ public struct PDFPicture: Sendable, Equatable {
         guard hasValidGeometry, let image = Self.decodedImage(imageData) else {
             throw GraphiteError.invalidFile("This image cannot be placed on the page.")
         }
-        let annotation = PDFPictureAnnotation(bounds: annotationBounds, image: image, pictureSize: bounds.size, quarterTurns: quarterTurns,
+        let annotation = PDFPictureAnnotation(bounds: annotationBounds, image: image, imageData: imageData, pictureSize: bounds.size,
+            quarterTurns: quarterTurns,
                                               rotationRadians: rotationRadians, drawsAppearance: isForWrittenDocument)
         annotation.setPersistentName(name)
         // An upright picture stays under the key every build reads; see `turnedPictureKey`.
@@ -171,8 +184,8 @@ final class PDFPictureAnnotation: PDFAnnotation {
     private var pictureReadFromFile: PDFPictureReadFromFile?
     private static let fileReadingLock = NSLock()
 
-    init(bounds: CGRect, image: CGImage, pictureSize: CGSize, quarterTurns: Int, rotationRadians: Double, drawsAppearance: Bool) {
-        picture = PDFPictureAnnotationDrawing(image: image, pictureSize: pictureSize, quarterTurns: quarterTurns,
+    init(bounds: CGRect, image: CGImage, imageData: Data, pictureSize: CGSize, quarterTurns: Int, rotationRadians: Double, drawsAppearance: Bool) {
+        picture = PDFPictureAnnotationDrawing(image: image, imageData: imageData, pictureSize: pictureSize, quarterTurns: quarterTurns,
                                               rotationRadians: rotationRadians, drawsAppearance: drawsAppearance)
         super.init(bounds: bounds, forType: .stamp, withProperties: nil)
     }
@@ -213,6 +226,7 @@ final class PDFPictureAnnotation: PDFAnnotation {
         // its `interpolationQuality` set to high: a picture shown much smaller than its
         // pixels then shows moiré and jagged edges. Drawn here, it is drawn at high quality.
         context.interpolationQuality = .high
+        let pixelsPerPoint = abs(context.ctm.a * context.ctm.d - context.ctm.b * context.ctm.c).squareRoot()
         context.translateBy(x: annotationBounds.midX, y: annotationBounds.midY)
         // Page coordinates count upward, where a positive angle turns counterclockwise:
         // the picture is turned back against the page's own clockwise rotation, and by the
@@ -221,7 +235,8 @@ final class PDFPictureAnnotation: PDFAnnotation {
         let isSideways = drawing.quarterTurns % 2 == 1
         let pictureSize = drawing.pictureSize
         let drawnSize = isSideways ? CGSize(width: pictureSize.height, height: pictureSize.width) : pictureSize
-        context.draw(drawing.image, in: CGRect(x: -drawnSize.width / 2, y: -drawnSize.height / 2, width: drawnSize.width, height: drawnSize.height))
+        let image = drawing.image(forLongestDrawnPixels: max(drawnSize.width, drawnSize.height) * pixelsPerPoint)
+        context.draw(image, in: CGRect(x: -drawnSize.width / 2, y: -drawnSize.height / 2, width: drawnSize.width, height: drawnSize.height))
         context.restoreGState()
     }
 
@@ -237,7 +252,8 @@ final class PDFPictureAnnotation: PDFAnnotation {
         // other's pictures; two threads may both decode it the first time, harmlessly.
         let drawing = PDFPicture(annotation: self).flatMap { storedPicture -> PDFPictureAnnotationDrawing? in
             guard storedPicture.hasValidGeometry, let image = PDFPicture.decodedImage(storedPicture.imageData) else { return nil }
-            return PDFPictureAnnotationDrawing(image: image, pictureSize: storedPicture.bounds.size, quarterTurns: storedPicture.quarterTurns,
+            return PDFPictureAnnotationDrawing(image: image, imageData: storedPicture.imageData, pictureSize: storedPicture.bounds.size,
+                quarterTurns: storedPicture.quarterTurns,
                                                rotationRadians: storedPicture.rotationRadians, drawsAppearance: false)
         }
         Self.fileReadingLock.lock()
@@ -249,7 +265,15 @@ final class PDFPictureAnnotation: PDFAnnotation {
 
 /// What a `PDFPictureAnnotation` draws, fixed when it is made.
 final class PDFPictureAnnotationDrawing: Sendable {
-    let image: CGImage
+    private let ownImage: CGImage
+    private let imageData: Data
+    /// The longest side of the image a page drawn at an ordinary zoom uses instead of the
+    /// picture's own pixels: a 12-megapixel photo decoded takes 48 MB, and each page of a
+    /// notebook keeps its pictures while it stays open. Past this the page is zoomed in far
+    /// enough to need the pixels, which are decoded then.
+    static let reducedImageLongestSide = 2_048
+    /// Nil until it is made; `.some(nil)` when it could not be.
+    private let reducedImage = OSAllocatedUnfairLock<CGImage??>(initialState: nil)
     /// The picture's own width and height before it is turned.
     let pictureSize: CGSize
     let quarterTurns: Int
@@ -259,12 +283,33 @@ final class PDFPictureAnnotationDrawing: Sendable {
     /// on a shown page.
     let drawsAppearance: Bool
 
-    init(image: CGImage, pictureSize: CGSize, quarterTurns: Int, rotationRadians: Double, drawsAppearance: Bool) {
-        self.image = image
+    init(image: CGImage, imageData: Data, pictureSize: CGSize, quarterTurns: Int, rotationRadians: Double, drawsAppearance: Bool) {
+        ownImage = image
+        self.imageData = imageData
         self.pictureSize = pictureSize
         self.quarterTurns = quarterTurns
         self.rotationRadians = rotationRadians
         self.drawsAppearance = drawsAppearance
+    }
+
+    /// The image to draw for a picture this many pixels long in the context drawn into. An
+    /// appearance is always the picture's own pixels, for every other reader.
+    func image(forLongestDrawnPixels longestDrawnPixels: CGFloat) -> CGImage {
+        let longestSide = max(ownImage.width, ownImage.height)
+        guard !drawsAppearance, longestSide > Self.reducedImageLongestSide,
+              longestDrawnPixels <= CGFloat(Self.reducedImageLongestSide) else { return ownImage }
+        if let madeImage = reducedImage.withLock({ state in state }) { return madeImage ?? ownImage }
+        // Decoded outside the lock, so pages drawn at the same time do not wait for each
+        // other's pictures; two threads may both make it the first time, harmlessly.
+        let madeImage = CGImageSourceCreateWithData(imageData as CFData, [kCGImageSourceShouldCache: false] as CFDictionary).flatMap { source in
+            CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceThumbnailMaxPixelSize: Self.reducedImageLongestSide,
+                kCGImageSourceShouldCacheImmediately: true,
+            ] as CFDictionary)
+        }
+        reducedImage.withLock { state in state = madeImage }
+        return madeImage ?? ownImage
     }
 }
 

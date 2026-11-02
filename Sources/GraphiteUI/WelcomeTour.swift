@@ -1,3 +1,14 @@
+/**
+ * File: WelcomeTour.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The welcome tour that shows once on a device, and the pictures it fetches at launch.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 
 /// Whether this device has seen the welcome tour. It shows once, the first time Graphite
@@ -12,12 +23,22 @@ enum WelcomeTourPreference {
 struct FirstLaunchWelcomeTour: ViewModifier {
     /// False until the launch has settled, and always false for a launch that hosts tests.
     let isReadyToShow: Bool
+    /// Whether this launch would show the tour, so its pictures are fetched from the start: while the last vault
+    /// reopens, rather than when the tour opens and the first page waits on the network (HUNT-270). False for a
+    /// launch that hosts tests, which fetch nothing.
+    var fetchesPicturesAtLaunch = false
     @AppStorage(WelcomeTourPreference.shownKey) private var hasBeenShown = false
+    @Environment(AddOnLibrary.self) private var addOns: AddOnLibrary?
 
     func body(content: Content) -> some View {
-        content.welcomeTour(isPresented: Binding(get: { isReadyToShow && !hasBeenShown }, set: { isPresented in
-            if !isPresented { hasBeenShown = true }
-        }))
+        content
+            .task {
+                guard fetchesPicturesAtLaunch, !hasBeenShown, let pack = WelcomeTourScreenshotPack.forThisPlatform else { return }
+                addOns?.download(pack)
+            }
+            .welcomeTour(isPresented: Binding(get: { isReadyToShow && !hasBeenShown }, set: { isPresented in
+                if !isPresented { hasBeenShown = true }
+            }))
     }
 }
 

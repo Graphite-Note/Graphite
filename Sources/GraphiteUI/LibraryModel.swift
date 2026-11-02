@@ -1,3 +1,14 @@
+/**
+ * File: LibraryModel.swift
+ * ------------------------
+ * Layer: UI
+ * Description: The library of one window: the folder shown as a grid, its listing, the filter, the
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CoreGraphics
 import Observation
@@ -40,7 +51,7 @@ final class LibraryModel {
     private(set) var folder: VaultPath = .root
     private(set) var items: [VaultEntry] = []
     private(set) var failure: LibraryFailure?
-    var filter: LibraryFilter = .all { didSet { applyFilter() } }
+    var filter: LibraryFilter = .all { didSet { filterTask = applyFilter() } }
     /// The folders' looks: Graphite's styles and Finder's; replaced with the vault.
     private(set) var folderLooks = LibraryFolderLooks(attributes: nil, appleArt: AppleFolderArt()) { _, _ in nil }
     /// How many items the folder tiles on screen hold; replaced with the vault.
@@ -50,6 +61,8 @@ final class LibraryModel {
 
     @ObservationIgnored private var source: Source?
     @ObservationIgnored private var listedEntries: [VaultEntry] = []
+    /// The filtering of the latest listing or filter tap, off the main actor; a test awaits it.
+    @ObservationIgnored private(set) var filterTask: Task<Void, Never>?
     @ObservationIgnored private var sortOrder = FileSortOrder.alphabetical
     /// The renders running now, by file; never more than `maximumConcurrentRenders`.
     @ObservationIgnored private var previewTasks: [VaultPath: Task<Void, Never>] = [:]
@@ -106,6 +119,7 @@ final class LibraryModel {
     private func listFolder() async {
         guard let source else {
             listedEntries = []; items = []; failure = nil
+            filterTask?.cancel(); filterTask = nil
             return
         }
         let listedFolder = folder
@@ -126,8 +140,11 @@ final class LibraryModel {
         guard listedFolder == folder else { return }
         listedEntries = entries
         if failure == .folderUnreadable { failure = nil }
-        applyFilter()
-        refreshChangedPreviews()
+        let filtering = applyFilter()
+        filterTask = filtering
+        await filtering.value
+        guard listedFolder == folder else { return }
+        await refreshChangedPreviews()
         folderItemCounts.refreshVisibleFolders()
         await loadFolderStyles(from: source.store)
         await folderLooks.readFinderLooks(of: entries.filter(\.isDirectory).map(\.path))
@@ -180,9 +197,19 @@ final class LibraryModel {
         }
     }
 
-    private func applyFilter() {
-        let filteredItems = LibraryListing.items(of: listedEntries, filter: filter, sortOrder: sortOrder)
-        if filteredItems != items { items = filteredItems }
+    /// Filters the sorted listing off the main actor: a root of 24,712 files is not looked
+    /// through and compared on the thread that drew the tap. Only the latest filtering shows.
+    private func applyFilter() -> Task<Void, Never> {
+        filterTask?.cancel()
+        let entries = listedEntries, filter = filter, shownItems = items
+        return Task { [weak self] in
+            let filteredItems = await Task.detached(priority: .userInitiated) { () -> [VaultEntry]? in
+                let filteredItems = LibraryListing.items(ofSorted: entries, filter: filter)
+                return filteredItems == shownItems ? nil : filteredItems
+            }.value
+            guard !Task.isCancelled, let self, let filteredItems else { return }
+            self.items = filteredItems
+        }
     }
 
     /// Saves a folder's look in the vault, then on the Mac where Finder reads it. A failure
@@ -257,12 +284,17 @@ final class LibraryModel {
 
     /// Asks again for the preview of every tile on screen whose file the new listing shows
     /// changed. The old picture stays until the new one is drawn.
-    private func refreshChangedPreviews() {
-        for entry in listedEntries where visibleTileCounts[entry.path] != nil && !entry.isDirectory {
-            if let requestedKey = requestedPreviewKeys[entry.path], requestedKey != LibraryPreviewCache.Key(entry: entry) {
-                requestPreview(of: entry)
+    private func refreshChangedPreviews() async {
+        guard !requestedPreviewKeys.isEmpty else { return }
+        let entries = listedEntries, requestedKeys = requestedPreviewKeys
+        // A look through the whole listing, off the main actor, for the few tiles on screen.
+        let changedEntries = await Task.detached(priority: .userInitiated) {
+            entries.filter { entry in
+                guard !entry.isDirectory, let requestedKey = requestedKeys[entry.path] else { return false }
+                return requestedKey != LibraryPreviewCache.Key(entry: entry)
             }
-        }
+        }.value
+        for entry in changedEntries where visibleTileCounts[entry.path] != nil { requestPreview(of: entry) }
     }
 
     /// Shows the cached preview of this version, or queues a render of it.

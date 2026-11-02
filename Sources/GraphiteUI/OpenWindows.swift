@@ -1,3 +1,14 @@
+/**
+ * File: OpenWindows.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The windows of the process, for what only one may run at a time and for quitting.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One window's part in what the windows of the process share: its name, and whether it
@@ -10,19 +21,26 @@ final class OpenWindow {
     let isRecording: () -> Bool
     let isReadingAloud: () -> Bool
     let stopReadingAloud: () -> Void
-    /// Saves every document open in the window, as quitting does.
+    /// Saves every document open in the window, and what plugins' views of files hold, as
+    /// quitting does.
     let saveOpenDocuments: () async throws -> Void
+    /// Whether what could not be saved is safe from quitting, kept outside the vault. The
+    /// argument says whether it may also write copies of PDFs into the vault, which is left
+    /// out when the vault's files are not answering.
+    let keepUnsavedDocuments: (_ writesPDFCopies: Bool) async -> Bool
     /// Shows a problem in the window, as why Graphite did not quit.
     let presentProblem: (String) -> Void
 
     init(name: @escaping () -> String, isRecording: @escaping () -> Bool, isReadingAloud: @escaping () -> Bool,
          stopReadingAloud: @escaping () -> Void, saveOpenDocuments: @escaping () async throws -> Void,
+         keepUnsavedDocuments: @escaping (_ writesPDFCopies: Bool) async -> Bool,
          presentProblem: @escaping (String) -> Void) {
         self.name = name
         self.isRecording = isRecording
         self.isReadingAloud = isReadingAloud
         self.stopReadingAloud = stopReadingAloud
         self.saveOpenDocuments = saveOpenDocuments
+        self.keepUnsavedDocuments = keepUnsavedDocuments
         self.presentProblem = presentProblem
     }
 }

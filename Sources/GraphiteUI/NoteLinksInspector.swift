@@ -1,3 +1,15 @@
+/**
+ * File: NoteLinksInspector.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The right sidebar of a note: outline, backlinks, outgoing links, tags, footnotes and the local graph
+ *              and map.
+ *
+ * Authors: felixchvl
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -22,6 +34,8 @@ struct NoteLinksInspector: View {
     @State private var tags: [String] = []
     @State private var footnotes: [(note: Footnotes.Note, location: Int)] = []
     @Environment(\.accent) private var accent
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var outline: [OutlineHeading] = []
 
     struct OutlineHeading: Identifiable {
@@ -81,11 +95,17 @@ struct NoteLinksInspector: View {
             if availablePanels.isEmpty {
                 ContentUnavailableView("No Panels", systemImage: "sidebar.right", description: Text("Turn on Outline, Backlinks, Outgoing Links, or Tags View in Settings › Core Plugins."))
             } else {
-                Picker("Panel", selection: $selectedPanel) {
-                    ForEach(availablePanels) { panel in Image(systemName: panel.plugin.systemImage).tag(panel).accessibilityLabel(panel.plugin.title) }
+                HStack(spacing: 10) {
+                    Picker("Panel", selection: $selectedPanel) {
+                        ForEach(availablePanels) { panel in Image(systemName: panel.plugin.systemImage).tag(panel).accessibilityLabel(panel.plugin.title) }
+                    }
+                    // The Mac otherwise writes the picker's own name, "Panel", before it.
+                    .pickerStyle(.segmented).labelsHidden()
+                    // On a phone this is a sheet, and the graph tab pans under a drag, so a swipe down
+                    // does not close it: the way out is a button, in the picker's row.
+                    if horizontalSizeClass == .compact { Button("Done") { dismiss() } }
                 }
-                // The Mac otherwise writes the picker's own name, "Panel", before it.
-                .pickerStyle(.segmented).labelsHidden().padding(10)
+                .padding(10)
                 if selectedPanel == .graph {
                     LocalGraphPanel(session: session, workspace: workspace)
                 } else if selectedPanel == .map {
