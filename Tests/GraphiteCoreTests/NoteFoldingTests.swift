@@ -1,3 +1,14 @@
+/**
+ * File: NoteFoldingTests.swift
+ * ----------------------------
+ * Layer: Tests
+ * Description: What folds in a note and how its regions follow typing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
