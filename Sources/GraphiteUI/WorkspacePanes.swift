@@ -40,6 +40,10 @@ struct WorkspacePanes: View {
 
     private var showsBothGroups: Bool { workspace.layout.isSplit && horizontalSizeClass != .compact }
 
+    private var foldsFindAndPagesFromToolbar: Bool {
+        DocumentToolbarLayout.foldsFindAndPages(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass, sidebarIsBeside: isSidebarBesideDocuments)
+    }
+
     var body: some View {
         panes
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in detailWidth = width }
@@ -47,8 +51,7 @@ struct WorkspacePanes: View {
                                                                                         verticalSizeClass: verticalSizeClass))
             .environment(\.sharesWindowWithOtherSide, showsBothGroups)
             .environment(\.foldsSecondaryToolbarActions, DocumentToolbarLayout.foldsSecondaryActions(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass))
-            .environment(\.foldsFindAndPagesFromToolbar, DocumentToolbarLayout.foldsFindAndPages(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass,
-                                                                                                 sidebarIsBeside: isSidebarBesideDocuments))
+            .environment(\.foldsFindAndPagesFromToolbar, foldsFindAndPagesFromToolbar)
             #if canImport(UIKit)
             // A touch anywhere on a side focuses it, so the toolbar and new files follow. The
             // touch is only observed: a SwiftUI gesture over the editor would compete with

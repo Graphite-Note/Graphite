@@ -179,7 +179,7 @@ final class InkSelectionTests: XCTestCase {
     /// HUNT-007 through the real path: a stroke drawn at 3.27 and one drawn at the fitted zoom, each taken at 0.91 by a
     /// loop of touches, whichever is around it, with a loop around neither marking an area.
     func testALoopOfTouchesAtAnotherZoomTakesAStrokeDrawnWhileZoomedIn() async throws {
-        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let (session, canvas, _) = try await openPageWithCanvas()
@@ -210,7 +210,7 @@ final class InkSelectionTests: XCTestCase {
     /// HUNT-007 for ink already in files: a stroke as the code before the width fix saved it, 2.7 times as wide, read back
     /// from its saved form, is selected at another zoom by a loop of touches. Its points are where they always were.
     func testALoopOfTouchesTakesAStrokeSavedAtTheOldWidth() async throws {
-        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let (session, canvas, page) = try await openPageWithCanvas()

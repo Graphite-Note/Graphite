@@ -31,7 +31,9 @@ public struct MomentDateReader: Sendable {
     /// - Parameter languages: The languages names are read in, the first winning where two share a form.
     public init?(format: String, languages: [MomentDateLanguage] = [.english]) {
         let readsOnlyEnglish = languages.allSatisfy { language in language == .english }
-        let westernForms: [Character: Character] = languages.reduce(into: [:]) { forms, language in forms.merge(language.westernFormsOfOwnDigits) { first, _ in first } }
+        let westernForms: [Character: Character] = languages.reduce(into: [:]) { forms, language in
+            forms.merge(language.westernFormsOfOwnDigits) { first, _ in first }
+        }
         var pattern = "^"
         var fields: [String] = []
         var namesByToken: [String: [String: [Int]]] = [:]
@@ -42,7 +44,8 @@ public struct MomentDateReader: Sendable {
             case .token(let token):
                 if let names = Self.names(of: token, languages: languages, westernForms: westernForms) {
                     namesByToken[token] = names
-                    var alternatives = names.keys.sorted { first, second in first.count > second.count }.map { name in NSRegularExpression.escapedPattern(for: name) }
+                    var alternatives = names.keys.sorted { first, second in first.count > second.count }
+                        .map { name in NSRegularExpression.escapedPattern(for: name) }
                     // A weekday adds nothing to the day, and another writer's abbreviation should not lose the note.
                     if !readsOnlyEnglish, token == "ddd" || token == "dd" { alternatives.append("\\S{1,12}?") }
                     pattern += "(" + alternatives.joined(separator: "|") + ")"
@@ -75,7 +78,10 @@ public struct MomentDateReader: Sendable {
         let formsOfLanguage: (MomentDateLanguage) -> [[String]]
         switch token {
         case "MMMM": formsOfLanguage = { language in [language.months, language.monthsAfterDay] + language.otherMonthForms }
-        case "MMM": formsOfLanguage = { language in [language.abbreviatedMonths] + language.otherAbbreviatedMonthForms + (language == .english ? [] : [language.months, language.monthsAfterDay]) }
+        case "MMM":
+            formsOfLanguage = { language in
+                [language.abbreviatedMonths] + language.otherAbbreviatedMonthForms + (language == .english ? [] : [language.months, language.monthsAfterDay])
+            }
         case "dddd": formsOfLanguage = { language in [language.weekdays] + language.otherWeekdayForms }
         case "ddd": formsOfLanguage = { language in [language.abbreviatedWeekdays] + language.otherAbbreviatedWeekdayForms }
         case "dd": formsOfLanguage = { language in [language.shortestWeekdays] }
@@ -116,7 +122,9 @@ public struct MomentDateReader: Sendable {
 
     /// The day `text` names, or nil when it is not written in the format or names a day that does not exist.
     public func date(from text: String, timeZone: TimeZone = .current) -> Date? {
-        let readable = readsOnlyEnglish ? text : String(text.precomposedStringWithCanonicalMapping.map { character in westernForms[character] ?? character })
+        let readable = readsOnlyEnglish ? text : String(text.precomposedStringWithCanonicalMapping.map { character in
+            westernForms[character] ?? character
+        })
         let nsText = readable as NSString
         guard let match = expression.firstMatch(in: readable, range: NSRange(location: 0, length: nsText.length)) else { return nil }
         var components = DateComponents()
@@ -138,20 +146,25 @@ public struct MomentDateReader: Sendable {
         guard components.year != nil, components.month != nil, components.day != nil else { return nil }
         let calendar = MomentDateFormat.gregorianCalendar(timeZone: timeZone)
         guard let date = calendar.date(from: components) else { return nil }
-        // Every part read must be what the day has, or it named a day that does not exist (31 April, or a wrong weekday).
-        let dayParts = calendar.dateComponents([.month, .day, .weekday], from: date)
-        for capture in captures {
-            switch capture.token {
-            case "MMMM", "MMM": guard let month = dayParts.month, capture.nameMeanings.contains(month) else { return nil }
-            case "dddd": guard let weekday = dayParts.weekday, capture.nameMeanings.contains(weekday - 1) else { return nil }
-            case "ddd", "dd":
-                guard capture.nameMeanings.isEmpty || dayParts.weekday.map({ weekday in capture.nameMeanings.contains(weekday - 1) }) == true else { return nil }
-            case "Do": guard let day = dayParts.day, capture.nameMeanings.contains(day) else { return nil }
-            default:
-                let written = MomentDateFormat.value(of: capture.token, for: date, calendar: calendar, timeZone: timeZone, language: writingLanguage, monthFollowsDay: false)
-                guard written == capture.text else { return nil }
-            }
+        let everyPartFits = captures.allSatisfy { capture in
+            Self.capture(capture, fits: date, calendar: calendar, timeZone: timeZone, language: writingLanguage)
         }
-        return date
+        return everyPartFits ? date : nil
+    }
+
+    /// Whether a part read is what the day has: otherwise it named a day that does not exist (31 April, or a wrong weekday).
+    private static func capture(_ capture: (token: String, text: String, nameMeanings: [Int]), fits date: Date, calendar: Calendar, timeZone: TimeZone,
+                                language: MomentDateLanguage) -> Bool {
+        let dayParts = calendar.dateComponents([.month, .day, .weekday], from: date)
+        switch capture.token {
+        case "MMMM", "MMM": return dayParts.month.map(capture.nameMeanings.contains) ?? false
+        case "dddd": return dayParts.weekday.map { weekday in capture.nameMeanings.contains(weekday - 1) } ?? false
+        case "ddd", "dd":
+            return capture.nameMeanings.isEmpty || dayParts.weekday.map { weekday in capture.nameMeanings.contains(weekday - 1) } ?? false
+        case "Do": return dayParts.day.map(capture.nameMeanings.contains) ?? false
+        default:
+            let written = MomentDateFormat.value(of: capture.token, for: date, calendar: calendar, timeZone: timeZone, language: language, monthFollowsDay: false)
+            return written == capture.text
+        }
     }
 }

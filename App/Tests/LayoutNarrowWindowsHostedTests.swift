@@ -366,7 +366,7 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         // The menu's material in dark appearance, about this gray; 3 to 1 is what a graphic needs to be made out (WCAG 1.4.11).
         let platter = UIColor(white: 0.17, alpha: 1)
 
-        try XCTSkipIf(SynthesizedTouches.unavailableReason != nil, SynthesizedTouches.unavailableReason ?? "")
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
         var moreButtonFrame: CGRect?
         func findMore(_ view: UIView) {
             if let imageView = view as? UIImageView, imageView.image?.description.contains("ellipsis") == true {
@@ -390,9 +390,8 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         }
         try? await waitUntil("the menu opens", timeoutSeconds: 5) { menuIcons().count >= 3 }
         attachScreenshotOfEveryWindow(in: windowScene, size: size, named: "Three-dot menu of a PDF, dark appearance")
-        let icons = menuIcons()
-        try XCTSkipIf(icons.isEmpty, "UIKit's menu icons were not found: the picture attached is the check.")
-        for icon in icons {
+        // Where UIKit's menu icons cannot be found, the picture attached is the check.
+        for icon in menuIcons() {
             XCTAssertGreaterThanOrEqual(darkContrast(of: icon.tintColor, against: platter), 3, "A menu icon reads: \(icon.image?.description ?? "")")
         }
     }

@@ -35,8 +35,7 @@ public enum MomentDateFormat {
         "llll": "ddd, MMM D, YYYY h:mm A", "lll": "MMM D, YYYY h:mm A", "ll": "MMM D, YYYY", "l": "M/D/YYYY",
     ]
     private static let sortedLongDateFormatKeys = longDateFormats.keys.sorted { first, second in first.count > second.count }
-    /// Moment's test for the form of a month that follows a day, over the whole format: `D[oD]?`, spaces or bracketed text, `MMM`.
-    private static let monthAfterDayExpression = try? NSRegularExpression(pattern: "D[oD]?(\\[[^\\[\\]]*\\]|\\s)+MMMM?")
+    private static let monthAfterDayExpression = MomentDateFormatPattern.monthAfterDay.compiled()
     private static let eraNames = (annoDomini: "Anno Domini", beforeChrist: "Before Christ", annoDominiAbbreviation: "AD", beforeChristAbbreviation: "BC")
 
     enum Piece: Equatable, Sendable {
@@ -45,13 +44,15 @@ public enum MomentDateFormat {
     }
 
     /// The date written in `format`.
-    public static func string(from date: Date, format: String, timeZone: TimeZone = .current, language: MomentDateLanguage = .english) -> String {
+    public static func string(from date: Date, format: String, timeZone: TimeZone = .current,
+                              language: MomentDateLanguage = .english) -> String {
         let monthFollowsDay = language.takesMonthAfterDayOnlyRightAfterIt ? format.contains("D MMMM") : monthFollowsDay(in: format)
         let calendar = gregorianCalendar(timeZone: timeZone, language: language)
         let written = pieces(of: format).map { piece in
             switch piece {
             case .literal(let text): text
-            case .token(let token): value(of: token, for: date, calendar: calendar, timeZone: timeZone, language: language, monthFollowsDay: monthFollowsDay)
+            case .token(let token):
+                value(of: token, for: date, calendar: calendar, timeZone: timeZone, language: language, monthFollowsDay: monthFollowsDay)
             }
         }.joined()
         return language.inOwnDigits(written)
@@ -76,7 +77,7 @@ public enum MomentDateFormat {
     }
 
     private static func monthFollowsDay(in format: String) -> Bool {
-        monthAfterDayExpression?.firstMatch(in: format, range: NSRange(format.startIndex..., in: format)) != nil
+        monthAfterDayExpression.firstMatch(in: format, range: NSRange(format.startIndex..., in: format)) != nil
     }
 
     static func pieces(of format: String) -> [Piece] {
@@ -128,7 +129,8 @@ public enum MomentDateFormat {
         return (written.replacingOccurrences(of: "\\", with: ""), text.dropFirst(written.count))
     }
 
-    static func value(of token: String, for date: Date, calendar: Calendar, timeZone: TimeZone, language: MomentDateLanguage, monthFollowsDay: Bool) -> String {
+    static func value(of token: String, for date: Date, calendar: Calendar, timeZone: TimeZone, language: MomentDateLanguage,
+                      monthFollowsDay: Bool) -> String {
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second, .nanosecond, .weekday, .weekOfYear, .yearForWeekOfYear], from: date)
         let year = components.year ?? 0, month = components.month ?? 1, day = components.day ?? 1
         let hour = components.hour ?? 0, minute = components.minute ?? 0, second = components.second ?? 0
@@ -209,4 +211,9 @@ public enum MomentDateFormat {
         default: return token
         }
     }
+}
+
+enum MomentDateFormatPattern: String, StaticPatternSet {
+    /// Moment's test for the form of a month that follows a day, over the whole format: `D[oD]?`, spaces or bracketed text, `MMM`.
+    case monthAfterDay = "D[oD]?(\\[[^\\[\\]]*\\]|\\s)+MMMM?"
 }

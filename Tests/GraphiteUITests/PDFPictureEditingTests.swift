@@ -133,7 +133,8 @@ final class PDFPictureEditingTests: XCTestCase {
     }
 
     /// A crop reads the picture and then waits for its image: a turn in that time stays, and the crop says it did not
-    /// happen, where it put the unturned picture back (the same shape as HUNT-208, in the one edit that still waits).
+    /// happen (the same shape as HUNT-208, in the one edit that still waits). Going on to replace the picture it read
+    /// ended this process before the check was there.
     func testATurnWhileACropIsWorkedOutIsKeptAndTheCropIsRefused() async throws {
         let (session, _) = try await openSession()
         try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
@@ -147,9 +148,9 @@ final class PDFPictureEditingTests: XCTestCase {
         try await step(in: session) { try session.rotatePictureRight(selection) }
         do {
             try await crop.value
-            XCTFail("The crop would have put the unturned picture back.")
+            XCTFail("The crop went on with the picture as it was before the turn.")
         } catch {
-            XCTAssertTrue(error.localizedDescription.contains("Crop it again"), error.localizedDescription)
+            XCTAssertEqual(error as? PDFPictureCropError, .pictureChangedMeanwhile)
         }
         let picture = try XCTUnwrap(session.pictures(on: page).first)
         XCTAssertEqual(picture.quarterTurns, (placed.quarterTurns + 3) % 4, "The turn stays; a turn right counts down.")

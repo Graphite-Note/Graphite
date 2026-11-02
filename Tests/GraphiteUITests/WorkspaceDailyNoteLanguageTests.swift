@@ -40,7 +40,7 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
 
     func testOpeningTheDayFindsTheGermanNoteAndMakesNoSecond() async throws {
         let (workspace, vault) = try await testBed.openedWorkspace(files: settingsFile.merging(["Sonntag, 01. November 2026.md": "Geschrieben von Obsidian\n"]) { first, _ in first })
-        workspace.preferences.dateNameLanguage = .named("de")
+        workspace.preferences.dateNames.language = .named("de")
 
         await workspace.openDailyNote(for: try day(2026, 11, 1))
 
@@ -51,14 +51,14 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
     /// English stays the default, so a vault's existing names are found and no setting is needed for them.
     func testEnglishIsTheDefaultAndFindsAVaultsEnglishNote() async throws {
         let (workspace, vault) = try await testBed.openedWorkspace(files: settingsFile.merging(["Sunday, 01. November 2026.md": "x\n"]) { first, _ in first })
-        XCTAssertEqual(workspace.preferences.dateNameLanguage, .english)
+        XCTAssertEqual(workspace.preferences.dateNames.language, .english)
         await workspace.openDailyNote(for: try day(2026, 11, 1))
         XCTAssertEqual(try notes(in: vault), ["Sunday, 01. November 2026.md"])
     }
 
     func testANoteNamedBeforeTheLanguageChangedOpensInsteadOfASecond() async throws {
         let (workspace, vault) = try await testBed.openedWorkspace(files: settingsFile.merging(["Sunday, 01. November 2026.md": "x\n"]) { first, _ in first })
-        workspace.preferences.dateNameLanguage = .named("de")
+        workspace.preferences.dateNames.language = .named("de")
         await workspace.openDailyNote(for: try day(2026, 11, 1))
         XCTAssertEqual(try notes(in: vault), ["Sunday, 01. November 2026.md"])
         XCTAssertEqual(workspace.selection?.rawValue, "Sunday, 01. November 2026.md")
@@ -72,7 +72,7 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
         let (workspace, vault) = try await testBed.openedWorkspace(files: [
             ".obsidian/daily-notes.json": #"{"format": "DD. MMM YYYY"}"#, "01. Sep. 2026.md": "x\n",
         ])
-        workspace.preferences.dateNameLanguage = .named("de")
+        workspace.preferences.dateNames.language = .named("de")
         try await waitUntilIndexed("01. Sep. 2026.md", in: workspace)
         await workspace.openDailyNote(for: try day(2026, 9, 1))
         XCTAssertEqual(try notes(in: vault), ["01. Sep. 2026.md"])
@@ -82,7 +82,7 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
         let (workspace, _) = try await testBed.openedWorkspace(files: settingsFile.merging([
             "Freitag, 30. Oktober 2026.md": "x\n", "Sunday, 01. November 2026.md": "x\n", "Dienstag, 03. November 2026.md": "x\n",
         ]) { first, _ in first })
-        workspace.preferences.dateNameLanguage = .named("de")
+        workspace.preferences.dateNames.language = .named("de")
         try await waitUntilIndexed("Dienstag, 03. November 2026.md", in: workspace)
         await workspace.open(try VaultPath("Sunday, 01. November 2026.md"))
 
@@ -98,13 +98,13 @@ final class WorkspaceDailyNoteLanguageTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let preferences = GraphitePreferences(defaults: defaults)
-        XCTAssertEqual(preferences.dateNameLanguage, .english)
-        XCTAssertEqual(preferences.dateNameReadingLanguages, [.english])
-        preferences.dateNameLanguage = .named("de")
-        preferences.dateNameLanguage = .named("fr")
+        XCTAssertEqual(preferences.dateNames.language, .english)
+        XCTAssertEqual(preferences.dateNames.readingLanguages, [.english])
+        preferences.dateNames.language = .named("de")
+        preferences.dateNames.language = .named("fr")
 
         let reopened = GraphitePreferences(defaults: defaults)
-        XCTAssertEqual(reopened.dateNameLanguage.id, "fr")
-        XCTAssertEqual(reopened.dateNameReadingLanguages.map(\.id), ["fr", "de", "en"], "Notes in German are still found after moving on from it.")
+        XCTAssertEqual(reopened.dateNames.language.id, "fr")
+        XCTAssertEqual(reopened.dateNames.readingLanguages.map(\.id), ["fr", "de", "en"], "Notes in German are still found after moving on from it.")
     }
 }
