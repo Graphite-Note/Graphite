@@ -1,3 +1,14 @@
+/**
+ * File: PDFPictureEditingTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Turning, cropping and ordering pictures on PDF pages through the session: each is one
+ *              step of the PDF's history, and the saved file shows the result.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
 import XCTest
 import PDFKit
 import ImageIO
@@ -92,6 +103,37 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(session.pictures(on: page), [turned])
         try await session.save()
         XCTAssertEqual(PDFPageManager.pictures(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))), [turned])
+    }
+
+    /// Rotate Right on a page draws the picture a quarter turn further and never encodes it again
+    /// (HUNT-018): a JPEG's bytes after four turns are its bytes before them, also in the saved file.
+    func testFourTurnsRightKeepEveryByteOfAJPEGAndItsPlaceInTheSavedFile() async throws {
+        let (session, location) = try await openSession()
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(XCTUnwrap(CGImageSourceCreateWithData(try twoColorImageData() as CFData, nil)), 0, nil))
+        let jpeg = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(jpeg, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let jpegBytes = jpeg as Data
+        try await step(in: session) { try await session.addPicture(imageData: jpegBytes) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(placed.imageData, jpegBytes, "An upright JPEG is placed as the very file")
+        let selection = try XCTUnwrap(session.selectedPicture)
+        for turn in 1...4 {
+            try await step(in: session) { try session.rotatePictureRight(selection) }
+            let turned = try XCTUnwrap(session.pictures(on: page).first)
+            XCTAssertEqual(turned.imageData, jpegBytes, "Turn \(turn) encodes nothing again")
+            XCTAssertEqual(turned.bounds.midX, placed.bounds.midX, accuracy: 0.01, "Turn \(turn)")
+            XCTAssertEqual(turned.bounds.midY, placed.bounds.midY, accuracy: 0.01, "Turn \(turn)")
+        }
+        let turnedFourTimes = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedFourTimes.bounds.width, placed.bounds.width, accuracy: 0.01, "A full turn is the place it started")
+        XCTAssertEqual(turnedFourTimes.bounds.height, placed.bounds.height, accuracy: 0.01)
+        XCTAssertEqual(turnedFourTimes.quarterTurns.quotientAndRemainder(dividingBy: 4).remainder, 0)
+        try await session.save()
+        let saved = try XCTUnwrap(PDFPageManager.pictures(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))).first)
+        XCTAssertEqual(saved.imageData, jpegBytes, "The file holds the same bytes")
     }
 
     func testACropKeepsThePartShownInsideItAlsoOnATurnedPage() async throws {

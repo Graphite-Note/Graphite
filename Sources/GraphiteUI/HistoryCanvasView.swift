@@ -5,8 +5,8 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.26
- * Date: 01/11/2026
+ * Version: 0.27
+ * Date: 02/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -586,6 +586,9 @@ class HistoryCanvasView: PKCanvasView {
     }
 
     var isShowingShapePreview: Bool { shapePreviewLayer.superlayer != nil }
+
+    /// How wide the shape shows, in the drawing's points, to compare with the stroke it becomes.
+    var shapePreviewWidthInDrawing: CGFloat { zoomScale > 0 ? shapePreviewLayer.lineWidth / zoomScale : 0 }
 
     /// The touch drawing a stroke has rested. The stroke runs through the points, in the
     /// canvas's own coordinates; when it is a shape, the shape is shown.
