@@ -5,8 +5,8 @@
  * Description: Which view a note opens in, and what each note and vault remembers of it.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -58,12 +58,12 @@ extension WorkspaceModel {
         case .perVault: vaultNoteView
         }
         session.viewMode = rememberedView ?? initialNoteViewMode
-        session.didChangeViewMode = { [weak self] viewMode in
-            guard let self else { return }
+        session.didChangeViewMode = { [weak self, weak session] viewMode in
+            guard let self, let session else { return }
             switch preferences.noteViewMemory {
             case .perNote:
                 var views = noteViewsByPath
-                views[path.rawValue] = viewMode.rawValue
+                views[session.path.rawValue] = viewMode.rawValue
                 noteViewsByPath = views
             case .perVault:
                 vaultNoteView = viewMode

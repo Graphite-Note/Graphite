@@ -5,8 +5,8 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.14
- * Date: 01/11/2026
+ * Version: 0.15
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -16,7 +16,9 @@ import GraphiteCore
 @MainActor @Observable
 final class MarkdownSession {
     static let maximumEditableBytes = 8 * 1_048_576
-    let path: VaultPath
+    /// The note's place in the vault. It changes only as the file moves (`followFile(to:)`), so
+    /// closures read it when they run rather than keeping it.
+    private(set) var path: VaultPath
     private let store: VaultStore
     private let didSave: @MainActor (VaultPath) -> Void
     var text: String {
@@ -31,7 +33,7 @@ final class MarkdownSession {
     /// session alone, as in tests.
     @ObservationIgnored private let openNotes: OpenNoteFiles?
     /// This note's key among the open notes.
-    @ObservationIgnored private let fileKey: String
+    @ObservationIgnored private var fileKey: String
     /// Set while the text comes from another session of the note, so it is not sent back.
     @ObservationIgnored private var isTakingSharedText = false
     /// A window-level consumer can invalidate a reading snapshot even when the
@@ -231,6 +233,8 @@ final class MarkdownSession {
             // main actor and the saver that owns it would never run again.
             if activeSave == previousSave { activeSave = nil }
         }
+        // A move let go of this session while it waited; what it had is in a copy by then.
+        guard !wasLeftBehindByMove else { return }
         bringWaitingTextIntoNote()
         guard hasUnsavedChanges else {
             // Undone back to what the file holds: there is nothing left to bring back.
@@ -307,6 +311,47 @@ final class MarkdownSession {
             throw GraphiteError.conflict
         }
         try adopt(snapshot)
+    }
+
+    // MARK: A move of the note's file
+
+    /// Set when a move could not take this session along, so it never writes again.
+    @ObservationIgnored private var wasLeftBehindByMove = false
+
+    /// The session goes away as the move ends, with its text already in a copy (`EditDuringMove`).
+    func letGoAfterMove() {
+        wasLeftBehindByMove = true
+    }
+
+    /// Makes every save of this note wait for `gate`, which a move of its file holds until the
+    /// file has its new place, so no save can aim at the old path meanwhile.
+    /// - Returns: The save already running, which the move waits for before it starts.
+    func holdSaves(until gate: Task<Void, Error>) -> Task<Void, Error>? {
+        let saveInFlight = activeSave
+        activeSave = gate
+        return saveInFlight
+    }
+
+    func releaseSaves(heldBy gate: Task<Void, Error>) {
+        if activeSave == gate { activeSave = nil }
+    }
+
+    /// The note's file is now at `newPath`: every session of it, in every window, goes on there
+    /// with its text, cursor, editor, undo history and unsaved state. A session whose vault
+    /// does not hold the new place stays as it is, and finds its file gone.
+    func followFile(to newPath: VaultPath) throws {
+        let newLocation = try newPath.url(in: store.root)
+        let newFileKey = OpenNoteFiles.key(for: newLocation)
+        for session in [self] + siblings { session.takeMovedFile(at: newLocation, fileKey: newFileKey) }
+    }
+
+    private func takeMovedFile(at newLocation: URL, fileKey newFileKey: String) {
+        guard let newPath = WorkspaceModel.vaultPath(for: newLocation, root: store.root) else { return }
+        openNotes?.moveSession(self, fromFile: fileKey, toFile: newFileKey)
+        fileKey = newFileKey
+        if draftEditVersion != nil { draftKeeper?.moveDraft(to: newPath) }
+        draftKeeper = draftKeeper?.following(to: newPath)
+        path = newPath
     }
 
     /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.

@@ -5,8 +5,8 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.29
- * Date: 01/11/2026
+ * Version: 0.30
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -455,9 +455,9 @@ extension WorkspaceModel {
                 // An edit while the note is read: reading goes on at the same sentence.
                 newMarkdown?.textDidChange = { [weak self, weak newMarkdown] in
                     guard let self, let newMarkdown else { return }
-                    readAloud?.noteTextDidChange(path: path, text: newMarkdown.text,
+                    readAloud?.noteTextDidChange(path: newMarkdown.path, text: newMarkdown.text,
                         hiddenRanges: ReadAloudFolding.hiddenRanges(in: newMarkdown.text, foldedKeys: newMarkdown.foldedKeys,
-                                                                    calloutExpansion: calloutFolds.expansion(for: path.rawValue)))
+                                                                    calloutExpansion: calloutFolds.expansion(for: newMarkdown.path.rawValue)))
                 }
                 if let newMarkdown {
                     await restoreUnsavedDraft(into: newMarkdown)

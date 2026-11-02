@@ -5,7 +5,7 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.22
+ * Version: 0.23
  * Date: 02/11/2026
  */
 
@@ -255,9 +255,19 @@ extension WorkspaceModel {
         do {
             // Changes made while the question was open are saved before anything moves.
             try await saveOpenDocuments()
+            // Before anything can suspend: from here until the file has its new place, no save
+            // aims at the old path. Typing goes on, and is saved once the move is over.
+            let heldSaves = holdSavesOfOpenNotes(inside: path)
+            defer { heldSaves.release() }
+            await heldSaves.waitForSavesInFlight()
             let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
             let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
             moveDrafts(from: path, to: destination)
+            // A note goes on at the new place in its own session, undo history included; one
+            // whose file the move itself rewrote under typing is left behind, below.
+            let notesFollowing = followMoveInOpenNotes(from: path, to: destination) { session, newPath in
+                !session.hasUnsavedChanges || !report.updatedNotes.contains(newPath)
+            }
             // Read before the tabs let go of their sessions, with no suspension in between,
             // so every keystroke made during the move is kept.
             let editsDuringMove = unsavedEdits(inside: path, movedTo: destination, revisionsBeforeMove: revisionsBeforeMove)
@@ -265,8 +275,10 @@ extension WorkspaceModel {
                 session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(path) == true
             }
             expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(path, with: destination)) ?? folder })
-            // Tabs of moved files load them again from their new place.
+            // Tabs whose session could not follow load their files again from the new place.
             followMoveInNavigation(from: path, to: destination)
+            heldSaves.release()
+            await saveTextOfNotes(notesFollowing)
             let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(editsDuringMove)
             let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsEditedDuringMove, from: path, to: destination)
             // Without link updates the report lists only the moved item itself; the plan
