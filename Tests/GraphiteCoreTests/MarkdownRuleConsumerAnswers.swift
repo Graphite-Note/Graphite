@@ -248,7 +248,9 @@ enum FencedCodeAnswers {
         note.codeLines { lineIndex in
             let probe = note.replacingLine(at: lineIndex, with: [note.containerMarkup(ofLineAt: lineIndex) + "- probe"])
             let cursor = NSRange(location: NSMaxRange(probe.probeLineRange), length: 0)
+            // A math block keeps Return plain too; the question here is code.
             return MarkdownEditing.continuingList(in: probe.text as NSString, selection: cursor, indentUnit: "\t") == nil
+                && MarkdownStyleScanner.blockContext(atLineContaining: probe.probeLineRange.location, in: probe.text as NSString) != .mathBlock
         }
     }
 

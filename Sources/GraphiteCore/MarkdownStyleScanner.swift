@@ -116,6 +116,12 @@ public struct MarkdownBlockCheckpoint: Equatable, Sendable {
     public var context: MarkdownBlockContext { state.context }
 }
 
+/// See `MarkdownStyleScanner.displayMathEffect(ofLine:)`.
+public struct DisplayMathLineEffect: Equatable, Sendable {
+    public let opensBlock: Bool
+    public let closesBlock: Bool
+}
+
 /// A line-oriented scanner for editor styling. It is intentionally tolerant: it styles
 /// what Obsidian users type and never needs a whole-document parse per keystroke. Only
 /// the block context before the styled lines depends on earlier text, and finding it
@@ -194,6 +200,23 @@ public enum MarkdownStyleScanner {
     public static func lineAffectsFollowingLines(_ line: String) -> Bool {
         let content = contentWithoutQuoteMarkers(line)
         return content.hasPrefix("```") || content.hasPrefix("~~~") || content.hasPrefix("$$") || line.trimmingCharacters(in: .whitespacesAndNewlines) == "---"
+    }
+
+    /// Whether `line` opens or closes code or frontmatter, leaving display math to
+    /// `displayMathEffect(ofLine:)`.
+    public static func lineAffectsFollowingLinesApartFromMath(_ line: String) -> Bool {
+        let content = contentWithoutQuoteMarkers(line)
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return content.hasPrefix("```") || content.hasPrefix("~~~") || trimmedLine == "---" || trimmedLine == "..."
+    }
+
+    /// What a line can do to the display math around it: open a block that runs on past it,
+    /// or close one that is open. A balanced `$$E=mc^2$$` opens none, so typing inside it
+    /// changes no later line while this answer stays the same. Nil for a line with no `$$`.
+    public static func displayMathEffect(ofLine line: String) -> DisplayMathLineEffect? {
+        guard line.contains("$$") else { return nil }
+        let (_, content) = MarkdownQuoteSyntax.markersAndTrimmedContent(of: line, maximumDepth: .max)
+        return DisplayMathLineEffect(opensBlock: opensDisplayMathBlock(content), closesBlock: DisplayMathLines.closesOpenBlock(line))
     }
 
     // MARK: Block structure

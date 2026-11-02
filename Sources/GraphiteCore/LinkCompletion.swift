@@ -43,6 +43,13 @@ public struct LinkQuery: Equatable, Sendable {
 }
 
 public enum LinkCompletion {
+    /// A heading's text as a link's `#` part can hold it, as Obsidian writes it: `|` would start
+    /// the link's alias, `#` and `^` a new part, and a bracket would end the link early, so
+    /// each becomes a space. `NotePreviewDocument.anchor(forHeading:)` matches the heading.
+    public static func linkFragment(forHeading text: String) -> String {
+        text.split { character in character.isWhitespace || "|#^[]".contains(character) }.joined(separator: " ")
+    }
+
     /// Suggestions stop after this many characters, for text that only looks like a link.
     static let maximumQueryLength = 200
     /// A paragraph is read this far on each side of the cursor for code spans that cross lines.

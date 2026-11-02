@@ -132,7 +132,7 @@ final class NoteEditorCommandRegressionTests: XCTestCase {
     // MARK: HUNT-069
 
     private let foldedNote = "line\n# Folded\nhidden one\nhidden two\n# Next\n"
-    private var foldedSection: NSRange { NSRange(location: 5, length: 34 - 5) }
+    private var foldedSection: NSRange { NSRange(location: 5, length: 31) }
 
     func testMoveLineDownGoesPastAFoldedSection() throws {
         let text = foldedNote

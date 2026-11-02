@@ -26,6 +26,23 @@ public enum CodeFormatter {
         guard !lines.isEmpty else { return code }
         return lines.joined(separator: lineBreak) + (endsWithLineBreak ? lineBreak : "")
     }
+
+    /// `formatted(_:language:)` for code whose opening fence is indented by `fenceIndentation`,
+    /// as under a list item: that indentation is the block's place in the list, not the code's,
+    /// so it stays on every line. Formatted without it, the code landed at the left margin
+    /// between its indented fences, which ended the list.
+    public static func formatted(_ code: String, language: CodeLanguage, fenceIndentation: String) -> String? {
+        guard !fenceIndentation.isEmpty else { return formatted(code, language: language) }
+        let unindented = code.components(separatedBy: "\n").map { line -> String in
+            if line.hasPrefix(fenceIndentation) { return String(line.dropFirst(fenceIndentation.count)) }
+            let leadingSpace = line.prefix { character in character == " " || character == "\t" }
+            return String(line.dropFirst(min(leadingSpace.count, fenceIndentation.count)))
+        }
+        guard let formattedCode = formatted(unindented.joined(separator: "\n"), language: language) else { return nil }
+        return formattedCode.components(separatedBy: "\n").map { line in
+            line.isEmpty || line == "\r" ? line : fenceIndentation + line
+        }.joined(separator: "\n")
+    }
 }
 
 /// How one language is formatted.

@@ -231,6 +231,7 @@ final class MarkdownSession {
             // main actor and the saver that owns it would never run again.
             if activeSave == previousSave { activeSave = nil }
         }
+        commitDraftsInViews()
         flushPendingInsertions()
         guard hasUnsavedChanges else {
             // Undone back to what the file holds: there is nothing left to bring back.
@@ -399,6 +400,15 @@ final class MarkdownSession {
     /// captures the text. Without an editor, the same work is applied to the model.
     @ObservationIgnored var applyPendingInsertionsBeforeSaving: (() -> Void)?
 
+    /// Writes what rendered blocks' views hold back into the text, by the view that holds it:
+    /// a table cell's draft waits for typing to pause, and a save right after the last key
+    /// (quitting, closing the tab, leaving the app) must not go without those characters.
+    @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
+
+    private func commitDraftsInViews() {
+        for commit in draftCommitsOfViews.values { commit() }
+    }
+
     func flushPendingInsertions() {
         guard !pendingInsertions.isEmpty else { return }
         applyPendingInsertionsBeforeSaving?()
@@ -438,6 +448,23 @@ final class MarkdownSession {
         let insertion = MarkdownBlockInsertion.text(inserting: block, into: source, replacing: NSRange(location: location, length: endLocation - location),
                                                     separatedByBlankLines: separatedByBlankLines)
         request(EditorInsertion(text: insertion, range: NSRange(location: location, length: endLocation - location)))
+    }
+
+    /// Inserts a block chosen from a menu: below the selected text, which it must not
+    /// replace, with the cursor where the block is filled in (the empty line of a formula or
+    /// code block, a table's first cell) and the note taking the keyboard. Left after the
+    /// block, typing went below it, and an empty formula drew as nothing.
+    func insertBlockFromMenu(_ block: String) {
+        let target = insertionTarget(for: NSRange(location: NSMaxRange(selection), length: 0))
+        let source = target.text
+        let location = max(min(target.range.location, source.length), FrontmatterLocator.length(in: source))
+        let range = NSRange(location: location, length: 0)
+        let insertion = MarkdownBlockInsertion.text(inserting: block, into: source, replacing: range)
+        let placeInInsertion = EditorContextMenuContent.typingPlace(inBlock: block).flatMap { place in
+            MarkdownBlockInsertion.place(place, inBlock: block, inInsertion: insertion)
+        }
+        request(EditorInsertion(text: insertion, range: range, selectionAfter: placeInInsertion?.shifted(by: location)))
+        startsEditingWhenShown = true
     }
 
     /// Applies an editing command's result, computed on the current text, through the

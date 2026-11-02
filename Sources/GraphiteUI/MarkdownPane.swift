@@ -360,10 +360,7 @@ struct MarkdownPane: View {
             run: { command in run(command) },
             noteState: { [session] in (session.text as NSString, session.selection) },
             apply: { [session] edit in session.apply(edit) },
-            insertBlock: { [session] block in
-                // After the selected text, which a block inserted over it would replace.
-                session.insertBlock(block, at: NSRange(location: NSMaxRange(session.selection), length: 0))
-            },
+            insertBlock: { [session] block in session.insertBlockFromMenu(block) },
             colors: preferences.isEnabled(.colors) ? preferences.colorPalette : nil,
             insertColor: { hex, placeholder in insertColor(hex: hex, placeholder: placeholder) },
             linkToNote: { noteState.showsLinkPicker = true },
@@ -489,9 +486,9 @@ struct MarkdownPane: View {
         Button("Bulleted List", systemImage: "list.bullet") { run(.bulletList) }
         Button("Numbered List", systemImage: "list.number") { run(.numberedList) }
         Button("Task", systemImage: "checklist") { run(.task) }
-        Button("Table", systemImage: "tablecells") { session.insertBlock(EditorContextMenuContent.tableBlock) }
-        Button("Math Block", systemImage: "function") { session.insertBlock(EditorContextMenuContent.mathBlock) }
-        Button("Callout", systemImage: "text.bubble") { session.insertBlock(EditorContextMenuContent.calloutBlock) }
+        Button("Table", systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) }
+        Button("Math Block", systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) }
+        Button("Callout", systemImage: "text.bubble") { session.insertBlockFromMenu(EditorContextMenuContent.calloutBlock) }
     }
 
     @ViewBuilder private var insertMenuItems: some View {

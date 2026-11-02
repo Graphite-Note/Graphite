@@ -354,14 +354,16 @@ final class MarkdownEditorStyling {
 
     private func formattingEdit(of visited: VisitedCodeBlock, in source: NSString, selection: NSRange) -> MarkdownTextEdit? {
         let block = visited.block
+        guard block.codeStart > 0, block.codeStart <= source.length else { return nil }
+        let openingLine = source.substring(with: source.lineRange(for: NSRange(location: block.codeStart - 1, length: 0)))
         // The block must still start where it was found: the line before its code opens it.
-        guard block.codeStart > 0, block.codeStart <= source.length,
-              let opening = MarkdownFenceSyntax.opening(source.substring(with: source.lineRange(for: NSRange(location: block.codeStart - 1, length: 0)))
-                .trimmingCharacters(in: .whitespacesAndNewlines)), opening.fence == block.fence,
+        guard let opening = MarkdownFenceSyntax.opening(openingLine.trimmingCharacters(in: .whitespacesAndNewlines)), opening.fence == block.fence,
               let language = CodeLanguage.named(block.language) else { return nil }
         let codeRange = block.codeRange(in: source)
         let code = source.substring(with: codeRange)
-        guard code != visited.codeAtEntry, let formatted = CodeFormatter.formatted(code, language: language), formatted != code else { return nil }
+        let fenceIndentation = String(openingLine.prefix { character in character == " " || character == "\t" })
+        guard code != visited.codeAtEntry, let formatted = CodeFormatter.formatted(code, language: language, fenceIndentation: fenceIndentation),
+              formatted != code else { return nil }
         let formattedLength = (formatted as NSString).length
         let selectionAfter: NSRange
         if selection.location >= NSMaxRange(codeRange) {

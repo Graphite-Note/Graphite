@@ -74,6 +74,18 @@ enum EditorContextMenuContent {
     static let codeBlock = "```\n\n```"
     static let horizontalRule = "---"
 
+    /// Where the cursor goes in a block just inserted, as a range of `block`: the part to
+    /// fill in. Nil for a block with nothing to fill in, such as a rule.
+    nonisolated static func typingPlace(inBlock block: String) -> NSRange? {
+        let text = block as NSString
+        switch block {
+        case tableBlock: return text.range(of: "Column")
+        case mathBlock, codeBlock: return NSRange(location: text.range(of: "\n").location + 1, length: 0)
+        case calloutBlock: return NSRange(location: text.length, length: 0)
+        default: return nil
+        }
+    }
+
     static func entries(actions: EditorContextMenuActions, editorActions: EditorActions) -> [EditorContextMenuEntry] {
         var submenus: [EditorContextMenuEntry] = []
         if let colors = actions.colors { submenus.append(colorMenu(colors: colors, actions: actions)) }
