@@ -1,3 +1,13 @@
+/**
+ * File: UiEditorEditTrackingTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Live Preview's edit tracking keeps blocks and styling in step with the text whichever path changed it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
@@ -302,6 +312,13 @@ final class UiEditorEditTrackingTests: XCTestCase {
     }
 
     // MARK: Replacing the text in place (F171)
+
+    /// HUNT-063: measured from the text before the composition began, all of what it typed is
+    /// carried over a change from elsewhere that never had its first characters.
+    func testACompositionIsCarriedOverFromTheTextBeforeIt() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "start\nend\n", to: "startかき\nend\n", onto: "start\nend from another device\n"),
+                       "startかき\nend from another device\n")
+    }
 
     func testTextDifferenceReplacesOnlyTheChangedFrontmatter() throws {
         let oldText = "---\ntags: a\n---\nBody typed here\n" as NSString
