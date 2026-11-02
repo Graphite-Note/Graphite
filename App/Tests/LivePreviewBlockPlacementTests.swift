@@ -1,3 +1,13 @@
+/**
+ * File: LivePreviewBlockPlacementTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Live Preview's rendered blocks stay over the space their text reserves for them.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.7
+ * Date: 02/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -205,8 +215,14 @@ final class LivePreviewBlockPlacementTests: XCTestCase {
         }
         let diagramScale = min(1, diagramView.frame.width / flowchart.layout.size.width)
         let blockVerticalPadding: CGFloat = 8
-        XCTAssertEqual(diagramView.frame.height, flowchart.layout.size.height * diagramScale + blockVerticalPadding, accuracy: 1,
-                       "The view holds the laid-out diagram, not its code.")
+        // The view keeps its 300 point estimate until the diagram has reported its height, which on a loaded machine comes
+        // after the placement has looked settled.
+        let laidOutHeight = flowchart.layout.size.height * diagramScale + blockVerticalPadding
+        let heightDeadline = Date().addingTimeInterval(8)
+        while abs(diagramView.frame.height - laidOutHeight) > 1, Date() < heightDeadline {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertEqual(diagramView.frame.height, laidOutHeight, accuracy: 1, "The view holds the laid-out diagram, not its code.")
         let lineAfter = try XCTUnwrap(lineFrame(atCharacter: source.range(of: "Text after").location, in: editor))
         XCTAssertLessThanOrEqual(diagramView.frame.maxY, lineAfter.minY + 1, "The diagram covers the text after it.")
 
