@@ -57,10 +57,12 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
             PaletteCommand(id: "collapse-folders", command: .collapseFolders, systemImage: "arrow.down.right.and.arrow.up.left") { workspace.collapseAllFolders() },
         ]
+        // The Mac cannot write in a notebook, so it does not offer to make one (`CreationKind.canBeEditedOnThisDevice`).
+        if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }
         if workspace.preferences.isEnabled(.bases) {
             commands.append(PaletteCommand(id: "new-base", command: .newBase, systemImage: "tablecells") { window.create(.base) })
         }
-        if workspace.preferences.isEnabled(.canvas) {
+        if workspace.preferences.isEnabled(.canvas), CreationKind.canvas.canBeEditedOnThisDevice {
             commands.append(PaletteCommand(id: "new-canvas", command: .newCanvas, systemImage: "rectangle.3.group") { window.create(.canvas) })
         }
         if workspace.history.canGoBack {

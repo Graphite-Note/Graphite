@@ -346,7 +346,7 @@ struct GraphiteRootView: View {
             .toolbar { detailToolbar }
             #if canImport(UIKit)
             .toolbar { compactBottomBar }
-            .toolbar(hidesChromeWhileTyping ? .hidden : .automatic, for: .navigationBar)
+            .toolbar(hidesChromeWhileTyping || libraryHomeDrawsNavigationControls ? .hidden : .automatic, for: .navigationBar)
             #endif
             .environment(\.showTemplatePicker, templatePickerAction)
             .environment(\.showTabOverview, TabOverviewAction(show: showTabOverview))
@@ -366,7 +366,25 @@ struct GraphiteRootView: View {
 
     private var libraryWindowActions: LibraryWindowActions {
         LibraryWindowActions(showSearch: { activePalette = .quickSwitcher }, showSettings: showSettings,
-                             showVaults: { workspace.isVaultManagerPresented = true })
+                             showVaults: { workspace.isVaultManagerPresented = true },
+                             navigationControls: libraryHomeDrawsNavigationControls ? libraryNavigationControls : nil)
+    }
+
+    /// Whether the library, as the window's home on the iPad, draws Back, Forward and the recording control in its own row:
+    /// the navigation bar over it would be a band with only that small capsule in it. Focus and Read Aloud keep their
+    /// controls in the bar, so they keep the bar.
+    private var libraryHomeDrawsNavigationControls: Bool {
+        #if canImport(UIKit)
+        isLibraryHomeShown && workspace.store != nil && !focusMode.isActive && workspace.readAloud?.isActive != true
+        #else
+        false
+        #endif
+    }
+
+    private var libraryNavigationControls: LibraryNavigationControls {
+        LibraryNavigationControls(goBack: { Task { await workspace.goBack() } }, goForward: { Task { await workspace.goForward() } },
+                                  canGoBack: workspace.history.canGoBack, canGoForward: workspace.history.canGoForward,
+                                  recordingControl: showsRecordingControl ? AnyView(RecordingControl(workspace: workspace)) : nil)
     }
 
     /// While the library is the window's home, the title bar names no document.

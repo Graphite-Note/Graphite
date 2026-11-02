@@ -338,3 +338,108 @@ extension LibraryModelTests {
         return String(text.characters)
     }
 }
+
+// MARK: Bug hunt, section 10
+
+/// Answers "In iCloud" for a file until the test says it was downloaded, and counts the questions.
+private actor DownloadProbe {
+    private(set) var renderCount = 0
+    private var isDownloaded = false
+
+    func render() -> LibraryTilePreview {
+        renderCount += 1
+        return isDownloaded ? .kindIcon : .notDownloaded
+    }
+
+    func download() { isDownloaded = true }
+}
+
+extension LibraryModelTests {
+    private func isNotDownloaded(_ preview: LibraryTilePreview?) -> Bool {
+        if case .notDownloaded = preview { true } else { false }
+    }
+
+    /// HUNT-202: downloading a file changes neither its date nor its size, so its tile kept saying "In iCloud".
+    func testATileSayingInICloudIsAskedAgainWhenTheFolderIsListedAgain() async throws {
+        let probe = DownloadProbe()
+        let identifier = UUID()
+        let cloudSource = LibraryModel.Source(vaultIdentifier: identifier, store: VaultStore(root: vault), finderAttributes: FinderFolderAttributes(root: vault)) { _, _ in
+            await probe.render()
+        }
+        let library = LibraryModel()
+        await library.reload(source: cloudSource, sortOrder: .alphabetical)
+        let note = try XCTUnwrap(library.items.first { entry in entry.path.name == "Inbox.md" })
+        library.tileAppeared(note)
+        try await waitUntil("the tile says it is in iCloud") { self.isNotDownloaded(library.visiblePreviews[note.path]) }
+
+        await probe.download()
+        await library.reload(source: cloudSource, sortOrder: .alphabetical)
+
+        try await waitUntil("the tile shows the downloaded file") {
+            guard let preview = library.visiblePreviews[note.path] else { return false }
+            return !self.isNotDownloaded(preview)
+        }
+    }
+
+    /// HUNT-202: a tile that already has its final preview is not rendered again by a listing that changed nothing.
+    func testAFinishedPreviewIsNotRenderedAgainByAListingThatChangedNothing() async throws {
+        let probe = DownloadProbe()
+        await probe.download()
+        let identifier = UUID()
+        let cloudSource = LibraryModel.Source(vaultIdentifier: identifier, store: VaultStore(root: vault), finderAttributes: FinderFolderAttributes(root: vault)) { _, _ in
+            await probe.render()
+        }
+        let library = LibraryModel()
+        await library.reload(source: cloudSource, sortOrder: .alphabetical)
+        let note = try XCTUnwrap(library.items.first { entry in entry.path.name == "Inbox.md" })
+        library.tileAppeared(note)
+        try await waitUntil("the preview is drawn") { library.visiblePreviews[note.path] != nil }
+        await library.reload(source: cloudSource, sortOrder: .alphabetical)
+        for _ in 0..<20 { await Task.yield() }
+        let renderCount = await probe.renderCount
+        XCTAssertEqual(renderCount, 1)
+    }
+
+    /// HUNT-213: the "Show" filter went back to All at every folder, including going up.
+    func testTheFilterStaysWhenAnotherFolderIsOpenedAndEndsWithTheVault() async throws {
+        let identifier = UUID()
+        let library = LibraryModel()
+        await library.reload(source: source(identifier: identifier), sortOrder: .alphabetical)
+        library.filter = .notebooks
+        await library.show(try VaultPath("Courses"))
+        XCTAssertEqual(library.filter, .notebooks)
+        XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Week 1.pdf"])
+        await library.show(.root)
+        XCTAssertEqual(library.filter, .notebooks)
+        await library.reload(source: source(), sortOrder: .alphabetical)
+        XCTAssertEqual(library.filter, .all, "Another vault starts with everything shown.")
+    }
+
+    /// HUNT-205 and HUNT-215: the previous folder's tiles stayed under the new title, and a folder being listed read as empty.
+    func testAFolderBeingListedShowsNoTilesOfThePreviousFolderAndIsNotYetListed() async throws {
+        let library = LibraryModel()
+        await library.reload(source: source(), sortOrder: .alphabetical)
+        XCTAssertTrue(library.hasListedFolder)
+        XCTAssertFalse(library.items.isEmpty)
+
+        let courses = try VaultPath("Courses")
+        let opening = Task { await library.show(courses) }
+        await Task.yield()
+        XCTAssertTrue(library.items.isEmpty, "Nothing of the vault's root is shown under the new folder's title.")
+        XCTAssertFalse(library.hasListedFolder)
+
+        await opening.value
+        XCTAssertTrue(library.hasListedFolder)
+        XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Summary.md", "Week 1.pdf"])
+    }
+
+    /// HUNT-215: an empty folder, once listed, is empty and no longer "being listed".
+    func testAnEmptyFolderIsListedAsEmpty() async throws {
+        try FileManager.default.createDirectory(at: vault.appendingPathComponent("Empty"), withIntermediateDirectories: true)
+        let library = LibraryModel()
+        await library.reload(source: source(), sortOrder: .alphabetical)
+        await library.show(try VaultPath("Empty"))
+        XCTAssertTrue(library.items.isEmpty)
+        XCTAssertTrue(library.hasListedFolder)
+    }
+}

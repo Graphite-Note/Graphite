@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import PDFKit
 import GraphiteCore
 @testable import GraphiteApple
 
@@ -19,6 +20,26 @@ final class PaperPreviewRendererTests: XCTestCase {
     func testBlankPaperIsOneColorAndRuledPaperIsNot() throws {
         XCTAssertEqual(try distinctColorCount(of: PaperSpecification(template: .blank)), 1)
         XCTAssertGreaterThan(try distinctColorCount(of: PaperSpecification(template: .ruled)), 1)
+    }
+
+    /// HUNT-212: a dotted notebook's picture was a plain white page, without its dots.
+    func testDottedPaperShowsItsDotsAtTheSizesTheSheetAndTheLibraryDrawThem() throws {
+        for longerSidePixels in [320, 640] {
+            XCTAssertGreaterThan(try distinctColorCount(of: PaperSpecification(template: .dotted), longerSidePixels: longerSidePixels), 1, "\(longerSidePixels) pixels")
+        }
+    }
+
+    /// HUNT-212: the library tile of a dotted notebook, made by PDFKit from the saved PDF, showed no dots either.
+    func testTheLibraryThumbnailOfADottedNotebookShowsItsDots() throws {
+        let data = try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .dotted), pageCount: 1)
+        let page = try XCTUnwrap(PDFDocument(data: data)?.page(at: 0))
+        let thumbnail = try XCTUnwrap(LibraryPreviewLoader.thumbnail(of: page, longerSidePixels: 540))
+        let bytes = try pixels(of: thumbnail)
+        var colors = Set<UInt32>()
+        for pixelStart in stride(from: 0, to: bytes.count, by: 4) {
+            colors.insert(UInt32(bytes[pixelStart]) << 16 | UInt32(bytes[pixelStart + 1]) << 8 | UInt32(bytes[pixelStart + 2]))
+        }
+        XCTAssertGreaterThan(colors.count, 1)
     }
 
     func testPaperColorIsDrawn() throws {
@@ -42,8 +63,8 @@ final class PaperPreviewRendererTests: XCTestCase {
         return bytes
     }
 
-    private func distinctColorCount(of paper: PaperSpecification) throws -> Int {
-        let bytes = try pixels(of: try PaperPreviewRenderer.image(of: paper, longerSidePixels: 256))
+    private func distinctColorCount(of paper: PaperSpecification, longerSidePixels: Int = 256) throws -> Int {
+        let bytes = try pixels(of: try PaperPreviewRenderer.image(of: paper, longerSidePixels: longerSidePixels))
         var colors = Set<UInt32>()
         for pixelStart in stride(from: 0, to: bytes.count, by: 4) {
             colors.insert(UInt32(bytes[pixelStart]) << 16 | UInt32(bytes[pixelStart + 1]) << 8 | UInt32(bytes[pixelStart + 2]))

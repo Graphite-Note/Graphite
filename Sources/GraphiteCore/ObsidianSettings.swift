@@ -124,6 +124,14 @@ public enum FileSortOrder: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// The date a listing in this order shows under a file's name: the one it is sorted by.
+    public func shownDate(of entry: VaultEntry) -> Date {
+        switch self {
+        case .byCreatedTime, .byCreatedTimeReverse: entry.created
+        case .alphabetical, .alphabeticalReverse, .byModifiedTime, .byModifiedTimeReverse: entry.modified
+        }
+    }
+
     /// Folders first, as Obsidian lists them, then files in this order.
     public func sorted(_ entries: [VaultEntry]) -> [VaultEntry] {
         // Each name is taken from its path once, not twice per comparison.

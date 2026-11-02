@@ -1,3 +1,14 @@
+/**
+ * File: PDFSessionTextBoxes.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: Text boxes on PDF pages: adding, typing in, arranging and removing them as steps of the PDF's history.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -98,7 +109,8 @@ extension PDFSession {
 
     /// Gives the document the box as typed so far, as the one step of `step`.
     func commitTextBox(_ typed: PDFTextBox, in step: PDFTextBoxEditStep) throws {
-        let next: PDFTextBox? = typed.isEmpty && typed.preservedEntries.isEmpty ? nil : typed
+        // A box with no text is deleted, whatever entries another application kept in it: they go with it.
+        let next: PDFTextBox? = typed.isEmpty ? nil : typed
         guard next != step.after else { return }
         try transitionTextBox(from: step.after, to: next, on: step.page)
         step.after = next

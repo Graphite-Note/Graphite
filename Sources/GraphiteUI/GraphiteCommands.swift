@@ -103,13 +103,15 @@ public struct GraphiteCommands: Commands {
     @ViewBuilder private var fileCommands: some View {
         Button("New Note") { actions?.window.create(.note) }
             .keyboardShortcut(shortcut(.newNote))
-        Button("New Notebook") { actions?.window.create(.notebook) }
-            .keyboardShortcut(shortcut(.newNotebook))
+        if CreationKind.notebook.canBeEditedOnThisDevice {
+            Button("New Notebook") { actions?.window.create(.notebook) }
+                .keyboardShortcut(shortcut(.newNotebook))
+        }
         if workspace?.preferences.isEnabled(.bases) == true {
             Button("New Base") { actions?.window.create(.base) }
                 .keyboardShortcut(shortcut(.newBase))
         }
-        if workspace?.preferences.isEnabled(.canvas) == true {
+        if workspace?.preferences.isEnabled(.canvas) == true, CreationKind.canvas.canBeEditedOnThisDevice {
             Button("New Canvas") { actions?.window.create(.canvas) }
                 .keyboardShortcut(shortcut(.newCanvas))
         }

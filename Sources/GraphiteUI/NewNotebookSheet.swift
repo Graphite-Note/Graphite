@@ -1,3 +1,14 @@
+/**
+ * File: NewNotebookSheet.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Creating a notebook after Goodnotes' New Notebook sheet: the first page large, its settings beside it, every paper below.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -118,10 +129,8 @@ struct NewNotebookSheet<PlacementContent: View>: View {
                     LabeledContent("Page size", value: "From the template").padding(.vertical, 12)
                 }
                 Divider()
-                Stepper(value: $options.pageCount, in: NewNotebookOptions.pageCountRange) {
-                    LabeledContent("Pages", value: options.pageCount.formatted())
-                }
-                .padding(.vertical, 8)
+                NotebookPageCountControl(pageCount: $options.pageCount)
+                    .padding(.vertical, 8)
                 Divider()
                 NotebookCoverSettings(cover: $options.cover)
             }

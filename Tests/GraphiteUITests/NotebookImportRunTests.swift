@@ -83,4 +83,40 @@ final class NotebookImportRunTests: XCTestCase {
         XCTAssertEqual(summary.outcomes.map(\.result), [.notStarted, .notStarted])
         XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: vault.root.path), [])
     }
+
+    /// HUNT-207: cancelling or failing a folder import left the empty folders it had made.
+    func testAFolderWhoseNotebooksAllFailLeavesNoEmptyFolderBehind() async throws {
+        let export = try TemporaryVault.make(prefix: "NotebookLibraryExport", for: self)
+        try export.writeFile("Courses/Physics/Week 1/Broken.goodnotes", text: "not a notebook")
+        let vault = try TemporaryVault.make(prefix: "NotebookImportRun", files: ["Existing.md": "x"], for: self)
+        let summary = await Self.run([export.location(of: "Courses/")], into: .root, vault: vault, written: WrittenFiles())
+        XCTAssertEqual(summary.importedCount, 0)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: vault.root.path), ["Existing.md"])
+    }
+
+    func testACancelledFolderImportLeavesNoEmptyFolderBehind() async throws {
+        let export = try TemporaryVault.make(prefix: "NotebookLibraryExport", for: self)
+        try export.writeFile("Courses/Physics/Lecture.goodnotes", data: Data(contentsOf: lecture))
+        let vault = try TemporaryVault.make(prefix: "NotebookImportRun", for: self)
+        let written = WrittenFiles()
+        let sources = [export.location(of: "Courses/")]
+        let task = Task.detached {
+            withUnsafeCurrentTask { task in task?.cancel() }
+            return await Self.run(sources, into: .root, vault: vault, written: written)
+        }
+        let summary = await task.value
+        XCTAssertTrue(summary.wasCancelled)
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: vault.root.path), [])
+    }
+
+    func testAFolderThatHoldsAnImportedNotebookStays() async throws {
+        let export = try TemporaryVault.make(prefix: "NotebookLibraryExport", for: self)
+        try export.writeFile("Courses/Physics/Lecture.goodnotes", data: Data(contentsOf: lecture))
+        try export.writeFile("Courses/Chemistry/Broken.goodnotes", text: "not a notebook")
+        let vault = try TemporaryVault.make(prefix: "NotebookImportRun", for: self)
+        let summary = await Self.run([export.location(of: "Courses/")], into: .root, vault: vault, written: WrittenFiles())
+        XCTAssertEqual(summary.importedCount, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.location(of: "Courses/Physics/Lecture.pdf").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.location(of: "Courses/Chemistry").path), "The folder of the failed notebook holds nothing.")
+    }
 }

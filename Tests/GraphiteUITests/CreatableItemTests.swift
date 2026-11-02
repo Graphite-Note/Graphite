@@ -46,4 +46,26 @@ final class CreatableItemTests: XCTestCase {
         let offered = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in false }, canScanDocuments: false, canTakePhoto: false)
         XCTAssertTrue(offered.others.contains(.pictureFromPhotos))
     }
+
+    /// HUNT-203: the Mac offered a Canvas and a Notebook it can only look at.
+    func testAKindTheDeviceCannotEditIsNotOffered() {
+        let notEditable: (CreationKind) -> Bool = { kind in kind != .notebook && kind != .canvas }
+        let notebookFirst = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: notEditable)
+        XCTAssertEqual(notebookFirst.large, [.document(.note)])
+        XCTAssertEqual(notebookFirst.others, [.document(.base), .dailyNote, .pictureFromPhotos, .importFiles, .folder])
+        let editsEverything = CreatableItem.offered(firstKind: .note, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: { _ in true })
+        XCTAssertEqual(editsEverything.large, [.document(.note), .document(.notebook)])
+    }
+
+    func testOnlyTheMacLeavesOutWhatItCannotWriteIn() {
+        #if os(macOS)
+        XCTAssertFalse(CreationKind.notebook.canBeEditedOnThisDevice)
+        XCTAssertFalse(CreationKind.canvas.canBeEditedOnThisDevice)
+        #else
+        XCTAssertTrue(CreationKind.notebook.canBeEditedOnThisDevice)
+        XCTAssertTrue(CreationKind.canvas.canBeEditedOnThisDevice)
+        #endif
+        XCTAssertTrue(CreationKind.note.canBeEditedOnThisDevice)
+        XCTAssertTrue(CreationKind.base.canBeEditedOnThisDevice)
+    }
 }
