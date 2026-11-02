@@ -4,7 +4,7 @@
   "recordedOn": "2026-11-02",
   "recordedAtRevision": "unknown plus the working tree",
   "gates": {
-    "ambient-time-and-randomness": 64,
+    "ambient-time-and-randomness": 63,
     "app-storage-literals": 6,
     "async-after-in-sources": 10,
     "audible-output-in-tests": 0,
