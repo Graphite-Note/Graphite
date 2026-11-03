@@ -51,3 +51,104 @@ Regression test: `AppProjectTextualPatchTests.testKaTeXArrowsAreTypesetAsOneRela
 `Sources/SwiftUIMath/Internal/Syntax/Parser.swift` (`buildTable`): the table gets a row for each row break a cell's list brings, not one. A `\\` inside braces in a cell, as in `\textcolor{red}{a &= 1 \\ …}`, counts a row and ends only the braces' list, so a cell whose braces hold two row breaks brought both at once; upstream added one row and then wrote past the end of its rows (index out of range), which ended Graphite, Release builds too. A note in the owner's vault wrote each row of an `aligned` formula inside its own `\textcolor` groups. Such a formula is still not one the parser can read, so Graphite shows its source, as for any formula the typesetter cannot read.
 
 Regression test: `AppProjectTextualPatchTests.testRowBreaksInsideColorGroupsOfAnAlignedFormulaDoNotCrash` crashed the test process before the patch; it checks that formula and one with a break inside a single cell's braces are reported as not typeset, and that plain `aligned` rows and braces holding rows are drawn as before.
+
+## 10. Characters typed in a formula
+
+`Sources/SwiftUIMath/Internal/Syntax/Parser.swift`, `AtomFactory.swift` (`atom(forTypedCharacter:)`): a character that is not ASCII is drawn as the command that has it as its symbol, with that command's class (`≤` is `\leq`, `δ` is `\delta`), and otherwise as an upright ordinary atom, which the font or a fallback font draws, as MathJax draws it. Upstream dropped such characters in math, so `$δ$` could not be typeset and `$κ(x)$` lost its `κ`. Spaces and invisible characters are still skipped. A command's name is ASCII letters, as in TeX, so `\cosθ` is `\cos` and `θ`; upstream read one unknown command. `\&` is an ampersand, and a backslash before a line break is a space.
+
+Regression test: `AppProjectTextualPatchTests.testCharactersTypedInAFormulaAreDrawnAsTheirCommands`.
+
+## 11. KaTeX's other symbols
+
+`Sources/SwiftUIMath/Internal/Syntax/AtomFactory.swift`, `Parser.swift` (`notCombinations`): relations (`\leqslant`, `\geqslant`, `\lesssim`, `\gtrsim`, `\preceq`, `\succeq`, `\triangleq`, `\therefore`, `\vdash`, `\subsetneq`, `\nmid`, …), binary operators (`\diamond`, `\bigcirc`, `\circledast`, `\barwedge`, `\ltimes`, `\triangleleft`, …), ordinary symbols (`\blacksquare`, `\varnothing`, `\checkmark`, `\lozenge`, `\complement`, `\sharp`, `\S`, …), the delimiters `\llbracket` and `\rrbracket`, the operators `\oiint` and `\oiiint`, the accents `\mathring`, `\dddot` and `\ddddot`, and `\not` before `\leq`, `\geq`, `\prec`, `\succ` and `\mid`. Each glyph was checked to exist in Latin Modern Math, except `\bigstar` and `\blacklozenge`, which it lacks and Core Text draws with a fallback font.
+
+Regression test: `AppProjectTextualPatchTests.testKaTeXSymbolsAreTypesetInTheirClasses`.
+
+## 12. Decorated lists: frames, strike-outs, phantoms, labels, stretched arrows, sized delimiters
+
+`Sources/SwiftUIMath/Internal/Syntax/Atoms/DecoratedList.swift`, `Internal/Syntax/Parser+GraphiteCommands.swift`, `Internal/Display/Typesetter+DecoratedList.swift`, `Internal/Display/DisplayStroke.swift` (new), `Internal/Syntax/AtomList.swift`, `Internal/Syntax/Parser.swift`, `Internal/Display/Typesetter.swift`, `Internal/Display/CGContext+DisplayNode.swift`, `Internal/Display/DisplayNode+Outlines.swift`. One atom, `DecoratedList`, stands for these commands; upstream knew none, so a formula using one showed as its source. Its type is the TeX class it spaces and breaks as, so the rules that read classes (a minus after a relation is a sign) need no change, and the typesetter recognizes it by its Swift class before it looks at the type.
+
+- `\boxed` and `\fbox`: a rectangle 0.3 em from what it holds, its lines 0.04 em (`\fboxsep`, `\fboxrule`). `\boxed` sets its content in display style, as amsmath does; `\fbox` holds text. `\textcircled` draws a circle, at least 0.55 em in radius; MathJax lacks this command and KaTeX has it.
+- `\cancel`, `\bcancel`, `\xcancel`: strokes reaching 0.1 em past the list, which keeps 0.1 em of room on each side.
+- `\phantom`, `\hphantom`, `\vphantom`: the room of the list, and nothing drawn.
+- `\overset`, `\underset`, `\stackrel`: labels placed as an operator's limits. The class comes from the list under the label (a relation over `=`, ordinary over a letter), and `\stackrel` is always a relation, as in KaTeX.
+- `\xrightarrow`, `\xleftarrow`, `\xleftrightarrow`, with an optional label below: relations, an arrow 0.3 em wider than its widest label on each side and at least 1.47 em. The heads are the font's `→` and `←` glyphs, with their shafts; a rule as thick as a glyph's shaft (measured from its outline) continues it. The rule starts where the glyph ends, because a formula's outlines are filled as one path and an overlap of opposite winding would be a hole. `\xRightarrow` and the other shapes are not typeset.
+- `\overrightarrow`, `\overleftarrow`, `\overleftrightarrow`: the same arrow 0.1 em above the list, never narrower than its heads.
+- `\mathord`, `\mathbin`, `\mathrel`, `\mathopen`, `\mathclose`, `\mathpunct`: the list as one atom of the class.
+- `\big`, `\Big`, `\bigg`, `\Bigg`, with `l` (opening), `r` (closing), `m` (relation) or nothing (ordinary): a delimiter at least 1.2, 1.8, 2.4 or 3 em tall, KaTeX's heights. `\middle` draws its delimiter as tall as the `\left…\right` pair around it, found by typesetting a copy of the list first, since typesetting changes a list.
+
+Regression tests: `AppProjectTextualPatchTests.testFramesAndCirclesStandAroundWhatTheyHold`, `testStrikeOutsCrossWhatTheyHold`, `testPhantomsKeepTheRoomOfWhatTheyHideAndDrawNothing`, `testOversetUndersetAndStackrelKeepTheClassOfWhatTheyStandOver`, `testExtensibleArrowsAreRelationsAsWideAsTheirLabels`, `testArrowsOverAListSpanIt`, `testClassCommandsSpaceTheirArgumentAsTheClass`, `testSizedDelimitersGrowInKaTeXSteps`, `testMiddleDelimiterIsAsTallAsItsPair`, `testInlineFormulasWithTheNewCommandsStayOneFormula`. They count ink through `Math` itself, so they cover the outlines `Math` draws.
+
+## 13. `array`, table rules, row heights
+
+`Sources/SwiftUIMath/Internal/Syntax/Parser.swift`, `Parser+GraphiteCommands.swift`, `AtomFactory.swift`, `Atoms/Table.swift`, `Internal/Display/Typesetter.swift`, `Typesetter+DecoratedList.swift`.
+
+- `array` is typeset: cells in text style, columns 1 em apart (twice `\arraycolsep`) and aligned as the preamble says. `p{…}`, `m{…}` and `b{…}` columns are left-aligned, and `@{…}` and `!{…}` are skipped.
+- `\hline` and a preamble's `|` are drawn, double rules too. `\hdashline` is drawn solid, and a preamble's dashed `:` is not drawn.
+- A row break's length (`\\[2pt]`) adds that height above the next row. Upstream drew `[2pt]` as text in the cell.
+- A row break at the end of a table, or one with only `\hline` after it, begins no row.
+- `cases` takes any number of left-aligned columns, as in MathJax, and `gathered` is `gather`.
+- `\substack` owns its row breaks. Inside an environment they ended the environment's row, and the formula could not be parsed.
+
+Regression tests: `AppProjectTextualPatchTests.testArrayAlignsItsColumnsAsItsPreambleSays`, `testRowBreakLengthAddsHeightAndIsNotDrawn`, `testCasesGatheredAndSubstackInAnEnvironment`.
+
+## 14. `\dbinom`, `\tbinom`, `\operatorname*`, `\hspace`
+
+`Sources/SwiftUIMath/Internal/Syntax/Parser.swift`, `Parser+GraphiteCommands.swift`: `\dbinom` and `\tbinom` are binomials in display and script size. `\operatorname*{name}` is an upright operator with limits, as `\lim` is, with small spaces in its name kept (`arg\,max`); a name that is not plain letters is drawn upright, without limits. `\hspace` and `\hspace*` are spaces of their length, in TeX's units at a 10 pt font.
+
+Regression test: `AppProjectTextualPatchTests.testBinomialStylesStarredOperatorNamesAndHorizontalSpaces`.
+
+## 15. Spaces and style changes have no class
+
+`Sources/SwiftUIMath/Internal/Syntax/AtomList.swift` (`finalized`): whether a binary operator is a sign looks past spaces and style changes to the last atom with a class, as TeX does. Upstream looked only at the atom before it, so the minus of `\rightarrow \quad -\frac{1}{2}` stayed a binary operator after a relation, which stopped Debug builds on an `assert` in `Typesetter.getInterElementSpace`, and the minus at the start of a matrix's cell, after the cell's style change, had a binary operator's spaces (`− 1`). Numbers still merge only when they are neighbours, so `1\,000` keeps its space.
+
+Regression test: `AppProjectTextualPatchTests.testSpacesAndStyleChangesHaveNoClass`.
+
+## 16. Bold symbols
+
+`Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`preprocessMathList`), `Typesetter+DecoratedList.swift` (`boldOrdinarySymbol`): `\nabla`, `\partial`, `\epsilon`, `\vartheta`, `\phi`, `\varrho` and `\varpi` take their bold forms under `\bm` and `\mathbf`. Upstream's bold alphabets skipped them, as they are not letters to it, and the owner's vault has `\boldsymbol{\nabla}` 844 times. `\nabla` is upright, as in MathJax. Symbols with no bold form in Latin Modern, such as `\times` and `\ell`, stay regular, where MathJax draws them bold.
+
+Regression test: `AppProjectTextualPatchTests.testBoldSymbolsHaveTheirBoldForms`.
+
+## 17. Named colors, as MathJax reads them
+
+`Sources/SwiftUIMath/Internal/Helpers/FormulaColor.swift` (new, replacing `CGColor+HexString.swift`), `Internal/Display/DisplayNode.swift`, `DisplayNode+Outlines.swift`, `Typesetter.swift`: the argument of `\textcolor`, `\color` and `\colorbox` is read as MathJax 3.2.2 reads it. A name is looked up in its exact case among the 68 dvips names of MathJax's `color` package; anything else goes to CSS, so a name in any case or `#rgb` or `#rrggbb` is valid and anything else leaves the color around it. So `red` is CSS's `#FF0000` and `Red` is the package's `#ED1B23`. Upstream read only hex, so `\textcolor{red}{x}` drew in the text color; the owner's vault has red, blue, grey, orange, green, violet, magenta and brown about 190 times. The dvips table is generated from MathJax's `ColorConstants.ts`, and both tables were checked against what MathJax draws in a browser.
+
+Black and white are Graphite's own decision: by any name (`black`, `Black`, `white`) or as pure hex (`#000000`, `#000`, `#fff`), `\textcolor` and `\color` mean the formula's text color, where MathJax draws them literally. The vault has `\color{black}` 2,042 times and `\color{#000000}` 103 times, ending a colored passage, and `\color{white}` 3 times, for the formula inside a colored `\boxed`: each was written against one background, and the literal color would disappear on the other. Since `LaTeXCommandRewriting` nests what follows a `\color` in its group, this has to end the color around it, not inherit it: `DisplayNode.resetsToTextColor`, read by `MathOutlines`. `\colorbox{black}` stays black, as it is a background. `CGContext+DisplayNode.swift` is not called and does not read the reset (patch 5).
+
+Not read: a `\textcolor[rgb]{…}` model and CSS's `rgb(…)`, which cannot be parsed (the vault has neither), and `\definecolor`. `\colorbox`'s background is parsed and has never been drawn, in upstream or here (the vault has none).
+
+Regression tests: `AppProjectTextualPatchTests.testNamedColorsAreReadAsMathJaxReadsThem`, `testBlackAndWhiteAreTheTextColorEvenInsideAColor`. They read the pixels `Math` draws.
+
+## 18. `\dfrac`, `\tfrac`, `\dbinom`, `\tbinom` set the whole fraction in their style
+
+`Sources/SwiftUIMath/Internal/Syntax/Atoms/Fraction.swift` (`wholeStyle`), `Internal/Syntax/Parser.swift`, `Internal/Display/Typesetter.swift` (`makeFraction`): as in amsmath and MathJax (`AmsMethods.Genfrac`), these commands set the whole fraction in display or text style, whatever is around it: its shifts, gaps and delimiters are that style's, and its parts one style smaller. So `\tfrac{a}{b}` has script-size parts, and is the same fraction in display and inline math, in an exponent too. Upstream put `\textstyle` or `\displaystyle` in the numerator and denominator of a fraction in the surrounding style, so `\tfrac` in display math was as large as `\frac` (the vault has it 2,754 times), and inline `\dfrac` kept inline's tighter shifts. Patch 14's `\tbinom` put `\scriptstyle` in its parts, in the surrounding style's parentheses.
+
+`\frac` itself follows the same rule since patch 19.
+
+Regression test: `AppProjectTextualPatchTests.testFractionStylesSetTheWholeFractionInTheirStyle`.
+
+## 19. A fraction's parts are one style smaller than the fraction
+
+`Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`fractionStyle`, `makeFraction`), `Internal/Syntax/AtomFactory.swift` (`setCellsInDisplayStyle`), `Internal/Syntax/Parser.swift`: as in TeX and MathJax, `\frac`, `\binom`, `\over`, `\atop` and `\choose` set their parts one style smaller than the style around them: display to text, text to script, script to script of script. Upstream kept them in the surrounding style, on purpose, so inline `\frac{a}{b}` (about 7,600 times in the owner's vault) was at full size, and a `\frac` nested in a fraction (more than 240 times in display math) did not shrink. An inline formula's fraction is now as tall as MathJax's (0.71 em above the baseline, 0.35 em below), which lowers the lines around it in the reading view and Live Preview.
+
+Two things leaned on upstream's choice and now do what MathJax does:
+
+- `\cfrac` has `\strut\textstyle` in each part (`AmsMethods.CFrac`), where upstream had display style and no strut. MathJax's `\strut` (0.86 em above the baseline, 0.3 em below) stands before the `\textstyle`, so it has the size of a plain fraction's part: full in display math, script size inline. `\cfrac[l]` still centers its parts, as upstream never read the alignment.
+- `aligned`, `split`, `gathered`, `gather`, `displaylines` and `eqnarray` (with `align`, which `LaTeXCompatibility` rewrites to `aligned`) set their cells in display style, inline too. Upstream's cells took the style around them, which inline had hidden only because a fraction's parts stayed full size.
+
+Regression test: `AppProjectTextualPatchTests.testAFractionsPartsAreOneStyleSmallerThanTheFraction`.
+
+## 20. Limits stack in display style, or after `\limits`
+
+`Sources/SwiftUIMath/Internal/Display/Typesetter.swift` (`stacksLimits`), `Internal/Syntax/Atoms/LargeOperator.swift` (`stacksLimitsInEveryStyle`), `Internal/Syntax/Parser.swift` (`applyModifier`, `atomListToString`): as in TeX and MathJax, the limits of `\sum`, `\lim`, `\max` and `\operatorname*` stack in display style and stand at the side in every other. Upstream stacked them in text style too, so inline `\sum_{i}` stacked, and `\dfrac{\sum_{i=1}^n x_i}{n}` was 3.25 em tall against MathJax's 2.29. `\limits` stacks them in every style, in an exponent too, where upstream set them at the side; `\nolimits` keeps them at the side; the last of the two counts. `\overset`, `\underset`, `\stackrel`, `\underbrace` and `\overbrace` are not limits and stay above and below.
+
+Regression test: `AppProjectTextualPatchTests.testLimitsStackInDisplayStyleOrAfterTheLimitsCommand`.
+
+## 21. Room at a fraction's sides, and how it is spaced
+
+`Sources/SwiftUIMath/Internal/Display/DisplayFraction.swift` (`nullDelimiterSpace`, `ruleOverhang`), `Typesetter.swift` (`makeFraction`, `interElementSpaceArray`), `DisplayNode+Outlines.swift`, `CGContext+DisplayNode.swift`: the amounts are MathJax's, read from `CommonMfrac` and measured from its output. Each side of a fraction has `\nulldelimiterspace` (0.12 em, in em of the fraction's own style) left empty, and its rule reaches 0.1 em past the wider part, 0.22 em in all. A fraction without a rule (`\atop`) has only the 0.12 em, and one with delimiters (`\binom`, `\choose`) has none, as they stand there instead. So `a+\tfrac{b}{c}+d` is 4.24 em wide, as in MathJax, against upstream's 3.80. Upstream's rule stopped at the wider part.
+
+A fraction has its own row and column in the spacing table. Upstream spaced it as `\left…\right`, with thin spaces beside ordinary symbols, which with the new room would stand 0.39 em from a letter where MathJax has 0.22 em. MathJax spaces it as an ordinary symbol, and with no space beside `\left…\right`, so `x\frac{a}{b}y` is 2.03 em wide and `\frac{1}{2}\left(x\right)` has no extra gap. One place keeps TeX's rule against MathJax's: `\frac{a}{b}\sin x` has a thin space before the `\sin`, where MathJax has none because its `\sin` is an identifier and its `\lim` an operator; both are one class here.
+
+Regression test: `AppProjectTextualPatchTests.testAFractionHasRoomAtItsSidesAsInMathJax`.

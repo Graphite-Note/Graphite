@@ -1,3 +1,14 @@
+/**
+ * File: CGContext+DisplayNode.swift
+ * ---------------------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Draws a typeset formula into a Core Graphics context.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import CoreGraphics
 import CoreText
 import Foundation
@@ -30,6 +41,8 @@ extension CGContext {
       draw(accent, foregroundColor: foregroundColor)
     case let brace as Math.DisplayHorizontalBrace:
       draw(brace, foregroundColor: foregroundColor)
+    case let stroke as Math.DisplayStroke:
+      draw(stroke, foregroundColor: foregroundColor)
     default:
       break
     }
@@ -116,11 +129,11 @@ extension CGContext {
     setLineWidth(fraction.lineThickness)
 
     let lineStart = CGPoint(
-      x: fraction.position.x,
+      x: fraction.ruleStartX,
       y: fraction.position.y + fraction.linePosition
     )
     let lineEnd = CGPoint(
-      x: fraction.position.x + fraction.width,
+      x: fraction.ruleEndX,
       y: lineStart.y
     )
 
@@ -199,6 +212,20 @@ extension CGContext {
     setLineCap(.round)
     setLineJoin(.round)
     addPath(brace.centerLine)
+    strokePath()
+
+    restoreGState()
+  }
+
+  /// Graphite patch: a frame, a strike-out or an arrow's shaft, stroked with butt ends.
+  private func draw(_ stroke: Math.DisplayStroke, foregroundColor: CGColor) {
+    saveGState()
+
+    translateBy(x: stroke.position.x, y: stroke.position.y)
+    setStrokeColor(foregroundColor)
+    setLineWidth(stroke.thickness)
+    setLineCap(.butt)
+    addPath(stroke.path)
     strokePath()
 
     restoreGState()

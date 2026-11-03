@@ -6,8 +6,8 @@
  *              and what a drop of dragged items on a folder does.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -32,18 +32,18 @@ extension WorkspaceModel {
 
     /// Ink and page changes made on an open PDF while it moved go to a copy beside the moved
     /// file: the session holding them, kept alive here, still points at the old place.
-    func savePDFEditsMadeDuringMove(_ sessions: [PDFSession], from path: VaultPath, to destination: VaultPath) async
+    func savePDFEditsMadeDuringMove(_ sessions: [PDFSession], from path: VaultPath, to destination: VaultPath, in store: VaultStore) async
         -> (writtenPaths: [VaultPath], problems: [String]) {
-        guard let root = folderAccess?.root else { return ([], []) }
+        let root = store.root
         var writtenPaths: [VaultPath] = []
         var problems: [String] = []
         for session in sessions {
             let name = session.location.lastPathComponent
             do {
-                guard let oldPath = vaultPath(for: session.location) else { throw GraphiteError.outsideVault }
+                guard let oldPath = Self.vaultPath(for: session.location, root: root) else { throw GraphiteError.outsideVault }
                 let newPath = try oldPath.replacingPrefix(path, with: destination)
                 let copyLocation = try await session.saveSeparateCopy(inFolder: try newPath.parent.url(in: root))
-                if let copyPath = vaultPath(for: copyLocation) { writtenPaths.append(copyPath) }
+                if let copyPath = Self.vaultPath(for: copyLocation, root: root) { writtenPaths.append(copyPath) }
                 problems.append("“\(newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as "
                     + "“\(copyLocation.lastPathComponent)”.")
             } catch {
@@ -64,18 +64,28 @@ extension WorkspaceModel {
               // A file put in the old place again is a save by replacing it, not a move.
               (try? await store.fileExists(newPath)) == true, // Cannot be checked: not followed.
               (try? await store.fileExists(oldPath)) == false else { return } // Cannot be checked: not followed.
+        let revisionsAtNewPlace = await revisionsOfOpenNotes(inside: oldPath, movedTo: newPath)
+        // A vault opened meanwhile can have other notes at the same paths.
+        guard self.store === store else { return }
+        // In one turn from here. A note goes on at the new place in its own session, unless the
+        // file also changed under text not saved yet: that text is written beside the file, below.
+        let notesFollowing = followMoveInOpenNotes(from: oldPath, to: newPath) { session, newNotePath in
+            !session.hasUnsavedChanges || revisionsAtNewPlace[newNotePath] == session.revision
+        }
         // Read before the tabs let go of their sessions, with no suspension in between.
         let revisions = Dictionary(tabDocuments.values.compactMap(\.markdownSession).map { session in (session.path, session.revision) }
             + tabDocuments.values.compactMap(\.canvasSession).map { session in (session.path, session.revision) }) { firstRevision, _ in firstRevision }
         let edits = unsavedEdits(inside: oldPath, movedTo: newPath, revisionsBeforeMove: revisions)
-        let pdfsWithEdits = tabDocuments.values.compactMap(\.pdfSession).filter { session in
-            session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(oldPath) == true
-        }
+        let pdfsWithEdits = pdfSessionsWithEdits(inside: oldPath)
         expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(oldPath, with: newPath)) ?? folder }) // Outside it: unchanged.
         followMoveInNavigation(from: oldPath, to: newPath)
         moveDrafts(from: oldPath, to: newPath)
-        let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(edits)
-        let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsWithEdits, from: oldPath, to: newPath)
+        await saveTextOfNotes(notesFollowing)
+        // A save that was running as the file moved found it gone, which is no conflict; a file
+        // that changed as it moved is shown as any other app's change.
+        for session in notesFollowing { await session.checkExternalChange() }
+        let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(edits, in: store)
+        let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsWithEdits, from: oldPath, to: newPath, in: store)
         refreshIndexFollowingMove([oldPath, newPath] + keptEditPaths + keptPDFPaths)
         await refreshDirectory()
         let problems = editProblems + pdfProblems
@@ -88,7 +98,7 @@ extension WorkspaceModel {
             guard session.path.isInside(path), session.hasUnsavedChanges,
                   let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
             return EditDuringMove(newPath: newPath, data: NoteTextEncoding.encode(session.text, hasByteOrderMark: session.hasByteOrderMark),
-                                  copyExtension: "md", revisionBeforeMove: revisionsBeforeMove[session.path])
+                                  copyExtension: "md", revisionBeforeMove: revisionsBeforeMove[session.path], draftKeeper: session.draftKeeper)
         }
         let canvasEdits = tabDocuments.values.compactMap(\.canvasSession).compactMap { session -> EditDuringMove? in
             guard session.path.isInside(path), let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
@@ -104,8 +114,7 @@ extension WorkspaceModel {
     /// that the move itself changed (a note's own links were rewritten) keeps that version,
     /// and the changes are saved beside it as a separate copy, so neither is lost.
     /// - Returns: The files written, and a message for each edit saved as a copy or not saved.
-    func saveEditsMadeDuringMove(_ edits: [EditDuringMove]) async -> (writtenPaths: [VaultPath], problems: [String]) {
-        guard let store else { return ([], []) }
+    func saveEditsMadeDuringMove(_ edits: [EditDuringMove], in store: VaultStore) async -> (writtenPaths: [VaultPath], problems: [String]) {
         var writtenPaths: [VaultPath] = []
         var problems: [String] = []
         for edit in edits {
@@ -114,11 +123,13 @@ extension WorkspaceModel {
                 guard let revisionBeforeMove = edit.revisionBeforeMove else { throw GraphiteError.conflict }
                 _ = try await store.save(data, at: edit.newPath, expecting: .revision(revisionBeforeMove))
                 writtenPaths.append(edit.newPath)
+                edit.draftKeeper?.remove()
             } catch {
                 do {
                     let copyPath = try await store.separateCopyPath(of: edit.newPath, fileExtension: edit.copyExtension)
                     _ = try await store.save(data, at: copyPath, expecting: .absent)
                     writtenPaths.append(copyPath)
+                    edit.draftKeeper?.remove()
                     problems.append("“\(edit.newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as “\(copyPath.name)”.")
                 } catch {
                     problems.append("The changes made to “\(edit.newPath.name)” while it moved could not be saved. " + error.localizedDescription)

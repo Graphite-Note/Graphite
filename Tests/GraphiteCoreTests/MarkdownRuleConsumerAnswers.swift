@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownRuleConsumerAnswers.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: What each reader of Markdown answers to the rule parity questions.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteFixtures
 @testable import GraphiteCore
@@ -248,7 +259,9 @@ enum FencedCodeAnswers {
         note.codeLines { lineIndex in
             let probe = note.replacingLine(at: lineIndex, with: [note.containerMarkup(ofLineAt: lineIndex) + "- probe"])
             let cursor = NSRange(location: NSMaxRange(probe.probeLineRange), length: 0)
+            // A math block keeps Return plain too; the question here is code.
             return MarkdownEditing.continuingList(in: probe.text as NSString, selection: cursor, indentUnit: "\t") == nil
+                && MarkdownStyleScanner.blockContext(atLineContaining: probe.probeLineRange.location, in: probe.text as NSString) != .mathBlock
         }
     }
 

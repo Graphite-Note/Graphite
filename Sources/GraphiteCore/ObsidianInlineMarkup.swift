@@ -1,3 +1,14 @@
+/**
+ * File: ObsidianInlineMarkup.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: Rewrites Obsidian's inline syntax for the reading view and Live Preview's rendered blocks.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Inline Obsidian syntax that Markdown renderers do not know, rewritten for the reading
@@ -13,6 +24,7 @@ package enum ObsidianInlineMarkup {
         // The note's own marker characters are escaped first, so they are not read as
         // markers; `ObsidianMarkdownParser` restores them.
         var text = ReadingInlineMarking.removingBlockIdentifiers(from: ObsidianComments.removingComments(from: ReadingMarkers.escaping(markdown)))
+        text = ReadingInlineHTML.prepared(text)
         text = ReadingMathPreparation.displayMathInTableCellsMadeInline(text)
         // A comment removed here can join two lines; the lines that follow no longer have
         // the indices `taskLocation` knows them by, so no task is given a place.

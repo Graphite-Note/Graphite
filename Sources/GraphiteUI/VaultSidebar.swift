@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.41
- * Date: 02/11/2026
+ * Version: 0.46
+ * Date: 03/11/2026
  */
 
 import SwiftUI
@@ -37,12 +37,12 @@ enum CreationKind: String, Identifiable {
         case .canvas: "New Canvas"
         }
     }
-    var namePrompt: String {
+    /// What the new file is called when no name is typed; the file name is then made different
+    /// from the ones in the folder ("Untitled 1"), as Obsidian's new note is.
+    var untitledName: String {
         switch self {
-        case .note: "Note name"
-        case .notebook: "Notebook name"
-        case .base: "Base name"
-        case .canvas: "Canvas name"
+        case .notebook: "Untitled Notebook"
+        case .note, .base, .canvas: "Untitled"
         }
     }
 }
@@ -61,6 +61,8 @@ struct VaultSidebar: View {
     /// iPad too, so the library's place is decided by the window's width, not the column's.
     var isWindowCompact = false
     @State private var isRootDropTargeted = false
+    /// The query the results shown answer; the list says it is searching while the field holds another.
+    @State private var searchedQuery = ""
     /// The file "Reveal Current File" scrolls to once the folders above it have listed their contents.
     @State private var fileToReveal: VaultPath?
     @FocusState private var isSearchFocused: Bool
@@ -103,6 +105,8 @@ struct VaultSidebar: View {
     private enum SidebarChoice: Hashable {
         case panel(SidebarPanel)
         case pluginView(String)
+        /// Search results are shown in place of every list; the picker has no segment for them, so none is lit.
+        case searchResults
     }
 
     /// Plugins' sidebar views the picker offers: the first three and the one shown, so the
@@ -118,7 +122,8 @@ struct VaultSidebar: View {
     private static let maximumPluginSegments = 3
 
     private var pickerChoice: Binding<SidebarChoice> {
-        Binding(get: { shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) }, set: { choice in
+        Binding(get: { workspace.searchQuery.isEmpty ? shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) : .searchResults },
+                set: { choice in
             // A search would keep hiding the chosen list.
             workspace.searchQuery = ""
             switch choice {
@@ -127,6 +132,8 @@ struct VaultSidebar: View {
                 storedPanel = newPanel
             case .pluginView(let identifier):
                 chosenPluginView = identifier
+            case .searchResults:
+                break
             }
         })
     }
@@ -156,7 +163,7 @@ struct VaultSidebar: View {
             if isCompactWidth { VaultSwitcherMenuItems(workspace: workspace) { showsVaultManager = true } }
         }
         #endif
-        .task(id: "\(panel.rawValue)-\(workspace.indexVersion)-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
+        .task(id: "\(panel.rawValue)-\(panel.reloadVersion(indexVersion: workspace.indexVersion, structureVersion: workspace.structureVersion))-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
             await overview.load(panel, workspace: workspace, showsNestedTags: showsNestedTags)
         }
         // A plugin asked to show one of its sidebar views (`revealLeaf`).
@@ -188,9 +195,11 @@ struct VaultSidebar: View {
         .task(id: workspace.searchQuery) {
             // An empty field shows the file tree. Results of the last query are cleared rather
             // than replaced by a search for everything, which would show under the next query.
-            guard !workspace.searchQuery.isEmpty else { workspace.searchResults = []; return }
-            do { try await Task.sleep(for: .milliseconds(180)) } catch { return } // a newer query replaced this one
-            await workspace.search()
+            guard !workspace.searchQuery.isEmpty else { workspace.searchResults = []; searchedQuery = ""; return }
+            let query = workspace.searchQuery
+            do { try await Task.sleep(for: .milliseconds(180)); await workspace.search() } catch { return }
+            // A task a newer query cancelled does not say its query was answered.
+            if !Task.isCancelled { searchedQuery = query }
         }
         .toolbar {
             #if canImport(UIKit)
@@ -489,7 +498,8 @@ struct VaultSidebar: View {
                     }
             }
             if workspace.searchResults.isEmpty {
-                Text(workspace.searchQueryProblem ?? "No matches").foregroundStyle(.secondary)
+                SidebarSearchEmptyRow(state: .state(queryProblem: workspace.searchQueryProblem, isSearching: searchedQuery != workspace.searchQuery,
+                                                    isIndexUsable: workspace.isIndexUsable))
             }
             if workspace.isLoadingMoreSearchResults {
                 ProgressView().frame(maxWidth: .infinity)

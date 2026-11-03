@@ -1,3 +1,14 @@
+/**
+ * File: BaseEvaluator.swift
+ * -------------------------
+ * Layer: Core
+ * Description: Evaluates a base's formulas and filters over file records.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// Time, calendar and property typing used while evaluating a base.
@@ -416,7 +427,8 @@ public final class BaseEvaluator {
     }
 
     private func fileField(_ name: String, of path: VaultPath) throws -> BaseValue {
-        let record = record(at: path)
+        // Read only for a field that needs it: a file outside the query's rows is a database read.
+        lazy var record = self.record(at: path)
         switch name {
         case "name": return .string(path.name)
         case "basename": return .string(path.stem)
@@ -1146,7 +1158,7 @@ public final class BaseEvaluator {
     }
 
     private func fileMethod(_ name: String, path: VaultPath, arguments: [BaseValue]) throws -> BaseValue? {
-        let record = record(at: path)
+        lazy var record = self.record(at: path)
         switch name {
         case "asLink":
             let display = arguments.first.flatMap { argument in argument.isNull ? nil : argument.displayText }

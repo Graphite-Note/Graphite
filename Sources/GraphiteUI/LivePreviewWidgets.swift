@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewWidgets.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math and embeds.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.34
+ * Date: 02/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -84,6 +95,19 @@ struct LivePreviewEnvironment {
     var pluginCodeBlockLanguages: Set<String> = []
     /// The note being edited, which plugins draw its blocks for.
     var notePath: VaultPath? = nil
+    /// Whether the vault keeps Obsidian's "Strict line breaks": a single line break in a
+    /// callout or table is then not a line break, as in the reading view.
+    var usesStrictLineBreaks = false
+    /// The note's text as it is now, which a callout or table reads its footnote numbers,
+    /// reference links and tasks from. Call it outside a view's body only, so typing
+    /// does not draw the block again.
+    var noteText: (() -> String)? = nil
+    /// Ticks or unticks the task at a place of the note; nil draws the checkboxes of rendered blocks as pictures.
+    var toggleTask: (@MainActor (ReadingTasks.Location) async -> Bool)? = nil
+    /// Opens a search for a tag a rendered block links; nil leaves tags as text.
+    var searchTag: ((String) -> Void)? = nil
+    /// Remembers what the note's text says about footnotes and callouts for every block that asks.
+    var noteSnapshots: NoteReadingSnapshots? = nil
 }
 
 /// A rendered stand-in for concealed Live Preview source.
@@ -94,16 +118,26 @@ struct LivePreviewWidgetView: View {
     let reportHeight: (CGFloat) -> Void
     /// How a table's view edits its cells; nil for other blocks.
     var sourceEditing: RenderedBlockSourceEditing? = nil
+    /// Where the block starts in the note now; `block.range` says where it was found. Nil once it
+    /// is no longer in the note.
+    var currentLocation: (@MainActor () -> Int?)? = nil
     @State private var parsedSource = LivePreviewParsedSource()
     @State private var readingSnapshot: LivePreviewReadingSnapshot?
     @State private var tableEditor = LivePreviewTableEditor()
+    /// What a callout or table reads from the rest of its note; nil until the note is read.
+    @State private var noteReading: RenderedBlockNoteReading?
     @Environment(\.renderedBlockMenuContext) private var menuContext
+
+    private var tablePlace: RenderedBlockPlace? {
+        noteReading.map { reading in RenderedBlockPlace(reading: reading, lineOffsets: RenderedBlockPlace.lineOffsets(of: block.markdown)) }
+    }
 
     private var readingRange: NSRange? {
         guard let context = environment.readingContext, let range = context.controller.highlight(in: context.path) else { return nil }
-        let overlap = NSIntersectionRange(range, block.range)
-        guard overlap.length > 0 else { return nil }
-        return NSRange(location: overlap.location - block.range.location, length: overlap.length)
+        // The block's view stays while typing above moves the block, so where it starts is asked now.
+        let blockStart: Int? = if let currentLocation { currentLocation() } else { block.range.location }
+        guard let blockStart else { return nil }
+        return block.readingRange(ofNoteRange: range, blockStart: blockStart)
     }
 
     private var hasReadingSession: Bool {
@@ -139,6 +173,7 @@ struct LivePreviewWidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // The block's menu gives points in this space, the hosting view's own.
         .coordinateSpace(.named(LivePreviewTableEditor.blockCoordinateSpaceName))
+        .modifier(LivePreviewNoteReadingModifier(block: block, environment: environment, currentLocation: currentLocation, noteReading: $noteReading))
         .environment(\.readingActiveSourceRange, readingRange)
         .environment(\.readingFollowsSource, environment.readingContext.map { context in context.controller.shouldFollow(context.path) } ?? false)
         .textual.readingHighlight(readingRange, coordinateSpace: ReadingCoordinateSpace.name)
@@ -179,15 +214,15 @@ struct LivePreviewWidgetView: View {
             if let sourceEditing {
                 // A tap edits the cell under it, in place; "Edit Source" in the menu shows the
                 // Markdown, and the menu also adds, moves and removes rows and columns.
-                let _ = tableEditor.update(source: block.markdown, textSize: environment.textSize, sourceEditing: sourceEditing)
-                RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens)
+                let _ = tableEditor.update(source: block.sourceLines, textSize: environment.textSize, sourceEditing: sourceEditing)
+                RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens, place: tablePlace)
                     .environment(\.livePreviewTableEditor, tableEditor)
                     .onAppear {
                         let editor = tableEditor
                         menuContext?.itemsAtPoint = { [weak editor] point in editor?.menuItems(at: point) ?? [] }
                     }
             } else {
-                RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens)
+                RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens, place: tablePlace)
                     .contentShape(Rectangle())
                     .onTapGesture(perform: revealSource)
             }
@@ -218,13 +253,45 @@ struct LivePreviewWidgetView: View {
         case .mermaidDiagram:
             LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
         case .callout:
-            if case .callout(let type, let title, let folding, let bodyBlocks)? = parsedSource.calloutBlock(from: block.markdown) {
-                LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, environment: environment, revealSource: revealSource,
-                                      readingSection: readingSnapshot.flatMap { snapshot in snapshot.blocks.first.map { located in
-                                          LivePreviewReadingSection(snapshot: snapshot, block: located, endOffset: snapshot.sourceLength)
+            if let located = parsedSource.calloutBlock(from: block.markdown), case .callout(let type, let title, let folding, let bodyBlocks) = located.block {
+                LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, bodyLocated: located.body, noteReading: noteReading,
+                                      foldOccurrence: noteReading?.calloutOccurrence(atSourceOffset: located.startOffset) ?? 0,
+                                      environment: environment, revealSource: revealSource,
+                                      readingSection: readingSnapshot.flatMap { snapshot in snapshot.blocks.first.map { firstBlock in
+                                          LivePreviewReadingSection(snapshot: snapshot, block: firstBlock, endOffset: snapshot.sourceLength)
                                       } })
             }
         }
+    }
+}
+
+/// What a callout or table reads from the rest of its note: the note's text is read once the block
+/// is on screen and again when the block changes or moves, never in a body, so typing does not draw it again.
+private struct LivePreviewNoteReadingModifier: ViewModifier {
+    let block: LivePreviewBlock
+    let environment: LivePreviewEnvironment
+    let currentLocation: (@MainActor () -> Int?)?
+    @Binding var noteReading: RenderedBlockNoteReading?
+
+    /// Changes when the block, or where it is in the note, does; nil for blocks that read nothing from the note.
+    private var key: String? {
+        guard environment.noteText != nil, block.kind == .table || block.kind == .callout else { return nil }
+        return "\(block.range.location)|\(block.sourceLines)"
+    }
+
+    func body(content: Content) -> some View {
+        let block = block
+        let blockStart: @MainActor () -> Int? = currentLocation ?? { block.range.location }
+        return content
+            .environment(\.readingTaskContext, ReadingTaskContext.ofRenderedBlock(environment: environment, blockStart: blockStart))
+            .environment(\.readingTagSearch, environment.searchTag)
+            .task(id: key) {
+                guard key != nil, let noteText = environment.noteText?() else { noteReading = nil; return }
+                let snapshot = environment.noteSnapshots?.snapshot(for: noteText) ?? NoteReadingSnapshot(noteText: noteText)
+                // The note's text is as it is now, so the block is looked for where it is now.
+                noteReading = RenderedBlockNoteReading(snapshot: snapshot, sourceMarkdown: block.markdown, sourceLines: block.sourceLines,
+                                                       sourceRange: NSRange(location: blockStart() ?? block.range.location, length: block.range.length))
+            }
     }
 }
 
@@ -244,7 +311,7 @@ private final class LivePreviewParsedSource {
     private var propertiesSource: (markdown: String, declaredTypes: [String: PropertyType])?
     private var parsedProperties: [NoteProperty]?
     private var calloutSource: String?
-    private var parsedCalloutBlock: NotePreviewBlock?
+    private var parsedCalloutBlock: NotePreviewDocument.LocatedBlock?
 
     /// The frontmatter's properties, or nil when its YAML is not valid.
     func properties(from markdown: String, declaredTypes: [String: PropertyType]) -> [NoteProperty]? {
@@ -256,9 +323,11 @@ private final class LivePreviewParsedSource {
         return parsedProperties
     }
 
-    func calloutBlock(from markdown: String) -> NotePreviewBlock? {
+    func calloutBlock(from markdown: String) -> NotePreviewDocument.LocatedBlock? {
         if calloutSource != markdown {
-            parsedCalloutBlock = NotePreviewDocument.blocks(from: markdown).first
+            // A callout in a list item starts indented past what the block alone would allow.
+            parsedCalloutBlock = NotePreviewDocument.locatedBlocks(from: markdown,
+                calloutContainerColumn: NotePreviewDocument.calloutContainerColumn(ofCutOutBlock: markdown)).first
             calloutSource = markdown
         }
         return parsedCalloutBlock
@@ -272,6 +341,12 @@ private struct LivePreviewCalloutView: View {
     let title: String
     let folding: CalloutFolding
     let bodyBlocks: [NotePreviewBlock]
+    /// The body's blocks with where their lines are in the callout's source, and what the note
+    /// around the callout says about them; nil where the callout is not part of the note.
+    var bodyLocated: [NotePreviewDocument.LocatedBlock]? = nil
+    var noteReading: RenderedBlockNoteReading? = nil
+    /// Which of the callouts with this type and title it is, which its fold key holds.
+    var foldOccurrence = 0
     let environment: LivePreviewEnvironment
     let revealSource: () -> Void
     var readingSection: LivePreviewReadingSection? = nil
@@ -284,8 +359,9 @@ private struct LivePreviewCalloutView: View {
                     sourceTokens: readingSection?.titleTokens,
                     automaticallyExpandsForReading: readingFollowsSource && (readingActiveSourceRange.map { range in
                         readingSection?.tokens.contains { token in NSIntersectionRange(token.sourceRange, range).length > 0 } ?? false
-                    } ?? false), foldKeyTitle: title) {
-            LivePreviewBlockStack(blocks: bodyBlocks, environment: environment, allowsNoteEmbeds: true, revealSource: revealSource, readingSection: readingSection)
+                    } ?? false), foldKeyTitle: title, foldOccurrence: foldOccurrence) {
+            LivePreviewBlockStack(blocks: bodyBlocks, located: bodyLocated, noteReading: noteReading, environment: environment, allowsNoteEmbeds: true,
+                                  revealSource: revealSource, readingSection: readingSection)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: revealSource)
         }
@@ -296,6 +372,10 @@ private struct LivePreviewCalloutView: View {
 /// Reading-view blocks inside a Live Preview view: a callout's body or an embedded note.
 private struct LivePreviewBlockStack: View {
     let blocks: [NotePreviewBlock]
+    /// `blocks` with where their lines are in the source of the callout they are the body of,
+    /// when that callout is part of the note.
+    var located: [NotePreviewDocument.LocatedBlock]? = nil
+    var noteReading: RenderedBlockNoteReading? = nil
     let environment: LivePreviewEnvironment
     /// Embedded notes are shown one level deep, so notes that embed each other end.
     let allowsNoteEmbeds: Bool
@@ -305,7 +385,7 @@ private struct LivePreviewBlockStack: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { blockIndex, block in
-                view(for: block, readingSection: childReadingSection(at: blockIndex))
+                view(for: block, at: blockIndex, readingSection: childReadingSection(at: blockIndex))
             }
         }
     }
@@ -318,14 +398,29 @@ private struct LivePreviewBlockStack: View {
         return LivePreviewReadingSection(snapshot: readingSection.snapshot, block: body[index], endOffset: end)
     }
 
-    private func view(for block: NotePreviewBlock, readingSection: LivePreviewReadingSection?) -> AnyView {
+    /// Where the Markdown of the body block at `index` is in the note, when the callout is part of it.
+    private func place(ofBlockAt index: Int) -> RenderedBlockPlace? {
+        guard let noteReading, let located, located.indices.contains(index) else { return nil }
+        return RenderedBlockPlace(reading: noteReading, lineOffsets: located[index].lineStartOffsets)
+    }
+
+    /// Which of the callouts with its type and title the callout body block at `index` is.
+    private func foldOccurrence(ofCalloutAt index: Int) -> Int {
+        guard let noteReading, let located, located.indices.contains(index) else { return 0 }
+        return noteReading.calloutOccurrence(atSourceOffset: located[index].startOffset)
+    }
+
+    private func view(for block: NotePreviewBlock, at index: Int, readingSection: LivePreviewReadingSection?) -> AnyView {
         switch block {
         case .markdown(let markdown):
-            AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens))
+            AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens, place: place(ofBlockAt: index)))
         case .heading(let level, let text, _):
             AnyView(RenderedMarkdownBlock(markdown: String(repeating: "#", count: level) + " " + text, environment: environment, sourceTokens: readingSection?.tokens))
         case .callout(let type, let title, let folding, let bodyBlocks):
-            AnyView(LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, environment: environment, revealSource: revealSource, readingSection: readingSection))
+            AnyView(LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks,
+                                           bodyLocated: located?.indices.contains(index) == true ? located?[index].body : nil, noteReading: noteReading,
+                                           foldOccurrence: foldOccurrence(ofCalloutAt: index),
+                                           environment: environment, revealSource: revealSource, readingSection: readingSection))
         case .embed(let embed):
             AnyView(LivePreviewEmbedView(embed: embed, environment: environment, allowsNoteEmbeds: allowsNoteEmbeds, revealSource: revealSource))
         case .baseDefinition(let yaml):
@@ -346,6 +441,9 @@ struct RenderedMarkdownBlock: View {
     let markdown: String
     let environment: LivePreviewEnvironment
     var sourceTokens: [ReadAloudSourceToken]? = nil
+    /// Where the Markdown is in its note, for the footnote numbers and tasks it holds and the
+    /// reference links it uses; nil for Markdown that is not a part of the note.
+    var place: RenderedBlockPlace? = nil
     @State private var prepared: PreparedMarkdown?
     /// The `preparationTaskKey` of the last completed preparation. A preparation's own
     /// result can change the key (an unresolved embed starts following the index), which
@@ -363,7 +461,8 @@ struct RenderedMarkdownBlock: View {
     /// source, colors, and the palette. The editor keeps this view while they change, so
     /// a preparation made for other text is stale and is not shown.
     private var textKey: TextKey {
-        TextKey(markdown: markdown, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName)
+        TextKey(markdown: markdown, colorsEnabled: environment.colorsEnabled, usesStrictLineBreaks: environment.usesStrictLineBreaks,
+                paletteHexByName: environment.paletteHexByName, placeKey: place?.key ?? "")
     }
 
     /// Compared by value, not by a hash of the text: two texts with equal hashes must not
@@ -371,7 +470,9 @@ struct RenderedMarkdownBlock: View {
     private struct TextKey: Equatable {
         let markdown: String
         let colorsEnabled: Bool
+        let usesStrictLineBreaks: Bool
         let paletteHexByName: [String: String]
+        let placeKey: String
     }
 
     private struct SourceKey: Equatable {
@@ -402,14 +503,16 @@ struct RenderedMarkdownBlock: View {
         let key = sourceKey
         let currentTextKey = textKey
         let preparedMarkdown = prepared?.textKey == currentTextKey ? prepared?.markdown : nil
-        ObsidianMarkdownText(markdown: preparedMarkdown ?? LivePreviewText.prepared(markdown, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName),
+        ObsidianMarkdownText(markdown: preparedMarkdown ?? LivePreviewText.prepared(markdown, colorsEnabled: environment.colorsEnabled,
+            paletteHexByName: environment.paletteHexByName,
+                                                                                      usesStrictLineBreaks: environment.usesStrictLineBreaks, place: place),
                              root: environment.root, textSize: environment.textSize, navigate: environment.follow,
                              // `follow` scrolls the note to a heading written as `#heading`,
                              // and a heading's anchor is its own anchor.
                              scrollToHeading: { anchor in environment.follow("#" + anchor, true) }, sourceTokens: sourceTokens)
             .task(id: preparationTaskKey) {
                 guard preparationTaskKey != settledPreparationTaskKey else { return }
-                let preparation = await LivePreviewText.preparedResolvingEmbeds(markdown, environment: environment)
+                let preparation = await LivePreviewText.preparedResolvingEmbeds(markdown, environment: environment, place: place)
                 guard !Task.isCancelled else { return }
                 prepared = PreparedMarkdown(sourceKey: key, textKey: currentTextKey, markdown: preparation.markdown,
                                             hasUnresolvedEmbeds: preparation.hasUnresolvedEmbeds)
@@ -428,10 +531,13 @@ enum LivePreviewText {
     /// Also turns `![[image.png|300]]` into an image the renderer can show.
     /// `hasUnresolvedEmbeds` tells whether an embed was not found in the vault.
     @MainActor
-    static func preparedResolvingEmbeds(_ markdown: String, environment: LivePreviewEnvironment) async -> (markdown: String, hasUnresolvedEmbeds: Bool) {
-        guard hasWikiEmbed(markdown) else {
-            return (prepared(markdown, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName), false)
+    static func preparedResolvingEmbeds(_ markdown: String, environment: LivePreviewEnvironment,
+        place: RenderedBlockPlace? = nil) async -> (markdown: String, hasUnresolvedEmbeds: Bool) {
+        func prepared(_ text: String) -> String {
+            Self.prepared(text, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName,
+                          usesStrictLineBreaks: environment.usesStrictLineBreaks, place: place)
         }
+        guard hasWikiEmbed(markdown) else { return (prepared(markdown), false) }
         var hasUnresolvedEmbeds = false
         let source = markdown as NSString
         let output = NSMutableString(string: markdown)
@@ -451,13 +557,24 @@ enum LivePreviewText {
             let imageLocation = PreviewImageFragment.url(for: location, displaySize: label.flatMap(EmbedDisplaySize.parse(label:)), version: environment.drawingVersion)
             output.replaceCharacters(in: match.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
         }
-        return (prepared(output as String, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName), hasUnresolvedEmbeds)
+        return (prepared(output as String), hasUnresolvedEmbeds)
     }
 
     private static let wikilinkPattern = LivePreviewTextPattern.wikilinkPattern.compiled()
 
-    static func prepared(_ markdown: String, colorsEnabled: Bool, paletteHexByName: [String: String]) -> String {
+    /// - Parameters:
+    ///   - usesStrictLineBreaks: True leaves the text's line breaks alone, as the callers that
+    ///     show a title or a formula want; the vault's setting is what blocks of the note pass.
+    ///   - place: Where the text is in its note, which gives its footnote references their
+    ///     numbers, its reference links their definitions, and its tasks a checkbox that
+    ///     changes the note.
+    static func prepared(_ markdown: String, colorsEnabled: Bool, paletteHexByName: [String: String], usesStrictLineBreaks: Bool = true,
+                         place: RenderedBlockPlace? = nil) -> String {
         var text = markdown
+        if let place {
+            text = place.substitutingFootnoteReferences(in: text)
+            text = ReferenceLinkDefinitions.appendingDefinitions(place.reading.referenceDefinitions, neededBy: text)
+        }
         let source = text as NSString
         let output = NSMutableString(string: text)
         let codeRanges = MarkdownCodeRanges.rangeSet(in: source)
@@ -472,10 +589,14 @@ enum LivePreviewText {
             let label = ReadingViewBuilder.escapedLabel(ReadingViewBuilder.displayText(target: target, alias: alias))
             output.replaceCharacters(in: match.range, with: "[\(label)](\(GraphiteOpenLink.markdownDestination(target: target)))")
         }
-        text = output as String
+        // Links to a path or heading of the note are followed as in the reading view; an embed or
+        // wiki link above was written as one already.
+        text = ReadingBlockText.rewritingNoteLinks(in: output as String)
         // The note's own private-use characters are escaped there as in reading view, so
         // they are not read as markers; `ObsidianMarkdownParser` restores them.
-        return ObsidianInlineMarkup.preparedForReading(text, colorsEnabled: colorsEnabled, paletteHexByName: paletteHexByName)
+        return ReadingBlockText.readingText(text, colorsEnabled: colorsEnabled, paletteHexByName: paletteHexByName,
+                                            usesStrictLineBreaks: usesStrictLineBreaks, taskLocation: place.map { place in { lineIndex,
+                                                status in place.taskLocation(lineIndex: lineIndex, status: status) } })
     }
 }
 

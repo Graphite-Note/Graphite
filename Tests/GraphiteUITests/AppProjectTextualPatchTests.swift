@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 24/10/2026
+ * Version: 0.10
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -372,6 +372,558 @@ final class AppProjectTextualPatchTests: XCTestCase {
         XCTAssertGreaterThan(narrowest.bounds.width, 40)
         let wordsInTheSentence = CGFloat(sentence.split(separator: " ").count)
         XCTAssertLessThanOrEqual(narrowest.rowBounds(1).height, unwrapped.rowBounds(1).height * wordsInTheSentence + 1, "one word on each line at most")
+    }
+
+    // MARK: SwiftUIMath patches 10 to 16, MathJax's other commands
+
+    /// A formula's width and height at 20 points, which any of these formulas must have.
+    private func mathMetrics(_ latex: String, file: StaticString = #filePath, line: UInt = #line) throws -> DisplayMathRendering.Metrics {
+        try XCTUnwrap(DisplayMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: Self.mathFontSize), latex, file: file, line: line)
+    }
+
+    private static let mathFontSize: CGFloat = 20
+
+    /// How many pixels of a formula have ink, drawn as `Math` draws it (patch 5) at twice its size.
+    private func inkPixelCount(_ latex: String) throws -> Int {
+        let drawn = LaTeXCompatibility.normalized(latex)
+        let renderer = ImageRenderer(content: Math(drawn).mathFont(.init(name: .latinModern, size: Self.mathFontSize)).foregroundStyle(.black).padding(10).background(.white))
+        renderer.scale = 2
+        let image = try XCTUnwrap(renderer.cgImage, latex)
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        var pixels = [UInt8](repeating: 255, count: image.width * image.height)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width, space: colorSpace, bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return pixels.filter { pixel in pixel < 128 }.count
+    }
+
+    /// Patch 10. The vault has formulas typed with `δ` and `≤`: the parser skipped those letters,
+    /// so `$δ$` could not be typeset and `$κ(x)$` lost its `κ`.
+    func testCharactersTypedInAFormulaAreDrawnAsTheirCommands() throws {
+        XCTAssertEqual(try mathMetrics("δ + ξ ≤ θ").width, try mathMetrics(#"\delta + \xi \leq \theta"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics("κ(x)").width, try mathMetrics(#"\kappa(x)"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\cosθ"#).width, try mathMetrics(#"\cos\theta"#).width, accuracy: 0.01, "A command's name ends at a letter that is not ASCII.")
+        XCTAssertEqual(try mathMetrics("a\\\nb").width, try mathMetrics(#"a\ b"#).width, accuracy: 0.01, "A backslash before a line break is a space.")
+        XCTAssertTrue(MathAttachment.canTypeset(#"1 \,\&\, 1"#))
+        XCTAssertTrue(MathAttachment.canTypeset("日本語 x"), "A character the font lacks is left to a fallback font.")
+        XCTAssertFalse(MathAttachment.canTypeset("\u{200B}"), "An invisible character draws nothing.")
+    }
+
+    /// Patch 11. Each is drawn with a glyph Latin Modern has, in its class.
+    func testKaTeXSymbolsAreTypesetInTheirClasses() throws {
+        let relation = try mathMetrics(#"a = b"#).width - mathMetrics(#"="#).width
+        for symbol in ["leqslant", "geqslant", "lesssim", "gtrsim", "succeq", "preceq", "triangleq", "therefore", "because", "vdash", "lll", "ggg", "subsetneq", "nmid"] {
+            XCTAssertEqual(try mathMetrics(#"a \\#(symbol) b"#).width - (try mathMetrics(#"\\#(symbol)"#).width), relation, accuracy: 0.01, symbol)
+        }
+        for symbol in ["diamond", "blacksquare", "varnothing", "checkmark", "llbracket", "rrbracket", "circledast", "barwedge", "bigcirc", "oiint", "oiiint", "lozenge", "complement", "sharp", "flat", "bigstar", "blacklozenge"] {
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(symbol)"#).width, 0, symbol)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"\left\llbracket \frac{a}{b} \right\rrbracket"#).ascent, try mathMetrics(#"\frac{a}{b}"#).ascent - 1, "As delimiters too.")
+        XCTAssertGreaterThan(try mathMetrics(#"\mathring{A}"#).ascent, try mathMetrics("A").ascent)
+        XCTAssertEqual(try mathMetrics(#"a \not\leq b"#).width, try mathMetrics(#"a \leq b"#).width, accuracy: 2)
+    }
+
+    /// Patch 12. The owner's vault had 2,341 formulas with `\boxed`, drawn as their source.
+    func testFramesAndCirclesStandAroundWhatTheyHold() throws {
+        let fontSize = Self.mathFontSize
+        let letter = try mathMetrics("x")
+        let framed = try mathMetrics(#"\boxed{x}"#)
+        XCTAssertEqual(framed.width, letter.width + 2 * 0.34 * fontSize, accuracy: 0.01, "0.3 em of room and a line of 0.04 em on each side")
+        XCTAssertEqual(framed.ascent, letter.ascent + 0.34 * fontSize, accuracy: 0.01)
+        XCTAssertEqual(framed.descent, letter.descent + 0.34 * fontSize, accuracy: 0.01)
+        XCTAssertGreaterThan(try mathMetrics(#"\boxed{\frac{a}{b}}"#).ascent, try mathMetrics(#"\textstyle\frac{a}{b}"#).ascent, "It sets its content in display style.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\boxed{x}"#), try inkPixelCount("x") * 2, "The frame is drawn.")
+        XCTAssertGreaterThan(try mathMetrics(#"\boxed{x}^2"#).width, framed.width, "It takes a script.")
+        XCTAssertGreaterThan(try mathMetrics(#"\fbox{some text}"#).width, try mathMetrics(#"\text{some text}"#).width)
+        XCTAssertGreaterThan(try mathMetrics(#"\textcircled{1}"#).width, 1.1 * fontSize)
+        XCTAssertGreaterThan(try inkPixelCount(#"\textcircled{a}"#), try inkPixelCount(#"\text{a}"#))
+    }
+
+    func testStrikeOutsCrossWhatTheyHold() throws {
+        let fontSize = Self.mathFontSize
+        for command in ["cancel", "bcancel", "xcancel"] {
+            XCTAssertEqual(try mathMetrics(#"\\#(command){ab}"#).width, try mathMetrics("ab").width + 0.2 * fontSize, accuracy: 0.05, command)
+        }
+        XCTAssertGreaterThan(try inkPixelCount(#"\xcancel{x}"#), try inkPixelCount(#"\cancel{x}"#), "Two strokes, not one.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\cancel{x}"#), try inkPixelCount("x"))
+    }
+
+    func testPhantomsKeepTheRoomOfWhatTheyHideAndDrawNothing() throws {
+        let hidden = try mathMetrics(#"\frac{a}{b}"#)
+        let phantom = try mathMetrics(#"\phantom{\frac{a}{b}}"#)
+        XCTAssertEqual(phantom.width, hidden.width, accuracy: 0.01)
+        XCTAssertEqual(phantom.ascent, hidden.ascent, accuracy: 0.01)
+        XCTAssertEqual(try inkPixelCount(#"\phantom{\frac{a}{b}}"#), 0)
+        XCTAssertEqual(try mathMetrics(#"a\hphantom{\frac{a}{b}}"#).width, try mathMetrics("a").width + hidden.width, accuracy: 0.01)
+        XCTAssertLessThan(try mathMetrics(#"a\hphantom{\frac{a}{b}}"#).ascent, hidden.ascent, "No height.")
+        XCTAssertEqual(try mathMetrics(#"a\vphantom{\frac{a}{b}}"#).width, try mathMetrics("a").width, accuracy: 0.01, "No width.")
+        XCTAssertEqual(try mathMetrics(#"a\vphantom{\frac{a}{b}}"#).ascent, hidden.ascent, accuracy: 0.01)
+    }
+
+    func testOversetUndersetAndStackrelKeepTheClassOfWhatTheyStandOver() throws {
+        let plain = try mathMetrics(#"a = b"#)
+        for stacked in [#"\overset{x}{=}"#, #"\stackrel{x}{=}"#, #"\underset{x}{=}"#] {
+            XCTAssertEqual(try mathMetrics(#"a \#(stacked) b"#).width, plain.width, accuracy: 0.01, "A relation's spaces: \(stacked)")
+            XCTAssertEqual(try mathMetrics(#"a \#(stacked) -b"#).width, try mathMetrics(#"a = -b"#).width, accuracy: 0.01, "The minus after it is a sign: \(stacked)")
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"a \overset{x}{=} b"#).ascent, plain.ascent)
+        XCTAssertGreaterThan(try mathMetrics(#"a \underset{x}{=} b"#).descent, plain.descent)
+        XCTAssertEqual(try mathMetrics(#"a \overset{x}{y} b"#).width, try mathMetrics("ayb").width, accuracy: 0.5, "Over a letter it is a letter.")
+        XCTAssertEqual(try mathMetrics(#"a \overset{x}{+} b"#).width, try mathMetrics("a + b").width, accuracy: 0.01, "Over an operator it is an operator.")
+    }
+
+    func testExtensibleArrowsAreRelationsAsWideAsTheirLabels() throws {
+        let fontSize = Self.mathFontSize
+        let spaces = try mathMetrics(#"a = b"#).width - (try mathMetrics("=").width + (try mathMetrics("ab").width))
+        for command in ["xrightarrow", "xleftarrow"] {
+            let shortLabel = try mathMetrics(#"\\#(command){x}"#)
+            XCTAssertEqual(shortLabel.width, 1.47 * fontSize, accuracy: 0.01, command)
+            XCTAssertEqual(try mathMetrics(#"a \\#(command){x} b"#).width, shortLabel.width + (try mathMetrics("ab").width) + spaces, accuracy: 0.6, "A relation's spaces: \(command)")
+            let longLabel = try mathMetrics(#"\text{a very long label over it}"#)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command){\text{a very long label over it}}"#).width, 0.7 * longLabel.width, command)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command)[y]{x}"#).descent, shortLabel.descent, "The label below: \(command)")
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command)[\text{a very long label}]{x}"#).width, shortLabel.width, "It widens the arrow too: \(command)")
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"\xleftrightarrow{x}"#).width, 1.47 * fontSize, "Never narrower than its two heads.")
+        XCTAssertTrue(MathAttachment.canTypeset(#"\xrightarrow{}"#))
+        // The shaft continues the glyph's: a rule's ink for each point of length, with no gap.
+        let shorter = try inkPixelCount(#"\xrightarrow{\phantom{\text{a long label}}}"#)
+        let longer = try inkPixelCount(#"\xrightarrow{\phantom{\text{a long label a long label}}}"#)
+        let addedWidth = try mathMetrics(#"\xrightarrow{\phantom{\text{a long label a long label}}}"#).width - (try mathMetrics(#"\xrightarrow{\phantom{\text{a long label}}}"#).width)
+        XCTAssertEqual(Double(longer - shorter) / Double(addedWidth * 2), 2.5, accuracy: 1, "One rule's thickness in pixels, thickened as `Math` thickens outlines on the Mac")
+    }
+
+    func testArrowsOverAListSpanIt() throws {
+        let long = try mathMetrics("ABCDEF")
+        for command in ["overrightarrow", "overleftarrow"] {
+            let arrowed = try mathMetrics(#"\\#(command){ABCDEF}"#)
+            XCTAssertEqual(arrowed.width, long.width, accuracy: 0.01, command)
+            XCTAssertGreaterThan(arrowed.ascent, long.ascent, command)
+            XCTAssertEqual(arrowed.descent, long.descent, accuracy: 0.01, command)
+            XCTAssertGreaterThan(try mathMetrics(#"\\#(command){A}^{ff}"#).width, try mathMetrics(#"\\#(command){A}"#).width, "It takes a script: \(command)")
+        }
+        XCTAssertTrue(MathAttachment.canTypeset(#"\overleftrightarrow{AB}"#))
+        XCTAssertGreaterThan(try inkPixelCount(#"\overrightarrow{ABCDEF}"#), try inkPixelCount("ABCDEF"))
+    }
+
+    func testClassCommandsSpaceTheirArgumentAsTheClass() throws {
+        XCTAssertEqual(try mathMetrics(#"a \mathbin{+} b"#).width, try mathMetrics("a + b").width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a \mathrel{=} b"#).width, try mathMetrics("a = b").width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a \mathord{+} b"#).width, try mathMetrics("a{}b").width + (try mathMetrics("+").width), accuracy: 0.5)
+        XCTAssertTrue(MathAttachment.canTypeset(#"a \mathbin{\overline{\subset}} b \mathopen{(} c \mathclose{)} \mathpunct{,} d"#))
+        XCTAssertGreaterThan(try mathMetrics(#"a \bmod b"#).width, try mathMetrics(#"a\mathrm{mod}b"#).width, "An operator's spaces.")
+    }
+
+    func testSizedDelimitersGrowInKaTeXSteps() throws {
+        let fontSize = Self.mathFontSize
+        var previousHeight: CGFloat = 0
+        for (command, heightInEm) in [("big", 1.2), ("Big", 1.8), ("bigg", 2.4), ("Bigg", 3.0)] as [(String, CGFloat)] {
+            for suffix in ["", "l", "r", "m"] {
+                let metrics = try mathMetrics(#"\\#(command)\#(suffix)("#)
+                XCTAssertGreaterThanOrEqual(metrics.ascent + metrics.descent, heightInEm * fontSize - 0.2, command + suffix)
+                XCTAssertLessThan(metrics.ascent + metrics.descent, (heightInEm + 0.3) * fontSize, command + suffix)
+                XCTAssertGreaterThan(metrics.ascent + metrics.descent, previousHeight, command + suffix)
+            }
+            let metrics = try mathMetrics(#"\\#(command)("#)
+            previousHeight = metrics.ascent + metrics.descent
+        }
+        XCTAssertEqual(try mathMetrics(#"a \bigm| b"#).width - (try mathMetrics(#"\bigm|"#).width), try mathMetrics("a = b").width - (try mathMetrics("=").width), accuracy: 0.01, "\\bigm relates.")
+        for delimiter in [#"\|"#, "|", "[", #"\{"#, #"\langle"#, #"\lfloor"#, #"\vert"#, #"\Vert"#, #"\lvert"#, #"\rVert"#] {
+            XCTAssertTrue(MathAttachment.canTypeset(LaTeXCompatibility.normalized(#"\big\#(delimiter)"#)), delimiter)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"a\big.b"#).width, try mathMetrics("ab").width, "An empty delimiter keeps its small room.")
+        XCTAssertFalse(MathAttachment.canTypeset(#"\big"#), "A size with no delimiter stays as source.")
+    }
+
+    func testMiddleDelimiterIsAsTallAsItsPair() throws {
+        let plain = try mathMetrics(#"\left\{ \frac{a}{b} \middle| \frac{c}{d} \right\}"#)
+        XCTAssertEqual(plain.ascent, try mathMetrics(#"\left\{ \frac{a}{b} \, \frac{c}{d} \right\}"#).ascent, accuracy: 0.5)
+        let formula = #"\left\{ \frac{a}{b} \middle| \frac{c}{d} \right\}"#
+        XCTAssertGreaterThan(try inkPixelCount(formula), try inkPixelCount(#"\left\{ \frac{a}{b} \mid \frac{c}{d} \right\}"#), "A taller bar than a relation's.")
+    }
+
+    /// Patch 13. The vault had 2,290 formulas with `array`.
+    func testArrayAlignsItsColumnsAsItsPreambleSays() throws {
+        let fontSize = Self.mathFontSize
+        let cell = try mathMetrics("a")
+        XCTAssertEqual(try mathMetrics(#"\begin{array}{ll} a & a \end{array}"#).width, 2 * cell.width + fontSize, accuracy: 0.01, "Columns 1 em apart")
+        // A narrow row under a wide one: the rows' widths are the same, the ink stands elsewhere.
+        for preamble in ["l", "c", "r", "p{3cm}", "@{}l", "l@{x}", " l "] {
+            XCTAssertTrue(MathAttachment.canTypeset(#"\begin{array}{\#(preamble)} a \\ bbb \end{array}"#), preamble)
+        }
+        XCTAssertFalse(MathAttachment.canTypeset(#"\begin{array} a \end{array}"#), "An array needs its preamble.")
+        XCTAssertGreaterThan(try mathMetrics(#"\left\{\begin{array}{l} x = 1 \\ y = 2 \end{array}\right."#).width, 0)
+        XCTAssertEqual(try mathMetrics(#"\begin{array}{|c|} a \end{array}"#).width, cell.width + fontSize, accuracy: 0.5, "Half a column gap for each outer rule")
+        XCTAssertGreaterThan(try inkPixelCount(#"\begin{array}{c|c} a & a \end{array}"#), try inkPixelCount(#"\begin{array}{cc} a & a \end{array}"#), "The rule is drawn.")
+        let oneRow = try mathMetrics(#"\begin{array}{c} a \end{array}"#)
+        let ruled = try mathMetrics(#"\begin{array}{c} a \\ \hline \end{array}"#)
+        XCTAssertLessThan(ruled.ascent + ruled.descent, 1.5 * (oneRow.ascent + oneRow.descent) + fontSize / 2, "A rule at the end begins no row.")
+        XCTAssertGreaterThan(try inkPixelCount(#"\begin{array}{c} a \\ \hline a \end{array}"#), try inkPixelCount(#"\begin{array}{c} a \\ a \end{array}"#))
+    }
+
+    func testRowBreakLengthAddsHeightAndIsNotDrawn() throws {
+        let fontSize = Self.mathFontSize
+        let plain = try mathMetrics(#"\begin{pmatrix} a \\ b \end{pmatrix}"#)
+        let spaced = try mathMetrics(#"\begin{matrix} a \\[1em] b \end{matrix}"#)
+        let unspaced = try mathMetrics(#"\begin{matrix} a \\ b \end{matrix}"#)
+        XCTAssertEqual(spaced.ascent + spaced.descent, unspaced.ascent + unspaced.descent + fontSize, accuracy: 0.01)
+        XCTAssertEqual(spaced.width, unspaced.width, accuracy: 0.01, "`[1em]` is not text in the cell.")
+        XCTAssertEqual(try mathMetrics(#"\begin{pmatrix} a \\[2pt] b \end{pmatrix}"#).width, plain.width, accuracy: 0.01)
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{matrix} a \\ [b,c] \end{matrix}"#).width, unspaced.width, "A bracket after a space is the next row's.")
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{matrix} a \\[b,c] \end{matrix}"#).width, unspaced.width, "So are brackets that hold no length.")
+    }
+
+    func testCasesGatheredAndSubstackInAnEnvironment() throws {
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{cases} a & b & c \\ d & e & f \end{cases}"#).width, try mathMetrics(#"\begin{cases} a & b \\ d & e \end{cases}"#).width, "Any number of columns")
+        XCTAssertGreaterThan(try mathMetrics(#"\begin{gathered} a \\ b \end{gathered}"#).ascent, try mathMetrics("a").ascent)
+        // The substack's row break belongs to it, not to the `aligned` around it.
+        XCTAssertTrue(MathAttachment.canTypeset(#"\begin{aligned} a &\underset{\substack{x \\ y}}{=} b \\ c &= d \end{aligned}"#))
+    }
+
+    /// Patch 14.
+    func testBinomialStylesStarredOperatorNamesAndHorizontalSpaces() throws {
+        let fontSize = Self.mathFontSize
+        XCTAssertGreaterThan(try mathMetrics(#"\dbinom{n}{k}"#).ascent, try mathMetrics(#"\tbinom{n}{k}"#).ascent - 0.01)
+        XCTAssertGreaterThan(try inkPixelCount(#"\dbinom{n}{k}"#), try inkPixelCount(#"\tbinom{n}{k}"#))
+        for name in ["max", "m a x", #"arg\,max"#] {
+            XCTAssertGreaterThan(try mathMetrics(#"\operatorname*{\#(name)}_x"#).descent, try mathMetrics(#"\operatorname{max}_x"#).descent, "Its limit goes below: \(name)")
+        }
+        XCTAssertTrue(MathAttachment.canTypeset(#"\operatorname*{x^2}_y"#), "Not a plain name: drawn upright, without limits.")
+        XCTAssertEqual(try mathMetrics(#"a\hspace{1em}b"#).width, try mathMetrics("ab").width + fontSize, accuracy: 0.6)
+        XCTAssertEqual(try mathMetrics(#"a\hspace{10pt}b"#).width, try mathMetrics(#"a\hspace{1em}b"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"a\hspace*{ 1 em }b"#).width, try mathMetrics(#"a\hspace{1em}b"#).width, accuracy: 0.01)
+        XCTAssertFalse(MathAttachment.canTypeset(#"a\hspace{wide}b"#))
+    }
+
+    /// Patch 15. `= \quad -x` stopped Debug builds on an assert: a binary operator right after
+    /// a relation has no spacing, and the space hid the relation from the rule that makes it a sign.
+    func testSpacesAndStyleChangesHaveNoClass() throws {
+        XCTAssertEqual(try mathMetrics(#"a \rightarrow \quad -\frac{1}{2}"#).width, try mathMetrics(#"a \rightarrow \quad {}{-}\frac{1}{2}"#).width, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\begin{matrix} -1 \end{matrix}"#).width, try mathMetrics("-1").width, accuracy: 0.01, "A sign at the start of a cell has no spaces.")
+        XCTAssertEqual(try mathMetrics(#"1\,000"#).width, try mathMetrics("1000").width + 3.0 / 18.0 * Self.mathFontSize, accuracy: 0.01, "Numbers on either side of a space do not merge.")
+        XCTAssertEqual(try mathMetrics(#"a + \quad b"#).width, try mathMetrics(#"a+b"#).width + Self.mathFontSize, accuracy: 0.01, "An operator keeps its spaces around one.")
+    }
+
+    /// Patch 16. The vault has `\boldsymbol{\nabla}` 844 times.
+    func testBoldSymbolsHaveTheirBoldForms() throws {
+        for symbol in ["nabla", "partial", "epsilon", "vartheta", "phi", "varrho", "varpi"] {
+            XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{\\#(symbol)}"#), try inkPixelCount(#"\\#(symbol)"#), symbol)
+            XCTAssertGreaterThan(try inkPixelCount(#"\mathbf{\\#(symbol)}"#), try inkPixelCount(#"\\#(symbol)"#), symbol)
+        }
+        XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{x}"#), try inkPixelCount("x"))
+        XCTAssertGreaterThan(try inkPixelCount(#"\pmb{\alpha}"#), try inkPixelCount(#"\alpha"#))
+        XCTAssertGreaterThan(try inkPixelCount(#"\boldsymbol{1}"#), try inkPixelCount("1"))
+    }
+
+    // MARK: SwiftUIMath patches 17 and 18, colors and fraction styles as MathJax draws them
+
+    private static let formulaTextColor = (red: 238, green: 221, blue: 204)
+    private static let formulaPageColor = (red: 16, green: 16, blue: 16)
+
+    /// How many pixels of a formula are exactly `color` (the middle of its strokes, not their
+    /// edges), drawn as `Math` draws it (patch 5) in a text color no name gives, on a dark page.
+    private func pixelCount(of latex: String, in color: (red: Int, green: Int, blue: Int), file: StaticString = #filePath, line: UInt = #line) throws -> Int {
+        func swiftUIColor(_ color: (red: Int, green: Int, blue: Int)) -> SwiftUI.Color {
+            SwiftUI.Color(.sRGB, red: Double(color.red) / 255, green: Double(color.green) / 255, blue: Double(color.blue) / 255)
+        }
+        let drawn = LaTeXCompatibility.normalized(latex)
+        let renderer = ImageRenderer(content: Math(drawn)
+            .mathFont(.init(name: .latinModern, size: Self.mathFontSize))
+            .mathRenderingMode(.multicolor(base: swiftUIColor(Self.formulaTextColor)))
+            .padding(10)
+            .background(swiftUIColor(Self.formulaPageColor)))
+        renderer.scale = 3
+        let image = try XCTUnwrap(renderer.cgImage, latex, file: file, line: line)
+        var pixels = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                              space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return stride(from: 0, to: pixels.count, by: 4).filter { offset in
+            abs(Int(pixels[offset]) - color.red) <= 3 && abs(Int(pixels[offset + 1]) - color.green) <= 3 && abs(Int(pixels[offset + 2]) - color.blue) <= 3
+        }.count
+    }
+
+    /// Patch 17. The vault has `\textcolor{red}` and its kin about 190 times, which drew in the
+    /// text color. The values are what MathJax 3.2.2 gives each name in a browser: `red` is CSS's,
+    /// `Red` is the `color` package's.
+    func testNamedColorsAreReadAsMathJaxReadsThem() throws {
+        let colors: [(argument: String, color: (red: Int, green: Int, blue: Int))] = [
+            ("red", (255, 0, 0)), ("blue", (0, 0, 255)), ("grey", (128, 128, 128)), ("orange", (255, 165, 0)),
+            ("green", (0, 128, 0)), ("violet", (238, 130, 238)), ("magenta", (255, 0, 255)), ("brown", (165, 42, 42)),
+            ("Red", (237, 27, 35)), ("Blue", (45, 47, 146)), ("Green", (0, 166, 79)), ("RED", (255, 0, 0)), ("DarkBlue", (0, 0, 139)),
+            ("#7852ee", (120, 82, 238)), ("#f80", (255, 136, 0)),
+        ]
+        for (argument, color) in colors {
+            for latex in [#"\textcolor{\#(argument)}{x+y}"#, #"\color{\#(argument)} x+y"#] {
+                XCTAssertGreaterThan(try pixelCount(of: latex, in: color), 100, latex)
+                XCTAssertEqual(try pixelCount(of: latex, in: Self.formulaTextColor), 0, latex)
+            }
+        }
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{notacolor}{x+y}"#, in: Self.formulaTextColor), 100, "CSS ignores what it cannot read: the text color.")
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{red}{x\textcolor{notacolor}{y}}"#, in: (255, 0, 0)), try pixelCount(of: #"\textcolor{red}{x}"#, in: (255, 0, 0)), "It inherits the color around it.")
+    }
+
+    /// Patch 17. The vault has `\color{black}` 2,042 times, `\color{#000000}` 103 times and
+    /// `\color{white}` 3 times, each ending a colored passage: they must stay readable on either
+    /// background, also inside the color they end.
+    func testBlackAndWhiteAreTheTextColorEvenInsideAColor() throws {
+        let red = (red: 255, green: 0, blue: 0)
+        let blue = (red: 0, green: 0, blue: 255)
+        for argument in ["black", "Black", "BLACK", "white", "White", "#000000", "#000", "#ffffff", "#FFF"] {
+            let alone = try pixelCount(of: #"\textcolor{\#(argument)}{x+y}"#, in: Self.formulaTextColor)
+            XCTAssertGreaterThan(alone, 100, argument)
+            XCTAssertEqual(try pixelCount(of: #"\textcolor{red}{\textcolor{\#(argument)}{x+y}}"#, in: Self.formulaTextColor), alone, argument)
+            XCTAssertEqual(try pixelCount(of: #"\textcolor{red}{\textcolor{\#(argument)}{x+y}}"#, in: red), 0, argument)
+        }
+        let redInk = try pixelCount(of: #"\textcolor{red}{x+y}"#, in: red)
+        for declarations in [#"\color{red} x+y \color{black} x+y"#, #"{\color{red} x+y \color{#000000} x+y}"#] {
+            XCTAssertEqual(try pixelCount(of: declarations, in: red), redInk, accuracy: redInk / 10, declarations)
+            XCTAssertGreaterThan(try pixelCount(of: declarations, in: Self.formulaTextColor), 100, declarations)
+        }
+        let frame = #"\color{red}\boxed{\color{white} x+y}"#
+        XCTAssertGreaterThan(try pixelCount(of: frame, in: red), redInk / 2, "The frame stays red, the formula in it is text.")
+        XCTAssertGreaterThan(try pixelCount(of: frame, in: Self.formulaTextColor), 100)
+        XCTAssertGreaterThan(try pixelCount(of: #"\textcolor{black}{\textcolor{blue}{x+y}}"#, in: blue), 100, "A color inside the text color is drawn.")
+        XCTAssertEqual(try pixelCount(of: #"\textcolor{black}{\textcolor{blue}{x+y}}"#, in: Self.formulaTextColor), 0)
+    }
+
+    /// A formula's width and height set inline, in text style, where `mathMetrics` sets it in display style.
+    private func inlineMathMetrics(_ latex: String, file: StaticString = #filePath, line: UInt = #line) throws -> InlineMathRendering.Metrics {
+        try XCTUnwrap(InlineMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: Self.mathFontSize), latex, file: file, line: line)
+    }
+
+    /// Patch 18. The vault has `\tfrac` 2,754 times, which in display math was as large as `\frac`.
+    /// As in TeX and MathJax, `\tfrac` and `\dfrac` are the same fraction in display and inline
+    /// math, its parts one style smaller than the whole.
+    func testFractionStylesSetTheWholeFractionInTheirStyle() throws {
+        for fraction in [#"\tfrac{a}{b}"#, #"\dfrac{a}{b}"#, #"\tbinom{n}{k}"#, #"\dbinom{n}{k}"#] {
+            let inDisplay = try mathMetrics(fraction)
+            let inline = try inlineMathMetrics(fraction)
+            XCTAssertEqual(inDisplay.width, inline.width, accuracy: 0.01, fraction)
+            XCTAssertEqual(inDisplay.ascent, inline.ascent, accuracy: 0.01, fraction)
+            XCTAssertEqual(inDisplay.descent, inline.descent, accuracy: 0.01, fraction)
+        }
+        XCTAssertEqual(try mathMetrics(#"\tfrac{a}{b}"#).width, try mathMetrics(#"\frac{\scriptstyle a}{\scriptstyle b}"#).width, accuracy: 0.01, "The parts of \\tfrac are script size.")
+        XCTAssertEqual(try inlineMathMetrics(#"\dfrac{a}{b}"#).width, try mathMetrics(#"\frac{a}{b}"#).width, accuracy: 0.01, "The parts of \\dfrac are text size.")
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\dfrac{a}{b}"#).ascent, try inlineMathMetrics(#"\frac{a}{b}"#).ascent, "Display style's larger shifts, inline too.")
+
+        let textFraction = try mathMetrics(#"\tfrac{a}{b}"#)
+        let displayFraction = try mathMetrics(#"\dfrac{a}{b}"#)
+        let sideRoomWidth = 0.44 * Self.mathFontSize
+        XCTAssertEqual((textFraction.width - sideRoomWidth) / (displayFraction.width - sideRoomWidth), 0.7, accuracy: 0.05, "Latin Modern's script size is 70 %.")
+        XCTAssertLessThan(textFraction.ascent + textFraction.descent, 0.75 * (displayFraction.ascent + displayFraction.descent))
+        XCTAssertGreaterThan(try mathMetrics(#"x^{\dfrac{a}{b}}"#).width, try mathMetrics(#"x^{\tfrac{a}{b}}"#).width, "Display style in an exponent, as in TeX.")
+        XCTAssertLessThan(try mathMetrics(#"\tbinom{n}{k}"#).ascent, try mathMetrics(#"\dbinom{n}{k}"#).ascent, "The parentheses follow the style.")
+
+        XCTAssertEqual(try mathMetrics(#"\tfrac{a}{b}\int"#).ascent, try mathMetrics(#"\int"#).ascent, accuracy: 0.01, "What follows is back in display style.")
+
+        let long = #"\tfrac{a}{b}+\tfrac{c}{d}+\tfrac{e}{f}+\tfrac{g}{h}+\tfrac{i}{j}+\tfrac{k}{l}"#
+        let natural = try mathMetrics(long)
+        let width = natural.width * 0.6
+        let broken = try XCTUnwrap(DisplayMathRendering.metrics(for: long, fontSize: Self.mathFontSize, fittingWidth: width))
+        XCTAssertLessThanOrEqual(broken.width, width + Self.mathFontSize)
+        XCTAssertGreaterThan(broken.ascent + broken.descent, 1.5 * (natural.ascent + natural.descent), "Wrapping keeps it small.")
+    }
+
+    /// A formula's size in em, against what MathJax 3.2.2 measures for it (its SVG output's view box).
+    private func assertMathJaxSize(_ latex: String, inline: Bool, width: CGFloat, ascent: CGFloat, descent: CGFloat,
+                                   accuracyInEm: CGFloat = 0.05, file: StaticString = #filePath, line: UInt = #line) throws {
+        let label = "\(latex) \(inline ? "inline" : "in display math")"
+        let measured = inline
+            ? { (metrics: InlineMathRendering.Metrics) in (metrics.width, metrics.ascent, metrics.descent) }(try inlineMathMetrics(latex, file: file, line: line))
+            : { (metrics: DisplayMathRendering.Metrics) in (metrics.width, metrics.ascent, metrics.descent) }(try mathMetrics(latex, file: file, line: line))
+        XCTAssertEqual(measured.0 / Self.mathFontSize, width, accuracy: accuracyInEm, "Width of \(label)", file: file, line: line)
+        XCTAssertEqual(measured.1 / Self.mathFontSize, ascent, accuracy: accuracyInEm, "Ascent of \(label)", file: file, line: line)
+        XCTAssertEqual(measured.2 / Self.mathFontSize, descent, accuracy: accuracyInEm, "Descent of \(label)", file: file, line: line)
+    }
+
+    /// Patch 19. The vault has `\frac` inline about 7,600 times, at full size where MathJax has script
+    /// size, and more than 240 times nested in display math, where it did not shrink.
+    func testAFractionsPartsAreOneStyleSmallerThanTheFraction() throws {
+        try assertMathJaxSize(#"\frac{a}{b}"#, inline: false, width: 0.97, ascent: 1.12, descent: 0.70)
+        try assertMathJaxSize(#"\frac{a}{b}"#, inline: true, width: 0.81, ascent: 0.71, descent: 0.35)
+        try assertMathJaxSize(#"\frac{\frac{a}{b}}{c}"#, inline: false, width: 1.25, ascent: 1.52, descent: 0.70, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\frac{\frac{a}{b}}{c}"#, inline: true, width: 1.02, ascent: 1.09, descent: 0.35)
+        try assertMathJaxSize(#"\frac{\frac{\frac{a}{b}}{c}}{d}"#, inline: true, width: 1.24, ascent: 1.52, descent: 0.35, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"x^{\frac{a}{b}}"#, inline: true, width: 1.23, ascent: 0.86, descent: 0.01)
+        try assertMathJaxSize(#"\frac{a^2}{b_i}"#, inline: true, width: 1.12, ascent: 0.98, descent: 0.46, accuracyInEm: 0.07)
+
+        let plain = #"\frac{a}{b}"#
+        XCTAssertEqual(try mathMetrics(plain).ascent, try mathMetrics(#"\dfrac{a}{b}"#).ascent, accuracy: 0.01, "In display math \\frac is \\dfrac.")
+        XCTAssertEqual(try inlineMathMetrics(plain).width, try inlineMathMetrics(#"\tfrac{a}{b}"#).width, accuracy: 0.01, "Inline, \\frac is \\tfrac.")
+        XCTAssertEqual(try inlineMathMetrics(plain).ascent, try inlineMathMetrics(#"\tfrac{a}{b}"#).ascent, accuracy: 0.01)
+        XCTAssertEqual(try mathMetrics(#"\binom{n}{k}"#).width, try mathMetrics(#"\dbinom{n}{k}"#).width, accuracy: 0.01, "\\binom follows the same rule.")
+        XCTAssertEqual(try inlineMathMetrics(#"\binom{n}{k}"#).width, try inlineMathMetrics(#"\tbinom{n}{k}"#).width, accuracy: 0.01)
+        XCTAssertEqual(try inlineMathMetrics(#"{a\over b}"#).width, try inlineMathMetrics(plain).width, accuracy: 0.01, "\\over follows the same rule.")
+        try assertMathJaxSize(#"{a\atop b}"#, inline: true, width: 0.61, ascent: 0.76, descent: 0.35)
+        try assertMathJaxSize(#"{n\choose k}"#, inline: false, width: 2.07, ascent: 1.45, descent: 0.95)
+
+        // `\cfrac` has `\strut\textstyle` in each part, whatever is around it.
+        try assertMathJaxSize(#"\cfrac{a}{b}"#, inline: false, width: 0.97, ascent: 1.62, descent: 1.12, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\cfrac{a}{b}"#, inline: true, width: 0.97, ascent: 1.16, descent: 0.75)
+        try assertMathJaxSize(#"\cfrac{\frac{a}{b}}{c}"#, inline: false, width: 1.25, ascent: 1.67, descent: 1.12, accuracyInEm: 0.08)
+        try assertMathJaxSize(#"\cfrac{1}{1+\cfrac{1}{x}}"#, inline: false, width: 3.17, ascent: 1.62, descent: 1.84, accuracyInEm: 0.15)
+
+        // Matrix and array cells are in text style, equation environments in display style, inline too.
+        try assertMathJaxSize(#"\begin{array}{c}\frac{a}{b}\end{array}"#, inline: false, width: 0.81, ascent: 0.80, descent: 0.30)
+        try assertMathJaxSize(#"\begin{pmatrix}\frac{a}{b}\end{pmatrix}"#, inline: false, width: 1.59, ascent: 0.80, descent: 0.30, accuracyInEm: 0.08)
+        for environment in ["aligned", "split", "align"] {
+            try assertMathJaxSize(#"\begin{\#(environment)}a&=\frac{b}{c}\end{\#(environment)}"#, inline: true, width: 2.74, ascent: 1.28, descent: 0.78)
+        }
+        for environment in ["gathered", "gather"] {
+            try assertMathJaxSize(#"\begin{\#(environment)}\frac{b}{c}\end{\#(environment)}"#, inline: true, width: 0.87, ascent: 1.28, descent: 0.78)
+        }
+        try assertMathJaxSize(#"\begin{equation}\frac{b}{c}\end{equation}"#, inline: true, width: 0.75, ascent: 0.89, descent: 0.35)
+        XCTAssertTrue(MathAttachment.canTypeset(#"\begin{aligned}a&=-b\\c&=\frac{d}{e}\end{aligned}"#))
+
+        // What decides a line's height: an inline fraction is about as tall as a line of text.
+        XCTAssertLessThan(try inlineMathMetrics(plain).ascent, 0.75 * Self.mathFontSize)
+        XCTAssertLessThan(try inlineMathMetrics(plain).descent, 0.4 * Self.mathFontSize)
+    }
+
+    /// Patch 20. Inline `\sum_{i}` and `\dfrac{\sum_{i=1}^n x_i}{n}` stacked their limits, the second
+    /// 3.25 em tall against MathJax's 2.29.
+    func testLimitsStackInDisplayStyleOrAfterTheLimitsCommand() throws {
+        try assertMathJaxSize(#"\sum_{i=1}^n x_i"#, inline: true, width: 3.35, ascent: 0.79, descent: 0.34, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\sum_{i=1}^n x_i"#, inline: false, width: 2.51, ascent: 1.56, descent: 1.25, accuracyInEm: 0.17)
+        try assertMathJaxSize(#"\dfrac{\sum_{i=1}^n x_i}{n}"#, inline: true, width: 3.79, ascent: 1.59, descent: 0.70, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\frac{\sum_{i=1}^n x_i}{n}"#, inline: true, width: 2.81, ascent: 1.14, descent: 0.35, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\lim_{x\to 0} f"#, inline: true, width: 3.65, ascent: 0.70, descent: 0.20, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\max_x y"#, inline: true, width: 3.00, ascent: 0.45, descent: 0.20, accuracyInEm: 0.1)
+
+        // `\limits` stacks them in every style, inline and in an exponent, on any operator.
+        try assertMathJaxSize(#"\sum\limits_{i=1}^n x_i"#, inline: true, width: 2.21, ascent: 1.36, descent: 1.05, accuracyInEm: 0.17)
+        try assertMathJaxSize(#"\lim\limits_{x\to0} f"#, inline: true, width: 2.18, ascent: 0.70, descent: 0.75, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"x^{\sum\limits_{i}}"#, inline: true, width: 1.40, ascent: 1.34, descent: 0.01, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\int\limits_a^b x"#, inline: false, width: 1.69, ascent: 2.15, descent: 1.57, accuracyInEm: 0.11)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"x^{\sum\limits_{i}}"#).ascent, try inlineMathMetrics(#"x^{\sum_{i}}"#).ascent)
+
+        // `\nolimits` keeps them at the side, in display math too.
+        try assertMathJaxSize(#"\sum\nolimits_{i=1}^n x_i"#, inline: false, width: 3.74, ascent: 0.99, descent: 0.54, accuracyInEm: 0.1)
+        try assertMathJaxSize(#"\lim\nolimits_{x\to0} f"#, inline: false, width: 3.65, ascent: 0.70, descent: 0.20, accuracyInEm: 0.11)
+        let lastCommandWins = try mathMetrics(#"\sum\limits\nolimits_{i}"#)
+        XCTAssertEqual(lastCommandWins.width, try mathMetrics(#"\sum\nolimits_{i}"#).width, accuracy: 0.01, "The last of \\limits and \\nolimits counts.")
+
+        // `\operatorname*` is as `\lim`: stacked in display style, at the side inline.
+        try assertMathJaxSize(#"\operatorname*{argmax}_x f"#, inline: false, width: 3.97, ascent: 0.70, descent: 0.91, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"\operatorname*{argmax}_x f"#, inline: true, width: 4.46, ascent: 0.70, descent: 0.25, accuracyInEm: 0.1)
+
+        // The style decides, not whether the formula is inline.
+        try assertMathJaxSize(#"\displaystyle\sum_i x"#, inline: true, width: 2.18, ascent: 0.95, descent: 1.19, accuracyInEm: 0.11)
+        try assertMathJaxSize(#"\textstyle\sum_i x"#, inline: false, width: 2.12, ascent: 0.75, descent: 0.29, accuracyInEm: 0.12)
+        try assertMathJaxSize(#"\begin{aligned}\sum_{i} x\end{aligned}"#, inline: true, width: 2.18, ascent: 1.32, descent: 0.82, accuracyInEm: 0.06)
+        try assertMathJaxSize(#"\begin{pmatrix}\sum_{i} x\end{pmatrix}"#, inline: false, width: 2.90, ascent: 0.77, descent: 0.27, accuracyInEm: 0.12)
+
+        // Labels are not limits: they stay above and below, inline too.
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\overset{a}{b}"#).ascent, 1.1 * Self.mathFontSize)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\underbrace{ab}_{c}"#).descent, 1 * Self.mathFontSize)
+        XCTAssertGreaterThan(try inlineMathMetrics(#"\sum_{\substack{i<j\\k}} x"#).descent, 0.8 * Self.mathFontSize)
+    }
+
+    /// The pixels of a formula with ink, in columns of points from the left edge of its box.
+    private func inkColumnsInPoints(_ latex: String) throws -> ClosedRange<CGFloat> {
+        let scale: CGFloat = 8
+        let renderer = ImageRenderer(content: Math(LaTeXCompatibility.normalized(latex)).mathFont(.init(name: .latinModern, size: Self.mathFontSize)).foregroundStyle(.black).background(.white))
+        renderer.scale = scale
+        let image = try XCTUnwrap(renderer.cgImage, latex)
+        var pixels = [UInt8](repeating: 255, count: image.width * image.height)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let columnsWithInk = (0..<image.width).filter { column in
+            (0..<image.height).contains { row in pixels[row * image.width + column] < 128 }
+        }
+        let first = try XCTUnwrap(columnsWithInk.first, latex)
+        let last = try XCTUnwrap(columnsWithInk.last, latex)
+        return (CGFloat(first) / scale)...(CGFloat(last + 1) / scale)
+    }
+
+    /// Patch 21. `a+\tfrac{b}{c}+d` was 3.80 em wide against MathJax's 4.24: 0.12 em of each side
+    /// stays empty (`\nulldelimiterspace`) and the rule reaches 0.1 em past the wider part.
+    func testAFractionHasRoomAtItsSidesAsInMathJax() throws {
+        try assertMathJaxSize(#"a+\tfrac{b}{c}+d"#, inline: true, width: 4.24, ascent: 0.89, descent: 0.35)
+        try assertMathJaxSize(#"a+\frac{b}{c}+d"#, inline: false, width: 4.37, ascent: 1.37, descent: 0.70)
+
+        // The room is in em of the fraction's own style.
+        try assertMathJaxSize(#"x^{\tfrac{a}{b}}"#, inline: true, width: 1.47, ascent: 1.17, descent: 0.01)
+        try assertMathJaxSize(#"x^{\frac{a}{b}}"#, inline: true, width: 1.23, ascent: 0.86, descent: 0.01)
+
+        // Without a rule only the empty room, and with delimiters none: they stand there instead.
+        try assertMathJaxSize(#"{a\atop b}"#, inline: false, width: 0.77, ascent: 1.12, descent: 0.70)
+        try assertMathJaxSize(#"\binom{n}{k}"#, inline: false, width: 2.07, ascent: 1.45, descent: 0.95)
+
+        // The rule has the empty room outside it, and reaches past the parts.
+        let width = try mathMetrics(#"\dfrac{a}{b}"#).width
+        let ink = try inkColumnsInPoints(#"\dfrac{a}{b}"#)
+        let em = Self.mathFontSize
+        XCTAssertEqual(ink.lowerBound, 0.12 * em, accuracy: 0.25, "Empty room before the rule.")
+        XCTAssertEqual(ink.upperBound, width - 0.12 * em, accuracy: 0.25, "Empty room after the rule.")
+        let partInk = try inkColumnsInPoints(#"{\displaystyle a\atop\displaystyle b}"#)
+        XCTAssertGreaterThan(partInk.lowerBound, 0.12 * em - 0.25, "Without a rule, nothing reaches into the room.")
+
+        // MathJax spaces a fraction as an ordinary symbol, and without a space next to \left…\right.
+        for (formula, widthInEm) in [(#"x\frac{a}{b}y"#, 2.03), (#"2\frac{1}{2}"#, 1.44), (#"\frac{1}{2}mv^2"#, 2.74), (#"\frac{a}{b}\frac{a}{b}"#, 1.94),
+                                      (#"\frac{a}{b}\left(x\right)"#, 2.32), (#"\left(x\right)\frac{a}{b}"#, 2.32), (#"\frac{a}{b}("#, 1.36), (#")\frac{a}{b}"#, 1.36),
+                                      (#"\frac{a}{b},"#, 1.25), (#",\frac{a}{b}"#, 1.41), (#"x\binom{a}{b}"#, 2.57), (#"\sqrt{x}\frac{a}{b}"#, 2.39),
+                                      (#"\sin\frac{a}{b}"#, 2.36), (#"\frac{a}{b}\sum"#, 2.58), (#"\frac{a}{b}+x"#, 2.76), (#"x=\frac{a}{b}"#, 2.88)] as [(String, CGFloat)] {
+            XCTAssertEqual(try mathMetrics(formula).width / em, widthInEm, accuracy: 0.05, formula)
+        }
+        XCTAssertEqual(try inlineMathMetrics(#"x\frac{a}{b}"#).width / em, 1.39, accuracy: 0.05)
+    }
+
+    /// The height the reading view gives a paragraph at 17 points, wide enough for one line.
+    private func readingViewHeight(ofMarkdown markdown: String) -> CGFloat {
+        let paragraph = StructuredText(markdown: markdown, syntaxExtensions: [.math]).font(.system(size: 17))
+        let hostingView = NSHostingView(rootView: paragraph.frame(width: 800, alignment: .leading))
+        hostingView.layoutSubtreeIfNeeded()
+        return hostingView.fittingSize.height
+    }
+
+    /// Patches 19 and 20: a line with an inline fraction or sum is far less tall in the reading view.
+    /// `\\dfrac` is the fraction drawn tall on purpose, and stays as it was.
+    func testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView() {
+        let plain = readingViewHeight(ofMarkdown: "Some words here")
+        func addedHeight(_ latex: String) -> CGFloat { readingViewHeight(ofMarkdown: "Some $\(latex)$ words") - plain }
+        XCTAssertLessThan(addedHeight(#"\frac{a}{b}"#), 18, "It added 23 points.")
+        XCTAssertLessThan(addedHeight(#"\sum_{i=1}^n x_i"#), 25, "It added 48 points.")
+        XCTAssertLessThan(addedHeight(#"\lim_{x\to 0} f"#), 15, "It added 26 points.")
+        XCTAssertGreaterThan(addedHeight(#"\dfrac{a}{b}"#), 30)
+    }
+
+    /// Commands rewritten for the typesetter reach it as text it can draw.
+    func testCommandsLaTeXCompatibilityRewritesAreTypeset() throws {
+        for formula in [#"1, \dots, n"#, #"a + \dots + b"#, #"\lvert x \rvert \lVert y \rVert"#, #"\left\lvert x \right\rvert"#, #"\mathscr{L}"#, #"a \bmod b"#, #"\varDelta \varGamma"#,
+                        #"{\sf H}_2{\bf O} {\rm d} {\it a} {\tt b} {\cal L}"#, #"\dag \ddag \thinspace \medspace \thickspace \enspace x"#, #"\sqrt{\small x}"#, #"a \: b"#,
+                        #"\begin{pmatrix} \color{red} a \color{black} & b \\ c & \color{blue} d \end{pmatrix}"#, #"\left( \color{red} x \right) y"#] {
+            XCTAssertTrue(MathAttachment.canTypeset(LaTeXCompatibility.normalized(formula)), formula)
+        }
+        XCTAssertGreaterThan(try mathMetrics(#"1,\ldots,n"#).width, try mathMetrics(#"1,...,n"#).width, "Low dots as far apart as TeX sets them.")
+    }
+
+    /// A formula wider than its column breaks between the new constructs and after them, as
+    /// it breaks around a fraction (patch 2).
+    func testFormulasWithTheNewCommandsBreakToFitTheirWidth() throws {
+        let formulas = [
+            #"\boxed{a+b+c} + \cancel{d+e+f} + \boxed{g+h+i} + \cancel{j+k+l} + \boxed{m+n+o}"#,
+            #"a \overset{b}{=} cdefghijklmnop \xrightarrow{q} rstuvwxyz \underset{a}{=} bcdefghijkl \xrightarrow{m} nopqrstuvwxyz"#,
+            #"\boxed{abcdefghijklmnop} qrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"#,
+            #"\big(abcdefgh\big) + \big(ijklmnop\big) + \big(qrstuvwx\big) + \big(yzabcdef\big) + \big(ghijklmn\big)"#,
+        ]
+        for formula in formulas {
+            let latex = LaTeXCompatibility.normalized(formula)
+            let natural = try XCTUnwrap(DisplayMathRendering.metrics(for: latex, fontSize: Self.mathFontSize), formula)
+            let width = natural.width * 0.6
+            let broken = try XCTUnwrap(DisplayMathRendering.metrics(for: latex, fontSize: Self.mathFontSize, fittingWidth: width), formula)
+            // An operator after a display may hang past the width, as after a fraction or a root.
+            XCTAssertLessThanOrEqual(broken.width, width + Self.mathFontSize, formula)
+            XCTAssertGreaterThan(broken.ascent + broken.descent, 1.5 * (natural.ascent + natural.descent), formula)
+        }
+    }
+
+    /// Inline math is drawn in pieces (Textual patch 21): a piece must not cut a new construct.
+    func testInlineFormulasWithTheNewCommandsStayOneFormula() throws {
+        for formula in [#"\boxed{a + b} + c"#, #"\xrightarrow[a+b]{c} + d"#, #"\big( a + b \big) + c"#, #"\overset{a+b}{=} c + d"#, #"\cancel{a + b} + c"#] {
+            let drawn = LaTeXCompatibility.normalized(formula)
+            XCTAssertEqual(try mathAttachmentCount(inMarkdown: "before $\(drawn)$ after"), 1, formula)
+        }
     }
 
     // MARK: Patch 21, inline math breaks after its operators

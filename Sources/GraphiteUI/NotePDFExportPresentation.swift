@@ -6,8 +6,8 @@
  *              PDF…, Print… ⌘P on the Mac), the command palette and the file list call, and the sheets they open.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -129,7 +129,7 @@ struct NotePDFExportPresentation: ViewModifier {
     private func start(_ path: VaultPath?, purpose: NotePDFPurpose) async {
         guard let vault, export == nil else { return }
         do {
-            let note = try await printedNote(at: path, in: vault)
+            let note = try await Self.printedNote(at: path, in: vault, focusedNote: focusedNote)
             let source = NotePDFSource(text: note.text, path: note.path, vault: vault,
                                        readingConfiguration: readingConfiguration(declaredPropertyTypes: note.declaredPropertyTypes),
                                        title: note.path.stem, appearance: appearance)
@@ -139,8 +139,9 @@ struct NotePDFExportPresentation: ViewModifier {
         }
     }
 
-    /// The note's text: the note in front as it is now, another note from its file.
-    private func printedNote(at path: VaultPath?, in vault: ReadingVault) async throws
+    /// The note's text: the note in front as it is now, another note from its file. Either is printed with the vault's
+    /// assigned property types, so its properties look as they do on screen.
+    static func printedNote(at path: VaultPath?, in vault: ReadingVault, focusedNote: MarkdownSession?) async throws
         -> (text: String, path: VaultPath, declaredPropertyTypes: [String: PropertyType]) {
         if let focusedNote, path == nil || path == focusedNote.path {
             return (focusedNote.text, focusedNote.path, focusedNote.declaredPropertyTypes)
@@ -153,7 +154,7 @@ struct NotePDFExportPresentation: ViewModifier {
             guard let text = String(data: snapshot.data, encoding: .utf8) else { throw NotePDFExportError.noteNotText }
             return text
         }.value
-        return (text, path, [:])
+        return (text, path, await vault.store?.propertyTypes() ?? [:])
     }
 
     /// The reading view's settings of this vault that change how a note prints.

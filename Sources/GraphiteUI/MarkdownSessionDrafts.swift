@@ -6,8 +6,8 @@
  *              cannot reach the file.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -53,6 +53,8 @@ extension MarkdownSession {
     /// - Returns: Whether the text is safe: saved in the file or in the draft.
     @discardableResult
     func keepUnsavedTextInDraft() async -> Bool {
+        // A move let go of this session; its text is in a copy.
+        guard !wasLeftBehindByMove else { return true }
         flushPendingInsertions()
         guard hasUnsavedChanges else { return true }
         guard draftEditVersion != editVersion else { return true }
@@ -86,6 +88,12 @@ extension MarkdownSession {
         return true
     }
 
+    /// Says the file changed elsewhere; the edits stay, and saves are refused until that is settled.
+    func showConflict() {
+        hasExternalConflict = true
+        errorMessage = GraphiteError.conflict.localizedDescription
+    }
+
     /// Lets go of the draft, for this session and any other window's on the note: the text
     /// reached the file, or the person chose another version.
     func discardDraft() {
@@ -95,5 +103,5 @@ extension MarkdownSession {
         for session in sessions { session.draftEditVersion = nil }
     }
 
-    static let grownTooLargeMessage = "This note is saved, but it is now over 8 MB, the most Graphite can open for editing. Once it is closed it will not open here until it is smaller; Obsidian can open it."
+    static let grownTooLargeMessage = "This note is over 8 MB, the most Graphite opens for editing. It stays open here; once it is closed it opens read-only until it is smaller."
 }

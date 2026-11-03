@@ -1,31 +1,34 @@
+/**
+ * File: ReadingClassDiagramView.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: A laid-out class diagram in the reading view.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
 
 /// A laid-out class diagram, centered and as wide as it was laid out (in proportion to the text size now, if that
 /// changed since the note was built), scaled down when the column is narrower.
+/// One too wide to stay readable scrolls sideways (`ReadingScaledDiagram`).
 struct ReadingClassDiagramDrawing: View {
     let diagram: ReadingClassDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = diagram.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / diagram.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingClassDiagramPainting(shapes: diagram.shapes, colors: ReadingClassDiagramColors(diagram: ReadingDiagramColors(theme: theme)))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(diagram.title ?? "Class diagram")
-            .accessibilityValue(diagram.description ?? diagram.classNames.joined(separator: ", "))
+        ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
+            ReadingClassDiagramPainting(shapes: diagram.shapes, colors: ReadingClassDiagramColors(diagram: ReadingDiagramColors(theme: theme)))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(diagram.title ?? "Class diagram")
+        .accessibilityValue(diagram.description ?? diagram.classNames.joined(separator: ", "))
     }
 }
 

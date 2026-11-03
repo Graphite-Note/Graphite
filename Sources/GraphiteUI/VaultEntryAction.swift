@@ -1,3 +1,14 @@
+/**
+ * File: VaultEntryAction.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The commands a file or folder offers in its menus, and their wording.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -23,11 +34,15 @@ enum VaultEntryAction: Hashable, Identifiable, CaseIterable {
         case .rename: "Rename…"
         case .moveTo: "Move to…"
         case .makeCopy: "Make a Copy"
-        case .bookmark: "Bookmark"
-        case .removeBookmark: "Remove Bookmark"
+        case .bookmark: Self.bookmarkTitle(isBookmarked: false)
+        case .removeBookmark: Self.bookmarkTitle(isBookmarked: true)
         case .delete: "Delete"
         }
     }
+
+    /// The one wording of the command in every menu: the file menu, a note's, canvas's and PDF's More menu,
+    /// and a PDF page's menu.
+    static func bookmarkTitle(isBookmarked: Bool) -> String { isBookmarked ? "Remove Bookmark" : "Bookmark" }
 
     var systemImage: String {
         switch self {

@@ -5,8 +5,8 @@
  * Description: Answers bases' questions about files from the index.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -251,7 +251,8 @@ extension VaultIndex {
 /// One provider serves one run of a base. A base that asks about a few links reads them one by
 /// one. One that asks about more, as a `file.backlinks` column does per row, loads the vault's
 /// names and links once, so later answers cost no read: one read per link would be 31,748
-/// rows scanned per partial path, and thousands of reads for a large base.
+/// rows scanned per partial path, and thousands of reads for a large base. Records of files
+/// outside the rows are read together with their neighbours (`BaseRecordReadAhead`).
 public struct BaseIndexRecordProvider: BaseRecordProvider {
     /// Lookups answered by reading the database, before the names and links are loaded.
     public static let lookupsBeforeLoadingLinks = 8
@@ -261,17 +262,31 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
     /// "nothing" and keeps the error here; `throwIfLookupFailed()` reports it after the run.
     private let lookupFailure = BaseLookupFailure()
     private let linkMemory: BaseLinkMemory
+    /// Nil only for a test comparing against reads of one file each.
+    private let recordReadAhead: BaseRecordReadAhead?
 
-    init(databasePool: any DatabaseReader, lookupsBeforeLoadingLinks: Int = BaseIndexRecordProvider.lookupsBeforeLoadingLinks) {
+    init(databasePool: any DatabaseReader, lookupsBeforeLoadingLinks: Int = BaseIndexRecordProvider.lookupsBeforeLoadingLinks, readsRecordsAhead: Bool = true) {
         self.databasePool = databasePool
         linkMemory = BaseLinkMemory(lookupsBeforeLoading: lookupsBeforeLoadingLinks)
+        recordReadAhead = readsRecordsAhead ? BaseRecordReadAhead() : nil
     }
 
     /// Database reads the lookups made so far, which a test counts.
     var lookupReadCount: Int { linkMemory.readCount }
+    /// Records read for files asked about, neighbours included, which a test counts.
+    var recordsReadAheadCount: Int { recordReadAhead?.recordsReadCount ?? 0 }
 
     public func record(at path: VaultPath) -> BaseFileRecord? {
-        read { database in try VaultIndex.records(forPaths: [path.rawValue], in: database).first } ?? nil
+        if let rememberedRecord = recordReadAhead?.rememberedRecord(at: path) { return rememberedRecord }
+        guard let recordReadAhead else {
+            return read { database in try VaultIndex.records(forPaths: [path.rawValue], in: database).first } ?? nil
+        }
+        let fileCount = recordReadAhead.filesToReadForNextMiss()
+        let records = read { database in
+            try VaultIndex.records(forPaths: try recordReadAhead.pathsToRead(around: path, fileCount: fileCount, in: database), in: database)
+        } ?? [] // Failed: the error is kept, and the run shows it.
+        recordReadAhead.remember(records)
+        return recordReadAhead.rememberedRecord(at: path)
     }
 
     public func resolveLinkTarget(_ target: String, from source: VaultPath, isWiki: Bool) -> VaultPath? {

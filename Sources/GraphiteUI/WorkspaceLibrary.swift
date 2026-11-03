@@ -88,9 +88,12 @@ extension WorkspaceModel {
         guard !query.isEmpty else {
             return existingRecentFiles(limit: Self.recentPictureCount).filter(Self.isPicture)
         }
-        let matches = (try? await index?.quickSwitcherMatches(for: query, limit: Self.pictureMatchLimit)) ?? [] // A failed search finds none.
+        guard let index else { return [] }
+        // Only pictures are ranked, so notes that match the query better cannot push them out of the limit.
+        let search = { try await index.quickSwitcherMatches(for: query, limit: Self.pictureMatchLimit, onlyFileExtensions: DocumentKind.imageFileExtensions) }
+        let matches = (try? await search()) ?? [] // A failed search finds none.
         var seenPaths: Set<VaultPath> = []
-        return matches.map(\.path).filter { path in Self.isPicture(path) && seenPaths.insert(path).inserted }
+        return matches.map(\.path).filter { path in seenPaths.insert(path).inserted }
     }
 
     private static func isPicture(_ path: VaultPath) -> Bool {
@@ -102,7 +105,7 @@ extension WorkspaceModel {
 
     /// Takes a drop on the library, a folder tile or the back button: vault items move into the
     /// folder through `move(_:into:)` (the file tree's own moves) and files from other apps are
-    /// copied in through `importFiles`, whose staged copies are removed afterwards.
+    /// copied in through `importFiles`, which removes the staged copies when it has no more use for them.
     func receiveDrop(_ providers: [NSItemProvider], into folder: VaultPath) -> Bool {
         guard LibraryDropReader.canRead(providers) else { return false }
         Task {
@@ -110,8 +113,7 @@ extension WorkspaceModel {
             for path in plan.movedPaths { await move(path, into: folder) }
             guard !plan.droppedFiles.isEmpty else { return }
             let batch = DroppedFileBatch(files: plan.droppedFiles)
-            await importFiles(from: batch.locations, into: folder)
-            batch.discard()
+            await importFiles(from: batch.locations, into: folder, stagedCopies: batch)
         }
         return true
     }

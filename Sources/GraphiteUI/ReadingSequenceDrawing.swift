@@ -1,3 +1,14 @@
+/**
+ * File: ReadingSequenceDrawing.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: A laid-out sequence diagram in the reading view.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import MermaidDiagrams
 
@@ -9,22 +20,13 @@ struct ReadingSequenceDrawing: View {
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = sequence.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / sequence.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingSequencePainting(shapes: sequence.shapes, colors: ReadingDiagramColors(theme: theme))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(sequence.title ?? "Sequence diagram")
-            .accessibilityValue(sequence.accessibilityValue)
+        ReadingScaledDiagram(size: sequence.layout.size, layoutTextSize: sequence.layout.font.size, textSize: textSize) {
+            ReadingSequencePainting(shapes: sequence.shapes, colors: ReadingDiagramColors(theme: theme))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(sequence.title ?? "Sequence diagram")
+        .accessibilityValue(sequence.accessibilityValue)
     }
 }
 

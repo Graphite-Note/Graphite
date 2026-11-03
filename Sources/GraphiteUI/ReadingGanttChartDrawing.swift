@@ -1,31 +1,34 @@
+/**
+ * File: ReadingGanttChartDrawing.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: A laid-out Gantt chart in the reading view.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
 
 /// A laid-out Gantt chart, centered and as wide as it was laid out (in proportion to the text size now, if that
 /// changed since the note was built), scaled down when the column is narrower.
+/// One too wide to stay readable scrolls sideways (`ReadingScaledDiagram`).
 struct ReadingGanttChartDrawing: View {
     let chart: ReadingGanttChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = chart.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / chart.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingGanttChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(chart.title ?? "Gantt chart")
-            .accessibilityValue(chart.description ?? chart.taskNames.joined(separator: ", "))
+        ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
+            ReadingGanttChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(chart.title ?? "Gantt chart")
+        .accessibilityValue(chart.description ?? chart.taskNames.joined(separator: ", "))
     }
 }
 

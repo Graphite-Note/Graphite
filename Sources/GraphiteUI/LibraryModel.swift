@@ -50,6 +50,9 @@ final class LibraryModel {
     private(set) var isShownAsHome = true
     private(set) var folder: VaultPath = .root
     private(set) var items: [VaultEntry] = []
+    /// Whether the folder shown has been listed: false from the moment it is chosen until its listing arrives (or fails),
+    /// so a folder being listed is not shown as an empty one.
+    private(set) var hasListedFolder = false
     private(set) var failure: LibraryFailure?
     var filter: LibraryFilter = .all { didSet { filterTask = applyFilter() } }
     /// The folders' looks: Graphite's styles and Finder's; replaced with the vault.
@@ -85,6 +88,9 @@ final class LibraryModel {
             folderItemCounts.cancelAll()
             folderItemCounts = Self.makeFolderItemCounts(for: newSource)
             folder = .root
+            // The filter is kept from folder to folder; another vault starts with everything shown.
+            filter = .all
+            startListing()
         }
         source = newSource
         sortOrder = newSortOrder
@@ -110,8 +116,18 @@ final class LibraryModel {
         guard shownFolder != folder else { return }
         cancelPreviews()
         folder = shownFolder
-        filter = .all
+        startListing()
         await listFolder()
+    }
+
+    /// Forgets the previous folder's entries, so the tiles under the new folder's title are never the old ones' (tapping
+    /// one would open something not in view), and marks the new folder as not listed yet.
+    private func startListing() {
+        listedEntries = []
+        items = []
+        hasListedFolder = false
+        filterTask?.cancel()
+        filterTask = nil
     }
 
     /// Lists the folder shown. The folder's files and the vault's folder colors are read
@@ -120,6 +136,7 @@ final class LibraryModel {
         guard let source else {
             listedEntries = []; items = []; failure = nil
             filterTask?.cancel(); filterTask = nil
+            hasListedFolder = true // Nothing to list.
             return
         }
         let listedFolder = folder
@@ -131,9 +148,11 @@ final class LibraryModel {
             // A folder deleted or moved while shown: the library goes up to one that exists.
             if !listedFolder.rawValue.isEmpty, (try? await source.store.fileExists(listedFolder)) == false { // An unanswerable check counts as present.
                 folder = listedFolder.parent
+                startListing()
                 await listFolder()
             } else {
                 failure = .folderUnreadable
+                hasListedFolder = true
             }
             return
         }
@@ -144,6 +163,7 @@ final class LibraryModel {
         filterTask = filtering
         await filtering.value
         guard listedFolder == folder else { return }
+        hasListedFolder = true
         await refreshChangedPreviews()
         folderItemCounts.refreshVisibleFolders()
         await loadFolderStyles(from: source.store)
@@ -262,7 +282,7 @@ final class LibraryModel {
         visibleTileCounts[entry.path, default: 0] += 1
         // A tile of the same file already asked for this version.
         let isRequested = requestedPreviewKeys[entry.path] == LibraryPreviewCache.Key(entry: entry)
-        if isRequested, visiblePreviews[entry.path] != nil || isPreviewPending(entry.path) { return }
+        if isRequested, hasFinalPreview(entry.path) || isPreviewPending(entry.path) { return }
         requestPreview(of: entry)
     }
 
@@ -283,15 +303,17 @@ final class LibraryModel {
     }
 
     /// Asks again for the preview of every tile on screen whose file the new listing shows
-    /// changed. The old picture stays until the new one is drawn.
+    /// changed, and of those saying "In iCloud", since a download changes neither a file's
+    /// date nor its size. The old picture stays until the new one is drawn.
     private func refreshChangedPreviews() async {
         guard !requestedPreviewKeys.isEmpty else { return }
         let entries = listedEntries, requestedKeys = requestedPreviewKeys
+        let pathsNotDownloaded = Set(visiblePreviews.compactMap { path, preview in preview.isFinal ? nil : path })
         // A look through the whole listing, off the main actor, for the few tiles on screen.
         let changedEntries = await Task.detached(priority: .userInitiated) {
             entries.filter { entry in
                 guard !entry.isDirectory, let requestedKey = requestedKeys[entry.path] else { return false }
-                return requestedKey != LibraryPreviewCache.Key(entry: entry)
+                return requestedKey != LibraryPreviewCache.Key(entry: entry) || pathsNotDownloaded.contains(entry.path)
             }
         }.value
         for entry in changedEntries where visibleTileCounts[entry.path] != nil { requestPreview(of: entry) }
@@ -330,6 +352,11 @@ final class LibraryModel {
         previewCache.store(preview, for: key)
         if requestedPreviewKeys[path] == key { visiblePreviews[path] = preview }
         startWaitingPreviews()
+    }
+
+    /// Whether the tile shows a preview that stays as it is until the file changes; "In iCloud" is only for now.
+    private func hasFinalPreview(_ path: VaultPath) -> Bool {
+        visiblePreviews[path]?.isFinal == true
     }
 
     private func isPreviewPending(_ path: VaultPath) -> Bool {
@@ -426,6 +453,16 @@ final class LibraryPreviewCache {
         case .picture(let image): image.bytesPerRow * image.height
         case .note(_, let picture): picture.map { image in image.bytesPerRow * image.height } ?? 0
         case .notDownloaded, .kindIcon: 0
+        }
+    }
+}
+
+private extension LibraryTilePreview {
+    /// False for a file not yet downloaded: its preview is made once it is, and is not cached (`LibraryPreviewCache.store`).
+    var isFinal: Bool {
+        switch self {
+        case .picture, .note, .kindIcon: true
+        case .notDownloaded: false
         }
     }
 }

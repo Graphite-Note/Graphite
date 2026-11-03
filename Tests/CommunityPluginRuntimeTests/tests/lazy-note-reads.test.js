@@ -6,8 +6,8 @@
  *              settings.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 // What plugins cost at start-up: no note is read until something asks for one, and a plugin
@@ -42,6 +42,27 @@ module.exports = class extends obsidian.Plugin {
         await harness.send({ operation: 'plugins.layoutReady' });
         await settle();
         assert.equal(readsOf(harness).length, 0, 'before this took 120 reads, one per note, on every launch');
+    } finally {
+        harness.close();
+    }
+});
+
+test('a vault of 30,000 notes starts plugins with fifteen listing messages and no note read', async () => {
+    const noteCount = 30000;
+    const harness = await startRuntime({ files: manyNotes(noteCount), isStarting: false });
+    try {
+        // As the app does: `CommunityPluginVaultBridge.maximumListedEntriesPerPage`.
+        harness.host.listingPageSize = 2000;
+        await harness.send({ operation: 'runtime.start', vault: { name: 'Test', identifier: 'large', configuration: {} }, device: {}, recentFiles: [] });
+        harness.app = harness.runtime.app;
+        await harness.send({ operation: 'plugins.layoutReady' });
+        await settle();
+        const operationsAsked = new Map();
+        for (const request of plain(harness.host.requests)) operationsAsked.set(request.operation, (operationsAsked.get(request.operation) || 0) + 1);
+        assert.equal(harness.app.vault.getMarkdownFiles().length, noteCount);
+        assert.equal(operationsAsked.get('vault.list'), 15);
+        assert.equal(readsOf(harness).length, 0, 'before this took 30,000 reads, one per note, on every launch');
+        assert.ok(harness.host.requests.length < 40, 'nothing else asks per note: ' + JSON.stringify([...operationsAsked]));
     } finally {
         harness.close();
     }

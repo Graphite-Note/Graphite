@@ -5,8 +5,8 @@
  * Description: Renders and caches small page images for the pages sidebar.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -62,6 +62,10 @@ final class PDFThumbnailRenderer {
         guard !document.isEncrypted, let fileLocation = document.documentURL else { return }
         mappedFileData = try? NSData(contentsOf: fileLocation, options: .alwaysMapped)
     }
+
+    /// Pages this viewer drew so far, and whether it drew this one, which a test asks.
+    var drawnPageCount: Int { cacheKeys.count }
+    func hasDrawn(_ page: PDFPage) -> Bool { cacheKeys.keys.contains { identity in identity.page == ObjectIdentifier(page) } }
 
     /// Drops this viewer's thumbnails and its mapped file when it releases its PDF.
     func removeThumbnails() {
@@ -334,8 +338,7 @@ extension PDFPage {
     }
 }
 
-/// A page in a thumbnail list. Rows are identified by the page object, not its index,
-/// so inserting or moving pages never shows one page's image for another.
+/// A page in a thumbnail list.
 struct PDFThumbnailListPage {
     let pageIndex: Int
     let page: PDFPage
@@ -345,6 +348,34 @@ struct PDFThumbnailListPage {
     /// otherwise, on the main thread, each time the list is drawn.
     @MainActor static func rowIndices(of document: PDFDocument) -> Range<Int> {
         0..<document.pageCount
+    }
+}
+
+/// A row of a thumbnail list, which asks PDFKit for its page when it comes on screen. Scrolling a
+/// lazy list to a row lays out every row on the way without showing it: a jump to page 900 of
+/// 1,000 asked for 1,798 pages on the main thread when the rows asked as they were laid out, and
+/// each later jump for about 900. Until then the row is `placeholder`, which is as tall as a row
+/// of the first page's size, so the jump lands where it should.
+struct PDFThumbnailListRow<Row: View, Placeholder: View>: View {
+    let document: PDFDocument
+    let pageIndex: Int
+    /// `PDFSession.pageListVersion`: the page at this index may have changed.
+    let pageListVersion: Int
+    @ViewBuilder let row: (PDFPage) -> Row
+    @ViewBuilder let placeholder: () -> Placeholder
+    @State private var page: PDFPage?
+
+    var body: some View {
+        ZStack {
+            if let page {
+                // A row of its own per page, so inserting or moving pages never shows one page's image for another.
+                row(page).id(ObjectIdentifier(page))
+            } else {
+                placeholder()
+            }
+        }
+        .onAppear { page = document.page(at: pageIndex) }
+        .onChange(of: pageListVersion) { page = document.page(at: pageIndex) }
     }
 }
 

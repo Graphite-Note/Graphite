@@ -1,3 +1,14 @@
+/**
+ * File: ReadingDiagram.swift
+ * --------------------------
+ * Layer: UI
+ * Description: A mermaid block as the reading view shows it: the diagram drawn, or its source with why.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.24
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
@@ -36,33 +47,30 @@ enum ReadingDiagram: Sendable {
     /// A Sankey diagram drawn natively.
     case sankey(ReadingSankeyDiagram)
 
-    /// The diagram a block's text describes, laid out in `typography`, or nil when its type is not drawn natively
-    /// yet (`MermaidDiagramReadError.unsupportedDiagramType`) or it holds what its type does not lay out yet (a
-    /// flowchart's collapsed group, a state diagram's composite state, a class diagram's namespace, a sequence
-    /// diagram's box, a Git graph's options, a Sankey diagram's circular links): the block is then shown as code, as it
-    /// was before diagrams were drawn.
-    init?(source: String, typography: DiagramTypography) {
+    /// The diagram a block's text describes, laid out in `typography`. A diagram that cannot be read, or holds what its
+    /// type does not lay out yet (a flowchart's collapsed group, a state diagram's composite state, a class diagram's
+    /// namespace, a sequence diagram's box, a Git graph's options, a Sankey diagram's circular links), or is of a type not
+    /// drawn yet, is its source with a line that says why (`unreadable`), never a bare code block that looks as if nothing
+    /// was meant to be drawn.
+    init(source: String, typography: DiagramTypography) {
         let diagram: MermaidDiagram
         do {
             diagram = try MermaidDiagramReader.read(source, limits: .standard)
-        } catch .unsupportedDiagramType {
-            return nil
         } catch {
             self = .unreadable(source: source, failure: .reading(error))
             return
         }
-        guard let drawn = Self.drawn(diagram, source: source, typography: typography) else { return nil }
-        self = drawn
+        self = Self.drawn(diagram, source: source, typography: typography)
     }
 
-    /// `diagram` laid out in `typography`, `unreadable` when its layout fails, or nil when it holds what its type does
-    /// not lay out yet.
-    private static func drawn(_ diagram: MermaidDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram? {
+    /// `diagram` laid out in `typography`, or its source with why when its layout fails or holds what its type does not
+    /// lay out yet.
+    private static func drawn(_ diagram: MermaidDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         switch diagram {
         case .flowchart(let flowchart): drawnFlowchart(flowchart, source: source, typography: typography)
         case .stateDiagram(let stateDiagram): drawnStateDiagram(stateDiagram, source: source, typography: typography)
         case .classDiagram(let classDiagram): drawnClassDiagram(classDiagram, source: source, typography: typography)
-        case .sequence(let sequence): drawnSequence(sequence, typography: typography)
+        case .sequence(let sequence): drawnSequence(sequence, source: source, typography: typography)
         case .entityRelationship(let entityRelationship): drawnEntityRelationship(entityRelationship, source: source, typography: typography)
         case .mindmap(let mindmap): .mindmap(ReadingMindmap(diagram: mindmap, layout: MindmapLayoutEngine.layout(mindmap, typography: typography)))
         case .timeline(let timeline): .timeline(ReadingTimeline(diagram: timeline, layout: TimelineLayoutEngine.layout(timeline, typography: typography)))
@@ -70,7 +78,7 @@ enum ReadingDiagram: Sendable {
         case .ganttChart(let chart):
             ReadingGanttChart.diagram(source: source, chart: chart, typography: typography, now: WallClock.currentDate(),
                                       timeZone: WallClock.currentTimeZone())
-        case .gitGraph(let gitGraph): ReadingGitGraph.diagram(gitGraph, typography: typography)
+        case .gitGraph(let gitGraph): ReadingGitGraph.diagram(gitGraph, source: source, typography: typography)
         case .userJourney(let journey):
             .userJourney(ReadingUserJourney(diagram: journey, layout: UserJourneyLayoutEngine.layout(journey, typography: typography)))
         case .quadrantChart(let chart):
@@ -80,43 +88,53 @@ enum ReadingDiagram: Sendable {
         }
     }
 
-    private static func drawnFlowchart(_ flowchart: FlowchartDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram? {
+    private static func drawnFlowchart(_ flowchart: FlowchartDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             return .flowchart(ReadingFlowchart(diagram: flowchart, layout: try FlowchartLayoutEngine.layout(flowchart, typography: typography,
                                                                                                           limits: .standard)))
-        } catch .subgraphsNotLaidOut {
-            return nil
         } catch {
             return .unreadable(source: source, failure: .layout(error))
         }
     }
 
-    private static func drawnStateDiagram(_ stateDiagram: StateDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram? {
+    private static func drawnStateDiagram(_ stateDiagram: StateDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try StateDiagramLayoutEngine.layout(stateDiagram, typography: typography, limits: .standard)
             return .stateDiagram(ReadingStateDiagram(diagram: stateDiagram, layout: layout))
-        } catch .compositeStatesNotLaidOut {
-            return nil
         } catch {
             return .unreadable(source: source, failure: .stateLayout(error))
         }
     }
 
-    private static func drawnClassDiagram(_ classDiagram: ClassDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram? {
+    private static func drawnClassDiagram(_ classDiagram: ClassDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try ClassDiagramLayoutEngine.layout(classDiagram, typography: typography, limits: .standard)
             return .classDiagram(ReadingClassDiagram(diagram: classDiagram, layout: layout))
-        } catch .namespacesNotLaidOut {
-            return nil
         } catch {
             return .unreadable(source: source, failure: .classLayout(error))
         }
     }
 
-    /// A sequence diagram, or nil for `SequenceLayoutError.statementsNotLaidOut`.
-    private static func drawnSequence(_ sequence: SequenceDiagram, typography: DiagramTypography) -> ReadingDiagram? {
-        guard let layout = try? SequenceLayoutEngine.layout(sequence, typography: typography) else { return nil } // A statement not laid out yet: code.
-        return .sequence(ReadingSequence(diagram: sequence, layout: layout))
+    private static func drawnSequence(_ sequence: SequenceDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
+        do {
+            return .sequence(ReadingSequence(diagram: sequence, layout: try SequenceLayoutEngine.layout(sequence, typography: typography)))
+        } catch {
+            return .unreadable(source: source, failure: .sequenceLayout(error))
+        }
+    }
+}
+
+extension ReadingDiagram {
+    /// How many statements of the diagram are read and not applied (styling a diagram type does not draw yet, `click`), for
+    /// the diagrams that count them; 0 for the others.
+    var unappliedStatementCount: Int {
+        switch self {
+        case .flowchart(let flowchart): flowchart.unappliedStatementCount
+        case .stateDiagram(let stateDiagram): stateDiagram.unappliedStatementCount
+        case .classDiagram(let classDiagram): classDiagram.unappliedStatementCount
+        case .entityRelationship(let entityRelationship): entityRelationship.unappliedStatementCount
+        case .pieChart, .ganttChart, .unreadable, .sequence, .mindmap, .timeline, .gitGraph, .userJourney, .quadrantChart, .xyChart, .sankey: 0
+        }
     }
 }
 
@@ -124,6 +142,9 @@ enum ReadingDiagram: Sendable {
 enum ReadingDiagramFailure: Equatable, Sendable {
     case reading(MermaidDiagramReadError)
     case layout(FlowchartLayoutError)
+    case sequenceLayout(SequenceLayoutError)
+    case gitGraphLayout(GitGraphLayoutError)
+    case sankeyLayout(SankeyLayoutError)
     case stateLayout(StateDiagramLayoutError)
     case classLayout(ClassDiagramLayoutError)
     case entityRelationshipLayout(EntityRelationshipLayoutError)
@@ -141,12 +162,15 @@ struct ReadingFlowchart: Sendable {
     let description: String?
     /// The text of each node drawn, in the order the diagram names them, then each group's title.
     let nodeTexts: [String]
+    /// Statements read and not applied (`FlowchartDiagram.unappliedStatementCount`).
+    let unappliedStatementCount: Int
 
     init(diagram: FlowchartDiagram, layout: FlowchartLayout) {
         self.layout = layout
         shapes = ReadingFlowchartShapes(parts: FlowchartDrawingParts(layout: layout), font: layout.font)
         title = diagram.accessibilityTitle ?? diagram.title
         description = diagram.accessibilityDescription
+        unappliedStatementCount = diagram.unappliedStatementCount
         let groupNodes = Set(diagram.subgraphs.compactMap(\.representingNodeIndex))
         nodeTexts = diagram.nodes.indices.filter { node in !groupNodes.contains(node) }.map { node in diagram.nodes[node].label.spokenText }
             + diagram.subgraphs.map(\.title.spokenText).filter { title in !title.isEmpty }
