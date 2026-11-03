@@ -6,8 +6,8 @@
  *              what another app's reported changes refresh, and what coming back to the front lists.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -146,10 +146,38 @@ extension WorkspaceModel {
         case .wholeVault:
             await checkOpenDocumentsForExternalChanges()
             checkConflictVersions(of: tabDocuments.values.compactMap(\.loadedPath))
-            await refreshDirectory()
-            drawingVersion += 1
+            await refreshAfterChangeNotNamed()
             startIndexing(.spaced)
         }
+    }
+
+    /// Another app changed what cannot be named, as when a sync reports the vault folder alone,
+    /// which it can do again and again. Listing the root reads every file's metadata there, and a
+    /// redraw rebuilds the open documents, so neither runs for each report: the root is listed at
+    /// once only if its date says a name came or went, and otherwise when the scan that follows
+    /// finds that something did change (`indexScanFoundChanges`). Expanded folders list themselves.
+    private func refreshAfterChangeNotNamed() async {
+        guard let store else { return }
+        var isRootUnmoved = rootListingInFlight == nil && rootDateAtLastListing != nil
+        if isRootUnmoved { isRootUnmoved = await store.listingDate(of: .root) == rootDateAtLastListing }
+        guard store === self.store else { return }
+        if isRootUnmoved {
+            directoryVersion += 1
+            isRefreshWaitingForScan = true
+        } else {
+            await refreshDirectory()
+            drawingVersion += 1
+        }
+    }
+
+    /// A scan found the vault different from the index, so what is keyed on the index runs again.
+    func indexScanFoundChanges() async {
+        recordIndexChange(paths: nil)
+        if !searchQuery.isEmpty { await search() }
+        guard isRefreshWaitingForScan else { return }
+        isRefreshWaitingForScan = false
+        await listRoot()
+        drawingVersion += 1
     }
 
     /// Whether a scan of this launch has finished, after waiting for the one under way when the

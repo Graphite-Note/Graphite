@@ -1,3 +1,14 @@
+/**
+ * File: MyPaperTemplateBuilderTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: Building notebooks and previews from the person's own paper templates, and thumbnails of turned pages.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
 import CoreText
@@ -189,5 +200,22 @@ final class MyPaperTemplateBuilderTests: XCTestCase {
         let preview = try XCTUnwrap(MyPaperTemplateNotebook.preview(ofTemplateAt: location, longerSidePixels: 200))
         XCTAssertEqual(preview.pageSize, CGSize(width: 595, height: 842))
         XCTAssertEqual(max(preview.image.width, preview.image.height), 200)
+    }
+
+    /// HUNT-210: a page turned a quarter was drawn into a picture of the unturned box's proportions, squashed or stretched.
+    func testAThumbnailOfAPageTurnedAQuarterKeepsTheProportionsItIsShownWith() throws {
+        let location = try TemporaryVault.make(prefix: "TurnedPreview", for: self).root.appendingPathComponent("Template.pdf")
+        try MyPaperTemplateBuilder.templateData(fromPDF: try textPDF(["Planner"]), pageIndex: 0).write(to: location)
+        let document = try XCTUnwrap(PDFDocument(url: location))
+        let page = try XCTUnwrap(document.page(at: 0))
+        let upright = try XCTUnwrap(LibraryPreviewLoader.thumbnail(of: page, longerSidePixels: 400))
+        XCTAssertGreaterThan(upright.height, upright.width)
+        page.rotation = 90
+        XCTAssertEqual(LibraryPreviewLoader.displayedSize(of: page), CGSize(width: 842, height: 595))
+        let turned = try XCTUnwrap(LibraryPreviewLoader.thumbnail(of: page, longerSidePixels: 400))
+        XCTAssertEqual(turned.width, 400)
+        XCTAssertEqual(Double(turned.height), 400 * 595 / 842, accuracy: 2, "The picture is as wide as the page is shown.")
+        page.rotation = 180
+        XCTAssertEqual(LibraryPreviewLoader.displayedSize(of: page), CGSize(width: 595, height: 842))
     }
 }

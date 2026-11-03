@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.24
- * Date: 01/11/2026
+ * Version: 0.28
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -98,6 +98,7 @@ private struct PDFPaneContent: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.foldsSecondaryToolbarActions) private var foldsSecondaryToolbarActions
+    @Environment(\.foldsFindAndPagesFromToolbar) private var foldsFindAndPagesFromToolbar
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
     @Environment(\.showsPencilToolsInTabBar) private var showsPencilToolsInTabBar
     @Environment(\.isActiveInItsSide) private var isActiveInItsSide
@@ -413,8 +414,9 @@ private struct PDFPaneContent: View {
         // Neutral icons, as in Obsidian; the accent is kept for selection and toggles. A
         // compact width shows only Undo, Redo, Write and More: the pages, the search and
         // adding pages are in More, and while writing, the palette has its own Undo and Redo.
+        // A narrow regular width folds adding pages first, then the pages and find.
         ToolbarItemGroup(placement: .primaryAction) { Group {
-            if !foldsSecondaryActions {
+            if !foldsFindAndPages {
                 Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
                     withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
                 }
@@ -485,12 +487,16 @@ private struct PDFPaneContent: View {
         }
         if foldsSecondaryActions {
             Section {
-                Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
-                    withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
+                if foldsFindAndPages {
+                    Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
+                        withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
+                    }
                 }
                 goToPageButton
                 #if canImport(UIKit)
-                Button("Find in PDF", systemImage: "magnifyingglass") { presentFindNavigator() }
+                if foldsFindAndPages {
+                    Button("Find in PDF", systemImage: "magnifyingglass") { presentFindNavigator() }
+                }
                 #endif
                 if !session.isProtected {
                     CurrentPageAddPageMenu(session: session, commands: commands)
@@ -561,6 +567,15 @@ private struct PDFPaneContent: View {
     private var foldsSecondaryActions: Bool {
         #if canImport(UIKit)
         isCompactWidth || foldsSecondaryToolbarActions
+        #else
+        false
+        #endif
+    }
+
+    /// Whether the pages and find are in More as well: they stay on the bar longer than adding pages.
+    private var foldsFindAndPages: Bool {
+        #if canImport(UIKit)
+        isCompactWidth || foldsFindAndPagesFromToolbar
         #else
         false
         #endif
@@ -859,7 +874,7 @@ struct PDFPageActionsMenuContent: View {
 
     var body: some View {
         if pageIndices.count == 1, let pageIndex = pageIndices.first {
-            Button(isBookmarked ? "Remove Bookmark" : "Add Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 commands.toggleBookmark(page: pageIndex)
             }
         }

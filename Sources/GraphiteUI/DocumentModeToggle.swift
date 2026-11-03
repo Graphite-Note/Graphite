@@ -6,8 +6,8 @@
  *              tools.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -126,6 +126,30 @@ enum DocumentToolbarLayout {
         return detailWidth < minimumDetailWidthForSecondaryActions
     }
 
+    /// One icon-only button of the bar, with its share of the capsule around it.
+    static let toolbarSlotWidth: CGFloat = 44
+    /// What the bar always spends: Back, Forward, recording and More, its margins and the gaps between its groups.
+    static let toolbarFixedWidth: CGFloat = 4 * toolbarSlotWidth + 56
+    /// How far the title shortens before a button gives way.
+    static let minimumToolbarTitleWidth: CGFloat = 100
+    /// With no sidebar beside the documents, their bar also holds the sidebar's button and, in a window, the window's
+    /// controls, which otherwise stand in the sidebar.
+    static let toolbarWidthForWindowControls: CGFloat = toolbarSlotWidth + 80
+
+    /// The narrowest documents area that keeps a PDF's pages and find on the bar, as icons beside the title and More.
+    static func minimumDetailWidthForFindAndPages(sidebarIsBeside: Bool) -> CGFloat {
+        toolbarFixedWidth + minimumToolbarTitleWidth + 2 * toolbarSlotWidth + (sidebarIsBeside ? 0 : toolbarWidthForWindowControls)
+    }
+
+    /// Whether a PDF's pages and find go to More too. They stay on the bar longer than adding pages
+    /// (`foldsSecondaryActions`), as the two used most: in a portrait iPad with the sidebar open, about 430 points, the
+    /// title shortens for them, and only a narrower bar folds them, so they never push the title and More out.
+    static func foldsFindAndPages(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?, sidebarIsBeside: Bool) -> Bool {
+        if horizontalSizeClass == .compact { return true }
+        guard let detailWidth else { return false }
+        return detailWidth < minimumDetailWidthForFindAndPages(sidebarIsBeside: sidebarIsBeside)
+    }
+
     /// Whether the controls the toolbar has no room for go to the end of a side's tab bar.
     /// A row of their own would take a strip of the page for three controls; the tab bar is
     /// there anyway and mostly empty.
@@ -181,6 +205,10 @@ extension EnvironmentValues {
     /// True where a document's secondary toolbar actions go to its More menu
     /// (`DocumentToolbarLayout.foldsSecondaryActions`).
     @Entry var foldsSecondaryToolbarActions = false
+    /// True where a PDF's pages and find go to its More menu as well (`DocumentToolbarLayout.foldsFindAndPages`).
+    @Entry var foldsFindAndPagesFromToolbar = false
+    /// Whether the sidebar stands beside the documents area, not hidden: it holds the window's controls then.
+    @Entry var isSidebarBesideDocuments = false
 }
 
 /// Undo, Redo and Write of a side's active document, at the end of its tab bar.

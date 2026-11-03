@@ -6,8 +6,8 @@
  *              picker.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.14
+ * Date: 02/11/2026
  */
 
 #if os(iOS)
@@ -216,12 +216,11 @@ final class PencilWorkspaceTests: XCTestCase {
             stroke(.pencil, color: .darkGray, width: 4, atY: 170),
         ])
         try await waitUntil { page.annotations.filter { $0.type == "Ink" }.count == 3 }
-        try await Task.sleep(for: .milliseconds(500))
 
         // In the page's points, top down, as the overlay over the page and its canvas count them.
         let inkArea = CGRect(x: 40, y: 90, width: 340, height: 110)
         let overlayView = try XCTUnwrap(canvas.overlayView)
-        func pixels() throws -> [UInt8] {
+        func capture() throws -> (image: UIImage, pixels: [UInt8]) {
             let area = overlayView.convert(inkArea, to: nil)
             let format = UIGraphicsImageRendererFormat()
             format.scale = 2
@@ -233,7 +232,7 @@ final class PencilWorkspaceTests: XCTestCase {
             let context = try XCTUnwrap(CGContext(data: &bytes, width: cgImage.width, height: cgImage.height, bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
                                                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
-            return bytes
+            return (image, bytes)
         }
         func differingFraction(_ first: [UInt8], _ second: [UInt8]) -> Double {
             var inked = 0, differing = 0
@@ -245,22 +244,46 @@ final class PencilWorkspaceTests: XCTestCase {
             }
             return inked == 0 ? 1 : Double(differing) / Double(inked)
         }
+        // PencilKit draws in its own time, slower on a loaded machine: each look is taken once the
+        // ink is there and has stayed the same for a second. Time alone cannot end a change that
+        // turning writing on or off makes, which the comparisons below still see.
+        func settled(_ description: String) async throws -> (image: UIImage, pixels: [UInt8]) {
+            var latest = try capture()
+            var unchangedSince = ContinuousClock.now
+            try await waitUntil("the ink has settled \(description)", pollingIntervalSeconds: 0.1) {
+                let next = try capture()
+                if differingFraction(latest.pixels, next.pixels) > 0.001 { unchangedSince = ContinuousClock.now }
+                latest = next
+                return unchangedSince.duration(to: .now) >= .seconds(1)
+            }
+            return latest
+        }
+        func attach(_ image: UIImage, named name: String) {
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
 
         for zoom in [pdfView.scaleFactor, pdfView.scaleFactor * 3] {
             pdfView.scaleFactor = zoom
             pdfView.go(to: pdfView.convert(overlayView.convert(inkArea, to: pdfView), to: page), on: page)
-            try await Task.sleep(for: .milliseconds(800))
-            let whileWriting = try pixels()
+            let whileWriting = try await settled("while writing")
             session.isWriting = false
             try await waitUntil { !canvas.isUserInteractionEnabled }
-            try await Task.sleep(for: .milliseconds(500))
-            let whileReading = try pixels()
-            let fraction = differingFraction(whileWriting, whileReading)
+            let whileReading = try await settled("while reading")
+            let fraction = differingFraction(whileWriting.pixels, whileReading.pixels)
             XCTAssertLessThan(fraction, 0.01, "At \(Int(zoom * 100)) percent, \(Int(fraction * 100)) percent of the inked pixels change when writing is turned off.")
             session.isWriting = true
             try await waitUntil { canvas.isUserInteractionEnabled }
-            try await Task.sleep(for: .milliseconds(300))
-            XCTAssertLessThan(differingFraction(whileWriting, try pixels()), 0.01, "And nothing changes when it is turned on again.")
+            let writingAgain = try await settled("while writing again")
+            let fractionAgain = differingFraction(whileWriting.pixels, writingAgain.pixels)
+            XCTAssertLessThan(fractionAgain, 0.01, "And nothing changes when it is turned on again.")
+            if fraction >= 0.01 || fractionAgain >= 0.01 {
+                attach(whileWriting.image, named: "Ink while writing at \(Int(zoom * 100)) percent")
+                attach(whileReading.image, named: "Ink while reading at \(Int(zoom * 100)) percent")
+                attach(writingAgain.image, named: "Ink while writing again at \(Int(zoom * 100)) percent")
+            }
         }
         attachScreenshot(of: window, named: "Ink while writing, zoomed")
     }

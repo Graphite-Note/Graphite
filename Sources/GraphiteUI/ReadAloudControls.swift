@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudControls.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Read Aloud's toolbar buttons and its controls popover.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -50,8 +61,19 @@ struct ReadAloudPlayPauseButton: View {
 
     private var isSpeaking: Bool { reader.session.state == .speaking }
 
+    /// What the button does in each state: it pauses while speaking, resumes a pause, and plays from the top when
+    /// nothing has started or the note was read to its end.
+    static func title(for state: ReadAloudSession.State) -> String {
+        switch state {
+        case .speaking: "Pause Reading"
+        case .paused: "Resume Reading"
+        case .idle: "Play Reading"
+        case .finished: "Start Over"
+        }
+    }
+
     var body: some View {
-        let button = Button(isSpeaking ? "Pause Reading" : "Resume Reading",
+        let button = Button(Self.title(for: reader.session.state),
                             systemImage: isSpeaking ? "pause.fill" : "play.fill") {
             if isSpeaking { reader.session.pause() } else { reader.session.play() }
         }
@@ -111,7 +133,7 @@ struct ReadAloudControlsPanel: View {
                     .font(.footnote)
                     .foregroundStyle(Self.secondaryText)
             } else {
-                // Ten speeds, 0.75× to 3×, are a menu rather than segments.
+                // Eleven speeds, 0.5× to 3×, are a menu rather than segments.
                 HStack {
                     Text("Speed")
                     Spacer()

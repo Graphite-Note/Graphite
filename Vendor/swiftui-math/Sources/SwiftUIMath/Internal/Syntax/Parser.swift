@@ -1,3 +1,14 @@
+/**
+ * File: Parser.swift
+ * ------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Parses LaTeX into a list of atoms.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 extension Math {
@@ -247,10 +258,6 @@ extension Math {
       }
 
       // Note: For inline mode, we insert \textstyle to match LaTeX behavior.
-      // However, fractionStyle() has been modified to keep fractions at the
-      // same font size in both display and text modes (not one level smaller).
-      // Large operators show limits above/below in text style due to the updated
-      // condition in makeLargeOp() that checks both .display and .text styles.
       if mode == .inline && list != nil && !list!.atoms.isEmpty {
         // Prepend \textstyle to force inline rendering
         let styleAtom = Style(level: .text)
@@ -483,8 +490,13 @@ extension Math {
                     "\\cfrac{\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
                 }
               } else if frac.hasRule {
+                let command = frac.wholeStyle == .display ? "dfrac" : frac.wholeStyle == .text ? "tfrac" : "frac"
                 str +=
-                  "\\frac{\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
+                  "\\\(command){\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
+              } else if frac.wholeStyle != nil {
+                let command = frac.wholeStyle == .display ? "dbinom" : "tbinom"
+                str +=
+                  "\\\(command){\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
               } else {
                 let command: String
                 if frac.leftDelimiter.isEmpty && frac.rightDelimiter.isEmpty {
@@ -594,7 +606,9 @@ extension Math {
             let command = AtomFactory.latexSymbolName(for: atom)
             let originalOp = AtomFactory.atom(forLatexSymbol: command!) as! LargeOperator
             str += "\\\(command!) "
-            if originalOp.limits != op.limits {
+            if op.stacksLimitsInEveryStyle {
+              str += "\\limits "
+            } else if originalOp.limits != op.limits {
               if op.limits {
                 str += "\\limits "
               } else {
@@ -696,33 +710,12 @@ extension Math {
         frac.numerator = self.buildInternal(true)
         frac.denominator = self.buildInternal(true)
         return frac
-      } else if command == "dfrac" {
-        // Display-style fraction command has 2 arguments
+      } else if command == "dfrac" || command == "tfrac" {
+        // Graphite patch: the whole fraction is in display or text style (`Fraction.wholeStyle`).
         let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \displaystyle to force display mode rendering
-        let displayStyle = Style(level: .display)
-        numerator?.insert(displayStyle, at: 0)
-        denominator?.insert(displayStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
-        return frac
-      } else if command == "tfrac" {
-        // Text-style fraction command has 2 arguments
-        let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \textstyle to force text mode rendering
-        let textStyle = Style(level: .text)
-        numerator?.insert(textStyle, at: 0)
-        denominator?.insert(textStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
+        frac.wholeStyle = command == "dfrac" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
         return frac
       } else if command == "binom" {
         // A binom command has 2 arguments
@@ -906,13 +899,9 @@ extension Math {
       } else if command == "dbinom" || command == "tbinom" {
         // Graphite patch: a binomial in display or text style, as \dfrac and \tfrac are.
         let frac = Fraction(hasRule: false)
-        let level: Style.Level = command == "dbinom" ? .display : .script
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-        numerator?.insert(Style(level: level), at: 0)
-        denominator?.insert(Style(level: level), at: 0)
-        frac.numerator = numerator
-        frac.denominator = denominator
+        frac.wholeStyle = command == "dbinom" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
         frac.leftDelimiter = "("
         frac.rightDelimiter = ")"
         return frac
@@ -1073,6 +1062,7 @@ extension Math {
         } else {
           let op = atom as! LargeOperator
           op.limits = true
+          op.stacksLimitsInEveryStyle = true
         }
         return true
       } else if modifier == "nolimits" {
@@ -1082,6 +1072,7 @@ extension Math {
         } else {
           let op = atom as! LargeOperator
           op.limits = false
+          op.stacksLimitsInEveryStyle = false
         }
         return true
       }
@@ -1128,33 +1119,12 @@ extension Math {
         frac.numerator = self.buildInternal(true)
         frac.denominator = self.buildInternal(true)
         return frac
-      } else if command == "dfrac" {
-        // Display-style fraction command has 2 arguments
+      } else if command == "dfrac" || command == "tfrac" {
+        // Graphite patch: the whole fraction is in display or text style (`Fraction.wholeStyle`).
         let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \displaystyle to force display mode rendering
-        let displayStyle = Style(level: .display)
-        numerator?.insert(displayStyle, at: 0)
-        denominator?.insert(displayStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
-        return frac
-      } else if command == "tfrac" {
-        // Text-style fraction command has 2 arguments
-        let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \textstyle to force text mode rendering
-        let textStyle = Style(level: .text)
-        numerator?.insert(textStyle, at: 0)
-        denominator?.insert(textStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
+        frac.wholeStyle = command == "dfrac" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
         return frac
       } else if command == "binom" {
         let frac = Fraction(hasRule: false)

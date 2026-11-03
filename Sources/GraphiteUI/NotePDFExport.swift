@@ -6,8 +6,8 @@
  *              progress and cancellation, and the finished PDF handed to the file exporter.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 21/10/2026
+ * Version: 0.3
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -50,6 +50,9 @@ final class NotePDFExport {
     private let defaults: NotePDFExportDefaults
     private var previewTask: Task<Void, Never>?
     private var exportTask: Task<Void, Never>?
+    /// A finished PDF whose saving was cancelled, with the options it was made with: exporting again with the same
+    /// options offers it to the saver again, where making it again would repeat the whole render.
+    private var unsavedPDF: (document: PDFExportDocument, options: NotePDFOptions)?
 
     /// Pages the preview shows.
     nonisolated static let previewPageCount = 2
@@ -104,14 +107,23 @@ final class NotePDFExport {
     func export() {
         guard !isExporting else { return }
         if purpose == .save { defaults.remember(options) }
+        if let unsavedPDF, unsavedPDF.options == options {
+            phase = .saving(unsavedPDF.document)
+            return
+        }
+        unsavedPDF = nil
         previewTask?.cancel()
-        let renderer = NotePDFRenderer(source: source, options: options)
+        let exportedOptions = options
+        let renderer = NotePDFRenderer(source: source, options: exportedOptions)
         phase = .exporting(fractionDone: 0)
         exportTask = Task { [weak self] in
             do {
                 let pdf = try await renderer.render { fraction in self?.phase = .exporting(fractionDone: fraction) }
                 switch self?.purpose {
-                case .save: self?.phase = .saving(PDFExportDocument(data: pdf.data))
+                case .save:
+                    let document = PDFExportDocument(data: pdf.data)
+                    self?.unsavedPDF = (document, exportedOptions)
+                    self?.phase = .saving(document)
                 case .print: self?.phase = .printing(pdf)
                 case nil: break
                 }
@@ -130,9 +142,15 @@ final class NotePDFExport {
 
     /// The file exporter closed: saved, cancelled or failed.
     func finishSaving(_ result: Result<URL, Error>?) {
-        if case .failure(let error) = result {
+        switch result {
+        case .failure(let error):
+            unsavedPDF = nil
             phase = .failed(message: Self.message(for: error))
-        } else {
+        case .success:
+            unsavedPDF = nil
+            phase = .choosing
+        case nil:
+            // Cancelled: the finished PDF is kept for the next Export.
             phase = .choosing
         }
     }

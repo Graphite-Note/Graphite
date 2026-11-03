@@ -1,3 +1,14 @@
+/**
+ * File: NotebookPaperPictures.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: The pictures of paper the New Notebook sheet shows: the chosen paper large, and every paper of the gallery small.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CoreGraphics
 import Observation
@@ -9,8 +20,10 @@ import GraphiteApple
 /// main thread; a newer request replaces one still drawing.
 @MainActor @Observable
 final class NotebookPaperPictures {
-    /// The large picture's longer side, and a gallery picture's, in pixels.
-    static let chosenPicturePixels = 640
+    /// The large picture's longer side, and a gallery picture's, in pixels. The large one is drawn at the most
+    /// `PaperPreviewRenderer` draws: a dotted page's dots are 1.3 points wide and light, so a smaller picture,
+    /// shown at 240 points across, lost them and showed a plain white page.
+    static let chosenPicturePixels = PaperPreviewRenderer.maximumSidePixels
     static let galleryPicturePixels = 320
 
     private(set) var chosenPicture: CGImage?

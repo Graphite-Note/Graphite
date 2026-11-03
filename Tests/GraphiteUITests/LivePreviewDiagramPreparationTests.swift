@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewDiagramPreparationTests.swift
+ * ----------------------------------------------
+ * Layer: Tests
+ * Description: How Live Preview prepares a mermaid block as the reading view does.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -42,11 +53,15 @@ final class LivePreviewDiagramPreparationTests: XCTestCase {
         XCTAssertEqual(failure, .reading(.invalidSyntax(line: 2, problem: .unclosedShape(closingText: "]"))))
     }
 
-    func testATypeNotDrawnNativelyStaysCode() {
-        guard case .code = content("requirementDiagram\n  requirement test_req {\n  }") else { return XCTFail("A requirement diagram is shown as code") }
-        guard case .code = content("flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }") else {
-            return XCTFail("A flowchart holding a collapsed group is shown as code")
+    func testATypeNotDrawnNativelyShowsItsSourceAndWhy() {
+        guard case .diagram(.unreadable(_, let failure)) = content("requirementDiagram\n  requirement test_req {\n  }") else {
+            return XCTFail("A requirement diagram is shown with why")
         }
+        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
+        guard case .diagram(.unreadable(_, let collapsed)) = content("flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }") else {
+            return XCTFail("A flowchart holding a collapsed group is shown with why")
+        }
+        XCTAssertEqual(collapsed, .layout(.subgraphsNotLaidOut))
     }
 
     /// The preparation says which code and font it was made for, so a view drawing it knows whether it is current.

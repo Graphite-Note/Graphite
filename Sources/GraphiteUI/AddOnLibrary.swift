@@ -1,3 +1,14 @@
+/**
+ * File: AddOnLibrary.swift
+ * ------------------------
+ * Layer: UI
+ * Description: The add-on packs on this device and their downloads.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -84,6 +95,8 @@ final class AddOnLibrary {
                 outcome = .downloaded
             } catch is CancellationError {
                 outcome = .notDownloaded
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                outcome = .notDownloaded
             } catch {
                 outcome = .failed(Self.failure(for: error))
             }
@@ -113,9 +126,11 @@ final class AddOnLibrary {
         return nil
     }
 
-    private static func failure(for error: Error) -> AddOnFailure {
+    /// A network error of any kind (no internet, no cellular data, a host or address that cannot be reached, a failed secure
+    /// connection) is a failed connection; "could not save" is for the files on this device.
+    static func failure(for error: Error) -> AddOnFailure {
         switch error {
-        case let urlError as URLError where [.notConnectedToInternet, .networkConnectionLost, .timedOut, .cannotFindHost].contains(urlError.code):
+        case is URLError:
             .noConnection
         case AddOnPackStore.InstallError.fileDoesNotMatch:
             .damagedFile

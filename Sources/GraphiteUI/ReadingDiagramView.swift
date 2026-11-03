@@ -1,3 +1,14 @@
+/**
+ * File: ReadingDiagramView.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: A mermaid block in the reading view, and the flowchart's painting.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.17
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
@@ -12,6 +23,19 @@ struct ReadingDiagramView: View {
     let scrollToHeading: (String) -> Void
 
     var body: some View {
+        if diagram.unappliedStatementCount > 0 {
+            VStack(alignment: .leading, spacing: 6) {
+                drawing
+                // The diagram has styling or click actions that are read and not applied: it may look different from Obsidian's.
+                Label("Some styling or click actions in this diagram are not applied here.", systemImage: "info.circle")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        } else {
+            drawing
+        }
+    }
+
+    @ViewBuilder private var drawing: some View {
         switch diagram {
         case .flowchart(let flowchart):
             ReadingFlowchartDrawing(flowchart: flowchart, textSize: textSize)
@@ -53,29 +77,21 @@ struct ReadingDiagramView: View {
 }
 
 /// A laid-out flowchart, centered and as wide as it was laid out (in proportion to the text size now, if that
-/// changed since the note was built), scaled down when the column is narrower.
+/// changed since the note was built), scaled down when the column is narrower. One too wide to stay readable scrolls
+/// sideways (`ReadingScaledDiagram`).
 private struct ReadingFlowchartDrawing: View {
     let flowchart: ReadingFlowchart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = flowchart.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / flowchart.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingFlowchartPainting(shapes: flowchart.shapes, colors: ReadingDiagramColors(theme: theme))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(flowchart.title ?? "Flowchart")
-            .accessibilityValue(flowchart.description ?? flowchart.nodeTexts.joined(separator: ", "))
+        ReadingScaledDiagram(size: flowchart.layout.size, layoutTextSize: flowchart.layout.font.size, textSize: textSize) {
+            ReadingFlowchartPainting(shapes: flowchart.shapes, colors: ReadingDiagramColors(theme: theme))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(flowchart.title ?? "Flowchart")
+        .accessibilityValue(flowchart.description ?? flowchart.nodeTexts.joined(separator: ", "))
     }
 }
 
@@ -93,12 +109,37 @@ private struct ReadingFlowchartPainting: View {
                                       style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth, dash: FlowchartDrawingParts.dottedDashLengths))
             shapes.filledMarks.fill(colors.foreground)
             shapes.strokedMarks.stroke(colors.foreground, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
+            ForEach(shapes.styledEdges.indices, id: \.self) { index in styledEdge(shapes.styledEdges[index]) }
             ReadingFlowchartCrossedClusterTitles(clusters: shapes.clusters, colors: colors)
             shapes.edgeTextPatches.fill(colors.background)
             lines(shapes.edgeTextLines)
             shapes.nodeFills.fill(colors.surface)
             shapes.nodeOutlines.stroke(colors.border, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
+            ForEach(shapes.styledNodes.indices, id: \.self) { index in styledNode(shapes.styledNodes[index]) }
             lines(shapes.nodeTextLines)
+            ForEach(shapes.styledNodes.indices, id: \.self) { index in
+                let node = shapes.styledNodes[index]
+                ReadingDiagramTextLines(lines: node.textLines, color: node.style.textColor.map { color in Color(color) } ?? colors.foreground)
+            }
+        }
+    }
+
+    /// An edge with its own stroke or colors: the line, then its marks, in its color or the usual line color.
+    private func styledEdge(_ edge: ReadingFlowchartStyledEdge) -> some View {
+        let color = edge.color.map { color in Color(color) } ?? colors.foreground
+        return ZStack(alignment: .topLeading) {
+            edge.line.stroke(color, style: Self.lineStyle(width: edge.lineWidth, dash: edge.dashLengths))
+            edge.filledMarks.fill(color)
+            edge.strokedMarks.stroke(color, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
+        }
+    }
+
+    /// A node with colors of its own: the inside in its fill, the outline in its stroke, the usual colors for what it leaves out.
+    private func styledNode(_ node: ReadingFlowchartStyledNode) -> some View {
+        ZStack(alignment: .topLeading) {
+            if let shape = node.fill { shape.fill(node.style.fill.map { color in Color(color) } ?? colors.surface) }
+            node.outline.stroke(node.style.stroke.map { color in Color(color) } ?? colors.border,
+                                style: Self.lineStyle(width: node.lineWidth, dash: node.style.strokeDashLengths ?? []))
         }
     }
 

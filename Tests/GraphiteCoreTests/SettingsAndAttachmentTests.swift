@@ -1,3 +1,14 @@
+/**
+ * File: SettingsAndAttachmentTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Obsidian's file and attachment settings, and the order and dates a file listing shows.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport
@@ -73,6 +84,16 @@ final class SettingsAndAttachmentTests: XCTestCase {
         XCTAssertEqual(FileSortOrder.alphabeticalReverse.sorted(entries).map(\.path.name), ["Folder", "b.md", "a.md"])
         XCTAssertEqual(FileSortOrder.byModifiedTime.sorted(entries).map(\.path.name), ["Folder", "a.md", "b.md"])
         XCTAssertEqual(FileSortOrder.byCreatedTime.sorted(entries).map(\.path.name), ["Folder", "b.md", "a.md"])
+    }
+
+    /// HUNT-214: a library sorted by created time showed each file's modified date, which is not in order.
+    func testAListingShowsTheDateItIsSortedBy() throws {
+        let modified = Date(timeIntervalSince1970: 2), created = Date(timeIntervalSince1970: 1)
+        let entry = VaultEntry(path: try VaultPath("a.md"), isDirectory: false, size: 0, modified: modified, created: created)
+        for order in [FileSortOrder.byCreatedTime, .byCreatedTimeReverse] { XCTAssertEqual(order.shownDate(of: entry), created, order.rawValue) }
+        for order in [FileSortOrder.alphabetical, .alphabeticalReverse, .byModifiedTime, .byModifiedTimeReverse] {
+            XCTAssertEqual(order.shownDate(of: entry), modified, order.rawValue)
+        }
     }
 
     func testMalformedSettingsFileIsNeverOverwritten() {

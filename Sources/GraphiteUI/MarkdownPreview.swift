@@ -2,11 +2,10 @@
  * File: MarkdownPreview.swift
  * ---------------------------
  * Layer: UI
- * Description: The reading view: builds a note's blocks off the main actor (links resolved, embeds read), shows them
- *              with Textual in a lazy stack, keeps the reading position, folds headings, and follows the word read aloud.
+ * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.46
+ * Version: 0.47
  * Date: 01/11/2026
  */
 
@@ -148,6 +147,7 @@ enum GraphiteOpenLink {
     private static let host = "open"
     private static let targetKey = "target"
     private static let footnoteKey = "footnote"
+    private static let tagKey = "tag"
     /// Present on a Markdown link's target, which is relative to the note that contains it
     /// and percent-encoded, unlike a Wikilink target.
     private static let markdownLinkKey = "markdown"
@@ -204,6 +204,20 @@ enum GraphiteOpenLink {
         return URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { item in item.name == footnoteKey })?.value.flatMap(Int.init)
     }
 
+    /// The link a `#tag` is shown as, which opens a search for the tag.
+    static func tagDestination(name: String) -> String {
+        var components = URLComponents()
+        components.scheme = scheme; components.host = host
+        components.queryItems = [URLQueryItem(name: tagKey, value: name)]
+        return components.string ?? ""
+    }
+
+    /// The tag name (without `#`) of a link made by `tagDestination(name:)`.
+    static func tagName(of location: URL) -> String? {
+        guard location.scheme == scheme else { return nil }
+        return URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { item in item.name == tagKey })?.value
+    }
+
     /// The target for a Markdown link's destination as written, such as `../Syllabus.md`,
     /// `Lecture.pdf#page=3` or `#Some%20Heading`. The path stays percent-encoded, as link
     /// following expects of a Markdown link (so an encoded `#` in a file name is not taken
@@ -236,6 +250,9 @@ struct ReadingFoldKeys: Equatable, Sendable {
     /// The title of each callout as written in the note, by block; with its type it makes the
     /// key under which Live Preview and Read Aloud remember the callout's expansion.
     var calloutTitlesByBlock: [String: String] = [:]
+    /// Which of the callouts with the same type and title each callout is, by block
+    /// (`ReadAloudFolding.calloutOccurrences`), so opening one leaves the others as they were.
+    var calloutOccurrencesByBlock: [String: Int] = [:]
 }
 
 /// Where one of the reading view's top-level blocks starts in the note's text, and for a
@@ -297,6 +314,7 @@ actor ReadingViewBuilder {
     private var calloutDepth = 0
     /// The written title of each callout built so far, by block (`ReadingFoldKeys`).
     private var calloutTitlesByBlock: [String: String] = [:]
+    private var calloutOccurrencesByBlock: [String: Int] = [:]
     /// The measurers of the last font diagrams were laid out in, made when a note first has a diagram and made
     /// again only when the font or size changes: reading a font's advances costs more than laying a diagram out.
     private var diagramTypography: DiagramTypography?
@@ -322,16 +340,18 @@ actor ReadingViewBuilder {
         let readableBody = Footnotes.preparedForReadingKeepingOffsets(sourceText.substring(from: frontmatterLength)) { number in
             "[\(number)](\(GraphiteOpenLink.footnoteDestination(number: number)))"
         }
-        let taskSource = TaskSource(noteText: source) { bodyOffset in
+        let taskSource = ReadingTaskSource(noteText: source) { bodyOffset in
             readableBody.offsets.originalOffset(of: bodyOffset).map { offset in offset + frontmatterLength }
         }
         let locatedBlocks = Self.sectioned(NotePreviewDocument.locatedBlocks(from: readableBody.text, pluginCodeBlockLanguages: configuration.pluginCodeBlockLanguages),
                                            for: configuration)
         calloutTitlesByBlock = [:]
+        calloutOccurrencesByBlock = [:]
         let renderedBody = try await render(locatedBlocks, note: note, root: root, index: index, configuration: configuration,
                                             allowsTransclusion: allowsTransclusion, taskSource: taskSource)
         // Each located block renders as one block, in order.
-        var foldKeys = ReadingFoldKeys(headingKeysByBlock: [:], calloutTitlesByBlock: calloutTitlesByBlock)
+        var foldKeys = ReadingFoldKeys(headingKeysByBlock: [:], calloutTitlesByBlock: calloutTitlesByBlock,
+            calloutOccurrencesByBlock: calloutOccurrencesByBlock)
         // Each heading is found in the note by where its line starts, and takes the key the
         // editor gives the heading there.
         var editorHeadingKeysByLineStart: [Int: String]?
@@ -372,7 +392,7 @@ actor ReadingViewBuilder {
     }
 
     private func sourceTokens(_ tokens: [ReadAloudSourceToken], for locatedBlocks: [NotePreviewDocument.LocatedBlock],
-                              rendered: [RenderedBlock], endOffset: Int, taskSource: TaskSource) -> [String: [ReadAloudSourceToken]] {
+                              rendered: [RenderedBlock], endOffset: Int, taskSource: ReadingTaskSource) -> [String: [ReadAloudSourceToken]] {
         var tokensByBlock: [String: [ReadAloudSourceToken]] = [:]
         for (blockIndex, pair) in zip(locatedBlocks, rendered).enumerated() {
             let (located, block) = pair
@@ -404,6 +424,12 @@ actor ReadingViewBuilder {
 
     private func identifier() -> Int { nextIdentifier += 1; return nextIdentifier }
 
+    /// Remembers the title and the position among same-titled callouts that a callout block is folded by.
+    private func recordFoldKey(of blockIdentifier: String, title: String, atBodyOffset bodyOffset: Int, taskSource: ReadingTaskSource) {
+        calloutTitlesByBlock[blockIdentifier] = taskSource.foldKeyPrefix + title
+        calloutOccurrencesByBlock[blockIdentifier] = taskSource.calloutOccurrence(ofCalloutAtBodyOffset: bodyOffset)
+    }
+
     /// While plugins change how notes read, runs of Markdown are divided into Obsidian's
     /// sections, so a plugin's change shows in the section it changed and the rest of the
     /// run stays Graphite's; a note exported to PDF is divided likewise, for its page breaks.
@@ -411,31 +437,16 @@ actor ReadingViewBuilder {
         configuration.runsPluginPostProcessors || configuration.dividesMarkdownIntoSections ? NotePreviewDocument.dividedIntoSections(blocks) : blocks
     }
 
-    /// The text of the note a run of blocks was split from, in which their tasks are found.
-    private struct TaskSource {
-        /// The whole note, frontmatter included, which a tap on a checkbox changes.
-        let noteText: String
-        /// Where a place in the body the blocks were split from is in `noteText`; nil for
-        /// text the note does not have, such as a footnote's number.
-        let noteOffset: (_ bodyOffset: Int) -> Int?
-
-        /// The zero-based line of the note on which a place in the body is.
-        func noteLine(ofBodyOffset bodyOffset: Int) -> Int? {
-            guard let offset = noteOffset(bodyOffset) else { return nil }
-            let prefix = (noteText as NSString).substring(to: min(offset, (noteText as NSString).length))
-            return prefix.utf16.reduce(0) { lineCount, codeUnit in codeUnit == 10 ? lineCount + 1 : lineCount }
-        }
-    }
-
     /// - Parameter allowsTransclusion: False exactly for the body of an embedded note, which
     ///   embeds no further notes so notes that embed each other end.
     private func render(_ blocks: [NotePreviewDocument.LocatedBlock], note: VaultPath, root: URL, index: VaultIndex, configuration: ReadingConfiguration,
-                        allowsTransclusion: Bool, taskSource: TaskSource) async throws -> [RenderedBlock] {
+                        allowsTransclusion: Bool, taskSource: ReadingTaskSource) async throws -> [RenderedBlock] {
         var rendered: [RenderedBlock] = []
         for locatedBlock in blocks {
             switch locatedBlock.block {
             case .markdown(let markdown):
-                let text = try await prepared(markdown, note: note, root: root, index: index, configuration: configuration) { lineIndex, status in
+                // A reference link whose definition is in another block still finds it.
+                let text = try await prepared(ReferenceLinkDefinitions.appendingDefinitions(taskSource.referenceDefinitions, neededBy: markdown), note: note, root: root, index: index, configuration: configuration) { lineIndex, status in
                     guard locatedBlock.lineStartOffsets.indices.contains(lineIndex), let lineStart = taskSource.noteOffset(locatedBlock.lineStartOffsets[lineIndex]) else { return nil }
                     return ReadingTasks.location(ofTaskStartingAt: lineStart, status: status, in: taskSource.noteText)
                 }
@@ -457,7 +468,7 @@ actor ReadingViewBuilder {
                                                     allowsTransclusion: allowsTransclusion, taskSource: taskSource)
                 calloutDepth -= 1
                 let calloutBlock = RenderedBlock.callout(id: identifier(), type: type, title: renderedTitle, folding: folding, body: renderedBody)
-                calloutTitlesByBlock[calloutBlock.id] = title
+                recordFoldKey(of: calloutBlock.id, title: title, atBodyOffset: locatedBlock.startOffset, taskSource: taskSource)
                 rendered.append(calloutBlock)
             case .embed(let embed):
                 rendered.append(try await renderEmbed(embed, note: note, root: root, index: index, configuration: configuration, allowsTransclusion: allowsTransclusion))
@@ -469,13 +480,8 @@ actor ReadingViewBuilder {
                 rendered.append(.pluginCodeBlock(id: identifier(), language: language, source: source, note: note,
                                                  firstLine: taskSource.noteLine(ofBodyOffset: locatedBlock.startOffset), lineCount: locatedBlock.lineCount))
             case .mermaidDiagram(let source):
-                if let diagram = ReadingDiagram(source: source, typography: typography(for: configuration)) {
-                    rendered.append(.diagram(id: identifier(), diagram: diagram))
-                } else {
-                    // A type not drawn natively yet stays code, as before.
-                    let code = try await prepared("```mermaid\n" + source + "\n```", note: note, root: root, index: index, configuration: configuration)
-                    rendered.append(.markdown(id: identifier(), text: code))
-                }
+                // A type or a feature not drawn natively yet is the source with a line saying so (`ReadingDiagram.unreadable`).
+                rendered.append(.diagram(id: identifier(), diagram: ReadingDiagram(source: source, typography: typography(for: configuration))))
             }
         }
         return rendered
@@ -537,7 +543,9 @@ actor ReadingViewBuilder {
                 return .missingSection(id: identifier(), path: path, subpath: subpath ?? "")
             }
             // A task of an embedded note is ticked in that note, as in Obsidian.
-            let taskSource = TaskSource(noteText: transcludedSource) { sectionOffset in transcludedFrontmatterLength + section.location + sectionOffset }
+            let taskSource = ReadingTaskSource(noteText: transcludedSource, foldKeyPrefix: path.rawValue + "#") { sectionOffset in
+                transcludedFrontmatterLength + section.location + sectionOffset
+            }
             let body = try await render(Self.sectioned(NotePreviewDocument.locatedBlocks(from: section.text, pluginCodeBlockLanguages: configuration.pluginCodeBlockLanguages),
                                                        for: configuration), note: path, root: root, index: index, configuration: configuration,
                                         allowsTransclusion: false, taskSource: taskSource)
@@ -635,7 +643,8 @@ actor ReadingViewBuilder {
         for link in semantics.links.reversed() where link.length > 0 {
             let linkRange = NSRange(location: link.location - paddingLength, length: link.length)
             if !link.isWiki, !link.isEmbed {
-                if NSMaxRange(linkRange) <= earliestReplacedLocation, let destinationRange = notePathDestinationRange(of: link, in: projected, linkRange: linkRange) {
+                if NSMaxRange(linkRange) <= earliestReplacedLocation, let destinationRange = ReadingBlockText.notePathDestinationRange(of: link,
+                    in: projected, linkRange: linkRange) {
                     let target = markdownLinkTarget(of: link, in: note)
                     projected.replaceCharacters(in: destinationRange, with: GraphiteOpenLink.markdownDestination(target: target.target, isWiki: target.isWiki))
                     earliestReplacedLocation = linkRange.location
@@ -680,24 +689,8 @@ actor ReadingViewBuilder {
     }
 
     private func readingText(_ markdown: String, configuration: ReadingConfiguration, taskLocation: TaskLocation? = nil) -> String {
-        var text = ObsidianInlineMarkup.preparedForReading(markdown, colorsEnabled: configuration.colorsEnabled,
-                                                           paletteHexByName: configuration.paletteHexByName, taskLocation: taskLocation)
-        if !configuration.usesStrictLineBreaks { text = ObsidianPreviewText.applyingSoftLineBreaks(to: text) }
-        return text
-    }
-
-    /// Where a Markdown link's destination is written, when it is a path in the vault such
-    /// as `../Syllabus.md` or `#Heading` rather than a web address. The renderer would
-    /// resolve such a path against the vault folder instead of the note's own folder. A
-    /// reference link, or a destination written with escapes, is left to the renderer.
-    private func notePathDestinationRange(of link: NoteLink, in text: NSString, linkRange: NSRange) -> NSRange? {
-        let destination = link.target
-        guard !destination.isEmpty, destination.range(of: "^[A-Za-z][A-Za-z0-9+.-]*:", options: .regularExpression) == nil,
-              // The destination follows `](`, possibly inside `<>`; the same text in the label
-              // or in a title after the destination is not it.
-              let destinationPattern = try? NSRegularExpression(pattern: "\\]\\([ \\t]*\\n?[ \\t]*<?(" + NSRegularExpression.escapedPattern(for: destination) + ")"), // Escaped note text; malformed: link left as is.
-              let match = destinationPattern.matches(in: text as String, range: linkRange).last else { return nil }
-        return match.range(at: 1)
+        ReadingBlockText.readingText(markdown, colorsEnabled: configuration.colorsEnabled, paletteHexByName: configuration.paletteHexByName,
+                                     usesStrictLineBreaks: configuration.usesStrictLineBreaks, taskLocation: taskLocation)
     }
 
     /// A Markdown link's target for link following, which resolves it from the note being
@@ -737,11 +730,11 @@ actor ReadingViewBuilder {
     /// heading. Reading view and Live Preview's rendered blocks both label links with it.
     static func displayText(target: String, alias: String?) -> String {
         if let alias, !alias.isEmpty { return alias }
-        let parts = target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
+        let parts = target.split(separator: "#", omittingEmptySubsequences: false).map(String.init)
         let noteName = parts[0].hasSuffix(".md") ? String(parts[0].dropLast(3)) : parts[0]
-        guard parts.count == 2 else { return noteName }
-        let subpath = parts[1].hasPrefix("^") ? String(parts[1].dropFirst()) : parts[1]
-        return noteName.isEmpty ? subpath : "\(noteName) > \(subpath)"
+        // `Note#Parent#Child` is the heading Child under Parent; a block's `^` is not shown.
+        let subpath = parts.dropFirst().map { part in part.hasPrefix("^") ? String(part.dropFirst()) : part }.filter { part in !part.isEmpty }
+        return ([noteName].filter { name in !name.isEmpty } + subpath).joined(separator: " > ")
     }
 
     /// Link text shown as written. A backslash is escaped too: one before a bracket, or at
@@ -798,6 +791,11 @@ struct HeadingScrollRequest: Equatable {
         }
         // A repeated heading's target is its anchor, a line break and its number.
         let headingAnchors = headingTargets.map { target in String(target.prefix { character in character != "\n" }) }
+        // A link spells the heading without the characters a heading link cannot hold (`Step 1: Setup` is `Step 1 Setup`).
+        let linkKey = NotePreviewDocument.headingLinkKey(forAnchor: anchor)
+        if let keyPosition = headingAnchors.firstIndex(where: { headingAnchor in NotePreviewDocument.headingLinkKey(forAnchor: headingAnchor) == linkKey }) {
+            return headingTargets[keyPosition]
+        }
         guard let slugPosition = HeadingSlug.position(ofSlug: anchor, amongHeadingAnchors: headingAnchors) else { return anchor }
         return headingTargets[slugPosition]
     }
@@ -1638,7 +1636,8 @@ struct ReadingBlocksView: View {
                     }
                 if let anchor { heading.id(anchor) } else { heading }
             case .callout(_, let type, let title, let folding, let body):
-                ReadingCallout(type: type, title: title, foldKeyTitle: foldKeys.calloutTitlesByBlock[block.id], folding: folding, root: root, textSize: textSize,
+                ReadingCallout(type: type, title: title, foldKeyTitle: foldKeys.calloutTitlesByBlock[block.id],
+                               foldOccurrence: foldKeys.calloutOccurrencesByBlock[block.id] ?? 0, folding: folding, root: root, textSize: textSize,
                                navigate: navigate, scrollToHeading: scrollToHeading, sourceTokens: readingSourceTokensByBlock[block.id], blocksInside: body) {
                     ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading, openPDF: openPDF, updateProperties: nil)
                         // A base in a callout stays inside its box.
@@ -1717,6 +1716,8 @@ private struct ReadingCallout<Content: View>: View {
     let title: String
     /// The title as written in the note, which the fold key is made of; nil when not known.
     let foldKeyTitle: String?
+    /// Which of the callouts with this type and title it is, which the fold key also holds.
+    let foldOccurrence: Int
     let folding: CalloutFolding
     let root: URL
     let textSize: Double
@@ -1732,10 +1733,12 @@ private struct ReadingCallout<Content: View>: View {
     /// The word read: the reading view's current word.
     private var readingActiveSourceRange: NSRange? { readingWordCells?.current.range }
 
-    init(type: String, title: String, foldKeyTitle: String?, folding: CalloutFolding, root: URL, textSize: Double, navigate: @escaping (String, Bool) -> Void,
+    init(type: String, title: String, foldKeyTitle: String?, foldOccurrence: Int, folding: CalloutFolding, root: URL, textSize: Double,
+        navigate: @escaping (String, Bool) -> Void,
          scrollToHeading: @escaping (String) -> Void, sourceTokens: [ReadAloudSourceToken]?, blocksInside: [RenderedBlock],
          @ViewBuilder content: @escaping () -> Content) {
-        self.type = type; self.title = title; self.foldKeyTitle = foldKeyTitle; self.folding = folding; self.root = root; self.textSize = textSize
+        self.type = type; self.title = title; self.foldKeyTitle = foldKeyTitle; self.foldOccurrence = foldOccurrence; self.folding = folding;
+        self.root = root; self.textSize = textSize
         self.navigate = navigate; self.scrollToHeading = scrollToHeading; self.sourceTokens = sourceTokens
         self.blocksInside = blocksInside; self.content = content
     }
@@ -1743,7 +1746,8 @@ private struct ReadingCallout<Content: View>: View {
     var body: some View {
         CalloutView(type: type, title: title, folding: folding, root: root, textSize: textSize, navigate: navigate,
                     scrollToHeading: scrollToHeading, sourceTokens: sourceTokens,
-                    automaticallyExpandsForReading: containsReadingWord(blocksInside), foldKeyTitle: foldKeyTitle, content: content)
+                    automaticallyExpandsForReading: containsReadingWord(blocksInside), foldKeyTitle: foldKeyTitle, foldOccurrence: foldOccurrence,
+                        content: content)
     }
 
     private func containsReadingWord(_ blocks: [RenderedBlock]) -> Bool {
@@ -1812,8 +1816,14 @@ struct ObsidianMarkdownText: View {
     /// in the vault by their path, and anything else, such as web pages, with the system.
     /// - Parameter scrollToHeading: Scrolls this view to a heading of its own note; nil
     ///   leaves `#Heading` links to `navigate`.
-    static func linkAction(root: URL, navigate: @escaping (String, Bool) -> Void, scrollToHeading: ((String) -> Void)?) -> OpenURLAction {
+    /// - Parameter searchTag: Opens a search for a `#tag` the text links; nil where tags are not links.
+    static func linkAction(root: URL, navigate: @escaping (String, Bool) -> Void, scrollToHeading: ((String) -> Void)?,
+                           searchTag: ((String) -> Void)? = nil) -> OpenURLAction {
         OpenURLAction { location in
+            if let tag = GraphiteOpenLink.tagName(of: location) {
+                searchTag?(tag)
+                return .handled
+            }
             if let number = GraphiteOpenLink.footnoteNumber(of: location) {
                 scrollToHeading?(RenderedFootnote.anchor(for: number))
                 return .handled
@@ -1904,6 +1914,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     let activeRange: NSRange?
     @Environment(\.readingHighlightFill) private var readingHighlightFill
     @Environment(\.readingIsPrinted) private var isPrinted
+    @Environment(\.readingTagSearch) private var tagSearch
 
     /// The same text, read at the same word. The closures are left out: their owners make
     /// new ones at every update, which do the same.
@@ -1930,13 +1941,15 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 }
         } else {
             StructuredText(markdown, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens,
-                                                                    themeColors: ReadingThemeColors(theme: theme)))
+                                                                    themeColors: ReadingThemeColors(theme: theme), accent: accent,
+                                                                    linksTags: tagSearch != nil))
                 // StructuredText parses again only when its text changes, and the parse sizes
                 // footnote numbers and colors the theme's links and tags, so a new text size or
                 // theme starts a new view.
                 .id(textSize)
                 .id(sourceTokens)
                 .id(theme?.tokens.fingerprint)
+                .id(tagSearch != nil)
                 .font(typography.textSwiftUIFont(size: textSize))
                 .foregroundStyle(theme?.textNormal.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.primary))
                 .textual.lineSpacing(.fontScaled(theme?.lineHeight.map { height in max(0, height - 1.2) } ?? ObsidianMarkdownText.graphiteLineSpacing))
@@ -1954,7 +1967,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.tableCellStyle(ObsidianTableCellStyle(theme: theme))
                 .textual.blockQuoteStyle(ObsidianBlockQuoteStyle(theme: theme))
                 .tint(accent)
-                .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
+                .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading, searchTag: tagSearch))
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
     }
@@ -1988,6 +2001,11 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
         return equation
     }
 
+}
+
+extension EnvironmentValues {
+    /// Opens a search for a tag the reading view's text links; nil where tags are not links.
+    @Entry var readingTagSearch: ((String) -> Void)? = nil
 }
 
 extension EnvironmentValues {
@@ -2056,6 +2074,10 @@ struct ObsidianMarkdownParser: MarkupParser {
     var sourceTokens: [ReadAloudSourceToken]? = nil
     /// The vault theme's colors, or nil for Graphite's.
     var themeColors: ReadingThemeColors? = nil
+    /// The color of a `#tag` and of its pill when the theme gives none.
+    var accent: Color = .accentColor
+    /// Whether a `#tag` is a link, which opens a search for the tag.
+    var linksTags = false
 
     func attributedString(for input: String) throws -> AttributedString {
         // The Markdown parser recurses once per nesting level; a note nested deeper than
@@ -2069,6 +2091,9 @@ struct ObsidianMarkdownParser: MarkupParser {
             if let color = Color(graphiteHex: hex) { text[range].foregroundColor = color }
         }
         let themeColors = themeColors, textSize = textSize
+        Self.applyMarkers(start: ReadingMarkers.underlineStartMarker, hexEnd: nil, end: ReadingMarkers.underlineEndMarker, to: &attributed) { _, range, text in
+            text[range].underlineStyle = .single
+        }
         Self.applyMarkers(start: ReadingMarkers.highlightStartMarker, hexEnd: nil, end: ReadingMarkers.highlightEndMarker, to: &attributed) { _, range, text in
             guard let themeColors else { text[range].backgroundColor = Color.yellow.opacity(0.35); return }
             // The theme's highlight, with its rounded ends and text color.
@@ -2088,7 +2113,9 @@ struct ObsidianMarkdownParser: MarkupParser {
             attributed[range].baselineOffset = textSize * 0.35
         }
         if let themeColors { Self.applyThemeColors(themeColors, textSize: textSize, to: &attributed) }
+        styleTags(in: &attributed)
         replaceTaskMarkers(in: &attributed)
+        Self.replaceLineBreakMarkers(in: &attributed)
         Self.restoreEscapedCharacters(in: &attributed)
         if let sourceTokens { _ = ReadingSourceAlignment.apply(sourceTokens, to: &attributed) }
         return attributed
@@ -2111,31 +2138,46 @@ struct ObsidianMarkdownParser: MarkupParser {
             linkRuns.append((range, color))
         }
         for (range, color) in linkRuns { text[range].foregroundColor = color }
-        guard let tagColor = colors.tag else { return }
+    }
+
+    /// Whether a run is code, in a span or a block.
+    private static func isCode(_ run: AttributedString.Runs.Run) -> Bool {
+        if run.inlinePresentationIntent?.contains(.code) == true { return true }
+        return run.presentationIntent?.components.contains { component in
+            if case .codeBlock = component.kind { return true }
+            return false
+        } == true
+    }
+
+    /// `#tags` as the accent's (or the theme's) pill, a link to a search for the tag when
+    /// the reading view can open one. A tag in code or in a link is text.
+    private func styleTags(in text: inout AttributedString) {
         let plain = String(text.characters)
+        guard plain.contains("#") else { return }
         let nsPlain = plain as NSString
-        for match in Self.tagPattern.matches(in: plain, range: NSRange(location: 0, length: nsPlain.length)) {
+        let tagColor = themeColors?.tag ?? accent
+        let tagBackground = themeColors == nil ? accent.opacity(0.14) : themeColors?.tagBackground
+        let tagRadius = themeColors?.tagRadius ?? Double(NoteThemeStyle.pillRadius)
+        for match in TagSyntax.pattern.matches(in: plain, range: NSRange(location: 0, length: nsPlain.length)) {
             guard let stringRange = Range(match.range, in: plain),
                   let lower = AttributedString.Index(stringRange.lowerBound, within: text),
                   let upper = AttributedString.Index(stringRange.upperBound, within: text) else { continue }
             let range = lower..<upper
-            // Not inside code or a link.
-            guard !text[range].runs.contains(where: { run in run.link != nil || run.inlinePresentationIntent?.contains(.code) == true }) else { continue }
+            guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) }) else { continue }
             text[range].foregroundColor = tagColor
-            // A pill: the theme's background, corners and border, narrow enough that the space
-            // between two tags still shows between their pills.
-            if colors.tagBackground != nil || colors.tagBorder != nil {
+            // A pill: the background, corners and border, narrow enough that the space between
+            // two tags still shows between their pills.
+            if tagBackground != nil || themeColors?.tagBorder != nil {
                 text[range][RoundedRunBackgroundAttribute.self] = RoundedRunBackground(
-                    color: colors.tagBackground ?? .clear, cornerRadius: NoteThemeStyle.scaled(colors.tagRadius, textSize: textSize),
-                    horizontalPadding: NoteThemeStyle.scaled(1.5, textSize: textSize), borderColor: colors.tagBorder,
-                    borderWidth: CGFloat(colors.tagBorderWidth))
+                    color: tagBackground ?? .clear, cornerRadius: NoteThemeStyle.scaled(tagRadius, textSize: textSize),
+                    horizontalPadding: NoteThemeStyle.scaled(1.5, textSize: textSize), borderColor: themeColors?.tagBorder,
+                    borderWidth: CGFloat(themeColors?.tagBorderWidth ?? 0))
+            }
+            if linksTags, let destination = URL(string: GraphiteOpenLink.tagDestination(name: String(nsPlain.substring(with: match.range(at: 1))))) {
+                text[range].link = destination
             }
         }
     }
-
-    /// Obsidian's tags: `#` after a space or the start, then letters, digits, `_`, `-` and `/`,
-    /// not only digits.
-    private static let tagPattern = ObsidianMarkdownParserPattern.tagPattern.compiled()
 
     /// A task marked at the start of a list item becomes that item's checkbox, which
     /// `ObsidianListItemStyle` draws in place of the bullet; a completed task's text is
@@ -2196,6 +2238,24 @@ struct ObsidianMarkdownParser: MarkupParser {
     private static func isListItem(_ intent: PresentationIntent.IntentType) -> Bool {
         if case .listItem = intent.kind { return true }
         return false
+    }
+
+    /// A `<br>` of the note, written as the marker, is a line break within its paragraph or cell.
+    private static func replaceLineBreakMarkers(in text: inout AttributedString) {
+        guard let marker = ReadingMarkers.lineBreakMarker.unicodeScalars.first, text.unicodeScalars.contains(marker) else { return }
+        var replaced = AttributedString()
+        var sliceStart = text.startIndex
+        for markerIndex in text.unicodeScalars.indices where text.unicodeScalars[markerIndex] == marker {
+            let markerEnd = text.unicodeScalars.index(after: markerIndex)
+            replaced.append(text[sliceStart..<markerIndex])
+            var attributes = text[markerIndex..<markerEnd].runs.first?.attributes ?? AttributeContainer()
+            attributes.inlinePresentationIntent = .lineBreak
+            // The line separator is the character a Markdown hard line break is made of.
+            replaced.append(AttributedString("\u{2028}", attributes: attributes))
+            sliceStart = markerEnd
+        }
+        replaced.append(text[sliceStart..<text.endIndex])
+        text = replaced
     }
 
     /// Puts back the private-use characters of the note that `ReadingMarkers` kept
@@ -2685,16 +2745,20 @@ struct CalloutView<Body: View>: View {
     private var isExpanded: Bool {
         get {
             guard let foldNote else { return localIsExpanded }
-            return foldNote.store.isExpanded(notePath: foldNote.notePath, key: ReadAloudFolding.calloutKey(type: type, title: foldKeyTitle),
+            return foldNote.store.isExpanded(notePath: foldNote.notePath, key: ReadAloudFolding.calloutKey(type: type, title: foldKeyTitle,
+                occurrence: foldOccurrence),
                                              initially: folding != .collapsed)
         }
         nonmutating set {
             localIsExpanded = newValue
-            foldNote?.store.setExpanded(newValue, notePath: foldNote?.notePath ?? "", key: ReadAloudFolding.calloutKey(type: type, title: foldKeyTitle))
+            foldNote?.store.setExpanded(newValue, notePath: foldNote?.notePath ?? "", key: ReadAloudFolding.calloutKey(type: type,
+                title: foldKeyTitle, occurrence: foldOccurrence))
         }
     }
     /// The title as written in the note, which the fold key is made of.
     var foldKeyTitle: String
+    /// Which of the callouts with this type and title it is: callouts alike have one key each.
+    var foldOccurrence: Int
 
     /// Whether Markdown has a wikilink, a Markdown link or a web address, which a tap follows.
     static func containsLink(_ markdown: String) -> Bool {
@@ -2705,13 +2769,14 @@ struct CalloutView<Body: View>: View {
 
     init(type: String, title: String, folding: CalloutFolding, root: URL, textSize: Double, navigate: @escaping (String, Bool) -> Void,
          scrollToHeading: ((String) -> Void)? = nil, sourceTokens: [ReadAloudSourceToken]? = nil,
-         automaticallyExpandsForReading: Bool = false, foldKeyTitle: String? = nil, @ViewBuilder content: @escaping () -> Body) {
+         automaticallyExpandsForReading: Bool = false, foldKeyTitle: String? = nil, foldOccurrence: Int = 0, @ViewBuilder content: @escaping () -> Body) {
         self.type = type; self.title = title; self.folding = folding; self.root = root; self.textSize = textSize; self.navigate = navigate
         self.scrollToHeading = scrollToHeading; self.content = content
         self.sourceTokens = sourceTokens
         self.automaticallyExpandsForReading = automaticallyExpandsForReading
         _localIsExpanded = State(initialValue: folding != .collapsed)
         self.foldKeyTitle = foldKeyTitle ?? title
+        self.foldOccurrence = foldOccurrence
     }
 
     var body: some View {
@@ -3038,6 +3103,8 @@ struct EmbeddedMediaPlayer: View {
     @State private var durationSeconds: Double?
     /// False for a video the system cannot play, such as WebM.
     @State private var isPlayable = true
+    /// The video the poster, length and shape above are of.
+    @State private var shownPosterLocation: URL?
 
     var body: some View {
         Group {
@@ -3117,25 +3184,39 @@ struct EmbeddedMediaPlayer: View {
     }
 
     private func loadPoster() async {
+        // The row may now show another video: nothing of the one before stays on it while this one loads.
+        if shownPosterLocation != location {
+            posterImage = nil; durationSeconds = nil; aspectRatio = 16 / 9; isPlayable = true
+        }
         let asset = AVURLAsset(url: location)
         if let isPlayable = try? await asset.load(.isPlayable), !isPlayable {
+            guard !Task.isCancelled else { return }
             self.isPlayable = false
+            shownPosterLocation = location
             return
         }
-        isPlayable = true
-        if let duration = try? await asset.load(.duration), duration.seconds.isFinite { durationSeconds = duration.seconds }
+        var loadedDuration: Double?
+        if let duration = try? await asset.load(.duration), duration.seconds.isFinite { loadedDuration = duration.seconds }
+        var loadedAspectRatio: CGFloat = 16 / 9
         if let track = try? await asset.loadTracks(withMediaType: .video).first,
            let (naturalSize, transform) = try? await track.load(.naturalSize, .preferredTransform) {
             let displayedSize = naturalSize.applying(transform)
-            if abs(displayedSize.height) > 0 { aspectRatio = abs(displayedSize.width) / abs(displayedSize.height) }
+            if abs(displayedSize.height) > 0 { loadedAspectRatio = abs(displayedSize.width) / abs(displayedSize.height) }
         }
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
         generator.maximumSize = CGSize(width: 1600, height: 1600)
         // A frame a little way in avoids the black or title frames recordings often start with.
-        let length = durationSeconds ?? 0
+        let length = loadedDuration ?? 0
         let posterTime = CMTime(seconds: min(length / 2, max(1, min(length * 0.05, 20))), preferredTimescale: 600)
-        posterImage = try? await generator.image(at: posterTime).image
+        let loadedPoster = try? await generator.image(at: posterTime).image
+        // A run replaced by a newer one (another video, or the row shown again) leaves the newer run's values alone.
+        guard !Task.isCancelled else { return }
+        isPlayable = true
+        durationSeconds = loadedDuration
+        aspectRatio = loadedAspectRatio
+        posterImage = loadedPoster
+        shownPosterLocation = location
     }
 }
 
@@ -3151,7 +3232,8 @@ struct EmbeddedAudioPlayer: View {
     private static let endToleranceSeconds = 0.25
     @State private var elapsedSeconds: Double = 0
     @State private var durationSeconds: Double = 0
-    @State private var timeObserver: Any?
+    /// The observer that moves the slider, kept with the player that has it.
+    @State private var timeObservation = PlayerTimeObservation()
 
     private var player: AVPlayer? { playback?.player }
 
@@ -3179,17 +3261,20 @@ struct EmbeddedAudioPlayer: View {
             // A row shown again, after it was scrolled out of view, finds its player where it was.
             // The note keeps a player once it plays, so rows never played hold none.
             let audioPlayback = playback?.location == location ? playback : nil
+            // The row may now show another recording: the length and the end belong to the one before.
+            if audioPlayback == nil { durationSeconds = 0; hasFinished = false }
             let currentPlayback = audioPlayback ?? mediaPlayers?.existingPlayback(for: location) ?? EmbeddedMediaPlayback(location: location)
             playback = currentPlayback
             let audioPlayer = currentPlayback.player
             isPlaying = audioPlayer.rate != 0
             let currentSeconds = audioPlayer.currentTime().seconds
             elapsedSeconds = currentSeconds.isFinite ? currentSeconds : 0
-            if let duration = try? await audioPlayer.currentItem?.asset.load(.duration) { durationSeconds = duration.seconds.isFinite ? duration.seconds : 0 }
-            // The view may have gone while the duration loaded; its observer would never be removed.
+            let loadedDuration = try? await audioPlayer.currentItem?.asset.load(.duration)
+            // The view may have gone while the duration loaded, or the row may show another recording by now:
+            // a stale length would replace the new one, and an observer added now would never be removed.
             guard !Task.isCancelled else { return }
-            if let timeObserver { audioPlayer.removeTimeObserver(timeObserver) }
-            timeObserver = audioPlayer.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { time in
+            if let loadedDuration { durationSeconds = loadedDuration.seconds.isFinite ? loadedDuration.seconds : 0 }
+            timeObservation.start(on: audioPlayer, intervalSeconds: 0.5) { time in
                 Task { @MainActor in elapsedSeconds = time.seconds }
             }
             // The button follows the player, which stops by itself at the end of the
@@ -3205,8 +3290,7 @@ struct EmbeddedAudioPlayer: View {
         // Playback goes on out of view while the note keeps the player; one it does not keep,
         // such as in Live Preview, stops as the row goes.
         .onDisappear {
-            if let timeObserver { player?.removeTimeObserver(timeObserver) }
-            timeObserver = nil
+            timeObservation.stop()
             guard let playback, mediaPlayers?.isKept(playback) != true else { return }
             playback.player.pause()
             isPlaying = false
@@ -3286,15 +3370,15 @@ private struct ReadingImageBlock: View {
         }
         .task(id: "\(location.path)-\(version)-\(displayPixelWidth ?? 0)") {
             do {
-                loadedThumbnail = try await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth)
+                let thumbnail = try await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth)
+                // A run replaced by a newer one (the note's width changed) neither fails nor shows its picture.
+                guard !Task.isCancelled else { return }
+                loadedThumbnail = thumbnail
+                didFail = false
             } catch {
-                didFail = true
+                // A task cancelled while it waited for a decoding slot ends in an error; it is not a failure of the picture.
+                if !Task.isCancelled { didFail = true }
             }
         }
     }
-}
-
-/// The constant patterns of `ObsidianMarkdownParser`; `StaticPatternTests` compiles every case.
-enum ObsidianMarkdownParserPattern: String, StaticPatternSet {
-    case tagPattern = #"(?<![\p{L}\p{N}_/#&])#(?![\p{N}]+(?![\p{L}_/-]))[\p{L}\p{N}_/-]+"#
 }

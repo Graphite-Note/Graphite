@@ -6,8 +6,8 @@
  *              Application Support folder and never in a vault, so it outlives the app.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import CryptoKit
@@ -158,6 +158,16 @@ struct DocumentDraftKeeper {
 
     func storedDraft() async -> UnsavedDocumentDraft? {
         await store.draft(of: path, inVault: vaultIdentifier)
+    }
+
+    /// The draft kept so far follows the document's file to `newPath`.
+    func moveDraft(to newPath: VaultPath) {
+        store.moveDrafts(from: path, to: newPath, inVault: vaultIdentifier)
+    }
+
+    /// The keeper of the same document at `newPath`.
+    func following(to newPath: VaultPath) -> DocumentDraftKeeper {
+        DocumentDraftKeeper(store: store, vaultIdentifier: vaultIdentifier, path: newPath)
     }
 }
 

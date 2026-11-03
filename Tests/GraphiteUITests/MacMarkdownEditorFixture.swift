@@ -2,11 +2,11 @@
  * File: MacMarkdownEditorFixture.swift
  * ------------------------------------
  * Layer: Tests
- * Description: A Mac note editor in a window, built as the app builds it, for the editor's tests.
+ * Description: A Mac note editor in a window, with a note in a temporary vault or one a workspace has open.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 03/11/2026
  */
 
 #if os(macOS)
@@ -25,23 +25,35 @@ final class MacMarkdownEditorFixture {
     let textView: MarkdownMacTextView
     let scrollView: NSScrollView
     let window: NSWindow
-    private let temporaryVault: TemporaryVault
-    private let vaultDirectory: URL
+    /// The fixture's own vault; nil for a note of a workspace's vault.
+    private let temporaryVault: TemporaryVault?
 
     /// `backingScale` is the window's pixels to the point: 2 on a Retina display, 1 on the virtual display of a CI machine.
-    init(text: String, backingScale: CGFloat = 2) async throws {
-        temporaryVault = try TemporaryVault(prefix: "Vault")
-        vaultDirectory = temporaryVault.root
+    convenience init(text: String, backingScale: CGFloat = 2) async throws {
+        let temporaryVault = try TemporaryVault(prefix: "Vault")
         try temporaryVault.writeFile("Note.md", text: text)
-        let store = VaultStore(root: vaultDirectory)
+        let store = VaultStore(root: temporaryVault.root)
         let notePath = try VaultPath("Note.md")
-        session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
+        let session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
+        try self.init(session: session, temporaryVault: temporaryVault, backingScale: backingScale)
+    }
+
+    /// The editor of a note a workspace has open.
+    convenience init(showing session: MarkdownSession) throws {
+        try self.init(session: session, temporaryVault: nil, backingScale: 2)
+    }
+
+    private init(session: MarkdownSession, temporaryVault: TemporaryVault?, backingScale: CGFloat) throws {
+        self.session = session
+        self.temporaryVault = temporaryVault
+        let text = session.text
         coordinator = NativeMarkdownEditor.Coordinator(session: session, configuration: EditorConfiguration())
         scrollView = MarkdownMacTextView.makeScrollableTextView()
-        // No scroller, so the note keeps one width. A CI machine's preferred scroller style turns
-        // from overlay to classic at a moment of its own, after the process has started. The
-        // scroller then takes its width, TextKit drops its layout for the new one, and a test
-        // that has just scrolled finds another line at that height.
+        // No scroller: with classic scroll bars one appears at the window's next layout and takes
+        // its width. A CI machine's preferred scroller style also turns from overlay to classic at
+        // a moment of its own while the tests run. TextKit then drops its layout for the new width,
+        // so a test that scrolled first would find another line at that height, depending on when
+        // that layout ran.
         scrollView.hasVerticalScroller = false
         textView = try XCTUnwrap(scrollView.documentView as? MarkdownMacTextView)
         textView.isRichText = false
@@ -78,7 +90,7 @@ final class MacMarkdownEditorFixture {
     func tearDown() {
         window.orderOut(nil)
         window.contentView = nil
-        temporaryVault.remove()
+        temporaryVault?.remove()
     }
 }
 #endif

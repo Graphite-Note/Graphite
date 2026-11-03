@@ -1,3 +1,14 @@
+/**
+ * File: ReadingSankeyDiagramTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: The reading view's Sankey diagrams.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -26,9 +37,12 @@ final class ReadingSankeyDiagramTests: XCTestCase {
         XCTAssertNil(try sankey("sankey\na,b,1").title)
     }
 
-    func testCircularLinksAndOptionsNotDrawnYetKeepTheBlockAsCode() {
-        XCTAssertNil(ReadingDiagram(source: "sankey\na,b,1\nb,a,1", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\na,b,1", typography: typography))
+    func testCircularLinksAndOptionsNotDrawnYetShowTheSourceAndWhy() {
+        guard case .unreadable(_, let circular) = ReadingDiagram(source: "sankey\na,b,1\nb,a,1", typography: typography) else { return XCTFail("Shown with why") }
+        XCTAssertEqual(circular, .sankeyLayout(.circularLinks))
+        guard case .unreadable(_, let options) = ReadingDiagram(source: "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\na,b,1",
+                                                                typography: typography) else { return XCTFail("Shown with why") }
+        XCTAssertEqual(options, .sankeyLayout(.optionsNotDrawn))
     }
 
     func testASankeyDiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {
