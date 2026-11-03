@@ -1,3 +1,14 @@
+/**
+ * File: ImportedStrokeBuilderTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: An imported stroke as a PencilKit stroke: PencilKit draws each sample's planned width in
+ *              every ink, and the samples are the control points as planned.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
 import XCTest
 import CoreGraphics
 import PencilKit
@@ -134,21 +145,33 @@ final class ImportedStrokeBuilderTests: XCTestCase {
         XCTAssertEqual(Set(timeOffsets).count, timeOffsets.count, "Strictly increasing.")
     }
 
-    /// Graphite's PDF ink and vector drawings sample a stroke back with `PencilStrokeSampler`: the monoline, the pen
-    /// and the pencil at the width PencilKit draws, so an imported stroke edited later is written as wide as planned;
-    /// the fountain pen and the highlighter, whose drawn width turns with the nib, at the point size.
-    func testPencilStrokeSamplerReadsTheDrawnWidthWhereItDoesNotTurnWithTheNib() throws {
-        for (ink, plannedWidth) in [(ImportedStroke.Ink.monoline, 1.0), (.pen, 3), (.pencil, 4)] {
+    /// Graphite's PDF ink and vector drawings sample a stroke back with `PencilStrokeSampler`, at the width PencilKit
+    /// draws, so an imported stroke edited later is written as wide as planned: the fountain pen and the highlighter
+    /// too, whose nib `ImportedStrokeBuilder` turns across the stroke.
+    func testPencilStrokeSamplerReadsTheDrawnWidthOfEveryInk() throws {
+        for (ink, plannedWidth) in [(ImportedStroke.Ink.monoline, 1.0), (.pen, 3), (.pencil, 4), (.fountainPen, 5), (.highlighter, 20)] {
             let stroke = try built(straightStroke(ink, width: plannedWidth, from: CGPoint(x: 20, y: 50), to: CGPoint(x: 120, y: 50)))
             let sampledWidths = PencilStrokeSampler.centerLineSamples(of: stroke).map(\.width)
             XCTAssertFalse(sampledWidths.isEmpty)
             for sampledWidth in sampledWidths { XCTAssertEqual(sampledWidth, plannedWidth, accuracy: 0.01, "\(ink)") }
         }
-        for (ink, plannedWidth) in [(ImportedStroke.Ink.fountainPen, 5.0), (.highlighter, 20)] {
-            let stroke = try built(straightStroke(ink, width: plannedWidth, from: CGPoint(x: 20, y: 50), to: CGPoint(x: 120, y: 50)))
-            let pointSize = PencilInkRenderedWidth.pointSize(forRenderedWidth: plannedWidth, ink: ink)
-            for sampledWidth in PencilStrokeSampler.centerLineSamples(of: stroke).map(\.width) {
-                XCTAssertEqual(sampledWidth, pointSize, accuracy: 0.001, "\(ink)")
+    }
+
+    /// A nib part way round the stroke (HUNT-009): saved ink is as wide as PencilKit draws it at every angle. A
+    /// straight line between across and along was 22% too wide for a fountain pen at 15 degrees.
+    func testSavedWidthFollowsANibPartWayRoundTheStroke() throws {
+        for (inkType, pointSize) in [(PKInkingTool.InkType.fountainPen, 12.0), (.fountainPen, 24), (.marker, 12), (.marker, 24)] {
+            for degrees in stride(from: 0.0, through: 90.0, by: 7.5) {
+                let azimuth = degrees * .pi / 180
+                let points = (0...40).map { pointIndex in
+                    PKStrokePoint(location: CGPoint(x: 20 + CGFloat(pointIndex) * 5, y: 120), timeOffset: Double(pointIndex) / 60, size: CGSize(width: pointSize, height: pointSize),
+                                  opacity: inkType == .marker ? 1.5 : 1, force: 1, azimuth: CGFloat(azimuth), altitude: .pi / 2)
+                }
+                let stroke = PKStroke(ink: PKInk(inkType, color: .black), path: PKStrokePath(controlPoints: points, creationDate: creationDate))
+                let drawnWidth = try renderedHeight(of: stroke)
+                let samples = PencilStrokeSampler.centerLineSamples(of: stroke)
+                let savedWidth = samples[samples.count / 2].width
+                XCTAssertEqual(savedWidth, drawnWidth, accuracy: max(0.4, drawnWidth * 0.06), "\(inkType.rawValue) of size \(pointSize), nib at \(degrees) degrees")
             }
         }
     }

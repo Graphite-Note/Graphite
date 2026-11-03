@@ -1,12 +1,32 @@
+/**
+ * File: MarkdownSession.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.18
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
 
 @MainActor @Observable
 final class MarkdownSession {
+    /// The largest note that opens in the editor; a larger one opens read-only (`OversizedNoteDocument`).
     static let maximumEditableBytes = 8 * 1_048_576
-    let path: VaultPath
-    private let store: VaultStore
+    /// The largest note that Edit Anyway loads into the editor, for trimming.
+    static let maximumBytesEditableAnyway = 32 * 1_048_576
+    /// The most of its file this session reads again: more than `maximumEditableBytes` after Edit Anyway.
+    @ObservationIgnored var maximumBytesRead = MarkdownSession.maximumEditableBytes
+    /// Another app took the file past `maximumBytesRead`, so the text shown is an old version.
+    @ObservationIgnored private(set) var fileOutgrewEditor = false
+    /// The note's place in the vault. It changes only as the file moves (`followFile(to:)`), so
+    /// closures read it when they run rather than keeping it.
+    private(set) var path: VaultPath
+    let store: VaultStore
     private let didSave: @MainActor (VaultPath) -> Void
     var text: String {
         didSet {
@@ -18,9 +38,9 @@ final class MarkdownSession {
     }
     /// The open notes of every window, where this note's other sessions are found; nil for a
     /// session alone, as in tests.
-    @ObservationIgnored private let openNotes: OpenNoteFiles?
+    @ObservationIgnored let openNotes: OpenNoteFiles?
     /// This note's key among the open notes.
-    @ObservationIgnored private let fileKey: String
+    @ObservationIgnored var fileKey: String
     /// Set while the text comes from another session of the note, so it is not sent back.
     @ObservationIgnored private var isTakingSharedText = false
     /// A window-level consumer can invalidate a reading snapshot even when the
@@ -28,7 +48,7 @@ final class MarkdownSession {
     @ObservationIgnored var textDidChange: (@MainActor () -> Void)?
     /// Also counts queued insertions, so an asynchronous reload cannot erase work the
     /// editor has not applied yet, or an edit followed by an undo back to the same text.
-    private var editVersion = 0
+    private(set) var editVersion = 0
     var selection = NSRange(location: 0, length: 0)
     /// Reading view, Live Preview, or source mode, as for an Obsidian tab.
     var viewMode: NoteViewMode = .livePreview {
@@ -125,13 +145,6 @@ final class MarkdownSession {
     /// cursor at the end of the note it appended to); the editor on screen takes it.
     var selectionRequest: NSRange?
 
-    /// Moves the cursor or selection of the editor on screen, or the one a new editor of the
-    /// note starts with.
-    func requestSelection(_ range: NSRange) {
-        selection = range
-        selectionRequest = range
-    }
-
     /// The last heading or match request an editor or reading view of this note showed,
     /// so switching tabs or views does not jump to it again.
     @ObservationIgnored var handledHeadingScrollToken: UUID?
@@ -148,13 +161,21 @@ final class MarkdownSession {
     private var pendingInsertions: [EditorInsertion] = []
     /// The next insertion for the editor to apply.
     var pendingInsertion: EditorInsertion? { pendingInsertions.first }
-    private var savedText: String
+    private(set) var savedText: String
     /// Foundation's UTF-8 decoding drops a leading byte-order mark, so it is remembered and
     /// written back: saving must not change bytes the person did not edit.
     private(set) var hasByteOrderMark: Bool
-    private var revision: FileRevision
-    private var activeSave: Task<Void, Error>?
+    /// The version of the file the text was made over.
+    private(set) var revision: FileRevision
+    var activeSave: Task<Void, Error>?
+    /// Where text that cannot reach the file waits, outside the vault; nil for a session
+    /// that is not a tab's, as in tests.
+    @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
+    /// The edit the draft on disk holds, nil when this session has no draft there.
+    @ObservationIgnored var draftEditVersion: Int?
     var isSaving: Bool { activeSave != nil }
+    /// The folder of the vault the note is in.
+    var vaultRoot: URL { store.root }
     var hasUnsavedChanges: Bool { text != savedText || !pendingInsertions.isEmpty }
 
     init(path: VaultPath, snapshot: FileSnapshot, store: VaultStore, openNotes: OpenNoteFiles? = nil,
@@ -173,7 +194,7 @@ final class MarkdownSession {
 
     // MARK: One note in several windows
 
-    private var siblings: [MarkdownSession] { openNotes?.siblings(of: self, file: fileKey) ?? [] }
+    var siblings: [MarkdownSession] { openNotes?.siblings(of: self, file: fileKey) ?? [] }
 
     private func shareText() {
         for sibling in siblings { sibling.takeSharedText(text) }
@@ -202,9 +223,65 @@ final class MarkdownSession {
     /// Saves the current text. A save already in flight is awaited first, so autosave,
     /// navigation, and the keyboard shortcut never race or report a spurious error.
     func save() async throws {
-        // Another window's save of the note is awaited too: it sets the revision this one expects.
+        try await waitForSavesInFlight()
+        // A move let go of this session while it waited; what it had is in a copy by then.
+        guard !wasLeftBehindByMove else { return }
+        bringWaitingTextIntoNote()
+        guard hasUnsavedChanges else {
+            // Undone back to what the file holds: there is nothing left to bring back.
+            discardDraft()
+            letGoOfLostFile()
+            return
+        }
+        guard !hasExternalConflict else {
+            await keepUnsavedTextInDraft()
+            throw GraphiteError.conflict
+        }
+        let textToSave = text
+        let expectedRevision = revision
+        willReplaceSavedText?(savedText, .bySave)
+        let dataToSave = NoteTextEncoding.encode(textToSave, hasByteOrderMark: hasByteOrderMark)
+        let saveTask = Task { [store, path, hasLostFileToMove] in
+            // Another note has this path now, so the text starts a file of its own beside it.
+            let target = hasLostFileToMove ? try await store.separateCopyPath(of: path, fileExtension: "md") : path
+            let newRevision = try await store.save(dataToSave, at: target, expecting: hasLostFileToMove ? .absent : .revision(expectedRevision))
+            self.revision = newRevision
+            self.savedText = textToSave
+            // Before anyone waiting for this save resumes: another window's save of the note,
+            // waiting for this one, must expect the new revision.
+            self.shareSavedState()
+            if hasLostFileToMove { try self.goOnInCopy(at: target) }
+        }
+        activeSave = saveTask
+        defer { if activeSave == saveTask { activeSave = nil } }
+        do {
+            try await saveTask.value
+            // A note can grow past what opens again; better said now than when it will not open.
+            errorMessage = dataToSave.count > Self.maximumEditableBytes ? Self.grownTooLargeMessage : nil
+            // Text typed during the save is not in the file yet: its draft stays until it is.
+            if !hasUnsavedChanges { discardDraft() }
+            didSave(path)
+        } catch {
+            if error as? GraphiteError == .conflict, !hasLostFileToMove { hasExternalConflict = true }
+            errorMessage = hasLostFileToMove ? Self.lostFileMessage : error.localizedDescription
+            await keepUnsavedTextInDraft()
+            throw error
+        }
+    }
+
+    /// Another window's save of the note is awaited too: it sets the revision this one expects.
+    /// So is a move of the file, with what the text needs from it (`waitForMove`).
+    private func waitForSavesInFlight() async throws {
         var awaitedSaves: Set<Task<Void, Error>> = []
-        while let previousSave = ([activeSave] + siblings.map(\.activeSave)).compactMap({ save in save }).first(where: { save in !awaitedSaves.contains(save) }) {
+        while true {
+            if let moveHold = ([self] + siblings).lazy.compactMap(\.moveHold).first {
+                bringWaitingTextIntoNote()
+                guard hasUnsavedChanges else { return } // Nothing to write, so nothing to wait for.
+                try await waitForMove(holding: moveHold)
+                continue
+            }
+            let savesRunning = ([activeSave] + siblings.map(\.activeSave)).compactMap { save in save }
+            guard let previousSave = savesRunning.first(where: { save in !awaitedSaves.contains(save) }) else { return }
             awaitedSaves.insert(previousSave)
             _ = try? await previousSave.value
             // Whichever waiter resumes first clears the finished save. Awaiting a finished
@@ -212,60 +289,94 @@ final class MarkdownSession {
             // main actor and the saver that owns it would never run again.
             if activeSave == previousSave { activeSave = nil }
         }
-        flushPendingInsertions()
-        guard hasUnsavedChanges else { return }
-        guard !hasExternalConflict else { throw GraphiteError.conflict }
-        let textToSave = text
-        let expectedRevision = revision
-        willReplaceSavedText?(savedText)
-        let dataToSave = NoteTextEncoding.encode(textToSave, hasByteOrderMark: hasByteOrderMark)
-        let saveTask = Task { [store, path] in
-            let newRevision = try await store.save(dataToSave, at: path, expecting: .revision(expectedRevision))
-            self.revision = newRevision
-            self.savedText = textToSave
-            // Before anyone waiting for this save resumes: another window's save of the note,
-            // waiting for this one, must expect the new revision.
-            self.shareSavedState()
-        }
-        activeSave = saveTask
-        defer { if activeSave == saveTask { activeSave = nil } }
-        do {
-            try await saveTask.value
-            errorMessage = nil
-            didSave(path)
-        } catch {
-            if error as? GraphiteError == .conflict { hasExternalConflict = true }
-            errorMessage = error.localizedDescription
-            throw error
-        }
     }
 
     func checkExternalChange() async {
-        guard !isSaving else { return }
+        guard !isSaving, !hasLostFileToMove else { return }
         let revisionBeforeRead = revision
         do {
-            let snapshot = try await store.read(path, maximumBytes: Self.maximumEditableBytes)
+            let snapshot = try await store.read(path, maximumBytes: maximumBytesRead)
             guard !isSaving, revision == revisionBeforeRead else { return }
-            guard snapshot.revision != revision else { return }
-            if hasUnsavedChanges { hasExternalConflict = true; errorMessage = GraphiteError.conflict.localizedDescription }
-            else { try adopt(snapshot) }
+            guard snapshot.revision != revision else {
+                // The file went back to the version these edits were made over, so the
+                // conflict is over and the edits can be saved.
+                if hasExternalConflict {
+                    hasExternalConflict = false
+                    errorMessage = nil
+                    try? await save() // A failure shows in the banner, and the draft keeps the text.
+                }
+                return
+            }
+            if hasUnsavedChanges {
+                showConflict()
+                await keepUnsavedTextInDraft()
+            } else { try adopt(snapshot) }
+        } catch GraphiteError.oversized {
+            guard !isSaving, revision == revisionBeforeRead else { return }
+            await checkFileTooLargeToRead()
         } catch {
             guard !isSaving, revision == revisionBeforeRead else { return }
             errorMessage = error.localizedDescription
+        }
+    }
+
+    /// The file is larger than this session reads, so it is hashed instead, a megabyte at a time.
+    /// The session's own save may have made it that large, which is no change. Another app's
+    /// version is a conflict under text not saved, and otherwise opens read-only in the tab.
+    private func checkFileTooLargeToRead() async {
+        let revisionBeforeRead = revision
+        guard let fileRevision = try? await store.revision(of: path) else { return } // Cannot be looked at now: the next check tries again.
+        guard !isSaving, revision == revisionBeforeRead, fileRevision != revision else { return }
+        if hasUnsavedChanges {
+            showConflict()
+            await keepUnsavedTextInDraft()
+        } else {
+            fileOutgrewEditor = true
         }
     }
 
     func reload() async throws {
+        guard !hasLostFileToMove else { throw GraphiteError.conflict }
         let versionBeforeRead = editVersion
         let revisionBeforeRead = revision
         guard try await store.fileExists(path) else { throw Self.removedExternallyError }
-        let snapshot = try await store.read(path, maximumBytes: Self.maximumEditableBytes)
+        let snapshot = try await store.read(path, maximumBytes: maximumBytesRead)
         guard editVersion == versionBeforeRead, revision == revisionBeforeRead, !isSaving else {
-            hasExternalConflict = true
-            errorMessage = GraphiteError.conflict.localizedDescription
+            showConflict()
+            await keepUnsavedTextInDraft()
             throw GraphiteError.conflict
         }
         try adopt(snapshot)
+    }
+
+    // MARK: A move of the note's file (`MarkdownSessionMoves.swift`)
+
+    /// Set when a move could not take this session along, so it never writes again.
+    @ObservationIgnored var wasLeftBehindByMove = false
+    /// The move of the note's file that its saves wait for.
+    @ObservationIgnored var moveHold: SavesHeldDuringMove?
+    /// How long a save waits for a move of the note's file. A big folder's links can take
+    /// longer, and the save then fails with the text kept, which costs nothing but a message.
+    @ObservationIgnored var longestWaitForMove = Duration.seconds(30)
+    /// Set when another note's move took this session's path. What it holds is another text,
+    /// which is never written there: its next save starts a file beside it (`save`).
+    @ObservationIgnored var hasLostFileToMove = false
+    /// Tells the session's window: the session goes on in the copy at this path, or, with
+    /// nothing to keep (nil), is over, and its tab shows the moved note.
+    @ObservationIgnored var didLoseFileToMove: (@MainActor (MarkdownSession, VaultPath?) -> Void)?
+
+    func takeMovedFile(at newLocation: URL, fileKey newFileKey: String) {
+        guard let newPath = WorkspaceModel.vaultPath(for: newLocation, root: store.root) else { return }
+        openNotes?.moveSession(self, fromFile: fileKey, toFile: newFileKey)
+        fileKey = newFileKey
+        if draftEditVersion != nil { draftKeeper?.moveDraft(to: newPath) }
+        draftKeeper = draftKeeper?.following(to: newPath)
+        path = newPath
+    }
+
+    /// A draft's edits are made over `revision`, so saves expect that version and no newer one.
+    func expectRevision(_ revision: FileRevision) {
+        self.revision = revision
     }
 
     private static let removedExternallyError = GraphiteError.unavailable(
@@ -274,10 +385,11 @@ final class MarkdownSession {
     private func adopt(_ snapshot: FileSnapshot) throws {
         guard let decoded = NoteTextEncoding.decode(snapshot.data) else { throw GraphiteError.invalidFile("External note is not UTF-8.") }
         // The version another app replaced is kept, in case its change was unwanted.
-        if decoded.text != savedText { willReplaceSavedText?(savedText) }
+        if decoded.text != savedText { willReplaceSavedText?(savedText, .byOtherVersion) }
         pendingInsertions = []
         text = decoded.text; savedText = decoded.text; hasByteOrderMark = decoded.hasByteOrderMark; revision = snapshot.revision
         hasExternalConflict = false; errorMessage = nil
+        discardDraft()
         shareSavedState()
     }
 
@@ -288,14 +400,18 @@ final class MarkdownSession {
     /// was reloaded. That newer work stays open in conflict. Once the copy is written this
     /// does not throw, so the copy is never reported as failed.
     func saveSeparateCopy() async throws -> VaultPath {
+        if hasLostFileToMove {
+            try await save()
+            return path
+        }
         flushPendingInsertions()
         let bytesToCopy = NoteTextEncoding.encode(text, hasByteOrderMark: hasByteOrderMark)
         let versionToCopy = editVersion
-        let separatePath = try await store.uniquePath(directory: path.parent, stem: path.stem + " Graphite edits", extension: "md")
+        let separatePath = try await store.separateCopyPath(of: path, fileExtension: "md")
         _ = try await store.save(bytesToCopy, at: separatePath, expecting: .absent)
         guard editVersion == versionToCopy else {
-            hasExternalConflict = true
-            errorMessage = GraphiteError.conflict.localizedDescription
+            showConflict()
+            await keepUnsavedTextInDraft()
             return separatePath
         }
         do {
@@ -306,6 +422,7 @@ final class MarkdownSession {
             guard editVersion == versionToCopy else { return separatePath }
             text = savedText
             hasExternalConflict = false
+            discardDraft()
             // The other version exists but cannot be shown, such as a file too large or
             // no longer UTF-8; the note says so when the person comes back to it.
             errorMessage = isRemoved ? nil : error.localizedDescription
@@ -323,13 +440,6 @@ final class MarkdownSession {
         if loadedTypes != declaredPropertyTypes { declaredPropertyTypes = loadedTypes }
     }
 
-    /// Rewrites only the frontmatter, in Obsidian's property format, and saves through
-    /// the normal autosave path. The properties were parsed with `declaredPropertyTypes`,
-    /// so unchanged values keep their exact YAML.
-    func replaceProperties(_ properties: [NoteProperty]) {
-        text = NoteProperties.replacingFrontmatter(in: text, with: properties, declaredTypes: declaredPropertyTypes)
-    }
-
     /// Folded headings and list items (`NoteFolding` keys). As in Obsidian, folds are kept
     /// on the device, not written into the note.
     var foldedKeys: Set<String> = [] {
@@ -337,48 +447,26 @@ final class MarkdownSession {
     }
     @ObservationIgnored var didChangeFolds: ((Set<String>) -> Void)?
 
-    /// Folds or unfolds the heading or list item on the line at `location`; false when
-    /// nothing there folds.
-    @discardableResult
-    func toggleFold(atLine location: Int) -> Bool {
-        let regions = NoteFolding.regions(in: text)
-        guard let region = NoteFolding.region(atLine: location, in: regions, text: text as NSString) else { return false }
-        if foldedKeys.contains(region.key) { foldedKeys.remove(region.key) } else { foldedKeys.insert(region.key) }
-        return true
-    }
-
-    /// Unfolds what hides a heading or text a jump is about to show.
-    func unfold(toShow request: HeadingScrollRequest) {
-        guard !foldedKeys.isEmpty else { return }
-        let source = text as NSString
-        var location = request.textRange?.location
-        if location == nil, !request.anchor.isEmpty {
-            // The heading's line: the first heading the outline lists with this anchor.
-            location = HeadingLocator.lineLocation(ofHeadingWithAnchor: request.anchor, in: source)
-        }
-        guard let location else { return }
-        let folded = NoteFolding.foldedRegions(in: NoteFolding.regions(in: text), foldedKeys: foldedKeys)
-        let hiding = NoteFolding.regions(hiding: location, in: folded)
-        if !hiding.isEmpty { foldedKeys.subtract(hiding.map(\.key)) }
-    }
-
-    func foldAll() {
-        foldedKeys = Set(NoteFolding.regions(in: text).map(\.key))
-    }
-
-    func unfoldAll() {
-        foldedKeys = []
-    }
-
     /// Called with the note's saved text just before a save or a reload replaces it, so File
     /// recovery can keep a copy.
-    @ObservationIgnored var willReplaceSavedText: ((String) -> Void)?
+    @ObservationIgnored var willReplaceSavedText: ((String, SavedTextReplacement) -> Void)?
 
     /// A shown editor applies its waiting insertions through native undo before a save
     /// captures the text. Without an editor, the same work is applied to the model.
     @ObservationIgnored var applyPendingInsertionsBeforeSaving: (() -> Void)?
 
-    private func flushPendingInsertions() {
+    /// Writes what rendered blocks' views hold back into the text, by the view that holds it:
+    /// a table cell's draft waits for typing to pause, and a save right after the last key
+    /// (quitting, closing the tab, leaving the app) must not go without those characters.
+    @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
+
+    /// What a save must take in first: the views' drafts, then the insertions waiting.
+    func bringWaitingTextIntoNote() {
+        for commit in draftCommitsOfViews.values { commit() }
+        flushPendingInsertions()
+    }
+
+    func flushPendingInsertions() {
         guard !pendingInsertions.isEmpty else { return }
         applyPendingInsertionsBeforeSaving?()
         let waitingInsertions = pendingInsertions
@@ -394,29 +482,6 @@ final class MarkdownSession {
             guard !isEditorAttached, !pendingInsertions.isEmpty else { return }
             flushPendingInsertions()
         }
-    }
-
-    /// Inserts `content` at `range` of the current text, or at the cursor.
-    func insert(_ content: String, at range: NSRange? = nil) {
-        let target = insertionTarget(for: range)
-        request(EditorInsertion(text: content, range: target.range))
-    }
-
-    /// Inserts a block such as an embed on its own line. Blank lines around the cursor
-    /// are kept, so paragraphs never merge and a following `---` never turns the
-    /// block into a heading.
-    /// - Parameter separatedByBlankLines: Keeps an empty line around the block (quotes).
-    func insertBlock(_ block: String, at range: NSRange? = nil, separatedByBlankLines: Bool = false) {
-        let target = insertionTarget(for: range)
-        let insertionRange = target.range
-        let source = target.text
-        // Never split the frontmatter: Obsidian would stop reading the note's properties.
-        let frontmatterLength = FrontmatterLocator.length(in: source)
-        let location = max(min(insertionRange.location, source.length), frontmatterLength)
-        let endLocation = max(min(insertionRange.location + insertionRange.length, source.length), location)
-        let insertion = MarkdownBlockInsertion.text(inserting: block, into: source, replacing: NSRange(location: location, length: endLocation - location),
-                                                    separatedByBlankLines: separatedByBlankLines)
-        request(EditorInsertion(text: insertion, range: NSRange(location: location, length: endLocation - location)))
     }
 
     /// Applies an editing command's result, computed on the current text, through the
@@ -447,24 +512,14 @@ final class MarkdownSession {
         request(EditorInsertion(text: edit.replacement, range: replacementRange, selectionAfter: selectionAfter))
     }
 
-    /// Ticks or unticks the task at `location`, as a tap on its checkbox in reading view
-    /// does, leaving the cursor where it is. False when the text no longer has the task
-    /// there.
-    @discardableResult
-    func toggleTask(at location: ReadingTasks.Location) -> Bool {
-        guard let edit = ReadingTasks.togglingEdit(at: location, in: text, selection: selection) else { return false }
-        apply(edit)
-        return true
-    }
-
-    private func request(_ insertion: EditorInsertion) {
+    func request(_ insertion: EditorInsertion) {
         if isEditorAttached { pendingInsertions.append(insertion); editVersion += 1 } else { applyWithoutEditor(insertion) }
     }
 
     /// The text a new insertion goes into, which already includes the insertions still
     /// waiting for the editor, and `range` of the current text moved past them; without a
     /// range, the cursor as it will be once they are applied.
-    private func insertionTarget(for range: NSRange?) -> (text: NSString, range: NSRange) {
+    func insertionTarget(for range: NSRange?) -> (text: NSString, range: NSRange) {
         var source = text as NSString
         guard !pendingInsertions.isEmpty else { return (source, range ?? selection) }
         var movedRange = range ?? selection
@@ -504,43 +559,7 @@ final class MarkdownSession {
         selection = insertion.selectionAfter ?? NSRange(location: replacedRange.location + (insertion.text as NSString).length, length: 0)
     }
 
-    /// Opens the find bar in the editor, leaving reading view first: it searches the text.
-    func requestFind(_ request: FindRequest, editingMode: EditingMode) {
-        if viewMode == .reading { viewMode = editingMode == .source ? .source : .livePreview }
-        findRequest = request
-    }
-
-    /// Obsidian's "Toggle reading view": reading, or back to the editing mode.
-    func toggleReadingView(editingMode: EditingMode) {
-        viewMode = viewMode != .reading ? .reading : (editingMode == .source ? .source : .livePreview)
-    }
-
     func markInsertionApplied(_ insertion: EditorInsertion) {
         if pendingInsertions.first?.id == insertion.id { pendingInsertions.removeFirst() }
     }
-}
-
-/// A note's text as stored in UTF-8. A leading byte-order mark is kept apart from the
-/// text, as Foundation's decoder would drop it, so that it can be written back unchanged.
-enum NoteTextEncoding {
-    private static let byteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
-
-    /// The text, or nil when the bytes are not valid UTF-8.
-    static func decode(_ data: Data) -> (text: String, hasByteOrderMark: Bool)? {
-        let hasByteOrderMark = data.starts(with: byteOrderMark)
-        guard let text = String(validating: data.dropFirst(hasByteOrderMark ? byteOrderMark.count : 0), as: UTF8.self) else { return nil }
-        return (text, hasByteOrderMark)
-    }
-
-    static func encode(_ text: String, hasByteOrderMark: Bool) -> Data {
-        hasByteOrderMark ? Data(byteOrderMark) + Data(text.utf8) : Data(text.utf8)
-    }
-}
-
-struct EditorInsertion: Identifiable, Equatable {
-    let id = UUID()
-    let text: String
-    let range: NSRange
-    /// Where the selection goes afterwards; after the inserted text when nil.
-    var selectionAfter: NSRange?
 }

@@ -5,28 +5,15 @@
  * Description: The documents area: one group of tabs or two side by side with a divider that can be dragged or held
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
- * Authors: Bahey Shalash
- * Version: 0.28
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.47
+ * Date: 02/11/2026
  */
 
 import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
-
-/// A tab being dragged to another place in a tab bar.
-struct TabTransfer: Codable, Transferable {
-    let tabID: UUID
-    static var transferRepresentation: some TransferRepresentation {
-        CodableRepresentation(contentType: .graphiteTab)
-    }
-}
-
-extension UTType {
-    /// Declared in the app's Info.plist; used only for drags inside Graphite.
-    static let graphiteTab = UTType(exportedAs: "com.graphite.study.tab")
-}
 
 /// The documents area: one group of tabs, or two side by side with a divider that can be
 /// dragged, as after Obsidian's "Split right". In a narrow window only the focused side
@@ -41,8 +28,10 @@ struct WorkspacePanes: View {
     var acceptsFocusTouches = true
     var showsTabBar = true
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    /// The split when a divider drag began.
-    @State private var dragStartFraction: Double?
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.isSidebarBesideDocuments) private var isSidebarBesideDocuments
+    /// The divider drag in progress, whose split the layout takes when it ends.
+    @State private var dividerDrag = SplitDividerDrag()
     /// Where each side is in the window, to focus the side a touch lands on.
     @State private var groupFrames: [UUID: CGRect] = [:]
     /// The documents area's width, which decides where documents put Write, Undo and Redo:
@@ -51,11 +40,18 @@ struct WorkspacePanes: View {
 
     private var showsBothGroups: Bool { workspace.layout.isSplit && horizontalSizeClass != .compact }
 
+    private var foldsFindAndPagesFromToolbar: Bool {
+        DocumentToolbarLayout.foldsFindAndPages(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass, sidebarIsBeside: isSidebarBesideDocuments)
+    }
+
     var body: some View {
         panes
             .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in detailWidth = width }
-            .environment(\.usesDocumentControlRow, DocumentToolbarLayout.usesControlRow(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass))
+            .environment(\.usesDocumentControlRow, DocumentToolbarLayout.usesControlRow(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass,
+                                                                                        verticalSizeClass: verticalSizeClass))
+            .environment(\.sharesWindowWithOtherSide, showsBothGroups)
             .environment(\.foldsSecondaryToolbarActions, DocumentToolbarLayout.foldsSecondaryActions(detailWidth: detailWidth, horizontalSizeClass: horizontalSizeClass))
+            .environment(\.foldsFindAndPagesFromToolbar, foldsFindAndPagesFromToolbar)
             #if canImport(UIKit)
             // A touch anywhere on a side focuses it, so the toolbar and new files follow. The
             // touch is only observed: a SwiftUI gesture over the editor would compete with
@@ -84,17 +80,15 @@ struct WorkspacePanes: View {
                                                                    splitWidthPoints: geometry.size.width,
                                                                    dividerWidthPoints: SplitDivider.width,
                                                                    allowedRange: TabLayout.splitFractionRange)
-                let fraction = foldFraction ?? workspace.layout.splitFraction
+                let fraction = foldFraction ?? dividerDrag.fraction ?? workspace.layout.splitFraction
                 if groups.count > 1 {
                     HStack(spacing: 0) {
                         pane(for: groups[0])
                             .frame(width: availableWidth * fraction)
                         SplitDivider(fraction: fraction, isHeldByFold: foldFraction != nil) { translation in
-                            let startFraction = dragStartFraction ?? workspace.layout.splitFraction
-                            dragStartFraction = startFraction
-                            workspace.layout.splitFraction = startFraction + translation / availableWidth
+                            _ = dividerDrag.change(translation: translation, availableWidth: availableWidth, layoutFraction: workspace.layout.splitFraction)
                         } endDrag: {
-                            dragStartFraction = nil
+                            if let draggedFraction = dividerDrag.end() { workspace.layout.splitFraction = draggedFraction }
                         } setFraction: { fraction in
                             workspace.layout.splitFraction = fraction
                         }
@@ -158,7 +152,9 @@ private struct TabGroupPane: View {
             showsTabBar: showsTabBar, tabBarWidth: width)
         // Compact widths keep Apple's palette; there is no fixed bar to place.
         let showsPencilToolsInTabBar = horizontalSizeClass != .compact && DocumentToolbarLayout.showsPencilToolsInTabBar(
-            showsTabBar: showsTabBar, tabBarWidth: width, showsDocumentControls: showsDocumentControlsInTabBar)
+            showsTabBar: showsTabBar, tabBarWidth: width, showsDocumentControls: showsDocumentControlsInTabBar,
+            toolCount: PencilToolRowLayout.tools(presetCount: PencilToolbox.shared.presets.count, offersTextBoxes: true,
+                                                 offersReadAloudPen: workspace.readAloud != nil).count)
         VStack(spacing: 0) {
             if showsTabBar {
                 TabBar(workspace: workspace, group: group, isFocused: isFocused, showsBothGroups: showsBothGroups,
@@ -176,7 +172,7 @@ private struct TabGroupPane: View {
                 .background {
                     if let tabOverview { TabThumbnailArea(groupID: group.id, thumbnails: tabOverview.thumbnails) }
                 }
-                .onChange(of: tab.id, initial: true) { captureThumbnailOnceSettled(tab) }
+                .onChange(of: TabLoadKey(tabID: tab.id, path: tab.path), initial: true) { captureThumbnailOnceSettled(tab) }
             }
         }
         // Choosing a tab or opening a file on this side steps back from the library.
@@ -216,6 +212,7 @@ extension TabGroupPane {
                 TabDocumentView(workspace: workspace, tab: stackedTab, document: workspace.document(for: stackedTab.id),
                                 isFocused: isFocused && isActive, showsLinksInspector: $showsLinksInspector,
                                 create: create, showQuickSwitcher: showQuickSwitcher)
+                    .environment(\.isActiveInItsSide, isActive)
             }
         } else {
             TabDocumentView(workspace: workspace, tab: tab, document: workspace.document(for: tab.id), isFocused: isFocused,
@@ -240,7 +237,7 @@ extension TabGroupPane {
         guard let tabOverview, !group.isStacked else { return }
         let workspace = workspace
         let groupID = group.id
-        tabOverview.captureWhenSettled(groupID: groupID, tabID: tab.id, vaultIdentifier: workspace.currentVaultIdentifier) {
+        tabOverview.captureWhenSettled(groupID: groupID, tabID: tab.id, file: tab.path, vaultIdentifier: workspace.currentVaultIdentifier) {
             let document = workspace.document(for: tab.id)
             let isLoaded = tab.path == nil || document.loadedPath == tab.path
             let isStacked = workspace.layout.groups.first { candidate in candidate.id == groupID }?.isStacked ?? true
@@ -274,11 +271,14 @@ private struct TabBar: View {
     private var groupIndex: Int { layout.groups.firstIndex { candidate in candidate.id == group.id } ?? 0 }
     /// The room at each end of the row of tabs.
     private static let tabsInset: CGFloat = 8
-    @AppStorage(PencilToolbarStyle.preferenceKey) private var pencilToolbarStyle = PencilToolbarStyle.floating
+    @AppStorage(PencilToolbarStyle.preferenceKey) private var chosenPencilToolbarStyle = PencilToolbarStyle.floating
+    @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
     /// Whether tabs stay narrow enough for the tab area the fixed bar's tools leave them:
     /// wherever those tools can share this tab bar, whichever tab is shown, so tabs keep
     /// their width when a PDF and a note take turns.
-    private var keepsTabsBesidePencilTools: Bool { showsPencilTools && pencilToolbarStyle == .fixed }
+    private var keepsTabsBesidePencilTools: Bool {
+        showsPencilTools && chosenPencilToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) == .fixed
+    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -298,14 +298,14 @@ private struct TabBar: View {
                 // A tab whose file is still loading has the sessions of the file before it.
                 if let session = document.pdfSession, group.activeTab.path != nil, document.loadedPath == group.activeTab.path {
                     Hairline(axis: .vertical).frame(height: 18)
-                    TabBarPencilTools(session: session, isFocused: isFocused, offersReadAloudPen: workspace.readAloud != nil)
+                    TabBarPencilTools(session: session, offersReadAloudPen: workspace.readAloud != nil)
                         .layoutPriority(1)
                 }
             }
             #endif
             if showsDocumentControls && !isLibraryHomeShown {
                 TabBarDocumentControls(tab: group.activeTab, document: workspace.document(for: group.activeTabID),
-                                       defaultEditingMode: workspace.preferences.defaultEditingMode, isFocused: isFocused)
+                                       defaultEditingMode: workspace.defaultEditingMode, isFocused: isFocused)
                     .padding(.horizontal, 4)
             }
             if (showsDocumentControls || showsPencilTools) && !isLibraryHomeShown {
@@ -320,7 +320,8 @@ private struct TabBar: View {
         .background(isDropTargeted ? AnyShapeStyle(accent.opacity(0.12)) : AnyShapeStyle(GraphiteChrome.barBackground))
         // A file dragged from the sidebar opens in a new tab on this side.
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in !workspace.isDirectory(path) }
+            // An item of another window's vault has no tab here; dropping it on a folder copies it.
+            let paths = items.compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }.filter { path in !workspace.isDirectory(path) }
             guard !paths.isEmpty else { return false }
             workspace.focusGroup(group.id)
             Task { for path in paths { await workspace.open(path, placement: .newTab) } }
@@ -340,7 +341,7 @@ private struct TabBar: View {
                                 close: { Task { await workspace.closeTab(tab.id) } },
                                 maximumWidth: keepsTabsBesidePencilTools ? DocumentToolbarLayout.minimumTabsWidthBesidePencilTools - 2 * Self.tabsInset : 220)
                             .contextMenu { tabMenu(for: tab) }
-                            .draggable(TabTransfer(tabID: tab.id), contentType: .graphiteTab,
+                            .draggable(TabTransfer(tab: tab, vaultIdentifier: workspace.currentVaultIdentifier), contentType: .graphiteTab,
                                        opening: tab.path.map { path in .showing(path, inVault: workspace.currentVaultIdentifier) }) {
                                 Label(workspace.title(ofTab: tab), systemImage: tab.path.map { path in DocumentKind(path: path).systemImage } ?? "doc")
                                     .padding(8).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
@@ -369,9 +370,18 @@ private struct TabBar: View {
 
     @discardableResult
     private func moveDroppedTabs(_ items: [TabTransfer], to position: Int) -> Bool {
-        guard let item = items.first, layout.tab(withID: item.tabID) != nil else { return false }
-        workspace.moveTab(item.tabID, toGroup: group.id, at: position)
-        return true
+        guard let item = items.first else { return false }
+        switch item.drop(in: layout, vaultIdentifier: workspace.currentVaultIdentifier) {
+        case .moveTab(let tabID):
+            workspace.moveTab(tabID, toGroup: group.id, at: position)
+            return true
+        case .openFile(let path):
+            workspace.focusGroup(group.id)
+            Task { await workspace.open(path, placement: .newTab) }
+            return true
+        case .refused:
+            return false
+        }
     }
 
     @ViewBuilder private var groupButtons: some View {
@@ -444,7 +454,7 @@ private struct TabBar: View {
 /// takes full strength text and a faint fill. Notes, which most tabs show, go without an
 /// icon; other files keep a small one. The close button shows on the tab in use and under
 /// the pointer, and keeps its room on the others so a tab does not change width when it
-/// is chosen; every tab can be closed from its menu and by VoiceOver.
+/// is chosen; by touch every tab shows it. Every tab can be closed from its menu and by VoiceOver.
 private struct TabItem: View {
     let tab: WorkspaceTab
     let title: String
@@ -465,7 +475,17 @@ private struct TabItem: View {
         return kind == .markdown ? nil : kind.systemImage
     }
 
-    private var showsCloseButton: Bool { isActive || isPointerOver }
+    /// By touch there is no pointer to hover, so every tab shows its close button, quieter on the ones not in use;
+    /// a long press for the menu collides with the drag that lifts the tab (HUNT-288). On the Mac, the tab in use
+    /// and the one under the pointer show it.
+    private var showsCloseButton: Bool {
+        #if os(iOS)
+        true
+        #else
+        isActive || isPointerOver
+        #endif
+    }
+    private var closeButtonOpacity: Double { isActive || isPointerOver ? 1 : 0.55 }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -489,11 +509,12 @@ private struct TabItem: View {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .semibold))
                         .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
+                        // 44 points to touch, as the bar's other buttons.
+                        .contentShape(Rectangle().inset(by: -8))
                 }
                 .buttonStyle(.borderless)
                 .tint(.secondary)
-                .opacity(showsCloseButton ? 1 : 0)
+                .opacity(showsCloseButton ? closeButtonOpacity : 0)
                 .allowsHitTesting(showsCloseButton)
                 .accessibilityHidden(!showsCloseButton)
                 .accessibilityLabel("Close \(title)")
@@ -553,7 +574,9 @@ private struct SplitDivider: View {
         }
         .frame(width: Self.width)
         .frame(maxHeight: .infinity)
-        .contentShape(Rectangle())
+        // Drawn thin and touched over 27 points, so a finger finds it without taking the
+        // text beside it.
+        .contentShape(Rectangle().inset(by: -8))
         .allowsHitTesting(!isHeldByFold)
         // Measured in the panes' space: the divider itself moves while it is dragged.
         .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.coordinateSpaceName))
@@ -661,7 +684,10 @@ struct TabDocumentView: View {
     }
 
     @ViewBuilder private func loadedContent(_ path: VaultPath) -> some View {
-        if let session = document.markdownSession {
+        if let note = document.oversizedNote {
+            OversizedNotePane(note: note, editAnyway: { Task { await workspace.editOversizedNoteAnyway(inTab: tab.id) } },
+                              reload: { Task { await workspace.reloadOversizedNote(inTab: tab.id) } })
+        } else if let session = document.markdownSession {
             // The same pane shows the next note; it makes its editor again (see `MarkdownPane`).
             MarkdownPane(session: session, workspace: workspace, document: document, tabID: tab.id, isFocused: isFocused,
                          showsLinksInspector: $showsLinksInspector)
@@ -683,10 +709,13 @@ struct TabDocumentView: View {
                 if let store = workspace.store, let index = workspace.index {
                     BaseDocumentView(path: path, viewName: document.baseViewRequest.flatMap { request in request.path == path ? request.viewName : nil },
                                      store: store, index: index, contentVersion: workspace.indexVersion,
-                                     isIndexComplete: workspace.hasCompletedIndexScan,
+                                     contentChange: workspace.lastIndexChange,
+                                     isIndexComplete: workspace.isIndexUsable,
                                      open: { target in Task { await workspace.open(target) } },
-                                     filesChanged: { paths in workspace.filesSavedOutsideEditors(paths) })
-                    .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil)
+                                     filesChanged: { paths in workspace.filesSavedOutsideEditors(paths) },
+                                     modelCache: document.baseModelCache,
+                                     viewRequestApplied: { document.baseViewRequest = nil })
+                    .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 }
             case .media:
                 // One player per file: its playback, size and duration are not carried over
@@ -742,28 +771,6 @@ extension TabDocumentView {
             addImageToNote: note.map { note in
                 { pngData, name in Task { await workspace.addLassoPicture(pngData, named: name, to: note) } }
             })
-    }
-}
-
-/// Plain text on the system pasteboard.
-enum Pasteboard {
-    static func copy(_ text: String) {
-        #if canImport(UIKit)
-        UIPasteboard.general.string = text
-        #else
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
-        #endif
-    }
-
-    /// The text on the pasteboard, if any. On iPad and iPhone, iOS tells the person that
-    /// Graphite read it.
-    static var text: String? {
-        #if canImport(UIKit)
-        UIPasteboard.general.string
-        #else
-        NSPasteboard.general.string(forType: .string)
-        #endif
     }
 }
 
@@ -827,7 +834,7 @@ private struct EmptyTabView: View {
                     Text("No file is open")
                         .font(.title3.weight(.semibold))
                         .padding(.bottom, 4)
-                    action("Create new note", shortcut: "⌘N") { focusThen { create(CreationRequest(kind: .note)) } }
+                    action("Create new note", shortcut: shownShortcut(.newNote)) { focusThen { create(CreationRequest(kind: .note)) } }
                     action("Create new notebook") { focusThen { create(CreationRequest(kind: .notebook)) } }
                     if workspace.preferences.isEnabled(.bases) {
                         action("Create new base") { focusThen { create(CreationRequest(kind: .base)) } }
@@ -835,9 +842,9 @@ private struct EmptyTabView: View {
                     if workspace.preferences.isEnabled(.canvas) {
                         action("Create new canvas") { focusThen { create(CreationRequest(kind: .canvas)) } }
                     }
-                    action("Go to file", shortcut: "⌘O") { focusThen(showQuickSwitcher) }
+                    action("Go to file", shortcut: shownShortcut(.quickSwitcher)) { focusThen(showQuickSwitcher) }
                     if canClose {
-                        action("Close", shortcut: "⌘W") { Task { await workspace.closeTab(tabID) } }
+                        action("Close", shortcut: shownShortcut(.closeTab)) { Task { await workspace.closeTab(tabID) } }
                     }
                 }
                 // Looked up once per update: each looks for every recent file on disk.
@@ -878,6 +885,11 @@ private struct EmptyTabView: View {
             .padding(.vertical, 56)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    /// The vault's own shortcut for a command, so a rebinding shows here.
+    private func shownShortcut(_ command: GraphiteCommand) -> String? {
+        workspace.keyboardShortcuts.shownShortcut(for: command)
     }
 
     /// A link in the accent, with its keyboard shortcut muted beside it where it has one.

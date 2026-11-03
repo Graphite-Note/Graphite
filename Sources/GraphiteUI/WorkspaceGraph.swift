@@ -1,13 +1,26 @@
+/**
+ * File: WorkspaceGraph.swift
+ * --------------------------
+ * Layer: UI
+ * Description: The whole vault's graph, kept until the files, links, tags or aliases change, and what a tap on
+ *              a node opens.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
 /// Obsidian's Graph view core plugin.
 extension WorkspaceModel {
-    /// The vault's notes and links, built again only after the index takes in changes.
+    /// The vault's notes and links, built again only after the index takes in a change of the
+    /// files, links, tags, aliases or properties, not as a note's text is typed.
     func vaultGraph() async -> LinkGraph? {
         guard let index else { return nil }
-        let version = indexVersion
-        if let graphCache, graphCache.indexVersion == version { return graphCache.graph }
+        let version = structureVersion
+        if let graphCache, graphCache.structureVersion == version { return graphCache.graph }
         do {
             let graph = try await index.linkGraph()
             // A graph of a vault left during the query is neither kept nor shown.

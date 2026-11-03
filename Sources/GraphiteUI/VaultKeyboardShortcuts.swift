@@ -1,3 +1,14 @@
+/**
+ * File: VaultKeyboardShortcuts.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: The open vault's keyboard shortcuts, and the tables the menu bar, the editor and the screens look them up in.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import Observation
 import GraphiteCore
@@ -80,6 +91,12 @@ final class VaultKeyboardShortcuts {
     func menuShortcut(for command: GraphiteCommand) -> KeyboardShortcut? {
         guard recordingCommandIdentifier == nil else { return nil }
         return builtInTable.combinations(for: command.identifier).lazy.compactMap(\.keyboardShortcut).first
+    }
+
+    /// The shortcut as a screen shows it beside a command ("⌘N"): the vault's own, so it follows a
+    /// change on the Keyboard Shortcuts page; nil when the command has none.
+    func shownShortcut(for command: GraphiteCommand) -> String? {
+        builtInTable.combinations(for: command.identifier).first?.symbols
     }
 
     /// Shows the file as the vault holds it now.

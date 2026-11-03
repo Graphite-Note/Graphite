@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 21/10/2026
+ * Version: 0.15
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -22,6 +22,8 @@ struct LibraryVault {
     let sortOrder: FileSortOrder
     /// Changes whenever Graphite or another app may have changed the vault's files.
     let listingVersion: Int
+    /// Changes known to each folder, as `WorkspaceModel.folderListingVersions` counts them.
+    let folderListingVersions: [VaultPath: Int]
     let firstCreatedKind: CreationKind
     let isPluginEnabled: (CorePlugin) -> Bool
     let presentation: LibraryPresentation
@@ -122,9 +124,11 @@ struct LibraryView: View {
             if selection.isSelecting { selectionHeader } else { header }
             content
         }
-        .task(id: vault.reloadKey) {
+        .task(id: "\(vault.reloadKey)|\(vault.folderListingVersions[library.folder] ?? 0)") {
             await library.reload(source: vault.source, sortOrder: vault.sortOrder)
         }
+        // A folder's tile says how many items it holds, which a change inside it may move.
+        .onChange(of: vault.folderListingVersions) { library.folderItemCounts.refreshVisibleFolders() }
         .onChange(of: library.items) { keepChosenTilesListed() }
         .onChange(of: library.folder) { selection.end() }
         .confirmationDialog("Delete \(selection.chosenCount) \(selection.chosenCount == 1 ? "Item" : "Items")?",
@@ -230,7 +234,7 @@ struct LibraryView: View {
     }
 
     @ViewBuilder private var headerControlButtons: some View {
-            windowButtons
+            LibraryWindowButtons()
             LibraryPresentationSwitch(presentation: vault.presentation, choose: actions.setPresentation)
                 .padding(.horizontal, 4)
             viewOptionsMenu
@@ -240,21 +244,6 @@ struct LibraryView: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel("New")
-    }
-
-    /// Settings and the quick switcher, which the sidebar offered before the library
-    /// replaced it; a phone's sidebar still has them.
-    @ViewBuilder private var windowButtons: some View {
-        if let windowActions, horizontalSizeClass != .compact {
-            Button("Settings", systemImage: "gearshape", action: windowActions.showSettings)
-                .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
-                .help("Settings")
-            Button("Find a File", systemImage: "magnifyingglass", action: windowActions.showSearch)
-                .labelStyle(.iconOnly)
-                .frame(width: 44, height: 44)
-                .help("Find a file (⌘O)")
-        }
     }
 
     /// What the grid shows and in which order.
@@ -305,6 +294,11 @@ struct LibraryView: View {
         if library.failure == .folderUnreadable {
             ContentUnavailableView("Can't Show This Folder", systemImage: "exclamationmark.triangle",
                                    description: Text(Self.unreadableFolderExplanation))
+        } else if !library.hasListedFolder {
+            ProgressView()
+                .controlSize(.large)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityLabel("Opening folder")
         } else if library.items.isEmpty {
             ContentUnavailableView(library.filter == .all ? "Nothing Here Yet" : "Nothing to Show",
                                    systemImage: "square.grid.2x2",
@@ -321,6 +315,8 @@ struct LibraryView: View {
                 }
                 .padding(Self.gridPaddingPoints)
             }
+            // Each folder scrolls from its top, whatever the folder before it was scrolled to.
+            .id(library.folder)
             .onGeometryChange(for: Int?.self) { geometry in
                 guard DisplayFoldLayout.hasFoldDownTheMiddle(DisplayFolds.activeDivisions(in: geometry), widthPoints: geometry.size.width)
                 else { return nil }
@@ -344,7 +340,7 @@ struct LibraryView: View {
     }
 
     private func tile(for entry: VaultEntry) -> some View {
-        LibraryTile(entry: entry, library: library, entries: entries, selection: tileSelection(of: entry), open: { open(entry) },
+        LibraryTile(entry: entry, library: library, entries: entries, sortOrder: vault.sortOrder, selection: tileSelection(of: entry), open: { open(entry) },
                     choose: { gesture in choose(entry, with: gesture) }, dropActions: dropActions, findPictures: actions.findPictures)
             .onAppear { library.tileAppeared(entry) }
             .onDisappear { library.tileDisappeared(entry) }
@@ -357,7 +353,7 @@ struct LibraryView: View {
     /// A dragged item as other apps take it too: its path for Graphite, its file for the rest.
     private func draggedItem(forRawPath rawPath: String) -> VaultItemTransfer {
         let location = (try? VaultPath(rawPath)).flatMap(entries.fileLocation) // A name no vault path can hold has no file to give.
-        return VaultItemTransfer(path: rawPath, fileLocation: location)
+        return VaultItemTransfer(path: rawPath, fileLocation: location, vaultRoot: entries.fileLocation(.root))
     }
 
     private func open(_ entry: VaultEntry) {

@@ -1,3 +1,14 @@
+/**
+ * File: VaultSearch.swift
+ * -----------------------
+ * Layer: Index
+ * Description: Places in the note that matched, in order. Empty when only the name matched.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore
@@ -33,8 +44,8 @@ public enum SearchSortOrder: String, CaseIterable, Identifiable, Sendable {
 
     var sqlOrdering: String {
         switch self {
-        case .fileNameAscending: "files.basename COLLATE NOCASE, files.path"
-        case .fileNameDescending: "files.basename COLLATE NOCASE DESC, files.path DESC"
+        case .fileNameAscending: "files.sort_name, files.path"
+        case .fileNameDescending: "files.sort_name DESC, files.path DESC"
         case .modifiedNewestFirst: "files.modified DESC, files.path"
         case .modifiedOldestFirst: "files.modified, files.path"
         case .createdNewestFirst: "coalesce(files.created, files.modified) DESC, files.path"
@@ -45,7 +56,7 @@ public enum SearchSortOrder: String, CaseIterable, Identifiable, Sendable {
     /// The value `sqlOrdering` sorts by before the path.
     var sqlSortValue: String {
         switch self {
-        case .fileNameAscending, .fileNameDescending: "files.basename"
+        case .fileNameAscending, .fileNameDescending: "files.sort_name"
         case .modifiedNewestFirst, .modifiedOldestFirst: "files.modified"
         case .createdNewestFirst, .createdOldestFirst: "coalesce(files.created, files.modified)"
         }
@@ -53,7 +64,7 @@ public enum SearchSortOrder: String, CaseIterable, Identifiable, Sendable {
 
     /// Files after a position in `sqlOrdering`, given its sort value twice, then its path.
     var sqlRowsAfterPosition: String {
-        let comparedValue = sqlSortValue + (self == .fileNameAscending || self == .fileNameDescending ? " COLLATE NOCASE" : "")
+        let comparedValue = sqlSortValue
         let (valueComparison, pathComparison) = switch self {
         case .fileNameAscending, .modifiedOldestFirst, .createdOldestFirst: (">", ">")
         case .fileNameDescending: ("<", "<")
@@ -120,14 +131,14 @@ extension VaultIndex {
         let expression = SearchQueryParser.parse(query)
         if let expression { try Self.validateRegularExpressions(in: expression) }
         do {
-            var page = try await databaseQueue.read { database in
+            var page = try await databasePool.read { database in
                 try Self.searchPage(for: expression, sortOrder: sortOrder, maximumResults: maximumResults, after: continuation, in: database)
             }
             // Callers read an empty page as "no matches", so a search with candidates left
             // keeps reading. Each read is bounded, so saves and other lookups get the
             // database between reads, and only cancellation stops a search with no results.
             while page.results.isEmpty, let nextContinuation = page.continuation {
-                page = try await databaseQueue.read { database in
+                page = try await databasePool.read { database in
                     try Self.searchPage(for: expression, sortOrder: sortOrder, maximumResults: maximumResults, after: nextContinuation, in: database)
                 }
             }
@@ -148,7 +159,9 @@ extension VaultIndex {
         if let terms = expression?.plainTerms, !terms.isEmpty, !terms.contains(where: SearchMatcher.mayMatchNoteExtension) {
             let nameCondition = terms.map { _ in "folded_name LIKE ? ESCAPE '\\'" }.joined(separator: " AND ")
             let namePatterns = terms.map { term in "%" + escapedForLike(foldedKey(term.text)) + "%" }
-            let nameRows = try Row.fetchAll(database, sql: "SELECT rowid, path, title FROM files WHERE \(nameCondition) ORDER BY length(basename), basename, path LIMIT ?",
+            // Notes before attachments, then the shorter names.
+            let notesFirst = "CASE WHEN path LIKE '%.md' OR path LIKE '%.canvas' OR path LIKE '%.base' THEN 0 ELSE 1 END"
+            let nameRows = try Row.fetchAll(database, sql: "SELECT rowid, path, title FROM files WHERE \(nameCondition) ORDER BY \(notesFirst), length(basename), basename, path LIMIT ?",
                                             arguments: StatementArguments(namePatterns.map { pattern in pattern as any DatabaseValueConvertible } + [min(maximumNameMatches, maximumResults)]))
             excludedPaths = nameRows.map { row in row["path"] }
             if continuation == nil { results = nameRows.map { row in (row["rowid"], row["path"], row["title"]) } }
@@ -470,6 +483,9 @@ public struct QuickSwitcherMatch: Identifiable, Sendable {
     /// The alias that matched, when the file was found through one.
     public let alias: String?
     public let score: Double
+    /// Where the match ranks before its score counts: 0 for the query in a row in a note, 1 in a
+    /// row in another file, 2 scattered in a note, 3 scattered in another file.
+    public var tier = 0
     /// Matched characters in the text that matched: the alias, the path (for a query with
     /// `/`), or otherwise the name without `.md`.
     public let matchedRanges: [Range<Int>]
@@ -482,28 +498,48 @@ extension VaultIndex {
     /// Candidates ranked between checks for cancellation.
     private static let cancellationCheckInterval = 256
 
+    /// The SQL condition (starting with " AND ") keeping files with one of `fileExtensions`, and its arguments; none when
+    /// there is no limit on extensions.
+    private static func fileExtensionCondition(for fileExtensions: Set<String>?) -> (sql: String, arguments: [String]) {
+        guard let fileExtensions else { return ("", []) }
+        let sortedExtensions = fileExtensions.sorted()
+        let conditions = sortedExtensions.map { _ in "lower(path) LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
+        return (" AND (" + conditions + ")", sortedExtensions.map { fileExtension in "%." + escapedForLike(fileExtension.lowercased()) })
+    }
+
     /// Files whose name, path, or alias contains the query's characters in order, best first.
-    public nonisolated func quickSwitcherMatches(for query: String, limit: Int = 60) async throws -> [QuickSwitcherMatch] {
+    /// - Parameter onlyFileExtensions: Lowercase extensions (without the dot) the files must have, applied before the
+    ///   candidates are ranked, so a kind of file that other files outrank is not cut off by `limit`. Aliases belong to
+    ///   notes only, so none is looked at when this is given.
+    public nonisolated func quickSwitcherMatches(for query: String, limit: Int = 60,
+                                                 onlyFileExtensions: Set<String>? = nil) async throws -> [QuickSwitcherMatch] {
         let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmedQuery.isEmpty, limit > 0 else { return [] }
+        guard !trimmedQuery.isEmpty, limit > 0, onlyFileExtensions?.isEmpty != true else { return [] }
+        let extensionCondition = Self.fileExtensionCondition(for: onlyFileExtensions)
         let matchesPath = trimmedQuery.contains("/")
         let candidatePattern = FuzzyCandidatePattern(query: trimmedQuery)
-        return try await databaseQueue.read { database in
+        return try await databasePool.read { database in
             let column = matchesPath ? "coalesce(path_key, path)" : "coalesce(name_key, basename)"
-            let rows = try Row.fetchAll(database, sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column)) ORDER BY length(path) LIMIT ?",
-                                        arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + [Self.maximumQuickSwitcherCandidates]))
+            // Which candidates reach the ranking goes by how well the text matches and how
+            // little else it holds, not by how deep the file is: an exact name in a deep folder
+            // is never dropped for weak matches with short paths.
+            let closeness = Self.quickSwitcherClosenessOrder(of: trimmedQuery, on: column)
+            let rows = try Row.fetchAll(database,
+                sql: "SELECT path, basename FROM files WHERE \(candidatePattern.sql(on: column))\(extensionCondition.sql) ORDER BY \(closeness.sql), length(\(column)), length(path) LIMIT ?",
+                                        arguments: StatementArguments((candidatePattern.arguments + extensionCondition.arguments).map { argument in argument as any DatabaseValueConvertible }
+                                            + closeness.arguments + [Self.maximumQuickSwitcherCandidates]))
             // Stored paths and names are already normalized, so candidates are ranked by
             // their text, and only those shown become `VaultPath`s.
-            var candidates: [(pathText: String, alias: String?, score: Double, matchedRanges: [Range<Int>])] = []
+            var candidates: [SwitcherCandidate] = []
             for (rowPosition, row) in rows.enumerated() {
                 // Ranking thousands of candidates takes a while, so a query replaced by the next keystroke stops early.
                 if rowPosition.isMultiple(of: Self.cancellationCheckInterval) { try Task.checkCancellation() }
                 let pathText: String = row["path"]
                 let text = matchesPath ? Self.switcherPathText(pathText) : Self.switcherName(fileName: row["basename"])
                 guard let match = FuzzyMatcher.match(trimmedQuery, in: text) else { continue }
-                candidates.append((pathText, nil, match.score, match.matchedRanges))
+                candidates.append(SwitcherCandidate(pathText: pathText, alias: nil, match: match))
             }
-            if !matchesPath {
+            if !matchesPath, onlyFileExtensions == nil {
                 let rows = try Row.fetchAll(database, sql: "SELECT path, alias FROM aliases WHERE \(candidatePattern.sql(on: "alias")) LIMIT ?",
                                             arguments: StatementArguments(candidatePattern.arguments.map { argument in argument as any DatabaseValueConvertible } + [Self.maximumQuickSwitcherCandidates]))
                 for (rowPosition, row) in rows.enumerated() {
@@ -511,16 +547,59 @@ extension VaultIndex {
                     let alias: String = row["alias"]
                     guard let match = FuzzyMatcher.match(trimmedQuery, in: alias) else { continue }
                     // An alias ranks just below the same match on a name.
-                    candidates.append((row["path"], alias, match.score - 0.5, match.matchedRanges))
+                    candidates.append(SwitcherCandidate(pathText: row["path"], alias: alias, match: match, scorePenalty: 0.5))
                 }
             }
-            let shown = candidates.sorted { leftCandidate, rightCandidate in
-                leftCandidate.score != rightCandidate.score ? leftCandidate.score > rightCandidate.score : leftCandidate.pathText < rightCandidate.pathText
-            }.prefix(limit)
-            return try shown.map { candidate in
-                QuickSwitcherMatch(path: try VaultPath(candidate.pathText), alias: candidate.alias, score: candidate.score, matchedRanges: candidate.matchedRanges)
+            return try candidates.sorted(by: SwitcherCandidate.isRankedBefore).prefix(limit).map { candidate in try candidate.quickSwitcherMatch }
+        }
+    }
+
+    /// A file found for the quick switcher, before it is ranked.
+    private struct SwitcherCandidate {
+        let pathText: String
+        let alias: String?
+        let score: Double
+        let matchedRanges: [Range<Int>]
+        let tier: Int
+
+        init(pathText: String, alias: String?, match: FuzzyMatcher.Match, scorePenalty: Double = 0) {
+            self.pathText = pathText
+            self.alias = alias
+            score = match.score - scorePenalty
+            matchedRanges = match.matchedRanges
+            tier = VaultIndex.switcherTier(pathText: pathText, matchedRangeCount: match.matchedRanges.count)
+        }
+
+        static func isRankedBefore(_ leftCandidate: SwitcherCandidate, _ rightCandidate: SwitcherCandidate) -> Bool {
+            if leftCandidate.tier != rightCandidate.tier { return leftCandidate.tier < rightCandidate.tier }
+            if leftCandidate.score != rightCandidate.score { return leftCandidate.score > rightCandidate.score }
+            return leftCandidate.pathText < rightCandidate.pathText
+        }
+
+        var quickSwitcherMatch: QuickSwitcherMatch {
+            get throws {
+                QuickSwitcherMatch(path: try VaultPath(pathText), alias: alias, score: score, tier: tier, matchedRanges: matchedRanges)
             }
         }
+    }
+
+    /// Where a match ranks before its score counts: the query written in a row in a note, then in a
+    /// row in another file (an image, a PDF), then scattered over a note's name, last scattered over
+    /// another file's. A picture whose name only holds the query's letters apart does not lead the notes.
+    private static func switcherTier(pathText: String, matchedRangeCount: Int) -> Int {
+        let kind = DocumentKind(fileExtension: (pathText as NSString).pathExtension)
+        let isNote = kind == .markdown || kind == .canvas || kind == .base
+        return (matchedRangeCount > 1 ? 2 : 0) + (isNote ? 0 : 1)
+    }
+
+    /// An SQL order putting the name equal to the query first, with or without `.md`, then those
+    /// starting with it, then those holding it, then the rest. LIKE folds ASCII letters; a name
+    /// with other letters written differently falls to its length among the rest.
+    private static func quickSwitcherClosenessOrder(of query: String, on column: String) -> (sql: String, arguments: [any DatabaseValueConvertible]) {
+        let escapedQuery = escapedForLike(query)
+        let sql = "CASE WHEN \(column) LIKE ? ESCAPE '\\' OR \(column) LIKE ? ESCAPE '\\' THEN 0 "
+            + "WHEN \(column) LIKE ? ESCAPE '\\' THEN 1 WHEN \(column) LIKE ? ESCAPE '\\' THEN 2 ELSE 3 END"
+        return (sql, [escapedQuery, escapedQuery + ".%", escapedQuery + "%", "%" + escapedQuery + "%"])
     }
 
     /// A note's name without `.md`, or another file's full name, as the switcher shows it.
@@ -532,7 +611,7 @@ extension VaultIndex {
         DocumentKind(fileExtension: (fileName as NSString).pathExtension) == .markdown ? (fileName as NSString).deletingPathExtension : fileName
     }
 
-    static func switcherPathText(_ pathText: String) -> String {
+    public static func switcherPathText(_ pathText: String) -> String {
         DocumentKind(fileExtension: (pathText as NSString).pathExtension) == .markdown ? (pathText as NSString).deletingPathExtension : pathText
     }
 }
@@ -664,7 +743,7 @@ extension VaultIndex {
         // LIKE ignores case for ASCII letters only, so any other character of the query
         // matches any text here, and the comparison below decides.
         let pattern = "%" + query.map { character in character.isASCII ? Self.escapedForLike(String(character)) : "%" }.joined() + "%"
-        return try await databaseQueue.read { database in
+        return try await databasePool.read { database in
             // SQLite groups spellings that differ in ASCII capitals; other capitals, such
             // as `#Été` and `#été`, are grouped here.
             let rows = try Row.fetchAll(database, sql: "SELECT tag, COUNT(DISTINCT path) AS fileCount FROM tags WHERE tag LIKE ? ESCAPE '\\' GROUP BY tag COLLATE NOCASE",
@@ -697,8 +776,10 @@ extension VaultIndex {
 
     /// Every level of every tag (`course` and `course/math` for `#course/math`), each with
     /// the notes that have it or a tag nested under it, for the Tags view's nested list.
-    public func nestedTagCounts() throws -> [TagCount] {
-        try databaseQueue.read { database in
+    public nonisolated func nestedTagCounts() async throws -> [TagCount] {
+        try await databasePool.read { database in
+            // Tags that differ only in capitals, in any language, are one tag and count their notes once.
+            database.add(function: Self.foldedKeyFunction)
             let rows = try Row.fetchAll(database, sql: """
                 WITH RECURSIVE levels(tag, rest, path) AS (
                   SELECT CASE WHEN instr(tag, '/') > 0 THEN substr(tag, 1, instr(tag, '/') - 1) ELSE tag END,
@@ -708,7 +789,7 @@ extension VaultIndex {
                          CASE WHEN instr(rest, '/') > 0 THEN substr(rest, instr(rest, '/') + 1) ELSE '' END, path
                   FROM levels WHERE rest != ''
                 )
-                SELECT tag, COUNT(DISTINCT path) AS fileCount FROM levels WHERE tag != '' GROUP BY tag COLLATE NOCASE
+                SELECT MIN(tag) AS tag, COUNT(DISTINCT path) AS fileCount FROM levels WHERE tag != '' GROUP BY \(Self.foldedKeyFunctionName)(tag)
                 """)
             return rows.map { row in TagCount(tag: row["tag"], fileCount: row["fileCount"]) }
         }
@@ -726,8 +807,8 @@ public struct PropertyUsage: Sendable {
 extension VaultIndex {
     /// Every property name in the vault, names differing only in capitals counted once, as
     /// Obsidian counts them.
-    public func propertyUsages(sampleCount: Int = 5) throws -> [PropertyUsage] {
-        try databaseQueue.read { database in
+    public nonisolated func propertyUsages(sampleCount: Int = 5) async throws -> [PropertyUsage] {
+        try await databasePool.read { database in
             let counts = try Row.fetchAll(database, sql: """
                 SELECT key, COUNT(DISTINCT path) AS fileCount FROM properties GROUP BY key COLLATE NOCASE
                 """)
@@ -753,7 +834,7 @@ extension VaultIndex {
 
     /// Notes with a property named `key`, ignoring capitals.
     public func paths(withPropertyKey key: String) throws -> [VaultPath] {
-        try databaseQueue.read { database in
+        try databasePool.read { database in
             try String.fetchAll(database, sql: "SELECT DISTINCT path FROM properties WHERE key = ? COLLATE NOCASE ORDER BY path", arguments: [key])
                 .compactMap { rawPath in try? VaultPath(rawPath) }
         }

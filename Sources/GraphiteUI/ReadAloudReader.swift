@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudReader.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The Read Aloud reader's sheets: the player, the range, section and note pickers.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import AVFoundation
 import GraphiteCore
@@ -333,6 +344,52 @@ struct ReadAloudPDFSectionPicker: View {
     }
 }
 
+/// A page number as a field to type in and a stepper beside it.
+private struct ReadAloudPageNumberRow: View {
+    let title: String
+    @Binding var page: Int
+    let range: ClosedRange<Int>
+    @State private var typedText = ""
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+            Spacer()
+            TextField(title, text: $typedText)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 72)
+                .textFieldStyle(.roundedBorder)
+                #if os(iOS)
+                .keyboardType(.numberPad)
+                #endif
+                .accessibilityLabel(title)
+            Stepper(title, value: $page, in: range)
+                .labelsHidden()
+        }
+        .onAppear { typedText = String(page) }
+        .onChange(of: typedText) { _, text in
+            // The page follows the digits as they are typed, kept inside the PDF; an empty field waits.
+            guard let typedPage = ReadAloudPageNumberInput.page(typing: text, in: range) else { return }
+            if typedPage != page { page = typedPage }
+        }
+        .onChange(of: page) { _, newPage in
+            if ReadAloudPageNumberInput.page(typing: typedText, in: range) != newPage { typedText = String(newPage) }
+        }
+    }
+}
+
+/// What a typed page number means.
+enum ReadAloudPageNumberInput {
+    /// The page the digits name, brought inside `range`; nil for no digits at all.
+    static func page(typing text: String, in range: ClosedRange<Int>) -> Int? {
+        let digits = text.filter(\.isWholeNumber)
+        guard !digits.isEmpty else { return nil }
+        // A number of many digits is past any PDF; it is the last page rather than an overflow.
+        guard let typedPage = Int(digits.prefix(9)) else { return nil }
+        return min(max(typedPage, range.lowerBound), range.upperBound)
+    }
+}
+
 struct ReadAloudPDFRangePicker: View {
     let pageCount: Int
     let startingPageIndex: Int
@@ -344,9 +401,10 @@ struct ReadAloudPDFRangePicker: View {
     var body: some View {
         NavigationStack {
             Form {
-                Stepper("First page: \(firstPage)", value: $firstPage, in: 1...max(1, pageCount))
+                // A page is typed or stepped to: page 400 of a long PDF is not a few hundred taps away.
+                ReadAloudPageNumberRow(title: "First page", page: $firstPage, range: 1...max(1, pageCount))
                     .onChange(of: firstPage) { _, firstPage in if lastPage < firstPage { lastPage = firstPage } }
-                Stepper("Last page: \(lastPage)", value: $lastPage, in: firstPage...max(firstPage, pageCount))
+                ReadAloudPageNumberRow(title: "Last page", page: $lastPage, range: firstPage...max(firstPage, pageCount))
                 Text("Uses page positions in the PDF, which may differ from printed page numbers. The reader loads one page at a time. Scanned pages pause for transcript review before Play.")
                     .font(.caption).foregroundStyle(.secondary)
             }

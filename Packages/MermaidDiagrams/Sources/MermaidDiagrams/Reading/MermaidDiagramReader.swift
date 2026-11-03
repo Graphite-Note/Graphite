@@ -1,3 +1,14 @@
+/**
+ * File: MermaidDiagramReader.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: Reads Mermaid text: front matter, comments, directives and the diagram's type.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.16
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// A diagram read from Mermaid text, by type.
@@ -31,6 +42,9 @@ public enum MermaidDiagramReader {
         guard let keyword = readTypeKeyword(&cursor) else {
             throw cursor.isAtEnd ? .noDiagram : .invalidSyntax(line: cursor.line, problem: .unexpectedText(cursor.excerpt()))
         }
+        // A Git graph's lexer skips directives of several lines itself, and its options are found in them; the others are
+        // given the text without them.
+        if keyword != "gitGraph" { cursor = withoutMultiLineDirectives(cursor) }
         switch keyword {
         case "flowchart", "graph", "flowchart-elk": return .flowchart(titled(try FlowchartParser.parse(cursor, limits: limits), frontMatterTitle: title))
         case "stateDiagram", "stateDiagram-v2": return .stateDiagram(titled(try StateDiagramParser.parse(cursor, limits: limits), frontMatterTitle: title))
@@ -77,12 +91,26 @@ public enum MermaidDiagramReader {
         return title
     }
 
+    /// Skips what comes before the diagram's keyword: comments, and directives, those of several lines to their end.
     private static func skipCommentsAndBlankLines(_ cursor: inout MermaidTextCursor) {
         while true {
             cursor.skipWhitespace()
             guard cursor.hasPrefix(commentStart) else { return }
-            cursor.skipToEndOfLine()
+            if let end = MermaidDirectives.endOfMultiLineDirective(in: cursor.bytes, at: cursor.position) {
+                cursor.advance(by: end - cursor.position)
+            } else {
+                cursor.skipToEndOfLine()
+            }
         }
+    }
+
+    /// `cursor` at the same place in the text with its directives of several lines turned into blanks, which the
+    /// readers of a diagram's statements skip; the cursor itself when there are none.
+    private static func withoutMultiLineDirectives(_ cursor: MermaidTextCursor) -> MermaidTextCursor {
+        guard let bytes = MermaidDirectives.blankingMultiLineDirectives(in: cursor.bytes, from: cursor.position) else { return cursor }
+        var blanked = MermaidTextCursor(bytes: bytes)
+        blanked.advance(by: cursor.position)
+        return blanked
     }
 
     /// The keyword that names the type: a letter, then letters, digits and `-` (`stateDiagram-v2`).

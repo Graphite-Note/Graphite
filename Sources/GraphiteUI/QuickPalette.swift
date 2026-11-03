@@ -6,8 +6,8 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 21/10/2026
+ * Version: 0.12
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -40,6 +40,8 @@ struct QuickPalette: View {
     let emptyMessage: String
     /// True while the items are still for an earlier query; Return then waits for them.
     var isUpdating = false
+    /// What the other side of the split is called in the menu of a file; the workspace's wording.
+    var otherSideTitle = "Open to the Right"
     let close: () -> Void
     @State private var selectedIndex = 0
     @State private var isSubmitPending = false
@@ -48,9 +50,18 @@ struct QuickPalette: View {
     @State private var resultsHeight: CGFloat = 0
     @FocusState private var isFieldFocused: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// The height the palette's overlay has above the keyboard (`PaletteOverlay`), nil outside one.
+    @Environment(\.paletteAvailableHeight) private var paletteAvailableHeight
     private static let maximumResultsHeight: CGFloat = 420
-    /// On a phone the keyboard takes the lower half of the screen; the results stay above it.
+    /// On a phone the keyboard takes the lower half of the screen; the results stay above it. At least this
+    /// much, and more where the overlay has the room: a fixed 300 left about 120 points empty above the keyboard.
     private static let maximumCompactResultsHeight: CGFloat = 300
+    /// What the search field, the panel's margins and its rounded edge take of the overlay's height.
+    private static let compactPanelChromeHeight: CGFloat = 96
+    private var maximumResultsHeight: CGFloat {
+        guard isCompactWidth else { return Self.maximumResultsHeight }
+        return max(Self.maximumCompactResultsHeight, (paletteAvailableHeight ?? 0) - Self.compactPanelChromeHeight)
+    }
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
     #if canImport(UIKit)
     private static let secondaryColor = Color(uiColor: .secondaryLabel)
@@ -58,6 +69,15 @@ struct QuickPalette: View {
     private static let secondaryColor = Color(nsColor: .secondaryLabelColor)
     #endif
     @Environment(\.accent) private var accent
+
+    /// How a file's menu is reached: a touch screen has no right button.
+    static var moreMenuHint: String {
+        #if os(macOS)
+        "right-click"
+        #else
+        "touch and hold"
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,7 +117,7 @@ struct QuickPalette: View {
                                     .contextMenu {
                                         if let openElsewhere = item.openElsewhere {
                                             Button("Open in New Tab", systemImage: "plus.rectangle.on.rectangle") { Self.perform({ openElsewhere(.newTab) }, closing: close) }
-                                            Button("Open on the Other Side", systemImage: "rectangle.split.2x1") { Self.perform({ openElsewhere(.otherGroup) }, closing: close) }
+                                            Button(otherSideTitle, systemImage: "rectangle.split.2x1") { Self.perform({ openElsewhere(.otherGroup) }, closing: close) }
                                         }
                                     }
                             }
@@ -111,12 +131,12 @@ struct QuickPalette: View {
                     }
                 }
                 // As tall as the results, up to a limit, instead of filling the screen.
-                .frame(height: min(max(resultsHeight, 52), isCompactWidth ? Self.maximumCompactResultsHeight : Self.maximumResultsHeight))
+                .frame(height: min(max(resultsHeight, 52), maximumResultsHeight))
                 // The keyboard shortcuts mean nothing on a phone, where tabs have no sides.
                 if !isCompactWidth && items.contains(where: { item in item.openElsewhere != nil }) {
                     Divider()
                     // The text variation selector keeps ↩ from being drawn as an emoji.
-                    Text("⌘↩\u{FE0E} new tab    ⌥⌘↩\u{FE0E} other side    long press for more")
+                    Text("⌘↩\u{FE0E} new tab    ⌥⌘↩\u{FE0E} other side    \(Self.moreMenuHint) for more")
                         .font(.caption)
                         .foregroundStyle(Self.secondaryColor)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -142,13 +162,15 @@ struct QuickPalette: View {
             // drawn with the material's vibrancy and nearly disappeared.
             Image(systemName: item.systemImage).foregroundStyle(Self.secondaryColor).frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
-                Text(highlighted(item)).lineLimit(1).foregroundStyle(Color.primary)
+                // Two lines on a phone, where "Quick switcher: Open quick switcher" is cut short on one.
+                Text(highlighted(item)).lineLimit(isCompactWidth ? 2 : 1).foregroundStyle(Color.primary)
                 if let subtitle = item.subtitle {
                     Text(subtitle).font(.caption).foregroundStyle(Self.secondaryColor).lineLimit(1)
                 }
             }
             Spacer(minLength: 8)
-            if let shortcut = item.shortcut {
+            // A phone has no hardware keyboard to press them on.
+            if let shortcut = item.shortcut, !isCompactWidth {
                 Text(shortcut).font(.caption.monospaced()).foregroundStyle(Self.secondaryColor)
             }
         }
@@ -213,6 +235,7 @@ struct PaletteOverlay<Palette: View>: View {
     let close: () -> Void
     @ViewBuilder let palette: Palette
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var availableHeight: CGFloat?
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -221,8 +244,16 @@ struct PaletteOverlay<Palette: View>: View {
             palette.padding(.horizontal, horizontalSizeClass == .compact ? 10 : 16).padding(.top, horizontalSizeClass == .compact ? 8 : 70)
                 .placedBesideDisplayFold(alignment: .top)
         }
+        // The room above the keyboard, which the safe area is shortened by.
+        .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in availableHeight = height }
+        .environment(\.paletteAvailableHeight, availableHeight)
         .transition(.opacity)
     }
+}
+
+extension EnvironmentValues {
+    /// The height a palette's overlay has above the keyboard, nil outside an overlay or before it is measured.
+    @Entry var paletteAvailableHeight: CGFloat? = nil
 }
 
 // MARK: Quick switcher
@@ -240,11 +271,12 @@ struct QuickSwitcher: View {
     var body: some View {
         QuickPalette(prompt: "Find or create a note…", query: $query, items: items,
                      emptyMessage: query.isEmpty ? "Files you open appear here." : "No files match.",
-                     isUpdating: matchedQuery != query, close: close)
+                     isUpdating: matchedQuery != query, otherSideTitle: workspace.openOnOtherSideTitle, close: close)
             .task(id: query) {
                 do { try await Task.sleep(for: .milliseconds(60)) } catch { return }
                 let searchedQuery = query
-                let foundMatches = try? await workspace.index?.quickSwitcherMatches(for: searchedQuery)
+                let noteQuery = SwitcherQuery(searchedQuery).noteQuery
+                let foundMatches = try? await workspace.index?.quickSwitcherMatches(for: noteQuery) // A failed lookup lists nothing.
                 // A lookup cancelled because the query changed found nothing; storing that
                 // would flash "No files match." for the old query.
                 guard !Task.isCancelled else { return }
@@ -254,34 +286,30 @@ struct QuickSwitcher: View {
     }
 
     private var items: [PaletteItem] {
-        let trimmedQuery = query.trimmingCharacters(in: .whitespaces)
-        if trimmedQuery.isEmpty {
+        let switcher = SwitcherQuery(query)
+        if switcher.noteQuery.isEmpty {
             return workspace.existingRecentFiles(limit: 20, excluding: Set([workspace.selection].compactMap { path in path })).map { path in
-                fileItem(path, title: workspace.preferences.displayName(for: path), highlights: [], alias: nil)
+                fileItem(path, title: workspace.preferences.displayName(for: path), highlights: [], alias: nil, switcher: switcher)
             }
         }
         // Recent files rank a little higher, as Obsidian ranks them.
         let recentPaths = Set(workspace.recentFiles.paths.prefix(10))
         var ranked = Self.uniqueMatches(matches).sorted { leftMatch, rightMatch in
+            if leftMatch.tier != rightMatch.tier { return leftMatch.tier < rightMatch.tier }
             let leftScore = leftMatch.score + (recentPaths.contains(leftMatch.path) ? 1.5 : 0)
             let rightScore = rightMatch.score + (recentPaths.contains(rightMatch.path) ? 1.5 : 0)
             return leftScore > rightScore
         }.map { match in
-            fileItem(match.path, title: Self.title(of: match, foundFor: matchedQuery), highlights: match.matchedRanges, alias: match.alias)
+            fileItem(match.path, title: Self.title(of: match, foundFor: matchedQuery), highlights: match.matchedRanges, alias: match.alias, switcher: switcher)
         }
-        let isExistingNote = matches.contains { match in match.alias == nil && VaultIndex.switcherName(match.path).caseInsensitiveCompare(trimmedQuery) == .orderedSame }
-        if !isExistingNote, FileNameRules.problem(with: trimmedQuery, isNote: true) == nil {
-            // Until the index has seen every file, a note may exist without being found:
-            // Return then does not create a second one.
-            let isIndexComplete = workspace.hasCompletedIndexScan
-            var create = PaletteItem(id: "create", title: "Create “\(trimmedQuery)”",
-                                     subtitle: isIndexComplete ? "New note in \(folderDescription)" : "Graphite is still reading the vault; this note may already exist",
-                                     systemImage: "plus") { [workspace] in
-                Task { await workspace.createNote(named: trimmedQuery) }
-            }
-            create.requiresExplicitChoice = !isIndexComplete
-            ranked.append(create)
+        let typedPath = switcher.noteQuery.hasPrefix("/") ? String(switcher.noteQuery.dropFirst()) : switcher.noteQuery
+        let isExistingNote = matches.contains { match in
+            guard match.alias == nil else { return false }
+            let isNameOnly = switcher.folder == nil && !typedPath.contains("/")
+            let existingText = isNameOnly ? VaultIndex.switcherName(match.path) : VaultIndex.switcherPathText(match.path.rawValue)
+            return existingText.caseInsensitiveCompare(typedPath) == .orderedSame
         }
+        if !isExistingNote { ranked.append(creationItem(for: switcher)) }
         return ranked
     }
 
@@ -289,7 +317,7 @@ struct QuickSwitcher: View {
     /// the one being typed, since the match's highlighted ranges are offsets into that text.
     static func title(of match: QuickSwitcherMatch, foundFor matchedQuery: String) -> String {
         if let alias = match.alias { return alias }
-        return matchedQuery.contains("/") ? match.path.rawValue : VaultIndex.switcherName(match.path)
+        return SwitcherQuery(matchedQuery).noteQuery.contains("/") ? match.path.rawValue : VaultIndex.switcherName(match.path)
     }
 
     /// The matches without repeats, since each row's identifier must be unique. A note can
@@ -299,19 +327,25 @@ struct QuickSwitcher: View {
         return matches.filter { match in seenIdentifiers.insert(match.id).inserted }
     }
 
-    private var folderDescription: String {
-        let directory = workspace.newFileDirectory(nil)
-        return directory.rawValue.isEmpty ? workspace.title : directory.rawValue
-    }
-
-    private func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?) -> PaletteItem {
+    private func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?, switcher: SwitcherQuery) -> PaletteItem {
         let folder = path.parent.rawValue
         let subtitle = alias != nil ? workspace.preferences.displayName(for: path) + (folder.isEmpty ? "" : " — " + folder) : (folder.isEmpty ? nil : folder)
         var item = PaletteItem(id: path.rawValue + "|" + (alias ?? ""), title: title, titleHighlights: highlights, subtitle: subtitle,
                                systemImage: alias != nil ? "arrow.turn.down.right" : DocumentKind(path: path).systemImage) { [workspace] in
-            Task { await workspace.open(path) }
+            // `Note#Heading` goes to the heading, `Note#^block` to the block.
+            if let target = switcher.linkTarget(to: path) {
+                Task { await workspace.follow(target, from: path, isWiki: true) }
+            } else {
+                Task { await workspace.open(path) }
+            }
         }
-        item.openElsewhere = { [workspace] placement in Task { await workspace.open(path, placement: placement) } }
+        item.openElsewhere = { [workspace] placement in
+            if let target = switcher.linkTarget(to: path) {
+                Task { await workspace.follow(target, from: path, isWiki: true, placement: placement) }
+            } else {
+                Task { await workspace.open(path, placement: placement) }
+            }
+        }
         return item
     }
 }

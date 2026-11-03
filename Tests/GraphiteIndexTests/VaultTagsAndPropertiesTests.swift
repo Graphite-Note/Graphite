@@ -1,3 +1,14 @@
+/**
+ * File: VaultTagsAndPropertiesTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: The vault's tags and properties, and the link graph built from the index.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteIndex
 import GraphiteCore
@@ -26,6 +37,23 @@ final class VaultTagsAndPropertiesTests: XCTestCase {
         XCTAssertEqual(countByTag, [
             "course": 3, "course/math": 1, "course/math/linear": 1, "course/physics": 1, "exam": 2,
         ], "Algebra has course/math twice (property and text) and counts once.")
+    }
+
+    func testNestedTagsDifferingInANonASCIICapitalAreCountedOverTheUnionOfNotes() async throws {
+        let otherDirectory = try TemporaryVault.make(prefix: "TemporaryFolder", for: self).root
+        let unionIndex = try VaultIndex(databaseURL: otherDirectory.appendingPathComponent("index.sqlite"))
+        try await unionIndex.update([
+            IndexedFile(path: try VaultPath("A.md"), size: 1, modified: .now, markdown: "#Étude/un"),
+            IndexedFile(path: try VaultPath("B.md"), size: 1, modified: .now, markdown: "#Étude/un"),
+            IndexedFile(path: try VaultPath("C.md"), size: 1, modified: .now, markdown: "#étude/deux"),
+            IndexedFile(path: try VaultPath("D.md"), size: 1, modified: .now, markdown: "#étude #Étude"),
+        ], generation: "test")
+
+        let counts = try await unionIndex.nestedTagCounts()
+
+        XCTAssertEqual(counts.filter { count in count.tag.lowercased() == "étude" }.map(\.fileCount), [4], "Four notes carry the tag in one spelling or the other, counted once in one row.")
+        let nodes = TagTree.nodes(from: counts.map { count in (count.tag, count.fileCount) }, sortedBy: .nameAscending)
+        XCTAssertEqual(nodes.first?.fileCount, 4)
     }
 
     func testPropertyUsagesIgnoreCapitalsAndKeepSampleValues() async throws {
@@ -66,7 +94,8 @@ final class VaultGraphTests: XCTestCase {
             GraphEdge(source: "Course/Lecture.md", target: "Missing"),
             GraphEdge(source: "Course/Lecture.md", target: "#course"),
             GraphEdge(source: "Course/Sampling.md", target: "Course/Lecture.md"),
-        ], "The property link and the text link are one edge; the ambiguous Twin and the web link are left out.")
+            GraphEdge(source: "Course/Lecture.md", target: "A/Twin.md"),
+        ], "The property link and the text link are one edge; Twin means one of its files, as in Obsidian; the web link is left out.")
         XCTAssertEqual(graph.nodes.first { node in node.id == "Course/figure.png" }?.kind, .attachment)
         XCTAssertEqual(graph.nodes.first { node in node.id == "Missing" }?.kind, .unresolved)
         XCTAssertEqual(graph.nodes.filter { node in node.kind == .note }.count, 5)

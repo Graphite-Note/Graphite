@@ -1,3 +1,14 @@
+/**
+ * File: FolderCustomizationPopover.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: The popover that gives a folder a color, a symbol, an emoji or a picture, with a live preview.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import PhotosUI
 import GraphiteCore
@@ -114,7 +125,11 @@ struct FolderCustomizationPopover: View {
         VStack(spacing: 4) {
             FolderArtView(style: draft, image: previewImage, symbolPointSize: Self.previewSymbolPoints)
                 .frame(height: Self.previewSymbolPoints * 1.25)
-                .task(id: draft) { previewImage = await pictureActions.drawPreview(draft) }
+                .task(id: draft) {
+                    let drawnPreview = await pictureActions.drawPreview(draft)
+                    // A run replaced by a newer look (quick taps) must not put its older picture over the newer one.
+                    if !Task.isCancelled { previewImage = drawnPreview }
+                }
             Text(folderName)
                 .font(.headline)
                 .lineLimit(1)

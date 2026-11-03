@@ -1,3 +1,14 @@
+/**
+ * File: Parser.swift
+ * ------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Parses LaTeX into a list of atoms.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 extension Math {
@@ -31,6 +42,8 @@ extension Math {
       var ended: Bool
       var numberOfRows: Int
       var alignment: Table.ColumnAlignment?  // Optional alignment for starred matrix environments
+      var horizontalRuleRows: [Int] = []  // Graphite patch: where \hline was written
+      var extraHeightsAboveRowsInEm: [Int: CGFloat] = [:]  // Graphite patch: \\[2pt]
 
       init(name: String?, alignment: Table.ColumnAlignment? = nil) {
         self.name = name
@@ -162,6 +175,12 @@ extension Math {
       "supset": "\u{2285}",  // ⊅ Not superset
       "supseteq": "\u{2289}",  // ⊉ Not superset or equal
       "=": "\u{2260}",  // ≠ Not equal (alternative to \neq)
+      // Graphite patch 11
+      "leq": "\u{2270}",  // ≰ Not less or equal
+      "geq": "\u{2271}",  // ≱ Not greater or equal
+      "prec": "\u{2280}",  // ⊀ Not precedes
+      "succ": "\u{2281}",  // ⊁ Not succeeds
+      "mid": "\u{2224}",  // ∤ Not divides
     ]
 
     init(string: String) {
@@ -239,10 +258,6 @@ extension Math {
       }
 
       // Note: For inline mode, we insert \textstyle to match LaTeX behavior.
-      // However, fractionStyle() has been modified to keep fractions at the
-      // same font size in both display and text modes (not one level smaller).
-      // Large operators show limits above/below in text style due to the updated
-      // condition in makeLargeOp() that checks both .display and .text styles.
       if mode == .inline && list != nil && !list!.atoms.isEmpty {
         // Prepend \textstyle to force inline rendering
         let styleAtom = Style(level: .text)
@@ -410,8 +425,12 @@ extension Math {
             // This enables Chinese, Japanese, Korean, emoji, etc. in \text{} commands
             if spacesAllowed && currentFontStyle == .roman {
               atom = Atom(type: .ordinary, nucleus: String(char))
+            } else if let typedAtom = AtomFactory.atom(forTypedCharacter: char) {
+              // Graphite patch: a character typed in math, such as `δ` or `≤`, is drawn as
+              // its command would be, or as a letter or symbol, as MathJax draws it.
+              atom = typedAtom
             } else {
-              // In math mode or non-text commands, skip unrecognized characters
+              // Spaces and other invisible characters
               continue
             }
           }
@@ -471,8 +490,13 @@ extension Math {
                     "\\cfrac{\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
                 }
               } else if frac.hasRule {
+                let command = frac.wholeStyle == .display ? "dfrac" : frac.wholeStyle == .text ? "tfrac" : "frac"
                 str +=
-                  "\\frac{\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
+                  "\\\(command){\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
+              } else if frac.wholeStyle != nil {
+                let command = frac.wholeStyle == .display ? "dbinom" : "tbinom"
+                str +=
+                  "\\\(command){\(atomListToString(frac.numerator!))}{\(atomListToString(frac.denominator!))}"
               } else {
                 let command: String
                 if frac.leftDelimiter.isEmpty && frac.rightDelimiter.isEmpty {
@@ -582,7 +606,9 @@ extension Math {
             let command = AtomFactory.latexSymbolName(for: atom)
             let originalOp = AtomFactory.atom(forLatexSymbol: command!) as! LargeOperator
             str += "\\\(command!) "
-            if originalOp.limits != op.limits {
+            if op.stacksLimitsInEveryStyle {
+              str += "\\limits "
+            } else if originalOp.limits != op.limits {
               if op.limits {
                 str += "\\limits "
               } else {
@@ -684,33 +710,12 @@ extension Math {
         frac.numerator = self.buildInternal(true)
         frac.denominator = self.buildInternal(true)
         return frac
-      } else if command == "dfrac" {
-        // Display-style fraction command has 2 arguments
+      } else if command == "dfrac" || command == "tfrac" {
+        // Graphite patch: the whole fraction is in display or text style (`Fraction.wholeStyle`).
         let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \displaystyle to force display mode rendering
-        let displayStyle = Style(level: .display)
-        numerator?.insert(displayStyle, at: 0)
-        denominator?.insert(displayStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
-        return frac
-      } else if command == "tfrac" {
-        // Text-style fraction command has 2 arguments
-        let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \textstyle to force text mode rendering
-        let textStyle = Style(level: .text)
-        numerator?.insert(textStyle, at: 0)
-        denominator?.insert(textStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
+        frac.wholeStyle = command == "dfrac" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
         return frac
       } else if command == "binom" {
         // A binom command has 2 arguments
@@ -776,7 +781,11 @@ extension Math {
         // Similar to how \frac reads {numerator}{denominator}
 
         // Read the braced content using standard pattern
+        // Graphite patch: its rows are its own, not those of an environment around it.
+        let outerEnvironment = self.currentEnvironment
+        self.currentEnvironment = nil
         let content = self.buildInternal(true)
+        self.currentEnvironment = outerEnvironment
 
         if content == nil {
           return nil
@@ -805,7 +814,18 @@ extension Math {
         if env == nil {
           return nil
         }
+        // Graphite patch: an array's columns are aligned and ruled as its preamble says.
+        let preamble = env == "array" ? self.readArrayPreamble() : nil
+        if env == "array" && preamble == nil {
+          return nil
+        }
         let table = self.buildTable(environment: env, firstList: nil, isRow: false)
+        if let table = table as? Table, let preamble {
+          for (column, alignment) in preamble.alignments.enumerated() where column < table.numberOfColumns {
+            table.setAlignment(alignment, forColumn: column)
+          }
+          table.verticalRuleColumns = preamble.verticalRuleColumns
+        }
         return table
       } else if command == "color" {
         // A color command has 2 arguments
@@ -873,6 +893,31 @@ extension Math {
           self.setError(.invalidCommand, message: errorMessage)
           return nil
         }
+      } else if Self.readsDecoratedList(command) {
+        // Graphite patch: \boxed, \cancel, \phantom, \overset, \xrightarrow, \big( and their kin.
+        return self.decoratedList(forCommand: command)
+      } else if command == "dbinom" || command == "tbinom" {
+        // Graphite patch: a binomial in display or text style, as \dfrac and \tfrac are.
+        let frac = Fraction(hasRule: false)
+        frac.wholeStyle = command == "dbinom" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
+        frac.leftDelimiter = "("
+        frac.rightDelimiter = ")"
+        return frac
+      } else if command == "operatorname*" {
+        // Graphite patch: an operator name with limits, as \lim has them.
+        return self.operatorWithLimits()
+      } else if command == "hline" || command == "hdashline" {
+        // Graphite patch: a rule before the current row, drawn with the table; dashes are not
+        // drawn. Nothing stands in the cell.
+        if let row = self.currentEnvironment?.numberOfRows {
+          self.currentEnvironment?.horizontalRuleRows.append(row)
+        }
+        return Space(amount: 0)
+      } else if command == "hspace" || command == "hspace*" {
+        // Graphite patch: a space of a given length.
+        return self.horizontalSpace()
       } else {
         let errorMessage = "Invalid command \\\(command)"
         self.setError(.invalidCommand, message: errorMessage)
@@ -970,9 +1015,14 @@ extension Math {
         fracList.append(frac)
         return fracList
       } else if command == "\\" || command == "cr" {
+        // Graphite patch: `\\[2pt]` is one row break, with height added above the next row.
+        let extraHeightInEm = self.readRowBreakLengthInEm()
         if currentEnvironment != nil {
           // Stop the current list and increment the row count
           currentEnvironment!.numberOfRows += 1
+          if let extraHeightInEm {
+            currentEnvironment!.extraHeightsAboveRowsInEm[currentEnvironment!.numberOfRows] = extraHeightInEm
+          }
           return list
         } else {
           // Create a new table with the current list and a default env
@@ -1012,6 +1062,7 @@ extension Math {
         } else {
           let op = atom as! LargeOperator
           op.limits = true
+          op.stacksLimitsInEveryStyle = true
         }
         return true
       } else if modifier == "nolimits" {
@@ -1021,6 +1072,7 @@ extension Math {
         } else {
           let op = atom as! LargeOperator
           op.limits = false
+          op.stacksLimitsInEveryStyle = false
         }
         return true
       }
@@ -1067,33 +1119,12 @@ extension Math {
         frac.numerator = self.buildInternal(true)
         frac.denominator = self.buildInternal(true)
         return frac
-      } else if command == "dfrac" {
-        // Display-style fraction command has 2 arguments
+      } else if command == "dfrac" || command == "tfrac" {
+        // Graphite patch: the whole fraction is in display or text style (`Fraction.wholeStyle`).
         let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \displaystyle to force display mode rendering
-        let displayStyle = Style(level: .display)
-        numerator?.insert(displayStyle, at: 0)
-        denominator?.insert(displayStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
-        return frac
-      } else if command == "tfrac" {
-        // Text-style fraction command has 2 arguments
-        let frac = Fraction()
-        let numerator = self.buildInternal(true)
-        let denominator = self.buildInternal(true)
-
-        // Prepend \textstyle to force text mode rendering
-        let textStyle = Style(level: .text)
-        numerator?.insert(textStyle, at: 0)
-        denominator?.insert(textStyle, at: 0)
-
-        frac.numerator = numerator
-        frac.denominator = denominator
+        frac.wholeStyle = command == "dfrac" ? .display : .text
+        frac.numerator = self.buildInternal(true)
+        frac.denominator = self.buildInternal(true)
         return frac
       } else if command == "binom" {
         let frac = Fraction(hasRule: false)
@@ -1280,7 +1311,9 @@ extension Math {
         currentCol += 1
         if currentEnvironment!.numberOfRows > currentRow {
           currentRow = currentEnvironment!.numberOfRows
-          rows.append([AtomList]())
+          // A `\\` inside braces in a cell (`\textcolor{red}{a \\ b}`) ends only the braces'
+          // list, so one list can bring several row breaks; each gets its row (Graphite patch 9).
+          while rows.count <= currentRow { rows.append([AtomList]()) }
           currentCol = 0
         }
       }
@@ -1288,6 +1321,14 @@ extension Math {
       if !currentEnvironment!.ended && currentEnvironment!.name != nil {
         self.setError(.missingEnd, message: "Missing \\end")
         return nil
+      }
+
+      // Graphite patch: a row break at the end of a table, or one with only `\hline` after it,
+      // does not begin a row.
+      if rows.count > 1, let lastRow = rows.last, lastRow.count <= 1,
+        lastRow.first?.atoms.allSatisfy({ atom in atom is Space }) ?? true
+      {
+        rows.removeLast()
       }
 
       var error: ParserError? = self.error
@@ -1298,6 +1339,10 @@ extension Math {
         self.error = error
         return nil
       }
+      // Graphite patch: a matrix's table sits inside its delimiters.
+      let drawnTable = table as? Table ?? (table as? Inner)?.innerList?.atoms.first as? Table
+      drawnTable?.horizontalRuleRows = currentEnvironment?.horizontalRuleRows ?? []
+      drawnTable?.extraHeightsAboveRowsInEm = currentEnvironment?.extraHeightsAboveRowsInEm ?? [:]
       self.currentEnvironment = oldEnv
       return table
     }
@@ -1337,11 +1382,14 @@ extension Math {
     }
 
     mutating func readCommand() -> String {
-      let singleChars = "{}$#%_| ,>;!\\"
+      let singleChars = "{}$#%_| ,>;!\\&"
       if self.hasCharacters {
         let char = self.nextCharacter()
         if singleChars.firstIndex(of: char) != nil {
           return String(char)
+        } else if char.isNewline || char == "\t" {
+          // Graphite patch: a backslash before a line break is a space, as `\ ` is.
+          return " "
         } else {
           self.unlookCharacter()
         }
@@ -1354,7 +1402,8 @@ extension Math {
       var output = ""
       while self.hasCharacters {
         let char = self.nextCharacter()
-        if char.isLowercase || char.isUppercase || char == "*" {
+        // Graphite patch: names are ASCII letters, as in TeX: `\cosθ` is `\cos` and `θ`.
+        if (char.isASCII && char.isLetter) || char == "*" {
           output.append(char)
         } else {
           self.unlookCharacter()

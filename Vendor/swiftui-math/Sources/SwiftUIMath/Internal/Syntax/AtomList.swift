@@ -220,6 +220,10 @@ extension Math {
     }
 
     func copy() -> Atom {
+      // Graphite patch: a decorated list has the type of its class (DecoratedList).
+      if let decorated = self as? DecoratedList {
+        return DecoratedList(decorated)
+      }
       switch type {
       case .fraction:
         return (self as? Fraction).map {
@@ -315,6 +319,9 @@ extension Math {
       let finalizedList = AtomList()
 
       var previousAtom: Atom?
+      // Graphite patch: the last atom with a class. Spaces and style changes have none, as in
+      // TeX: the minus of `= \quad -x` and at the start of a matrix's cell is a sign.
+      var previousAtomWithClass: Atom?
 
       for atom in atoms {
         let finalizedAtom = atom.finalized
@@ -327,11 +334,11 @@ extension Math {
         }
 
         switch finalizedAtom.type {
-        case .binaryOperator where previousAtom.disallowsFollowingBinaryOperator:
+        case .binaryOperator where previousAtomWithClass.disallowsFollowingBinaryOperator:
           finalizedAtom.type = .unaryOperator
         case .relation, .punctuation, .close:
-          if case .binaryOperator = previousAtom?.type {
-            previousAtom?.type = .unaryOperator
+          if case .binaryOperator = previousAtomWithClass?.type {
+            previousAtomWithClass?.type = .unaryOperator
           }
         case .number:
           if let previousAtom,
@@ -348,8 +355,12 @@ extension Math {
 
         finalizedList.append(finalizedAtom)
         previousAtom = finalizedAtom
+        if finalizedAtom.type != .space, finalizedAtom.type != .style {
+          previousAtomWithClass = finalizedAtom
+        }
       }
 
+      // A space after the last operator keeps it one: Textual ends a piece of inline math so.
       if let previousAtom, case .binaryOperator = previousAtom.type {
         previousAtom.type = .unaryOperator
       }

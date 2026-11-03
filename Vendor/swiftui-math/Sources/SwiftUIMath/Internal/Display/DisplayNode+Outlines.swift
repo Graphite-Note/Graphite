@@ -1,3 +1,14 @@
+/**
+ * File: DisplayNode+Outlines.swift
+ * --------------------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Turns a typeset formula into the outlines Math draws.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import CoreGraphics
 import CoreText
 import Foundation
@@ -27,7 +38,7 @@ struct MathOutlines {
   }
 
   private mutating func add(_ node: Math.DisplayNode, transform: CGAffineTransform, color: CGColor?, usesFormulaColors: Bool) {
-    let color = usesFormulaColors ? (node.localTextColor ?? node.textColor ?? color) : nil
+    let color = usesFormulaColors && !node.resetsToTextColor ? (node.localTextColor ?? node.textColor ?? color) : nil
 
     switch node {
     case let list as Math.DisplayList:
@@ -50,7 +61,7 @@ struct MathOutlines {
       if let denominator = fraction.denominator { add(denominator, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }
       guard fraction.lineThickness > 0 else { return }
       let lineY = fraction.position.y + fraction.linePosition
-      addRule(from: CGPoint(x: fraction.position.x, y: lineY), to: CGPoint(x: fraction.position.x + fraction.width, y: lineY),
+      addRule(from: CGPoint(x: fraction.ruleStartX, y: lineY), to: CGPoint(x: fraction.ruleEndX, y: lineY),
               thickness: fraction.lineThickness, cap: .butt, transform: transform, color: color)
     case let radical as Math.DisplayRadical:
       if let radicand = radical.radicand { add(radicand, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }
@@ -69,6 +80,9 @@ struct MathOutlines {
       let braceTransform = CGAffineTransform(translationX: brace.position.x, y: brace.position.y).concatenating(transform)
       let outline = brace.centerLine.copy(strokingWithWidth: brace.thickness, lineCap: .round, lineJoin: .round, miterLimit: 10)
       path(for: color).addPath(outline, transform: braceTransform)
+    case let stroke as Math.DisplayStroke:
+      let strokeTransform = CGAffineTransform(translationX: stroke.position.x, y: stroke.position.y).concatenating(transform)
+      path(for: color).addPath(stroke.outline, transform: strokeTransform)
     case let largeOperator as Math.DisplayLargeOperator:
       if let upperLimit = largeOperator.upperLimit { add(upperLimit, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }
       if let lowerLimit = largeOperator.lowerLimit { add(lowerLimit, transform: transform, color: color, usesFormulaColors: usesFormulaColors) }

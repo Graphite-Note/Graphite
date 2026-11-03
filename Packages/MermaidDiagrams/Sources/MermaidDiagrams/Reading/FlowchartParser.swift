@@ -1,6 +1,18 @@
+/**
+ * File: FlowchartParser.swift
+ * ---------------------------
+ * Layer: Core
+ * Description: Reads a flowchart's statements after its keyword.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 /// Reads a flowchart's statements after its `flowchart` or `graph` keyword: the direction, then chains of nodes and
-/// links (`A & B --> C -->|yes| D`), groups (`subgraph … end`), accessibility text, and the statements that only
-/// style the diagram, which are counted and left. Statements end at a line break or a semicolon; `%%` starts a comment.
+/// links (`A & B --> C -->|yes| D`), groups (`subgraph … end`), accessibility text, and the statements that style the
+/// diagram (`FlowchartStyleSyntax`); a `click` is counted and left. Statements end at a line break or a semicolon; `%%`
+/// starts a comment.
 struct FlowchartParser {
     private var cursor: MermaidTextCursor
     private var builder: FlowchartDiagramBuilder
@@ -64,8 +76,12 @@ struct FlowchartParser {
         case "accTitle": builder.setAccessibilityTitle(readAccessibilityLine())
         case "accDescr": builder.setAccessibilityDescription(try readAccessibilityDescription())
         case "direction": readDirectionStatement()
+        case "classDef", "class", "style", "linkStyle":
+            let statementStart = cursor.position
+            skipStatement()
+            builder.apply(FlowchartStyleSyntax.statement(keyword: word, text: cursor.trimmedText(from: statementStart, to: cursor.position)))
         default:
-            // `classDef`, `class`, `style`, `linkStyle` and `click`.
+            // `click`.
             skipStatement()
             builder.countUnappliedStatement()
         }
@@ -122,8 +138,7 @@ struct FlowchartParser {
         }
         while cursor.hasPrefix(Self.classMarker) {
             cursor.advance(by: Self.classMarker.count)
-            _ = cursor.readIdentifier()
-            builder.countUnappliedStatement()
+            if let className = cursor.readIdentifier() { builder.assignClass(className, toNodeAt: index) } else { builder.countUnappliedStatement() }
         }
         return index
     }

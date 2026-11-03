@@ -5,8 +5,8 @@
  * Description: Compiles every constant regular expression of GraphiteCore, so a malformed pattern fails here.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 21/10/2026
+ * Version: 0.7
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -28,6 +28,7 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(FootnotesPattern.self)
         assertEveryCaseCompiles(FrontmatterLocatorPattern.self)
         assertEveryCaseCompiles(FrontmatterRegionPattern.self)
+        assertEveryCaseCompiles(MomentDateFormatPattern.self)
         assertEveryCaseCompiles(MarkdownSectionUnitsPattern.self)
         assertEveryCaseCompiles(HTMLToMarkdownPattern.self)
         assertEveryCaseCompiles(LaTeXCompatibilityPattern.self)
@@ -47,9 +48,11 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(PropertyRenamingPattern.self)
         assertEveryCaseCompiles(ReadAloudDocumentPattern.self)
         assertEveryCaseCompiles(ReadAloudPronunciationsPattern.self)
+        assertEveryCaseCompiles(ReadingInlineHTMLPattern.self)
         assertEveryCaseCompiles(ReadingInlineMarkingPattern.self)
         assertEveryCaseCompiles(ReadingMathPreparationPattern.self)
         assertEveryCaseCompiles(ReadingTasksPattern.self)
+        assertEveryCaseCompiles(ReferenceLinkDefinitionsPattern.self)
         assertEveryCaseCompiles(TagSyntaxPattern.self)
         assertEveryCaseCompiles(TemplateRendererPattern.self)
         assertEveryCaseCompiles(TextColorMarkupPattern.self)

@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewRenderedBlocks.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.16
+ * Date: 02/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 #else
@@ -580,15 +591,18 @@ final class LivePreviewRenderedBlocks {
     /// - Parameter colorScheme: Passed where the hosted view does not take the appearance
     ///   from the text view it is in, as on the iPad.
     /// - Parameter sourceEditing: How a table's view edits its cells in the note; nil leaves
-    ///   the table to be edited as source.
+    ///   the table to be edited as source, as one a comment runs out of always is.
+    /// - Parameter currentLocation: Where the block starts in the note now, found by its key.
     static func rootView(for entry: LivePreviewBlockEntry, environment: LivePreviewEnvironment, accentHex: String, colorScheme: ColorScheme?,
                          revealSource: @escaping () -> Void, reportHeight: @escaping (CGFloat) -> Void,
-                         sourceEditing: RenderedBlockSourceEditing? = nil) -> RenderedBlockRoot {
+                         sourceEditing: RenderedBlockSourceEditing? = nil, currentLocation: (@MainActor () -> Int?)? = nil) -> RenderedBlockRoot {
         let accent = Color.graphiteAccent(hex: accentHex) ?? .accentColor
         let widget = LivePreviewWidgetView(block: entry.block, environment: environment, revealSource: revealSource, reportHeight: reportHeight,
-                                           sourceEditing: entry.block.kind == .table ? sourceEditing : nil)
+                                           sourceEditing: entry.block.kind == .table && !entry.block.isCutByComment ? sourceEditing : nil,
+                                           currentLocation: currentLocation)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
+            .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
             .environment(\.noteTypography, environment.typography)
             .environment(\.noteTheme, environment.theme)
             .environment(\.codeColorTheme, environment.codeColorTheme)

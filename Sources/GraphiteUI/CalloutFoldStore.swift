@@ -1,3 +1,14 @@
+/**
+ * File: CalloutFoldStore.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Which callouts are expanded in each note, for this run of the app.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import SwiftUI
 import Observation
 import GraphiteCore
@@ -17,6 +28,16 @@ final class CalloutFoldStore {
 
     func setExpanded(_ isExpanded: Bool, notePath: String, key: String) {
         expansionByNote[notePath, default: [:]][key] = isExpanded
+    }
+
+    /// A note that was renamed or moved keeps how its callouts are shown.
+    func followMove(from oldPath: VaultPath, to newPath: VaultPath) {
+        for (notePath, expansion) in expansionByNote {
+            guard let path = try? VaultPath(notePath), path.isInside(oldPath), // A key is a note's path: one that does not parse is not inside.
+                  let movedPath = try? path.replacingPrefix(oldPath, with: newPath) else { continue } // Cannot be named there: left as it was.
+            expansionByNote[notePath] = nil
+            expansionByNote[movedPath.rawValue] = expansion
+        }
     }
 
     /// Forgets the entries of every note, when another vault opens: a note there at the same

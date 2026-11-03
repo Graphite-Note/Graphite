@@ -1,3 +1,14 @@
+/**
+ * File: InkSelection.swift
+ * ------------------------
+ * Layer: UI
+ * Description: The geometry of Graphite's lasso: which strokes and pictures a loop takes, and how a
+ *              moved or resized selection frame carries them along.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.12
+ * Date: 01/11/2026
+ */
 import Foundation
 import CoreGraphics
 import GraphiteCore
@@ -132,8 +143,10 @@ final class PaletteInkSelection {
 #if canImport(UIKit)
 import UIKit
 import PencilKit
+import PDFKit
 import UniformTypeIdentifiers
 import GraphiteCore
+import GraphiteApple
 
 /// Graphite's lasso on one canvas. A loop drawn around strokes and pictures, freehand or
 /// as a rectangle (`LassoShape`), or a tap on a stroke, selects them; the selection's frame
@@ -182,7 +195,9 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     private var pastePoint: CGPoint = .zero
     /// The scale the frame and the loop were last drawn at, to redraw them after a zoom.
     private var shownScreenScale: CGFloat = 0
-    private var zoomObserver: NSObjectProtocol?
+    /// Listens to the zoom of the PDF view holding the canvas, while the lasso is on.
+    private var zoomObservation: NotificationObservation?
+    var isObservingZoom: Bool { zoomObservation != nil }
 
     /// The frame reaches this far beyond the ink, so its handles are clear of it.
     private static let frameMargin: CGFloat = 8
@@ -210,7 +225,9 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             guard isActive != oldValue else { return }
             if isActive {
                 installRecognizers()
+                observeZoomOfEnclosingPDFView()
             } else {
+                zoomObservation = nil
                 clearSelection()
             }
             loopRecognizer.isEnabled = isActive
@@ -229,11 +246,30 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         canvas.addGestureRecognizer(loopRecognizer)
         canvas.addGestureRecognizer(tapRecognizer)
         canvas.addInteraction(canvasMenu)
-        // A PDF view zooms its pages without laying out their canvases again; the frame's
-        // handles and the loop's line are redrawn to keep their size on screen.
-        zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.canvasDidChangeScale() }
+    }
+
+    /// A PDF view zooms its pages without laying out their canvases again; the frame's
+    /// handles and the loop's line are redrawn to keep their size on screen. Only the PDF view
+    /// holding the canvas matters: another PDF's zoom redraws nothing here.
+    private func observeZoomOfEnclosingPDFView() {
+        guard zoomObservation == nil else { return }
+        zoomObservation = NotificationObservation(name: .PDFViewScaleChanged, queue: .main) { [weak self] notification in
+            let zoomedViewIdentifier = notification.object.map { zoomedView in ObjectIdentifier(zoomedView as AnyObject) }
+            MainActor.assumeIsolated {
+                guard let self, self.canvasIsInside(viewIdentifiedBy: zoomedViewIdentifier) else { return }
+                self.canvasDidChangeScale()
+            }
         }
+    }
+
+    private func canvasIsInside(viewIdentifiedBy identifier: ObjectIdentifier?) -> Bool {
+        guard let identifier else { return false }
+        var ancestor: UIView? = canvas
+        while let currentView = ancestor {
+            if ObjectIdentifier(currentView) == identifier { return true }
+            ancestor = currentView.superview
+        }
+        return false
     }
 
     /// The lasso takes the touches the canvas would draw with: the Pencil, and a finger when
@@ -485,7 +521,12 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     var hasSelection: Bool { !selectedStrokeIndices.isEmpty || !selectedPictureIdentifiers.isEmpty }
 
     func clearSelection() {
-        if dragStart != nil { content?.setLassoPicturesHidden([]) }
+        // A drag under way shows the drawing without its strokes; ending it puts them back,
+        // or the canvas would go on showing a drawing the history does not know.
+        if let dragStart {
+            content?.setLassoPicturesHidden([])
+            if !selectedStrokeIndices.isEmpty { canvas.showWithoutRecording(dragStart.drawing) }
+        }
         selectedStrokeIndices = []
         selectedPictureIdentifiers = []
         dragStart = nil
@@ -583,7 +624,8 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         return selection
     }
 
-    private func selectionDragDidBegin() {
+    /// A drag of the selection's frame began; for tests too, which cannot send touches.
+    func selectionDragDidBegin() {
         guard let selectionView, hasSelection else { return }
         let drawing = canvas.drawing
         let pictures = selectedPictures
@@ -602,6 +644,8 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         selectionView?.dragPreview = nil
         content?.setLassoPicturesHidden([])
         moveSelection(in: dragStart.drawing, pictures: dragStart.pictures, from: dragStart.frame, to: frame)
+        // A frame that gives the selection no size moves nothing: its strokes come back.
+        if canvas.drawing.strokes.count != dragStart.drawing.strokes.count { canvas.showWithoutRecording(dragStart.drawing) }
     }
 
     private func selectionDragWasCancelled() {
@@ -696,13 +740,18 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     /// or transform is the same stroke to it, and the canvas would not change. And the
     /// transform is applied to the points themselves, their sizes included: a stroke scaled
     /// through its `transform` is drawn broader on the canvas but comes back from the saved
-    /// drawing at its old breadth.
+    /// drawing at its old breadth. A point's size is not the width it draws, so the size is
+    /// what draws the scaled width: writing halved in size is half as heavy, and stays.
     private static func stroke(_ stroke: PKStroke, ink: PKInk, movedBy transform: CGAffineTransform = .identity) -> PKStroke {
         let placement = stroke.transform.concatenating(transform)
         let sizeScale = abs(placement.a * placement.d - placement.b * placement.c).squareRoot()
+        let inkType = stroke.ink.inkType
         let points = stroke.path.map { point in
             PKStrokePoint(location: point.location.applying(placement), timeOffset: point.timeOffset,
-                          size: CGSize(width: point.size.width * sizeScale, height: point.size.height * sizeScale),
+                          size: sizeScale == 1 ? point.size : CGSize(width: PencilStrokeSampler.pointSize(point.size.width,
+                              forDrawnWidthScaledBy: sizeScale, inkType: inkType),
+                                                                     height: PencilStrokeSampler.pointSize(point.size.height,
+                                                                         forDrawnWidthScaledBy: sizeScale, inkType: inkType)),
                           opacity: point.opacity, force: point.force, azimuth: point.azimuth, altitude: point.altitude,
                           secondaryScale: point.secondaryScale)
         }

@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownSessionRecoveryTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: A note session reports its saved text before a save or a reload replaces it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
@@ -15,7 +26,7 @@ final class MarkdownSessionRecoveryTests: XCTestCase {
         let store = VaultStore(root: vault)
         let session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
         var replacedTexts: [String] = []
-        session.willReplaceSavedText = { replacedText in replacedTexts.append(replacedText) }
+        session.willReplaceSavedText = { replacedText, _ in replacedTexts.append(replacedText) }
 
         try await session.save()
         XCTAssertEqual(replacedTexts, [], "Nothing changed, so nothing is replaced.")

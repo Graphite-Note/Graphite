@@ -1,3 +1,14 @@
+/**
+ * File: KeyboardShortcutsSettingsPage.swift
+ * -----------------------------------------
+ * Layer: UI
+ * Description: Settings > Keyboard Shortcuts: the commands with their shortcuts, to record, remove or reset them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -11,6 +22,8 @@ struct KeyboardShortcutsSettingsPage: View {
     let isCorePluginEnabled: (CorePlugin) -> Bool
     /// Shortcuts set in the Mac's System Settings for menu items, by menu title.
     let systemSettingsShortcuts: [String: KeyCombination?]
+    /// Whether a vault is open: the shortcuts are stored in it, and with none a change would be lost.
+    let isVaultOpen: Bool
     let change: (HotkeyChange) async -> Void
 
     @State private var query = ""
@@ -32,12 +45,13 @@ struct KeyboardShortcutsSettingsPage: View {
 
     private var table: KeyboardShortcutTable { shortcuts.table(pluginCommands: pluginCommands) }
     /// While the file cannot be read, nothing is changed, so it is never overwritten.
-    private var canEdit: Bool { shortcuts.fileReading.settings != nil }
+    private var canEdit: Bool { isVaultOpen && shortcuts.fileReading.settings != nil }
 
     var body: some View {
         let content = KeyboardShortcutsPageContent(table: table, platform: shortcuts.platform, pluginCommands: pluginCommands, pluginName: pluginName,
                                                    isCorePluginEnabled: isCorePluginEnabled, systemSettingsShortcuts: systemSettingsShortcuts)
         Form {
+            if !isVaultOpen { SettingsNeedAVault(what: "keyboard shortcuts") }
             if let reason = shortcuts.fileReading.unreadableReason { unreadableFileSection(reason) }
             ForEach(content.sections(matching: query)) { section in
                 Section(section.title) {
@@ -107,6 +121,8 @@ struct KeyboardShortcutsSettingsPage: View {
     }
 
     private func finishRecording(_ recording: ShortcutRecording, for commandIdentifier: String) {
+        // A recorder that lost the keyboard to another row's recorder must not end that one.
+        guard shortcuts.recordingCommandIdentifier == commandIdentifier else { return }
         shortcuts.endRecording()
         guard case .recorded(let combination) = recording else { return }
         switch table.check(combination, for: commandIdentifier, systemShortcuts: SystemKeyboardShortcuts(platform: shortcuts.platform)) {
@@ -146,14 +162,20 @@ private struct KeyboardShortcutRowView: View {
     let finishRecording: (ShortcutRecording) -> Void
     let remove: () -> Void
     let reset: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        // At accessibility sizes the name would be left a few letters wide beside the
+        // shortcut and its buttons, so they go under it.
+        let stacked = AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+        let sideBySide = AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: 12))
+        let layout = dynamicTypeSize.isAccessibilitySize ? stacked : sideBySide
+        layout {
             VStack(alignment: .leading, spacing: 3) {
                 Text(row.title)
                 notes.font(.caption)
             }
-            Spacer(minLength: 8)
+            if !dynamicTypeSize.isAccessibilitySize { Spacer(minLength: 8) }
             shortcutText
             buttons
         }
@@ -189,16 +211,20 @@ private struct KeyboardShortcutRowView: View {
     }
 
     @ViewBuilder private var buttons: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 0) {
             if isRecording {
                 Button("Cancel", systemImage: "xmark.circle") { finishRecording(.cancelled) }
+                    .modifier(TouchTarget())
             } else {
                 Button("Record Shortcut", systemImage: "record.circle", action: record)
+                    .modifier(TouchTarget())
             }
             Button("Remove Shortcut", systemImage: "minus.circle", action: remove)
+                .modifier(TouchTarget())
                 .disabled(row.combinations.isEmpty || isRecording)
             if row.isChanged {
                 Button("Reset to Default", systemImage: "arrow.uturn.backward.circle", action: reset)
+                    .modifier(TouchTarget())
                     .disabled(isRecording)
             }
         }
@@ -206,5 +232,16 @@ private struct KeyboardShortcutRowView: View {
         .buttonStyle(.borderless)
         .disabled(!canEdit)
         .font(.callout)
+    }
+}
+
+/// A finger needs 44 points to hit a button; a pointer on the Mac does not.
+private struct TouchTarget: ViewModifier {
+    func body(content: Content) -> some View {
+        #if canImport(UIKit)
+        content.frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+        #else
+        content
+        #endif
     }
 }

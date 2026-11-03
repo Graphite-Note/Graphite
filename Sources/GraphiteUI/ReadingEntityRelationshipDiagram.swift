@@ -1,3 +1,14 @@
+/**
+ * File: ReadingEntityRelationshipDiagram.swift
+ * --------------------------------------------
+ * Layer: UI
+ * Description: An entity relationship diagram laid out, its shapes ready to paint.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import MermaidDiagrams
 
@@ -12,12 +23,15 @@ struct ReadingEntityRelationshipDiagram: Sendable {
     /// What a screen reader reads without a description: each entity's text, then each relationship as its two
     /// entities around its label ("CUSTOMER places ORDER").
     let summary: [String]
+    /// Statements read and not applied (`EntityRelationshipDiagram.unappliedStatementCount`): its styling is not drawn yet.
+    let unappliedStatementCount: Int
 
     init(diagram: EntityRelationshipDiagram, layout: EntityRelationshipLayout) {
         self.layout = layout
         shapes = ReadingEntityRelationshipShapes(parts: EntityRelationshipDrawingParts(layout: layout), font: layout.font)
         title = diagram.accessibilityTitle ?? diagram.title
         description = diagram.accessibilityDescription
+        unappliedStatementCount = diagram.unappliedStatementCount
         let entityTexts = diagram.entities.map(\.label.spokenText)
         summary = entityTexts + diagram.relationships.map { relationship in
             [entityTexts[relationship.firstEntityIndex], relationship.label.spokenText, entityTexts[relationship.secondEntityIndex]]
@@ -27,14 +41,12 @@ struct ReadingEntityRelationshipDiagram: Sendable {
 }
 
 extension ReadingDiagram {
-    /// An entity relationship diagram laid out in `typography`, the source with why when it cannot be laid out, or
-    /// nil while it has subgraphs, which are not laid out yet: the block is then shown as code.
-    static func drawnEntityRelationship(_ diagram: EntityRelationshipDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram? {
+    /// An entity relationship diagram laid out in `typography`, or the source with why when it cannot be laid out (it has
+    /// subgraphs, which are not laid out yet, or is too large).
+    static func drawnEntityRelationship(_ diagram: EntityRelationshipDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try EntityRelationshipLayoutEngine.layout(diagram, typography: typography, limits: .standard)
             return .entityRelationship(ReadingEntityRelationshipDiagram(diagram: diagram, layout: layout))
-        } catch .subgraphsNotLaidOut {
-            return nil
         } catch {
             return .unreadable(source: source, failure: .entityRelationshipLayout(error))
         }

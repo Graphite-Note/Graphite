@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudVoiceSettings.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: The voice and speed choices shared by Settings and the reading options sheet.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import AVFoundation
 import GraphiteCore
@@ -15,8 +26,9 @@ struct ReadAloudVoiceSettings: View {
     @State private var samplePreparation: Task<Void, Never>?
     @State private var isRequestingPersonalVoice = false
 
-    /// 0.75× to 3× in quarter steps, for heavy listening.
-    static let speeds: [Double] = stride(from: 0.75, through: 3.0, by: 0.25).map { $0 }
+    /// The session's whole range, 0.5× to 3× in quarter steps: slow for study, fast for heavy listening. A speed the session
+    /// restores is in this range, so the picker always has it to show.
+    static let speeds: [Double] = stride(from: ReadAloudSession.speedRange.lowerBound, through: ReadAloudSession.speedRange.upperBound, by: 0.25).map { $0 }
 
     private var session: ReadAloudSession { reader.session }
 

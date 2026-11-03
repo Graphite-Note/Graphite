@@ -1,3 +1,14 @@
+/**
+ * File: Footnotes.swift
+ * ---------------------
+ * Layer: Core
+ * Description: Obsidian's footnotes: references, definitions with all their paragraphs, inline footnotes, and the numbers they are shown as.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Obsidian's footnotes: references `[^label]`, definitions `[^label]: text` (with lines
@@ -39,7 +50,12 @@ public enum Footnotes {
         var tracker = CodeFenceTracker()
         var lineStart = FrontmatterLocator.length(in: source)
         var openDefinition: (label: String, text: String, start: Int, end: Int)?
+        // Blank lines after a definition's last line: they belong to it only when an indented line follows.
+        var blankLinesAfterDefinition = 0
+        // A footnote written inside a `%%` comment is not in the note, so it takes no number.
+        let comments = SortedRangeSet(ObsidianComments.commentRanges(in: text))
         func closeDefinition() {
+            blankLinesAfterDefinition = 0
             guard let definition = openDefinition else { return }
             definitions.append(Definition(label: definition.label, text: definition.text.trimmingCharacters(in: .whitespacesAndNewlines),
                                           range: NSRange(location: definition.start, length: definition.end - definition.start)))
@@ -53,40 +69,68 @@ public enum Footnotes {
             defer { lineStart = NSMaxRange(lineRange) }
             if tracker.isCodeLine(untrimmedLine: line) { closeDefinition(); continue }
             let lineLength = (line as NSString).length
+            // A line the comment hides altogether neither opens nor ends a definition.
+            if !comments.isEmpty, contentsEnd > lineRange.location, comments.intervals.contains(where: { interval in
+                interval.location <= lineRange.location && NSMaxRange(interval) >= contentsEnd
+            }) { continue }
+            if openDefinition != nil, line.trimmingCharacters(in: .whitespaces).isEmpty {
+                blankLinesAfterDefinition += 1
+                continue
+            }
             if let match = definitionPattern.firstMatch(in: line, range: NSRange(location: 0, length: lineLength)) {
                 closeDefinition()
                 openDefinition = ((line as NSString).substring(with: match.range(at: 1)), (line as NSString).substring(with: match.range(at: 2)),
                                   lineRange.location, NSMaxRange(lineRange))
                 continue
             }
-            // Lines indented under a definition continue it.
+            // Lines indented under a definition continue it, after blank lines too: they are
+            // its next paragraph.
             if var definition = openDefinition, line.hasPrefix("    ") || line.hasPrefix("\t") {
-                definition.text += "\n" + line.trimmingCharacters(in: .whitespaces)
+                definition.text += String(repeating: "\n", count: blankLinesAfterDefinition + 1) + line.trimmingCharacters(in: .whitespaces)
                 definition.end = NSMaxRange(lineRange)
                 openDefinition = definition
+                blankLinesAfterDefinition = 0
                 continue
             }
             closeDefinition()
-            // The line is outside fenced code, so only its code spans can hold code.
-            let codeSpans = SortedRangeSet(MarkdownCodeRanges.codeSpans(in: line as NSString, range: NSRange(location: 0, length: lineLength)).map(\.range))
-            func isInCode(_ range: NSRange) -> Bool { codeSpans.intersects(range) }
-            for match in referencePattern.matches(in: line, range: NSRange(location: 0, length: lineLength)) where !isInCode(match.range) {
-                references.append(Reference(label: (line as NSString).substring(with: match.range(at: 1)), inlineText: nil,
-                                            range: NSRange(location: lineRange.location + match.range.location, length: match.range.length)))
-            }
-            for match in inlinePattern.matches(in: line, range: NSRange(location: 0, length: lineLength)) where !isInCode(match.range) {
-                references.append(Reference(label: nil, inlineText: (line as NSString).substring(with: match.range(at: 1)),
-                                            range: NSRange(location: lineRange.location + match.range.location, length: match.range.length)))
-            }
+            references += Self.references(inLine: line, startingAt: lineRange.location, hiddenBy: comments)
         }
         closeDefinition()
         return (definitions, references.sorted { first, second in first.range.location < second.range.location })
+    }
+
+    /// The references on one line outside fenced code, so only its code spans can hold code,
+    /// leaving out those a comment hides. `lineStart` is where the line is in the note.
+    private static func references(inLine line: String, startingAt lineStart: Int, hiddenBy comments: SortedRangeSet) -> [Reference] {
+        let source = line as NSString
+        let wholeLine = NSRange(location: 0, length: source.length)
+        let codeSpans = SortedRangeSet(MarkdownCodeRanges.codeSpans(in: source, range: wholeLine).map(\.range))
+        func isShown(_ range: NSRange) -> Bool {
+            !codeSpans.intersects(range) && (comments.isEmpty || !comments.intersects(NSRange(location: lineStart + range.location, length: range.length)))
+        }
+        var references: [Reference] = []
+        for match in referencePattern.matches(in: line, range: wholeLine) where isShown(match.range) {
+            references.append(Reference(label: source.substring(with: match.range(at: 1)), inlineText: nil,
+                                        range: NSRange(location: lineStart + match.range.location, length: match.range.length)))
+        }
+        for match in inlinePattern.matches(in: line, range: wholeLine) where isShown(match.range) {
+            references.append(Reference(label: nil, inlineText: source.substring(with: match.range(at: 1)),
+                                        range: NSRange(location: lineStart + match.range.location, length: match.range.length)))
+        }
+        return references
     }
 
     /// The footnotes as the Footnotes view lists them: numbered as when reading, each with
     /// where it is first referenced (or defined, when nothing refers to it).
     public static func listed(in text: String) -> [(note: Note, location: Int)] {
         numbered(text).notes
+    }
+
+    /// Where each reference that has a footnote is in `text` and the number it is shown as,
+    /// as reading view numbers them. Live Preview's rendered blocks (a callout, a table)
+    /// show a reference in the same number.
+    public static func referenceNumbers(in text: String) -> [(range: NSRange, number: Int)] {
+        numbered(text).referenceNumbers
     }
 
     /// The note for reading: definitions removed, each reference replaced by `render(number)`,
@@ -144,6 +188,7 @@ public enum Footnotes {
 /// The constant patterns of `Footnotes`; `StaticPatternTests` compiles every case.
 enum FootnotesPattern: String, StaticPatternSet {
     case referencePattern = #"\[\^([^\]\s]+)\](?!:)"#
-    case inlinePattern = #"(?<![\\!\]])\^\[([^\]\n]+)\]"#
+    /// The text may hold brackets of its own, such as a `[[link]]` or `[text](url)`, nested two deep.
+    case inlinePattern = #"(?<![\\!\]])\^\[((?:[^\[\]\n]|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\])+)\]"#
     case definitionPattern = #"^\[\^([^\]\s]+)\]:[ \t]?(.*)$"#
 }

@@ -10,7 +10,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
   1332  file     smell   Sources/GraphiteUI/GraphitePDFView.swift  (file)
   1113  file     smell   Sources/GraphiteCore/BaseEvaluator.swift  (file)
   1090  file     smell   Sources/GraphiteUI/DrawingEditor.swift  (file)
-  1050  file     smell   Sources/GraphiteUI/WorkspaceModel.swift  (file)
+  1268  file     smell   Sources/GraphiteUI/WorkspaceModel.swift  (file)
   1010  type     strong  Sources/GraphiteUI/WorkspaceModel.swift  WorkspaceModel
   1005  type     strong  Sources/GraphiteCore/BaseEvaluator.swift  BaseEvaluator
   1000  file     strong  Sources/GraphiteUI/MarkdownPane.swift  (file)
@@ -94,7 +94,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
    347  type     review  Sources/GraphiteCore/NoteProperties.swift  NoteProperties
    334  type     review  Sources/GraphiteUI/CanvasSession.swift  CanvasSession
    330  type     review  Sources/GraphiteCore/NotePreviewDocument.swift  ObsidianInlineMarkup
-   329  type     review  Sources/GraphiteUI/VaultSidebar.swift  VaultSidebar
+   398  type     review  Sources/GraphiteUI/VaultSidebar.swift  VaultSidebar
    318  type     review  Sources/GraphiteUI/MarkdownSession.swift  MarkdownSession
    311  type     review  Sources/GraphiteUI/ConcealedReplacementLayoutFragment.swift  ConcealedReplacementLayoutFragment
    310  type     review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer
@@ -236,7 +236,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     46  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseCardsView.card
     46  function review  Sources/GraphiteUI/GraphViews.swift  VaultGraphScreen.body
     46  function review  Sources/GraphiteUI/LivePreviewTableEditing.swift  LivePreviewTableEditor.menuItems
-    46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
+    56  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
     46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  NativeMarkdownEditor.update
     46  function review  Sources/GraphiteUI/SettingsView.swift  GeneralSettingsPage.body
     45  function review  Sources/GraphiteCore/BaseEvaluator.swift  BaseEvaluator.field

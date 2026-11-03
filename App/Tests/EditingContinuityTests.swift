@@ -1,3 +1,14 @@
+/**
+ * File: EditingContinuityTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Undo and redo across tab switches, tab moves, renames and reading view, in the hosted workspace.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.10
+ * Date: 02/11/2026
+ */
+
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -76,6 +87,35 @@ final class EditingContinuityTests: XCTestCase {
         try await waitUntil { betaSession.text == "Beta notes.\n" }
         XCTAssertEqual(alphaSession.text, "Alpha notes.\n First alpha edit.")
         attachScreenshot(named: "Returned tab after undo")
+    }
+
+    /// HUNT-093: a rename keeps the note's session, and with it the text view that owns the
+    /// undo history; undo then goes on saving at the new place.
+    func testUndoSurvivesRenamingTheNoteAndKeepsWritingToTheNewPath() async throws {
+        let workspace = try await makeWorkspace(notes: ["Lecture.md": "Lecture notes.\n"])
+        workspace.hasCompletedIndexScan = true
+        let lectureTab = try await openTab("Lecture.md", in: workspace, placement: .currentTab)
+        let controller = try host(workspace)
+        let session = try XCTUnwrap(workspace.document(for: lectureTab).markdownSession)
+        session.viewMode = .source
+        let editor = try await visibleEditor(in: controller, showing: session)
+        try await type(" Typed.", into: editor, session: session)
+
+        await workspace.rename(try VaultPath("Lecture.md"), to: "Renamed")
+
+        let vault = try XCTUnwrap(vaultDirectory)
+        let renamed = vault.appendingPathComponent("Renamed.md")
+        XCTAssertEqual(try String(contentsOf: renamed, encoding: .utf8), "Lecture notes.\n Typed.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Lecture.md").path))
+        XCTAssertTrue(workspace.document(for: lectureTab).markdownSession === session)
+        let editorAfterRename = try await visibleEditor(in: controller, showing: session)
+        XCTAssertTrue(editorAfterRename === editor, "The same text view stays on screen.")
+        XCTAssertTrue(editor.undoManager?.canUndo == true)
+        editor.undoManager?.undo()
+        try await waitUntil { session.text == "Lecture notes.\n" }
+        try await session.save()
+        XCTAssertEqual(try String(contentsOf: renamed, encoding: .utf8), "Lecture notes.\n")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Lecture.md").path))
     }
 
     /// A note opened again is styled before its text view has a width, with estimated

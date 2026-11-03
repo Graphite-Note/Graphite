@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordPrefilterSupersetTests.swift
+ * --------------------------------------------
+ * Layer: Tests
+ * Description: The index's prefilter for bases never drops a row the evaluator would keep.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
@@ -83,9 +94,9 @@ final class BaseRecordPrefilterSupersetTests: XCTestCase {
         XCTAssertGreaterThan(vaultsWithKeptRows, 0, "The generated vaults include filters that keep rows, so the comparison is not empty.")
     }
 
-    func testARootNoteBesideTheFilterNameDoesNotHideALinkToTheNoteBesideTheLinkingNote() async throws {
+    func testANoteOfTheNameElsewhereDoesNotHideALinkToTheNoteBesideTheLinkingNote() async throws {
         let (vault, index) = try makeVault([
-            "Note.md": "the note at the vault root",
+            "Elsewhere/Deep/Note.md": "another note of the name, further from the row",
             "A/Note.md": "the note beside the linking note",
             "A/X.md": "[[A/Note]]",
         ])

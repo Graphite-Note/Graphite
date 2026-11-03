@@ -6,8 +6,8 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 21/10/2026
+ * Version: 0.14
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -130,11 +130,21 @@ extension MarkdownEditing {
 import UIKit
 
 /// The row of buttons above the keyboard, like Obsidian mobile's editing toolbar. It
-/// scrolls sideways when it is wider than the screen.
-final class EditorKeyboardToolbar: UIInputView {
+/// scrolls sideways when it is wider than the screen, except for Find and Hide Keyboard,
+/// which stand at its trailing end outside the scrolling row: the buttons a person reaches
+/// for to leave the keyboard are never off the screen.
+final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
     private let run: (EditorCommand) -> Void
     private let scrollView = UIScrollView()
+    /// Holds the scrolling row, so a fade can mask its trailing edge: a mask on the scroll view
+    /// itself would scroll away with the buttons.
+    private let scrollContainer = UIView()
+    private let trailingFade = CAGradientLayer()
+    /// How wide the trailing fade is, the hint that more buttons wait beyond the edge.
+    private static let trailingFadeWidth: CGFloat = 28
     private let stackView = UIStackView()
+    /// Find and Hide Keyboard, kept in view beside the scrolling row.
+    private let pinnedStackView = UIStackView()
     static let height: CGFloat = 48
     /// Which of the pane's actions the buttons were built for.
     private var builtActions: AvailableActions
@@ -172,25 +182,66 @@ final class EditorKeyboardToolbar: UIInputView {
         stackView.spacing = 2
         stackView.alignment = .center
         stackView.translatesAutoresizingMaskIntoConstraints = false
-        addSubview(scrollView)
+        pinnedStackView.axis = .horizontal
+        pinnedStackView.spacing = 2
+        pinnedStackView.alignment = .center
+        pinnedStackView.translatesAutoresizingMaskIntoConstraints = false
+        scrollContainer.translatesAutoresizingMaskIntoConstraints = false
+        scrollContainer.addSubview(scrollView)
+        addSubview(scrollContainer)
+        addSubview(pinnedStackView)
         scrollView.addSubview(stackView)
-        NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            scrollView.topAnchor.constraint(equalTo: topAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            stackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 8),
-            stackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -8),
-            stackView.centerYAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerYAnchor),
-            heightAnchor.constraint(equalToConstant: Self.height),
-        ])
+        configureTrailingFade()
+        activateLayout()
         buildButtons(actions: actions)
+        buildPinnedButtons()
         registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (toolbar: EditorKeyboardToolbar, _) in
             toolbar.updateUndoAndRedoVisibility()
         }
     }
 
     required init?(coder: NSCoder) { nil }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateTrailingFade()
+    }
+
+    private func activateLayout() {
+        NSLayoutConstraint.activate([
+            scrollContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollContainer.trailingAnchor.constraint(equalTo: pinnedStackView.leadingAnchor, constant: -8),
+            pinnedStackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            pinnedStackView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            scrollContainer.topAnchor.constraint(equalTo: topAnchor),
+            scrollContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: scrollContainer.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: scrollContainer.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: scrollContainer.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: scrollContainer.bottomAnchor),
+            stackView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor, constant: 8),
+            stackView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor, constant: -8),
+            stackView.centerYAnchor.constraint(equalTo: scrollView.frameLayoutGuide.centerYAnchor),
+            heightAnchor.constraint(equalToConstant: Self.height),
+        ])
+    }
+
+    private func configureTrailingFade() {
+        scrollView.delegate = self
+        trailingFade.colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor]
+        trailingFade.startPoint = CGPoint(x: 0, y: 0.5)
+        trailingFade.endPoint = CGPoint(x: 1, y: 0.5)
+    }
+
+    /// Fades the row's trailing edge while buttons wait beyond it, so a row that scrolls shows that it does.
+    private func updateTrailingFade() {
+        let hiddenWidth = scrollView.contentSize.width - scrollView.bounds.width - scrollView.contentOffset.x
+        guard hiddenWidth > 1, scrollContainer.bounds.width > Self.trailingFadeWidth else { scrollContainer.layer.mask = nil; return }
+        trailingFade.frame = scrollContainer.bounds
+        let fadeStart = 1 - Self.trailingFadeWidth / scrollContainer.bounds.width
+        trailingFade.locations = [0, NSNumber(value: fadeStart), 1]
+        scrollContainer.layer.mask = trailingFade
+    }
 
     /// A bar material behind the buttons, with a hairline along its top.
     private func addBackground() {
@@ -243,17 +294,16 @@ final class EditorKeyboardToolbar: UIInputView {
         addHeadingMenu()
         add("Bold", "bold", .bold)
         add("Italic", "italic", .italic)
+        // A phone shows about eight buttons before the row scrolls: the links and lists a note
+        // is written with come before the rarer marks.
+        let putsLinksAndListsFirst = UIDevice.current.userInterfaceIdiom == .phone
+        if putsLinksAndListsFirst { addLinksAndLists() }
         add("Strikethrough", "strikethrough", .strikethrough)
         add("Highlight", "highlighter", .highlight)
         add("Code", "chevron.left.forwardslash.chevron.right", .code)
         add("Inline math", "function", .math)
         addSeparator()
-        add("Link to note", "link", .insertWikilink)
-        add("Tag", "number", .insertTag)
-        addSeparator()
-        add("Bulleted list", "list.bullet", .bulletList)
-        add("Numbered list", "list.number", .numberedList)
-        add("Task", "checklist", .task)
+        if !putsLinksAndListsFirst { addLinksAndLists() }
         add("Outdent", "decrease.indent", .outdent)
         add("Indent", "increase.indent", .indent)
         add("Move line up", "arrow.up", .moveLinesUp)
@@ -261,9 +311,29 @@ final class EditorKeyboardToolbar: UIInputView {
         if actions.attach != nil || actions.draw != nil { addSeparator() }
         if actions.attach != nil { addAttachMenu(actions: actions) }
         if actions.draw != nil { add("Draw", "pencil.tip.crop.circle.badge.plus", .draw) }
+    }
+
+    /// Links, the tag button and the lists, each group after a separator.
+    private func addLinksAndLists() {
+        add("Link to note", "link", .insertWikilink)
+        add("Tag", "number", .insertTag)
         addSeparator()
-        add("Find in note", "magnifyingglass", .find)
-        add("Hide keyboard", "keyboard.chevron.compact.down", .dismissKeyboard)
+        add("Bulleted list", "list.bullet", .bulletList)
+        add("Numbered list", "list.number", .numberedList)
+        add("Task", "checklist", .task)
+        addSeparator()
+    }
+
+    /// Find and Hide Keyboard, after a separator, at the trailing end.
+    private func buildPinnedButtons() {
+        let separator = UIView()
+        separator.backgroundColor = .separator
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([separator.widthAnchor.constraint(equalToConstant: 1), separator.heightAnchor.constraint(equalToConstant: 22)])
+        pinnedStackView.addArrangedSubview(separator)
+        pinnedStackView.setCustomSpacing(8, after: separator)
+        add("Find in note", "magnifyingglass", .find, to: pinnedStackView)
+        add("Hide keyboard", "keyboard.chevron.compact.down", .dismissKeyboard, to: pinnedStackView)
     }
 
     /// A phone's Undo and Redo show while the note's toolbar has none: in a compact width.
@@ -271,6 +341,8 @@ final class EditorKeyboardToolbar: UIInputView {
         let isShown = traitCollection.horizontalSizeClass != .regular
         for view in undoAndRedoViews { view.isHidden = !isShown }
     }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) { updateTrailingFade() }
 
     private func makeButton(_ title: String, _ systemImage: String) -> UIButton {
         var configuration = UIButton.Configuration.plain()
@@ -283,13 +355,15 @@ final class EditorKeyboardToolbar: UIInputView {
         button.accessibilityLabel = title
         button.toolTip = title
         button.widthAnchor.constraint(greaterThanOrEqualToConstant: 42).isActive = true
+        // 44 points to touch, as the rest of the interface.
+        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 44).isActive = true
         return button
     }
 
-    private func add(_ title: String, _ systemImage: String, _ command: EditorCommand) {
+    private func add(_ title: String, _ systemImage: String, _ command: EditorCommand, to row: UIStackView? = nil) {
         let button = makeButton(title, systemImage)
         button.addAction(UIAction { [weak self] _ in self?.run(command) }, for: .touchUpInside)
-        stackView.addArrangedSubview(button)
+        (row ?? stackView).addArrangedSubview(button)
     }
 
     /// Files, Photos, and the camera, as Obsidian mobile's attach button offers them.

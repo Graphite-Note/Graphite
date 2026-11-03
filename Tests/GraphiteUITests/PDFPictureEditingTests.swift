@@ -1,3 +1,14 @@
+/**
+ * File: PDFPictureEditingTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Turning, cropping and ordering pictures on PDF pages through the session: each is one
+ *              step of the PDF's history, and the saved file shows the result.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 03/11/2026
+ */
 import XCTest
 import PDFKit
 import ImageIO
@@ -82,7 +93,8 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(turned.bounds.height, placed.bounds.width, accuracy: 0.01)
         XCTAssertEqual(turned.bounds.midX, placed.bounds.midX, accuracy: 0.01)
         XCTAssertEqual(turned.bounds.midY, placed.bounds.midY, accuracy: 0.01)
-        XCTAssertNotEqual(turned.imageData, placed.imageData)
+        XCTAssertEqual(turned.imageData, placed.imageData, "Turning keeps every byte of the picture")
+        XCTAssertNotEqual(turned.quarterTurns, placed.quarterTurns)
         XCTAssertEqual(session.undoAvailability.undoActionName, "Rotate Image Right")
 
         session.undoAvailability.undo()
@@ -91,6 +103,102 @@ final class PDFPictureEditingTests: XCTestCase {
         XCTAssertEqual(session.pictures(on: page), [turned])
         try await session.save()
         XCTAssertEqual(PDFPageManager.pictures(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))), [turned])
+    }
+
+    /// HUNT-208: two quick taps of Rotate Image Right, each its own step with no wait between. Turning is synchronous on
+    /// the main actor, so the second reads the picture the first turned: two turns, two steps, each undoing one turn.
+    func testTwoQuickTurnsTurnThePictureTwiceAndUndoOneTurnEach() async throws {
+        let (session, _) = try await openSession()
+        try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        let selection = try XCTUnwrap(session.selectedPicture)
+
+        session.undoManager.beginUndoGrouping()
+        try session.rotatePictureRight(selection)
+        session.undoManager.endUndoGrouping()
+        session.undoManager.beginUndoGrouping()
+        try session.rotatePictureRight(selection)
+        session.undoManager.endUndoGrouping()
+
+        let turnedTwice = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedTwice.quarterTurns, (placed.quarterTurns + 2) % 4, "Both taps turned it.")
+        XCTAssertEqual(turnedTwice.bounds.width, placed.bounds.width, accuracy: 0.01, "Two turns: the sides are back.")
+        session.undoAvailability.undo()
+        let turnedOnce = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedOnce.quarterTurns, (placed.quarterTurns + 3) % 4, "The last step undoes one turn; a turn right counts down.")
+        XCTAssertEqual(turnedOnce.bounds.width, placed.bounds.height, accuracy: 0.01)
+        session.undoAvailability.undo()
+        XCTAssertEqual(session.pictures(on: page), [placed], "The first undoes the other.")
+    }
+
+    /// A crop reads the picture and then waits for its image: a turn in that time stays, and the crop says it did not
+    /// happen (the same shape as HUNT-208, in the one edit that still waits). Going on to replace the picture it read
+    /// put the old picture back before the check was there. The crop has an undo group as `step` gives one: with
+    /// `groupsByEvent` off, its step registered outside a group aborted the test process instead of failing it.
+    func testATurnWhileACropIsWorkedOutIsKeptAndTheCropIsRefused() async throws {
+        let (session, _) = try await openSession()
+        try await step(in: session) { try await session.addPicture(imageData: try twoColorImageData()) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        let selection = try XCTUnwrap(session.selectedPicture)
+        let cropRegion = CGRect(x: placed.bounds.minX, y: placed.bounds.minY, width: placed.bounds.width / 2, height: placed.bounds.height)
+
+        // The crop stops where it waits for its image, so the turn always falls in that time.
+        let (cropStarted, cropStartedContinuation) = AsyncStream<Void>.makeStream()
+        let (imageMayFinish, imageMayFinishContinuation) = AsyncStream<Void>.makeStream()
+        let crop = Task { @MainActor in
+            session.undoManager.beginUndoGrouping()
+            defer { session.undoManager.endUndoGrouping() }
+            try await session.cropPicture(selection, to: cropRegion) { imageData, imageRegion in
+                cropStartedContinuation.finish()
+                for await _ in imageMayFinish {}
+                return try PictureEditing.cropped(imageData, to: imageRegion)
+            }
+        }
+        for await _ in cropStarted {}
+        try await step(in: session) { try session.rotatePictureRight(selection) }
+        imageMayFinishContinuation.finish()
+        do {
+            try await crop.value
+            XCTFail("The crop went on with the picture as it was before the turn.")
+        } catch {
+            XCTAssertEqual(error as? PDFPictureCropError, .pictureChangedMeanwhile)
+        }
+        let picture = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(picture.quarterTurns, (placed.quarterTurns + 3) % 4, "The turn stays; a turn right counts down.")
+        XCTAssertEqual(picture.imageData, placed.imageData, "Nothing was cropped.")
+    }
+
+    /// Rotate Right on a page draws the picture a quarter turn further and never encodes it again
+    /// (HUNT-018): a JPEG's bytes after four turns are its bytes before them, also in the saved file.
+    func testFourTurnsRightKeepEveryByteOfAJPEGAndItsPlaceInTheSavedFile() async throws {
+        let (session, location) = try await openSession()
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(XCTUnwrap(CGImageSourceCreateWithData(try twoColorImageData() as CFData, nil)), 0, nil))
+        let jpeg = NSMutableData()
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithData(jpeg, "public.jpeg" as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        let jpegBytes = jpeg as Data
+        try await step(in: session) { try await session.addPicture(imageData: jpegBytes) }
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let placed = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(placed.imageData, jpegBytes, "An upright JPEG is placed as the very file")
+        let selection = try XCTUnwrap(session.selectedPicture)
+        for turn in 1...4 {
+            try await step(in: session) { try session.rotatePictureRight(selection) }
+            let turned = try XCTUnwrap(session.pictures(on: page).first)
+            XCTAssertEqual(turned.imageData, jpegBytes, "Turn \(turn) encodes nothing again")
+            XCTAssertEqual(turned.bounds.midX, placed.bounds.midX, accuracy: 0.01, "Turn \(turn)")
+            XCTAssertEqual(turned.bounds.midY, placed.bounds.midY, accuracy: 0.01, "Turn \(turn)")
+        }
+        let turnedFourTimes = try XCTUnwrap(session.pictures(on: page).first)
+        XCTAssertEqual(turnedFourTimes.bounds.width, placed.bounds.width, accuracy: 0.01, "A full turn is the place it started")
+        XCTAssertEqual(turnedFourTimes.bounds.height, placed.bounds.height, accuracy: 0.01)
+        XCTAssertEqual(turnedFourTimes.quarterTurns.quotientAndRemainder(dividingBy: 4).remainder, 0)
+        try await session.save()
+        let saved = try XCTUnwrap(PDFPageManager.pictures(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))).first)
+        XCTAssertEqual(saved.imageData, jpegBytes, "The file holds the same bytes")
     }
 
     func testACropKeepsThePartShownInsideItAlsoOnATurnedPage() async throws {

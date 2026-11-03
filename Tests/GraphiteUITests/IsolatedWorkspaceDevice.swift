@@ -1,3 +1,14 @@
+/**
+ * File: IsolatedWorkspaceDevice.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: The device state of a workspace under test: a preferences suite of its own and temporary
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteApple
@@ -41,13 +52,16 @@ struct IsolatedWorkspaceDevice {
         temporaryFolders.remove()
     }
 
+    /// Tests see a whole-vault change scanned at once; the spacing has tests of its own.
+    var minimumSpacingOfSpacedScans = Duration.zero
+
     /// Services over this device, built anew: a vault list and preferences that read what
     /// is stored now. Read Aloud, when it is on, speaks through a silent fake that makes no
     /// sound (`PenTestSpeech`), keeps its preferences in this device's suite, and stays off
     /// the lock screen.
     func makeServices(makeReadAloudController: (@MainActor () -> ReadAloudController)? = nil) -> ProcessServices {
         let defaults = defaults
-        return ProcessServices(defaults: defaults, applicationFolders: applicationFolders) { startRefusal in
+        return ProcessServices(defaults: defaults, applicationFolders: applicationFolders, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans) { startRefusal in
             // A controller a test gives keeps its own rules; the default one refuses as the app's does.
             makeReadAloudController?() ?? ReadAloudController(session: ReadAloudSession(speech: PenTestSpeech(), preferences: defaults),
                                                               preferences: defaults, startRefusal: startRefusal)

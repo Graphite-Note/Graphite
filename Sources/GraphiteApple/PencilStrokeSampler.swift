@@ -1,3 +1,13 @@
+/**
+ * File: PencilStrokeSampler.swift
+ * -------------------------------
+ * Layer: Apple
+ * Description: Reads PencilKit strokes as geometry that other formats can store.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
 import CoreGraphics
 import PencilKit
 import GraphiteCore
@@ -97,16 +107,35 @@ public enum PencilStrokeSampler {
     /// The whole center line in drawing coordinates, erased parts included, each sample as wide as PencilKit draws
     /// it: a point's size is not its drawn width (`PencilInkRenderedWidth`; a pen point of size 3 is drawn 2 points
     /// wide, one of size 8 12 points), so PDF ink and vector drawings would otherwise be thicker or thinner than the
-    /// canvas showed. Inks whose drawn width turns with the nib keep the point size.
+    /// canvas showed. For an ink whose drawn width turns with its nib, the width follows the nib's angle to the stroke.
     static func centerLineSamples(of stroke: PKStroke) -> [VectorStrokeSample] {
         let transform = stroke.transform
         let widthScale = abs(transform.a * transform.d - transform.b * transform.c).squareRoot()
         let inkType = stroke.ink.inkType
-        return stroke.path.interpolatedPoints(in: nil, by: .distance(sampleSpacing)).map { strokePoint in
-            let pointSize = Double(strokePoint.size.width)
-            let drawnWidth = PencilInkRenderedWidth.renderedWidth(forPointSize: pointSize, inkType: inkType) ?? pointSize
+        // A dot, such as the dot of an "i", has a single point, from which PencilKit
+        // interpolates none: its own point is where its ink is.
+        let interpolatedPoints = Array(stroke.path.interpolatedPoints(in: nil, by: .distance(sampleSpacing)))
+        let strokePoints = interpolatedPoints.isEmpty ? Array(stroke.path) : interpolatedPoints
+        return strokePoints.indices.map { pointIndex in
+            let strokePoint = strokePoints[pointIndex]
+            let earlier = strokePoints[max(pointIndex - 1, 0)].location, later = strokePoints[min(pointIndex + 1, strokePoints.count - 1)].location
+            // A dot has no direction; it draws as a nib across its way does.
+            let nibAcrossness = earlier == later ? 1 : abs(sin(Double(strokePoint.azimuth) - atan2(Double(later.y - earlier.y), Double(later.x - earlier.x))))
+            let drawnWidth = PencilInkRenderedWidth.drawnWidth(forPointSize: Double(strokePoint.size.width), inkType: inkType, nibAcrossness: nibAcrossness)
             return VectorStrokeSample(point: strokePoint.location.applying(transform), width: drawnWidth * Double(widthScale))
         }
+    }
+
+    /// The width PencilKit draws a point of this size across its way, for what shows a stroke
+    /// before it is one, as a shape while the Pencil rests.
+    public static func drawnWidth(ofPointSize pointSize: CGFloat, inkType: PKInkingTool.InkType) -> CGFloat {
+        CGFloat(PencilInkRenderedWidth.drawnWidth(forPointSize: Double(pointSize), inkType: inkType, nibAcrossness: 1))
+    }
+
+    /// The size of a point that draws `scale` times as wide as one of `pointSize`, for ink
+    /// resized with the word it is part of.
+    public static func pointSize(_ pointSize: CGFloat, forDrawnWidthScaledBy scale: CGFloat, inkType: PKInkingTool.InkType) -> CGFloat {
+        CGFloat(PencilInkRenderedWidth.pointSize(Double(pointSize), forDrawnWidthScaledBy: Double(scale), inkType: inkType))
     }
 }
 

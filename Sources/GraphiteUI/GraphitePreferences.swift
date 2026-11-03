@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 21/10/2026
+ * Version: 0.29
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -51,6 +51,12 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
         }
+    }
+
+    /// The summary for a window with no room for the right sidebar, as on a phone, where
+    /// the panels are in the Links and Outline sheet.
+    func summary(hasRightSidebar: Bool) -> String {
+        hasRightSidebar ? summary : summary.replacingOccurrences(of: "in the right sidebar", with: "in the Links and Outline sheet")
     }
 
     var summary: String {
@@ -258,6 +264,8 @@ final class GraphitePreferences {
     let notebookCreation: NotebookCreationDefaults
     /// The options the last note was exported to PDF with.
     let notePDFExport: NotePDFExportDefaults
+    /// The language of month and weekday names in dates.
+    let dateNames: DateNamePreferences
 
     var drawingFormat: DrawingFormat { didSet { defaults.set(drawingFormat.rawValue, forKey: Key.drawingFormat) } }
     var drawingBackground: DrawingBackground { didSet { defaults.set(drawingBackground.rawValue, forKey: Key.drawingBackground) } }
@@ -382,9 +390,9 @@ final class GraphitePreferences {
     }
     /// The accent exactly as chosen, for the color picker.
     var chosenAccentColor: Color { Color(graphiteHex: accentHex) ?? Color(graphiteHex: GraphiteTheme.defaultAccentHex) ?? .blue }
-    /// File recovery's "Snapshot interval": at most one copy of a note per this many minutes.
+    /// File recovery's "Snapshot Interval": at most one copy of a note per this many minutes.
     var snapshotIntervalMinutes: Int { didSet { defaults.set(snapshotIntervalMinutes, forKey: Key.snapshotIntervalMinutes) } }
-    /// File recovery's "History length": copies older than this many days are removed.
+    /// File recovery's "History Length": copies older than this many days are removed.
     var snapshotHistoryDays: Int { didSet { defaults.set(snapshotHistoryDays, forKey: Key.snapshotHistoryDays) } }
     /// Double-tapping Apple Pencil in a note being written starts a drawing at the cursor.
     var drawsOnPencilDoubleTap: Bool { didSet { defaults.set(drawsOnPencilDoubleTap, forKey: Key.drawsOnPencilDoubleTap) } }
@@ -426,6 +434,7 @@ final class GraphitePreferences {
         library = NotebookLibraryPreferences(defaults: defaults)
         notebookCreation = NotebookCreationDefaults(defaults: defaults)
         notePDFExport = NotePDFExportDefaults(defaults: defaults)
+        dateNames = DateNamePreferences(defaults: defaults)
         drawingFormat = defaults.string(forKey: Key.drawingFormat).flatMap(DrawingFormat.init(rawValue:)) ?? .png
         drawingBackground = defaults.string(forKey: Key.drawingBackground).flatMap(DrawingBackground.init(rawValue:)) ?? .white
         drawsOnPencilDoubleTap = defaults.object(forKey: Key.drawsOnPencilDoubleTap) as? Bool ?? true

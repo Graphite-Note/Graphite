@@ -1,3 +1,14 @@
+/**
+ * File: UiWorkspaceAreaHandoffTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: PDF session behavior that other groups' fixes asked the workspace area to complete.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 02/11/2026
+ */
+
 import XCTest
 import Observation
 import os
@@ -414,7 +425,7 @@ final class UiWorkspaceAreaHandoffTests: XCTestCase {
 
         try await waitUntil { workspace.folderAccess?.root.resolvingSymlinksInPath().path == movedVault.resolvingSymlinksInPath().path }
         XCTAssertNil(workspace.errorMessage)
-        XCTAssertTrue(workspace.rootEntries.contains { entry in entry.path.rawValue == "Note.md" })
+        try await waitUntil("the moved vault lists its note") { workspace.rootEntries.contains { entry in entry.path.rawValue == "Note.md" } }
     }
 
     func testDeletedVaultFolderAsksToOpenItAgain() async throws {
@@ -485,7 +496,7 @@ final class UiWorkspaceAreaHandoffTests: XCTestCase {
         let indexFolder = try makeFolder("WorkspaceAreaBaseIndex")
         let index = try VaultIndex(databaseURL: indexFolder.appendingPathComponent("index.sqlite"))
         _ = try await index.reconcile(root: vault)
-        try await index.databaseQueue.write { database in try database.execute(sql: "DROP TABLE aliases") }
+        try await index.databasePool.write { database in try database.execute(sql: "DROP TABLE aliases") }
         let path = try VaultPath("Links.base")
         let model = BaseDocumentModel(source: .file(path), contextPath: path, store: VaultStore(root: vault), index: index)
 

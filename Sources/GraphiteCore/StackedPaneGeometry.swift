@@ -1,3 +1,14 @@
+/**
+ * File: StackedPaneGeometry.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: Where the panes of a stacked tab group go as the row scrolls.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Where the panes of a stacked tab group go, as Obsidian lays out stacked tabs after Andy
@@ -45,6 +56,14 @@ public struct StackedPaneGeometry: Equatable, Sendable {
         if index + 1 < paneCount { trailingEdge = min(trailingEdge, displayedLeadingEdge(ofPane: index + 1, scrollOffset: scrollOffset)) }
         return max(0, trailingEdge - (leadingEdge + spineWidth))
     }
+
+    /// Whether any of the pane's content shows at a scroll offset.
+    public func showsContent(ofPane index: Int, scrollOffset: Double) -> Bool {
+        visibleContentWidth(ofPane: index, scrollOffset: scrollOffset) > Self.visibleContentThreshold
+    }
+
+    /// Narrower than this, a pane's content counts as not shown.
+    public static let visibleContentThreshold: Double = 0.5
 
     /// The scroll offset closest to `currentOffset` that shows the pane whole, with the
     /// spines of the panes before it at the leading edge and those after it at the trailing

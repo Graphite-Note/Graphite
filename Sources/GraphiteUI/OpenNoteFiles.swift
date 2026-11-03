@@ -1,3 +1,14 @@
+/**
+ * File: OpenNoteFiles.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The notes open in the windows of the process, by file, so one note in several windows is one text.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// The notes open in the windows of the process, by file. A note open in two windows, or two
@@ -23,6 +34,18 @@ final class OpenNoteFiles {
         let openSessions = sessionsByFile[file, default: []].filter { entry in entry.session != nil }
         sessionsByFile[file] = openSessions + [WeakSession(session: session)]
         return openSessions.first?.session
+    }
+
+    /// `session`'s file moved: it is found under the new key from now on.
+    func moveSession(_ session: MarkdownSession, fromFile oldFile: String, toFile newFile: String) {
+        let sessionsLeft = sessionsByFile[oldFile, default: []].filter { entry in entry.session != nil && entry.session !== session }
+        sessionsByFile[oldFile] = sessionsLeft.isEmpty ? nil : sessionsLeft
+        sessionsByFile[newFile, default: []].append(WeakSession(session: session))
+    }
+
+    /// The open sessions of the file.
+    func sessions(ofFile file: String) -> [MarkdownSession] {
+        sessionsByFile[file, default: []].compactMap(\.session)
     }
 
     /// The other open sessions of the file.

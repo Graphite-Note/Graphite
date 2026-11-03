@@ -1,3 +1,14 @@
+/**
+ * File: NotePreviewDocument.swift
+ * -------------------------------
+ * Layer: Core
+ * Description: Splits a note into the blocks of its reading view, and finds headings by the text a link names.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.18
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Markdown
 
@@ -56,10 +67,19 @@ public enum NotePreviewDocument {
         locatedBlocks(from: body).map(\.block)
     }
 
+    /// The `calloutContainerColumn` for a callout cut out of its note, as Live Preview holds
+    /// one: a callout in a list item starts indented with the item's text, and read alone
+    /// that indentation would make it code.
+    public static func calloutContainerColumn(ofCutOutBlock markdown: String) -> Int {
+        max(0, ListItemContainers.leadingColumns(of: markdown.prefix { character in character != "\n" }) - 3)
+    }
+
     /// The blocks of `blocks(from:)`, each with where its lines start in `body`.
     /// - Parameter pluginCodeBlockLanguages: Languages community plugins draw; a fenced
     ///   block in one of them becomes a block of its own instead of staying code.
-    public static func locatedBlocks(from body: String, pluginCodeBlockLanguages: Set<String> = []) -> [LocatedBlock] {
+    /// - Parameter calloutContainerColumn: Where a callout may start when `body` is a callout
+    ///   cut out of a list item: the column past which its first line is indented, less three.
+    public static func locatedBlocks(from body: String, pluginCodeBlockLanguages: Set<String> = [], calloutContainerColumn: Int = 0) -> [LocatedBlock] {
         let commentRanges = ObsidianComments.commentRanges(in: body)
         let bodyOffsets = ReplacedTextOffsets(replacements: commentRanges.map { commentRange in (commentRange, 0) })
         var lines: [String] = []
@@ -71,10 +91,12 @@ public enum NotePreviewDocument {
             lineStart += line.utf16.count + 1
             lines.append(line.hasSuffix("\r") ? String(line.dropLast()) : line)
         }
-        return blocks(fromLines: lines, lineStartOffsets: lineStartOffsets, calloutDepth: 0, pluginCodeBlockLanguages: pluginCodeBlockLanguages)
+        return blocks(fromLines: lines, lineStartOffsets: lineStartOffsets, calloutDepth: 0, pluginCodeBlockLanguages: pluginCodeBlockLanguages,
+                      calloutContainerColumn: calloutContainerColumn)
     }
 
-    private static func blocks(fromLines lines: [String], lineStartOffsets: [Int], calloutDepth: Int, pluginCodeBlockLanguages: Set<String>) -> [LocatedBlock] {
+    private static func blocks(fromLines lines: [String], lineStartOffsets: [Int], calloutDepth: Int, pluginCodeBlockLanguages: Set<String>,
+                               calloutContainerColumn: Int = 0) -> [LocatedBlock] {
         let mathLines = DisplayMathLines(lines)
         var blocks: [LocatedBlock] = []
         var pendingMarkdown: [String] = []
@@ -160,22 +182,24 @@ public enum NotePreviewDocument {
                 lineIndex += 2
                 continue
             }
-            if calloutDepth < maximumCalloutNestingDepth, let callout = MarkdownQuoteSyntax.calloutHeader(in: line) {
+            // A callout may sit in a list item, where its quote markers are indented with the item's text.
+            let containerColumn = max(listItems.innermostContentColumn, calloutContainerColumn)
+            if calloutDepth < maximumCalloutNestingDepth, let callout = MarkdownQuoteSyntax.calloutHeader(in: line, containerColumn: containerColumn) {
                 flushMarkdown()
                 var bodyLines: [String] = []
                 var bodyLineStartOffsets: [Int] = []
-                var bodyIndex = lineIndex + 1
-                while bodyIndex < lines.count && lines[bodyIndex].hasPrefix(">") {
-                    let quoteMarkerLength = lines[bodyIndex].dropFirst().hasPrefix(" ") ? 2 : 1
-                    bodyLines.append(String(lines[bodyIndex].dropFirst(quoteMarkerLength)))
-                    bodyLineStartOffsets.append(lineStartOffsets[bodyIndex] + quoteMarkerLength)
-                    bodyIndex += 1
+                let bodyLineCount = MarkdownQuoteSyntax.calloutBodyLineCount(afterHeaderAt: lineIndex, lineCount: lines.count,
+                    containerColumn: containerColumn) { index in lines[index] }
+                for bodyIndex in (lineIndex + 1)..<(lineIndex + 1 + bodyLineCount) {
+                    let bodyLine = MarkdownQuoteSyntax.calloutBodyLine(lines[bodyIndex], containerColumn: containerColumn)
+                    bodyLines.append(bodyLine.content)
+                    bodyLineStartOffsets.append(lineStartOffsets[bodyIndex] + bodyLine.markerLength)
                 }
                 let body = Self.blocks(fromLines: bodyLines, lineStartOffsets: bodyLineStartOffsets, calloutDepth: calloutDepth + 1,
                                        pluginCodeBlockLanguages: pluginCodeBlockLanguages)
                 blocks.append(LocatedBlock(block: .callout(type: callout.type, title: callout.title, folding: callout.folding, body: body.map(\.block)),
                                            startOffset: lineStartOffsets[lineIndex], lineStartOffsets: [], body: body))
-                lineIndex = bodyIndex
+                lineIndex += 1 + bodyLineCount
                 continue
             }
             // A web image (`![](https://…)`) is not a vault file. It stays Markdown, which the
@@ -203,8 +227,23 @@ public enum NotePreviewDocument {
 
     /// Obsidian matches heading links by heading text; the anchor normalizes spacing and
     /// case so `[[#Some  Heading]]` and `## some heading` meet.
+    /// The characters a link cannot hold (`LinkCompletion.linkFragment(forHeading:)`) count as
+    /// spaces, so a link written without them meets its heading.
     public static func anchor(forHeading text: String) -> String {
         text.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private static let forbiddenHeadingLinkCharacters = NotePreviewDocumentPattern.forbiddenHeadingLinkCharacters.compiled()
+
+    /// What Obsidian compares when a link names a heading: the anchor with the characters
+    /// that a heading link cannot hold (`: # | ^ [ ]` and the other punctuation of
+    /// Obsidian's `stripHeadingForLink`) turned into spaces and the spaces collapsed, so `[[Note#Step 1 Setup]]`
+    /// finds `## Step 1: Setup`. An anchor of nothing but such characters is its own key.
+    public static func headingLinkKey(forAnchor anchor: String) -> String {
+        let range = NSRange(location: 0, length: (anchor as NSString).length)
+        let stripped = forbiddenHeadingLinkCharacters.stringByReplacingMatches(in: anchor, range: range, withTemplate: " ")
+        let key = stripped.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return key.isEmpty ? anchor : key
     }
 
     /// Larger notes are shown as a link instead of being embedded in another note.
@@ -236,7 +275,12 @@ public enum NotePreviewDocument {
     public static func headingLineLocation(ofHeadingWithAnchor anchor: String, occurrence: Int = 0, in body: String) -> Int? {
         let lines = body.components(separatedBy: "\n")
         let headings = headingLines(in: lines, of: body)
-        let matchingHeadings = headings.filter { heading in heading.anchor == anchor }
+        var matchingHeadings = headings.filter { heading in heading.anchor == anchor }
+        if matchingHeadings.isEmpty {
+            // A link spells the heading without the characters a heading link cannot hold.
+            let linkKey = headingLinkKey(forAnchor: anchor)
+            matchingHeadings = headings.filter { heading in headingLinkKey(forAnchor: heading.anchor) == linkKey }
+        }
         let target: HeadingLine
         if matchingHeadings.indices.contains(occurrence) {
             target = matchingHeadings[occurrence]
@@ -297,6 +341,8 @@ public enum NotePreviewDocument {
 
     private static func headingPosition(matching headingAnchor: String, in headings: [HeadingLine]) -> Int? {
         if let exactPosition = headings.firstIndex(where: { heading in heading.anchor == headingAnchor }) { return exactPosition }
+        let linkKey = headingLinkKey(forAnchor: headingAnchor)
+        if let keyPosition = headings.firstIndex(where: { heading in headingLinkKey(forAnchor: heading.anchor) == linkKey }) { return keyPosition }
         if let slugPosition = HeadingSlug.position(ofSlug: headingAnchor, amongHeadingAnchors: headings.map(\.anchor)) { return slugPosition }
         // A heading's own text may contain `#` (`C#`), so the path form is tried second.
         let pathAnchors = headingAnchor.components(separatedBy: "#").map(anchor(forHeading:)).filter { pathAnchor in !pathAnchor.isEmpty }
@@ -304,7 +350,10 @@ public enum NotePreviewDocument {
         var searchRange = headings.startIndex..<headings.endIndex
         var matchedPosition: Int?
         for pathAnchor in pathAnchors {
-            guard let position = headings[searchRange].firstIndex(where: { heading in heading.anchor == pathAnchor }) else { return nil }
+            let pathKey = headingLinkKey(forAnchor: pathAnchor)
+            guard let position = headings[searchRange].firstIndex(where: { heading in
+                heading.anchor == pathAnchor || headingLinkKey(forAnchor: heading.anchor) == pathKey
+            }) else { return nil }
             matchedPosition = position
             let level = headings[position].level
             let sectionEnd = headings[(position + 1)..<searchRange.upperBound].firstIndex { heading in heading.level <= level } ?? searchRange.upperBound
@@ -368,6 +417,8 @@ extension NotePreviewDocument {
 /// The constant patterns of `NotePreviewDocument`; `StaticPatternTests` compiles every case.
 enum NotePreviewDocumentPattern: String, StaticPatternSet {
     case referenceDefinitionPattern = #"^ {0,3}\[[^\]]+\]:"#
+    /// The characters Obsidian's `stripHeadingForLink` replaces with a space.
+    case forbiddenHeadingLinkCharacters = ##"[!"#$%&()*+,.:;<=>?@^`{|}~/\[\]\\\r\n]"##
 
     var options: NSRegularExpression.Options { [.anchorsMatchLines] }
 }

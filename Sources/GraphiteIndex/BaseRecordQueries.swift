@@ -1,3 +1,14 @@
+/**
+ * File: BaseRecordQueries.swift
+ * -----------------------------
+ * Layer: Index
+ * Description: Answers bases' questions about files from the index.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import GRDB
 import GraphiteCore
@@ -21,7 +32,7 @@ extension VaultIndex {
     /// files passed the pre-filter.
     public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit) throws -> BaseRecordBatch {
         let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
-        return try databaseQueue.read { database in
+        return try databasePool.read { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
             let paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE \(whereClause) ORDER BY path LIMIT ?", arguments: arguments + [boundedLimit + 1])
             var candidateCount = paths.count
@@ -35,13 +46,13 @@ extension VaultIndex {
 
     /// One file's record, for `this` or a file outside the query.
     public func baseRecord(at path: VaultPath) throws -> BaseFileRecord? {
-        try databaseQueue.read { database in try Self.records(forPaths: [path.rawValue], in: database).first }
+        try databasePool.read { database in try Self.records(forPaths: [path.rawValue], in: database).first }
     }
 
     /// A provider for the evaluator. It reads the database synchronously, so use it
     /// only off the main actor (base queries run in a detached task).
     public nonisolated var baseRecordProvider: BaseIndexRecordProvider {
-        BaseIndexRecordProvider(databaseQueue: databaseQueue)
+        BaseIndexRecordProvider(databasePool: databasePool)
     }
 
     // MARK: SQL
@@ -236,28 +247,70 @@ extension VaultIndex {
 
 /// Synchronous lookups for `BaseEvaluator`, backed by the index database. Every GRDB
 /// database reader (a queue or a pool) is safe to share across threads.
+///
+/// One provider serves one run of a base. A base that asks about a few links reads them one by
+/// one. One that asks about more, as a `file.backlinks` column does per row, loads the vault's
+/// names and links once, so later answers cost no read: one read per link would be 31,748
+/// rows scanned per partial path, and thousands of reads for a large base. Records of files
+/// outside the rows are read together with their neighbours (`BaseRecordReadAhead`).
 public struct BaseIndexRecordProvider: BaseRecordProvider {
-    let databaseQueue: any DatabaseReader
+    /// Lookups answered by reading the database, before the names and links are loaded.
+    public static let lookupsBeforeLoadingLinks = 8
+
+    let databasePool: any DatabaseReader
     /// `BaseRecordProvider` cannot throw, so a lookup whose database read fails answers
     /// "nothing" and keeps the error here; `throwIfLookupFailed()` reports it after the run.
     private let lookupFailure = BaseLookupFailure()
+    private let linkMemory: BaseLinkMemory
+    /// Nil only for a test comparing against reads of one file each.
+    private let recordReadAhead: BaseRecordReadAhead?
 
-    init(databaseQueue: any DatabaseReader) {
-        self.databaseQueue = databaseQueue
+    init(databasePool: any DatabaseReader, lookupsBeforeLoadingLinks: Int = BaseIndexRecordProvider.lookupsBeforeLoadingLinks, readsRecordsAhead: Bool = true) {
+        self.databasePool = databasePool
+        linkMemory = BaseLinkMemory(lookupsBeforeLoading: lookupsBeforeLoadingLinks)
+        recordReadAhead = readsRecordsAhead ? BaseRecordReadAhead() : nil
     }
 
+    /// Database reads the lookups made so far, which a test counts.
+    var lookupReadCount: Int { linkMemory.readCount }
+    /// Records read for files asked about, neighbours included, which a test counts.
+    var recordsReadAheadCount: Int { recordReadAhead?.recordsReadCount ?? 0 }
+
     public func record(at path: VaultPath) -> BaseFileRecord? {
-        read { database in try VaultIndex.records(forPaths: [path.rawValue], in: database).first } ?? nil
+        if let rememberedRecord = recordReadAhead?.rememberedRecord(at: path) { return rememberedRecord }
+        guard let recordReadAhead else {
+            return read { database in try VaultIndex.records(forPaths: [path.rawValue], in: database).first } ?? nil
+        }
+        let fileCount = recordReadAhead.filesToReadForNextMiss()
+        let records = read { database in
+            try VaultIndex.records(forPaths: try recordReadAhead.pathsToRead(around: path, fileCount: fileCount, in: database), in: database)
+        } ?? [] // Failed: the error is kept, and the run shows it.
+        recordReadAhead.remember(records)
+        return recordReadAhead.rememberedRecord(at: path)
     }
 
     public func resolveLinkTarget(_ target: String, from source: VaultPath, isWiki: Bool) -> VaultPath? {
+        if let loadedLinks = loadedLinksAfterThisLookup() {
+            let resolvedPaths = loadedLinks.resolver.resolve(target, from: source, isWiki: isWiki)
+            // A stored path is a valid one; one that is not names nothing.
+            return resolvedPaths.first.flatMap { path in try? VaultPath(path) } // Not valid: names nothing.
+        }
         guard let resolvedPaths = read({ database in try VaultIndex.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }),
-              resolvedPaths.count == 1 else { return nil }
-        return resolvedPaths.first
+              let closestPath = resolvedPaths.first else { return nil }
+        return closestPath
     }
 
     public func backlinks(to path: VaultPath) -> [VaultPath] {
-        read { database in try VaultIndex.backlinkSources(to: path, includesPropertyLinks: true, in: database) } ?? []
+        if let loadedLinks = loadedLinksAfterThisLookup() { return loadedLinks.backlinks[path.rawValue] ?? [] }
+        return read { database in try VaultIndex.backlinkSources(to: path, includesPropertyLinks: true, in: database) } ?? []
+    }
+
+    /// The vault's names and links once enough lookups asked for them; nil before, and when
+    /// loading them failed, whose error is kept like a lookup's.
+    private func loadedLinksAfterThisLookup() -> BaseLinkMemory.LoadedLinks? {
+        linkMemory.loadedLinksAfterLookup {
+            read { database in try BaseLinkMemory.LoadedLinks(database: database) }
+        }
     }
 
     /// Throws the first database error a lookup met, so a base shows the failure
@@ -267,10 +320,80 @@ public struct BaseIndexRecordProvider: BaseRecordProvider {
     }
 
     private func read<Answer>(_ lookup: (Database) throws -> Answer) -> Answer? {
-        do { return try databaseQueue.read(lookup) } catch {
+        linkMemory.countRead()
+        do { return try databasePool.read(lookup) } catch {
             lookupFailure.record(error)
             return nil
         }
+    }
+}
+
+/// The vault's names and links in memory for one run of a base, loaded once when the run asks
+/// for enough of them, and let go with the provider. The evaluator may call from any thread.
+final class BaseLinkMemory: Sendable {
+    struct LoadedLinks: Sendable {
+        let resolver: GraphLinkResolver
+        /// The notes linking to each file, sorted, as `VaultIndex.backlinkSources` finds them.
+        let backlinks: [String: [VaultPath]]
+
+        init(database: Database) throws {
+            let resolver = try GraphLinkResolver(database: database)
+            self.resolver = resolver
+            let rows = try Row.fetchAll(database,
+                sql: "SELECT DISTINCT source, target, isWiki FROM links UNION SELECT DISTINCT path, target, 1 FROM property_links")
+            var sourcesByDestination: [String: Set<VaultPath>] = [:]
+            // A link resolves the same way from every note in one folder.
+            var destinationsByLink: [String: [String]] = [:]
+            for row in rows {
+                guard let source = try? VaultPath(row["source"] as String) else { continue } // A row with no valid path links nothing.
+                let target: String = row["target"]
+                let isWiki: Bool = row["isWiki"]
+                let linkKey = (isWiki ? "w" : "m") + source.parent.rawValue + "\u{0}" + target
+                let destinations: [String]
+                if let knownDestinations = destinationsByLink[linkKey] {
+                    destinations = knownDestinations
+                } else {
+                    destinations = resolver.backlinkDestinations(ofTarget: target, from: source, isWiki: isWiki)
+                    destinationsByLink[linkKey] = destinations
+                }
+                for destination in destinations { sourcesByDestination[destination, default: []].insert(source) }
+            }
+            backlinks = sourcesByDestination.mapValues { sources in sources.sorted() }
+        }
+    }
+
+    private struct State {
+        var lookupCount = 0
+        var readCount = 0
+        var loadedLinks: LoadedLinks?
+        var hasFailedToLoad = false
+    }
+
+    private let lookupsBeforeLoading: Int
+    private let state = Mutex(State())
+
+    init(lookupsBeforeLoading: Int) {
+        self.lookupsBeforeLoading = lookupsBeforeLoading
+    }
+
+    var readCount: Int { state.withLock { state in state.readCount } }
+
+    func countRead() {
+        state.withLock { state in state.readCount += 1 }
+    }
+
+    func loadedLinksAfterLookup(load: () -> LoadedLinks?) -> LoadedLinks? {
+        let shouldLoad = state.withLock { state -> Bool in
+            state.lookupCount += 1
+            return state.loadedLinks == nil && !state.hasFailedToLoad && state.lookupCount > lookupsBeforeLoading
+        }
+        guard shouldLoad else { return state.withLock { state in state.loadedLinks } }
+        let loadedLinks = load()
+        state.withLock { state in
+            state.loadedLinks = loadedLinks
+            state.hasFailedToLoad = loadedLinks == nil
+        }
+        return loadedLinks
     }
 }
 

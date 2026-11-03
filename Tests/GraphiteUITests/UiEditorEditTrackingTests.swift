@@ -1,3 +1,13 @@
+/**
+ * File: UiEditorEditTrackingTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Live Preview's edit tracking keeps blocks and styling in step with the text whichever path changed it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 02/11/2026
+ */
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
@@ -83,20 +93,20 @@ final class UiEditorEditTrackingTests: XCTestCase {
         guard case .ranges = textState.takeRestylePlan(revealedRange: nil) else { return XCTFail("Return restyled the whole note") }
     }
 
-    /// Typing `>` at the start of the line after a callout extends the callout; the whole
+    /// Typing `>` on the empty line after a callout extends the callout; the whole
     /// callout is restyled, not only the typed line, so none of it stays concealed.
     func testExtendingACalloutRestylesTheWholeCallout() {
-        let source = "> [!note] Title\n> body line\nnext"
+        let source = "> [!note] Title\n> body line\n\nnext"
         let textState = textState(for: source)
         XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 28)])
         let (newText, typing) = edit(source, replacing: NSRange(location: 28, length: 0), with: ">")
-        textState.recordCharacterEdit(typing, revealedRange: NSRange(location: 28, length: 4))
+        textState.recordCharacterEdit(typing, revealedRange: NSRange(location: 28, length: 1))
         textState.update(source: newText, findsBlocks: true, isRendered: { _ in true })
-        XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 33)])
-        guard case .ranges(let ranges) = textState.takeRestylePlan(revealedRange: newText.lineRange(for: NSRange(location: 29, length: 0))) else {
+        XCTAssertEqual(textState.blockEntries.map(\.range), [NSRange(location: 0, length: 30)])
+        guard case .ranges(let ranges) = textState.takeRestylePlan(revealedRange: newText.lineRange(for: NSRange(location: 28, length: 0))) else {
             return XCTFail("Expected a partial restyle")
         }
-        XCTAssertTrue(ranges.contains { range in NSIntersectionRange(range, NSRange(location: 0, length: 33)) == NSRange(location: 0, length: 33) })
+        XCTAssertTrue(ranges.contains { range in NSIntersectionRange(range, NSRange(location: 0, length: 30)) == NSRange(location: 0, length: 30) })
     }
 
     func testOpeningACodeFenceRestylesEverything() {
@@ -302,6 +312,34 @@ final class UiEditorEditTrackingTests: XCTestCase {
     }
 
     // MARK: Replacing the text in place (F171)
+
+    /// HUNT-063: measured from the text before the composition began, all of what it typed is
+    /// carried over a change from elsewhere that never had its first characters.
+    func testACompositionIsCarriedOverFromTheTextBeforeIt() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "start\nend\n", to: "startかき\nend\n", onto: "start\nend from another device\n"),
+                       "startかき\nend from another device\n")
+    }
+
+    /// A writer that worked from the session's text kept the composition published so far: the
+    /// final text takes its place, and nothing of it stays beside the final text.
+    func testTheFinalTextReplacesThePublishedCompositionTheOtherTextHolds() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "abcかん…X"), "abc感じ…X")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "Yabcかん"), "Yabc感じ", "Text added before it.")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc感じ", onto: "abcYかん"), "abcY感じ", "Text added right before it.")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcかん", to: "abc", onto: "abcかん…X"), "abc…X", "A cancelled composition leaves nothing.")
+    }
+
+    /// The other device saved the note with the characters and added to it: they are not typed twice.
+    func testACompositionTheOtherTextAlreadyHoldsIsNotDoubled() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcか", onto: "abcかX"), "abcかX")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "abcかX"), "abcかんX")
+    }
+
+    /// The other text never had the composition (HUNT-063): all of it is carried, from before it.
+    func testACompositionTheOtherTextNeverHadIsCarriedWhole() {
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "abcX"), "abcかんX")
+        XCTAssertEqual(TextDifference.carryingEdit(from: "abc", published: "abcか", to: "abcかん", onto: "ab"), "abかん")
+    }
 
     func testTextDifferenceReplacesOnlyTheChangedFrontmatter() throws {
         let oldText = "---\ntags: a\n---\nBody typed here\n" as NSString

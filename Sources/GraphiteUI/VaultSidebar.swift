@@ -5,9 +5,9 @@
  * Description: The sidebar's file list of the vault: folders and files, their menus (open, rename, move, share, export to PDF,
  *              delete), drag and drop, and creating files in a folder.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.45
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -37,12 +37,12 @@ enum CreationKind: String, Identifiable {
         case .canvas: "New Canvas"
         }
     }
-    var namePrompt: String {
+    /// What the new file is called when no name is typed; the file name is then made different
+    /// from the ones in the folder ("Untitled 1"), as Obsidian's new note is.
+    var untitledName: String {
         switch self {
-        case .note: "Note name"
-        case .notebook: "Notebook name"
-        case .base: "Base name"
-        case .canvas: "Canvas name"
+        case .notebook: "Untitled Notebook"
+        case .note, .base, .canvas: "Untitled"
         }
     }
 }
@@ -61,6 +61,8 @@ struct VaultSidebar: View {
     /// iPad too, so the library's place is decided by the window's width, not the column's.
     var isWindowCompact = false
     @State private var isRootDropTargeted = false
+    /// The query the results shown answer; the list says it is searching while the field holds another.
+    @State private var searchedQuery = ""
     /// The file "Reveal Current File" scrolls to once the folders above it have listed their contents.
     @State private var fileToReveal: VaultPath?
     @FocusState private var isSearchFocused: Bool
@@ -103,6 +105,8 @@ struct VaultSidebar: View {
     private enum SidebarChoice: Hashable {
         case panel(SidebarPanel)
         case pluginView(String)
+        /// Search results are shown in place of every list; the picker has no segment for them, so none is lit.
+        case searchResults
     }
 
     /// Plugins' sidebar views the picker offers: the first three and the one shown, so the
@@ -118,7 +122,8 @@ struct VaultSidebar: View {
     private static let maximumPluginSegments = 3
 
     private var pickerChoice: Binding<SidebarChoice> {
-        Binding(get: { shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) }, set: { choice in
+        Binding(get: { workspace.searchQuery.isEmpty ? shownPluginView.map { view in .pluginView(view.id) } ?? .panel(panel) : .searchResults },
+                set: { choice in
             // A search would keep hiding the chosen list.
             workspace.searchQuery = ""
             switch choice {
@@ -127,6 +132,8 @@ struct VaultSidebar: View {
                 storedPanel = newPanel
             case .pluginView(let identifier):
                 chosenPluginView = identifier
+            case .searchResults:
+                break
             }
         })
     }
@@ -156,7 +163,7 @@ struct VaultSidebar: View {
             if isCompactWidth { VaultSwitcherMenuItems(workspace: workspace) { showsVaultManager = true } }
         }
         #endif
-        .task(id: "\(panel.rawValue)-\(workspace.indexVersion)-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
+        .task(id: "\(panel.rawValue)-\(panel.reloadVersion(indexVersion: workspace.indexVersion, structureVersion: workspace.structureVersion))-\(workspace.propertyTypesVersion)-\(showsNestedTags)-\(workspace.currentVaultIdentifier?.uuidString ?? "")") {
             await overview.load(panel, workspace: workspace, showsNestedTags: showsNestedTags)
         }
         // A plugin asked to show one of its sidebar views (`revealLeaf`).
@@ -188,8 +195,11 @@ struct VaultSidebar: View {
         .task(id: workspace.searchQuery) {
             // An empty field shows the file tree. Results of the last query are cleared rather
             // than replaced by a search for everything, which would show under the next query.
-            guard !workspace.searchQuery.isEmpty else { workspace.searchResults = []; return }
-            do { try await Task.sleep(for: .milliseconds(180)); await workspace.search() } catch {}
+            guard !workspace.searchQuery.isEmpty else { workspace.searchResults = []; searchedQuery = ""; return }
+            let query = workspace.searchQuery
+            do { try await Task.sleep(for: .milliseconds(180)); await workspace.search() } catch { return }
+            // A task a newer query cancelled does not say its query was answered.
+            if !Task.isCancelled { searchedQuery = query }
         }
         .toolbar {
             #if canImport(UIKit)
@@ -393,6 +403,7 @@ struct VaultSidebar: View {
                 openingList
             }
         }
+        .task { await workspace.fileTreeContents.follow(rootEntries: { workspace.rootEntries }, expandedFolders: { workspace.expandedFolders }) }
         // The sidebar style beside a document; on a phone, where it draws a card of rows
         // with separators, a plain list in the page's color, as Obsidian mobile's explorer.
         .modifier(SidebarListStyle(isCompactWidth: isCompactWidth))
@@ -457,6 +468,9 @@ struct VaultSidebar: View {
                 VaultPropertiesList(workspace: workspace, overview: overview)
             } else if panel == .bookmarks {
                 VaultBookmarksList(workspace: workspace, overview: overview)
+            } else if !workspace.hasListedRoot {
+                // The vault is open and its documents show; its root is being listed.
+                ProgressView().frame(maxWidth: .infinity)
             } else if workspace.rootEntries.isEmpty {
                 Text("This vault is empty. Create a note with the \(Image(systemName: "square.and.pencil")) button.").foregroundStyle(.secondary)
             } else {
@@ -465,10 +479,7 @@ struct VaultSidebar: View {
     }
 
     private func moveDroppedItems(_ items: [VaultItemTransfer], into folder: VaultPath) -> Bool {
-        let paths = items.compactMap { item in try? VaultPath(item.path) }
-        guard !paths.isEmpty else { return false }
-        Task { for path in paths { await workspace.move(path, into: folder) } }
-        return true
+        workspace.takeDroppedItems(items, into: folder)
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -487,7 +498,8 @@ struct VaultSidebar: View {
                     }
             }
             if workspace.searchResults.isEmpty {
-                Text(workspace.searchQueryProblem ?? "No matches").foregroundStyle(.secondary)
+                SidebarSearchEmptyRow(state: .state(queryProblem: workspace.searchQueryProblem, isSearching: searchedQuery != workspace.searchQuery,
+                                                    isIndexUsable: workspace.isIndexUsable))
             }
             if workspace.isLoadingMoreSearchResults {
                 ProgressView().frame(maxWidth: .infinity)
@@ -630,20 +642,6 @@ private struct SearchResultRow: View {
 
 // MARK: Files and folders
 
-/// What the file tree's rows share: each expanded folder's contents as its row last listed
-/// them, which the tree places after the folder, and the folder a drag is over. Kept while
-/// the tree shows, so a folder opened again draws its rows at once.
-@MainActor @Observable private final class FileTreeContents {
-    var childrenByFolder: [VaultPath: [VaultEntry]] = [:]
-    var dropTargetFolder: VaultPath?
-}
-
-/// A file or folder of the tree, at its depth in the vault.
-private struct FileTreeRow {
-    let entry: VaultEntry
-    let depth: Int
-}
-
 /// The vault's file tree as one row per file or folder shown, an expanded folder's contents
 /// following it.
 ///
@@ -657,8 +655,10 @@ private struct FileTreeRow {
 private struct FileTreeRows: View, Equatable {
     let workspace: WorkspaceModel
     let requestCreation: (CreationKind, VaultPath) -> Void
-    @State private var contents = FileTreeContents()
     @Environment(\.accent) private var accent
+    /// Owned by the workspace, so tapping a folder redraws only what `rows` changes, and this
+    /// view reads nothing but `rows`.
+    private var contents: FileTreeContents { workspace.fileTreeContents }
 
     /// The tree is the same as long as its workspace is: `requestCreation` is a new closure
     /// each time the sidebar is drawn but always sets the same binding, and what the tree
@@ -670,7 +670,7 @@ private struct FileTreeRows: View, Equatable {
     }
 
     var body: some View {
-        ForEach(visibleRows, id: \.entry.path.rawValue) { row in
+        ForEach(contents.rows) { row in
             VaultEntryRow(entry: row.entry, depth: row.depth, workspace: workspace, contents: contents, requestCreation: requestCreation)
                 .equatable()
                 // Only files can be selected; a folder just folds.
@@ -678,22 +678,8 @@ private struct FileTreeRows: View, Equatable {
                 .selectionDisabled(row.entry.isDirectory)
                 .fileTreeRow()
                 .listRowBackground(contents.dropTargetFolder == row.entry.path ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil)
-                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
-        }
-    }
-
-    private var visibleRows: [FileTreeRow] {
-        var rows: [FileTreeRow] = []
-        appendRows(for: workspace.rootEntries, depth: 0, to: &rows)
-        return rows
-    }
-
-    private func appendRows(for entries: [VaultEntry], depth: Int, to rows: inout [FileTreeRow]) {
-        for entry in entries {
-            rows.append(FileTreeRow(entry: entry, depth: depth))
-            guard entry.isDirectory, workspace.expandedFolders.contains(entry.path),
-                  let children = contents.childrenByFolder[entry.path] else { continue }
-            appendRows(for: children, depth: depth + 1, to: &rows)
+                .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier,
+                                     atRoot: workspace.folderAccess?.root) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
         }
     }
 }
@@ -753,10 +739,7 @@ private struct VaultEntryRow: View, Equatable {
         .accessibilityHint("Folder")
         .contextMenu { VaultEntryMenu(entry: entry, workspace: workspace, requestCreation: requestCreation) }
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in path != entry.path }
-            guard !paths.isEmpty else { return false }
-            Task { for path in paths { await workspace.move(path, into: entry.path) } }
-            return true
+            workspace.takeDroppedItems(items, into: entry.path) { path in path != entry.path }
         } isTargeted: { isTargeted in
             if isTargeted {
                 contents.dropTargetFolder = entry.path
@@ -764,13 +747,13 @@ private struct VaultEntryRow: View, Equatable {
                 contents.dropTargetFolder = nil
             }
         }
-        .task(id: "\(isExpanded.wrappedValue)-\(workspace.directoryVersion)-\(workspace.vaultSettings.fileSortOrder.rawValue)") {
+        .task(id: "\(isExpanded.wrappedValue)-\(workspace.directoryVersion)-\(workspace.folderListingVersions[entry.path] ?? 0)-\(workspace.vaultSettings.fileSortOrder.rawValue)") {
             guard isExpanded.wrappedValue, let store = workspace.store else { return }
             do {
                 let listedChildren = try await store.children(of: entry.path, sortedBy: workspace.vaultSettings.fileSortOrder)
                 // Every directory refresh lists the folder again; unchanged rows are left alone.
-                if listedChildren != contents.childrenByFolder[entry.path] { contents.childrenByFolder[entry.path] = listedChildren }
-                workspace.checkConflictVersions(of: listedChildren.lazy.filter { child in !child.isDirectory }.map(\.path))
+                contents.setChildren(listedChildren, of: entry.path)
+                workspace.checkConflictVersions(ofListedFiles: listedChildren.lazy.filter { child in !child.isDirectory }.map(\.path))
             } catch {
                 // A folder another app removed or renamed goes away with its parent's next
                 // listing; that is not an error to report.
@@ -793,6 +776,7 @@ private struct VaultEntryRow: View, Equatable {
             }
             if workspace.conflictedPaths.contains(entry.path) { ConflictVersionsMarker() }
         }
+        .onAppear { workspace.checkConflictVersionsOfRowShown(entry.path) }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(workspace.preferences.displayName(for: entry.path))
         .contextMenu { VaultEntryMenu(entry: entry, workspace: workspace, requestCreation: requestCreation) }
@@ -800,10 +784,7 @@ private struct VaultEntryRow: View, Equatable {
         // list's own destination would take it and move the item to the vault's root.
         .dropDestination(for: VaultItemTransfer.self) { items, _ in
             let folder = entry.path.parent
-            let paths = items.compactMap { item in try? VaultPath(item.path) }.filter { path in path.parent != folder }
-            guard !paths.isEmpty else { return false }
-            Task { for path in paths { await workspace.move(path, into: folder) } }
-            return true
+            return workspace.takeDroppedItems(items, into: folder) { path in path.parent != folder }
         }
     }
 
