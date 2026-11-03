@@ -1,3 +1,14 @@
+/**
+ * File: LinkCompletion.swift
+ * --------------------------
+ * Layer: Core
+ * Description: Suggestions for what is being typed as a link or tag, and finding the link around a character.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// What the text before the cursor is in the middle of typing, for Obsidian's suggestions.
@@ -43,6 +54,13 @@ public struct LinkQuery: Equatable, Sendable {
 }
 
 public enum LinkCompletion {
+    /// A heading's text as a link's `#` part can hold it, as Obsidian writes it: `|` would start
+    /// the link's alias, `#` and `^` a new part, and a bracket would end the link early, so
+    /// each becomes a space. `NotePreviewDocument.anchor(forHeading:)` matches the heading.
+    public static func linkFragment(forHeading text: String) -> String {
+        text.split { character in character.isWhitespace || "|#^[]".contains(character) }.joined(separator: " ")
+    }
+
     /// Suggestions stop after this many characters, for text that only looks like a link.
     static let maximumQueryLength = 200
     /// A paragraph is read this far on each side of the cursor for code spans that cross lines.
@@ -365,6 +383,7 @@ public enum LinkInText: Equatable, Sendable {
 public enum LinkLocator {
     private static let wikilinkPattern = LinkLocatorPattern.wikilinkPattern.compiled()
     private static let markdownLinkPattern = LinkLocatorPattern.markdownLinkPattern.compiled()
+    private static let linkTitlePattern = LinkLocatorPattern.linkTitle.compiled()
 
     /// The link around a character of a line, if any. Embeds are not links.
     /// - Parameter includesEnd: Also counts the position right after the link's last
@@ -386,11 +405,22 @@ public enum LinkLocator {
             return LocatedLinkInText(link: .note(target: (line as NSString).substring(with: match.range(at: 2)), isWiki: true), range: match.range)
         }
         if let match = markdownLinkPattern.matches(in: line, range: wholeLine).first(where: { match in contains(match.range) }) {
-            let destination = (line as NSString).substring(with: match.range(at: 1))
+            let destination = linkDestination(writtenAs: (line as NSString).substring(with: match.range(at: 1)))
             if let webLocation = URL(string: destination), webLocation.scheme != nil { return LocatedLinkInText(link: .web(webLocation), range: match.range) }
             return LocatedLinkInText(link: .note(target: destination, isWiki: false), range: match.range)
         }
         return nil
+    }
+
+    /// What a Markdown link's parentheses hold, without what only the syntax needs: a title
+    /// after the address, and the `<...>` around an address Graphite writes that way because
+    /// it holds parentheses or spaces.
+    private static func linkDestination(writtenAs written: String) -> String {
+        let source = written as NSString
+        let withoutTitle = linkTitlePattern.firstMatch(in: written, range: NSRange(location: 0, length: source.length))
+            .map { match in source.substring(to: match.range.location) } ?? written
+        guard withoutTitle.hasPrefix("<"), withoutTitle.hasSuffix(">"), withoutTitle.count > 2 else { return withoutTitle }
+        return String(withoutTitle.dropFirst().dropLast())
     }
 }
 
@@ -404,5 +434,8 @@ public struct LocatedLinkInText: Equatable, Sendable {
 /// The constant patterns of `LinkLocator`; `StaticPatternTests` compiles every case.
 enum LinkLocatorPattern: String, StaticPatternSet {
     case wikilinkPattern = #"(!?)\[\[([^\]|\n]+)(?:\|[^\]\n]+)?\]\]"#
-    case markdownLinkPattern = #"(?<!!)\[[^\]\n]*\]\(([^)\n]+)\)"#
+    /// The destination may hold one level of balanced parentheses, as the style scanner reads it.
+    case markdownLinkPattern = #"(?<!!)\[[^\]\n]*\]\(((?:[^()\n]|\([^()\n]*\))+)\)"#
+    /// A quoted title after the address.
+    case linkTitle = #"[ \t]+(?:"[^"\n]*"|'[^'\n]*')[ \t]*$"#
 }

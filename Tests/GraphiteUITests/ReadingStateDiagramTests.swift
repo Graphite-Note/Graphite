@@ -1,3 +1,14 @@
+/**
+ * File: ReadingStateDiagramTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: The reading view's state diagrams.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -31,9 +42,13 @@ final class ReadingStateDiagramTests: XCTestCase {
         XCTAssertNil(try stateDiagram("stateDiagram-v2\nA").description)
     }
 
-    func testAStateDiagramWithCompositeStatesStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> On\n  --\n  [*] --> Off\n}", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "stateDiagram-v2\nstate First {\n  [*] --> second\n}", typography: typography))
+    func testAStateDiagramWithCompositeStatesShowsTheSourceAndWhy() {
+        for source in ["stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> On\n  --\n  [*] --> Off\n}", "stateDiagram-v2\nstate First {\n  [*] --> second\n}"] {
+            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
+            XCTAssertEqual(shownSource, source)
+            XCTAssertEqual(failure, .stateLayout(.compositeStatesNotLaidOut))
+            XCTAssertFalse(failure.explanation.isEmpty)
+        }
     }
 
     func testAStateDiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {

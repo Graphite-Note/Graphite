@@ -5,8 +5,8 @@
  * Description: Reads what a drop on the library carries from its item providers.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.7
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -28,6 +28,13 @@ struct DroppedFileBatch {
     let files: [DroppedFile]
 
     var locations: [URL] { files.map(\.location) }
+
+    /// The files of the batch at `locations`, and the others.
+    func split(at locations: [URL]) -> (atLocations: DroppedFileBatch, others: DroppedFileBatch) {
+        let splitLocations = Set(locations)
+        return (DroppedFileBatch(files: files.filter { file in splitLocations.contains(file.location) }),
+                DroppedFileBatch(files: files.filter { file in !splitLocations.contains(file.location) }))
+    }
 
     /// Removes the staged copies; the originals are not touched.
     func discard() {

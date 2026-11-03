@@ -5,7 +5,7 @@
  * Description: The shape of the index database: the migrations it records, its full-text tokenizer, the
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -30,7 +30,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
         "inventory-and-links-1", "bounded-update-lookups-2", "filename-search-and-row-identities-3",
         "vault-path-markdown-link-targets-4", "base-properties-and-creation-dates-5", "unicode-name-keys-6",
         "search-whole-note-text-7", "case-folded-link-keys-8", "markdown-link-written-targets-9", "unreadable-canvas-state-10",
-        "finished-scan-fact-11",
+        "finished-scan-fact-11", "natural-file-name-order-12",
     ]
 
     private func recordedMigrations(in index: VaultIndex) async throws -> [String] {
@@ -78,7 +78,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
 
         XCTAssertEqual(schema.columnsByTable, [
             "files": ["path", "basename", "title", "size", "modified", "generation", "contentIndexed", "created",
-                      "path_key", "name_key", "folded_path", "folded_name"],
+                      "path_key", "name_key", "folded_path", "folded_name", "sort_name"],
             "links": ["source", "target", "isWiki", "isEmbed", "folded_target"],
             "aliases": ["alias", "path", "folded_alias"],
             "tags": ["tag", "path"],
@@ -87,7 +87,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
             "property_links": ["path", "target", "folded_target"],
         ])
         XCTAssertEqual(schema.indexNames, [
-            "aliases_folded_alias", "aliases_name", "aliases_path", "files_basename", "files_folded_name", "files_folded_path",
+            "aliases_folded_alias", "aliases_name", "aliases_path", "files_basename", "files_folded_name", "files_folded_path", "files_sort_name",
             "headings_path", "links_folded_target", "links_source", "links_target", "properties_key", "properties_path",
             "property_links_folded_target", "property_links_path", "property_links_target", "tags_name", "tags_path",
         ])
@@ -153,7 +153,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
         XCTAssertEqual(counts, [0, 0, 0], "The fourth migration empties the cache; the next scan rebuilds it from the vault.")
         let schema = try await schemaDescription(of: index)
         XCTAssertEqual(schema.columnsByTable["files"], ["path", "basename", "title", "size", "modified", "generation", "contentIndexed", "created",
-                                                         "path_key", "name_key", "folded_path", "folded_name"])
+                                                         "path_key", "name_key", "folded_path", "folded_name", "sort_name"])
     }
 
     // MARK: Helpers

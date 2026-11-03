@@ -5,7 +5,7 @@
  * Description: Windows of the app: what each opens on, and dragging items to open a new one.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 01/11/2026
  */
 
@@ -159,7 +159,10 @@ public struct GraphiteWindowScene: View {
                     guard let content = GraphiteWindowContent(activity: activity), let vaultIdentifier = content.vaultIdentifier else { return }
                     windowContent = content
                     Task {
+                        // After the window's other request to open its vault, if one is running.
                         await workspace.openVaultOfWindow(vaultIdentifier, tabs: .none, showing: content.file)
+                        // Opened: a relaunch shows the tabs the window then had, not one empty tab and this file again.
+                        windowContent = GraphiteWindowContent(vaultIdentifier: workspace.currentVaultIdentifier)
                     }
                 }
                 .onChange(of: workspace.newWindowRequest) { _, request in

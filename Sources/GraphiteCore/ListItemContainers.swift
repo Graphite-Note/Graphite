@@ -1,3 +1,14 @@
+/**
+ * File: ListItemContainers.swift
+ * ------------------------------
+ * Layer: Core
+ * Description: The list items a line can belong to, for fences and callouts that may sit in them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The list items a line can belong to, as CommonMark nests blocks: a non-blank line
@@ -136,6 +147,10 @@ struct ListItemContainers {
         }
         return contentColumns.last ?? 0
     }
+
+    /// The content column of the innermost open item, which the line last read belongs to
+    /// when it starts no item itself; 0 outside lists.
+    var innermostContentColumn: Int { contentColumns.last ?? 0 }
 
     /// Opens the list item `line` starts, if any, for the lines after it.
     mutating func openListItem(of line: LineStart) {

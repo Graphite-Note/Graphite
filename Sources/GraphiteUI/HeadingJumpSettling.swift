@@ -1,3 +1,13 @@
+/**
+ * File: HeadingJumpSettling.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: Keeps a line jumped to at the top of the view while the rendered blocks above it settle their heights.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 02/11/2026
+ */
 import Foundation
 import CoreGraphics
 
@@ -17,12 +27,15 @@ struct HeadingJumpPin: Equatable {
 
     /// The heading's line, as a character location in the note.
     let location: Int
+    /// How far into the line the top of the view stays, for a line taller than the view.
+    let distanceIntoLine: CGFloat
     let pinnedAtUptime: TimeInterval
     private(set) var lastUnsettledAtUptime: TimeInterval
     private var wasBlockAboveAwaitingHeight = false
 
-    init(location: Int, pinnedAtUptime: TimeInterval) {
+    init(location: Int, pinnedAtUptime: TimeInterval, distanceIntoLine: CGFloat = 0) {
         self.location = location
+        self.distanceIntoLine = distanceIntoLine
         self.pinnedAtUptime = pinnedAtUptime
         lastUnsettledAtUptime = pinnedAtUptime
     }

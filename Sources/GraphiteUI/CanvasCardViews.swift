@@ -5,7 +5,7 @@
  * Description: The cards of a canvas: text, notes, images, PDFs and bases.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.7
  * Date: 01/11/2026
  */
 
@@ -121,7 +121,7 @@ struct CanvasCardView: View {
                 scrollingContent { CanvasMarkdownContent(source: text, sourcePath: environment.canvasPath, environment: environment).padding(.horizontal, 16).padding(.vertical, 12) }
             }
         case .file(let path, let subpath):
-            CanvasFileCardContent(path: path, subpath: subpath, cardSize: node.frame.size, environment: environment, isScrollable: CanvasCardContentScrolling.isEnabled(isFocused: isFocused, isWriting: isWriting))
+            CanvasFileCardContent(path: path, subpath: subpath, cardSize: node.frame.size, environment: environment, isScrollable: CanvasCardContentScrolling.isEnabled(isFocused: isFocused, isWriting: isWriting), isWriting: isWriting)
         case .link(let address):
             CanvasLinkCardContent(address: address)
         case .group:
@@ -265,6 +265,7 @@ private struct CanvasFileCardContent: View {
     let cardSize: CGSize
     let environment: CanvasCardEnvironment
     let isScrollable: Bool
+    let isWriting: Bool
     @State private var isMissing = false
 
     /// The subpath without its `#`.
@@ -292,6 +293,7 @@ private struct CanvasFileCardContent: View {
     }
 
     @ViewBuilder private func found(_ vaultPath: VaultPath, at location: URL) -> some View {
+        let opening = CanvasCardOpening(isWriting: isWriting) { environment.open(vaultPath) }
         let fileExtension = vaultPath.fileExtension
         if DocumentKind.videoFileExtensions.contains(fileExtension) {
             EmbeddedMediaPlayer(location: location).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -300,12 +302,12 @@ private struct CanvasFileCardContent: View {
         } else {
             switch DocumentKind(path: vaultPath) {
             case .markdown:
-                CanvasNoteCardContent(path: vaultPath, location: location, fragment: fragment, environment: environment, isScrollable: isScrollable)
+                CanvasNoteCardContent(path: vaultPath, location: location, fragment: fragment, environment: environment, isScrollable: isScrollable, opening: opening)
             case .image:
                 CanvasImageCardContent(path: vaultPath, location: location, cardWidth: cardSize.width, version: environment.configuration.drawingVersion)
             case .pdf:
                 CanvasPDFCardContent(path: vaultPath, location: location, pageNumber: fragment.flatMap { fragment in PDFEmbedOptions(fragment: fragment).startPageNumber } ?? 1,
-                                     cardSize: cardSize, version: environment.configuration.drawingVersion)
+                                     cardSize: cardSize, version: environment.configuration.drawingVersion, opening: opening)
             case .base where environment.baseContext != nil:
                 ScrollView {
                     BaseFileEmbedView(path: vaultPath, viewName: fragment, context: environment.baseContext, openWithoutContext: environment.open).padding(12)
@@ -313,7 +315,8 @@ private struct CanvasFileCardContent: View {
                 }
                 .scrollDisabled(!isScrollable)
             default:
-                CanvasCardNotice(systemImage: DocumentKind(path: vaultPath).systemImage, title: vaultPath.name, message: "Tap the name above the card to open it.")
+                CanvasCardNotice(systemImage: DocumentKind(path: vaultPath).systemImage, title: vaultPath.name,
+                                 message: opening.message("Graphite can't draw this kind of file on a card."), openFile: opening.action)
             }
         }
     }
@@ -327,6 +330,7 @@ private struct CanvasNoteCardContent: View {
     let fragment: String?
     let environment: CanvasCardEnvironment
     let isScrollable: Bool
+    let opening: CanvasCardOpening
     @State private var loaded: LoadedNote?
 
     private enum LoadedNote: Equatable {
@@ -348,7 +352,8 @@ private struct CanvasNoteCardContent: View {
             case .missingSection:
                 CanvasCardNotice(systemImage: "questionmark.square.dashed", title: NoteBlocks.missingSectionMessage(subpath: fragment ?? "", noteName: path.stem), message: nil)
             case .unreadable:
-                CanvasCardNotice(systemImage: "doc.text", title: path.stem, message: "This note is too large to show on a card, or is not text. Tap its name to open it.")
+                CanvasCardNotice(systemImage: "doc.text", title: path.stem, message: opening.message("This note is too large to show on a card, or is not text."),
+                                 openFile: opening.action)
             case nil:
                 Color.clear
             }
@@ -411,6 +416,7 @@ private struct CanvasPDFCardContent: View {
     let pageNumber: Int
     let cardSize: CGSize
     let version: Int
+    let opening: CanvasCardOpening
     @Environment(\.displayScale) private var displayScale
     @State private var page: CanvasPDFPageImage?
     @State private var failure: CanvasPDFPageRenderer.Failure?
@@ -422,7 +428,8 @@ private struct CanvasPDFCardContent: View {
                 Image(page.image, scale: 1, label: Text("\(path.stem), page \(page.pageNumber) of \(page.pageCount)")).resizable().scaledToFit()
             } else if let failure {
                 CanvasCardNotice(systemImage: failure == .locked ? "lock.doc" : "doc.richtext", title: path.name,
-                                 message: failure == .locked ? "This PDF needs its password. Tap its name to open it." : "This PDF can't be shown on a card.")
+                                 message: opening.message(failure == .locked ? "This PDF needs its password." : "This PDF can't be shown on a card."),
+                                 openFile: opening.action)
             } else {
                 Color.clear
             }
@@ -550,13 +557,31 @@ struct CanvasCardNotice: View {
     let systemImage: String
     let title: String
     let message: String?
+    /// Opens the file the card names, where the card can be tapped; nil where it cannot.
+    var openFile: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label(title, systemImage: systemImage).font(.callout.weight(.semibold))
             if let message { Text(message).font(.footnote).foregroundStyle(.secondary) }
+            if let openFile { Button("Open", action: openFile).buttonStyle(.bordered).controlSize(.small) }
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Opening the file a card names, offered by the notice of a card that cannot draw it. While
+/// the canvas is being written a touch on a card moves it, so the button waits for Read.
+struct CanvasCardOpening {
+    let isWriting: Bool
+    let open: () -> Void
+
+    /// The button's action; nil while writing, when it could not be pressed.
+    var action: (() -> Void)? { isWriting ? nil : open }
+
+    /// Why the card shows no file, and how to open the file while writing.
+    func message(_ reason: String) -> String {
+        isWriting ? reason + " Turn off Write to open it." : reason
     }
 }

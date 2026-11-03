@@ -5,8 +5,8 @@
  * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -58,6 +58,8 @@ enum IndexedContentState: Int {
 
 public struct IndexingReport: Sendable {
     public let discoveredFiles: Int
+    /// Files this scan listed and looked at, which a scan of one folder keeps to that folder's.
+    public let examinedFiles: Int
     public let updatedFiles: Int
     public let pendingContentFiles: Int
     public let failedPaths: [String]
@@ -254,6 +256,7 @@ public actor VaultIndex {
         migrator.registerMigration("finished-scan-fact-11") { database in
             try database.execute(sql: "CREATE TABLE index_facts (name TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)")
         }
+        Self.registerNaturalFileNameOrderMigration(in: &migrator)
         try migrator.migrate(databasePool)
     }
 
@@ -275,8 +278,8 @@ public actor VaultIndex {
         WikiLinkResolver.caseFoldedKey(text)
     }
 
-    private static let foldedKeyFunctionName = "graphite_folded_key"
-    private static let foldedKeyFunction = DatabaseFunction(foldedKeyFunctionName, argumentCount: 1, pure: true) { values in
+    static let foldedKeyFunctionName = "graphite_folded_key"
+    static let foldedKeyFunction = DatabaseFunction(foldedKeyFunctionName, argumentCount: 1, pure: true) { values in
         String.fromDatabaseValue(values[0]).map(foldedKey)
     }
 
@@ -390,13 +393,14 @@ public actor VaultIndex {
             // Cached statements: every file runs the same few dozen statements, and
             // compiling each one again per file cost more than executing it.
             let fileUpsert = try database.cachedStatement(sql: """
-                INSERT INTO files (path, basename, title, size, modified, generation, contentIndexed, created, path_key, name_key, folded_path, folded_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO files (path, basename, title, size, modified, generation, contentIndexed, created,
+                                   path_key, name_key, folded_path, folded_name, sort_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET basename=excluded.basename, title=excluded.title,
                   size=excluded.size, modified=excluded.modified, generation=excluded.generation,
                   contentIndexed=excluded.contentIndexed, created=excluded.created,
                   path_key=excluded.path_key, name_key=excluded.name_key,
-                  folded_path=excluded.folded_path, folded_name=excluded.folded_name
+                  folded_path=excluded.folded_path, folded_name=excluded.folded_name, sort_name=excluded.sort_name
                 """)
             // FTS content columns have no ordinary B-tree index. Deleting by
             // path here would turn a full build into a quadratic table scan.
@@ -410,9 +414,19 @@ public actor VaultIndex {
             let aliasInsertion = try database.cachedStatement(sql: "INSERT INTO aliases (alias, path, folded_alias) VALUES (?, ?, ?)")
             let tagInsertion = try database.cachedStatement(sql: "INSERT INTO tags VALUES (?, ?)")
             let headingInsertion = try database.cachedStatement(sql: "INSERT INTO headings VALUES (?, ?)")
+            let storedContentState = try database.cachedStatement(sql: "SELECT contentIndexed FROM files WHERE path = ?")
+            let generationTouch = try database.cachedStatement(sql: "UPDATE files SET generation = ? WHERE path = ?")
             for prepared in preparedFiles {
                 let file = prepared.file
                 let semantics = prepared.semantics
+                // A note that left the device for the cloud is unreadable now, not empty: its text,
+                // links, tags and headings stay as they were, and so do its size and date, so the
+                // next scan reads it again once it is back or changed.
+                if file.isNotDownloaded, semantics == nil,
+                   try Int.fetchOne(storedContentState, arguments: [file.path.rawValue]) == IndexedContentState.indexed.rawValue {
+                    try generationTouch.execute(arguments: [generation, file.path.rawValue])
+                    continue
+                }
                 let title = semantics?.headings.first ?? file.path.stem
                 let contentState: IndexedContentState = semantics != nil ? .indexed
                     : prepared.isUnreadableCanvas ? .unreadableCanvas : file.isUnreadableAsText ? .unreadableAsText
@@ -420,7 +434,7 @@ public actor VaultIndex {
                 try fileUpsert.execute(arguments: [file.path.rawValue, file.path.name, title, file.size, file.modified.timeIntervalSince1970, generation, contentState.rawValue,
                                                    (file.created ?? file.modified).timeIntervalSince1970,
                                                    WikiLinkResolver.comparisonKey(file.path.rawValue), WikiLinkResolver.comparisonKey(file.path.name),
-                                                   Self.foldedKey(file.path.rawValue), Self.foldedKey(file.path.name)])
+                                                   Self.foldedKey(file.path.rawValue), Self.foldedKey(file.path.name), Self.naturalSortKey(file.path.name)])
                 try searchDeletion.execute(arguments: [file.path.rawValue])
                 // The whole text, frontmatter included: search finds property values too,
                 // and a match's position is its position in the file.
@@ -762,7 +776,8 @@ public actor VaultIndex {
         if !isInventoryIncomplete { state.prunedFiles = try pruneFilesNotSeen(state.seenPaths, inside: folder) }
         guard folder == nil else { return try partialReport(of: state) }
         if !isInventoryIncomplete { try recordFinishedScan() }
-        return IndexingReport(discoveredFiles: state.discoveredFiles, updatedFiles: state.updatedFiles, pendingContentFiles: state.pendingFiles,
+        return IndexingReport(discoveredFiles: state.discoveredFiles, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles,
+            pendingContentFiles: state.pendingFiles,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 
@@ -774,7 +789,8 @@ public actor VaultIndex {
              try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'",
                  arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
         }
-        return IndexingReport(discoveredFiles: fileCount, updatedFiles: state.updatedFiles, pendingContentFiles: pendingFileCount,
+        return IndexingReport(discoveredFiles: fileCount, examinedFiles: state.discoveredFiles, updatedFiles: state.updatedFiles,
+            pendingContentFiles: pendingFileCount,
             failedPaths: state.failedPaths, prunedFiles: state.prunedFiles)
     }
 

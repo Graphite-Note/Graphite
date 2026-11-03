@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTagsAndProperties.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: The vault's tags and properties for the sidebar lists, and searching for one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
@@ -34,6 +45,12 @@ extension WorkspaceModel {
     /// Shows the notes with a tag, nested tags included, in the sidebar's search.
     func searchForTag(_ tag: String) {
         searchQuery = "tag:#" + tag
+    }
+
+    /// `searchForTag`, for a tag chosen outside the sidebar: the sidebar with the results comes forward.
+    func searchForTagAndShowResults(_ tag: String) {
+        searchForTag(tag)
+        searchResultsRevealRequest += 1
     }
 
     /// Shows the notes with a property in the sidebar's search.

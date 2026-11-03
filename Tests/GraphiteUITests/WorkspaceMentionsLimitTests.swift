@@ -31,7 +31,7 @@ final class WorkspaceMentionsLimitTests: XCTestCase {
     func testLinkingAMentionReportsWhetherTheLinkWasWritten() async throws {
         let workspace = try await makeWorkspace(noteCount: 2, noteText: "I wrote Target here without a link.")
         let target = try VaultPath("Target.md")
-        let groups = await workspace.unlinkedMentions(of: target, names: ["Target"])
+        let groups = await workspace.unlinkedMentions(of: target, names: ["Target"]).groups
         let changedGroup = try XCTUnwrap(groups.first { group in group.path.rawValue == "Mention 000.md" })
         let unchangedGroup = try XCTUnwrap(groups.first { group in group.path.rawValue == "Mention 001.md" })
         try Data("A different sentence altogether.".utf8).write(to: vault.appendingPathComponent("Mention 000.md"))
@@ -56,9 +56,10 @@ final class WorkspaceMentionsLimitTests: XCTestCase {
     func testTheUnlinkedMentionsListShowsAtMost200OfTheNotesThatWriteTheNotesName() async throws {
         let workspace = try await makeWorkspace(noteCount: 201, noteText: "I wrote Target here without a link.")
 
-        let groups = await workspace.unlinkedMentions(of: try VaultPath("Target.md"), names: ["Target"])
+        let result = await workspace.unlinkedMentions(of: try VaultPath("Target.md"), names: ["Target"])
 
-        XCTAssertEqual(groups.count, 200)
+        XCTAssertEqual(result.groups.count, 200)
+        XCTAssertTrue(result.isCut, "The panel says the list is not complete.")
     }
 
     func testBothListsShowEveryNoteWhenThereAreFewerThan200() async throws {

@@ -6,7 +6,7 @@
  *              More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
+ * Version: 0.16
  * Date: 01/11/2026
  */
 
@@ -187,7 +187,7 @@ struct CanvasPane: View {
         FileLocationMenuItems(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root)
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
-            Button(isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 Task { await workspace.toggleBookmark(session.path) }
             }
         }

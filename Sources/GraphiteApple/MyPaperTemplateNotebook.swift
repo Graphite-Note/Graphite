@@ -1,3 +1,14 @@
+/**
+ * File: MyPaperTemplateNotebook.swift
+ * -----------------------------------
+ * Layer: Apple
+ * Description: A new notebook whose every page is a copy of one of the person's own paper templates.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -27,7 +38,7 @@ public enum MyPaperTemplateNotebook {
     public static func preview(ofTemplateAt templateLocation: URL, longerSidePixels: Int) -> MyPaperTemplatePreview? {
         guard let template = PDFDocument(url: templateLocation), !template.isLocked, let page = template.page(at: 0),
               let image = LibraryPreviewLoader.thumbnail(of: page, longerSidePixels: longerSidePixels) else { return nil }
-        return MyPaperTemplatePreview(image: image, pageSize: page.bounds(for: .cropBox).size)
+        return MyPaperTemplatePreview(image: image, pageSize: LibraryPreviewLoader.displayedSize(of: page))
     }
 }
 

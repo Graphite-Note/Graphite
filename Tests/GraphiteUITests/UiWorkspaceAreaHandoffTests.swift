@@ -5,8 +5,8 @@
  * Description: PDF session behavior that other groups' fixes asked the workspace area to complete.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -425,7 +425,7 @@ final class UiWorkspaceAreaHandoffTests: XCTestCase {
 
         try await waitUntil { workspace.folderAccess?.root.resolvingSymlinksInPath().path == movedVault.resolvingSymlinksInPath().path }
         XCTAssertNil(workspace.errorMessage)
-        XCTAssertTrue(workspace.rootEntries.contains { entry in entry.path.rawValue == "Note.md" })
+        try await waitUntil("the moved vault lists its note") { workspace.rootEntries.contains { entry in entry.path.rawValue == "Note.md" } }
     }
 
     func testDeletedVaultFolderAsksToOpenItAgain() async throws {

@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceNotebookImport.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Hands the Goodnotes and Notability notebooks of an import to a notebook import session.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -18,16 +29,21 @@ extension WorkspaceModel {
     /// Converts the notebooks of `sources` into `directory`, away from the main actor, while the vault stays usable; the
     /// progress shows over the document area and a report follows (`NotebookImportPresentation`). One import runs at a
     /// time: while one runs, the person is told to wait.
-    func importNotebooks(_ sources: [URL], into directory: VaultPath) {
-        guard let store, let root = folderAccess?.root else { return }
+    /// - Parameter whenEnded: Called when the import has ended, and only then; see `NotebookImportSession`.
+    /// - Returns: Whether an import started, and so will call `whenEnded`; when it did not, the caller still owns whatever
+    ///   `whenEnded` would have released.
+    @discardableResult
+    func importNotebooks(_ sources: [URL], into directory: VaultPath, whenEnded: @escaping @Sendable () -> Void = {}) -> Bool {
+        guard let store, let root = folderAccess?.root else { return false }
         guard notebookImport == nil else {
             errorMessage = "Notebooks are already being imported. Import these when that import has finished."
-            return
+            return false
         }
         // The one read of the wall clock for an import: every imported stroke is dated when the import began.
         let run = NotebookImportRun(vault: notebookImportVault(store: store, root: root), conversion: NotebookConversion(fileWriter: store.writer),
                                     limits: .standard, strokeCreationDate: .now)
-        notebookImport = NotebookImportSession(sources: sources, destination: directory, run: run)
+        notebookImport = NotebookImportSession(sources: sources, destination: directory, run: run, whenEnded: whenEnded)
+        return true
     }
 
     /// Lets the import go once its report is closed, so nothing of it stays.

@@ -1,3 +1,14 @@
+/**
+ * File: ReadingFlowchartShapes.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: A flowchart's shapes as SwiftUI paths and its text as placed lines.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import MermaidDiagrams
 
@@ -19,6 +30,10 @@ struct ReadingFlowchartShapes: Sendable {
     let edgeTextLines: [ReadingDiagramTextLine]
     /// Node text and the title, drawn last.
     let nodeTextLines: [ReadingDiagramTextLine]
+    /// The edges the diagram gave a stroke or colors of their own, painted over the others.
+    let styledEdges: [ReadingFlowchartStyledEdge]
+    /// The nodes the diagram gave colors of their own, painted over the others.
+    let styledNodes: [ReadingFlowchartStyledNode]
 
     init(parts: FlowchartDrawingParts, font: DiagramFont) {
         clusters = ReadingFlowchartClusterShapes(parts: parts.clusters, font: font)
@@ -33,6 +48,53 @@ struct ReadingFlowchartShapes: Sendable {
         edgeTextLines = parts.edgeTexts.flatMap { block in ReadingDiagramTextLine.lines(of: block, font: font, isBold: false) }
         nodeTextLines = parts.nodeTexts.flatMap { block in ReadingDiagramTextLine.lines(of: block, font: font, isBold: false) }
             + (parts.title.map { title in ReadingDiagramTextLine.lines(of: title, font: font, isBold: true) } ?? [])
+        styledEdges = parts.styledEdges.map { edge in ReadingFlowchartStyledEdge(edge) }
+        styledNodes = parts.styledNodes.map { node in ReadingFlowchartStyledNode(node, font: font) }
+    }
+}
+
+/// An edge with a stroke or colors of its own (`linkStyle`) as paths: its line with its width and dashes, and its marks.
+struct ReadingFlowchartStyledEdge: Sendable {
+    let line: Path
+    let filledMarks: Path
+    let strokedMarks: Path
+    /// The color of the line and marks, or nil for the usual line color.
+    let color: DiagramColor?
+    let lineWidth: CGFloat
+    let dashLengths: [CGFloat]
+
+    init(_ parts: FlowchartStyledEdgeParts) {
+        line = Path(parts.line)
+        filledMarks = Path(parts.filledMarks)
+        strokedMarks = Path(parts.strokedMarks)
+        color = parts.style.stroke
+        lineWidth = parts.lineWidth
+        dashLengths = parts.dashLengths
+    }
+}
+
+/// A node with colors of its own (`classDef`, `class`, `:::`, `style`) as paths, with its text placed.
+struct ReadingFlowchartStyledNode: Sendable {
+    /// The inside to fill, or nil for a shape drawn as text alone.
+    let fill: Path?
+    let outline: Path
+    let style: DiagramElementStyle
+    let lineWidth: CGFloat
+    let textLines: [ReadingDiagramTextLine]
+
+    init(_ parts: FlowchartStyledNodeParts, font: DiagramFont) {
+        fill = parts.fill.map { shape in Path(shape) }
+        outline = Path(parts.outline)
+        style = parts.style
+        lineWidth = parts.lineWidth
+        textLines = ReadingDiagramTextLine.lines(of: parts.text, font: font, isBold: false)
+    }
+}
+
+extension Color {
+    /// The color a diagram's statement wrote.
+    init(_ color: DiagramColor) {
+        self.init(.sRGB, red: color.red, green: color.green, blue: color.blue, opacity: color.alpha)
     }
 }
 

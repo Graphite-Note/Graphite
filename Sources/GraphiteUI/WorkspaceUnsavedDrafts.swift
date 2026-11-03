@@ -7,8 +7,8 @@
  *              tells what an ended app left.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -27,6 +27,13 @@ extension WorkspaceModel {
         session.draftKeeper = keeper
         guard let draft = await keeper.storedDraft(), session.restore(draft) else { return }
         errorMessage = Self.restoredDraftMessage(name: session.path.name, isConflict: session.hasExternalConflict)
+    }
+
+    /// A note that opened read-only cannot show its draft, which waits for the editor.
+    func tellAboutDraft(ofOversizedNote note: OversizedNoteDocument) async {
+        guard await draftKeeper(for: note.path)?.storedDraft() != nil else { return }
+        errorMessage = "What you last typed in “\(note.path.name)” could not be saved, and is kept. "
+            + (note.canEditAnyway ? "Choose Edit Anyway to get it back." : "It comes back when the note is small enough to edit here.")
     }
 
     /// Gives a canvas that just opened its draft, as for a note.
@@ -81,7 +88,7 @@ extension WorkspaceModel {
         for draft in drafts.sorted(by: { leftDraft, rightDraft in leftDraft.path < rightDraft.path }) where layout.tabID(showing: draft.path) == nil {
             if (try? await store.fileExists(draft.path)) != false { // Cannot be checked: treated as there, so nothing is written.
                 // The file has the text after all, as when the save finished as the app ended.
-                if (try? await store.read(draft.path))?.data == draft.contents { // Unreadable: the draft stays.
+                if (try? await store.revision(of: draft.path)) == FileRevision.of(draft.contents) { // Unreadable: the draft stays.
                     processServices.unsavedDrafts.remove(draft.path, inVault: vaultIdentifier)
                 } else {
                     waitingNames.append(draft.path.name)

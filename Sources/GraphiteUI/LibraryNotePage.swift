@@ -1,3 +1,14 @@
+/**
+ * File: LibraryNotePage.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: A note's tile in the library, drawn as a page of its reading view.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -96,14 +107,15 @@ struct LibraryNotePage: View {
     }
 
     private func calloutHeader(type: String, title: AttributedString) -> some View {
-        let tint = Self.calloutColor(type: type)
+        // The icon and colors the note itself draws the callout with.
+        let appearance = CalloutAppearance(type: type.lowercased())
         return Label { Text(title).font(.system(size: 12, weight: .semibold)) } icon: {
-            Image(systemName: Self.calloutSymbol(type: type)).font(.system(size: 11))
+            Image(systemName: appearance.systemImage).font(.system(size: 11))
         }
-        .foregroundStyle(tint)
+        .foregroundStyle(appearance.titleColor)
         .padding(.horizontal, 10).padding(.vertical, 7)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.1), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(appearance.color.opacity(CalloutAppearance.tintOpacity), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 
     private func listRow<Marker: View, Content: View>(depth: Int, @ViewBuilder marker: () -> Marker, @ViewBuilder text: () -> Content) -> some View {
@@ -120,32 +132,6 @@ struct LibraryNotePage: View {
         case 2: 18
         case 3: 15
         default: 13
-        }
-    }
-
-    /// Obsidian's callout families, by the type as written.
-    private static func calloutSymbol(type: String) -> String {
-        switch type.lowercased() {
-        case "tip", "hint", "important": "flame"
-        case "success", "check", "done": "checkmark.circle"
-        case "question", "help", "faq": "questionmark.circle"
-        case "warning", "caution", "attention": "exclamationmark.triangle"
-        case "failure", "fail", "missing", "danger", "error", "bug": "xmark.octagon"
-        case "example": "list.bullet"
-        case "quote", "cite": "quote.opening"
-        default: "info.circle"
-        }
-    }
-
-    private static func calloutColor(type: String) -> Color {
-        switch type.lowercased() {
-        case "tip", "hint", "important": .teal
-        case "success", "check", "done": .green
-        case "question", "help", "faq", "warning", "caution", "attention": .orange
-        case "failure", "fail", "missing", "danger", "error", "bug": .red
-        case "example": .purple
-        case "quote", "cite": .gray
-        default: .blue
         }
     }
 }

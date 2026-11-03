@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceFolds.swift
+ * --------------------------
+ * Layer: UI
+ * Description: Folded headings and list items, remembered per note on the device.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -22,11 +33,10 @@ extension WorkspaceModel {
     /// Gives a note that was just opened its folds, and keeps them as they change.
     func restoreFolds(of session: MarkdownSession) {
         session.foldedKeys = Set(foldsByPath[session.path.rawValue] ?? [])
-        let path = session.path
-        session.didChangeFolds = { [weak self] keys in
-            guard let self else { return }
+        session.didChangeFolds = { [weak self, weak session] keys in
+            guard let self, let session else { return }
             var folds = self.foldsByPath
-            folds[path.rawValue] = keys.isEmpty ? nil : keys.sorted()
+            folds[session.path.rawValue] = keys.isEmpty ? nil : keys.sorted()
             self.foldsByPath = folds
         }
     }

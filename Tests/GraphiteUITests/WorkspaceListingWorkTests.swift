@@ -5,13 +5,14 @@
  * Description: What a change in the vault costs the workspace, counted in listings done and versions moved.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import XCTest
 import Observation
 import PDFKit
+import SwiftUI
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -149,6 +150,48 @@ final class WorkspaceListingWorkTests: XCTestCase {
         XCTAssertEqual(store.directoryListingCount, listingsBefore)
         XCTAssertEqual(workspace.folderListingVersions[try VaultPath("Synced")], 1)
         XCTAssertEqual(workspace.folderListingVersions[.root], 1, "Its entry in the folder above may be new.")
+    }
+
+    private func reportOnlyTheVaultFolder(_ workspace: WorkspaceModel, vault: URL) async {
+        await workspace.applyExternalChanges(ExternalChangeRefresh(changedLocations: [vault], root: vault, maximumFileCount: 200))
+    }
+
+    func testTheVaultFolderReportedAloneListsAndRedrawsNothingWhileNothingChanged() async throws {
+        let (workspace, vault, store) = try await opened(files: ["Top.md": "text", "Folder/Inside.md": "text"])
+        let listingsBefore = store.directoryListingCount, drawingVersionBefore = workspace.drawingVersion
+
+        for _ in 0..<3 { await reportOnlyTheVaultFolder(workspace, vault: vault) }
+        // Follows the scans those reports asked for.
+        workspace.startIndexing()
+        try await waitUntil { !workspace.isIndexing }
+
+        XCTAssertEqual(store.directoryListingCount, listingsBefore, "Was three listings: with 30,000 files at the root, 90,000 metadata reads.")
+        XCTAssertEqual(workspace.drawingVersion, drawingVersionBefore, "Was three rebuilds of the open documents.")
+    }
+
+    func testAFileEditedAtTheRootWithOnlyTheVaultFolderReportedShowsWhenTheScanFindsIt() async throws {
+        let (workspace, vault, store) = try await opened(files: ["Top.md": "text"])
+        let listingsBefore = store.directoryListingCount, drawingVersionBefore = workspace.drawingVersion
+        // Written in place: the root's date does not move.
+        try Data("longer text".utf8).write(to: vault.appendingPathComponent("Top.md"))
+
+        await reportOnlyTheVaultFolder(workspace, vault: vault)
+
+        try await waitUntil { workspace.rootEntries.first?.size == 11 }
+        XCTAssertEqual(store.directoryListingCount, listingsBefore + 1)
+        try await waitUntil { workspace.drawingVersion == drawingVersionBefore + 1 }
+    }
+
+    func testANameAddedAtTheRootWithOnlyTheVaultFolderReportedShowsAtOnce() async throws {
+        let (workspace, vault, store) = try await opened(files: ["Top.md": "text"])
+        let listingsBefore = store.directoryListingCount
+        try Data("new".utf8).write(to: vault.appendingPathComponent("New.md"))
+        try FileManager.default.setAttributes([.modificationDate: Date.now.addingTimeInterval(60)], ofItemAtPath: vault.path)
+
+        await reportOnlyTheVaultFolder(workspace, vault: vault)
+
+        XCTAssertEqual(store.directoryListingCount, listingsBefore + 1)
+        XCTAssertEqual(workspace.rootEntries.map(\.path.rawValue), ["New.md", "Top.md"])
     }
 
     // MARK: HUNT-028
@@ -380,6 +423,34 @@ final class FlattenedFileTreeTests: XCTestCase {
         XCTAssertEqual(tree.rows.prefix(3).map(\.id), ["Folder", "Folder/A.md", "Folder/B.md"], "A folder opened again draws at once.")
     }
 
+    /// The vault as generated names: 300 folders and 29,700 files at the root, with one folder
+    /// of 500 files opened and closed.
+    func testATapInAVaultOf30000FilesBuildsTheRowsOfTheFolderTapped() throws {
+        var entries = try (0..<300).map { number in try entry("Folder \(number)", isDirectory: true) }
+        for number in 0..<29_700 { entries.append(try entry("Note \(number).md")) }
+        let folder = try VaultPath("Folder 7")
+        let children = try (0..<500).map { number in try entry("Folder 7/Inside \(number).md") }
+        var tree = FlattenedFileTree()
+        tree.setRootEntries(entries)
+        // What each tap and each listing arriving cost when the rows were built in the body.
+        let wholeTreeRows = tree.rowsBuiltCount
+        XCTAssertEqual(wholeTreeRows, 30_000)
+
+        tree.setExpandedFolders([folder])
+        XCTAssertEqual(tree.rowsBuiltCount - wholeTreeRows, 0, "Tapping a folder not listed yet: was 30,000.")
+        tree.setChildren(children, of: folder)
+        XCTAssertEqual(tree.rowsBuiltCount - wholeTreeRows, 500, "Its listing arriving: was 30,500.")
+        tree.setChildren(children, of: folder)
+        XCTAssertEqual(tree.rowsBuiltCount - wholeTreeRows, 500, "Listed again, the same: was 30,500.")
+        tree.setExpandedFolders([])
+        XCTAssertEqual(tree.rowsBuiltCount - wholeTreeRows, 500, "Folded: was 30,000.")
+        XCTAssertEqual(tree.rows.count, 30_000)
+        tree.setExpandedFolders([folder])
+        XCTAssertEqual(tree.rowsBuiltCount - wholeTreeRows, 1_000, "Opened again: its own rows, was 30,500.")
+        XCTAssertEqual(tree.rows.count, 30_500)
+        XCTAssertEqual(tree.rows[8].id, "Folder 7/Inside 0.md")
+    }
+
     func testFoldersInsideFoldersKeepTheirPlaces() throws {
         var tree = FlattenedFileTree()
         let outer = try VaultPath("Outer"), inner = try VaultPath("Outer/Inner")
@@ -517,4 +588,105 @@ final class PDFThumbnailListWorkTests: XCTestCase {
         XCTAssertEqual(rows, 0..<20)
         XCTAssertEqual(document.pageRequests, 0, "The list asked for every page each time its body ran.")
     }
+
+    #if os(macOS)
+    @MainActor @Observable final class ListState {
+        var scrollTarget: Int?
+        var pageListVersion = 0
+        var indicesShown: Set<Int> = []
+        var pagesShownAtFirstRow: [PDFPage] = []
+    }
+
+    /// A list of the page rows both thumbnail lists use, as they use it.
+    private struct RowList: View {
+        let document: PDFDocument
+        let state: ListState
+
+        var body: some View {
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    LazyVStack(spacing: 14) {
+                        ForEach(PDFThumbnailListPage.rowIndices(of: document), id: \.self) { pageIndex in
+                            PDFThumbnailListRow(document: document, pageIndex: pageIndex, pageListVersion: state.pageListVersion) { page in
+                                Color.clear.frame(height: 200).onAppear {
+                                    state.indicesShown.insert(pageIndex)
+                                    if pageIndex == 0 { state.pagesShownAtFirstRow.append(page) }
+                                }
+                            } placeholder: {
+                                Color.clear.frame(height: 200)
+                            }
+                        }
+                    }
+                }
+                .onChange(of: state.scrollTarget) { if let target = state.scrollTarget { scrollProxy.scrollTo(target) } }
+            }
+        }
+    }
+
+    private func show(_ list: RowList) -> NSWindow {
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: list)
+        window.showInvisibly()
+        return window
+    }
+
+    func testJumpingInAListOf1000PagesAsksOnlyForThePagesItShows() async throws {
+        let document = CountingPDFDocument()
+        for pageIndex in 0..<1_000 { document.insert(PDFPage(), at: pageIndex) }
+        document.pageRequests = 0
+        let state = ListState()
+        let window = show(RowList(document: document, state: state))
+        defer { window.close() }
+
+        try await waitUntil { state.indicesShown.contains(0) }
+        XCTAssertLessThan(document.pageRequests, 12, "Opening the list asked for all 1,000, each time its body ran.")
+
+        for target in [900, 950, 3] {
+            document.pageRequests = 0
+            state.scrollTarget = target
+            try await waitUntil { state.indicesShown.contains(target) }
+            XCTAssertLessThan(document.pageRequests, 12, "A jump to \(target) asked for 900 or more pages when each row asked as it was laid out.")
+        }
+    }
+
+    func testThePageListOfALongPDFOpensAtThePageInViewDrawingOnlyWhatItShows() async throws {
+        let location = try TemporaryVault.make(prefix: "LongPDF", for: self).root.appendingPathComponent("Textbook.pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try XCTUnwrap(CGContext(location as CFURL, mediaBox: &mediaBox, nil))
+        for _ in 0..<1_000 {
+            context.beginPDFPage(nil)
+            context.endPDFPage()
+        }
+        context.closePDF()
+        let session = try await PDFSession.open(location)
+        XCTAssertEqual(session.pageCount, 1_000)
+        session.currentPageIndex = 900
+        let renderer = PDFThumbnailRenderer()
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 210, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: PDFPagesSidebar(session: session, commands: PDFPageCommands(session: session), renderer: renderer))
+        window.showInvisibly()
+        defer { window.close(); renderer.removeThumbnails() }
+
+        let pageInView = try XCTUnwrap(session.document.page(at: 900))
+        try await waitUntil { renderer.hasDrawn(pageInView) }
+        XCTAssertLessThan(renderer.drawnPageCount, 12, "The rows on the way to the page are laid out, not drawn.")
+    }
+
+    func testARowFollowsThePageAtItsIndexWhenTheListChanges() async throws {
+        let document = CountingPDFDocument()
+        let pages = (0..<3).map { _ in PDFPage() }
+        for (pageIndex, page) in pages.enumerated() { document.insert(page, at: pageIndex) }
+        let state = ListState()
+        let window = show(RowList(document: document, state: state))
+        defer { window.close() }
+        try await waitUntil { state.pagesShownAtFirstRow.last === pages[0] }
+
+        document.removePage(at: 0)
+        state.pageListVersion += 1
+
+        try await waitUntil { state.pagesShownAtFirstRow.last === pages[1] }
+    }
+    #endif
 }
