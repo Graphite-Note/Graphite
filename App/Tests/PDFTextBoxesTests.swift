@@ -5,8 +5,8 @@
  * Description: Text boxes on a PDF page in the hosted app: placed with the palette's text tool, typed in, moved, turned, undone, saved and read back.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 03/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -107,7 +107,7 @@ final class PDFTextBoxesTests: XCTestCase {
         let oneLineHeight = textView.bounds.height
         textView.insertText("\nTwo lines\nThree lines")
         try await waitUntil("the box grows with its text") { textView.bounds.height > oneLineHeight * 2 }
-        try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+        try await tapOutsideToEndTyping(on: page, in: pdfView, controller: controller)
         try await waitUntil("the box is in the document") { session.textBoxes(on: page).count == 1 }
         let threeLines = try XCTUnwrap(session.textBoxes(on: page).first)
         XCTAssertEqual(threeLines.plainText, "One line\nTwo lines\nThree lines")
@@ -117,7 +117,7 @@ final class PDFTextBoxesTests: XCTestCase {
         let secondTextView = try await editingTextView(in: controller)
         secondTextView.selectedRange = NSRange(location: 0, length: (secondTextView.text as NSString).length)
         secondTextView.deleteBackward()
-        try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+        try await tapOutsideToEndTyping(on: page, in: pdfView, controller: controller)
         try await waitUntil("the emptied box is removed") { session.textBoxes(on: page).isEmpty }
         XCTAssertEqual(session.undoManager.undoActionName, "Delete Text Box")
         session.undoAvailability.undo()
@@ -193,6 +193,23 @@ final class PDFTextBoxesTests: XCTestCase {
             if session.textBoxActivity != .idle || (wasATap && inkSelection.placesTextBoxes) { break }
         }
         return try await editingTextView(in: controller)
+    }
+
+    /// A tap away from the box. A stall on a busy machine can outlast the tap limit, and the touch is then no tap,
+    /// so it is tried again while the box is still being typed in.
+    private func tapOutsideToEndTyping(on page: PDFPage, in pdfView: PDFView, controller: UIViewController) async throws {
+        let window = try XCTUnwrap(controller.view.window)
+        for _ in 1...3 {
+            try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+            for _ in 0..<40 where isTypingInABox(in: controller) {
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 50)
+            }
+            if !isTypingInABox(in: controller) { return }
+        }
+    }
+
+    private func isTypingInABox(in controller: UIViewController) -> Bool {
+        descendants(of: controller.view, matching: PDFTextBoxEditingView.self).first?.isFirstResponder == true
     }
 
     private func editingTextView(in controller: UIViewController) async throws -> PDFTextBoxEditingView {
