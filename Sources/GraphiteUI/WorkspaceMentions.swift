@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceMentions.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: Linked and unlinked mentions of a note, and turning a mention into a link.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
@@ -40,19 +51,33 @@ extension WorkspaceModel {
         return groups
     }
 
-    /// Notes that write the note's name or an alias without linking it.
-    func unlinkedMentions(of note: VaultPath, names: [String]) async -> [MentionGroup] {
-        guard let index else { return [] }
+    /// How many notes found by search are read for unlinked mentions, so a common name stays quick.
+    static var maximumNotesReadForUnlinkedMentions: Int { 1_000 }
+
+    /// Notes that write the note's name or an alias without linking it, as far as `maximumMentioningNotes`
+    /// of them (or `maximumNotesReadForUnlinkedMentions` notes read) go: `isCut` says there are more.
+    func unlinkedMentions(of note: VaultPath, names: [String]) async -> (groups: [MentionGroup], isCut: Bool) {
+        guard let index else { return ([], false) }
         let query = names.map { name in "content:\"" + name.replacingOccurrences(of: "\"", with: " ") + "\"" }.joined(separator: " OR ")
-        guard let page = try? await index.search(query, limit: Self.maximumMentioningNotes) else { return [] }
         var groups: [MentionGroup] = []
-        for result in page.results where result.path != note && DocumentKind(path: result.path) == .markdown {
-            guard let text = await currentText(of: result.path) else { continue }
-            let mentions = Mentions.unlinkedMentions(of: names, in: text)
-            guard !mentions.isEmpty else { continue }
-            groups.append(MentionGroup(path: result.path, matches: mentions.map { range in SearchExcerpts.excerpt(around: range, in: text as NSString) }))
-        }
-        return groups
+        var notesRead = 0
+        var continuation: SearchContinuation?
+        repeat {
+            // `try?`: a search that cannot run lists what was found so far.
+            guard !Task.isCancelled, let page = try? await index.search(query, limit: Self.maximumMentioningNotes, after: continuation) else {
+                return (groups, false)
+            }
+            for result in page.results where result.path != note && DocumentKind(path: result.path) == .markdown {
+                guard groups.count < Self.maximumMentioningNotes, notesRead < Self.maximumNotesReadForUnlinkedMentions else { return (groups, true) }
+                notesRead += 1
+                guard let text = await currentText(of: result.path) else { continue }
+                let mentions = Mentions.unlinkedMentions(of: names, in: text)
+                guard !mentions.isEmpty else { continue }
+                groups.append(MentionGroup(path: result.path, matches: mentions.map { range in SearchExcerpts.excerpt(around: range, in: text as NSString) }))
+            }
+            continuation = page.continuation
+        } while continuation != nil
+        return (groups, false)
     }
 
     /// Turns an unlinked mention into a link to `note`, as Obsidian's "Link" button does,

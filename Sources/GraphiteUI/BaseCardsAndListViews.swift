@@ -1,3 +1,14 @@
+/**
+ * File: BaseCardsAndListViews.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: The cards and list views of a base.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -279,7 +290,7 @@ struct BaseGroupHeader: View {
             default:
                 Text("No value").font(.headline).foregroundStyle(.secondary)
             }
-            Text("\(group.fullRowCount)").font(.caption).foregroundStyle(.secondary)
+            Text(group.fullRowCount.formatted()).font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 0)
         }
         .padding(.vertical, 4)

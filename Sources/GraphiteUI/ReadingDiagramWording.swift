@@ -1,6 +1,39 @@
+/**
+ * File: ReadingDiagramWording.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: Why a diagram is not drawn, in a sentence.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.20
+ * Date: 01/11/2026
+ */
+
 import MermaidDiagrams
 
+extension SequenceStatementNotLaidOut {
+    /// What the statement is called in a sentence, after “with”.
+    var wording: String {
+        switch self {
+        case .box: "boxes"
+        case .participantCreation: "created participants"
+        case .participantDestruction: "destroyed participants"
+        case .participantMenu: "participant menus"
+        case .participantAttributes: "participant attributes"
+        case .halfArrow: "half arrows"
+        case .centralConnection: "central connections"
+        }
+    }
+}
+
 extension ReadingDiagramFailure {
+    /// `items` as a sentence part in a steady order: “boxes”, “boxes and half arrows”, “a, b and c”.
+    private static func listed(_ items: [String]) -> String {
+        let sorted = items.sorted()
+        guard sorted.count > 1 else { return sorted.first ?? "statements" }
+        return sorted.dropLast().joined(separator: ", ") + " and " + sorted[sorted.count - 1]
+    }
+
     /// Why the diagram is not drawn, in a sentence.
     var explanation: String {
         switch self {
@@ -9,9 +42,13 @@ extension ReadingDiagramFailure {
         case .reading(.sourceTooLarge(let limitBytes)): "This diagram is too long to draw (more than \(limitBytes) bytes)."
         case .reading(.tooManyNodes(let limit)): "This diagram has more than \(limit) nodes, too many to draw."
         case .reading(.tooManyEdges(let limit)): "This diagram has more than \(limit) links, too many to draw."
-        case .reading(.unsupportedDiagramType(let keyword)): "Diagrams of type “\(keyword)” are not drawn yet."
+        case .reading(.unsupportedDiagramType(let keyword)): "Diagrams of type “\(keyword)” are not drawn yet; the source is shown instead."
         case .layout(.tooManyLayoutPoints): "This diagram is too large to lay out."
-        case .layout(.subgraphsNotLaidOut): "Diagrams with subgraphs are not drawn yet."
+        case .layout(.subgraphsNotLaidOut): "Flowcharts with a collapsed subgraph, or a link from a subgraph to itself, are not drawn yet."
+        case .sequenceLayout(.statementsNotLaidOut(let statements)): "Sequence diagrams with \(Self.listed(statements.map(\.wording))) are not drawn yet."
+        case .gitGraphLayout(.optionsNotApplied): "Git graphs whose front matter or directive sets options are not drawn yet."
+        case .sankeyLayout(.circularLinks): "Sankey diagrams whose links lead back to a node they come from are not drawn."
+        case .sankeyLayout(.optionsNotDrawn): "Sankey diagrams whose front matter sets this option are not drawn yet."
         case .stateLayout(.tooManyLayoutPoints): "This state diagram is too large to lay out."
         case .stateLayout(.compositeStatesNotLaidOut): "State diagrams with composite states are not drawn yet."
         case .classLayout(.tooManyLayoutPoints): "This class diagram is too large to lay out."
@@ -19,7 +56,7 @@ extension ReadingDiagramFailure {
         case .reading(.tooManyParticipants(let limit)): "This diagram has more than \(limit) participants, too many to draw."
         case .reading(.tooManySequenceStatements(let limit)): "This diagram has more than \(limit) messages, notes and blocks, too many to draw."
         case .entityRelationshipLayout(.tooManyLayoutPoints): "This diagram is too large to lay out."
-        case .entityRelationshipLayout(.subgraphsNotLaidOut): "Diagrams with subgraphs are not drawn yet."
+        case .entityRelationshipLayout(.subgraphsNotLaidOut): "Entity relationship diagrams with subgraphs are not drawn yet."
         case .ganttLayout(.statementNotDrawn): "Gantt charts with “click” or “vert” are not drawn yet."
         case .ganttLayout(.unreadableDate(let text)): "The date “\(text)” is not in the chart’s date format."
         case .ganttLayout(.noDayLeftAfterExclusions(let task)): "Every day after the task “\(task)” is excluded."

@@ -1,3 +1,14 @@
+/**
+ * File: ReadingGanttChartTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: The reading view's Gantt charts.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -43,15 +54,24 @@ final class ReadingGanttChartTests: XCTestCase {
         let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
         let inside = ReadingGanttChart.diagram(source: chart, chart: gantt, typography: typography, now: Date(timeIntervalSince1970: 1_389_182_400),
                                                timeZone: utc)
-        guard case .ganttChart(let drawn)? = inside else { return XCTFail("Drawn") }
+        guard case .ganttChart(let drawn) = inside else { return XCTFail("Drawn") }
         XCTAssertNotNil(drawn.layout.plot?.todayOffset)
         XCTAssertFalse(drawn.shapes.todayLine.isEmpty)
     }
 
-    func testAChartWithAStatementNotDrawnOrADateNotReadStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "gantt\nA : a, 2014-01-01, 1d\nclick a href \"https://example.com\"", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "gantt\nA : vert, 2014-01-01, 1d", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "gantt\nA : March 7 2014, 1d", typography: typography))
+    func testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy() {
+        let reasons: [(source: String, failure: ReadingDiagramFailure)] = [
+            ("gantt\nA : a, 2014-01-01, 1d\nclick a href \"https://example.com\"", .ganttLayout(.statementNotDrawn(.click))),
+            ("gantt\nA : vert, 2014-01-01, 1d", .ganttLayout(.statementNotDrawn(.verticalMarker))),
+            ("gantt\nA : March 7 2014, 1d", .ganttLayout(.unreadableDate("March 7 2014"))),
+        ]
+        for reason in reasons {
+            guard case .unreadable(_, let failure) = ReadingDiagram(source: reason.source, typography: typography) else {
+                XCTFail("Shown with why: \(reason.source)")
+                continue
+            }
+            XCTAssertEqual(failure, reason.failure, reason.source)
+        }
     }
 
     func testAChartThatCannotBeScheduledKeepsItsSourceAndWhy() throws {

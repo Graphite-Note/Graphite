@@ -1,3 +1,14 @@
+/**
+ * File: TabLayoutTests.swift
+ * --------------------------
+ * Layer: Tests
+ * Description: The tab layout: opening, closing, moving, stacking and saving tabs.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -81,8 +92,8 @@ final class TabLayoutTests: XCTestCase {
         layout.closeTab(rightTab)
         XCTAssertFalse(layout.isSplit)
         XCTAssertEqual(layout.activeTab.id, leftTab)
-        XCTAssertEqual(layout.popClosedPath(), try path("Slides.pdf"))
-        XCTAssertNil(layout.popClosedPath())
+        XCTAssertEqual(layout.popClosedPath { _ in true }, try path("Slides.pdf"))
+        XCTAssertNil(layout.popClosedPath { _ in true })
     }
 
     func testReopeningSkipsFilesThatAreOpenAgain() throws {
@@ -91,7 +102,49 @@ final class TabLayoutTests: XCTestCase {
         layout.addTab(showing: try path("B.md"))
         layout.closeTab(tab)
         _ = try openHere("A.md", in: &layout)
-        XCTAssertNil(layout.popClosedPath(), "A.md is open again, so there is nothing to reopen.")
+        XCTAssertNil(layout.popClosedPath { _ in true }, "A.md is open again, so there is nothing to reopen.")
+    }
+
+    /// HUNT-198: a file deleted in another app used to be popped and fail to open, and the
+    /// entry was gone; the closed tab before it is reopened instead.
+    func testReopeningSkipsAClosedFileThatWasDeletedElsewhereAndReopensTheNextOne() throws {
+        var layout = TabLayout()
+        let firstTab = try openHere("A.md", in: &layout)
+        let secondTab = layout.tabForOpeningInOtherGroup()
+        layout.show(try path("B.md"), inTab: secondTab, recordsHistory: true)
+        layout.closeTab(firstTab)
+        layout.closeTab(secondTab)
+        XCTAssertEqual(layout.closedPaths.map(\.name), ["A.md", "B.md"])
+
+        let reopened = layout.popClosedPath { closedPath in closedPath.name != "B.md" }
+
+        XCTAssertEqual(reopened?.name, "A.md")
+        XCTAssertEqual(layout.closedPaths, [], "B.md is dropped, not kept for another try.")
+    }
+
+    func testReopeningIsOfferedOnlyWhileSomeClosedFileIsNotOpenAgain() throws {
+        var layout = TabLayout()
+        XCTAssertFalse(layout.canReopenClosedTab)
+        let tab = try openHere("A.md", in: &layout)
+        layout.addTab(showing: try path("B.md"))
+        layout.closeTab(tab)
+        XCTAssertTrue(layout.canReopenClosedTab)
+        _ = try openHere("A.md", in: &layout)
+        XCTAssertFalse(layout.canReopenClosedTab, "A.md is open again, so the command would do nothing.")
+    }
+
+    /// HUNT-197: a stacked side shows all its tabs, so none of them may be taken for hidden.
+    func testAStackedSideShowsEveryTabAndAPlainSideItsActiveTabOnly() throws {
+        var layout = TabLayout()
+        let firstTab = try openHere("A.md", in: &layout)
+        layout.addTab(showing: try path("B.md"))
+        layout.addTab(showing: try path("C.md"))
+        let groupID = layout.focusedGroupID
+        XCTAssertEqual(layout.shownTabIDs, [layout.activeTab.id])
+        layout.setStacked(true, inGroup: groupID)
+        XCTAssertEqual(layout.shownTabIDs, Set(layout.focusedGroup.tabs.map(\.id)))
+        XCTAssertTrue(layout.shownTabIDs.contains(firstTab))
+        XCTAssertEqual(layout.shownTabIDs.count, 3)
     }
 
     func testClosingOtherTabsKeepsPinnedTabs() throws {

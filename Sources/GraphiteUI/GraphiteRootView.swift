@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.55
- * Date: 01/11/2026
+ * Version: 0.62
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -111,8 +111,10 @@ struct GraphiteRootView: View {
                 .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
                 // The library is the file browser in Library mode: no button opens a sidebar beside it.
                 .toolbar(removing: isLibraryWindow ? .sidebarToggle : nil)
+                .tint(workspace.preferences.accentColor)
         } detail: {
             detailColumn
+                .tint(workspace.preferences.accentColor)
                 .overlay {
                     // Both exist only while the Read Aloud core plugin is on.
                     if usesFloatingPlayer, let reader = workspace.readAloud, let navigator = workspace.readAloudNavigator,
@@ -125,7 +127,9 @@ struct GraphiteRootView: View {
         .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > geometry.size.width } action: { isTallerThanWide in
             isWindowTallerThanWide = isTallerThanWide
         }
-        .tint(workspace.preferences.accentColor)
+        // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
+        // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
+        .tint(Color.primary)
         // Links' preview cards, while the core plugin Page Preview is on.
         .modifier(LinkPreviewLayer(isEnabled: workspace.preferences.isEnabled(.pagePreview), vault: workspace.linkPreviewVault))
         // Once per device, over the reopened vault or the welcome screen.
@@ -139,6 +143,9 @@ struct GraphiteRootView: View {
                 columnVisibility = requestedVisibility
             }
         }
+        .onChange(of: isCompactWidth) { _, isCompact in
+            focusMode.widthDidChange(isCompactWidth: isCompact, columnVisibility: &columnVisibility, showsInspector: &showsInspector)
+        }
         .onChange(of: showsInspector) { _, requestedInspector in
             if focusMode.isActive, requestedInspector {
                 focusMode.leave(columnVisibility: &columnVisibility, showsInspector: &showsInspector)
@@ -148,6 +155,7 @@ struct GraphiteRootView: View {
         .modifier(LibraryModeSidebarVisibility(presentation: workspace.preferences.library.presentation, isCompactWidth: isCompactWidth,
                                                columnVisibility: $columnVisibility))
         .environment(\.accent, workspace.preferences.accentColor)
+        .environment(\.isSidebarBesideDocuments, isSidebarBesideDocuments)
         .environment(library)
         .environment(tabOverview)
         .environment(\.libraryWindowActions, libraryWindowActions)
@@ -260,13 +268,16 @@ struct GraphiteRootView: View {
         }
         // A search asked for from anywhere (⇧⌘F, a tag, a link) shows where it happens.
         .onChange(of: workspace.searchFocusRequest) { showSidebar() }
+        .onChange(of: workspace.searchResultsRevealRequest) { showSidebar() }
         // A plugin's sidebar view asked to be shown.
         .onChange(of: workspace.communityPlugins.sidebarViewRequest) { _, request in if request != nil { showSidebar() } }
         // "Reveal current file", from the palette, a tab's menu or the file list's menu.
         .onChange(of: workspace.fileRevealRequest) { _, request in if request != nil { showSidebar() } }
         // A file opened from the list, a link or a search shows on a phone at once.
+        // A rename, a move or a deletion that changes the selection leaves the file list in front.
         .onChange(of: workspace.selection) { _, selection in
-            if selection != nil { showDocumentColumn() }
+            let followsFileManagement = workspace.takeSelectionChangeFromFileManagement()
+            if selection != nil, !followsFileManagement { showDocumentColumn() }
         }
         // So does the graph, opened from the file list's button or the palette.
         .onChange(of: workspace.activeCoreView) { _, coreView in if coreView != nil { showDocumentColumn() } }
@@ -278,7 +289,10 @@ struct GraphiteRootView: View {
             if isVaultRestored { Task { await workspace.handle(url) } } else { pendingLinks.append(url) }
         }
         // The scene keeps the window's tabs, for its own restoration after a relaunch.
-        .onChange(of: workspace.layout.saved) { keptWindowTabs = workspace.windowTabsToKeep() }
+        .onChange(of: workspace.savedLayoutChangeCount) {
+            keptWindowTabs = workspace.windowTabsToKeep()
+            tabOverview.thumbnails.keepThumbnails(of: workspace.layout.allTabs)
+        }
         #if os(macOS)
         .onChange(of: controlActiveState, initial: true) { _, state in
             if state == .key { frontmostWindow?.workspace = workspace; workspace.windowCameToFront() }
@@ -346,7 +360,7 @@ struct GraphiteRootView: View {
             .toolbar { detailToolbar }
             #if canImport(UIKit)
             .toolbar { compactBottomBar }
-            .toolbar(hidesChromeWhileTyping ? .hidden : .automatic, for: .navigationBar)
+            .toolbar(hidesChromeWhileTyping || libraryHomeDrawsNavigationControls ? .hidden : .automatic, for: .navigationBar)
             #endif
             .environment(\.showTemplatePicker, templatePickerAction)
             .environment(\.showTabOverview, TabOverviewAction(show: showTabOverview))
@@ -366,7 +380,25 @@ struct GraphiteRootView: View {
 
     private var libraryWindowActions: LibraryWindowActions {
         LibraryWindowActions(showSearch: { activePalette = .quickSwitcher }, showSettings: showSettings,
-                             showVaults: { workspace.isVaultManagerPresented = true })
+                             showVaults: { workspace.isVaultManagerPresented = true },
+                             navigationControls: libraryHomeDrawsNavigationControls ? libraryNavigationControls : nil)
+    }
+
+    /// Whether the library, as the window's home on the iPad, draws Back, Forward and the recording control in its own row:
+    /// the navigation bar over it would be a band with only that small capsule in it. Focus and Read Aloud keep their
+    /// controls in the bar, so they keep the bar.
+    private var libraryHomeDrawsNavigationControls: Bool {
+        #if canImport(UIKit)
+        isLibraryHomeShown && workspace.store != nil && !focusMode.isActive && workspace.readAloud?.isActive != true
+        #else
+        false
+        #endif
+    }
+
+    private var libraryNavigationControls: LibraryNavigationControls {
+        LibraryNavigationControls(goBack: { Task { await workspace.goBack() } }, goForward: { Task { await workspace.goForward() } },
+                                  canGoBack: workspace.history.canGoBack, canGoForward: workspace.history.canGoForward,
+                                  recordingControl: showsRecordingControl ? AnyView(RecordingControl(workspace: workspace)) : nil)
     }
 
     /// While the library is the window's home, the title bar names no document.
@@ -482,7 +514,8 @@ struct GraphiteRootView: View {
             }
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
-                Button("Quick Switcher", systemImage: "magnifyingglass") { activePalette = .quickSwitcher }.tint(.primary)
+                // A page with a magnifier: it finds a file by name, and the sidebar's field is the search of text.
+                Button("Quick Switcher", systemImage: "doc.text.magnifyingglass") { activePalette = .quickSwitcher }.tint(.primary)
             }
             .visibilityPriority(.high)
             ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -545,7 +578,10 @@ struct GraphiteRootView: View {
     }
 
     private var windowActions: WindowActions {
-        WindowActions(showQuickSwitcher: { activePalette = .quickSwitcher },
+        // Focus is offered where it can be seen and ended; a compact width has neither.
+        var focusModeAction: (() -> Void)?
+        if WorkspaceFocusMode.isOffered(isCompactWidth: isCompactWidth) { focusModeAction = { toggleFocusMode() } }
+        return WindowActions(showQuickSwitcher: { activePalette = .quickSwitcher },
                       showSettings: showSettings,
                       showVaultManager: { workspace.isVaultManagerPresented = true },
                       toggleLinksInspector: { showsInspector.toggle() },
@@ -561,7 +597,7 @@ struct GraphiteRootView: View {
                       create: { kind in creation = CreationRequest(kind: kind) },
                       showTemplatePicker: showTemplatePicker,
                       showTabOverview: showTabOverview,
-                      toggleFocusMode: toggleFocusMode)
+                      toggleFocusMode: focusModeAction)
     }
 
     private func showTabOverview() { workspace.presentTabOverview(tabOverview) }
@@ -668,6 +704,10 @@ struct GraphiteRootView: View {
         visibility == .detailOnly || (visibility == .automatic && automaticHidesSidebar)
     }
 
+    private var isSidebarBesideDocuments: Bool {
+        !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
+    }
+
     /// In automatic mode an iPad shows only the detail column while the window is taller
     /// than wide.
     private var automaticHidesSidebar: Bool {
@@ -770,7 +810,7 @@ private struct CreateDocumentSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField(kind.namePrompt, text: $name)
+                    TextField(kind.untitledName, text: $name)
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(createIfNamed)
@@ -797,13 +837,19 @@ private struct CreateDocumentSheet: View {
         .onAppear { isNameFocused = true }
     }
 
+    /// An empty name is allowed: the file is then called "Untitled", as in Obsidian.
+    private var chosenName: String {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? kind.untitledName : trimmedName
+    }
+
     private var nameProblem: String? {
-        FileNameRules.problem(with: name.trimmingCharacters(in: .whitespacesAndNewlines), isNote: kind == .note)
+        FileNameRules.problem(with: chosenName, isNote: kind == .note)
     }
 
     private func createIfNamed() {
         guard nameProblem == nil else { return }
-        create(name.trimmingCharacters(in: .whitespacesAndNewlines))
+        create(chosenName)
         dismiss()
     }
 }

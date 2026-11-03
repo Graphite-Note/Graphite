@@ -5,8 +5,8 @@
  * Description: Settings > Keyboard Shortcuts: the commands with their shortcuts, to record, remove or reset them.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -22,6 +22,8 @@ struct KeyboardShortcutsSettingsPage: View {
     let isCorePluginEnabled: (CorePlugin) -> Bool
     /// Shortcuts set in the Mac's System Settings for menu items, by menu title.
     let systemSettingsShortcuts: [String: KeyCombination?]
+    /// Whether a vault is open: the shortcuts are stored in it, and with none a change would be lost.
+    let isVaultOpen: Bool
     let change: (HotkeyChange) async -> Void
 
     @State private var query = ""
@@ -43,12 +45,13 @@ struct KeyboardShortcutsSettingsPage: View {
 
     private var table: KeyboardShortcutTable { shortcuts.table(pluginCommands: pluginCommands) }
     /// While the file cannot be read, nothing is changed, so it is never overwritten.
-    private var canEdit: Bool { shortcuts.fileReading.settings != nil }
+    private var canEdit: Bool { isVaultOpen && shortcuts.fileReading.settings != nil }
 
     var body: some View {
         let content = KeyboardShortcutsPageContent(table: table, platform: shortcuts.platform, pluginCommands: pluginCommands, pluginName: pluginName,
                                                    isCorePluginEnabled: isCorePluginEnabled, systemSettingsShortcuts: systemSettingsShortcuts)
         Form {
+            if !isVaultOpen { SettingsNeedAVault(what: "keyboard shortcuts") }
             if let reason = shortcuts.fileReading.unreadableReason { unreadableFileSection(reason) }
             ForEach(content.sections(matching: query)) { section in
                 Section(section.title) {

@@ -1,3 +1,14 @@
+/**
+ * File: NotebookImportWording.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: The words of a notebook import's progress and report.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteApple
 import NotebookImport
@@ -47,7 +58,8 @@ enum NotebookImportWording {
         case .notANotebook(let format): "This file is not a \(appName(format)) notebook."
         case .damaged(let format): "The notebook is damaged, or was saved by a version of \(appName(format)) that Graphite cannot read yet."
         case .tooLarge: "The notebook holds a file too large to import on this device."
-        case .noPages: "The notebook has no page Graphite can import yet. A note of typed text only waits for text on PDF pages."
+        case .noPages:
+            "The notebook has no page Graphite can import. A note of typed text only has nothing to convert, as the import does not convert typed text yet."
         case .notWritten: "The PDF could not be saved in the vault. Check that the device has free space."
         }
     }
@@ -94,9 +106,9 @@ enum NotebookImportWording {
 
     private static func leftOutElements(_ kind: ImportElementKind, count total: Int) -> String {
         switch kind {
-        case .textBox: "Text boxes left out until Graphite has text on PDF pages: " + count(total, "text box", "text boxes")
-        case .stickyNote: "Sticky notes left out until Graphite has text on PDF pages: " + count(total, "note", "notes")
-        case .typedText: "Typed text left out until Graphite has text on PDF pages"
+        case .textBox: "Text boxes left out, as the import does not convert them yet: " + count(total, "text box", "text boxes")
+        case .stickyNote: "Sticky notes left out, as the import does not convert them yet: " + count(total, "note", "notes")
+        case .typedText: "Typed text left out, as the import does not convert it yet"
         case .shape: "Shapes Graphite could not draw left out: " + count(total, "shape", "shapes")
         case .shapeFill: "Shape fills left out: " + count(total, "fill", "fills")
         case .picture: "Pictures left out: " + count(total, "picture", "pictures")

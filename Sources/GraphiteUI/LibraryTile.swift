@@ -1,3 +1,14 @@
+/**
+ * File: LibraryTile.swift
+ * -----------------------
+ * Layer: UI
+ * Description: One folder or file of the library's grid, as the Files app shows it: its picture, its name and its date.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -18,6 +29,8 @@ struct LibraryTile: View {
     let entry: VaultEntry
     let library: LibraryModel
     let entries: LibraryEntryPresentation
+    /// The order the grid is sorted in, which decides the date under a file's name.
+    let sortOrder: FileSortOrder
     let selection: LibraryTileSelection
     let open: () -> Void
     /// A click or tap that chooses the tile; a plain one acts as the platform's plain click does.
@@ -115,10 +128,10 @@ struct LibraryTile: View {
     /// Names wrap to this many lines at accessibility text sizes, so a long name is read in full.
     private static let accessibilityNameLineLimit = 6
 
-    /// A folder says how many items it holds, as the Files app does; a file says when it changed.
+    /// A folder says how many items it holds, as the Files app does; a file says the date its listing is sorted by.
     private var subtitle: String {
         if entry.isDirectory, let itemCount = library.folderItemCounts.counts[entry.path] { return LibraryTileSpokenLabel.itemCountText(itemCount) }
-        return entry.modified.formatted(date: .abbreviated, time: .omitted)
+        return sortOrder.shownDate(of: entry).formatted(date: .abbreviated, time: .omitted)
     }
 
     private func activate() {
@@ -151,8 +164,8 @@ struct LibraryTile: View {
     private var accessibilityTitle: String {
         let name = entries.displayName(entry.path)
         guard entry.isDirectory else {
-            let modifiedText = entry.modified.formatted(date: .abbreviated, time: .shortened)
-            return LibraryTileSpokenLabel.file(name: name, kind: entry.kind.libraryTitle, modifiedText: modifiedText)
+            let dateText = sortOrder.shownDate(of: entry).formatted(date: .abbreviated, time: .shortened)
+            return LibraryTileSpokenLabel.file(name: name, kind: entry.kind.libraryTitle, modifiedText: dateText)
         }
         return LibraryTileSpokenLabel.folder(name: name, lookDescription: library.folderLooks.shownLook(of: entry.path).style?.spokenDescription,
                                              itemCount: library.folderItemCounts.counts[entry.path])

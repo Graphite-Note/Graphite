@@ -1,3 +1,13 @@
+/**
+ * File: PDFTextBoxesTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: Text boxes on a PDF page in the hosted app: placed with the palette's text tool, typed in, moved, turned, undone, saved and read back.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 03/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -34,8 +44,7 @@ final class PDFTextBoxesTests: XCTestCase {
 
         // A tap of the text tool on the page starts a box there and raises the keyboard.
         let tapPoint = CGPoint(x: 90, y: 700)
-        try await tap(atPagePoint: tapPoint, on: page, in: pdfView, window: window)
-        let textView = try await editingTextView(in: controller)
+        let textView = try await startBox(atPagePoint: tapPoint, on: page, session: session, in: pdfView, controller: controller)
         XCTAssertTrue(textView.isFirstResponder, "The keyboard, Scribble and dictation type into the box.")
         textView.insertText("Lecture notes")
         XCTAssertTrue(session.textBoxes(on: page).isEmpty, "The document takes the box when typing ends.")
@@ -93,13 +102,12 @@ final class PDFTextBoxesTests: XCTestCase {
         let (session, controller, page) = try await openNotebookWithTextTool()
         let window = try XCTUnwrap(controller.view.window)
         let pdfView = try XCTUnwrap(session.pdfView)
-        try await tap(atPagePoint: CGPoint(x: 80, y: 600), on: page, in: pdfView, window: window)
-        let textView = try await editingTextView(in: controller)
+        let textView = try await startBox(atPagePoint: CGPoint(x: 80, y: 600), on: page, session: session, in: pdfView, controller: controller)
         textView.insertText("One line")
         let oneLineHeight = textView.bounds.height
         textView.insertText("\nTwo lines\nThree lines")
         try await waitUntil("the box grows with its text") { textView.bounds.height > oneLineHeight * 2 }
-        try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+        try await tapOutsideToEndTyping(on: page, in: pdfView, controller: controller)
         try await waitUntil("the box is in the document") { session.textBoxes(on: page).count == 1 }
         let threeLines = try XCTUnwrap(session.textBoxes(on: page).first)
         XCTAssertEqual(threeLines.plainText, "One line\nTwo lines\nThree lines")
@@ -109,7 +117,7 @@ final class PDFTextBoxesTests: XCTestCase {
         let secondTextView = try await editingTextView(in: controller)
         secondTextView.selectedRange = NSRange(location: 0, length: (secondTextView.text as NSString).length)
         secondTextView.deleteBackward()
-        try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+        try await tapOutsideToEndTyping(on: page, in: pdfView, controller: controller)
         try await waitUntil("the emptied box is removed") { session.textBoxes(on: page).isEmpty }
         XCTAssertEqual(session.undoManager.undoActionName, "Delete Text Box")
         session.undoAvailability.undo()
@@ -122,8 +130,7 @@ final class PDFTextBoxesTests: XCTestCase {
         let (session, controller, page) = try await openNotebookWithTextTool()
         let window = try XCTUnwrap(controller.view.window)
         let pdfView = try XCTUnwrap(session.pdfView)
-        try await tap(atPagePoint: CGPoint(x: 80, y: 500), on: page, in: pdfView, window: window)
-        let textView = try await editingTextView(in: controller)
+        let textView = try await startBox(atPagePoint: CGPoint(x: 80, y: 500), on: page, session: session, in: pdfView, controller: controller)
         textView.insertText("Saved while typing")
         try await session.save()
         XCTAssertTrue(textView.isFirstResponder, "Saving does not end typing.")
@@ -165,6 +172,44 @@ final class PDFTextBoxesTests: XCTestCase {
     private func tap(atPagePoint pagePoint: CGPoint, on page: PDFPage, in pdfView: PDFView, window: UIWindow) async throws {
         let windowPoint = pdfView.convert(pdfView.convert(pagePoint, from: page), to: window)
         await SynthesizedTouches(window: window).move(paths: [(windowPoint, windowPoint)], steps: 1, stepSeconds: 0.03, holdSeconds: 0)
+    }
+
+    /// The first tap of the text tool on a page, typing in a new box. In a process just launched
+    /// the palette, as it comes up, can report its tool and so put the text tool away, and the main
+    /// thread can stall for longer than a tap may last (`ReadAloudPenTapRecognizer`): neither is a
+    /// tap of the text tool, so it is made again. A quick tap with the tool in hand gets one chance.
+    private func startBox(atPagePoint pagePoint: CGPoint, on page: PDFPage, session: PDFSession, in pdfView: PDFView,
+                          controller: UIViewController) async throws -> PDFTextBoxEditingView {
+        let window = try XCTUnwrap(controller.view.window)
+        let inkSelection = PaletteInkSelection.of(window.windowScene)
+        for _ in 1...3 {
+            inkSelection.placesTextBoxes = true
+            try await waitUntil("the canvas places text") {
+                (session.pdfView as? GraphitePDFDisplayView)?.annotationCoordinator?.editingCanvas(for: page)?.placesTextBoxes == true
+            }
+            let tapStart = ContinuousClock.now
+            try await tap(atPagePoint: pagePoint, on: page, in: pdfView, window: window)
+            let wasATap = tapStart.duration(to: .now) < .seconds(ReadAloudPenTapRecognizer.maximumDuration)
+            if session.textBoxActivity != .idle || (wasATap && inkSelection.placesTextBoxes) { break }
+        }
+        return try await editingTextView(in: controller)
+    }
+
+    /// A tap away from the box. A stall on a busy machine can outlast the tap limit, and the touch is then no tap,
+    /// so it is tried again while the box is still being typed in.
+    private func tapOutsideToEndTyping(on page: PDFPage, in pdfView: PDFView, controller: UIViewController) async throws {
+        let window = try XCTUnwrap(controller.view.window)
+        for _ in 1...3 {
+            try await tap(atPagePoint: CGPoint(x: 400, y: 200), on: page, in: pdfView, window: window)
+            for _ in 0..<40 where isTypingInABox(in: controller) {
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 50)
+            }
+            if !isTypingInABox(in: controller) { return }
+        }
+    }
+
+    private func isTypingInABox(in controller: UIViewController) -> Bool {
+        descendants(of: controller.view, matching: PDFTextBoxEditingView.self).first?.isFirstResponder == true
     }
 
     private func editingTextView(in controller: UIViewController) async throws -> PDFTextBoxEditingView {

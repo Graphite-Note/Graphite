@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartLayout.swift
+ * ---------------------------
+ * Layer: Core
+ * Description: A flowchart laid out on a page.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import CoreGraphics
 
 /// A flowchart laid out on a page whose origin is the top left corner and whose y runs down, in points. Drawing it
@@ -36,6 +47,8 @@ public struct FlowchartLayoutNode: Equatable, Sendable {
     /// The shape's bounding box.
     public let frame: CGRect
     public let text: DiagramTextBlock
+    /// The colors the diagram's statements give the node, or nil for the usual look.
+    public let style: DiagramElementStyle?
 }
 
 public struct FlowchartLayoutEdge: Equatable, Sendable {
@@ -46,11 +59,13 @@ public struct FlowchartLayoutEdge: Equatable, Sendable {
     public let targetMark: DiagramEdgeMark?
     /// The edge's text, drawn on a patch of the background, or nil.
     public let text: DiagramTextBlock?
+    /// The line and mark colors and stroke the diagram's statements give the edge, or nil for the usual look.
+    public let style: DiagramElementStyle?
 }
 
 extension FlowchartLayoutNode {
     func translated(by offset: CGVector) -> FlowchartLayoutNode {
-        FlowchartLayoutNode(shape: shape, frame: frame.offsetBy(dx: offset.dx, dy: offset.dy), text: text.translated(by: offset))
+        FlowchartLayoutNode(shape: shape, frame: frame.offsetBy(dx: offset.dx, dy: offset.dy), text: text.translated(by: offset), style: style)
     }
 }
 
@@ -64,6 +79,6 @@ extension FlowchartLayoutCluster {
 extension FlowchartLayoutEdge {
     func translated(by offset: CGVector) -> FlowchartLayoutEdge {
         FlowchartLayoutEdge(stroke: stroke, path: path.translated(by: offset), sourceMark: sourceMark?.translated(by: offset),
-                            targetMark: targetMark?.translated(by: offset), text: text?.translated(by: offset))
+                            targetMark: targetMark?.translated(by: offset), text: text?.translated(by: offset), style: style)
     }
 }

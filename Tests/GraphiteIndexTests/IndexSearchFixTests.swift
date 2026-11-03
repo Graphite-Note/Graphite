@@ -1,3 +1,14 @@
+/**
+ * File: IndexSearchFixTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: Paging, cancellation, text matching and error reporting of search and the quick switcher.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 @testable import GraphiteIndex
@@ -288,6 +299,19 @@ final class IndexSearchFixTests: XCTestCase {
         XCTAssertEqual(alias.first?.alias, "Ärger")
         let nothing = try await index.quickSwitcherMatches(for: "zzz")
         XCTAssertTrue(nothing.isEmpty)
+    }
+
+    func testQuickSwitcherLimitedToPicturesIsNotFilledByNotesThatMatchBetter() async throws {
+        var files = try (1...250).map { number in try note("Notes/course \(number).md", "x") }
+        files.append(try note("Scans/a course scan.PNG", nil))
+        files.append(try note("Scans/course.pdf", nil))
+        try await index.update(files, generation: "test")
+        let everything = try await index.quickSwitcherMatches(for: "course", limit: 200)
+        XCTAssertFalse(everything.contains { $0.path.rawValue == "Scans/a course scan.PNG" }, "Without the limit on kinds, 200 better notes fill the list.")
+        let pictures = try await index.quickSwitcherMatches(for: "course", limit: 200, onlyFileExtensions: DocumentKind.imageFileExtensions)
+        XCTAssertEqual(pictures.map(\.path.rawValue), ["Scans/a course scan.PNG"])
+        let none = try await index.quickSwitcherMatches(for: "course", onlyFileExtensions: [])
+        XCTAssertTrue(none.isEmpty)
     }
 
     func testQuickSwitcherAcceptsAnyLimit() async throws {
