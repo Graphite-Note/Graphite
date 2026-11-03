@@ -1,3 +1,14 @@
+/**
+ * File: AtomFactory.swift
+ * -----------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Makes the atoms and environments of a formula from their LaTeX names.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 extension Math {
@@ -15,6 +26,9 @@ extension Math {
       "gets": "leftarrow",
       "to": "rightarrow",
       "iff": "Longleftrightarrow",
+      "impliedby": "Longleftarrow",
+      "leadsto": "rightsquigarrow",
+      "restriction": "upharpoonright",
       "AA": "angstrom",
     ]
 
@@ -51,6 +65,8 @@ extension Math {
       "rceil": "\u{2309}",
       "lfloor": "\u{230A}",
       "rfloor": "\u{230B}",
+      "llbracket": "\u{27E6}",
+      "rrbracket": "\u{27E7}",
     ]
 
     static let delimValueToName: [String: String] = {
@@ -80,6 +96,9 @@ extension Math {
       "dot": "\u{0307}",
       "ddot": "\u{0308}",
       "check": "\u{030C}",
+      "mathring": "\u{030A}",
+      "dddot": "\u{20DB}",
+      "ddddot": "\u{20DC}",
       "vec": "\u{20D7}",
       "widehat": "\u{0302}",
       "widetilde": "\u{0303}",
@@ -193,6 +212,153 @@ extension Math {
       "Longleftarrow": Atom(type: .relation, nucleus: "\u{27F8}"),
       "Longrightarrow": Atom(type: .relation, nucleus: "\u{27F9}"),
       "Longleftrightarrow": Atom(type: .relation, nucleus: "\u{27FA}"),
+      // KaTeX's other arrows, those Latin Modern has a glyph for (Graphite patch 8).
+      "nleftarrow": Atom(type: .relation, nucleus: "\u{219A}"),
+      "nrightarrow": Atom(type: .relation, nucleus: "\u{219B}"),
+      "twoheadleftarrow": Atom(type: .relation, nucleus: "\u{219E}"),
+      "twoheadrightarrow": Atom(type: .relation, nucleus: "\u{21A0}"),
+      "leftarrowtail": Atom(type: .relation, nucleus: "\u{21A2}"),
+      "rightarrowtail": Atom(type: .relation, nucleus: "\u{21A3}"),
+      "hookleftarrow": Atom(type: .relation, nucleus: "\u{21A9}"),
+      "hookrightarrow": Atom(type: .relation, nucleus: "\u{21AA}"),
+      "looparrowleft": Atom(type: .relation, nucleus: "\u{21AB}"),
+      "looparrowright": Atom(type: .relation, nucleus: "\u{21AC}"),
+      "leftrightsquigarrow": Atom(type: .relation, nucleus: "\u{21AD}"),
+      "nleftrightarrow": Atom(type: .relation, nucleus: "\u{21AE}"),
+      "Lsh": Atom(type: .relation, nucleus: "\u{21B0}"),
+      "Rsh": Atom(type: .relation, nucleus: "\u{21B1}"),
+      "curvearrowleft": Atom(type: .relation, nucleus: "\u{21B6}"),
+      "curvearrowright": Atom(type: .relation, nucleus: "\u{21B7}"),
+      "circlearrowleft": Atom(type: .relation, nucleus: "\u{21BA}"),
+      "circlearrowright": Atom(type: .relation, nucleus: "\u{21BB}"),
+      "leftharpoonup": Atom(type: .relation, nucleus: "\u{21BC}"),
+      "leftharpoondown": Atom(type: .relation, nucleus: "\u{21BD}"),
+      "upharpoonright": Atom(type: .relation, nucleus: "\u{21BE}"),
+      "upharpoonleft": Atom(type: .relation, nucleus: "\u{21BF}"),
+      "rightharpoonup": Atom(type: .relation, nucleus: "\u{21C0}"),
+      "rightharpoondown": Atom(type: .relation, nucleus: "\u{21C1}"),
+      "downharpoonright": Atom(type: .relation, nucleus: "\u{21C2}"),
+      "downharpoonleft": Atom(type: .relation, nucleus: "\u{21C3}"),
+      "rightleftarrows": Atom(type: .relation, nucleus: "\u{21C4}"),
+      "leftrightarrows": Atom(type: .relation, nucleus: "\u{21C6}"),
+      "leftleftarrows": Atom(type: .relation, nucleus: "\u{21C7}"),
+      "upuparrows": Atom(type: .relation, nucleus: "\u{21C8}"),
+      "rightrightarrows": Atom(type: .relation, nucleus: "\u{21C9}"),
+      "downdownarrows": Atom(type: .relation, nucleus: "\u{21CA}"),
+      "leftrightharpoons": Atom(type: .relation, nucleus: "\u{21CB}"),
+      "rightleftharpoons": Atom(type: .relation, nucleus: "\u{21CC}"),
+      "nLeftarrow": Atom(type: .relation, nucleus: "\u{21CD}"),
+      "nLeftrightarrow": Atom(type: .relation, nucleus: "\u{21CE}"),
+      "nRightarrow": Atom(type: .relation, nucleus: "\u{21CF}"),
+      "Lleftarrow": Atom(type: .relation, nucleus: "\u{21DA}"),
+      "Rrightarrow": Atom(type: .relation, nucleus: "\u{21DB}"),
+      "rightsquigarrow": Atom(type: .relation, nucleus: "\u{21DD}"),
+      "multimap": Atom(type: .relation, nucleus: "\u{22B8}"),
+      "longmapsto": Atom(type: .relation, nucleus: "\u{27FC}"),
+
+      // Graphite patch 11: KaTeX's other symbols, those Latin Modern has a glyph for.
+      // Relations and arrows
+      "leqslant": Atom(type: .relation, nucleus: "\u{2A7D}"),
+      "geqslant": Atom(type: .relation, nucleus: "\u{2A7E}"),
+      "leqq": Atom(type: .relation, nucleus: "\u{2266}"),
+      "geqq": Atom(type: .relation, nucleus: "\u{2267}"),
+      "lneq": Atom(type: .relation, nucleus: "\u{2A87}"),
+      "gneq": Atom(type: .relation, nucleus: "\u{2A88}"),
+      "lneqq": Atom(type: .relation, nucleus: "\u{2268}"),
+      "gneqq": Atom(type: .relation, nucleus: "\u{2269}"),
+      "nleq": Atom(type: .relation, nucleus: "\u{2270}"),
+      "ngeq": Atom(type: .relation, nucleus: "\u{2271}"),
+      "lesssim": Atom(type: .relation, nucleus: "\u{2272}"),
+      "gtrsim": Atom(type: .relation, nucleus: "\u{2273}"),
+      "lessapprox": Atom(type: .relation, nucleus: "\u{2A85}"),
+      "gtrapprox": Atom(type: .relation, nucleus: "\u{2A86}"),
+      "lessgtr": Atom(type: .relation, nucleus: "\u{2276}"),
+      "gtrless": Atom(type: .relation, nucleus: "\u{2277}"),
+      "lll": Atom(type: .relation, nucleus: "\u{22D8}"),
+      "ggg": Atom(type: .relation, nucleus: "\u{22D9}"),
+      "preceq": Atom(type: .relation, nucleus: "\u{2AAF}"),
+      "succeq": Atom(type: .relation, nucleus: "\u{2AB0}"),
+      "nprec": Atom(type: .relation, nucleus: "\u{2280}"),
+      "nsucc": Atom(type: .relation, nucleus: "\u{2281}"),
+      "nsubseteq": Atom(type: .relation, nucleus: "\u{2288}"),
+      "nsupseteq": Atom(type: .relation, nucleus: "\u{2289}"),
+      "subsetneq": Atom(type: .relation, nucleus: "\u{228A}"),
+      "supsetneq": Atom(type: .relation, nucleus: "\u{228B}"),
+      "triangleq": Atom(type: .relation, nucleus: "\u{225C}"),
+      "coloneqq": Atom(type: .relation, nucleus: "\u{2254}"),
+      "eqqcolon": Atom(type: .relation, nucleus: "\u{2255}"),
+      "nsim": Atom(type: .relation, nucleus: "\u{2241}"),
+      "ncong": Atom(type: .relation, nucleus: "\u{2247}"),
+      "nmid": Atom(type: .relation, nucleus: "\u{2224}"),
+      "nparallel": Atom(type: .relation, nucleus: "\u{2226}"),
+      "vdash": Atom(type: .relation, nucleus: "\u{22A2}"),
+      "dashv": Atom(type: .relation, nucleus: "\u{22A3}"),
+      "vDash": Atom(type: .relation, nucleus: "\u{22A8}"),
+      "Vdash": Atom(type: .relation, nucleus: "\u{22A9}"),
+      "nvdash": Atom(type: .relation, nucleus: "\u{22AC}"),
+      "nvDash": Atom(type: .relation, nucleus: "\u{22AD}"),
+      "therefore": Atom(type: .relation, nucleus: "\u{2234}"),
+      "because": Atom(type: .relation, nucleus: "\u{2235}"),
+      "bowtie": Atom(type: .relation, nucleus: "\u{22C8}"),
+      "smile": Atom(type: .relation, nucleus: "\u{2323}"),
+      "frown": Atom(type: .relation, nucleus: "\u{2322}"),
+      "mapsfrom": Atom(type: .relation, nucleus: "\u{21A4}"),
+      "vartriangleleft": Atom(type: .relation, nucleus: "\u{22B2}"),
+      "vartriangleright": Atom(type: .relation, nucleus: "\u{22B3}"),
+      "trianglelefteq": Atom(type: .relation, nucleus: "\u{22B4}"),
+      "trianglerighteq": Atom(type: .relation, nucleus: "\u{22B5}"),
+      // Binary operators
+      "diamond": Atom(type: .binaryOperator, nucleus: "\u{22C4}"),
+      "bigcirc": Atom(type: .binaryOperator, nucleus: "\u{25EF}"),
+      "circledast": Atom(type: .binaryOperator, nucleus: "\u{229B}"),
+      "barwedge": Atom(type: .binaryOperator, nucleus: "\u{22BC}"),
+      "veebar": Atom(type: .binaryOperator, nucleus: "\u{22BB}"),
+      "intercal": Atom(type: .binaryOperator, nucleus: "\u{22BA}"),
+      "dotplus": Atom(type: .binaryOperator, nucleus: "\u{2214}"),
+      "boxplus": Atom(type: .binaryOperator, nucleus: "\u{229E}"),
+      "boxtimes": Atom(type: .binaryOperator, nucleus: "\u{22A0}"),
+      "ltimes": Atom(type: .binaryOperator, nucleus: "\u{22C9}"),
+      "rtimes": Atom(type: .binaryOperator, nucleus: "\u{22CA}"),
+      "triangleleft": Atom(type: .binaryOperator, nucleus: "\u{25C1}"),
+      "triangleright": Atom(type: .binaryOperator, nucleus: "\u{25B7}"),
+      "bigtriangleup": Atom(type: .binaryOperator, nucleus: "\u{25B3}"),
+      "bigtriangledown": Atom(type: .binaryOperator, nucleus: "\u{25BD}"),
+      "lhd": Atom(type: .binaryOperator, nucleus: "\u{22B2}"),
+      "rhd": Atom(type: .binaryOperator, nucleus: "\u{22B3}"),
+      "unlhd": Atom(type: .binaryOperator, nucleus: "\u{22B4}"),
+      "unrhd": Atom(type: .binaryOperator, nucleus: "\u{22B5}"),
+      // Ordinary symbols
+      "blacksquare": Atom(type: .ordinary, nucleus: "\u{25A0}"),
+      "varnothing": Atom(type: .ordinary, nucleus: "\u{2300}"),
+      "checkmark": Atom(type: .ordinary, nucleus: "\u{2713}"),
+      "lozenge": Atom(type: .ordinary, nucleus: "\u{25CA}"),
+      "complement": Atom(type: .ordinary, nucleus: "\u{2201}"),
+      "backprime": Atom(type: .ordinary, nucleus: "\u{2035}"),
+      "beth": Atom(type: .ordinary, nucleus: "\u{2136}"),
+      "gimel": Atom(type: .ordinary, nucleus: "\u{2137}"),
+      "daleth": Atom(type: .ordinary, nucleus: "\u{2138}"),
+      "flat": Atom(type: .ordinary, nucleus: "\u{266D}"),
+      "natural": Atom(type: .ordinary, nucleus: "\u{266E}"),
+      "sharp": Atom(type: .ordinary, nucleus: "\u{266F}"),
+      "clubsuit": Atom(type: .ordinary, nucleus: "\u{2663}"),
+      "diamondsuit": Atom(type: .ordinary, nucleus: "\u{2662}"),
+      "heartsuit": Atom(type: .ordinary, nucleus: "\u{2661}"),
+      "spadesuit": Atom(type: .ordinary, nucleus: "\u{2660}"),
+      "sphericalangle": Atom(type: .ordinary, nucleus: "\u{2222}"),
+      "measuredangle": Atom(type: .ordinary, nucleus: "\u{2221}"),
+      "varkappa": Atom(type: .ordinary, nucleus: "\u{03F0}"),
+      "triangledown": Atom(type: .ordinary, nucleus: "\u{25BD}"),
+      // Not in Latin Modern: Core Text draws these with a fallback font.
+      "bigstar": Atom(type: .ordinary, nucleus: "\u{2605}"),
+      "blacklozenge": Atom(type: .ordinary, nucleus: "\u{29EB}"),
+      "S": Atom(type: .ordinary, nucleus: "\u{00A7}"),
+      "P": Atom(type: .ordinary, nucleus: "\u{00B6}"),
+      "yen": Atom(type: .ordinary, nucleus: "\u{00A5}"),
+      "circledR": Atom(type: .ordinary, nucleus: "\u{00AE}"),
+      "llbracket": Atom(type: .open, nucleus: "\u{27E6}"),
+      "rrbracket": Atom(type: .close, nucleus: "\u{27E7}"),
+      "oiint": operatorWithName("\u{222F}", limits: false),
+      "oiiint": operatorWithName("\u{2230}", limits: false),
 
       // Relations
       "leq": Atom(type: .relation, nucleus: .lessEqual),
@@ -580,6 +746,25 @@ extension Math {
       return supportedLatexSymbols.withValue { $0[resolvedName]?.copy() }
     }
 
+    /// Graphite patch: the atom for a character typed in a formula that has none of its own:
+    /// the symbol of the command that draws it, with that command's class (`≤` is `\leq`,
+    /// `δ` is `\delta`), and otherwise an upright ordinary atom, drawn by the font or a
+    /// fallback for it. Nil for a space or an invisible character.
+    static func atom(forTypedCharacter character: Character) -> Atom? {
+      guard !character.isWhitespace,
+        !character.unicodeScalars.allSatisfy({ scalar in
+          scalar.properties.generalCategory == .control || scalar.properties.generalCategory == .format
+        })
+      else { return nil }
+      let text = String(character)
+      if let name = textToLatexSymbolNameValue()[text], let symbol = atom(forLatexSymbol: name),
+        symbol.type != .placeholder
+      {
+        return symbol
+      }
+      return Atom(type: .ordinary, nucleus: text)
+    }
+
     static func latexSymbolName(for atom: Atom) -> String? {
       guard !atom.nucleus.isEmpty else { return nil }
       return textToLatexSymbolNameValue()[atom.nucleus]
@@ -723,6 +908,7 @@ extension Math {
               table.cells[i][1].insert(spacer, at: 0)
             }
           }
+          setCellsInDisplayStyle(table)
 
           table.interRowAdditionalSpacing = 1
           table.interColumnSpacing = 0
@@ -731,7 +917,21 @@ extension Math {
           table.setAlignment(.left, forColumn: 1)
 
           return table
-        } else if env == "displaylines" || env == "gather" {
+        } else if env == "array" {
+          // Graphite patch: cells in text style, columns 1 em apart (twice `\arraycolsep`),
+          // centered until the parser applies the array's preamble.
+          table.interRowAdditionalSpacing = 0
+          table.interColumnSpacing = 18
+
+          let style = Style(level: .text)
+          for i in 0..<table.cells.count {
+            for j in 0..<table.cells[i].count {
+              table.cells[i][j].insert(style, at: 0)
+            }
+          }
+
+          return table
+        } else if env == "displaylines" || env == "gather" || env == "gathered" {
           if table.numberOfColumns != 1 {
             let message = "\(env) environment can only have 1 column"
             if error == nil {
@@ -744,6 +944,7 @@ extension Math {
           table.interColumnSpacing = 0
 
           table.setAlignment(.center, forColumn: 0)
+          setCellsInDisplayStyle(table)
 
           return table
         } else if env == "eqnarray" {
@@ -761,23 +962,16 @@ extension Math {
           table.setAlignment(.right, forColumn: 0)
           table.setAlignment(.center, forColumn: 1)
           table.setAlignment(.left, forColumn: 2)
+          setCellsInDisplayStyle(table)
 
           return table
         } else if env == "cases" {
-          if table.numberOfColumns != 1 && table.numberOfColumns != 2 {
-            let message = "cases environment can have 1 or 2 columns"
-            if error == nil {
-              error = ParserError(code: .invalidNumberOfColumns, message: message)
-            }
-            return nil
-          }
-
+          // Graphite patch: any number of left-aligned columns, as in MathJax.
           table.interRowAdditionalSpacing = 0
           table.interColumnSpacing = 18
 
-          table.setAlignment(.left, forColumn: 0)
-          if table.numberOfColumns == 2 {
-            table.setAlignment(.left, forColumn: 1)
+          for column in 0..<table.numberOfColumns {
+            table.setAlignment(.left, forColumn: column)
           }
 
           let style = Style(level: .text)
@@ -802,6 +996,18 @@ extension Math {
         }
       }
       return nil
+    }
+
+    /// Graphite patch: as in TeX and MathJax, the equation environments set their cells in display
+    /// style, inline too. Upstream's left them in the style around them, which since a fraction's
+    /// parts follow the style (patch 19) would draw an inline `aligned` smaller than MathJax does.
+    private static func setCellsInDisplayStyle(_ table: Table) {
+      let style = Style(level: .display)
+      for row in 0..<table.cells.count {
+        for column in 0..<table.cells[row].count {
+          table.cells[row][column].insert(style, at: 0)
+        }
+      }
     }
 
     private static func textToLatexSymbolNameValue() -> [String: String] {

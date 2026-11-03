@@ -1,3 +1,14 @@
+/**
+ * File: NotebookImportSession.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: One import of Goodnotes and Notability notebooks into the open vault, from choosing them to closing its report.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -25,11 +36,14 @@ final class NotebookImportSession {
     }
 
     /// Starts converting `sources` (notebook files and folders of them, chosen by the person) into `destination`.
-    init(sources: [URL], destination: VaultPath, run: NotebookImportRun) {
+    /// - Parameter whenEnded: Called once the work has ended, finished or cancelled, and not before: the sources may be
+    ///   temporary copies (a notebook dragged in from the Files app) that must stay until the last page is read.
+    init(sources: [URL], destination: VaultPath, run: NotebookImportRun, whenEnded: @escaping @Sendable () -> Void = {}) {
         let (progressUpdates, continuation) = AsyncStream.makeStream(of: NotebookImportProgress.self, bufferingPolicy: .bufferingNewest(1))
         let importTask = Task.detached(priority: .utility) {
             let summary = await run.run(sources: sources, into: destination, progress: continuation)
             continuation.finish()
+            whenEnded()
             return summary
         }
         self.importTask = importTask

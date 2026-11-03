@@ -1,3 +1,15 @@
+/**
+ * File: NoteLinksInspector.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The right sidebar of a note: outline, backlinks, outgoing links, tags, footnotes and the local graph
+ *              and map.
+ *
+ * Authors: felixchvl
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -17,11 +29,15 @@ struct NoteLinksInspector: View {
     @State private var outgoing: [OutgoingLink] = []
     @State private var linkedMentions: [MentionGroup] = []
     @State private var unlinkedMentions: [MentionGroup] = []
+    /// Whether there are more notes that mention this one than are listed.
+    @State private var unlinkedMentionsAreCut = false
     @AppStorage("GraphiteShowsUnlinkedMentions") private var showsUnlinkedMentions = false
     @State private var isLoadingUnlinkedMentions = false
     @State private var tags: [String] = []
     @State private var footnotes: [(note: Footnotes.Note, location: Int)] = []
     @Environment(\.accent) private var accent
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var outline: [OutlineHeading] = []
 
     struct OutlineHeading: Identifiable {
@@ -49,6 +65,9 @@ struct NoteLinksInspector: View {
     struct OutgoingLink: Hashable {
         let target: String
         let isWiki: Bool
+
+        /// Where a web or app address opens; nil for a link to a file of the vault.
+        var externalLocation: URL? { WikiLinkResolver.externalLocation(of: target, isWiki: isWiki) }
     }
 
     /// Each distinct link once, in target order.
@@ -81,11 +100,17 @@ struct NoteLinksInspector: View {
             if availablePanels.isEmpty {
                 ContentUnavailableView("No Panels", systemImage: "sidebar.right", description: Text("Turn on Outline, Backlinks, Outgoing Links, or Tags View in Settings › Core Plugins."))
             } else {
-                Picker("Panel", selection: $selectedPanel) {
-                    ForEach(availablePanels) { panel in Image(systemName: panel.plugin.systemImage).tag(panel).accessibilityLabel(panel.plugin.title) }
+                HStack(spacing: 10) {
+                    Picker("Panel", selection: $selectedPanel) {
+                        ForEach(availablePanels) { panel in Image(systemName: panel.plugin.systemImage).tag(panel).accessibilityLabel(panel.plugin.title) }
+                    }
+                    // The Mac otherwise writes the picker's own name, "Panel", before it.
+                    .pickerStyle(.segmented).labelsHidden()
+                    // On a phone this is a sheet, and the graph tab pans under a drag, so a swipe down
+                    // does not close it: the way out is a button, in the picker's row.
+                    if horizontalSizeClass == .compact { Button("Done") { dismiss() } }
                 }
-                // The Mac otherwise writes the picker's own name, "Panel", before it.
-                .pickerStyle(.segmented).labelsHidden().padding(10)
+                .padding(10)
                 if selectedPanel == .graph {
                     LocalGraphPanel(session: session, workspace: workspace)
                 } else if selectedPanel == .map {
@@ -102,16 +127,21 @@ struct NoteLinksInspector: View {
             do {
                 try await Task.sleep(for: .milliseconds(250))
                 let text = session.text
+                let path = session.path
                 let semantics = try await Task.detached { try MarkdownSemantics.parse(text) }.value
+                // A detached task goes on after this one is cancelled, and its result is for the note it was started on.
+                guard !Task.isCancelled, session.path == path else { return }
+                let listedFootnotes = await Task.detached { Footnotes.listed(in: text) }.value
+                guard !Task.isCancelled, session.path == path else { return }
                 outgoing = Self.outgoingLinks(in: semantics.links); tags = semantics.tags
-                footnotes = await Task.detached { Footnotes.listed(in: text) }.value
+                footnotes = listedFootnotes
                 outline = Self.outlineHeadings(in: semantics.body)
             } catch is CancellationError {
             } catch { workspace.errorMessage = error.localizedDescription }
         }
-        // Mentions are in other notes: they change when the index takes in new contents,
-        // not as this note is typed.
-        .task(id: "\(selectedPanel)-\(workspace.indexVersion)-\(session.path.rawValue)") {
+        // Mentions are in other notes: they change when the index takes in new contents of
+        // another note, or this note's name or aliases change, not as this note is typed.
+        .task(id: "\(selectedPanel)-\(workspace.indexChangeLog.newestVersionAffectingBacklinks(of: session.path))-\(session.path.rawValue)") {
             guard selectedPanel == .backlinks else { return }
             await loadLinkedMentions()
             if showsUnlinkedMentions { await loadUnlinkedMentions() }
@@ -123,7 +153,7 @@ struct NoteLinksInspector: View {
         // its own are read.
         .onChange(of: session.path) {
             outline = []; outgoing = []; tags = []; footnotes = []
-            linkedMentions = []; unlinkedMentions = []
+            linkedMentions = []; unlinkedMentions = []; unlinkedMentionsAreCut = false
         }
     }
 
@@ -147,9 +177,10 @@ struct NoteLinksInspector: View {
         defer { isLoadingUnlinkedMentions = false }
         let path = session.path
         let names = workspace.mentionNames(of: path, text: session.text)
-        let groups = await workspace.unlinkedMentions(of: path, names: names)
+        let result = await workspace.unlinkedMentions(of: path, names: names)
         guard !Task.isCancelled, session.path == path else { return }
-        unlinkedMentions = groups
+        unlinkedMentions = result.groups
+        unlinkedMentionsAreCut = result.isCut
     }
 
     private func linkMention(_ match: SearchMatch, in source: VaultPath) {
@@ -249,6 +280,10 @@ struct NoteLinksInspector: View {
                         Text("No other notes name this one without linking it").foregroundStyle(.secondary)
                     }
                     ForEach(unlinkedMentions) { group in mentionGroup(group, linksMentions: true) }
+                    if unlinkedMentionsAreCut {
+                        Text("Showing the first \(unlinkedMentions.count.formatted()) notes. More notes mention this one.")
+                            .foregroundStyle(.secondary).interfaceFont(.caption)
+                    }
                 } label: {
                     Text("Unlinked mentions")
                 }
@@ -261,7 +296,12 @@ struct NoteLinksInspector: View {
             Section("Outgoing Links") {
                 if outgoing.isEmpty { Text("This note has no links").foregroundStyle(.secondary) }
                 ForEach(outgoing, id: \.self) { link in
-                    Button(link.target) { Task { await workspace.follow(link.target, from: session.path, isWiki: link.isWiki) } }
+                    if let location = link.externalLocation {
+                        // A web address opens in the browser; it names no file of the vault.
+                        Link(link.target, destination: location)
+                    } else {
+                        Button(link.target) { Task { await workspace.follow(link.target, from: session.path, isWiki: link.isWiki) } }
+                    }
                 }
             }
         case .footnotes:
@@ -287,7 +327,13 @@ struct NoteLinksInspector: View {
         case .tags:
             Section("Tags") {
                 if tags.isEmpty { Text("No tags").foregroundStyle(.secondary) }
-                ForEach(tags, id: \.self) { tag in Button("#" + tag) { workspace.searchQuery = "#" + tag } }
+                ForEach(tags, id: \.self) { tag in
+                    Button("#" + tag) {
+                        // The results are in the sidebar, which this tap brings forward; on a phone the sheet gives way to it.
+                        workspace.searchForTagAndShowResults(tag)
+                        if horizontalSizeClass == .compact { dismiss() }
+                    }
+                }
             }
         case .graph, .map:
             // Drawn in place of the list; see `body`.

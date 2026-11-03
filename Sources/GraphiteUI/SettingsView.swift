@@ -1,3 +1,14 @@
+/**
+ * File: SettingsView.swift
+ * ------------------------
+ * Layer: UI
+ * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.38
+ * Date: 02/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -8,14 +19,43 @@ struct SettingsView: View {
     @Bindable var workspace: WorkspaceModel
     let manageVaults: () -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedPage: SettingsPage? = .general
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// The page the person picked in this opening of Settings; nil until they pick one.
+    @State private var chosenPage: SettingsPage?
+    /// On a narrow screen (iPhone) the list and a page are two screens; this says which shows.
+    @State private var preferredCompactColumn = NavigationSplitViewColumn.sidebar
     @State private var vaultSettingsChanges = VaultSettingsChanges()
 
-    enum SettingsPage: Hashable {
-        case general, editor, filesAndLinks, appearance, keyboardShortcuts, corePlugins, communityPlugins
-        case plugin(CorePlugin)
-        /// A community plugin's own settings tab, by plugin identifier.
-        case communityPlugin(String)
+    private var pageMemory: SettingsPageMemory { workspace.processServices.settingsPageMemory }
+    private var isNarrowScreen: Bool { horizontalSizeClass == .compact }
+
+    /// The page shown: the one picked, else the one used last beside the list, and on a
+    /// narrow screen none, so Settings opens on its list.
+    private var shownPage: SettingsPage? {
+        chosenPage ?? SettingsOpening.openingPage(remembered: pageMemory.lastPage, isNarrowScreen: isNarrowScreen, isAvailable: isAvailable)
+    }
+
+    /// Whether a page still exists on this device and vault, for a page remembered earlier.
+    private func isAvailable(_ page: SettingsPage) -> Bool {
+        switch page {
+        case .keyboardShortcuts: Self.offersKeyboardShortcuts
+        case .plugin(let plugin): Self.pluginPages(isEnabled: workspace.preferences.isEnabled).contains(plugin)
+        case .communityPlugin(let identifier): workspace.communityPlugins.pluginsWithSettings.contains(identifier)
+        case .general, .editor, .filesAndLinks, .appearance, .corePlugins, .communityPlugins: true
+        }
+    }
+
+    /// The name of the vault the pages change, or nil while none is open.
+    private var shownVaultName: String? {
+        workspace.currentVaultIdentifier.flatMap { identifier in workspace.vaultLibrary.vault(withIdentifier: identifier)?.name }
+    }
+
+    private var listSelection: Binding<SettingsPage?> {
+        Binding(get: { shownPage }, set: { page in
+            chosenPage = page
+            pageMemory.remember(page)
+        })
     }
 
     /// Plugins that have options of their own, like Obsidian's plugin tabs.
@@ -29,9 +69,9 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $selectedPage) {
-                Section("Options") {
+        NavigationSplitView(preferredCompactColumn: $preferredCompactColumn) {
+            List(selection: listSelection) {
+                Section {
                     Label("General", systemImage: "gearshape").tag(SettingsPage.general)
                     Label("Editor", systemImage: "pencil.line").tag(SettingsPage.editor)
                     Label("Files and Links", systemImage: "folder").tag(SettingsPage.filesAndLinks)
@@ -41,6 +81,11 @@ struct SettingsView: View {
                     }
                     Label("Core Plugins", systemImage: "puzzlepiece.extension").tag(SettingsPage.corePlugins)
                     Label("Community Plugins", systemImage: "puzzlepiece").tag(SettingsPage.communityPlugins)
+                } header: {
+                    Text("Options")
+                } footer: {
+                    // With two windows open, these pages change the vault of the one in front.
+                    if let vaultName = shownVaultName { Text("Vault settings on these pages are for “\(vaultName)”.") }
                 }
                 let enabledConfigurablePlugins = Self.pluginPages(isEnabled: workspace.preferences.isEnabled)
                 if !enabledConfigurablePlugins.isEmpty {
@@ -60,9 +105,12 @@ struct SettingsView: View {
                     }
                 }
             }
+            .labelStyle(SettingsRowLabelStyle(showsIcon: !dynamicTypeSize.isAccessibilitySize))
             .navigationTitle("Settings")
             #if canImport(UIKit)
             .navigationBarTitleDisplayMode(.inline)
+            // On a narrow screen the list is a screen of its own, which needs its own way out.
+            .toolbar { if isNarrowScreen { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } } }
             #else
             // Wide enough for "Community Plugins" and the plugins' names. The list is always
             // shown, as System Settings' is.
@@ -77,6 +125,12 @@ struct SettingsView: View {
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
                     #endif
             }
+            // Another page starts at its own first screen, not on a screen the old page pushed.
+            .id(shownPage)
+        }
+        // Back to the list on a narrow screen leaves no page picked.
+        .onChange(of: preferredCompactColumn) { _, column in
+            if column == .sidebar, isNarrowScreen { chosenPage = nil }
         }
         #if os(macOS)
         // A window of its own on the Mac, which the person can make larger.
@@ -118,24 +172,35 @@ struct SettingsView: View {
         return KeyboardShortcutsSettingsPage(shortcuts: workspace.keyboardShortcuts, pluginCommands: communityPlugins.commands,
                                              pluginName: { identifier in communityPlugins.pluginName(of: identifier) },
                                              isCorePluginEnabled: { plugin in preferences.isEnabled(plugin) },
-                                             systemSettingsShortcuts: systemSettingsShortcuts) { change in await workspace.changeKeyboardShortcuts(change) }
+                                             systemSettingsShortcuts: systemSettingsShortcuts,
+                                             isVaultOpen: workspace.store != nil) { change in await workspace.changeKeyboardShortcuts(change) }
     }
 
     private func showRequestedCommunityPluginSettings() {
         guard let requestedPlugin = workspace.communityPlugins.requestedSettingsPlugin else { return }
         workspace.communityPlugins.requestedSettingsPlugin = nil
-        selectedPage = requestedPlugin.isEmpty ? .communityPlugins : .communityPlugin(requestedPlugin)
+        showPage(requestedPlugin.isEmpty ? .communityPlugins : .communityPlugin(requestedPlugin))
+    }
+
+    /// Picks a page as a tap on its row does, bringing it to the front on a narrow screen.
+    private func showPage(_ page: SettingsPage) {
+        listSelection.wrappedValue = page
+        preferredCompactColumn = .detail
     }
 
     @ViewBuilder private var page: some View {
-        switch selectedPage ?? .general {
+        if let shownPage { content(of: shownPage) }
+    }
+
+    @ViewBuilder private func content(of page: SettingsPage) -> some View {
+        switch page {
         case .general: GeneralSettingsPage(workspace: workspace) { dismiss(); manageVaults() }
         case .editor: EditorSettingsPage(workspace: workspace, preferences: workspace.preferences, vaultSettingsChanges: vaultSettingsChanges)
         case .filesAndLinks: FilesAndLinksSettingsPage(workspace: workspace, vaultSettingsChanges: vaultSettingsChanges)
-        case .appearance: AppearanceSettingsPage(workspace: workspace, preferences: workspace.preferences)
+        case .appearance: AppearanceSettingsPage(workspace: workspace, preferences: workspace.preferences, vaultSettingsChanges: vaultSettingsChanges)
         case .keyboardShortcuts: keyboardShortcutsPage
         case .corePlugins: CorePluginsSettingsPage(workspace: workspace, preferences: workspace.preferences)
-        case .communityPlugins: CommunityPluginsSettingsPage(workspace: workspace) { pluginIdentifier in selectedPage = .communityPlugin(pluginIdentifier) }
+        case .communityPlugins: CommunityPluginsSettingsPage(workspace: workspace) { pluginIdentifier in showPage(.communityPlugin(pluginIdentifier)) }
         case .communityPlugin(let pluginIdentifier): CommunityPluginOptionsPage(host: workspace.communityPlugins, pluginIdentifier: pluginIdentifier)
         case .plugin(.colors): ColorsSettingsPage(preferences: workspace.preferences)
         case .plugin(.drawings): DrawingsSettingsPage(preferences: workspace.preferences)
@@ -227,90 +292,10 @@ private struct GeneralSettingsPage: View {
     }
 }
 
-private struct EditorSettingsPage: View {
-    @Bindable var workspace: WorkspaceModel
-    @Bindable var preferences: GraphitePreferences
-    let vaultSettingsChanges: VaultSettingsChanges
-
-    private var vaultSettings: ObsidianSettings { vaultSettingsChanges.settings(of: workspace) }
-
-    /// A setting stored in the vault's `.obsidian/app.json`.
-    private func vaultSetting<Value>(_ keyPath: WritableKeyPath<ObsidianSettings, Value> & Sendable) -> Binding<Value> {
-        Binding(get: { vaultSettings[keyPath: keyPath] }, set: { newValue in
-            vaultSettingsChanges.update(workspace) { settings in settings[keyPath: keyPath] = newValue }
-        })
-    }
-
-    var body: some View {
-        Form {
-            Section {
-                Picker("Default View for New Notes", selection: $preferences.defaultNoteView) {
-                    ForEach(DefaultNoteView.allCases) { view in Text(view.title).tag(view) }
-                }
-                Picker("Default Editing Mode", selection: $preferences.defaultEditingMode) {
-                    ForEach(EditingMode.allCases) { mode in Text(mode.title).tag(mode) }
-                }
-                Picker("Remember View", selection: $preferences.noteViewMemory) {
-                    ForEach(NoteViewMemory.allCases) { memory in Text(memory.title).tag(memory) }
-                }
-            } header: {
-                Text("Behavior")
-            } footer: {
-                Text("Live Preview hides Markdown syntax except where your cursor is and shows tables, math, properties, and embeds in place. Source mode shows every character. Per Note opens each note in the view you left it in; Per Vault opens every note in the view you last chose in this vault.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Toggle("Readable Line Length", isOn: $preferences.usesReadableLineLength)
-                Toggle("Spellcheck", isOn: $preferences.usesSpellChecking)
-                if workspace.store != nil {
-                    Toggle("Strict Line Breaks", isOn: vaultSetting(\.usesStrictLineBreaks))
-                }
-            } header: {
-                Text("Display")
-            } footer: {
-                Text("With strict line breaks off, a single line break starts a new line when reading, as in Obsidian. This option is stored in the vault's .obsidian/app.json.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Picker("Code Theme", selection: $preferences.codeColorTheme) {
-                    ForEach(CodeColorTheme.allCases) { codeTheme in Text(codeTheme.title).tag(codeTheme) }
-                }
-                CodeThemePreview(codeTheme: preferences.codeColorTheme, noteTheme: workspace.noteTheme)
-                Toggle("Format Code Blocks", isOn: $preferences.formatsCodeBlocks)
-            } header: {
-                Text("Code")
-            } footer: {
-                Text("Each code theme has a light and a dark version that follow the appearance; Obsidian's follows the vault's theme. When you leave a code block you edited, its indentation and spacing are tidied for its language. Undo puts it back.")
-                    .formFooterAlignment()
-            }
-            // Only the iPad editor continues lists, pairs characters, and indents as you
-            // type; the Mac editor has none of these, so they would do nothing there.
-            #if canImport(UIKit)
-            if workspace.store != nil {
-                Section {
-                    Toggle("Smart Indent Lists", isOn: vaultSetting(\.continuesLists))
-                    Toggle("Auto Pair Brackets", isOn: vaultSetting(\.pairsBrackets))
-                    Toggle("Auto Pair Markdown Syntax", isOn: vaultSetting(\.pairsMarkdown))
-                    Toggle("Indent Using Tabs", isOn: vaultSetting(\.indentsWithTabs))
-                    if !vaultSettings.indentsWithTabs {
-                        Stepper("Tab indent size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)
-                    }
-                } header: {
-                    Text("Typing")
-                } footer: {
-                    Text("Return continues a list, a task list, or a quote, and Tab indents it. Brackets and quotes are typed in pairs, and *, _, ~, =, ` or $ wrap selected text. Shared with Obsidian in .obsidian/app.json.")
-                        .formFooterAlignment()
-                }
-            }
-            #endif
-        }
-        .navigationTitle("Editor")
-    }
-}
-
 private struct AppearanceSettingsPage: View {
     @Bindable var workspace: WorkspaceModel
     @Bindable var preferences: GraphitePreferences
+    let vaultSettingsChanges: VaultSettingsChanges
 
     var body: some View {
         Form {
@@ -337,16 +322,18 @@ private struct AppearanceSettingsPage: View {
                     .formFooterAlignment()
             }
             Section {
-                Toggle("Show Inline Title", isOn: $preferences.showsInlineTitle)
+                Toggle("Show Inline Title", isOn: workspace.binding(vaultOption: \.showsInlineTitle, deviceOption: \.showsInlineTitle, changes: vaultSettingsChanges))
             } header: {
                 Text("Interface")
             } footer: {
-                Text("Shows the note's file name as a large title above its content, with its extension when Files and Links › Show File Extensions is on.")
+                Text("Shows the note's file name as a large title above its content, with its extension when Files and Links › Show File Extensions is on. Stored in the vault's .obsidian/app.json, as Obsidian does; before a vault sets it, and while no vault is open, the choice made on this device applies.")
                     .formFooterAlignment()
             }
             if workspace.store != nil {
                 FontSettingsSection(workspace: workspace)
                 ThemeSettingsSection(workspace: workspace)
+            } else {
+                SettingsNeedAVault(what: "fonts and theme")
             }
         }
         .navigationTitle("Appearance")
@@ -384,6 +371,7 @@ private struct CorePluginsSettingsPage: View {
     @Bindable var preferences: GraphitePreferences
     @State private var offersVoiceDeletion = false
     @State private var downloadedVoiceBytes: Int64 = 0
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         Form {
@@ -393,7 +381,7 @@ private struct CorePluginsSettingsPage: View {
                         Label {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(plugin.title)
-                                Text(plugin.summary).font(.caption).foregroundStyle(.secondary)
+                                Text(plugin.summary(hasRightSidebar: horizontalSizeClass != .compact)).font(.caption).foregroundStyle(.secondary)
                             }
                         } icon: { Image(systemName: plugin.systemImage) }
                     }
@@ -497,46 +485,49 @@ private struct DrawingsSettingsPage: View {
                 Text("For new notebooks and for pages inserted into a PDF. The paper is part of the PDF's pages, as printed paper is, so every PDF reader shows it.")
                     .formFooterAlignment()
             }
+            // An iPhone cannot be written on with Apple Pencil, so the Pencil's options are the iPad's.
             #if canImport(UIKit)
-            Section {
-                Picker("Tools", selection: $preferences.pencilToolbarStyle) {
-                    ForEach(PencilToolbarStyle.allCases) { style in Text(style.title).tag(style) }
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                Section {
+                    Picker("Tools", selection: $preferences.pencilToolbarStyle) {
+                        ForEach(PencilToolbarStyle.allCases) { style in Text(style.title).tag(style) }
+                    }
+                } header: {
+                    Text("Pencil Tools")
+                } footer: {
+                    Text("The floating palette is the system's: every tool of Apple Notes, and it can be moved or minimized. The fixed bar is one row above the page: your drawing tools, the eraser and the lasso, three widths, and your colors from Settings › Colors. Tap the tool in use again to make it any ink of Apple Notes, in any width and opacity, or to add another tool. In a window too narrow for the bar, the palette is used.")
+                        .formFooterAlignment()
                 }
-            } header: {
-                Text("Pencil Tools")
-            } footer: {
-                Text("The floating palette is the system's: every tool of Apple Notes, and it can be moved or minimized. The fixed bar is one row above the page: your drawing tools, the eraser and the lasso, three widths, and your colors from Settings › Colors. Tap the tool in use again to make it any ink of Apple Notes, in any width and opacity, or to add another tool. On iPhone the palette is always used.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Toggle("Hold to Make a Shape", isOn: $preferences.makesShapesOnHold)
-            } header: {
-                Text("Shapes")
-            } footer: {
-                Text("Draw a line, a circle, an ellipse, a triangle or a rectangle and keep the Pencil still at the end: the clean shape appears, and takes the stroke's place when you lift. The Shapes button of the tools does the same for every stroke, without holding.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Toggle("Highlighter Ignores Tilt", isOn: $highlighterIgnoresTilt)
-            } header: {
-                Text("Highlighter")
-            } footer: {
-                Text("The highlighter draws the width you chose however Apple Pencil is tilted or turned, so highlights over lines of text match. Each stroke takes that width when you lift the Pencil.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Toggle("Double-Tap or Squeeze to Draw in Notes", isOn: $preferences.drawsOnPencilDoubleTap)
-            } header: {
-                Text("Apple Pencil")
-            } footer: {
-                Text("While you write a note, double-tap Apple Pencil, or squeeze Apple Pencil Pro, to start a drawing where the cursor is or where the Pencil hovers. When the gesture is set to something else in the Apple Pencil settings of iPadOS, Graphite leaves it alone.")
-                    .formFooterAlignment()
-            }
-            Section {
-                Toggle("Palm Rejection", isOn: $rejectsPalms)
-            } footer: {
-                Text("While Apple Pencil writes on a page, a hand resting on it does not scroll, zoom, tap or select.")
-                    .formFooterAlignment()
+                Section {
+                    Toggle("Hold to Make a Shape", isOn: $preferences.makesShapesOnHold)
+                } header: {
+                    Text("Shapes")
+                } footer: {
+                    Text("Draw a line, a circle, an ellipse, a triangle or a rectangle and keep the Pencil still at the end: the clean shape appears, and takes the stroke's place when you lift. The Shapes button of the tools does the same for every stroke, without holding.")
+                        .formFooterAlignment()
+                }
+                Section {
+                    Toggle("Highlighter Ignores Tilt", isOn: $highlighterIgnoresTilt)
+                } header: {
+                    Text("Highlighter")
+                } footer: {
+                    Text("The highlighter draws the width you chose however Apple Pencil is tilted or turned, so highlights over lines of text match. Each stroke takes that width when you lift the Pencil.")
+                        .formFooterAlignment()
+                }
+                Section {
+                    Toggle("Double-Tap or Squeeze to Draw in Notes", isOn: $preferences.drawsOnPencilDoubleTap)
+                } header: {
+                    Text("Apple Pencil")
+                } footer: {
+                    Text("While you write a note, double-tap Apple Pencil, or squeeze Apple Pencil Pro, to start a drawing where the cursor is or where the Pencil hovers. When the gesture is set to something else in the Apple Pencil settings of iPadOS, Graphite leaves it alone.")
+                        .formFooterAlignment()
+                }
+                Section {
+                    Toggle("Palm Rejection", isOn: $rejectsPalms)
+                } footer: {
+                    Text("While Apple Pencil writes on a page, a hand resting on it does not scroll, zoom, tap or select.")
+                        .formFooterAlignment()
+                }
             }
             #endif
         }
@@ -612,10 +603,12 @@ private struct FileRecoverySettingsPage: View {
     var body: some View {
         Form {
             Section {
-                Stepper("Snapshot interval: \(preferences.snapshotIntervalMinutes) min", value: $preferences.snapshotIntervalMinutes, in: 1...60)
-                Stepper("History length: \(preferences.snapshotHistoryDays) days", value: $preferences.snapshotHistoryDays, in: 1...365)
+                Stepper("Snapshot Interval: \(preferences.snapshotIntervalMinutes) min", value: $preferences.snapshotIntervalMinutes, in: 1...60)
+                Stepper("History Length: \(preferences.snapshotHistoryDays) days", value: Binding(get: { preferences.snapshotHistoryDays }, set: { days in
+                    workspace.changeSnapshotHistoryDays(days)
+                }), in: 1...365)
             } footer: {
-                Text("A copy of a note is kept before a save changes it, at most once per interval, and before the note is deleted. Copies stay on this device, outside the vault, so they never sync.")
+                Text("A copy of a note is kept before a save changes it, at most once per interval, and before the note is deleted. Copies older than the history length are removed when you change it and each time a vault opens. Copies stay on this device, outside the vault, so they never sync.")
                     .formFooterAlignment()
             }
             Section {
@@ -645,20 +638,22 @@ private struct TemplatesSettingsPage: View {
 
     var body: some View {
         Form {
+            if workspace.store == nil { SettingsNeedAVault(what: "template settings") }
             Section {
-                SettingsTextField(title: "Template folder location", prompt: "Templates", text: $draft.folder, submit: save)
+                SettingsTextField(title: "Template Folder Location", prompt: "Templates", text: $draft.folder, submit: save)
             } footer: {
                 Text(folderFooter)
                     .formFooterAlignment()
             }
             Section {
-                SettingsTextField(title: "Date format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.dateFormat, submit: save)
-                SettingsTextField(title: "Time format", prompt: MomentDateFormat.defaultTimeFormat, text: $draft.timeFormat, submit: save)
+                SettingsTextField(title: "Date Format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.dateFormat, submit: save)
+                SettingsTextField(title: "Time Format", prompt: MomentDateFormat.defaultTimeFormat, text: $draft.timeFormat, submit: save)
             } footer: {
-                Text("{{date}} is written as “\(MomentDateFormat.string(from: .now, format: draft.dateFormat.isEmpty ? MomentDateFormat.defaultDateFormat : draft.dateFormat))” and {{time}} as “\(MomentDateFormat.string(from: .now, format: draft.timeFormat.isEmpty ? MomentDateFormat.defaultTimeFormat : draft.timeFormat))”. A variable can take its own format, as in {{date:dddd, MMMM Do}}. Formats use Moment.js tokens, as in Obsidian.")
+                Text("{{date}} is written as “\(MomentDateFormat.string(from: .now, format: draft.dateFormat.isEmpty ? MomentDateFormat.defaultDateFormat : draft.dateFormat, language: workspace.preferences.dateNames.language))” and {{time}} as “\(MomentDateFormat.string(from: .now, format: draft.timeFormat.isEmpty ? MomentDateFormat.defaultTimeFormat : draft.timeFormat))”. A variable can take its own format, as in {{date:dddd, MMMM Do}}. Formats use Moment.js tokens, as in Obsidian.")
                     .formFooterAlignment()
             }
         }
+        .disabled(workspace.store == nil)
         .navigationTitle("Templates")
         .onAppear { draft = workspace.templateSettings }
         .onDisappear(perform: save)
@@ -686,14 +681,16 @@ private struct DailyNotesSettingsPage: View {
 
     var body: some View {
         Form {
+            if workspace.store == nil { SettingsNeedAVault(what: "daily notes settings") }
             Section {
-                SettingsTextField(title: "Date format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.format, submit: save)
-                SettingsTextField(title: "New file location", prompt: "Vault folder", text: $draft.folder, submit: save)
-                SettingsTextField(title: "Template file location", prompt: "Templates/Daily", text: $draft.template, submit: save)
+                SettingsTextField(title: "Date Format", prompt: MomentDateFormat.defaultDateFormat, text: $draft.format, submit: save)
+                SettingsTextField(title: "New File Location", prompt: "Vault folder", text: $draft.folder, submit: save)
+                SettingsTextField(title: "Template File Location", prompt: "Templates/Daily", text: $draft.template, submit: save)
             } footer: {
                 Text(pathFooter)
                     .formFooterAlignment()
             }
+            DateNameLanguageSection(preferences: workspace.preferences.dateNames)
             Section {
                 Toggle("Open Daily Note on Startup", isOn: Binding(get: { draft.opensOnStartup }, set: { opensOnStartup in
                     draft.opensOnStartup = opensOnStartup
@@ -704,6 +701,7 @@ private struct DailyNotesSettingsPage: View {
                     .formFooterAlignment()
             }
         }
+        .disabled(workspace.store == nil)
         .navigationTitle("Daily Notes")
         .onAppear { draft = workspace.dailyNoteSettings }
         .onDisappear(perform: save)
@@ -713,7 +711,7 @@ private struct DailyNotesSettingsPage: View {
         var settings = draft
         if settings.format.trimmingCharacters(in: .whitespaces).isEmpty { settings.format = MomentDateFormat.defaultDateFormat }
         settings.folder = settings.folder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
-        let example = (try? settings.notePath(for: .now).rawValue) ?? "an invalid path"
+        let example = (try? settings.notePath(for: .now, language: workspace.preferences.dateNames.language).rawValue) ?? "an invalid path"
         var footer = "Today's note is “\(example)”. A “/” in the format makes folders, as in YYYY/MM/YYYY-MM-DD."
         if let templatePath = settings.templatePath, (try? templatePath.url(in: workspace.folderAccess?.root ?? URL(fileURLWithPath: "/"))).map({ location in FileManager.default.fileExists(atPath: location.path) }) != true {
             footer += " There is no note “\(templatePath.rawValue)” in this vault yet."
@@ -727,26 +725,6 @@ private struct DailyNotesSettingsPage: View {
         settings.folder = settings.folder.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         settings.template = settings.template.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         Task { await workspace.updateDailyNoteSettings(settings) }
-    }
-}
-
-/// A labeled text field for a setting, saved on Return.
-private struct SettingsTextField: View {
-    let title: String
-    let prompt: String
-    @Binding var text: String
-    let submit: () -> Void
-
-    var body: some View {
-        LabeledContent(title) {
-            TextField(title, text: $text, prompt: Text(prompt))
-                .multilineTextAlignment(.trailing)
-                .autocorrectionDisabled()
-                #if canImport(UIKit)
-                .textInputAutocapitalization(.never)
-                #endif
-                .onSubmit(submit)
-        }
     }
 }
 
@@ -772,6 +750,7 @@ private struct FilesAndLinksSettingsPage: View {
                 Section { Text("Open a vault to change its files and links settings.").foregroundStyle(.secondary) }
             } else {
                 fileSection
+                linkSection
                 attachmentSection
             }
         }
@@ -817,9 +796,6 @@ private struct FilesAndLinksSettingsPage: View {
                     #endif
                     .onSubmit(commitNewNoteFolder)
             }
-            Toggle("Automatically Update Internal Links", isOn: Binding(get: { vaultSettings.updatesLinksAutomatically }, set: { updatesLinks in
-                updateSettings { settings in settings.updatesLinksAutomatically = updatesLinks }
-            }))
             Picker("Deleted Files", selection: Binding(get: { vaultSettings.deletionMethod }, set: { method in
                 updateSettings { settings in settings.deletionMethod = method }
             })) {
@@ -828,6 +804,26 @@ private struct FilesAndLinksSettingsPage: View {
             Toggle("Confirm File Deletion", isOn: Binding(get: { vaultSettings.confirmsDeletion }, set: { confirms in
                 updateSettings { settings in settings.confirmsDeletion = confirms }
             }))
+        } header: {
+            Text("Files")
+        }
+    }
+
+    private var linkSection: some View {
+        Section {
+            Toggle("Automatically Update Internal Links", isOn: Binding(get: { vaultSettings.updatesLinksAutomatically }, set: { updatesLinks in
+                updateSettings { settings in settings.updatesLinksAutomatically = updatesLinks }
+            }))
+            Picker("New Link Format", selection: Binding(get: { vaultSettings.linkFormat }, set: { linkFormat in
+                updateSettings { settings in settings.linkFormat = linkFormat }
+            })) {
+                ForEach(LinkFormat.allCases) { linkFormat in Text(linkFormat.title).tag(linkFormat) }
+            }
+            Toggle("Use [[Wikilinks]]", isOn: Binding(get: { vaultSettings.usesWikilinks }, set: { usesWikilinks in
+                updateSettings { settings in settings.usesWikilinks = usesWikilinks }
+            }))
+        } header: {
+            Text("Links")
         } footer: {
             Text("When a file is renamed or moved, links to it are updated in every note. With automatic updates off, Graphite asks each time.")
                 .formFooterAlignment()
@@ -859,16 +855,8 @@ private struct FilesAndLinksSettingsPage: View {
                 } ?? "Invalid folder name")
                 .foregroundStyle(.secondary).multilineTextAlignment(.trailing)
             }
-            Picker("New Link Format", selection: Binding(get: { vaultSettings.linkFormat }, set: { linkFormat in
-                updateSettings { settings in settings.linkFormat = linkFormat }
-            })) {
-                ForEach(LinkFormat.allCases) { linkFormat in Text(linkFormat.title).tag(linkFormat) }
-            }
-            Toggle("Use [[Wikilinks]]", isOn: Binding(get: { vaultSettings.usesWikilinks }, set: { usesWikilinks in
-                updateSettings { settings in settings.usesWikilinks = usesWikilinks }
-            }))
         } header: {
-            Text("Files and Links")
+            Text("Attachments")
         } footer: {
             Text("Shared with Obsidian through this vault's .obsidian/app.json. Drawings, images, recordings, and other attachments you add are saved to this location and embedded where your cursor is.")
                 .formFooterAlignment()

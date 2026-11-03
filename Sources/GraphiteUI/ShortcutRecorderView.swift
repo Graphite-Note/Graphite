@@ -1,3 +1,14 @@
+/**
+ * File: ShortcutRecorderView.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: Takes the keyboard while a keyboard shortcut is recorded and reports the first key combination pressed, or that the recording ended without one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 #if canImport(UIKit)
@@ -62,6 +73,20 @@ final class KeyPressCatcherView: UIView {
         if window != nil { becomeFirstResponder() }
     }
 
+    /// The keyboard went elsewhere, so no key will come here: the recording ends. Left
+    /// running, the menu bar would keep giving up its shortcuts (`VaultKeyboardShortcuts`).
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { endWithoutShortcut() }
+        return resigned
+    }
+
+    private func endWithoutShortcut() {
+        guard !hasFinished else { return }
+        hasFinished = true
+        finish(.cancelled)
+    }
+
     override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
         guard !hasFinished, let combination = presses.lazy.compactMap({ press in press.key.flatMap(KeyCombination.init(key:)) }).first else {
             super.pressesBegan(presses, with: event)
@@ -100,8 +125,31 @@ final class KeyPressCatcherView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        window?.makeFirstResponder(self)
+        NotificationCenter.default.removeObserver(self, name: NSWindow.didResignKeyNotification, object: nil)
+        guard let window else { return }
+        window.makeFirstResponder(self)
+        // The window can lose the keyboard while this view stays its first responder, so
+        // keys typed in another window or app never arrive here: the recording ends.
+        NotificationCenter.default.addObserver(self, selector: #selector(windowDidResignKey), name: NSWindow.didResignKeyNotification, object: window)
     }
+
+    override func resignFirstResponder() -> Bool {
+        let resigned = super.resignFirstResponder()
+        if resigned { endWithoutShortcut() }
+        return resigned
+    }
+
+    @objc private func windowDidResignKey(_ notification: Notification) {
+        endWithoutShortcut()
+    }
+
+    private func endWithoutShortcut() {
+        guard !hasFinished else { return }
+        hasFinished = true
+        finish(.cancelled)
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard window?.firstResponder === self else { return super.performKeyEquivalent(with: event) }

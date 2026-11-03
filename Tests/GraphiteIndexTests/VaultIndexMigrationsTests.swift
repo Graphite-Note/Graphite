@@ -1,3 +1,14 @@
+/**
+ * File: VaultIndexMigrationsTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: The shape of the index database: the migrations it records, its full-text tokenizer, the
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GRDB
 @testable import GraphiteIndex
@@ -19,10 +30,11 @@ final class VaultIndexMigrationsTests: XCTestCase {
         "inventory-and-links-1", "bounded-update-lookups-2", "filename-search-and-row-identities-3",
         "vault-path-markdown-link-targets-4", "base-properties-and-creation-dates-5", "unicode-name-keys-6",
         "search-whole-note-text-7", "case-folded-link-keys-8", "markdown-link-written-targets-9", "unreadable-canvas-state-10",
+        "finished-scan-fact-11", "natural-file-name-order-12",
     ]
 
     private func recordedMigrations(in index: VaultIndex) async throws -> [String] {
-        try await index.databaseQueue.read { database in
+        try await index.databasePool.read { database in
             try String.fetchAll(database, sql: "SELECT identifier FROM grdb_migrations ORDER BY rowid")
         }
     }
@@ -51,7 +63,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     func testTheSearchTableUsesTheDiacriticFoldingUnicodeTokenizer() async throws {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
 
-        let statement = try await index.databaseQueue.read { database in
+        let statement = try await index.databasePool.read { database in
             try String.fetchOne(database, sql: "SELECT sql FROM sqlite_master WHERE name = 'search'")
         }
 
@@ -66,7 +78,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
 
         XCTAssertEqual(schema.columnsByTable, [
             "files": ["path", "basename", "title", "size", "modified", "generation", "contentIndexed", "created",
-                      "path_key", "name_key", "folded_path", "folded_name"],
+                      "path_key", "name_key", "folded_path", "folded_name", "sort_name"],
             "links": ["source", "target", "isWiki", "isEmbed", "folded_target"],
             "aliases": ["alias", "path", "folded_alias"],
             "tags": ["tag", "path"],
@@ -75,7 +87,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
             "property_links": ["path", "target", "folded_target"],
         ])
         XCTAssertEqual(schema.indexNames, [
-            "aliases_folded_alias", "aliases_name", "aliases_path", "files_basename", "files_folded_name", "files_folded_path",
+            "aliases_folded_alias", "aliases_name", "aliases_path", "files_basename", "files_folded_name", "files_folded_path", "files_sort_name",
             "headings_path", "links_folded_target", "links_source", "links_target", "properties_key", "properties_path",
             "property_links_folded_target", "property_links_path", "property_links_target", "tags_name", "tags_path",
         ])
@@ -84,7 +96,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     func testTheRegularExpressionFunctionReadsItsCaseFromTheArgumentPrefix() async throws {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
 
-        let results = try await index.databaseQueue.read { database in
+        let results = try await index.databasePool.read { database in
             try [
                 Bool.fetchOne(database, sql: "SELECT graphite_regexp('c:a+b', 'xaab')"),
                 Bool.fetchOne(database, sql: "SELECT graphite_regexp('c:A+B', 'xaab')"),
@@ -135,13 +147,13 @@ final class VaultIndexMigrationsTests: XCTestCase {
 
         let migrations = try await recordedMigrations(in: index)
         XCTAssertEqual(migrations, Self.migrationIdentifiers)
-        let counts = try await index.databaseQueue.read { database in
+        let counts = try await index.databasePool.read { database in
             try ["files", "search", "links"].map { table in try Int.fetchOne(database, sql: "SELECT count(*) FROM \(table)") }
         }
         XCTAssertEqual(counts, [0, 0, 0], "The fourth migration empties the cache; the next scan rebuilds it from the vault.")
         let schema = try await schemaDescription(of: index)
         XCTAssertEqual(schema.columnsByTable["files"], ["path", "basename", "title", "size", "modified", "generation", "contentIndexed", "created",
-                                                         "path_key", "name_key", "folded_path", "folded_name"])
+                                                         "path_key", "name_key", "folded_path", "folded_name", "sort_name"])
     }
 
     // MARK: Helpers
@@ -152,7 +164,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
     }
 
     private func schemaDescription(of index: VaultIndex) async throws -> SchemaDescription {
-        try await index.databaseQueue.read { database in
+        try await index.databasePool.read { database in
             var columnsByTable: [String: [String]] = [:]
             for table in ["files", "links", "aliases", "tags", "headings", "properties", "property_links"] {
                 columnsByTable[table] = try Row.fetchAll(database, sql: "PRAGMA table_info(\(table))").map { row in row["name"] as String }

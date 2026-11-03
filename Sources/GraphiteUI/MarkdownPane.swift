@@ -2,12 +2,11 @@
  * File: MarkdownPane.swift
  * ------------------------
  * Layer: UI
- * Description: A note's pane: the editor or reading view, its toolbar and More commands in the system's overflow
- *              menu (Export to PDF among them), find in note, and the sheets for inserting attachments, photos and drawings.
+ * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.48
- * Date: 21/10/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.65
+ * Date: 01/11/2026
  */
 
 import SwiftUI
@@ -28,6 +27,8 @@ struct MarkdownPane: View {
     @Binding var showsLinksInspector: Bool
     /// What the pane holds for the note it shows, replaced whole when it shows another note.
     @State private var noteState = MarkdownPaneNoteState()
+    /// What the note's text says about footnotes and callouts, read once for all its rendered blocks.
+    @State private var noteSnapshots = NoteReadingSnapshots()
     /// Photos picked for the note, taken in and emptied as soon as the picker returns them.
     @State private var pickedPhotos: [PhotosPickerItem] = []
     @Environment(\.showTemplatePicker) private var showTemplatePicker
@@ -36,6 +37,7 @@ struct MarkdownPane: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
+    @Environment(\.isActiveInItsSide) private var isActiveInItsSide
 
     init(session: MarkdownSession, workspace: WorkspaceModel, document: TabDocument, tabID: UUID, isFocused: Bool, showsLinksInspector: Binding<Bool>) {
         self.session = session
@@ -84,7 +86,8 @@ struct MarkdownPane: View {
                                 suspendReadingFollow: { workspace.readAloud?.suspendFollowing(in: session.path.rawValue) })
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
-                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil)
+                .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
+                .environment(\.readingTagSearch, searchTag)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // The pane stays when the tab shows another note; its reading view does not.
@@ -109,7 +112,7 @@ struct MarkdownPane: View {
             }
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isFocused {
+            if usesDocumentControlRow, !showsDocumentControlsInTabBar, isActiveInItsSide {
                 DocumentControlRow(isWriting: isWritingBinding) {
                     #if canImport(UIKit)
                     if isEditing { UndoRedoButtons(availability: session.undoAvailability) }
@@ -123,6 +126,10 @@ struct MarkdownPane: View {
         .modifier(WordCountDisplay(session: session, isShown: preferences.isEnabled(.wordCount) && isFocused,
                                    isCompactWidth: isCompactWidth))
         .toolbar { if isFocused { toolbarContent } }
+        #if os(macOS)
+        .onChange(of: editorMenuRegistrationKey, initial: true) { _, key in updateEditorMenuRegistration(key) }
+        .onDisappear { workspace.editorMenus.unregister(tabID: tabID) }
+        #endif
         .sheet(isPresented: $noteState.showsReadingSections, onDismiss: {
             if let pending = noteState.pendingReadingSection {
                 noteState.pendingReadingSection = nil
@@ -217,15 +224,8 @@ struct MarkdownPane: View {
     /// Link and tag suggestions just below the cursor, or above it near the bottom.
     @ViewBuilder private var banner: some View {
         if session.hasExternalConflict {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("This note changed in another app. Your edits are still here.").font(.callout)
-                Spacer()
-                Button("Save a Copy") { Task { await saveCopy() } }
-                Button("Use Other Version") { noteState.showsReloadConfirmation = true }
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
-            .background(.orange.opacity(0.12))
+            ExternalChangeBanner(message: "This note changed in another app. Your edits are still here.",
+                                 saveCopy: { Task { await saveCopy() } }, useOtherVersion: { noteState.showsReloadConfirmation = true })
         } else if let errorMessage = session.errorMessage {
             Label(errorMessage, systemImage: "exclamationmark.circle")
                 .font(.callout).foregroundStyle(.red)
@@ -236,7 +236,7 @@ struct MarkdownPane: View {
     }
 
     private var readingConfiguration: ReadingConfiguration {
-        ReadingConfiguration(usesReadableLineLength: preferences.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+        ReadingConfiguration(usesReadableLineLength: workspace.usesReadableLineLength, usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
                              colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                              showsProperties: preferences.isEnabled(.properties), declaredPropertyTypes: session.declaredPropertyTypes, inlineTitle: inlineTitle,
                              textSize: noteTextSize, drawingVersion: workspace.drawingVersion, indexVersion: workspace.indexVersion,
@@ -252,12 +252,12 @@ struct MarkdownPane: View {
     /// The note's name above its text, written as the tab and the title bar write it, so the
     /// three agree: with `.md` when Settings › Files and Links › Show File Extensions is on.
     private var inlineTitle: String? {
-        preferences.showsInlineTitle ? preferences.displayName(for: session.path) : nil
+        workspace.showsInlineTitle ? preferences.displayName(for: session.path) : nil
     }
 
     private var editorConfiguration: EditorConfiguration {
-        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: preferences.usesReadableLineLength,
-                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: preferences.usesSpellChecking,
+        EditorConfiguration(mode: viewMode == .source ? .source : .livePreview, usesReadableLineLength: workspace.usesReadableLineLength,
+                            textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, usesSpellChecking: workspace.usesSpellChecking,
                             formatsCodeBlocks: preferences.formatsCodeBlocks, codeColorTheme: preferences.codeColorTheme, colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName,
                             editingBehavior: EditingBehavior(settings: workspace.vaultSettings), accentHex: preferences.accentHex,
                             inlineTitle: inlineTitle)
@@ -351,6 +351,28 @@ struct MarkdownPane: View {
         session.insert("~={\(hex)}\(Self.selectedText(in: session, placeholder: placeholder))=~")
     }
 
+    #if os(macOS)
+    /// What decides whether, and with what, this pane gives the menu bar its Format and Insert menus.
+    private var editorMenuRegistrationKey: EditorMenuRegistrationKey {
+        EditorMenuRegistrationKey(isEditingInFocusedSide: isFocused && isEditing, session: ObjectIdentifier(session),
+                                  colors: preferences.isEnabled(.colors) ? preferences.colorPalette : nil, offersTemplates: showTemplatePicker != nil)
+    }
+
+    /// The menu bar's Format and Insert menus follow the note being edited in the focused side. They
+    /// are made from this pane as it is now, so the key above names everything they depend on.
+    private func updateEditorMenuRegistration(_ key: EditorMenuRegistrationKey) {
+        guard key.isEditingInFocusedSide else {
+            workspace.editorMenus.unregister(tabID: tabID)
+            return
+        }
+        let menuActions = editorContextMenuActions, paneActions = editorActions
+        workspace.editorMenus.register(tabID: tabID) {
+            EditorMenuEntries(format: EditorContextMenuContent.formatMenuEntries(actions: menuActions),
+                              insert: EditorContextMenuContent.insertMenuEntries(actions: menuActions, editorActions: paneActions))
+        }
+    }
+    #endif
+
     /// What the editor's context menu (right-click on the Mac, the edit menu on the iPad)
     /// does through this pane: the toolbar's own paths, so undo and the selection afterwards
     /// behave the same.
@@ -366,10 +388,7 @@ struct MarkdownPane: View {
             run: { command in run(command) },
             noteState: { [session] in (session.text as NSString, session.selection) },
             apply: { [session] edit in session.apply(edit) },
-            insertBlock: { [session] block in
-                // After the selected text, which a block inserted over it would replace.
-                session.insertBlock(block, at: NSRange(location: NSMaxRange(session.selection), length: 0))
-            },
+            insertBlock: { [session] block in session.insertBlockFromMenu(block) },
             colors: preferences.isEnabled(.colors) ? preferences.colorPalette : nil,
             insertColor: { hex, placeholder in insertColor(hex: hex, placeholder: placeholder) },
             linkToNote: { noteState.showsLinkPicker = true },
@@ -393,12 +412,25 @@ struct MarkdownPane: View {
             baseContext: workspace.baseEmbedContext(for: notePath),
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
-            embeddedImageColumnWidth: preferences.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
+            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
-            pluginCodeBlocks: workspace.communityPlugins.isRuntimeRunning ? workspace.communityPlugins : nil,
+            pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
-            notePath: notePath)
+            notePath: notePath,
+            usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+            // Read when a callout or table is drawn, never in a view's body, so typing does not draw them again.
+            noteText: { [session] in session.text },
+            toggleTask: { [session] location in session.toggleTask(at: location) },
+            searchTag: searchTag, noteSnapshots: noteSnapshots)
+    }
+
+    /// Shows the notes with a tag in the sidebar's search, which a tag in the note opens.
+    private var searchTag: (String) -> Void {
+        { [workspace] tag in
+            workspace.searchForTag(tag)
+            workspace.searchFocusRequest += 1
+        }
     }
 
     /// Opens a drawing in the editor, where the platform and preferences allow it.
@@ -471,50 +503,14 @@ struct MarkdownPane: View {
         #endif
     }
 
+    /// The Format and Insert menus are the context menu's items, the Mac menu bar's too
+    /// (`EditorContextMenuContent`): they never differ.
     @ViewBuilder private var formatMenuItems: some View {
-        Menu("Heading", systemImage: "number") {
-            ForEach(1...6, id: \.self) { level in
-                Button("Heading \(level)") { run(.heading(level)) }
-            }
-        }
-        Button("Bold", systemImage: "bold") { run(.bold) }
-        Button("Italic", systemImage: "italic") { run(.italic) }
-        Button("Strikethrough", systemImage: "strikethrough") { run(.strikethrough) }
-        Button("Highlight", systemImage: "highlighter") { run(.highlight) }
-        Button("Code", systemImage: "chevron.left.forwardslash.chevron.right") { run(.code) }
-        Button("Inline Math", systemImage: "function") { run(.math) }
-        Button("Comment", systemImage: "eye.slash") { run(.comment) }
-        if preferences.isEnabled(.colors) {
-            Menu("Color", systemImage: "paintpalette") {
-                ForEach(preferences.colorPalette) { color in
-                    Button(color.name) { insertColor(hex: color.hex, placeholder: color.name) }
-                }
-            }
-        }
-        Divider()
-        Button("Bulleted List", systemImage: "list.bullet") { run(.bulletList) }
-        Button("Numbered List", systemImage: "list.number") { run(.numberedList) }
-        Button("Task", systemImage: "checklist") { run(.task) }
-        Button("Table", systemImage: "tablecells") { session.insertBlock(EditorContextMenuContent.tableBlock) }
-        Button("Math Block", systemImage: "function") { session.insertBlock(EditorContextMenuContent.mathBlock) }
-        Button("Callout", systemImage: "text.bubble") { session.insertBlock(EditorContextMenuContent.calloutBlock) }
+        EditorMenuEntriesView(entries: EditorContextMenuContent.formatMenuEntries(actions: editorContextMenuActions))
     }
 
     @ViewBuilder private var insertMenuItems: some View {
-        Button("Link to Note…", systemImage: "link") { noteState.showsLinkPicker = true }
-        Button("Photo Library…", systemImage: "photo.on.rectangle") { noteState.showsPhotoPicker = true }
-        #if canImport(UIKit)
-        if Self.canTakePhotos { Button("Take Photo…", systemImage: "camera") { noteState.showsCamera = true } }
-        if DocumentScanner.isSupported { Button("Scan Document…", systemImage: "doc.viewfinder") { noteState.showsDocumentScanner = true } }
-        #endif
-        Button("Attachment…", systemImage: "doc.badge.plus") { noteState.showsAttachmentPicker = true }
-        Button("New Notebook…", systemImage: "book.closed") { document.notebookInsertion = NotebookInsertionRequest(session: session) }
-        if let showTemplatePicker {
-            Button("Template…", systemImage: "doc.on.doc") {
-                workspace.activateTab(tabID)
-                showTemplatePicker.show()
-            }
-        }
+        EditorMenuEntriesView(entries: EditorContextMenuContent.insertMenuEntries(actions: editorContextMenuActions, editorActions: editorActions))
     }
 
     #if canImport(UIKit)
@@ -603,16 +599,16 @@ struct MarkdownPane: View {
                 showsLinksInspector = true
             }
         }
-        FileLocationMenuItems(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root)
-        NotePDFExportButton()
+        // The file's own commands in one submenu: the menu ran to 25 entries, cut off at about 520 points of a
+        // phone's screen, and had neither Move nor Delete.
+        NoteFileMenu(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root,
+                     showFileRecovery: preferences.isEnabled(.fileRecovery) ? { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) } : nil,
+                     move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
-            Button(isBookmarked ? "Remove Bookmark" : "Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 Task { await workspace.toggleBookmark(session.path) }
             }
-        }
-        if preferences.isEnabled(.fileRecovery) {
-            Button("File Recovery…", systemImage: "clock.arrow.circlepath") { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) }
         }
         CommunityPluginFileActionsButton(host: workspace.communityPlugins, path: session.path, source: "more-options")
         WorkspaceMoreMenuItems()
@@ -670,7 +666,7 @@ struct MarkdownPane: View {
 
     private var isWritingBinding: Binding<Bool> {
         Binding(get: { isEditing }, set: { shouldWrite in
-            if shouldWrite != isEditing { session.toggleReadingView(editingMode: preferences.defaultEditingMode) }
+            if shouldWrite != isEditing { session.toggleReadingView(editingMode: workspace.defaultEditingMode) }
         })
     }
 
@@ -696,7 +692,7 @@ struct MarkdownPane: View {
     }
 
     private func saveCopy() async {
-        do { let path = try await session.saveSeparateCopy(); await workspace.refreshDirectory(); await workspace.open(path) }
+        do { let path = try await session.saveSeparateCopy(); await workspace.open(path); await workspace.showInListings(path) }
         catch { workspace.errorMessage = error.localizedDescription }
     }
 
@@ -712,12 +708,8 @@ private struct AutosaveDriver: View {
         Color.clear
             .onChange(of: session.text) { _, _ in textDidChange() }
             .task(id: session.text) {
-            do {
-                try await Task.sleep(for: .milliseconds(900))
-                try await session.save()
-            } catch is CancellationError {
-            } catch { session.errorMessage = error.localizedDescription }
-        }
+                await session.autosave(after: .milliseconds(900)) { delay in try await Task.sleep(for: delay) }
+            }
     }
 }
 
@@ -840,34 +832,24 @@ private struct WordCountDisplay: ViewModifier {
 
     private func summary(of counts: NoteTextCounts) -> String {
         let words = counts.wordCount == 1 ? "1 word" : "\(counts.wordCount.formatted()) words"
-        return isCompactWidth ? words : "\(words) · \(counts.characterCount.formatted()) characters"
+        let characters = counts.characterCount == 1 ? "1 character" : "\(counts.characterCount.formatted()) characters"
+        return isCompactWidth ? words : "\(words) · \(characters)"
     }
 }
 
-/// A note's words and characters as Obsidian's status bar counts them: after the
-/// frontmatter, words separated by whitespace, characters as a person sees them.
+/// A note's words and characters as Obsidian's status bar counts them: after the frontmatter,
+/// words by Obsidian's own rule (`NoteWordCountRule`), characters as a person sees them (an
+/// emoji is one, where Obsidian counts the two halves of its UTF-16 pair).
 struct NoteTextCounts: Equatable, Sendable {
     let wordCount: Int
     let characterCount: Int
 
-    /// Counts in one pass over the text after the frontmatter, without parsing Markdown.
+    /// Counts the text after the frontmatter, without parsing Markdown.
     init(countingBodyOf text: String) {
         let source = text as NSString
         let body = source.substring(from: FrontmatterLocator.length(in: source))
-        var wordCount = 0
-        var characterCount = 0
-        var isInWord = false
-        for character in body {
-            characterCount += 1
-            if character.isWhitespace || character.isNewline {
-                isInWord = false
-            } else if !isInWord {
-                isInWord = true
-                wordCount += 1
-            }
-        }
-        self.wordCount = wordCount
-        self.characterCount = characterCount
+        wordCount = NoteWordCountRule.wordCount(in: body)
+        characterCount = body.count
     }
 }
 
@@ -909,7 +891,7 @@ private struct LinkPicker: View {
                 } catch { workspace.errorMessage = error.localizedDescription }
             }
         }
-        .frame(minWidth: 340, minHeight: 450)
+        .sheetMinimumSize(width: 340, height: 450)
     }
 }
 

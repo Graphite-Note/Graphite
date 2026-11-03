@@ -1,3 +1,14 @@
+/**
+ * File: UiWorkspaceModelFixTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: Vault switching, link following, external changes, and attachment saving in the
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.13
+ * Date: 02/11/2026
+ */
+
 import XCTest
 import Observation
 import os
@@ -345,6 +356,24 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Homework 2.1.md").path))
     }
 
+    /// HUNT-159: a link to a name several files share opens the closest one, as in Obsidian, with no search left in a
+    /// sidebar the person may not see and no notice pointing at it.
+    func testFollowingALinkToASharedNameOpensTheClosestWithNoSearchOrNotice() async throws {
+        let vault = try makeVault(files: ["Course/Source.md": "[[Summary]]", "Course/Summary.md": "near\n", "Other/Far/Summary.md": "far\n"])
+        let workspace = try await openedWorkspace(vault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let searchFocusRequests = workspace.searchFocusRequest, searchRevealRequests = workspace.searchResultsRevealRequest
+
+        await workspace.follow("Summary", from: try VaultPath("Course/Source.md"))
+
+        XCTAssertEqual(workspace.selection, try VaultPath("Course/Summary.md"))
+        XCTAssertEqual(workspace.searchQuery, "")
+        XCTAssertNil(workspace.notice)
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertEqual(workspace.searchFocusRequest, searchFocusRequests)
+        XCTAssertEqual(workspace.searchResultsRevealRequest, searchRevealRequests)
+    }
+
     /// A missing attachment is not created as a note.
     func testFollowingMissingAttachmentLinkCreatesNothing() async throws {
         let vault = try makeVault(files: ["Source.md": "![[Diagram.png]]"])
@@ -400,13 +429,21 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         for noteNumber in 1...200 { notes["Notes/Note \(noteNumber).md"] = "Note \(noteNumber) links [[Note \(noteNumber + 1)]]" }
         let vault = try makeVault(files: notes)
         let workspace = try await openedWorkspace(vault)
-        XCTAssertTrue(workspace.isIndexing)
         let indexVersionBeforeScans = workspace.indexVersion
+        let index = try XCTUnwrap(workspace.index)
 
+        // The scan of opening may be over on a fast machine. Nothing is awaited between these two
+        // requests, so the second one always arrives while the first is under way.
         workspace.startIndexing()
+        XCTAssertTrue(workspace.isIndexing)
+        workspace.startIndexing()
+        // Written after the running scan may have passed it: only the scan that follows finds it.
+        try Data("late".utf8).write(to: vault.appendingPathComponent("Notes/Note 0.md"))
         try await waitUntil { !workspace.isIndexing }
 
-        XCTAssertEqual(workspace.indexVersion - indexVersionBeforeScans, 2)
+        let indexedFileCount = try await index.fileCount()
+        XCTAssertEqual(indexedFileCount, 201)
+        XCTAssertGreaterThanOrEqual(workspace.indexVersion - indexVersionBeforeScans, 1)
         XCTAssertTrue(workspace.hasCompletedIndexScan)
     }
 
@@ -422,14 +459,15 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         let vault = try makeVault(files: ["Note.md": "text", "Drawing.png": "image", ".obsidian/workspace.json": "{}"])
         let changes: Set<URL> = [vault, vault.appendingPathComponent("Note.md"), vault.appendingPathComponent("Drawing.png"), vault.appendingPathComponent(".obsidian/workspace.json")]
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: changes, root: vault, maximumFileCount: 200),
-                       .files([try VaultPath("Drawing.png"), try VaultPath("Note.md")]))
+                       .items(files: [try VaultPath("Drawing.png"), try VaultPath("Note.md")], folders: []))
     }
 
     func testChangesThatCannotBeNamedFileByFileScanTheWholeVault() throws {
         let vault = try makeVault(files: ["Folder/Note.md": "text", "Other.md": "text"])
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault], root: vault, maximumFileCount: 200), .wholeVault)
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [], root: vault, maximumFileCount: 200), .wholeVault)
-        XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault.appendingPathComponent("Folder")], root: vault, maximumFileCount: 200), .wholeVault)
+        XCTAssertEqual(ExternalChangeRefresh(changedLocations: [vault.appendingPathComponent("Folder")], root: vault, maximumFileCount: 200),
+                       .items(files: [], folders: [try VaultPath("Folder")]), "A folder reported is read on its own, not the whole vault.")
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: [URL(fileURLWithPath: "/elsewhere/Note.md")], root: vault, maximumFileCount: 200), .wholeVault)
         let manyChanges: Set<URL> = [vault.appendingPathComponent("Folder/Note.md"), vault.appendingPathComponent("Other.md")]
         XCTAssertEqual(ExternalChangeRefresh(changedLocations: manyChanges, root: vault, maximumFileCount: 1), .wholeVault)

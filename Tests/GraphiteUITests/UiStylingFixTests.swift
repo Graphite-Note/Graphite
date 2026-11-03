@@ -1,3 +1,14 @@
+/**
+ * File: UiStylingFixTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: Regression tests for the editor's Markdown styling and inline formula layout.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 02/11/2026
+ */
+
 import XCTest
 import AppKit
 import SwiftUI
@@ -310,13 +321,86 @@ final class UiStylingFixTests: XCTestCase {
         let metrics = try XCTUnwrap(InlineMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: 17 * 1.2))
         let source = text as NSString
         let formulaRange = source.range(of: "$\(latex)$")
-        for width in stride(from: 120.0, through: 400.0, by: 20.0) {
+        for width in stride(from: 120.0, through: 400.0, by: 10.0) {
             let lines = try layOut(text, styledBy: styler, width: width)
             let formulaLine = try XCTUnwrap(lines.first { line in NSLocationInRange(NSMaxRange(formulaRange) - 1, line.characterRange) })
             XCTAssertTrue(NSLocationInRange(NSMaxRange(formulaRange) - 2, formulaLine.characterRange), "width \(width)")
             XCTAssertGreaterThanOrEqual(formulaLine.baseline - formulaLine.top + 0.5, metrics.ascent, "width \(width)")
             XCTAssertGreaterThanOrEqual(formulaLine.bottom - formulaLine.baseline + 0.5, metrics.descent, "width \(width)")
         }
+    }
+
+    /// Patches 19 and 20: an inline fraction or sum barely raises its line in Live Preview.
+    func testInlineFractionsAndLimitsKeepTheirLineLow() throws {
+        let styler = MarkdownTextStyler(configuration: EditorConfiguration(mode: .livePreview, textSize: 17), accentColor: .systemBlue, drawsConcealedReplacements: true)
+        let plain = try XCTUnwrap(layOut("Some words here\n", styledBy: styler, width: 800).first)
+        func addedHeight(_ latex: String) throws -> CGFloat {
+            let line = try XCTUnwrap(layOut("Some $\(latex)$ words\n", styledBy: styler, width: 800).first)
+            return (line.bottom - line.top) - (plain.bottom - plain.top)
+        }
+        XCTAssertLessThan(try addedHeight(#"\frac{a}{b}"#), 4, "It added 7.6 points.")
+        XCTAssertLessThan(try addedHeight(#"\sum_{i=1}^n x_i"#), 7, "It added 24 points.")
+        XCTAssertLessThan(try addedHeight(#"\lim_{x\to 0} f"#), 2, "It added 9.2 points.")
+    }
+
+    /// The room for a formula is between the last two characters of its source, so a line never
+    /// breaks between them for want of room, and `drawInlineMath` draws in it.
+    func testTheRoomForAFormulaIsBeforeItsClosingDollar() throws {
+        let latex = "\\frac{a}{b}"
+        let text = "Some $\(latex)$ words\n"
+        let styler = MarkdownTextStyler(configuration: EditorConfiguration(mode: .livePreview, textSize: 17), accentColor: .systemBlue, drawsConcealedReplacements: true)
+        let textStorage = NSTextStorage(string: text)
+        styler.applyStyles(to: textStorage, editedRange: NSRange(location: 0, length: 0), restyleEverything: true, revealedMarkup: nil, concealedBlocks: [])
+        let closingDollar = NSMaxRange((text as NSString).range(of: "$\(latex)$")) - 1
+        let metrics = try XCTUnwrap(InlineMathRendering.metrics(for: LaTeXCompatibility.normalized(latex), fontSize: 17 * 1.2))
+        let room = try XCTUnwrap(textStorage.attribute(.kern, at: closingDollar - 1, effectiveRange: nil) as? CGFloat)
+        XCTAssertEqual(room, metrics.width + 2 * InlineMathLayout.horizontalPadding, accuracy: 0.01)
+        XCTAssertNil(textStorage.attribute(.kern, at: closingDollar, effectiveRange: nil))
+    }
+
+    /// The formula is drawn in that room: its rule starts just inside the room and ends before the word after it.
+    func testAFormulaIsDrawnInItsRoom() throws {
+        let latex = "\\frac{a}{b}"
+        let text = "Some $\(latex)$ words\n"
+        let styler = MarkdownTextStyler(configuration: EditorConfiguration(mode: .livePreview, textSize: 17), accentColor: .systemBlue, drawsConcealedReplacements: true)
+        let contentStorage = NSTextContentStorage()
+        let layoutManager = NSTextLayoutManager()
+        let fragmentMaker = ConcealedFragmentMaker()
+        layoutManager.delegate = fragmentMaker
+        contentStorage.addTextLayoutManager(layoutManager)
+        layoutManager.textContainer = NSTextContainer(size: CGSize(width: 800, height: 0))
+        let textStorage = try XCTUnwrap(contentStorage.textStorage)
+        textStorage.setAttributedString(NSAttributedString(string: text))
+        styler.applyStyles(to: textStorage, editedRange: NSRange(location: 0, length: 0), restyleEverything: true, revealedMarkup: nil, concealedBlocks: [])
+        let fragment = try XCTUnwrap(layoutManager.textLayoutFragment(for: layoutManager.documentRange.location))
+        layoutManager.ensureLayout(for: layoutManager.documentRange)
+        let line = try XCTUnwrap(fragment.textLineFragments.first)
+        let closingDollar = NSMaxRange((text as NSString).range(of: "$\(latex)$")) - 1
+        let roomStart = line.locationForCharacter(at: closingDollar - 1).x
+        // TextKit shares the room between the last two characters, so it ends at the next one.
+        let roomEnd = line.locationForCharacter(at: closingDollar + 1).x
+        XCTAssertGreaterThan(roomEnd - roomStart, 10)
+
+        let width = 400, height = 60
+        var pixels = [UInt8](repeating: 255, count: width * height)
+        let context = try XCTUnwrap(CGContext(data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue))
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+            fragment.draw(at: .zero, in: context)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        func hasInk(inColumn column: Int) -> Bool {
+            (0..<height).contains { row in pixels[row * width + column] < 128 }
+        }
+        let roomColumns = Int(roomStart.rounded(.up))..<Int(roomEnd.rounded(.down))
+        XCTAssertTrue(roomColumns.contains { column in hasInk(inColumn: column) }, "The formula is in its room.")
+        let firstInk = try XCTUnwrap(roomColumns.first { column in hasInk(inColumn: column) })
+        XCTAssertLessThan(CGFloat(firstInk) - roomStart, 6, "It starts at the room's left edge.")
+        let lastInk = try XCTUnwrap(roomColumns.last { column in hasInk(inColumn: column) })
+        XCTAssertLessThan(roomEnd - CGFloat(lastInk), 6, "It fills the room to its right edge.")
     }
 
     /// A formula inside a rendered block or a folded section is neither drawn over the
@@ -453,5 +537,12 @@ private actor UiStylingLookupGate {
         isReleased = true
         for lookup in waitingLookups { lookup.resume() }
         waitingLookups.removeAll()
+    }
+}
+
+/// Lays paragraphs out in the fragments the editor uses, which draw formulas.
+private final class ConcealedFragmentMaker: NSObject, NSTextLayoutManagerDelegate {
+    func textLayoutManager(_ textLayoutManager: NSTextLayoutManager, textLayoutFragmentFor location: NSTextLocation, in textElement: NSTextElement) -> NSTextLayoutFragment {
+        ConcealedReplacementLayoutFragment(textElement: textElement, range: textElement.elementRange)
     }
 }

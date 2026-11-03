@@ -1,3 +1,14 @@
+/**
+ * File: ReadingViewBuilderDiagramTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Mermaid blocks in the reading view's build.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -41,19 +52,20 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertEqual(flowchart.layout.font.size, 22)
     }
 
-    func testATypeNotDrawnYetStaysACodeBlock() async throws {
+    func testATypeNotDrawnYetIsADiagramBlockThatShowsItsSourceAndSaysSo() async throws {
         let blocks = try await build("```mermaid\nrequirementDiagram\n  requirement test_req {\n  }\n```").blocks
-        guard case .markdown(_, let text) = blocks.first else { return XCTFail("Shown as code") }
-        XCTAssertEqual(text, "```mermaid\nrequirementDiagram\n  requirement test_req {\n  }\n```")
+        guard case .diagram(_, .unreadable(let source, let failure)) = blocks.first else { return XCTFail("Shown with why") }
+        XCTAssertEqual(source, "requirementDiagram\n  requirement test_req {\n  }")
+        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
     }
 
-    func testASequenceDiagramBecomesADiagramBlockAndOneWithABoxStaysCode() async throws {
+    func testASequenceDiagramBecomesADiagramBlockAndOneWithABoxShowsWhy() async throws {
         let drawn = try await build("Before\n\n```mermaid\nsequenceDiagram\n  Alice->>Bob: Hi\n```\n\nAfter").blocks
         XCTAssertEqual(drawn.count, 3)
         guard case .diagram(_, .sequence(let sequence)) = drawn[1] else { return XCTFail("The sequence diagram is drawn") }
         XCTAssertEqual(sequence.participantNames, ["Alice", "Bob"])
         let boxed = try await build("```mermaid\nsequenceDiagram\n  box Team\n  participant A\n  end\n```").blocks
-        guard case .markdown = boxed.first else { return XCTFail("A diagram with a box stays code") }
+        guard case .diagram(_, .unreadable(_, .sequenceLayout)) = boxed.first else { return XCTFail("A diagram with a box shows its source and why") }
     }
 
     func testAFlowchartWithSubgraphsBecomesADiagramBlockWithItsBoxes() async throws {
@@ -63,10 +75,10 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertEqual(flowchart.layout.clusters[0].title?.lines, ["Group"])
     }
 
-    func testAFlowchartWithACollapsedGroupStaysACodeBlock() async throws {
+    func testAFlowchartWithACollapsedGroupShowsItsSourceAndWhy() async throws {
         let source = "```mermaid\nflowchart TD\n  subgraph one\n    A\n  end\n  one@{ view: collapsed }\n```"
-        guard case .markdown(_, let text) = try await build(source).blocks.first else { return XCTFail("Shown as code") }
-        XCTAssertEqual(text, source)
+        guard case .diagram(_, .unreadable(_, let failure)) = try await build(source).blocks.first else { return XCTFail("Shown with why") }
+        XCTAssertEqual(failure, .layout(.subgraphsNotLaidOut))
     }
 
     func testAFlowchartInACalloutIsDrawnInsideIt() async throws {
@@ -74,14 +86,14 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         guard case .callout(_, _, _, _, let body) = blocks.first, case .diagram = body.first else { return XCTFail("Drawn in the callout") }
     }
 
-    func testAClassDiagramBecomesADiagramBlockAndOneWithNamespacesStaysCode() async throws {
+    func testAClassDiagramBecomesADiagramBlockAndOneWithNamespacesShowsWhy() async throws {
         let drawn = "```mermaid\nclassDiagram\n  Animal <|-- Duck\n```"
         let blocks = try await build(drawn + "\n\n```mermaid\nclassDiagram\nnamespace Shapes {\n  class Square\n}\n```").blocks
         XCTAssertEqual(blocks.count, 2)
         guard case .diagram(_, .classDiagram(let classDiagram)) = blocks[0] else { return XCTFail("The class diagram is drawn") }
         XCTAssertEqual(classDiagram.layout.classes.count, 2)
-        guard case .markdown(_, let text) = blocks[1] else { return XCTFail("Shown as code") }
-        XCTAssertEqual(text, "```mermaid\nclassDiagram\nnamespace Shapes {\n  class Square\n}\n```")
+        guard case .diagram(_, .unreadable(_, let failure)) = blocks[1] else { return XCTFail("Shown with why") }
+        XCTAssertEqual(failure, .classLayout(.namespacesNotLaidOut))
     }
 
     func testAnEntityRelationshipDiagramBecomesADiagramBlock() async throws {
@@ -98,13 +110,13 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertNotEqual(configuration.hashValueForReload, systemFontHash)
     }
 
-    func testAStateDiagramBecomesADiagramBlockAndOneWithCompositeStatesStaysCode() async throws {
+    func testAStateDiagramBecomesADiagramBlockAndOneWithCompositeStatesShowsWhy() async throws {
         let blocks = try await build("```mermaid\nstateDiagram-v2\n  [*] --> Still\n  Still --> [*]\n```").blocks
         guard case .diagram(_, .stateDiagram(let diagram)) = blocks.first else { return XCTFail("The state diagram is drawn") }
         XCTAssertEqual(diagram.layout.states.count, 3)
         let composite = try await build("```mermaid\nstateDiagram-v2\n  state A {\n    a --> b\n  }\n```").blocks
-        guard case .markdown(_, let text) = composite.first else { return XCTFail("Shown as code") }
-        XCTAssertEqual(text, "```mermaid\nstateDiagram-v2\n  state A {\n    a --> b\n  }\n```")
+        guard case .diagram(_, .unreadable(_, let failure)) = composite.first else { return XCTFail("Shown with why") }
+        XCTAssertEqual(failure, .stateLayout(.compositeStatesNotLaidOut))
     }
 
     func testAnXYChartBecomesADiagramBlockAndOneWithoutSeriesShowsWhy() async throws {
@@ -116,12 +128,12 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertEqual(failure, .xyChartLayout(.noSeries))
     }
 
-    func testASankeyDiagramBecomesADiagramBlockAndOneWithCircularLinksStaysCode() async throws {
+    func testASankeyDiagramBecomesADiagramBlockAndOneWithCircularLinksShowsWhy() async throws {
         let blocks = try await build("```mermaid\nsankey-beta\nCoal,Solid,75.571\nSolid,Industry,46.477\n```").blocks
         guard case .diagram(_, .sankey(let sankey)) = blocks.first else { return XCTFail("The Sankey diagram is drawn") }
         XCTAssertEqual(sankey.layout.links.count, 2)
         let circular = try await build("```mermaid\nsankey\na,b,1\nb,a,1\n```").blocks
-        guard case .markdown(_, let text) = circular.first else { return XCTFail("Shown as code") }
-        XCTAssertEqual(text, "```mermaid\nsankey\na,b,1\nb,a,1\n```")
+        guard case .diagram(_, .unreadable(_, let failure)) = circular.first else { return XCTFail("Shown with why") }
+        XCTAssertEqual(failure, .sankeyLayout(.circularLinks))
     }
 }

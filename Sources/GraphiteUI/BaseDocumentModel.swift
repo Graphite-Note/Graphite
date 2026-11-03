@@ -1,3 +1,15 @@
+/**
+ * File: BaseDocumentModel.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The state of one open or embedded base: loading, running its view, following vault changes, and
+ *              editing it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -9,6 +21,17 @@ public enum BaseSource: Hashable, Sendable {
     case file(VaultPath)
     /// The YAML of a ```` ```base ```` code block.
     case inline(String)
+}
+
+/// Which files changed for one version of a base's vault content, from Graphite's own save.
+public struct BaseContentChange: Sendable {
+    public let version: Int
+    public let paths: Set<VaultPath>
+
+    public init(version: Int, paths: Set<VaultPath>) {
+        self.version = version
+        self.paths = paths
+    }
 }
 
 /// State of one open or embedded base. Reading, pre-filtering, evaluation and
@@ -33,6 +56,10 @@ final class BaseDocumentModel {
     private(set) var candidateCount = 0
     private(set) var loadedRecordCount = 0
     private(set) var isLoading = false
+    /// A run following a change in the vault, while the rows stay on screen: the toolbar stays still.
+    private var isRefreshingBehindRows = false
+    /// Whether the toolbar shows that the base is at work.
+    var showsProgress: Bool { isLoading && !isRefreshingBehindRows }
     var actionErrorMessage: String?
     private(set) var selectedViewIndex = 0
     /// A sort chosen from the column headers; nil uses the view's own sort.
@@ -62,11 +89,39 @@ final class BaseDocumentModel {
     /// The records the last published run loaded. The next run reads again only the files
     /// whose index rows changed, so a save elsewhere or a header tap does not reload them all.
     private var loadedRecords = LoadedBaseRecords()
+    /// False while the base is off screen: what the next run would save does not justify
+    /// holding up to 5,000 records for a note that may not come back.
+    @ObservationIgnored private var keepsLoadedRecords = true
+    /// The record `this` was read as in the last published run.
+    private var lastThisRecord: BaseFileRecord?
     /// The vault content version the last completed reload read, set by the view that owns
     /// this model, so a view appearing again does not reload unchanged content.
     @ObservationIgnored var loadedContentVersion: Int?
     /// Keeps the property list for the view editor small on vaults with many keys.
     private nonisolated static let maximumAvailablePropertyKeys = 300
+
+    /// A base that came on screen keeps what its runs load, for the next run to reuse.
+    func startKeepingLoadedRecords() {
+        keepsLoadedRecords = true
+    }
+
+    /// A base inside a note left the screen: its result stays for when it comes back, and its
+    /// loaded records go.
+    func releaseLoadedRecords() {
+        keepsLoadedRecords = false
+        loadedRecords = LoadedBaseRecords()
+    }
+
+    /// Roughly what the model holds in memory, for the cache of bases off screen.
+    var estimatedHeldBytes: Int {
+        let cellCount = (result?.groups ?? []).reduce(0) { total, group in total + group.rows.reduce(0) { rowTotal, row in rowTotal + row.cells.count + 1 } }
+        return cellCount * Self.estimatedBytesPerResultCell + loadedRecords.recordCount * Self.estimatedBytesPerLoadedRecord
+    }
+
+    /// A row's cell, with its text and its place in the row.
+    private static let estimatedBytesPerResultCell = 128
+    /// A record, with its path, properties, tags and links.
+    private static let estimatedBytesPerLoadedRecord = 2_048
 
     init(source: BaseSource, contextPath: VaultPath, store: VaultStore, index: VaultIndex, preferredViewName: String? = nil,
          didSaveFile: @escaping (VaultPath) -> Void = { _ in }) {
@@ -85,6 +140,58 @@ final class BaseDocumentModel {
     var vaultRoot: URL { store.root }
 
     // MARK: Loading
+
+    /// Follows a new version of the vault's content. Most saves cannot change what this base
+    /// shows (the words typed in the note it is embedded in, or in another), and running the
+    /// whole query at every autosave for each base in the note is what would otherwise happen.
+    func followVaultChange(to contentVersion: Int, change: BaseContentChange?) async {
+        if let change, change.version == contentVersion, loadedContentVersion == contentVersion - 1, await showsTheSame(after: change.paths) {
+            if !Task.isCancelled { loadedContentVersion = contentVersion }
+            return
+        }
+        isRefreshingBehindRows = result != nil
+        defer { isRefreshingBehindRows = false }
+        await reload()
+        if !Task.isCancelled, loadErrorMessage == nil { loadedContentVersion = contentVersion }
+    }
+
+    /// Whether saved files leave this base as it is: not its definition, no row's or `this`'s
+    /// properties, tags or links, and no other file now matching its filters. A base that
+    /// shows files' sizes or times is run again, since every save changes those.
+    /// With its records released, a base off screen cannot tell what its rows read, so it runs.
+    func showsTheSame(after paths: Set<VaultPath>) async -> Bool {
+        guard loadedRecords.recordCount > 0 else { return false }
+        guard let definition, !definition.views.isEmpty, result != nil, loadErrorMessage == nil, let parsedSourceText,
+            paths.count <= Self.maximumCheckedChangedFiles else { return false }
+        if case .file(let basePath) = source, paths.contains(basePath) { return false }
+        if ["file.size", "file.mtime", "file.ctime"].contains(where: parsedSourceText.contains) { return false }
+        let environment = BaseEvaluationEnvironment(now: .now, calendar: BaseDateFormatting.displayCalendar, declaredTypes: declaredTypes)
+        for path in paths {
+            guard let record = try? await index.baseRecord(at: path) else { return false } // Not known: the base runs.
+            if path == contextPath {
+                guard let lastThisRecord, Self.hasSameContent(record, lastThisRecord) else { return false }
+            }
+            if let loadedRecord = loadedRecords.record(at: path) {
+                guard Self.hasSameContent(record, loadedRecord) else { return false }
+            } else {
+                // Not among the files this view went through: does it now pass the filters?
+                let thisRecord = lastThisRecord ?? BaseFileRecord(path: contextPath, size: 0, createdDate: .now, modifiedDate: .now)
+                let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: index.baseRecordProvider)
+                let viewIndex = selectedViewIndex
+                let matches = await Task.detached(priority: .userInitiated) { !engine.run(viewIndex: viewIndex, records: [record],
+                    sortOverride: nil).rows.isEmpty }.value
+                if matches { return false }
+            }
+        }
+        return true
+    }
+
+    /// More files saved at once than this runs the base, rather than looking at each.
+    private static let maximumCheckedChangedFiles = 16
+
+    private nonisolated static func hasSameContent(_ first: BaseFileRecord, _ second: BaseFileRecord) -> Bool {
+        first.properties == second.properties && first.tags == second.tags && first.links == second.links
+    }
 
     /// Re-reads the definition and runs the selected view again. The selected view is
     /// kept by name, so a view another app inserts or removes does not move the
@@ -197,7 +304,8 @@ final class BaseDocumentModel {
             if definition.hasUnreadableFilters || view.hasUnreadableFilters {
                 let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
                 return QueryOutcome(result: engine.run(viewIndex: viewIndex, records: [], sortOverride: sortOverride),
-                                    candidateCount: 0, loadedRecordCount: 0, availablePropertyKeys: [], loadedRecords: LoadedBaseRecords())
+                                    candidateCount: 0, loadedRecordCount: 0, availablePropertyKeys: [], loadedRecords: LoadedBaseRecords(),
+                                        thisRecord: thisRecord)
             }
             let filters = [definition.filters, view.filters].compactMap { filter in filter }
             let prefilter = BaseRecordPrefilter.extract(from: filters, definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
@@ -214,7 +322,7 @@ final class BaseDocumentModel {
             // record or link; the rows computed from it are not shown.
             try provider.throwIfLookupFailed()
             return QueryOutcome(result: queryResult, candidateCount: batch.candidateCount,
-                                loadedRecordCount: batch.records.count, availablePropertyKeys: sortedKeys, loadedRecords: loadedRecords)
+                                loadedRecordCount: batch.records.count, availablePropertyKeys: sortedKeys, loadedRecords: loadedRecords, thisRecord: thisRecord)
         }
         runningQuery = queryTask
         do {
@@ -224,7 +332,8 @@ final class BaseDocumentModel {
                 queryTask.cancel()
             }
             guard generation == queryGeneration else { return }
-            loadedRecords = outcome.loadedRecords
+            loadedRecords = keepsLoadedRecords ? outcome.loadedRecords : LoadedBaseRecords()
+            lastThisRecord = outcome.thisRecord
             // Publishing an identical result would lay out every visible row again.
             if !(result.map { shownResult in Self.hasSameContent(shownResult, outcome.result) } ?? false) { result = outcome.result }
             candidateCount = outcome.candidateCount
@@ -248,6 +357,7 @@ final class BaseDocumentModel {
         let loadedRecordCount: Int
         let availablePropertyKeys: [String]
         let loadedRecords: LoadedBaseRecords
+        let thisRecord: BaseFileRecord
     }
 
     nonisolated static func hasSameContent(_ leftResult: BaseQueryResult, _ rightResult: BaseQueryResult) -> Bool {
@@ -386,8 +496,9 @@ final class BaseDocumentModel {
         return await editDefinition(target: BaseViewTarget(view), { editor in try editor.setColumnWidth(width, of: property, forViewAt: viewPosition) }) != nil
     }
 
-    func addView(type: BaseViewType) async {
-        let name = uniqueViewName(type.defaultViewName)
+    /// - Parameter viewName: What to call it; a built-in type's usual name otherwise.
+    func addView(type: BaseViewType, named viewName: String? = nil) async {
+        let name = uniqueViewName(viewName ?? type.defaultViewName)
         if let newPosition = await editDefinition({ editor in editor.addView(type: type, name: name) }) {
             await selectView(atPosition: newPosition)
         }
@@ -435,8 +546,7 @@ final class BaseDocumentModel {
     func resolve(_ link: BaseLink) async throws -> VaultPath? {
         guard !link.isExternal else { return nil }
         let source = link.source ?? contextPath
-        let matches = try await index.resolve(link.target, from: source)
-        return matches.count == 1 ? matches.first : nil
+        return try await index.resolve(link.target, from: source).first
     }
 
     // MARK: Editing
@@ -626,7 +736,7 @@ struct BaseViewTarget: Hashable {
 /// The text of a UTF-8 file and whether it began with a byte order mark. Decoding drops a
 /// leading mark, so saving only `Data(text.utf8)` would remove one the person never
 /// edited; `encoded(_:)` puts it back.
-private struct UTF8FileText {
+struct UTF8FileText {
     private static let byteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]
     let text: String
     let hasByteOrderMark: Bool

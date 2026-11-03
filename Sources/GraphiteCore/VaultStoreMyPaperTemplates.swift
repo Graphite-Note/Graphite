@@ -1,3 +1,14 @@
+/**
+ * File: VaultStoreMyPaperTemplates.swift
+ * --------------------------------------
+ * Layer: Core
+ * Description: The person's own paper templates, kept as ordinary one-page PDFs in the vault's
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// The person's own paper templates, kept as ordinary one-page PDFs in the vault's
@@ -13,7 +24,7 @@ extension VaultStore {
         let list = try myPaperTemplateList()
         let directory = try VaultPath(MyPaperTemplateList.directory)
         guard try fileExists(directory) else { return [] }
-        let fileNames = try children(of: directory)
+        let fileNames = try listedChildren(of: directory)
             .filter { entry in !entry.isDirectory && (entry.path.name as NSString).pathExtension.lowercased() == MyPaperTemplateList.fileExtension }
             .map(\.path.name)
         return list.templates(listing: fileNames)
@@ -60,7 +71,7 @@ extension VaultStore {
         if let problem = FileNameRules.problem(with: trimmedName, isNote: false) { throw GraphiteError.unavailable(problem) }
         let directory = try VaultPath(MyPaperTemplateList.directory)
         let newFileName = trimmedName + "." + MyPaperTemplateList.fileExtension
-        if newFileName != fileName { try move(directory.appending(fileName), to: directory.appending(newFileName)) }
+        if newFileName != fileName { try moveOnActor(directory.appending(fileName), to: directory.appending(newFileName)) }
         let list = try updateMyPaperTemplateList { list in list.rename(fileName, to: newFileName) }
         return MyPaperTemplateList.Template(fileName: newFileName, isHidden: list.hiddenFileNames.contains(newFileName))
     }
@@ -77,7 +88,7 @@ extension VaultStore {
     public func moveMyPaperTemplateListAside() throws -> VaultPath {
         let path = try VaultPath(MyPaperTemplateList.configurationPath)
         let keptCopy = try uniquePath(directory: path.parent, stem: MyPaperTemplateList.unreadableCopyStem, extension: "json")
-        try move(path, to: keptCopy)
+        try moveOnActor(path, to: keptCopy)
         return keptCopy
     }
 }

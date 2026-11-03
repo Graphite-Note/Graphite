@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceDeepLinks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.10
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -9,19 +20,17 @@ extension WorkspaceModel {
             return
         }
         if case .open(_, let path?) = link.action {
-            await openFileSystemPath(path)
+            if let vaultPath = await vaultPathShowingFileSystemPath(path) { await open(vaultPath) }
             return
         }
-        if let vaultName = link.vault, !isCurrentVault(named: vaultName) {
-            guard let vault = knownVault(named: vaultName) else {
-                errorMessage = "No vault named “\(vaultName)” is in Graphite's vault list. Open its folder once from the vault list, then try the link again."
-                return
+        // `new?path=`: the note's full path decides the vault and the note, as for `open`.
+        if case .new(_, _, let path?, let content, let opensNote, let mode) = link.action {
+            if let vaultPath = await vaultPathShowingFileSystemPath(path) {
+                await createNoteFromLink(name: nil, file: vaultPath.rawValue, content: content, opensNote: opensNote, mode: mode)
             }
-            do { try await openVault(vault) } catch {
-                errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
-                return
-            }
+            return
         }
+        if let vaultName = link.vault, !isCurrentVault(named: vaultName), await !openVaultOfLink(named: vaultName) { return }
         guard store != nil else {
             errorMessage = "Open a vault first, then try the link again."
             return
@@ -32,7 +41,7 @@ extension WorkspaceModel {
         case .search(let query):
             searchQuery = query
             searchFocusRequest += 1
-        case .new(let name, let file, let content, let opensNote, let mode):
+        case .new(let name, let file, _, let content, let opensNote, let mode):
             await createNoteFromLink(name: name, file: file, content: content, opensNote: opensNote, mode: mode)
         case .daily:
             await openDailyNote()
@@ -53,14 +62,22 @@ extension WorkspaceModel {
     }
 
     /// Obsidian's "Copy Obsidian URL": a link that opens this file from any app.
+    /// The link names the vault by its folder's name, as Obsidian's do, unless another known
+    /// vault has the same name; then it names the vault by its identifier, which only this
+    /// vault has.
     func openingLink(to path: VaultPath) -> String {
-        VaultURI.openingLink(to: path, inVaultNamed: title)
+        let sharesNameWithAnotherVault = vaultLibrary.vaults.contains { vault in vault.name == title && vault.id != currentVaultIdentifier }
+        let vaultReference = sharesNameWithAnotherVault ? (currentVaultIdentifier?.uuidString ?? title) : title
+        return VaultURI.openingLink(to: path, inVaultNamed: vaultReference)
     }
 
     // MARK: Private
 
-    private func isCurrentVault(named name: String) -> Bool {
+    /// Whether a link's vault is the one that is open: its identifier, or its name, which the
+    /// open vault answers to before another vault of the same name.
+    func isCurrentVault(named name: String) -> Bool {
         guard let currentVaultIdentifier else { return false }
+        if currentVaultIdentifier.uuidString.caseInsensitiveCompare(name) == .orderedSame || title == name { return true }
         return knownVault(named: name)?.id == currentVaultIdentifier
     }
 
@@ -100,27 +117,56 @@ extension WorkspaceModel {
         return nil
     }
 
-    /// `open?path=`: a full path, inside the vault that is open or another known vault.
-    private func openFileSystemPath(_ fileSystemPath: String) async {
+    /// `open?path=` and `new?path=`: the vault path of a full file system path, inside the
+    /// vault that is open or another known vault, which is opened first. Nil, with the reason
+    /// shown, when no vault holds it or its vault cannot be opened.
+    private func vaultPathShowingFileSystemPath(_ fileSystemPath: String) async -> VaultPath? {
         let standardized = URL(fileURLWithPath: fileSystemPath).standardizedFileURL.resolvingSymlinksInPath().path
         func vaultPath(inside root: String) -> VaultPath? {
             let prefix = root.hasSuffix("/") ? root : root + "/"
             guard standardized.hasPrefix(prefix) else { return nil }
             return try? VaultPath(String(standardized.dropFirst(prefix.count)))
         }
-        if let root = folderAccess?.root.standardizedFileURL.resolvingSymlinksInPath().path, let path = vaultPath(inside: root) {
-            await open(path)
-            return
-        }
+        if let root = folderAccess?.root.standardizedFileURL.resolvingSymlinksInPath().path, let path = vaultPath(inside: root) { return path }
         guard let vault = vaultLibrary.vaults.first(where: { vault in vaultPath(inside: vault.lastKnownPath) != nil }),
               let path = vaultPath(inside: vault.lastKnownPath) else {
             errorMessage = "“\(fileSystemPath)” is not in a vault Graphite knows."
-            return
+            return nil
         }
         do {
             try await openVault(vault)
-            await open(path)
-        } catch { errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription }
+            guard currentVaultIdentifier == vault.id else {
+                reportLinkNotFollowed(into: vault)
+                return nil
+            }
+            return path
+        } catch {
+            errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Opens the vault a link names. False, with the reason shown, when it is not open afterwards.
+    private func openVaultOfLink(named vaultName: String) async -> Bool {
+        guard let vault = knownVault(named: vaultName) else {
+            errorMessage = "No vault named “\(vaultName)” is in Graphite's vault list. Open its folder once from the vault list, then try the link again."
+            return false
+        }
+        do { try await openVault(vault) } catch {
+            errorMessage = "Graphite couldn't open “\(vault.name)”. " + error.localizedDescription
+            return false
+        }
+        guard currentVaultIdentifier == vault.id else {
+            reportLinkNotFollowed(into: vault)
+            return false
+        }
+        return true
+    }
+
+    /// A newer choice of vault replaced the switch a link waited for: the link acts in nothing,
+    /// above all not in the vault that happens to be open, and what it carried is not lost silently.
+    private func reportLinkNotFollowed(into vault: KnownVault) {
+        errorMessage = "Another vault was chosen while a link waited for “\(vault.name)” to open, so the link was not followed. Try it again."
     }
 
     private func createNoteFromLink(name: String?, file: String?, content: String, opensNote: Bool, mode: VaultURI.NewNoteMode) async {
@@ -140,7 +186,7 @@ extension WorkspaceModel {
                 case .unique:
                     path = try await store.uniquePath(directory: path.parent, stem: path.stem, extension: "md")
                     _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
-                    await refreshDirectory()
+                    await showInListings(path)
                 case .append, .overwrite:
                     try await replaceText(of: path, keepingCopy: mode == .overwrite) { existing in
                         mode == .append ? VaultURI.appending(content, to: existing) : content
@@ -149,7 +195,7 @@ extension WorkspaceModel {
             } else {
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
-                await refreshDirectory()
+                await showInListings(path)
             }
             refreshIndex(for: [path])
             if opensNote { await open(path) }

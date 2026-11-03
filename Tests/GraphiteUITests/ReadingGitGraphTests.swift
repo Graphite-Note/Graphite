@@ -1,3 +1,14 @@
+/**
+ * File: ReadingGitGraphTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: The reading view's Git graphs.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -42,10 +53,16 @@ final class ReadingGitGraphTests: XCTestCase {
         XCTAssertEqual(failure, .reading(.invalidSyntax(line: 3, problem: .gitGraph(.unknownBranch(name: "nope")))))
     }
 
-    func testAGitGraphThatSetsItsOptionsStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "---\nconfig:\n  gitGraph:\n    showBranches: false\n---\ngitGraph\n commit", typography: typography))
-        XCTAssertNil(ReadingDiagram(source: "%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk",
-                                    typography: typography))
+    func testAGitGraphThatSetsItsOptionsShowsTheSourceAndWhy() {
+        for source in ["---\nconfig:\n  gitGraph:\n    showBranches: false\n---\ngitGraph\n commit",
+                       "%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk",
+                       "%%{\n  init: {'gitGraph': {'mainBranchName': 'trunk'}}\n}%%\ngitGraph\n commit"] {
+            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
+                return XCTFail("Shown with why: \(source)")
+            }
+            XCTAssertEqual(shownSource, source)
+            XCTAssertEqual(failure, .gitGraphLayout(.optionsNotApplied))
+        }
     }
 
     func testEveryGitGraphProblemIsExplainedApart() {

@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudController.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: One Read Aloud session per window: preparing, playing and following a note or PDF.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.21
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Observation
 import PDFKit
@@ -575,9 +586,11 @@ final class ReadAloudController {
         followResumption?.cancel()
         followResumption = nil
         guard resumesByItself else { return }
+        let delay = followResumptionDelay
         followResumption = Task { [weak self] in
-            try? await Task.sleep(for: Self.followResumptionDelay)
-            guard let self, !Task.isCancelled, self.session.state == .speaking else { return }
+            try? await Task.sleep(for: delay)
+            // Also while paused: `shouldFollow` follows only while speaking, so Play then goes back to the reading.
+            guard let self, !Task.isCancelled else { return }
             self.followsReading = true
         }
     }
@@ -586,7 +599,8 @@ final class ReadAloudController {
         if sourceIdentifier == identifier, session.document != nil { suspendFollowing(resumesByItself: resumesByItself) }
     }
 
-    static let followResumptionDelay = Duration.seconds(5)
+    /// How long after the last scroll following comes back; tests shorten it.
+    @ObservationIgnored var followResumptionDelay = Duration.seconds(5)
     @ObservationIgnored private var followResumption: Task<Void, Never>?
 
     func shouldFollow(_ path: VaultPath) -> Bool {

@@ -1,3 +1,15 @@
+/**
+ * File: CommunityPluginHost.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: Runs the open vault's Obsidian community plugins in a web view and answers what they ask of
+ *              Graphite.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.36
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import Observation
 import OSLog
@@ -223,6 +235,9 @@ final class CommunityPluginHost {
     private(set) var runtimePhase = RuntimePhase.stopped
     /// Whether a runtime exists, from its start until its stop has finished.
     var isRuntimeRunning: Bool { runtimePhase != .stopped }
+    /// The host for views that may show what plugins draw, from the moment plugins are on for
+    /// the vault: an embed told of no host until the runtime runs would call a view unsupported.
+    var hostWhilePluginsAreOn: CommunityPluginHost? { isTurnedOnForVault || isRuntimeRunning ? self : nil }
     /// Code block languages plugins draw (`registerMarkdownCodeBlockProcessor`); the reading
     /// view draws blocks in them through their plugin.
     private(set) var codeBlockLanguages: Set<String> = []
@@ -249,8 +264,15 @@ final class CommunityPluginHost {
     /// Whether a plugin shows some notes in a view of its own (it patched `setViewState`, as
     /// Excalidraw does for its drawings), so Graphite asks before opening a note.
     private(set) var pluginsTakeOverNotes = false
-    /// Bases view types plugins registered (`registerBasesView`), with their names.
-    private(set) var pluginBasesViews: [String: String] = [:]
+    /// Bases view types plugins registered (`registerBasesView`), by type.
+    private(set) var pluginBasesViews: [String: CommunityPluginBasesViewRegistration] = [:]
+    /// Whether the plugins of a vault that has them on are still starting: a base of a view type
+    /// none has registered yet waits rather than calling it unsupported.
+    private(set) var isStartingPlugins = false
+    /// The leaves of plugins' base views embedded in notes (`CommunityPluginBasesEmbeds.swift`).
+    @ObservationIgnored var embeddedBasesLeaves = CommunityPluginEmbeddedBasesLeaves()
+    /// Options plugins' views asked to save in `.base` files, written one after another.
+    @ObservationIgnored var basesViewOptionSave: Task<Void, Never>?
     /// The plugin view shown live, in its tab, by the runtime's own web view (one at a time).
     var liveViewIdentifier: String?
     /// How each live view looked when another took the web view, shown in its tab (beside
@@ -293,6 +315,10 @@ final class CommunityPluginHost {
     @ObservationIgnored private(set) weak var workspace: WorkspaceModel?
     /// Observed, so a panel showing it follows a restart to the new one.
     private(set) var webView: WKWebView?
+    /// Reads plugins' folders and code, apart from the vault's own store: a large `main.js`
+    /// must not hold up note opening and saving, which queue on that one.
+    @ObservationIgnored private var pluginFilesStore: VaultStore?
+    @ObservationIgnored private let moduleScanner = CommunityPluginModuleScanner()
     /// The place in the window where the web view waits while no panel shows it.
     @ObservationIgnored weak var parkingView: CommunityPluginPlatformView?
     @ObservationIgnored private var schemeHandler: CommunityPluginSchemeHandler?
@@ -305,8 +331,8 @@ final class CommunityPluginHost {
     @ObservationIgnored private var isPageLoaded = false
     @ObservationIgnored private var pageLoadFailure: String?
     /// The text each editor snapshot sent to the runtime was taken from, by identifier.
-    @ObservationIgnored private var editorSnapshots: [String: (path: VaultPath, text: String)] = [:]
-    @ObservationIgnored private var editorSnapshotOrder: [String] = []
+    @ObservationIgnored var editorSnapshots: [String: (path: VaultPath, text: String)] = [:]
+    @ObservationIgnored var editorSnapshotOrder: [String] = []
     @ObservationIgnored private var pendingVaultChanges: Set<String> = []
     @ObservationIgnored private var vaultChangeTask: Task<Void, Never>?
     /// Set while a settings page shows the plugin panel inline, so a plugin's modal opens there.
@@ -336,8 +362,7 @@ final class CommunityPluginHost {
         consentDefaults.set(isTurnedOn, forKey: Self.consentKey(for: vaultIdentifier))
         isTurnedOnForVault = isTurnedOn
         if isTurnedOn {
-            await reloadInventory() // not read at vault open while plugins were off
-            await startIfNeeded(workspace)
+            await listAndStartPlugins() // not read at vault open while plugins were off
         } else {
             await stopRuntime()
         }
@@ -358,8 +383,8 @@ final class CommunityPluginHost {
     // MARK: Vault lifecycle
 
     /// A vault opened: when the person has turned plugins on for it, its plugins are listed and
-    /// run. Otherwise nothing is read: listing reads and scans every plugin's main.js, megabytes
-    /// each, so it waits until Settings › Community Plugins is opened or plugins are turned on.
+    /// run, apart from the vault's store, so the note being opened does not wait for them.
+    /// Otherwise nothing is read until Settings › Community Plugins is opened or plugins are turned on.
     /// - Parameter loadsPlugins: False for another window on the open vault coming to the
     ///   front: the plugins act on it (its active editor, file list and alerts) from now on,
     ///   and nothing loads again (`CommunityPluginHosts`).
@@ -369,10 +394,15 @@ final class CommunityPluginHost {
         vaultIdentifier = workspace.currentVaultIdentifier
         isTurnedOnForVault = vaultIdentifier.map { identifier in consentDefaults.bool(forKey: Self.consentKey(for: identifier)) } ?? false
         guard isTurnedOnForVault else { return }
-        Task {
-            await reloadInventory()
-            await startIfNeeded(workspace)
-        }
+        isStartingPlugins = true
+        Task { await listAndStartPlugins() }
+    }
+
+    private func listAndStartPlugins() async {
+        isStartingPlugins = true
+        defer { isStartingPlugins = false }
+        await reloadInventory()
+        if let workspace { await startIfNeeded(workspace) }
     }
 
     /// The vault is being left: plugins unload first, as when Obsidian closes a vault.
@@ -385,15 +415,21 @@ final class CommunityPluginHost {
         loadStates = [:]
         unsupportedFeatures = [:]
         runtimeProblems = [:]
+        pluginFilesStore = nil
         vaultIdentifier = nil
         isTurnedOnForVault = false
     }
 
-    /// Reads `.obsidian/plugins` and `community-plugins.json` again.
-    func reloadInventory() async {
+    /// Reads `.obsidian/plugins` and `community-plugins.json` again: the folders and manifests,
+    /// which takes moments however large the plugins are.
+    /// - Parameter readsPluginCode: Also finds the modules each plugin's code asks for, which
+    ///   only Settings › Community Plugins shows, and only for code that changed.
+    func reloadInventory(readsPluginCode: Bool = false) async {
         guard let store = workspace?.store else { return }
         do {
-            inventory = try await store.installedCommunityPlugins()
+            let filesStore = pluginFilesStore(root: store.root)
+            let listed = try await filesStore.installedCommunityPlugins()
+            inventory = await moduleScanner.inventory(listed, root: store.root, isReadingCode: readsPluginCode)
             enabledList = try await store.communityPluginList()
         } catch {
             workspace?.errorMessage = "Graphite could not read this vault's community plugins. " + error.localizedDescription
@@ -401,6 +437,18 @@ final class CommunityPluginHost {
         for plugin in inventory.plugins where loadStates[plugin.id] == nil {
             loadStates[plugin.id] = plugin.compatibility.canLoad ? .notStarted : .notLoadable(Self.describe(plugin.compatibility))
         }
+    }
+
+    private func pluginFilesStore(root: URL) -> VaultStore {
+        if let pluginFilesStore, pluginFilesStore.root == root { return pluginFilesStore }
+        let filesStore = VaultStore(root: root)
+        pluginFilesStore = filesStore
+        return filesStore
+    }
+
+    /// The plugins that would run if plugins were turned on, for the question asked first.
+    var pluginsEnabledToRun: [InstalledCommunityPlugin] {
+        inventory.plugins.filter { plugin in enabledList.isEnabled(plugin.id) && plugin.compatibility.canLoad }
     }
 
     /// Starts the runtime when plugins are turned on and at least one is enabled.
@@ -503,9 +551,11 @@ final class CommunityPluginHost {
     func runtimeProcessDidEnd(in endedWebView: WKWebView) {
         guard endedWebView === webView, let workspace, isRuntimeRunning else { return }
         for plugin in inventory.plugins where loadStates[plugin.id] == .loaded { loadStates[plugin.id] = .failed("The plugin stopped when iOS ended its web content process. Graphite restarted it.") }
+        isStartingPlugins = true
         Task {
             await stopRuntime()
             await startIfNeeded(workspace)
+            isStartingPlugins = false
         }
     }
 
@@ -536,16 +586,18 @@ final class CommunityPluginHost {
         #if canImport(UIKit)
         device["isPhone"] = UIDevice.current.userInterfaceIdiom == .phone
         #endif
-        let message: [String: Any] = [
-            "operation": "runtime.start",
-            "vault": vault,
-            "device": device,
-            "appearance": appearance,
-            "compatibleApiVersion": CommunityPluginCompatibility.providedApiVersion,
-            "recentFiles": workspace.recentFiles.paths.prefix(50).map(\.rawValue),
-            "styles": await vaultStyles(),
-        ]
-        do { _ = try await send(message) } catch { workspace.errorMessage = "Graphite could not start community plugins. " + error.localizedDescription }
+        let styles = await vaultStyles()
+        do {
+            _ = try await send([
+                "operation": "runtime.start",
+                "vault": vault,
+                "device": device,
+                "appearance": appearance,
+                "compatibleApiVersion": CommunityPluginCompatibility.providedApiVersion,
+                "recentFiles": workspace.recentFiles.paths.prefix(50).map(\.rawValue),
+                "styles": styles,
+            ])
+        } catch { workspace.errorMessage = "Graphite could not start community plugins. " + error.localizedDescription }
     }
 
     /// `.obsidian/app.json` as a JSON object, for `vault.getConfig`.
@@ -624,6 +676,7 @@ final class CommunityPluginHost {
         pluginFileExtensions = [:]
         pluginsTakeOverNotes = false
         pluginBasesViews = [:]
+        _ = embeddedBasesLeaves.removeAll()
         liveViewIdentifier = nil
         liveViewPictures = [:]
         typingRequest = nil
@@ -635,7 +688,11 @@ final class CommunityPluginHost {
         let startsAgain = runtimePhase == .stopping(startsAgain: true)
         runtimePhase = .stopped
         for (pluginIdentifier, state) in loadStates where state == .loaded || state == .loading { loadStates[pluginIdentifier] = .notStarted }
-        if startsAgain, let workspace { await startIfNeeded(workspace) }
+        if startsAgain, let workspace {
+            isStartingPlugins = true
+            await startIfNeeded(workspace)
+            isStartingPlugins = false
+        }
     }
 
     // MARK: Plugins
@@ -652,7 +709,7 @@ final class CommunityPluginHost {
         guard let store = workspace?.store else { return }
         loadStates[plugin.id] = .loading
         do {
-            let package = try await store.communityPluginPackage(for: plugin)
+            let package = try await pluginFilesStore(root: store.root).communityPluginPackage(for: plugin)
             var manifest = (try? JSONSerialization.jsonObject(with: plugin.manifest.manifestData) as? [String: Any]) ?? [:]
             manifest["dir"] = plugin.folder.rawValue
             guard isRuntimeRunning else { return }
@@ -708,13 +765,12 @@ final class CommunityPluginHost {
 
     /// Loads every enabled plugin again from disk, as after an update.
     func restartPlugins() async {
-        guard let workspace else { return }
+        isStartingPlugins = true
         await stopRuntime()
         loadStates = [:]
         unsupportedFeatures = [:]
         runtimeProblems = [:]
-        await reloadInventory()
-        await startIfNeeded(workspace)
+        await listAndStartPlugins()
     }
 
     /// Moves a plugin's folder out of the vault the way the vault deletes files.
@@ -815,75 +871,12 @@ final class CommunityPluginHost {
         Task { _ = try? await send(["operation": "appearance.changed", "appearance": appearance]) }
     }
 
-    func activeDocumentDescription(includingEditor: Bool) -> Any {
+    func activeDocumentDescription(includingEditor: Bool, sendsOnlyChange: Bool = false) -> Any {
         guard let workspace, let path = workspace.selection else { return NSNull() }
         guard let session = workspace.markdownSession, session.path == path else { return ["path": path.rawValue, "mode": "file"] }
         var description: [String: Any] = ["path": path.rawValue, "mode": session.viewMode == .reading ? "reading" : (session.viewMode == .source ? "source" : "livePreview")]
-        if includingEditor { description["editorSnapshot"] = editorSnapshot(of: session) }
+        if includingEditor { description["editorSnapshot"] = editorSnapshot(of: session, sendsOnlyChange: sendsOnlyChange) }
         return description
-    }
-
-    /// The note's text and selection for the runtime's `Editor`, remembered under an
-    /// identifier so the change that comes back can be checked against it.
-    private func editorSnapshot(of session: MarkdownSession) -> [String: Any] {
-        let snapshotIdentifier = UUID().uuidString
-        editorSnapshots[snapshotIdentifier] = (session.path, session.text)
-        editorSnapshotOrder.append(snapshotIdentifier)
-        // A few recent snapshots are enough: an asynchronous command's edit arrives soon.
-        while editorSnapshotOrder.count > 8 { editorSnapshots[editorSnapshotOrder.removeFirst()] = nil }
-        return [
-            "path": session.path.rawValue,
-            "snapshotIdentifier": snapshotIdentifier,
-            "text": session.text,
-            "selectionAnchor": session.selection.location,
-            "selectionHead": session.selection.location + session.selection.length,
-            "isReadOnly": session.viewMode == .reading,
-        ]
-    }
-
-    /// A plugin changed the note in its editor: the change is applied through the note's
-    /// session as one undoable edit, but only while the note still has the text the
-    /// plugin saw. The answer carries the note as it is now, for the plugin's next change.
-    private func applyEditorChange(_ message: [String: Any]) async -> [String: Any] {
-        guard let workspace, let pathText = message["path"] as? String, let path = try? VaultPath(pathText),
-              let snapshotIdentifier = message["snapshotIdentifier"] as? String, let changedText = message["text"] as? String else {
-            return Self.failure("invalidData", "The plugin's change named no note.")
-        }
-        guard let session = workspace.openMarkdownSession(at: path) else {
-            return Self.failure("conflict", "“\(path.name)” is no longer open, so the plugin's change was not applied.")
-        }
-        // Insertions the editor has not applied yet are waited for, so the comparison sees the
-        // note as the person sees it.
-        for _ in 0..<20 where session.pendingInsertion != nil { try? await Task.sleep(for: .milliseconds(10)) }
-        guard let snapshot = editorSnapshots[snapshotIdentifier], snapshot.path == path, session.text == snapshot.text else {
-            let pluginName = (message["pluginIdentifier"] as? String).flatMap(pluginName(of:)) ?? "A plugin"
-            showNotice("\(pluginName) did not change “\(path.stem)”: the note changed while it was working.", pluginIdentifier: message["pluginIdentifier"] as? String)
-            var failure = Self.failure("conflict", "The note changed while the plugin was working.")
-            failure["snapshot"] = editorSnapshot(of: session)
-            return failure
-        }
-        guard session.viewMode != .reading else { return Self.failure("readOnly", "The note is shown in reading view.") }
-        let anchor = message["selectionAnchor"] as? Int ?? 0
-        let head = message["selectionHead"] as? Int ?? anchor
-        if let edit = CommunityPluginEditorChange.edit(from: snapshot.text, to: changedText, selectionAnchor: anchor, selectionHead: head) {
-            let previousProblem = session.errorMessage
-            session.apply(edit)
-            // The session refuses an edit that a queued insertion overlaps, and says so.
-            if let problem = session.errorMessage, problem != previousProblem {
-                var failure = Self.failure("conflict", problem)
-                failure["snapshot"] = editorSnapshot(of: session)
-                return failure
-            }
-        } else {
-            // Only the cursor or the selection moved (`setCursor`, `setSelection`).
-            let selection = CommunityPluginEditorChange.selection(anchor: anchor, head: head, inTextOfLength: (changedText as NSString).length)
-            if selection != session.selection { session.requestSelection(selection) }
-        }
-        editorSnapshots[snapshotIdentifier] = (path, changedText)
-        return ["snapshot": [
-            "path": path.rawValue, "snapshotIdentifier": snapshotIdentifier, "text": changedText,
-            "selectionAnchor": anchor, "selectionHead": head, "isReadOnly": false,
-        ] as [String: Any]]
     }
 
     // MARK: Vault changes
@@ -1062,7 +1055,7 @@ final class CommunityPluginHost {
         switch refusal {
         case .destinationTaken: "alreadyExists"
         case .cancelled: "cancelled"
-        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .failed: "unavailable"
+        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .vaultClosed, .nameBreaksWikilinks, .failed: "unavailable"
         }
     }
 
@@ -1125,11 +1118,9 @@ final class CommunityPluginHost {
             let takesOverNotes = message["takesOverNotes"] as? Bool == true
             if takesOverNotes != pluginsTakeOverNotes { pluginsTakeOverNotes = takesOverNotes }
         case "basesViews.changed":
-            var views: [String: String] = [:]
-            for view in message["views"] as? [[String: Any]] ?? [] {
-                if let viewType = view["viewType"] as? String { views[viewType] = view["name"] as? String ?? viewType }
-            }
-            if views != pluginBasesViews { pluginBasesViews = views }
+            if let viewTypes = CommunityPluginRuntimeMessage.decoded(CommunityPluginBasesViewTypes.self, from: message) { receive(viewTypes) }
+        case "basesView.setOption":
+            if let save = CommunityPluginRuntimeMessage.decoded(CommunityPluginBasesViewOptionSave.self, from: message) { saveBasesViewOption(save) }
         case "menus.changed":
             hasFileMenuItems = message["hasFileMenuItems"] as? Bool == true
             hasEditorMenuItems = message["hasEditorMenuItems"] as? Bool == true
@@ -1205,6 +1196,14 @@ final class CommunityPluginHost {
         }
     }
 
+    private func receive(_ viewTypes: CommunityPluginBasesViewTypes) {
+        let registrations = Dictionary(viewTypes.views.map { registration in (registration.viewType, registration) }, uniquingKeysWith: { _, last in last })
+        guard registrations != pluginBasesViews else { return }
+        pluginBasesViews = registrations
+        // Leaves kept for embeds run the plugin's old code once it reloads.
+        for leafIdentifier in embeddedBasesLeaves.removeAll() { closeView(leafIdentifier) }
+    }
+
     func updatePluginStyleSheets(_ styles: String) {
         if styles != pluginStyleSheets { pluginStyleSheets = styles }
     }
@@ -1269,7 +1268,7 @@ final class CommunityPluginHost {
         inventory.plugins.first { plugin in plugin.id == pluginIdentifier }?.manifest.name
     }
 
-    private static func failure(_ kind: String, _ message: String) -> [String: Any] {
+    static func failure(_ kind: String, _ message: String) -> [String: Any] {
         ["failure": ["kind": kind, "message": message]]
     }
 }

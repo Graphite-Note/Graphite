@@ -1,3 +1,14 @@
+/**
+ * File: PDFPageTextBoxesView.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: Graphite's text boxes of one PDF page, drawn over the page's Pencil canvas, as they are
+ *              over the ink in the file (`PDFPageTextBoxes`).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
 #if canImport(UIKit)
 import UIKit
 import PDFKit
@@ -121,18 +132,20 @@ final class PDFPageTextBoxesView: UIView {
 }
 /// A text box drawn as a picture, for one with emoji, whose glyphs have no outlines to draw
 /// as shapes. It is drawn as sharp as the PDF view's largest zoom shows it, within a bound of
-/// pixels, as the page's canvas is (`PDFPageOverlayView.maximumRenderingScale`).
+/// pixels, as the page's canvas is (`largestRenderingScale`).
 final class PDFTextBoxPictureLayer: CALayer {
     private let layout: PDFTextBoxLayout?
     /// The most pixels one box is drawn with: 16 megapixels, 64 MB.
     private static let maximumPixelCount: CGFloat = 16_777_216
+    /// The zoom a box's picture is made for.
+    private static let largestRenderingScale: CGFloat = 3
 
     init(layout: PDFTextBoxLayout, pageToView: CGAffineTransform, displayScale: CGFloat) {
         self.layout = layout
         super.init()
         let bounds = layout.box.annotationBounds
         frame = bounds.applying(pageToView)
-        let wantedScale = displayScale * PDFPageOverlayView.maximumRenderingScale
+        let wantedScale = displayScale * Self.largestRenderingScale
         let pixelLimitedScale = (Self.maximumPixelCount / max(frame.width * frame.height, 1)).squareRoot()
         contentsScale = max(min(wantedScale, pixelLimitedScale), 1)
         setNeedsDisplay()

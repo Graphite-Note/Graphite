@@ -1,3 +1,14 @@
+/**
+ * File: ReadingSankeyDiagram.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: A Sankey diagram laid out, its shapes ready to paint.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import MermaidDiagrams
 
 /// A Sankey diagram laid out, its shapes ready to paint, and what a screen reader says of it.
@@ -20,11 +31,14 @@ struct ReadingSankeyDiagram: Sendable {
         }
     }
 
-    /// The reading view's diagram for a Sankey diagram: drawn, or nil to show it as code when its links run in a
-    /// circle or its front matter sets an option not drawn yet.
-    static func diagram(source: String, diagram: SankeyDiagram, typography: DiagramTypography) -> ReadingDiagram? {
-        guard let layout = try? SankeyLayoutEngine.layout(diagram, typography: typography) else { return nil } // Circular links or options: code.
-        return .sankey(ReadingSankeyDiagram(diagram: diagram, layout: layout))
+    /// The reading view's diagram for a Sankey diagram: drawn, or its source with why when its links run in a circle or
+    /// its front matter sets an option not drawn yet.
+    static func diagram(source: String, diagram: SankeyDiagram, typography: DiagramTypography) -> ReadingDiagram {
+        do {
+            return .sankey(ReadingSankeyDiagram(diagram: diagram, layout: try SankeyLayoutEngine.layout(diagram, typography: typography)))
+        } catch {
+            return .unreadable(source: source, failure: .sankeyLayout(error))
+        }
     }
 
     /// A value rounded to two decimals, a whole number without a fraction.

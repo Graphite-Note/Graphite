@@ -1,3 +1,14 @@
+/**
+ * File: Typesetter.swift
+ * ----------------------
+ * Layer: Vendor (SwiftUIMath)
+ * Description: Lays out a parsed formula as displays, following TeX's rules.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 02/11/2026
+ */
+
 import CoreGraphics
 import CoreText
 import Foundation
@@ -13,19 +24,23 @@ private enum InterElementSpaceType: Int {
   case nsThick
 }
 
+// Graphite patch: a fraction has its own row and column, apart from `\left…\right`. MathJax spaces it
+// as an ordinary symbol, and with no space beside `\left…\right`; upstream gave it thin spaces beside
+// ordinary symbols, which with its side room would be 0.39 em where MathJax has 0.22 em.
 private let interElementSpaceArray: [[InterElementSpaceType]] =
-  //   ordinary   operator   binary     relation  open       close     punct     fraction
+  //   ordinary   operator   binary     relation  open       close     punct     inner    fraction
   [
-    [.none, .thin, .nsMedium, .nsThick, .none, .none, .none, .nsThin],  // ordinary
-    [.thin, .thin, .invalid, .nsThick, .none, .none, .none, .nsThin],  // operator
-    [.nsMedium, .nsMedium, .invalid, .invalid, .nsMedium, .invalid, .invalid, .nsMedium],  // binary
-    [.nsThick, .nsThick, .invalid, .none, .nsThick, .none, .none, .nsThick],  // relation
-    [.none, .none, .invalid, .none, .none, .none, .none, .none],  // open
-    [.none, .thin, .nsMedium, .nsThick, .none, .none, .none, .nsThin],  // close
-    [.nsThin, .nsThin, .invalid, .nsThin, .nsThin, .nsThin, .nsThin, .nsThin],  // punct
-    [.nsThin, .thin, .nsMedium, .nsThick, .nsThin, .none, .nsThin, .nsThin],  // fraction
-    [.nsMedium, .nsThin, .nsMedium, .nsThick, .none, .none, .none, .nsThin],
-  ]  // radical
+    [.none, .thin, .nsMedium, .nsThick, .none, .none, .none, .nsThin, .none],  // ordinary
+    [.thin, .thin, .invalid, .nsThick, .none, .none, .none, .nsThin, .thin],  // operator
+    [.nsMedium, .nsMedium, .invalid, .invalid, .nsMedium, .invalid, .invalid, .nsMedium, .nsMedium],  // binary
+    [.nsThick, .nsThick, .invalid, .none, .nsThick, .none, .none, .nsThick, .nsThick],  // relation
+    [.none, .none, .invalid, .none, .none, .none, .none, .none, .none],  // open
+    [.none, .thin, .nsMedium, .nsThick, .none, .none, .none, .nsThin, .none],  // close
+    [.nsThin, .nsThin, .invalid, .nsThin, .nsThin, .nsThin, .nsThin, .nsThin, .nsThin],  // punct
+    [.nsThin, .thin, .nsMedium, .nsThick, .nsThin, .none, .nsThin, .nsThin, .none],  // inner
+    [.nsMedium, .nsThin, .nsMedium, .nsThick, .none, .none, .none, .nsThin, .none],  // radical
+    [.none, .thin, .nsMedium, .nsThick, .none, .none, .none, .none, .none],  // fraction
+  ]
 
 private func getInterElementSpaces() -> [[InterElementSpaceType]] {
   return interElementSpaceArray
@@ -48,9 +63,10 @@ func getInterElementSpaceArrayIndexForType(_ type: Math.AtomType, row: Bool) -> 
     return 5
   case .punctuation:
     return 6
-  case .fraction,  // Fraction and inner are treated the same.
-    .inner:
+  case .inner:
     return 7
+  case .fraction:
+    return row ? 9 : 8
   case .radical:
     if row {
       // Radicals have inter element spaces only when on the left side.
@@ -421,6 +437,9 @@ extension Math {
       let last = lastAtom?.indexRange ?? NSMakeRange(0, 0)
       let line = DisplayList(
         children: typesetter.displayAtoms, range: NSMakeRange(0, NSMaxRange(last)))
+      // Graphite patch: a space at the end of a formula counts in its width, as in TeX.
+      // Textual ends a piece of inline math with its operator's space (`a +\>`).
+      line.width = max(line.width, typesetter.currentPosition.x)
       return line
     }
 
@@ -456,6 +475,10 @@ extension Math {
       var prevNode: Atom! = nil
       preprocessed.reserveCapacity(ml!.atoms.count)
       for atom in ml!.atoms {
+        if atom.type == .ordinary, let boldSymbol = boldOrdinarySymbol(atom.nucleus, fontStyle: atom.fontStyle) {
+          // Graphite patch: `\boldsymbol{\nabla}`, `\mathbf{\phi}`.
+          atom.nucleus = boldSymbol
+        }
         if atom.type == .variable || atom.type == .number {
           // This is not a TeX type node. TeX does this during parsing the input.
           // switch to using the italic math font
@@ -468,11 +491,12 @@ extension Math {
           atom.type = .ordinary
         }
 
-        if atom.type == .ordinary {
+        // Graphite patch: a decorated list is never merged; it is ordinary only as a class.
+        if atom.type == .ordinary, !(atom is DecoratedList) {
           // This is Rule 14 to merge ordinary characters.
           // combine ordinary atoms together
           if prevNode != nil && prevNode.type == .ordinary && prevNode.`subscript` == nil
-            && prevNode.superscript == nil
+            && prevNode.superscript == nil && !(prevNode is DecoratedList)
           {
             prevNode.fuse(with: atom)
             // skip the current node, we are done here.
@@ -955,6 +979,34 @@ extension Math {
         // Get next atoms for look-ahead (up to 3 atoms ahead)
         let nextAtoms = Array(
           preprocessed.suffix(from: min(index + 1, preprocessed.count)).prefix(3))
+        if let decorated = atom as? DecoratedList {
+          // Graphite patch: a decorated list, laid out as one atom of its class and broken
+          // before like other complex displays.
+          let display = self.makeDecoratedList(decorated)
+          let shouldBreak = shouldBreakBeforeDisplay(
+            display, prevNode: prevNode, displayType: decorated.type)
+          if currentLine.length > 0 {
+            self.addDisplayLine()
+          }
+          if shouldBreak {
+            performLineBreak()
+          } else {
+            self.addInterElementSpace(prevNode, currentType: decorated.type)
+          }
+          display.position = currentPosition
+          displayAtoms.append(display)
+          if currentLineStartIndex > 0 {
+            adjustPositionToAvoidOverlap(display)
+          }
+          currentPosition.x += display.width
+          if decorated.`subscript` != nil || decorated.superscript != nil {
+            self.makeScripts(
+              decorated, display: display, index: UInt(decorated.indexRange.location), delta: 0)
+          }
+          lastType = decorated.type
+          prevNode = decorated
+          continue
+        }
         switch atom.type {
         case .number, .variable, .unaryOperator:
           // These should never appear as they should have been removed by preprocessing
@@ -993,7 +1045,7 @@ extension Math {
           let colorAtom = atom as! Color
           let display = Typesetter.createLineForMathList(
             colorAtom.innerList, font: font, style: style, maxWidth: maxWidth)
-          display!.localTextColor = CGColor.fromHexString(colorAtom.colorString)
+          display!.setTextColor(forArgument: colorAtom.colorString)
 
           // Check if we need to break before adding this colored content
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -1020,7 +1072,7 @@ extension Math {
           let colorAtom = atom as! TextColor
           let display = Typesetter.createLineForMathList(
             colorAtom.innerList, font: font, style: style, maxWidth: maxWidth)
-          display!.localTextColor = CGColor.fromHexString(colorAtom.colorString)
+          display!.setTextColor(forArgument: colorAtom.colorString)
 
           // Check if we need to break before adding this colored content
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -1058,7 +1110,7 @@ extension Math {
           let display = Typesetter.createLineForMathList(
             colorboxAtom.innerList, font: font, style: style, maxWidth: maxWidth)
 
-          display!.localBackgroundColor = CGColor.fromHexString(colorboxAtom.colorString)
+          display!.localBackgroundColor = FormulaColor.color(forArgument: colorboxAtom.colorString)
 
           // Check if we need to break before adding this colorbox
           let shouldBreak = shouldBreakBeforeDisplay(
@@ -2072,25 +2124,41 @@ extension Math {
       }
     }
 
+    // Graphite patch: a fraction's parts are one style smaller than the fraction, as in TeX and
+    // MathJax. Upstream kept them in the style around the fraction.
     func fractionStyle() -> Style.Level {
-      // Keep fractions at the same style level instead of incrementing.
-      // This ensures that fraction numerators/denominators have the same
-      // font size as regular text, preventing them from appearing too small
-      // in inline mode or when nested.
-      return style
+      switch style {
+      case .display: return .text
+      case .text: return .script
+      case .script, .scriptOfScript: return .scriptOfScript
+      }
     }
+
+    /// Graphite patch: what MathJax's `mfrac` leaves at a fraction's sides, in em of the fraction's
+    /// own style. TeX's `\nulldelimiterspace` stays empty where no delimiter takes its place, and a
+    /// fraction's rule reaches past its wider part.
+    static let nullDelimiterSpaceInEm: CGFloat = 0.12
+    static let fractionRuleOverhangInEm: CGFloat = 0.1
+    /// Graphite patch: MathJax's `\strut`, the least room of each part of a `\cfrac`.
+    static let strutAscentInEm: CGFloat = 0.86
+    static let strutDescentInEm: CGFloat = 0.3
 
     func makeFraction(_ frac: Fraction?) -> DisplayNode? {
       // lay out the parts of the fraction
       let numeratorStyle: Style.Level
       let denominatorStyle: Style.Level
 
+      // Graphite patch: \dfrac and \tfrac set the whole fraction in their style, as TeX does, for
+      // its shifts, gaps and delimiters too, and the parts one style smaller.
+      let surroundingStyle = style
+      if let wholeStyle = frac!.wholeStyle { style = wholeStyle }
+      defer { style = surroundingStyle }
+
       if frac!.isContinuedFraction {
-        // Continued fractions always use display style
-        numeratorStyle = .display
-        denominatorStyle = .display
+        // Graphite patch: `\strut\textstyle` in each part, as in MathJax's `AmsMethods.CFrac`.
+        numeratorStyle = .text
+        denominatorStyle = .text
       } else {
-        // Regular fractions use adaptive style
         let fractionStyle = self.fractionStyle
         numeratorStyle = fractionStyle()
         denominatorStyle = fractionStyle()
@@ -2100,6 +2168,14 @@ extension Math {
         frac!.numerator, font: font, style: numeratorStyle, cramped: false)
       let denominatorDisplay = Typesetter.createLineForMathList(
         frac!.denominator, font: font, style: denominatorStyle, cramped: true)
+      if frac!.isContinuedFraction {
+        // MathJax's `\strut` stands before the `\textstyle`, so it is the size of a plain fraction's part.
+        let strutEm = Self.getStyleSize(fractionStyle(), font: font)
+        for part in [numeratorDisplay, denominatorDisplay] {
+          part!.ascent = max(part!.ascent, Self.strutAscentInEm * strutEm)
+          part!.descent = max(part!.descent, Self.strutDescentInEm * strutEm)
+        }
+      }
 
       // determine the location of the numerator
       var numeratorShiftUp = self.numeratorShiftUp(frac!.hasRule)
@@ -2151,7 +2227,10 @@ extension Math {
       display.denominatorDown = denominatorShiftDown
       display.lineThickness = barThickness
       display.linePosition = barLocation
+      let em = styleFont.font.size
+      display.ruleOverhang = frac!.hasRule ? Self.fractionRuleOverhangInEm * em : 0
       if frac!.leftDelimiter.isEmpty && frac!.rightDelimiter.isEmpty {
+        display.nullDelimiterSpace = Self.nullDelimiterSpaceInEm * em
         return display
       } else {
         return self.addDelimitersToFractionDisplay(display, forFraction: frac)
@@ -2413,10 +2492,14 @@ extension Math {
 
     // MARK: - Large Operators
 
+    // Graphite patch: as in TeX and MathJax, an operator's limits stack in display style, and in
+    // every style after `\limits`. Upstream stacked them in text style too, and never in a script.
+    func stacksLimits(of op: LargeOperator) -> Bool {
+      op.limits && (style == .display || op.stacksLimitsInEveryStyle)
+    }
+
     func makeLargeOp(_ op: LargeOperator!) -> DisplayNode? {
-      // Show limits above/below in both display and text (inline) modes
-      // Only show limits to the side in script modes to keep them compact
-      let limits = op.limits && (style == .display || style == .text)
+      let limits = stacksLimits(of: op)
       var delta = CGFloat(0)
       if op.nucleus.count == 1 {
         var glyph = self.findGlyphForCharacterAtIndex(op.nucleus.startIndex, inString: op.nucleus)
@@ -2483,8 +2566,7 @@ extension Math {
         currentPosition.x += display!.width
         return display
       }
-      // Show limits above/below in both display and text (inline) modes
-      if op.limits && (style == .display || style == .text) {
+      if stacksLimits(of: op) {
         // make limits
         var superscript: DisplayList? = nil
         var `subscript`: DisplayList? = nil
@@ -2536,6 +2618,22 @@ extension Math {
       assert(
         inner!.leftBoundary != nil || inner!.rightBoundary != nil,
         "Inner should have a boundary to call this function")
+
+      // Graphite patch: a `\middle` delimiter is as tall as the pair, which needs the height of
+      // the list without it; the list is measured in a copy, since typesetting changes it.
+      let middleDelimiters = (inner!.innerList?.atoms ?? []).compactMap { atom in
+        (atom as? DecoratedList).flatMap { decorated in
+          if case .middleDelimiter = decorated.decoration { decorated } else { nil }
+        }
+      }
+      if !middleDelimiters.isEmpty, let innerList = inner!.innerList {
+        let measured = Typesetter.createLineForMathList(
+          AtomList(innerList), font: font, style: style, cramped: cramped, spaced: true)
+        let axisHeight = styleFont.metrics.axisHeight
+        let delta = max((measured?.ascent ?? 0) - axisHeight, (measured?.descent ?? 0) + axisHeight)
+        let height = max((delta / 500) * Typesetter.kDelimiterFactor, 2 * delta - Typesetter.kDelimiterShortfallPoints)
+        for middle in middleDelimiters { middle.stretchedHeight = height }
+      }
 
       let innerListDisplay = Typesetter.createLineForMathList(
         inner!.innerList, font: font, style: style, cramped: cramped, spaced: true,
@@ -2853,7 +2951,9 @@ extension Math {
 
       // Position all the rows
       self.positionRows(rowDisplays, forTable: table)
-      let tableDisplay = DisplayList(children: rowDisplays, range: table!.indexRange)
+      // Graphite patch: `\hline` and an array's `|`.
+      let rules = self.makeTableRules(table!, rows: rowDisplays, columnWidths: columnWidths)
+      let tableDisplay = DisplayList(children: rowDisplays + rules, range: table!.indexRange)
       tableDisplay.position = currentPosition
       return tableDisplay
     }
@@ -2917,7 +3017,7 @@ extension Math {
       var prevRowDescent = CGFloat(0)
       var ascent = CGFloat(0)
       var first = true
-      for row in rows {
+      for (rowIndex, row) in rows.enumerated() {
         if first {
           row.position = CGPointZero
           ascent += row.ascent
@@ -2930,6 +3030,8 @@ extension Math {
           }
           // We are going down so we decrease the y value.
           currPos -= skip
+          // Graphite patch: the height `\\[2pt]` adds.
+          currPos -= (table!.extraHeightsAboveRowsInEm[rowIndex] ?? 0) * styleFont.font.size
           row.position = CGPointMake(0, currPos)
         }
         prevRowDescent = row.descent

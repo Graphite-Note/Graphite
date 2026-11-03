@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteMacScenes.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The Mac's scenes, menus and the saving that quitting waits for.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.11
+ * Date: 01/11/2026
+ */
+
 #if os(macOS)
 import SwiftUI
 import AppKit
@@ -29,8 +40,13 @@ public struct GraphiteMacScenes: Scene {
         WindowGroup("Graphite", id: GraphiteWindow.identifier, for: GraphiteWindowContent.self) { $windowContent in
             GraphiteWindowScene(processServices: processServices, launchMode: launchMode, windowContent: $windowContent)
                 .environment(frontmostWindow)
+                // A graphite:// link is handed to a window that is open (its root view's
+                // `.onOpenURL`) instead of a new window that first restores the vault's tabs.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
             .defaultSize(width: 1200, height: 820)
+            // The scene makes a window for a link only when none is open.
+            .handlesExternalEvents(matching: ["*"])
             .commands {
                 GraphiteCommands(keyboardShortcutsOutsideFocus: settingsWorkspace.keyboardShortcuts)
                 GuideCommands()
@@ -88,8 +104,9 @@ private struct GuideCommands: Commands {
 public final class GraphiteApplicationDelegate: NSObject, NSApplicationDelegate {
     /// The windows whose saves quitting waits for; `GraphiteMacScenes` sets it.
     @MainActor static weak var openWindows: OpenWindows?
-    /// How long quitting waits for the saves. A save still running then keeps running and
-    /// Graphite stays open, so what was typed is not lost to a file another app holds.
+    /// How long quitting waits for the saves. A save still running then keeps running; Graphite
+    /// quits only when what it holds is safe in a draft, so what was typed is not lost to a
+    /// file another app holds.
     private static let saveDeadline = Duration.seconds(5)
 
     @MainActor public func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -97,16 +114,34 @@ public final class GraphiteApplicationDelegate: NSObject, NSApplicationDelegate 
         guard !windows.isEmpty else { return .terminateNow }
         let reply = TerminationReply(application: sender)
         Task { @MainActor in
-            // One window after another; the first whose save fails keeps Graphite open and says why.
+            // One window after another. A save that fails does not end the quitting: what it
+            // holds goes to a draft outside the vault, and only what not even that can keep
+            // holds Graphite open, with the window that has it saying why.
+            var firstFailure: (window: OpenWindow, error: any Error)?
             for window in windows {
-                reply.windowSaving = window
-                do { try await window.saveOpenDocuments() } catch { return reply.finish(with: .failed(error)) }
+                do { try await window.saveOpenDocuments() } catch { firstFailure = firstFailure ?? (window, error) }
             }
-            reply.finish(with: .succeeded)
+            guard let firstFailure else { return reply.finish(with: .succeeded) }
+            reply.windowSaving = firstFailure.window
+            for window in windows {
+                guard await window.keepUnsavedDocuments(true) else {
+                    reply.windowSaving = window
+                    return reply.finish(with: .failed(firstFailure.error))
+                }
+            }
+            reply.finish(with: .keptInDrafts)
         }
         reply.deadline = Task { @MainActor in
             do { try await Task.sleep(for: Self.saveDeadline) } catch { return }
-            reply.finish(with: .timedOut)
+            // A file another app holds may never answer. Drafts are the app's own files, which
+            // do, so this cannot hang, and a save cut short by quitting damages nothing.
+            for window in windows {
+                guard await window.keepUnsavedDocuments(false) else {
+                    reply.windowSaving = window
+                    return reply.finish(with: .timedOut)
+                }
+            }
+            reply.finish(with: .keptInDrafts)
         }
         return .terminateLater
     }

@@ -1,3 +1,15 @@
+/**
+ * File: WorkspacePictureCreation.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: Pictures made from the New menu: a photo from the photo library or one just taken
+ *              becomes
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -38,8 +50,8 @@ extension WorkspaceModel {
             let stem = PhotoFileName.stem(createdAt: takenAt, calendar: Calendar(identifier: .gregorian))
             let path = try await saveUnderFreeName(contents.data, in: directory, stem: stem, fileExtension: contents.fileExtension, store: store)
             refreshIndex(for: [path])
-            await refreshDirectory()
             await open(path)
+            await showInListings(path)
         } catch {
             errorMessage = "The picture could not be saved. Choose or take it again."
         }

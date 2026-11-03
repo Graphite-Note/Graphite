@@ -1,3 +1,14 @@
+/**
+ * File: WikiLinkResolver.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: What a written link means: its parts, the paths it can name and which file of several it means, as in Obsidian.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 public enum WikiLinkResolver {
@@ -13,6 +24,23 @@ public enum WikiLinkResolver {
     public static func pathPart(_ target: String) -> String {
         String(target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
     }
+    /// Whether a link target is a web or app address (`https://example.com/page#top`,
+    /// `mailto:a@b.c`) and not the name of a file: no file of the vault matches it, and following
+    /// it must never create a note. The path part counts, as the lookups read it; a Markdown
+    /// link's is also read percent-decoded.
+    public static func isExternalAddress(_ target: String, isWiki: Bool) -> Bool {
+        let writtenPart = pathPart(target)
+        if URL(string: writtenPart)?.scheme != nil { return true }
+        guard !isWiki, let decodedPart = writtenPart.removingPercentEncoding else { return false }
+        return URL(string: decodedPart)?.scheme != nil
+    }
+
+    /// The address to open for a target that `isExternalAddress`, with its fragment.
+    public static func externalLocation(of target: String, isWiki: Bool) -> URL? {
+        guard isExternalAddress(target, isWiki: isWiki) else { return nil }
+        return URL(string: target) ?? URL(string: pathPart(target))
+    }
+
     /// Text for comparing names: file systems may store "é" as one character or as "e"
     /// plus an accent (as macOS often does), while links are typed with the first.
     public static func comparisonKey(_ text: String) -> String {
@@ -34,12 +62,14 @@ public enum WikiLinkResolver {
         (part as NSString).pathExtension.isEmpty ? [part + ".md", part] : [part, part + ".md"]
     }
 
-    /// The files a link names by path, most likely first: beside the note, then from the
-    /// vault root, for each file-name reading. Wikilinks and Markdown links look in the same
-    /// places, as in Obsidian, whose "absolute path in vault" Markdown links (which Graphite's
-    /// link completion writes too) start at the root. A path starting with `./` or `../`
-    /// is relative to the note only, and one starting with `/` is from the vault root only.
-    /// A Markdown link's path is percent-decoded; a Wikilink's is not, as in Obsidian.
+    /// The files a link names by path, in the order Obsidian tries them: from the vault root,
+    /// then beside the note, for each file-name reading. So `[[Note]]` in `Course/` means
+    /// `Note.md` at the root when both it and `Course/Note.md` exist (`getLinkpathDest` in
+    /// Obsidian 1.14.5). Wikilinks and Markdown links look in the same places, as in Obsidian,
+    /// whose "absolute path in vault" Markdown links (which Graphite's link completion writes
+    /// too) start at the root. A path starting with `./` or `../` is relative to the note
+    /// only, and one starting with `/` is from the vault root only. A Markdown link's path is
+    /// percent-decoded; a Wikilink's is not, as in Obsidian.
     public static func directCandidates(target: String, source: VaultPath, isWiki: Bool = true) -> [VaultPath] {
         // A Wikilink is written as the file is named: Obsidian decodes only Markdown links.
         let writtenPart = pathPart(target)
@@ -56,10 +86,27 @@ public enum WikiLinkResolver {
         let isRelativeToNote = isExplicitlyRelative(part)
         var paths: [VaultPath] = []
         for fileNameVariant in fileNameVariants(for: part) {
-            if let besideNote = try? source.parent.appending(fileNameVariant) { paths.append(besideNote) }
             if !isRelativeToNote, let fromVaultRoot = try? VaultPath(fileNameVariant) { paths.append(fromVaultRoot) }
+            if let besideNote = try? source.parent.appending(fileNameVariant) { paths.append(besideNote) }
         }
         return Array(NSOrderedSet(array: paths).array.compactMap { candidate in candidate as? VaultPath })
+    }
+
+    /// The files a link's name or partial path matches, the one it means first, as Obsidian
+    /// orders them: files whose path starts with the linking note's folder, then the rest, the
+    /// shortest path first within each. That is a plain prefix in Obsidian, which also takes
+    /// `Course 2/` for a note in `Course`. Every resolver goes through this, so a link means
+    /// one file wherever it is read: tapping it, an embed, backlinks, the graph, a base, a rename.
+    public static func closestFirst(_ paths: [String], toNoteAt source: VaultPath) -> [String] {
+        guard paths.count > 1 else { return paths }
+        let sourceFolderKey = caseFoldedKey(source.parent.rawValue)
+        return paths.map { path in (path: path, isNearSource: caseFoldedKey(path).hasPrefix(sourceFolderKey), length: path.utf16.count) }
+            .sorted { leftMatch, rightMatch in
+                if leftMatch.isNearSource != rightMatch.isNearSource { return leftMatch.isNearSource }
+                if leftMatch.length != rightMatch.length { return leftMatch.length < rightMatch.length }
+                return leftMatch.path < rightMatch.path
+            }
+            .map(\.path)
     }
 
     /// The first of `directCandidates` that is a file in the vault at `root`. A folder is not

@@ -1,3 +1,13 @@
+/**
+ * File: PDFEditHistory.swift
+ * --------------------------
+ * Layer: UI
+ * Description: A page named by steps of the undo history.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -287,22 +297,25 @@ extension PDFSession {
     func registerInkChange(_ change: PencilDrawingChange, on page: PDFPage, overlaySize: CGSize) {
         let drawnPage = historyPage(for: page)
         registerStep(named: "Drawing") { session in
-            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize) { drawing in change.reverting(drawing) }
+            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds)
+                { drawing in change.reverting(drawing) }
         } redo: { session in
-            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize) { drawing in change.reapplying(to: drawing) }
+            try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds)
+                { drawing in change.reapplying(to: drawing) }
         }
     }
 
     /// Gives a page the drawing `transform` makes of its current one: through its canvas
     /// when one edits the page, otherwise straight into its annotations, rebuilding the
-    /// ink tracker from the page's stored drawing. The page is shown if it is not.
-    private func applyInkFromHistory(on drawnPage: PDFHistoryPage, overlaySize: CGSize, transform: (PKDrawing) -> PKDrawing?) throws {
+    /// ink tracker from the page's stored drawing. The ink it changed is shown if it is not.
+    private func applyInkFromHistory(on drawnPage: PDFHistoryPage, overlaySize: CGSize, changedBounds: CGRect, transform: (PKDrawing) -> PKDrawing?) throws {
         let pageIndex = try currentIndex(of: drawnPage)
         guard let page = drawnPage.page else { throw Self.pageNoLongerExists }
         if let canvas = inkCanvasProvider?.editingCanvas(for: page) {
+            canvas.endInteractionsBeforeHistory()
             guard let drawing = transform(canvas.drawing) else { throw Self.inkChangedOutsideHistory }
             canvas.showDrawingFromHistory(drawing)
-            if inkCanvasProvider?.isDisplaying(page) != true { go(to: pageIndex) }
+            showInk(in: changedBounds, on: page, at: pageIndex, overlaySize: overlaySize)
             return
         }
         let currentInk = try Self.editableInk(on: page)
@@ -310,7 +323,27 @@ extension PDFSession {
         guard let drawing = transform(currentInk.drawing) else { throw Self.inkChangedOutsideHistory }
         let coordinates = try PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize)
         try apply(.updateInk(tracker.update(for: drawing, pageIndex: pageIndex, coordinates: coordinates)))
-        go(to: pageIndex)
+        showInk(in: changedBounds, on: page, at: pageIndex, overlaySize: overlaySize)
+    }
+
+    /// Scrolls to ink a step changed, given in the drawing's coordinates, unless it is in view:
+    /// on a zoomed page it can be several screens below the page's top, where Undo would seem
+    /// to do nothing.
+    private func showInk(in changedBounds: CGRect, on page: PDFPage, at pageIndex: Int, overlaySize: CGSize) {
+
+        guard let pdfView, !changedBounds.isNull,
+              let coordinates = try? PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize) else { // No size, no place to scroll to.
+            if inkCanvasProvider?.isDisplaying(page) != true { go(to: pageIndex) }
+            return
+        }
+        let firstCorner = coordinates.pdfPoint(fromOverlay: CGPoint(x: changedBounds.minX, y: changedBounds.minY))
+        let secondCorner = coordinates.pdfPoint(fromOverlay: CGPoint(x: changedBounds.maxX, y: changedBounds.maxY))
+        let pageRectangle = CGRect(x: min(firstCorner.x, secondCorner.x), y: min(firstCorner.y, secondCorner.y),
+                                   width: abs(secondCorner.x - firstCorner.x), height: abs(secondCorner.y - firstCorner.y))
+        if inkCanvasProvider?.isDisplaying(page) == true, pdfView.convert(pdfView.bounds, to: page).intersects(pageRectangle) { return }
+        pdfView.go(to: pageRectangle, on: page)
+        currentPageIndex = pageIndex
+        keptPlace = nil
     }
 
     /// The page's editable ink as a canvas would restore it, or a new group when it has none.

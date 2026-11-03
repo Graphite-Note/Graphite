@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownTableTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: Reading a Markdown table from its source and editing it, every other character left as written.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 02/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -479,5 +490,111 @@ final class MarkdownTableTests: XCTestCase {
     func testSettingAlignmentKeepsTheRestOfTheSourceWithWindowsLineEndings() {
         XCTAssertEqual(MarkdownTableEditing.settingAlignment(.center, ofColumn: 1, in: "  a | b\r\n  --|-----\r\n  1 | 2\r\n"),
                        "  a | b\r\n  --|:---:\r\n  1 | 2\r\n")
+    }
+
+    // MARK: `%%` comments
+
+    /// The text's markers pair with the `%%` before them, so its pipe is in no comment.
+    func testAPipeInTextWhoseMarkersPairWithAnEarlierOneIsEscaped() {
+        let source = "| a | b | c |\n| - | - | - |\n| 5%% | x | y |\n"
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 1, column: 2, with: "%% p | q %%", in: source),
+                       "| a | b | c |\n| - | - | - |\n| 5%% | x | %% p \\| q %% |\n")
+    }
+
+    func testTextThatStaysInItsCellKeepsTheOtherCellsInPlace() {
+        let source = "| a | b |\n| - | - |\n| x | y |\n| short |\n"
+        for text in ["z", "z  ", "  z", "p|q", "p\\|q", "one\ntwo", "back\\", "", "   ", "%%note%%", "z %%p|q%%", "z%%"] {
+            XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: text, row: 1, column: 1, in: source), text)
+        }
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 2, column: 1, in: source), "A short row gains the cell.")
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "", row: 2, column: 1, in: source))
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 0, column: 0, in: "a | b\r\n--|--\r\n1 | 2\r\n"), "No outer pipes, Windows line ends.")
+        XCTAssertTrue(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "z", row: 9, column: 0, in: source), "Nothing is written.")
+    }
+
+    func testAMarkerThatPairsOutsideItsCellMovesTheOtherCells() {
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "c%%", row: 1, column: 1, in: "| a | b | c |\n| - | - | - |\n| 5%% | c | d |\n"))
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "q%%", row: 1, column: 1, in: "| a | b |\n| - | - |\n| p | q |\n| r%% | s |\n"))
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "a%%", row: 0, column: 0, in: "| a | b |\n| - | - |\n| r%% | s |\n"), "Over the delimiter row.")
+        XCTAssertFalse(MarkdownTableEditing.keepsOtherCellsInPlace(writing: "%%", row: 1, column: 1, in: "| a | b |\n| - | - |\n| x | y |\n| %% | w |\n"), "Over a row break, where it hides this row's last pipe.")
+    }
+
+    func testAPipeInACommentThatThePlaceOfTheTextClosesStaysAsWritten() {
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 1, column: 0, with: "p %% q | r", in: "| a | b |\n| - | - |\n| x | y %% |\n"),
+                       "| a | b |\n| - | - |\n| p %% q | r | y %% |\n")
+    }
+
+    /// The table drawn never sees a comment: a pipe in one separates no cells, or the drawn table's indexes would name other cells here.
+    func testAPipeInACommentSeparatesNoCells() throws {
+        let source = "| a %% x | y %% | b |\n| - | - |\n| 1 | 2 |\n"
+        let table = try XCTUnwrap(MarkdownTable.parse(source))
+        XCTAssertEqual(table.columnCount, 2)
+        XCTAssertEqual(table.rows[0].map(\.source), ["a %% x | y %%", "b"])
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 1, with: "B", in: source), "| a %% x | y %% | B |\n| - | - |\n| 1 | 2 |\n",
+                       "The second cell drawn is `b`, not the comment's `y %%`.")
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 0, with: "A %% x | y %%", in: source), "| A %% x | y %% | b |\n| - | - |\n| 1 | 2 |\n",
+                       "A comment written back keeps its pipe as it was.")
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 0, with: "a %% x | y %%", in: source), source)
+    }
+
+    /// The cell editor holds the cell's Markdown, comment included, so typing beside the comment keeps it.
+    func testAnEditOfACellWithACommentKeepsTheComment() throws {
+        let source = "| a %%note%% | b |\n| - | - |\n"
+        let cell = try XCTUnwrap(MarkdownTable.parse(source)?.rows[0][0])
+        let editable = MarkdownTableEditing.editableText(ofCellSource: cell.source)
+        XCTAssertEqual(editable, "a %%note%%")
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 0, with: "A " + editable.dropFirst(2), in: source), "| A %%note%% | b |\n| - | - |\n")
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 1, with: "B", in: source), "| a %%note%% | B |\n| - | - |\n")
+    }
+
+    /// The menu's commands use the same indexes as the cells.
+    func testTheRowAndColumnCommandsCountCellsAsTheDrawnTableDoes() {
+        let source = "| a %% x | y %% | b |\n| - | - |\n| 1 | 2 |\n"
+        XCTAssertEqual(MarkdownTableEditing.removingColumn(at: 1, in: source), "| a %% x | y %% |\n| - |\n| 1 |\n")
+        XCTAssertEqual(MarkdownTableEditing.movingColumn(at: 1, by: -1, in: source), "| b | a %% x | y %% |\n| - | - |\n| 2 | 1 |\n")
+        XCTAssertEqual(MarkdownTableEditing.insertingColumn(at: 2, in: source), "| a %% x | y %% | b |  |\n| - | - | --- |\n| 1 | 2 |  |\n")
+        XCTAssertEqual(MarkdownTableEditing.insertingColumn(at: 1, in: source), "| a %% x | y %% |  | b |\n| - | --- | - |\n| 1 |  | 2 |\n")
+        XCTAssertEqual(MarkdownTableEditing.settingAlignment(.center, ofColumn: 1, in: source), "| a %% x | y %% | b |\n| - | :---: |\n| 1 | 2 |\n")
+        XCTAssertEqual(MarkdownTableEditing.insertingRow(atBodyIndex: 1, in: source), "| a %% x | y %% | b |\n| - | - |\n| 1 | 2 |\n|  |  |\n")
+        XCTAssertEqual(MarkdownTableEditing.movingRow(atBodyIndex: 1, by: -1, in: "| a |\n| - |\n| 1 %%c%% |\n| 2 |\n"), "| a |\n| - |\n| 2 |\n| 1 %%c%% |\n")
+    }
+
+    func testACommentOutsideACellsPipesStaysWhereItIs() throws {
+        let source = "%%c%% | a | b | %%d%%\n| - | - |\n"
+        XCTAssertEqual(MarkdownTable.parse(source)?.rows[0].map(\.source), ["a", "b"])
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 1, with: "B", in: source), "%%c%% | a | B | %%d%%\n| - | - |\n")
+        XCTAssertEqual(MarkdownTableEditing.insertingRow(atBodyIndex: 0, in: source), source + "|  |  |\n", "A new row does not repeat the comment.")
+        XCTAssertEqual(MarkdownTableEditing.insertingColumn(at: 2, in: source), "%%c%% | a | b |  | %%d%%\n| - | - | --- |\n")
+    }
+
+    func testACommentInTheDelimiterRowIsLeftByAChangeOfAlignment() throws {
+        let source = "| a | b |\n| - %%c%% | - |\n"
+        XCTAssertEqual(MarkdownTable.parse(source)?.alignments, [MarkdownTable.ColumnAlignment.none, .none])
+        XCTAssertEqual(MarkdownTableEditing.settingAlignment(.right, ofColumn: 0, in: source), "| a | b |\n| ---: %%c%% | - |\n")
+    }
+
+    /// A line break in a comment still ends the row for the table drawn, whose comments are blanked with their line breaks kept.
+    func testACommentOverALineBreakIsLeftInPlaceByItsCells() throws {
+        let source = "| a | b |\n| - | - |\n| c %% x\n  y %% | d |\n"
+        XCTAssertEqual(MarkdownTable.parse(source)?.rows.map { row in row.map(\.source) }, [["a", "b"], ["c"], ["d"]])
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 2, column: 0, with: "D", in: source), "| a | b |\n| - | - |\n| c %% x\n  y %% | D |\n")
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 1, column: 0, with: "C", in: source), "| a | b |\n| - | - |\n| C %% x\n  y %% | d |\n")
+    }
+
+    func testAPipeOutsideACommentInACellOfCommentsIsStillEscaped() {
+        XCTAssertEqual(MarkdownTableEditing.replacingCell(row: 0, column: 0, with: "p|q %%r|s%%", in: "| a | b |\n| - | - |\n"),
+                       "| p\\|q %%r|s%% | b |\n| - | - |\n")
+    }
+
+    func testEveryCellOfATableWithCommentsWritesBackUnchanged() throws {
+        let sources = ["| a %% x | y %% | b |\n| - | - |\n| 1 %%z%% | |\n", "%%c%%| a |\n|-|\n| %%only%% |\n", "a %%p|q%% | b\r\n--|--\r\n1 | 2 %%r%%\r\n"]
+        for source in sources {
+            let parsed = try XCTUnwrap(MarkdownTable.parse(source), source.debugDescription)
+            for (rowIndex, row) in parsed.rows.enumerated() {
+                for (columnIndex, cell) in row.enumerated() {
+                    XCTAssertEqual(MarkdownTableEditing.replacingCell(row: rowIndex, column: columnIndex, with: MarkdownTableEditing.editableText(ofCellSource: cell.source), in: source), source)
+                }
+            }
+        }
     }
 }

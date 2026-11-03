@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceCommands.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.16
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -32,7 +43,9 @@ extension WindowActions {
 /// The command palette's commands, named as Obsidian names them where they match.
 @MainActor
 enum WorkspaceCommandList {
-    static func commands(for workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
+    /// - Parameter offersSplit: False on a phone, where there are no sides: Split right would only make an empty
+    ///   second group of tabs, and moving a tab to the right has nowhere to go.
+    static func commands(for workspace: WorkspaceModel, window: WindowActions, offersSplit: Bool = true) -> [PaletteCommand] {
         var commands: [PaletteCommand] = [
             PaletteCommand(id: "switcher", command: .quickSwitcher, systemImage: "doc.text.magnifyingglass", run: window.showQuickSwitcher),
             PaletteCommand(id: "search", command: .searchAllFiles, systemImage: "magnifyingglass") { workspace.searchFocusRequest += 1 },
@@ -44,10 +57,12 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
             PaletteCommand(id: "collapse-folders", command: .collapseFolders, systemImage: "arrow.down.right.and.arrow.up.left") { workspace.collapseAllFolders() },
         ]
+        // The Mac cannot write in a notebook, so it does not offer to make one (`CreationKind.canBeEditedOnThisDevice`).
+        if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }
         if workspace.preferences.isEnabled(.bases) {
             commands.append(PaletteCommand(id: "new-base", command: .newBase, systemImage: "tablecells") { window.create(.base) })
         }
-        if workspace.preferences.isEnabled(.canvas) {
+        if workspace.preferences.isEnabled(.canvas), CreationKind.canvas.canBeEditedOnThisDevice {
             commands.append(PaletteCommand(id: "new-canvas", command: .newCanvas, systemImage: "rectangle.3.group") { window.create(.canvas) })
         }
         if workspace.history.canGoBack {
@@ -56,7 +71,7 @@ enum WorkspaceCommandList {
         if workspace.history.canGoForward {
             commands.append(PaletteCommand(id: "forward", command: .goForward, systemImage: "chevron.right") { Task { await workspace.goForward() } })
         }
-        commands += tabCommands(for: workspace, window: window)
+        commands += tabCommands(for: workspace, window: window, offersSplit: offersSplit)
         if workspace.preferences.isEnabled(.fileRecovery) {
             commands.append(PaletteCommand(id: "file-recovery-all", command: .browseSnapshots, systemImage: "clock.arrow.circlepath") {
                 workspace.fileRecoveryRequest = FileRecoveryRequest(path: nil)
@@ -176,7 +191,7 @@ enum WorkspaceCommandList {
     }
 
     /// Obsidian's tab and split commands.
-    private static func tabCommands(for workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
+    private static func tabCommands(for workspace: WorkspaceModel, window: WindowActions, offersSplit: Bool) -> [PaletteCommand] {
         let layout = workspace.layout
         let tab = layout.activeTab
         var commands = [
@@ -198,7 +213,7 @@ enum WorkspaceCommandList {
                                        systemImage: layout.focusedGroup.isStacked ? "rectangle" : "rectangle.stack") {
             workspace.toggleStackedTabs()
         })
-        if !layout.closedPaths.isEmpty {
+        if layout.canReopenClosedTab {
             commands.append(PaletteCommand(id: "reopen-tab", command: .reopenClosedTab, systemImage: "arrow.uturn.backward") {
                 Task { await workspace.reopenClosedTab() }
             })
@@ -211,10 +226,10 @@ enum WorkspaceCommandList {
                 },
                 PaletteCommand(id: "close-side", command: .closeThisSide, systemImage: "xmark.rectangle") { Task { await workspace.closeGroup(focusedGroupID) } },
             ]
-        } else {
+        } else if offersSplit {
             commands.append(PaletteCommand(id: "split-right", command: .splitRight, systemImage: "rectangle.split.2x1") { workspace.splitRight() })
         }
-        if tab.path != nil || tab.coreView != nil || layout.focusedGroup.tabs.count > 1 || layout.isSplit {
+        if offersSplit && (tab.path != nil || tab.coreView != nil || layout.focusedGroup.tabs.count > 1 || layout.isSplit) {
             let isLeftSide = layout.groups.first?.id == layout.focusedGroupID
             commands.append(PaletteCommand(id: "move-tab", command: .moveTabToOtherSide, title: isLeftSide ? "Move current tab to the right" : "Move current tab to the left",
                                            systemImage: isLeftSide ? "rectangle.righthalf.inset.filled.arrow.right" : "rectangle.lefthalf.inset.filled.arrow.left") {
@@ -225,7 +240,7 @@ enum WorkspaceCommandList {
     }
 
     private static func noteCommands(session: MarkdownSession, workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
-        let editingMode = workspace.preferences.defaultEditingMode
+        let editingMode = workspace.defaultEditingMode
         var commands = [
             PaletteCommand(id: "toggle-reading", command: .toggleReadingView, systemImage: "book") { session.toggleReadingView(editingMode: editingMode) },
             PaletteCommand(id: "toggle-source", command: .toggleSourceMode, systemImage: "chevron.left.forwardslash.chevron.right") {
@@ -256,9 +271,11 @@ enum WorkspaceCommandList {
         }
         commands += [
             PaletteCommand(id: "task", command: .insertTask, systemImage: "checklist") { session.insertBlock("- [ ] ") },
-            PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlock("| Column | Column |\n| --- | --- |\n|  |  |") },
-            PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlock("$$\n\n$$") },
-            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") { session.insertBlock("> [!note]\n> ") },
+            PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) },
+            PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) },
+            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") {
+                session.insertBlockFromMenu(EditorContextMenuContent.calloutBlock)
+            },
         ]
         let document = workspace.activeDocument
         if document.markdownSession === session {

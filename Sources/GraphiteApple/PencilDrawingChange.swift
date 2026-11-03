@@ -1,3 +1,15 @@
+/**
+ * File: PencilDrawingChange.swift
+ * -------------------------------
+ * Layer: Apple
+ * Description: One change to a page's drawing, kept as the strokes it removed and added with their
+ *              places in the drawing, so the change can be undone and redone without keeping whole
+ *              drawings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
 #if canImport(UIKit)
 import Foundation
 import PencilKit
@@ -71,6 +83,11 @@ public struct PencilDrawingChange {
 
     /// How many strokes the change removed and added together.
     public var changedStrokeCount: Int { removedStrokes.count + addedStrokes.count }
+
+    /// Where the change's strokes are in the drawing, those it removed and those it added.
+    public var changedBounds: CGRect {
+        (removedStrokes + addedStrokes).reduce(CGRect.null) { bounds, placed in bounds.union(placed.stroke.renderBounds) }
+    }
 
     /// The position of the one stroke the change added after all the others, as when a
     /// stroke has just been drawn; nil for any other change.

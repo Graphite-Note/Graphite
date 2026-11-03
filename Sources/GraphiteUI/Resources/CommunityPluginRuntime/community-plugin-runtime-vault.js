@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime-vault.js
+ * ---------------------------------------
+ * Layer: UI
+ * Description: Obsidian's Vault, DataAdapter and FileManager for plugins, over Graphite's vault bridge.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 // Obsidian's vault for plugins: the file tree (`TFile`, `TFolder`), `Vault`, the low-level
 // `DataAdapter`, and `FileManager`. Contents are never kept here: every read asks Graphite,
 // and every write goes through Graphite's coordinated, revision-checked writer.
@@ -60,6 +71,27 @@
     function statFromHost(hostStat) {
         if (!hostStat) return null;
         return { ctime: hostStat.created || hostStat.modified || 0, mtime: hostStat.modified || 0, size: hostStat.size || 0 };
+    }
+
+    /// The entries of a `vault.list` answer, which comes as one JSON text of parallel lists.
+    function decodedHostEntries(response) {
+        if (!response.encodedEntries) return [];
+        const columns = JSON.parse(response.encodedEntries);
+        return columns.paths.map((path, position) => ({
+            path,
+            isFolder: columns.isFolder[position] === 1,
+            size: columns.sizes[position],
+            modified: columns.modified[position],
+            created: columns.created[position],
+        }));
+    }
+
+    function pathDepth(path) {
+        let depth = 1;
+        for (let position = 0; position < path.length; position += 1) {
+            if (path[position] === '/') depth += 1;
+        }
+        return depth;
     }
 
     function textFromData(data) {
@@ -213,6 +245,14 @@
             const text = textFromData(data);
             await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { text }, this.writeExpectation(normalizedPath), true, pluginIdentifier));
             if (options) await this.applyTimes(normalizedPath, options);
+        }
+        /// A plugin's own `saveData`, which replaces its settings file whatever another app or
+        /// device left there, as in Obsidian: the plugin holds its settings in memory and has
+        /// no way to act on a refusal, so it would stop saving for the rest of the run.
+        async writeReplacing(path, text) {
+            const normalizedPath = normalizePath(path);
+            const pluginIdentifier = runtime.callingPluginIdentifier();
+            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { text }, { kind: 'replace' }, true, pluginIdentifier));
         }
         async writeBinary(path, data, options) {
             const normalizedPath = normalizePath(path);
@@ -369,16 +409,30 @@
 
         /// Reads the vault's file tree from Graphite: names and sizes only.
         async loadFileTree() {
-            const response = await hostBridge.send('vault.list', {});
-            this.addHostEntries(response.entries || [], false);
-            if (response.isTruncated) {
+            await this.addListedEntries({}, false);
+        }
+
+        /// Asks for a listing page by page, so a large vault's list never crosses to this page
+        /// as one message, which the app would build and hand over on its main thread.
+        async addListedEntries(listing, isTriggeringEvents) {
+            let response = await hostBridge.send('vault.list', listing);
+            let isTruncated = response.isTruncated;
+            this.addHostEntries(decodedHostEntries(response), isTriggeringEvents);
+            while (response.nextPage) {
+                response = await hostBridge.send('vault.list', { nextPage: response.nextPage });
+                this.addHostEntries(decodedHostEntries(response), isTriggeringEvents);
+            }
+            if (isTruncated) {
                 console.warn('Graphite listed only part of this vault to plugins, because it holds more files than the plugin runtime keeps in its file list.');
             }
         }
 
         addHostEntries(entries, isTriggeringEvents) {
-            const sortedEntries = entries.slice().sort((firstEntry, secondEntry) => firstEntry.path.split('/').length - secondEntry.path.split('/').length);
-            for (const entry of sortedEntries) {
+            // Each path's depth is counted once, not twice per comparison: 31,748 entries make
+            // about 470,000 comparisons.
+            const entriesWithDepth = entries.map((entry) => ({ entry, depth: pathDepth(entry.path) }));
+            entriesWithDepth.sort((first, second) => first.depth - second.depth);
+            for (const { entry } of entriesWithDepth) {
                 if (isHiddenPath(entry.path)) continue;
                 this.addAbstractFile(entry.path, entry.isFolder, statFromHost(entry), isTriggeringEvents);
             }
@@ -482,10 +536,7 @@
                     this.addAbstractFile(path, hostStat.isFolder, statFromHost(hostStat), true);
                 } else if (!existing) {
                     this.addAbstractFile(path, hostStat.isFolder, statFromHost(hostStat), true);
-                    if (hostStat.isFolder) {
-                        const response = await hostBridge.send('vault.list', { folder: path });
-                        this.addHostEntries(response.entries || [], true);
-                    }
+                    if (hostStat.isFolder) await this.addListedEntries({ folder: path }, true);
                 }
             }
         }

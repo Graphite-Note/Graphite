@@ -1,3 +1,15 @@
+/**
+ * File: LibraryPreviewLoader.swift
+ * --------------------------------
+ * Layer: Apple
+ * Description: Makes the previews of the vault's files that library tiles and tab cards show: a PDF's first page, a
+ *              picture scaled down, a note's first lines.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import CoreGraphics
 import ImageIO
@@ -76,12 +88,19 @@ public struct LibraryPreviewLoader: Sendable {
         } ?? nil
     }
 
-    /// A page with its annotations, as PDFKit draws it for any reader.
+    /// The size of a page as it is shown: its crop box, with width and height swapped on a page turned a quarter.
+    static func displayedSize(of page: PDFPage) -> CGSize {
+        let boxSize = page.bounds(for: .cropBox).size
+        return abs(page.rotation) % 180 == 0 ? boxSize : CGSize(width: boxSize.height, height: boxSize.width)
+    }
+
+    /// A page with its annotations, as PDFKit draws it for any reader: turned as the page is, so a landscape or turned page
+    /// keeps its proportions.
     static func thumbnail(of page: PDFPage, longerSidePixels: Int) -> CGImage? {
-        let bounds = page.bounds(for: .cropBox)
-        guard bounds.width > 0, bounds.height > 0 else { return nil }
-        let scale = CGFloat(longerSidePixels) / max(bounds.width, bounds.height)
-        let thumbnail = page.thumbnail(of: CGSize(width: bounds.width * scale, height: bounds.height * scale), for: .cropBox)
+        let size = displayedSize(of: page)
+        guard size.width > 0, size.height > 0 else { return nil }
+        let scale = CGFloat(longerSidePixels) / max(size.width, size.height)
+        let thumbnail = page.thumbnail(of: CGSize(width: size.width * scale, height: size.height * scale), for: .cropBox)
         #if canImport(UIKit)
         return thumbnail.cgImage
         #else

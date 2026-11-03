@@ -1,3 +1,13 @@
+/**
+ * File: PDFPencilInk.swift
+ * ------------------------
+ * Layer: Apple
+ * Description: Identifies a PencilKit stroke's visible state without comparing its points.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 02/11/2026
+ */
 import Foundation
 import PencilKit
 import GraphiteCore
@@ -83,6 +93,19 @@ struct PDFStrokeFingerprint: Hashable {
     }
 }
 
+/// A page's drawing and stroke names as of one update, to archive as its re-editing record on
+/// any thread: archiving grows with the page's strokes, and a stroke begun meanwhile must not wait.
+public struct PDFDeferredInkRecordArchive: Sendable {
+    fileprivate let drawing: PKDrawing
+    fileprivate let strokeNames: [String]
+    fileprivate let updateCount: Int
+
+    /// The record, or nil for a page with no strokes left.
+    public func archived() -> PDFEditableInkRecord? {
+        drawing.strokes.isEmpty ? nil : PDFEditableInkRecord(drawingData: drawing.dataRepresentation(), strokeNames: strokeNames)
+    }
+}
+
 /// Converts PencilKit strokes on one PDF page into standard ink annotations, remembering
 /// which annotation shows which stroke so that each change converts only new strokes.
 ///
@@ -101,6 +124,11 @@ public struct PDFPageInkTracker {
     private var strokeNamesInDrawingOrder: [String] = []
     /// True while an update deferred the re-editing record and no later one wrote it.
     public private(set) var hasDeferredEditableRecord = false
+    /// Highlights saved as a solid band, read from a file: the next update writes them again,
+    /// multiplied into the page. Viewing a page changes nothing in its file.
+    private var strokeNamesToRewrite: Set<String> = []
+    /// Counts the updates, so a record archived in the background is known to be still the right one.
+    private var updateCount = 0
 
     /// A tracker for an editable group read from a file, and the drawing to show.
     /// Returns nil when the stored drawing cannot be decoded.
@@ -118,6 +146,9 @@ public struct PDFPageInkTracker {
             guard record.strokeNames.count == drawing.strokes.count else { return nil }
             for (stroke, name) in zip(drawing.strokes, record.strokeNames) {
                 tracker.namesByFingerprint[PDFStrokeFingerprint(stroke: stroke), default: []].append(name)
+                if stroke.ink.inkType == .marker, !name.isEmpty, !editableGroup.multipliedStrokeNames.contains(name) {
+                    tracker.strokeNamesToRewrite.insert(name)
+                }
             }
             tracker.strokeNamesInDrawingOrder = record.strokeNames
             tracker.knowsAnnotationNames = true
@@ -140,7 +171,12 @@ public struct PDFPageInkTracker {
     /// archived; `deferredEditableRecordUpdate(for:pageIndex:)` must then write the record
     /// before the document is saved or its ink is read for re-editing (see `PDFInkUpdate`).
     public mutating func update(for drawing: PKDrawing, pageIndex: Int, coordinates: PageCoordinates, defersEditableRecord: Bool = false) -> PDFInkUpdate {
+        updateCount += 1
         var unmatchedNames = knowsAnnotationNames ? namesByFingerprint : [:]
+        // A stroke to write again matches no name: its annotation goes, and it gets a new one.
+        if !strokeNamesToRewrite.isEmpty {
+            unmatchedNames = unmatchedNames.mapValues { names in names.filter { name in !strokeNamesToRewrite.contains(name) } }
+        }
         var matchedNames: [PDFStrokeFingerprint: [String]] = [:]
         var strokeNames: [String] = []
         var addedStrokes: [PortableInkStroke] = []
@@ -161,8 +197,9 @@ public struct PDFPageInkTracker {
             strokeNames.append(name)
         }
         let removal: PDFInkUpdate.Removal = knowsAnnotationNames
-            ? .strokes(Set(unmatchedNames.values.joined().filter { name in !name.isEmpty }))
+            ? .strokes(Set(unmatchedNames.values.joined().filter { name in !name.isEmpty }).union(strokeNamesToRewrite))
             : .entireGroup
+        strokeNamesToRewrite = []
         namesByFingerprint = matchedNames
         knowsAnnotationNames = true
         strokeNamesInDrawingOrder = strokeNames
@@ -179,7 +216,8 @@ public struct PDFPageInkTracker {
     /// cannot vouch for the others, because its strokes are not yet matched to annotations
     /// or it last saw another number of them; the caller then makes the full update.
     public mutating func updateAppending(_ stroke: PKStroke, at strokeIndex: Int, pageIndex: Int, coordinates: PageCoordinates) -> PDFInkUpdate? {
-        guard knowsAnnotationNames, strokeIndex == strokeNamesInDrawingOrder.count else { return nil }
+        guard knowsAnnotationNames, strokeNamesToRewrite.isEmpty, strokeIndex == strokeNamesInDrawingOrder.count else { return nil }
+        updateCount += 1
         let portableStroke = Self.portableStroke(for: stroke, name: UUID().uuidString, coordinates: coordinates)
         // A stroke with nothing visible has no annotation, as in `update`.
         let name = portableStroke?.name ?? ""
@@ -199,8 +237,24 @@ public struct PDFPageInkTracker {
         return PDFInkUpdate(pageIndex: pageIndex, group: group, removal: .strokes([]), addedStrokes: [], editableRecord: editableRecord(for: drawing))
     }
 
+    /// What it takes to archive the deferred record away from the actor that owns the tracker, or
+    /// nil when none is pending. `drawing` is the drawing last passed to `update`.
+    public func deferredRecordArchive(for drawing: PKDrawing) -> PDFDeferredInkRecordArchive? {
+        guard hasDeferredEditableRecord else { return nil }
+        return PDFDeferredInkRecordArchive(drawing: drawing, strokeNames: strokeNamesInDrawingOrder, updateCount: updateCount)
+    }
+
+    /// The update that writes a record archived in the background, or nil when an update came
+    /// after it was asked for: the record is then out of date and stays deferred.
+    public mutating func deferredEditableRecordUpdate(archived record: PDFEditableInkRecord?, from archive: PDFDeferredInkRecordArchive,
+                                                      pageIndex: Int) -> PDFInkUpdate? {
+        guard hasDeferredEditableRecord, archive.updateCount == updateCount else { return nil }
+        hasDeferredEditableRecord = false
+        return PDFInkUpdate(pageIndex: pageIndex, group: group, removal: .strokes([]), addedStrokes: [], editableRecord: record)
+    }
+
     private func editableRecord(for drawing: PKDrawing) -> PDFEditableInkRecord? {
-        drawing.strokes.isEmpty ? nil : PDFEditableInkRecord(drawingData: drawing.dataRepresentation(), strokeNames: strokeNamesInDrawingOrder)
+        PDFDeferredInkRecordArchive(drawing: drawing, strokeNames: strokeNamesInDrawingOrder, updateCount: updateCount).archived()
     }
 
     /// One stroke as standard ink in page space: its visible pieces as `/InkList`
@@ -217,7 +271,8 @@ public struct PDFPageInkTracker {
         let outline = appearanceOutline(for: stroke, pageSegments: pageSegments, widthScale: widthScale, color: color, coordinates: coordinates)
         let averageWidth = widths.reduce(0, +) / Double(widths.count)
         return PortableInkStroke(name: name, segments: pageSegments.map { segment in segment.map(\.point) }, width: max(0.5, averageWidth),
-                                 red: color.red, green: color.green, blue: color.blue, alpha: color.alpha, outline: outline)
+                                 red: color.red, green: color.green, blue: color.blue, alpha: color.alpha, outline: outline,
+                                 multipliesOverPage: stroke.ink.inkType == .marker)
     }
 
     /// The appearance outline in page space. A stroke the pixel eraser touched is outlined
