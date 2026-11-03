@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartEdge.swift
+ * -------------------------
+ * Layer: Core
+ * Description: An edge of a flowchart and how its line is drawn.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 /// An edge of a flowchart, from one node to another as written (`A --> B` runs from A to B).
 public struct FlowchartEdge: Equatable, Sendable {
     /// Index into `FlowchartDiagram.nodes` of the node the edge is written from.
@@ -13,9 +24,11 @@ public struct FlowchartEdge: Equatable, Sendable {
     public internal(set) var minimumRankSpan: Int
     /// The text on the edge (`-->|text|` or `-- text -->`), or nil.
     public internal(set) var label: DiagramLabel?
+    /// What `linkStyle` sets for the edge's line and marks, or nil when it sets none.
+    public internal(set) var style: DiagramElementStyle?
 
     init(sourceIndex: Int, targetIndex: Int, stroke: FlowchartEdgeStroke = .solid, sourceArrowhead: FlowchartArrowhead = .none,
-         targetArrowhead: FlowchartArrowhead = .arrow, minimumRankSpan: Int = 1, label: DiagramLabel? = nil) {
+         targetArrowhead: FlowchartArrowhead = .arrow, minimumRankSpan: Int = 1, label: DiagramLabel? = nil, style: DiagramElementStyle? = nil) {
         self.sourceIndex = sourceIndex
         self.targetIndex = targetIndex
         self.stroke = stroke
@@ -23,6 +36,7 @@ public struct FlowchartEdge: Equatable, Sendable {
         self.targetArrowhead = targetArrowhead
         self.minimumRankSpan = minimumRankSpan
         self.label = label
+        self.style = style
     }
 }
 

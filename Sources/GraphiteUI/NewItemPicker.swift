@@ -14,6 +14,23 @@ import SwiftUI
 import GraphiteCore
 import GraphiteApple
 
+extension CreationKind {
+    /// Whether this device can write in what the kind makes. A notebook is a PDF to write on with Apple Pencil, and a canvas a
+    /// board whose cards are moved and added by touch; the Mac shows both but edits neither, so its menus do not offer to
+    /// make them (a new one would open as a page or a board nothing can be added to). Notes and bases are edited everywhere.
+    var canBeEditedOnThisDevice: Bool {
+        switch self {
+        case .note, .base: true
+        case .notebook, .canvas:
+            #if os(macOS)
+            false
+            #else
+            true
+            #endif
+        }
+    }
+}
+
 /// One thing the New menu creates.
 enum CreatableItem: Hashable, Identifiable {
     case document(CreationKind)
@@ -84,18 +101,20 @@ enum CreatableItem: Hashable, Identifiable {
 
     /// The two large choices first, in the order the person's note-taking asks for, then the
     /// rest; items whose plugin is off are left out, and Scan Documents and Take Photo are left out
-    /// where the device has no camera for them.
-    static func offered(firstKind: CreationKind, isEnabled: (CorePlugin) -> Bool, canScanDocuments: Bool,
-                        canTakePhoto: Bool) -> (large: [CreatableItem], others: [CreatableItem]) {
-        let large: [CreatableItem] = firstKind == .note ? [.document(.note), .document(.notebook)] : [.document(.notebook), .document(.note)]
+    /// where the device has no camera for them. A kind the device cannot edit (`isEditable`) is left out too.
+    static func offered(firstKind: CreationKind, isEnabled: (CorePlugin) -> Bool, canScanDocuments: Bool, canTakePhoto: Bool,
+                        isEditable: (CreationKind) -> Bool = { kind in kind.canBeEditedOnThisDevice }) -> (large: [CreatableItem], others: [CreatableItem]) {
+        let largeKinds: [CreatableItem] = firstKind == .note ? [.document(.note), .document(.notebook)] : [.document(.notebook), .document(.note)]
         let others: [CreatableItem] = [.document(.canvas), .document(.base), .dailyNote, .scanDocuments, .pictureFromPhotos, .takePhoto, .importFiles, .folder]
-        return (large, others.filter { item in
+        func isOffered(_ item: CreatableItem) -> Bool {
             switch item {
             case .scanDocuments: canScanDocuments
             case .takePhoto: canTakePhoto
-            case .document, .dailyNote, .pictureFromPhotos, .importFiles, .folder: item.requiredPlugin.map(isEnabled) ?? true
+            case .document(let kind): isEditable(kind) && (item.requiredPlugin.map(isEnabled) ?? true)
+            case .dailyNote, .pictureFromPhotos, .importFiles, .folder: item.requiredPlugin.map(isEnabled) ?? true
             }
-        })
+        }
+        return (largeKinds.filter(isOffered), others.filter(isOffered))
     }
 }
 
@@ -217,14 +236,22 @@ struct NewItemButton<Label: View>: View {
     @State private var showsScanner = false
     @State private var showsPhotoPicker = false
     @State private var showsCamera = false
+    /// Whether the question about stopping the scan being prepared is shown.
+    @State private var showsScanCancellation = false
     @State private var scanProcessing = DocumentScanProcessing(wordRecognizer: .onDevice)
 
     var body: some View {
-        Button(action: openPickerOrCancelScan) {
-            // A scan takes a few seconds to become a PDF; the button shows it, and a tap cancels it.
+        Button(action: openPickerOrAskAboutScan) {
+            // A scan takes a few seconds to become a PDF; the button shows it, and a tap asks whether to stop it.
             if scanProcessing.isProcessing { ProgressView().frame(width: 44, height: 44) } else { label() }
         }
-            .accessibilityHint(scanProcessing.isProcessing ? "Preparing a scan. Cancels it." : "")
+            .accessibilityHint(scanProcessing.isProcessing ? "Preparing a scan. Asks whether to stop it." : "")
+            .confirmationDialog("Stop preparing the scan?", isPresented: $showsScanCancellation, titleVisibility: .visible) {
+                Button("Stop and Discard the Scan", role: .destructive) { scanProcessing.cancel() }
+                Button("Keep Preparing", role: .cancel) {}
+            } message: {
+                Text("The scanned pages are kept only until the PDF is ready, so stopping loses them.")
+            }
             .popover(isPresented: $showsPicker) {
                 NewItemPicker(firstKind: firstKind, isEnabled: isEnabled, canScanDocuments: actions.saveScannedNotebook != nil,
                               canTakePhoto: actions.canTakePhoto, choose: { item in chosenItem = item })
@@ -242,8 +269,8 @@ struct NewItemButton<Label: View>: View {
             }
     }
 
-    private func openPickerOrCancelScan() {
-        if scanProcessing.isProcessing { scanProcessing.cancel() } else { showsPicker = true }
+    private func openPickerOrAskAboutScan() {
+        if scanProcessing.isProcessing { showsScanCancellation = true } else { showsPicker = true }
     }
 
     /// The scanner Scan Documents opens; its PDF becomes a notebook in this button's folder.

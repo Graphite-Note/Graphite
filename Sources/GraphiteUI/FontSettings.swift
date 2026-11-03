@@ -5,8 +5,8 @@
  * Description: Settings > Appearance > Font: Obsidian's font settings, stored in the vault's appearance.json, and the pages that choose a font family.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -142,6 +142,14 @@ struct FontSettingsSection: View {
                 .frame(maxWidth: 240)
                 .accessibilityLabel("Font Size")
                 .accessibilityValue("\(shownFontSize) points")
+                // A step by VoiceOver is one point, as ⌘+ is, and is saved as it is made.
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: workspace.adjustNoteBaseFontSize(bySteps: 1)
+                    case .decrement: workspace.adjustNoteBaseFontSize(bySteps: -1)
+                    @unknown default: break
+                    }
+                }
                 Text("\(shownFontSize)").monospacedDigit().foregroundStyle(.secondary)
                     .frame(minWidth: 24, alignment: .trailing)
                     .accessibilityHidden(true)

@@ -5,7 +5,7 @@
  * Description: What a written link means: its parts, the paths it can name and which file of several it means, as in Obsidian.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 01/11/2026
  */
 
@@ -24,6 +24,23 @@ public enum WikiLinkResolver {
     public static func pathPart(_ target: String) -> String {
         String(target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first ?? "")
     }
+    /// Whether a link target is a web or app address (`https://example.com/page#top`,
+    /// `mailto:a@b.c`) and not the name of a file: no file of the vault matches it, and following
+    /// it must never create a note. The path part counts, as the lookups read it; a Markdown
+    /// link's is also read percent-decoded.
+    public static func isExternalAddress(_ target: String, isWiki: Bool) -> Bool {
+        let writtenPart = pathPart(target)
+        if URL(string: writtenPart)?.scheme != nil { return true }
+        guard !isWiki, let decodedPart = writtenPart.removingPercentEncoding else { return false }
+        return URL(string: decodedPart)?.scheme != nil
+    }
+
+    /// The address to open for a target that `isExternalAddress`, with its fragment.
+    public static func externalLocation(of target: String, isWiki: Bool) -> URL? {
+        guard isExternalAddress(target, isWiki: isWiki) else { return nil }
+        return URL(string: target) ?? URL(string: pathPart(target))
+    }
+
     /// Text for comparing names: file systems may store "é" as one character or as "e"
     /// plus an accent (as macOS often does), while links are typed with the first.
     public static func comparisonKey(_ text: String) -> String {

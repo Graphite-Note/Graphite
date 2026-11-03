@@ -1,3 +1,14 @@
+/**
+ * File: EmbedLocator.swift
+ * ------------------------
+ * Layer: Core
+ * Description: Finds the embeds in note source, and the one that is all of a line or of a list item.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 public enum EmbedLocator {
@@ -6,15 +17,26 @@ public enum EmbedLocator {
     /// most one balanced `(…)` in it, which is how a `(title)` is written.
     private static let markdownEmbedPattern = EmbedLocatorPattern.markdownEmbedPattern.compiled()
     private static let standaloneEmbedPattern = EmbedLocatorPattern.standaloneEmbedPattern.compiled()
+    private static let listItemEmbedPattern = EmbedLocatorPattern.listItemEmbedPattern.compiled()
 
     /// The embed that is alone on `line`, indentation and trailing spaces aside, which the
     /// reading view and Live Preview draw as a block of its own. Its destination may hold
     /// one balanced `(…)`, as `embed(at:in:)` reads it, so `![](photo (1).png)` is an image
     /// block too.
+    ///
+    /// An embed alone in a list item (`- ![[Other note]]`) is a block too, unless it is an
+    /// image, which sits in the item beside its bullet. The block stands for the whole item,
+    /// so the bullet is not drawn.
     static func standaloneEmbed(onLine line: String) -> EmbedReference? {
         let source = line as NSString
-        guard standaloneEmbedPattern.firstMatch(in: line, range: NSRange(location: 0, length: source.length)) != nil else { return nil }
-        return embed(at: source.range(of: "!").location + 1, in: source)
+        let wholeLine = NSRange(location: 0, length: source.length)
+        if standaloneEmbedPattern.firstMatch(in: line, range: wholeLine) != nil {
+            return embed(at: source.range(of: "!").location + 1, in: source)
+        }
+        guard listItemEmbedPattern.firstMatch(in: line, range: wholeLine) != nil,
+              let embedInItem = embed(at: source.range(of: "!").location + 1, in: source) else { return nil }
+        let path = embedInItem.target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? embedInItem.target
+        return DocumentKind(fileExtension: (path as NSString).pathExtension) == .image ? nil : embedInItem
     }
 
     /// The embed whose source text contains `location` (or ends exactly there).
@@ -60,5 +82,7 @@ public enum EmbedLocator {
 enum EmbedLocatorPattern: String, StaticPatternSet {
     case wikiEmbedPattern = #"!\[\[([^\]\n]+)\]\]"#
     case markdownEmbedPattern = #"!\[([^\]\n]*)\]\((<[^<>\n]*>[^)\n]*|[^()\n]*(?:\([^()\n]*\)[^()\n]*)?)\)"#
+    /// A list item's marker (and a task's checkbox) before an embed that is all its text.
+    case listItemEmbedPattern = #"^[ \t]*(?:[-*+]|[0-9]{1,9}[.)])[ \t]+(?:\[.\][ \t]+)?(!\[\[[^\]\n]+\]\]|!\[[^\]\n]*\]\((?:<[^<>\n]*>[^)\n]*|[^()\n]+(?:\([^()\n]*\)[^()\n]*)?)\))[ \t]*$"#
     case standaloneEmbedPattern = #"^[ \t]*(!\[\[[^\]\n]+\]\]|!\[[^\]\n]*\]\((?:<[^<>\n]*>[^)\n]*|[^()\n]+(?:\([^()\n]*\)[^()\n]*)?)\))[ \t]*$"#
 }

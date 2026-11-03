@@ -5,7 +5,7 @@
  * Description: The Mac's scenes, menus and the saving that quitting waits for.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.10
+ * Version: 0.11
  * Date: 01/11/2026
  */
 
@@ -40,8 +40,13 @@ public struct GraphiteMacScenes: Scene {
         WindowGroup("Graphite", id: GraphiteWindow.identifier, for: GraphiteWindowContent.self) { $windowContent in
             GraphiteWindowScene(processServices: processServices, launchMode: launchMode, windowContent: $windowContent)
                 .environment(frontmostWindow)
+                // A graphite:// link is handed to a window that is open (its root view's
+                // `.onOpenURL`) instead of a new window that first restores the vault's tabs.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
             .defaultSize(width: 1200, height: 820)
+            // The scene makes a window for a link only when none is open.
+            .handlesExternalEvents(matching: ["*"])
             .commands {
                 GraphiteCommands(keyboardShortcutsOutsideFocus: settingsWorkspace.keyboardShortcuts)
                 GuideCommands()

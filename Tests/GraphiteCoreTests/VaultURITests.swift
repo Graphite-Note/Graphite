@@ -1,3 +1,14 @@
+/**
+ * File: VaultURITests.swift
+ * -------------------------
+ * Layer: Tests
+ * Description: The graphite:// and obsidian:// links Graphite reads and writes.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -24,13 +35,16 @@ final class VaultURITests: XCTestCase {
 
     func testReadsNewNotes() {
         XCTAssertEqual(uri("graphite://new?vault=Inbox&name=Idea&content=Buy%20milk%0Aand%20bread"),
-                       VaultURI(vault: "Inbox", action: .new(name: "Idea", file: nil, content: "Buy milk\nand bread", opensNote: true, mode: .unique)))
+                       VaultURI(vault: "Inbox", action: .new(name: "Idea", file: nil, path: nil, content: "Buy milk\nand bread", opensNote: true, mode: .unique)))
         XCTAssertEqual(uri("graphite://new?file=Inbox%2FIdea&content=More&append"),
-                       VaultURI(vault: nil, action: .new(name: nil, file: "Inbox/Idea", content: "More", opensNote: true, mode: .append)), "A flag without a value is on.")
+                       VaultURI(vault: nil, action: .new(name: nil, file: "Inbox/Idea", path: nil, content: "More", opensNote: true, mode: .append)), "A flag without a value is on.")
         XCTAssertEqual(uri("graphite://new?name=Idea&overwrite=true&append=true&silent=true"),
-                       VaultURI(vault: nil, action: .new(name: "Idea", file: nil, content: "", opensNote: false, mode: .overwrite)), "Overwrite wins over append.")
+                       VaultURI(vault: nil, action: .new(name: "Idea", file: nil, path: nil, content: "", opensNote: false, mode: .overwrite)), "Overwrite wins over append.")
+        // HUNT-199: Obsidian's `path` names the note by its full file system path; it used to be ignored.
+        XCTAssertEqual(uri("obsidian://new?vault=Physics&path=%2FUsers%2Fme%2FPhysics%2FNotes%2FIdea&content=hello"),
+                       VaultURI(vault: "Physics", action: .new(name: nil, file: nil, path: "/Users/me/Physics/Notes/Idea", content: "hello", opensNote: true, mode: .unique)))
         XCTAssertEqual(uri("graphite://new?name=Idea&silent=false"),
-                       VaultURI(vault: nil, action: .new(name: "Idea", file: nil, content: "", opensNote: true, mode: .unique)))
+                       VaultURI(vault: nil, action: .new(name: "Idea", file: nil, path: nil, content: "", opensNote: true, mode: .unique)))
     }
 
     func testAppendsOnALineOfItsOwn() {

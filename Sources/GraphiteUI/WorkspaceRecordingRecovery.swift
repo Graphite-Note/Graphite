@@ -27,7 +27,7 @@ extension WorkspaceModel {
     func checkForUnfinishedRecordings() {
         // Another window's recording in progress is not unfinished.
         guard store != nil, !isRecordingInAnyWindow else { return }
-        recordingRecoveryOffer = recordingsToRecover().first
+        recordingRecoveryOffer = recordingsToRecover().first { unfinished in !recordingsNotOfferedAgain.contains(unfinished.id) }
     }
 
     /// Saves an unfinished recording where it was meant to go, beside anything already
@@ -44,7 +44,10 @@ extension WorkspaceModel {
             refreshIndex(for: [path])
             await open(path)
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch {
+            errorMessage = error.localizedDescription
+            recordingsNotOfferedAgain.insert(unfinished.id)
+        }
         checkForUnfinishedRecordings()
     }
 

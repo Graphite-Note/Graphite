@@ -5,7 +5,7 @@
  * Description: What the left sidebar lists, as the tabs of Obsidian's left sidebar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 01/11/2026
  */
 
@@ -34,6 +34,15 @@ enum SidebarPanel: String, CaseIterable, Identifiable {
         case .tags: "tag"
         case .properties: "list.bullet.rectangle"
         case .bookmarks: "bookmark"
+        }
+    }
+
+    /// The version of the index the panel's list is read again for. The Tags and Properties lists
+    /// total every tag and property of the vault, which typing in a note's text does not change.
+    func reloadVersion(indexVersion: Int, structureVersion: Int) -> Int {
+        switch self {
+        case .tags, .properties: structureVersion
+        case .files, .bookmarks: indexVersion
         }
     }
 

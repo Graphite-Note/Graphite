@@ -1,3 +1,14 @@
+/**
+ * File: BaseTableView.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The table view of a base: header, rows, groups and column resizing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -306,7 +317,7 @@ struct BaseTableView: View {
                 Text(groupDisplayName).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             }
             groupKeyView(group.key)
-            Text("\(group.fullRowCount)").font(.caption).foregroundStyle(.secondary)
+            Text(group.fullRowCount.formatted()).font(.caption).foregroundStyle(.secondary)
         }
         .padding(.horizontal, Self.horizontalCellPadding)
         // The heading stays in sight while the table scrolls sideways.

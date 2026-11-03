@@ -1,3 +1,14 @@
+/**
+ * File: ReadingClassDiagramTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: The reading view's class diagrams.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -28,8 +39,11 @@ final class ReadingClassDiagramTests: XCTestCase {
         XCTAssertEqual(try classDiagram("classDiagram\naccTitle: Named\nclass A").title, "Named")
     }
 
-    func testAClassDiagramWithNamespacesStaysCode() {
-        XCTAssertNil(ReadingDiagram(source: "classDiagram\nnamespace Shapes {\n  class Triangle\n}", typography: typography))
+    func testAClassDiagramWithNamespacesShowsTheSourceAndWhy() {
+        guard case .unreadable(_, let failure) = ReadingDiagram(source: "classDiagram\nnamespace Shapes {\n  class Triangle\n}", typography: typography) else {
+            return XCTFail("Shown with why")
+        }
+        XCTAssertEqual(failure, .classLayout(.namespacesNotLaidOut))
     }
 
     func testAClassDiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {

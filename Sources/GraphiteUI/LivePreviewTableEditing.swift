@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewTableEditing.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Editing a rendered table's cells in place.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 02/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import Textual
@@ -11,6 +22,8 @@ struct RenderedBlockSourceEditing {
     let replaceSource: (_ editor: ObjectIdentifier, _ transform: @escaping (String) -> String?) -> Void
     /// While true, the block keeps its view across the new keys its edits give it.
     let setIsEditingInView: (_ isEditing: Bool, _ editor: ObjectIdentifier) -> Void
+    /// What writes the editor's draft into the note before a save; nil once it holds none.
+    var setDraftCommit: (_ editor: ObjectIdentifier, _ commit: (() -> Void)?) -> Void = { _, _ in }
 }
 
 /// A cell of a rendered table: row 0 is the header, then the body rows.
@@ -54,6 +67,9 @@ final class LivePreviewTableEditor {
     @ObservationIgnored private var sourceEditing: RenderedBlockSourceEditing?
     /// The draft as last written into the note, or as the cell had it.
     @ObservationIgnored private var committedDraft = ""
+    /// The cell's text in the table as this editor last left it: what the draft reads as once
+    /// written, which can differ from the draft (spaces at its ends).
+    @ObservationIgnored private var cellTextAsWritten: String?
     @ObservationIgnored private var commitTask: Task<Void, Never>?
     /// The table's cells as last laid out, and where the table is in the block's view.
     @ObservationIgnored var layout: StructuredText.TableLayout?
@@ -70,9 +86,37 @@ final class LivePreviewTableEditor {
         if source != tableSource {
             tableSource = source
             table = MarkdownTable.parse(source)
+            reloadDraftIfTheCellChangedElsewhere()
         }
         self.textSize = textSize
         self.sourceEditing = sourceEditing
+    }
+
+    /// The edited cell's text in the table now.
+    private var cellTextInTable: String? {
+        guard let cell = editingCell else { return nil }
+        return Self.text(ofCell: cell, in: table)
+    }
+
+    private static func text(ofCell cell: TableCellPosition, in table: MarkdownTable?) -> String? {
+        guard let table, cell.row < table.rows.count, cell.column < table.columnCount else { return nil }
+        let cellSource = cell.column < table.rows[cell.row].count ? table.rows[cell.row][cell.column].source : ""
+        return MarkdownTableEditing.editableText(ofCellSource: cellSource)
+    }
+
+    /// The cell changed in the note, not through this editor, as the top bar's Undo does: the
+    /// field shows what the note has now. It kept the old text, and the next key wrote all of
+    /// it back, redoing what was undone. After the view's update, which this runs in.
+    private func reloadDraftIfTheCellChangedElsewhere() {
+        guard let cell = editingCell, let cellText = cellTextInTable, cellText != cellTextAsWritten else { return }
+        cellTextAsWritten = cellText
+        Task { @MainActor [weak self] in
+            guard let self, self.editingCell == cell else { return }
+            self.commitTask?.cancel()
+            self.commitTask = nil
+            self.committedDraft = cellText
+            self.draftText = cellText
+        }
     }
 
     // MARK: Editing a cell
@@ -89,12 +133,16 @@ final class LivePreviewTableEditor {
     }
 
     private func startEditing(_ cell: TableCellPosition, text: String) {
+        // The text and the place were worked out from the cells as they were before the draft.
+        guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
         if editingCell == nil {
             TableCellTextField.endEditingInOtherTables()
             sourceEditing?.setIsEditingInView(true, ObjectIdentifier(self))
+            sourceEditing?.setDraftCommit(ObjectIdentifier(self)) { [weak self] in self?.commitDraft() }
         }
         committedDraft = text
+        cellTextAsWritten = text
         editingCell = cell
         draftText = text
         focusRequest += 1
@@ -112,6 +160,7 @@ final class LivePreviewTableEditor {
         commitDraft()
         editingCell = nil
         lastEditingFrame = nil
+        sourceEditing?.setDraftCommit(ObjectIdentifier(self), nil)
         sourceEditing?.setIsEditingInView(false, ObjectIdentifier(self))
     }
 
@@ -124,10 +173,21 @@ final class LivePreviewTableEditor {
         commitTask = nil
         guard let cell = editingCell, draftText != committedDraft else { return }
         let text = draftText
+        let movesOtherCells = draftMovesOtherCells
         committedDraft = text
+        cellTextAsWritten = tableSource.flatMap { source in MarkdownTableEditing.replacingCell(row: cell.row, column: cell.column, with: text, in: source) }
+            .flatMap { written in Self.text(ofCell: cell, in: MarkdownTable.parse(written)) } ?? text
         replaceSource { source in
             MarkdownTableEditing.replacingCell(row: cell.row, column: cell.column, with: text, in: source)
         }
+        // This row and column name another cell now, which the next key would write over.
+        if movesOtherCells { endEditing() }
+    }
+
+    /// Whether writing the draft makes its `%%` pair with a marker in another cell.
+    private var draftMovesOtherCells: Bool {
+        guard let cell = editingCell, draftText != committedDraft, let tableSource else { return false }
+        return !MarkdownTableEditing.keepsOtherCellsInPlace(writing: draftText, row: cell.row, column: cell.column, in: tableSource)
     }
 
     /// Typing is written into the note once it pauses.
@@ -186,6 +246,7 @@ final class LivePreviewTableEditor {
 
     private func appendRow(editingColumn column: Int) {
         guard let table else { return }
+        guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
         let newRow = table.rows.count
         replaceSource { source in
@@ -249,8 +310,9 @@ final class LivePreviewTableEditor {
     /// A change of rows or columns closes the cell editor first, writing its draft: the cells
     /// move under it.
     private func changeTable(_ transform: @escaping (String) -> String?) {
+        let commandStillReachesItsCells = !draftMovesOtherCells
         endEditing()
-        replaceSource(transform)
+        if commandStillReachesItsCells { replaceSource(transform) }
     }
 
     // MARK: Geometry

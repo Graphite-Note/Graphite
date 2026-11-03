@@ -1,3 +1,14 @@
+/**
+ * File: UiMarkdownPaneFixTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Fixes in the Markdown pane: saving, suggestions and changes made in other apps.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import SwiftUI
 import GraphiteCore
@@ -298,8 +309,16 @@ final class UiMarkdownPaneFixTests: XCTestCase {
 
     func testFileSuggestionKeepsTheFolderUntilTheIndexHasSeenEveryFile() async throws {
         let (session, _) = try await makeSession(contents: Data("[[".utf8))
-        let workspace = WorkspaceModel()
+        // The suggestion lists recent files that exist, so the file is in the vault that is open.
+        try FileManager.default.createDirectory(at: vaultDirectory.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+        try Data("Notes".utf8).write(to: vaultDirectory.appendingPathComponent("Folder/Notes.md"))
+        let workspace = try IsolatedWorkspaceDevice.make(for: self).makeWorkspace()
+        try await workspace.openFolderAsVault(vaultDirectory)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        // An index that has not seen every file yet.
         workspace.index = try VaultIndex(databaseURL: vaultDirectory.appendingPathComponent("index.sqlite"))
+        workspace.hasCompletedIndexScan = false
+        workspace.indexFinishedAnEarlierScan = false
         workspace.recentFiles = RecentFiles(paths: [try VaultPath("Folder/Notes.md")])
         XCTAssertFalse(workspace.hasCompletedIndexScan)
         session.completion.suggest(from: workspace, for: session)
@@ -310,6 +329,29 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         session.completion.accept()
         try await waitUntil { !performedEdits.isEmpty }
         XCTAssertEqual(applying(try XCTUnwrap(performedEdits.first), to: session.text), "[[Folder/Notes]]")
+    }
+
+    /// HUNT-072: the Return was taken, and the link must still arrive when a key comes while the
+    /// index answers; the editor moves the edit past that key.
+    func testFileSuggestionStillInsertsWhenAKeyIsTypedDuringTheLookup() async throws {
+        let (session, _) = try await makeSession(contents: Data("[[".utf8))
+        // The suggestion lists recent files that exist, so the file is in the vault that is open.
+        try FileManager.default.createDirectory(at: vaultDirectory.appendingPathComponent("Folder"), withIntermediateDirectories: true)
+        try Data("Notes".utf8).write(to: vaultDirectory.appendingPathComponent("Folder/Notes.md"))
+        let workspace = try IsolatedWorkspaceDevice.make(for: self).makeWorkspace()
+        try await workspace.openFolderAsVault(vaultDirectory)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        workspace.recentFiles = RecentFiles(paths: [try VaultPath("Folder/Notes.md")])
+        session.completion.suggest(from: workspace, for: session)
+        var performedEdits: [MarkdownTextEdit] = []
+        session.completion.performEdits = { edits in performedEdits = edits }
+        session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: 2), caretRect: .zero)
+        try await waitUntil { session.completion.isVisible }
+        session.completion.accept()
+        await Task.yield() // The suggestion is now waiting for the index.
+        session.text += "x"
+        try await waitUntil { !performedEdits.isEmpty }
+        XCTAssertEqual(performedEdits.first?.replacement, "Notes]]")
     }
 
     func testCompletionTitleHighlightsOnlyRangesInsideTheTitle() {
@@ -335,7 +377,8 @@ final class UiMarkdownPaneFixTests: XCTestCase {
 
     // MARK: Word count
 
-    func testWordCountMatchesTheParsedBodyCount() throws {
+    /// Obsidian's word rule has its own tests (`ConsistencyBugHuntTests`); here the text counted is the body.
+    func testWordCountCountsTheParsedBody() throws {
         let samples = [
             "",
             "one",
@@ -346,9 +389,8 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         ]
         for sample in samples {
             let parsedBody = try MarkdownSemantics.parse(sample).body
-            let expectedWordCount = parsedBody.split(whereSeparator: { character in character.isWhitespace || character.isNewline }).count
             let counts = NoteTextCounts(countingBodyOf: sample)
-            XCTAssertEqual(counts.wordCount, expectedWordCount, sample)
+            XCTAssertEqual(counts.wordCount, NoteWordCountRule.wordCount(in: parsedBody), sample)
             XCTAssertEqual(counts.characterCount, parsedBody.count, sample)
         }
     }

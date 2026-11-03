@@ -5,7 +5,7 @@
  * Description: Builds the graph view's data, and resolves links over names held in memory.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 01/11/2026
  */
 
@@ -18,8 +18,11 @@ extension VaultIndex {
     /// included), links to files that do not exist, and each file's tags, for the graph view.
     /// Links resolve as they do everywhere else; a link that could mean several files is
     /// left out rather than drawn to one of them.
-    public func linkGraph() throws -> LinkGraph {
-        try databasePool.read { database in
+    ///
+    /// Read on a reader connection of its own, so the whole-vault pass does not hold the
+    /// index's writer from the saves and scans that wait for it.
+    public nonisolated func linkGraph() async throws -> LinkGraph {
+        try await databasePool.read { database in
             let resolver = try GraphLinkResolver(database: database)
             let files = resolver.paths.compactMap { path in try? VaultPath(path) }
             let rows = try Row.fetchAll(database, sql: "SELECT source, target, isWiki FROM links UNION SELECT path, target, 1 FROM property_links")

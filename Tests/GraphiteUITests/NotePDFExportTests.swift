@@ -6,8 +6,8 @@
  *              and the words a failure is reported with.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 01/11/2026
  */
 
 import XCTest
@@ -72,5 +72,46 @@ final class NotePDFExportTests: XCTestCase {
     func testFailuresAreWordedForThePerson() {
         XCTAssertEqual(NotePDFExport.message(for: NotePDFExportError.noteNotText), "The note could not be read, so no PDF was made.")
         XCTAssertEqual(NotePDFExport.message(for: NotePDFExportError.drawingUnavailable), "The PDF could not be made. Try again, or export with other options.")
+    }
+
+    /// HUNT-206: a note exported from the file list was printed without the vault's property types.
+    func testANoteReadFromItsFileIsPrintedWithTheVaultsPropertyTypes() async throws {
+        try vault.writeFile(".obsidian/types.json", text: #"{"types": {"due": "date", "topics": "tags"}}"#)
+        try vault.writeFile("Course/Plan.md", text: "---\ndue: 2026-11-01\n---\nText")
+        let readingVault = try XCTUnwrap(ReadingVault(vault.root, index, store: VaultStore(root: vault.root)))
+
+        let note = try await NotePDFExportPresentation.printedNote(at: try VaultPath("Course/Plan.md"), in: readingVault, focusedNote: nil)
+
+        XCTAssertEqual(note.declaredPropertyTypes, ["due": .date, "topics": .tags])
+        XCTAssertTrue(note.text.contains("Text"))
+    }
+
+    /// HUNT-218: cancelling the Save dialog threw the finished PDF away, and Export made it again from the start.
+    func testACancelledSaveKeepsTheFinishedPDFForTheNextExportWithTheSameOptions() async throws {
+        let export = try makeExport(purpose: .save)
+        export.export()
+        try await waitUntil { if case .saving = export.phase { true } else { false } }
+        guard case .saving(let firstDocument) = export.phase else { return XCTFail("The finished PDF waits for the saver.") }
+
+        export.finishSaving(nil)
+        export.export()
+
+        guard case .saving(let secondDocument) = export.phase else { return XCTFail("The saver is offered again at once, not after another render.") }
+        XCTAssertEqual(secondDocument.data, firstDocument.data)
+    }
+
+    func testChangedOptionsOrASavedPDFMakeTheNextExportRenderAgain() async throws {
+        let export = try makeExport(purpose: .save)
+        export.export()
+        try await waitUntil { if case .saving = export.phase { true } else { false } }
+        export.finishSaving(nil)
+        export.options.pageSize = .a5
+        export.export()
+        XCTAssertTrue(export.isExporting, "Other options make another PDF.")
+        try await waitUntil { if case .saving = export.phase { true } else { false } }
+        export.finishSaving(.success(vault.root.appendingPathComponent("Lecture.pdf")))
+        export.export()
+        XCTAssertTrue(export.isExporting, "A saved PDF is not offered again.")
+        export.cancelExport()
     }
 }

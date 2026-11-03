@@ -6,8 +6,8 @@
  *              where they stand, and the phone's palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -159,5 +159,25 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
         await workspace.open(graphBookmark)
 
         XCTAssertEqual(workspace.layout.activeTab.coreView, .graph)
+    }
+
+    /// HUNT-146: a portrait iPad with the sidebar open leaves the documents about 430 points. Pages and find stay there,
+    /// with the title shortened for them; adding pages goes to More first; narrower, they fold too, so the title and More
+    /// stay (the owner's report of 2026-10-13). The sidebar holds the window's controls, so without it the bar has less room.
+    func testPagesAndFindStayBesideTheTitleBeforeAddingPagesAndFoldOnlyWhenTheyDoNotFit() {
+        func foldsFindAndPages(_ width: CGFloat?, sidebarIsBeside: Bool, sizeClass: UserInterfaceSizeClass? = .regular) -> Bool {
+            DocumentToolbarLayout.foldsFindAndPages(detailWidth: width, horizontalSizeClass: sizeClass, sidebarIsBeside: sidebarIsBeside)
+        }
+        XCTAssertFalse(foldsFindAndPages(430, sidebarIsBeside: true), "Portrait with the sidebar open keeps them.")
+        XCTAssertTrue(DocumentToolbarLayout.foldsSecondaryActions(detailWidth: 430, horizontalSizeClass: .regular), "Adding pages stays in More there.")
+        XCTAssertFalse(DocumentToolbarLayout.foldsSecondaryActions(detailWidth: 760, horizontalSizeClass: .regular), "All three fit from the width they always did.")
+        XCTAssertTrue(foldsFindAndPages(400, sidebarIsBeside: true), "Narrower they would push the title out.")
+        XCTAssertTrue(foldsFindAndPages(430, sidebarIsBeside: false), "A window this narrow also shows its own controls in the bar.")
+        XCTAssertFalse(foldsFindAndPages(590, sidebarIsBeside: false))
+        XCTAssertTrue(foldsFindAndPages(1_000, sidebarIsBeside: true, sizeClass: .compact), "A compact width has them in More, as ever.")
+        XCTAssertFalse(foldsFindAndPages(nil, sidebarIsBeside: true), "An unknown width folds nothing, as adding pages.")
+        let widthAtTheEdge = DocumentToolbarLayout.minimumDetailWidthForFindAndPages(sidebarIsBeside: true)
+        let spent = DocumentToolbarLayout.toolbarFixedWidth + 2 * DocumentToolbarLayout.toolbarSlotWidth
+        XCTAssertGreaterThanOrEqual(widthAtTheEdge - spent, DocumentToolbarLayout.minimumToolbarTitleWidth, "The title keeps a readable width.")
     }
 }

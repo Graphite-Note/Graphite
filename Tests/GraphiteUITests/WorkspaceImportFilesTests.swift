@@ -1,7 +1,19 @@
+/**
+ * File: WorkspaceImportFilesTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Import and drops from other apps: copies into a folder, never moves the source.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 02/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
 import GraphiteApple
+import GraphiteFixtures
 @testable import GraphiteUI
 import GraphiteTestSupport
 
@@ -46,5 +58,80 @@ final class WorkspaceImportFilesTests: XCTestCase {
         XCTAssertNil(workspace.errorMessage)
         XCTAssertEqual(try String(contentsOf: vault.appendingPathComponent("Notes.md"), encoding: .utf8), "existing")
         XCTAssertEqual(try String(contentsOf: vault.appendingPathComponent("Notes 1.md"), encoding: .utf8), "from text")
+    }
+
+    // MARK: Notebooks dragged in from another app
+
+    private func waitForNotebookImportToEnd(_ workspace: WorkspaceModel) async throws -> NotebookImportSummary {
+        try await waitUntil("the notebook import has ended", timeoutSeconds: 30) {
+            if case .finished = workspace.notebookImport?.state { true } else { false }
+        }
+        guard case .finished(let summary)? = workspace.notebookImport?.state else { throw GraphiteError.unavailable("The import did not end.") }
+        return summary
+    }
+
+    func testANotebookDroppedFromFilesIsConvertedBeforeItsTemporaryCopyIsRemoved() async throws {
+        let (workspace, vault) = try await makeWorkspace(files: ["Courses/Existing.md": "x"])
+        let notebook = FixtureFolders.syntheticNotebooks.appendingPathComponent("Synthetic note.note")
+        let provider = try XCTUnwrap(NSItemProvider(contentsOf: notebook))
+        XCTAssertTrue(workspace.receiveDrop([provider], into: try VaultPath("Courses")))
+        let summary = try await waitForNotebookImportToEnd(workspace)
+        XCTAssertEqual(summary.importedCount, 1, "The conversion read the copy the drop made, so the copy was still there.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Courses/Synthetic note.pdf").path))
+    }
+
+    func testTheTemporaryCopiesStayUntilTheNotebookImportEndsAndGoThen() async throws {
+        let (workspace, _) = try await makeWorkspace(files: [:])
+        let notebook = FixtureFolders.syntheticNotebooks.appendingPathComponent("Synthetic note.note")
+        let staged = try DroppedFileStaging.stage(notebook)
+        let batch = DroppedFileBatch(files: [DroppedFile(location: staged.copy, stagingFolder: staged.folder)])
+        await workspace.importFiles(from: batch.locations, into: .root, stagedCopies: batch)
+        _ = try await waitForNotebookImportToEnd(workspace)
+        try await waitUntil("the temporary copies are removed") { !FileManager.default.fileExists(atPath: staged.folder.path) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.folder.path), "Nothing of the drop is kept once the conversion has ended.")
+    }
+
+    func testTheTemporaryCopiesOfOrdinaryFilesGoAsSoonAsTheyAreCopiedIn() async throws {
+        let (workspace, vault) = try await makeWorkspace(files: [:])
+        let original = try outsideFile(named: "Slides.pdf", contents: "pdf")
+        let staged = try DroppedFileStaging.stage(original)
+        let batch = DroppedFileBatch(files: [DroppedFile(location: staged.copy, stagingFolder: staged.folder)])
+        await workspace.importFiles(from: batch.locations, into: .root, stagedCopies: batch)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Slides.pdf").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: staged.folder.path))
+    }
+
+    /// The notebook's conversion ended while the other file of the drop still waited its turn: its copy must still be there.
+    func testANotebookThatEndsFirstLeavesTheOtherStagedCopiesOfTheDrop() async throws {
+        let (workspace, _) = try await makeWorkspace(files: [:])
+        let notebook = try DroppedFileStaging.stage(FixtureFolders.syntheticNotebooks.appendingPathComponent("Synthetic note.note"))
+        let other = try DroppedFileStaging.stage(try outsideFile(named: "Later.waiting", contents: "later"))
+        let batch = DroppedFileBatch(files: [DroppedFile(location: notebook.copy, stagingFolder: notebook.folder),
+                                             DroppedFile(location: other.copy, stagingFolder: other.folder)])
+        var otherCopyWasThereWhenItsTurnCame: Bool?
+        let waitingImporter = FileTypeImporter(fileExtensions: ["waiting"]) { files, _ in
+            do {
+                _ = try await self.waitForNotebookImportToEnd(workspace)
+                try await waitUntil("the notebook's copy is removed") { !FileManager.default.fileExists(atPath: notebook.folder.path) }
+            } catch { XCTFail("\(error)") }
+            otherCopyWasThereWhenItsTurnCame = files.allSatisfy { file in FileManager.default.fileExists(atPath: file.path) }
+        }
+        await workspace.importFiles(from: batch.locations, into: .root, stagedCopies: batch, importers: [waitingImporter])
+        XCTAssertEqual(otherCopyWasThereWhenItsTurnCame, true)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: other.folder.path), "It goes once it was dealt with.")
+    }
+
+    /// While another import runs, none starts: its copies have no one else to remove them.
+    func testTheCopiesOfANotebookNoImportTookAreRemoved() async throws {
+        let (workspace, _) = try await makeWorkspace(files: [:])
+        let source = FixtureFolders.syntheticNotebooks.appendingPathComponent("Synthetic note.note")
+        let held = try DroppedFileStaging.stage(source)
+        let holding = DroppedFileBatch(files: [DroppedFile(location: held.copy, stagingFolder: held.folder)])
+        await workspace.importFiles(from: holding.locations, into: .root, stagedCopies: holding)
+        let refused = try DroppedFileStaging.stage(source)
+        let refusedBatch = DroppedFileBatch(files: [DroppedFile(location: refused.copy, stagingFolder: refused.folder)])
+        await workspace.importFiles(from: refusedBatch.locations, into: .root, stagedCopies: refusedBatch)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: refused.folder.path))
+        _ = try await waitForNotebookImportToEnd(workspace)
     }
 }
