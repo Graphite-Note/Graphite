@@ -6,8 +6,8 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 03/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -247,6 +247,12 @@ final class InkWidthAtZoomTests: XCTestCase {
 
     /// The pixel eraser cuts the same gap on the page at any zoom (HUNT-023), up to the 80.4
     /// points of the screen PencilKit makes it at most.
+    ///
+    /// The canvas takes a new zoom a moment after the PDF view, and not while a stroke is under
+    /// way: the touches UIKit gave the drawing recognizer hold the change back. The stand-in
+    /// touches told straight to the recognizer are not among them, so a line begun on a busy
+    /// machine before the canvas had the zoom was laid out again under PencilKit's live stroke,
+    /// and the eraser then cut nothing. The strokes wait for the canvas to draw at the zoom.
     func testThePixelEraserCutsTheSameGapOnThePageAtEveryZoom() async throws {
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
@@ -259,12 +265,17 @@ final class InkWidthAtZoomTests: XCTestCase {
                 canvas.takeTool(from: toolPicker, fixedTool: selection(.monoline, width: 2))
                 pdfView.scaleFactor = zoom
                 try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
+                try await waitUntil("the canvas draws at \(zoom)") { abs(canvas.zoomScale - zoom) < 0.02 }
                 canvas.drawing = PKDrawing()
                 let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
-                _ = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 240, y: middle.y), to: CGPoint(x: middle.x + 240, y: middle.y), steps: 60), in: window)
+                let drawnLine = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 240, y: middle.y), to: CGPoint(x: middle.x + 240, y: middle.y), steps: 60), in: window)
+                XCTAssertNotNil(drawnLine, "The line at zoom \(zoom) is drawn")
+                XCTAssertEqual(canvas.zoomScale, zoom, accuracy: 0.02, "The canvas kept the zoom under the line")
                 let inkBounds = canvas.drawing.bounds
                 canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .eraser, preset: InkPreset(ink: .pen), erasesWholeStrokes: false, eraserWidth: eraserWidth, isRulerActive: false))
-                _ = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x, y: middle.y - 160), to: CGPoint(x: middle.x, y: middle.y + 160), steps: 30), in: window)
+                // The line cut in two is the erase having reached PencilKit's drawing.
+                let cutLine = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x, y: middle.y - 160), to: CGPoint(x: middle.x, y: middle.y + 160), steps: 30), in: window)
+                XCTAssertNotNil(cutLine, "Eraser \(eraserWidth) at zoom \(zoom) cut the line in two")
                 try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 150)
                 let picture = try XCTUnwrap(canvas.drawing.image(from: inkBounds, scale: 4).cgImage)
                 var bytes = [UInt8](repeating: 0, count: picture.width * picture.height * 4)
