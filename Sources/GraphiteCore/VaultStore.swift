@@ -5,8 +5,8 @@
  * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -337,7 +337,24 @@ public actor VaultStore {
 
     /// Moves or renames a file or folder. Never replaces another item; a change of
     /// capitals alone is allowed, since case-insensitive volumes see the same item.
-    public func move(_ path: VaultPath, to destination: VaultPath) throws {
+    /// The move waits for whoever presents the file off the actor: a file provider that takes
+    /// long, or never answers, must not hold back every read and save of the vault behind it.
+    public func move(_ path: VaultPath, to destination: VaultPath) async throws {
+        let (sourceLocation, destinationLocation) = try locationsOfMove(path, to: destination)
+        let writer = writer
+        try await Task.detached(priority: .userInitiated) {
+            try Self.coordinateMove(from: sourceLocation, to: destinationLocation, writer: writer)
+        }.value
+    }
+
+    /// A move of a small item of the vault's own, in one step with what is around it on the actor.
+    func moveOnActor(_ path: VaultPath, to destination: VaultPath) throws {
+        let (sourceLocation, destinationLocation) = try locationsOfMove(path, to: destination)
+        try Self.coordinateMove(from: sourceLocation, to: destinationLocation, writer: writer)
+    }
+
+    /// Where `path` is and where it goes, once nothing rules the move out; the destination's folder is made.
+    private func locationsOfMove(_ path: VaultPath, to destination: VaultPath) throws -> (source: URL, destination: URL) {
         guard !path.rawValue.isEmpty, !destination.rawValue.isEmpty else { throw GraphiteError.invalidPath(path.rawValue) }
         guard !destination.isInside(path) || destination == path else { throw GraphiteError.unavailable("A folder cannot be moved into itself.") }
         let sourceLocation = try path.url(in: root)
@@ -354,6 +371,10 @@ public actor VaultStore {
             throw GraphiteError.unavailable("“\(destination.rawValue)” already exists.")
         }
         try createDirectory(destination.parent)
+        return (sourceLocation, destinationLocation)
+    }
+
+    private static func coordinateMove(from sourceLocation: URL, to destinationLocation: URL, writer: AtomicFileWriter) throws {
         let coordinator = writer.makeCoordinator()
         var coordinationError: NSError?
         var moveResult: Result<Void, Error>?
@@ -420,7 +441,7 @@ public actor VaultStore {
         let isDirectory = (try? location.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
         let trashedPath = try availablePath(in: trashDirectory, stem: isDirectory ? path.name : path.stem,
                                             extension: isDirectory ? "" : (path.name as NSString).pathExtension, firstSuffix: nil)
-        try move(path, to: trashedPath)
+        try moveOnActor(path, to: trashedPath)
         return trashedPath
     }
 

@@ -5,8 +5,8 @@
  * Description: Vault switching, link following, external changes, and attachment saving in the
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 02/11/2026
  */
 
 import XCTest
@@ -356,6 +356,24 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Homework 2.1.md").path))
     }
 
+    /// HUNT-159: a link to a name several files share opens the closest one, as in Obsidian, with no search left in a
+    /// sidebar the person may not see and no notice pointing at it.
+    func testFollowingALinkToASharedNameOpensTheClosestWithNoSearchOrNotice() async throws {
+        let vault = try makeVault(files: ["Course/Source.md": "[[Summary]]", "Course/Summary.md": "near\n", "Other/Far/Summary.md": "far\n"])
+        let workspace = try await openedWorkspace(vault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let searchFocusRequests = workspace.searchFocusRequest, searchRevealRequests = workspace.searchResultsRevealRequest
+
+        await workspace.follow("Summary", from: try VaultPath("Course/Source.md"))
+
+        XCTAssertEqual(workspace.selection, try VaultPath("Course/Summary.md"))
+        XCTAssertEqual(workspace.searchQuery, "")
+        XCTAssertNil(workspace.notice)
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertEqual(workspace.searchFocusRequest, searchFocusRequests)
+        XCTAssertEqual(workspace.searchResultsRevealRequest, searchRevealRequests)
+    }
+
     /// A missing attachment is not created as a note.
     func testFollowingMissingAttachmentLinkCreatesNothing() async throws {
         let vault = try makeVault(files: ["Source.md": "![[Diagram.png]]"])
@@ -411,10 +429,13 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         for noteNumber in 1...200 { notes["Notes/Note \(noteNumber).md"] = "Note \(noteNumber) links [[Note \(noteNumber + 1)]]" }
         let vault = try makeVault(files: notes)
         let workspace = try await openedWorkspace(vault)
-        XCTAssertTrue(workspace.isIndexing)
         let indexVersionBeforeScans = workspace.indexVersion
         let index = try XCTUnwrap(workspace.index)
 
+        // The scan of opening may be over on a fast machine. Nothing is awaited between these two
+        // requests, so the second one always arrives while the first is under way.
+        workspace.startIndexing()
+        XCTAssertTrue(workspace.isIndexing)
         workspace.startIndexing()
         // Written after the running scan may have passed it: only the scan that follows finds it.
         try Data("late".utf8).write(to: vault.appendingPathComponent("Notes/Note 0.md"))

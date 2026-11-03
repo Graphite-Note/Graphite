@@ -1,3 +1,14 @@
+/**
+ * File: LivePreviewBlocks.swift
+ * -----------------------------
+ * Layer: Core
+ * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.14
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// A region of note source that Live Preview replaces with a rendered view while the
@@ -22,13 +33,33 @@ public struct LivePreviewBlock: Equatable, Sendable {
     public let kind: Kind
     /// Whole lines, including the final line break when there is one.
     public let range: NSRange
-    /// The Markdown to render for tables, math blocks, and callouts.
+    /// The Markdown to render for tables, math blocks, and callouts: the lines joined by line
+    /// feeds, with `%%` comments written over by spaces, so nothing that reads it meets a comment.
     public let markdown: String
+    /// The lines as the note has them, for a block whose `markdown` differs from them.
+    private let writtenLines: String?
+    /// Whether a `%%` comment runs past the first or last line of a table or callout, or over a
+    /// line break inside it. The lines alone then do not say what is hidden, and a command on a
+    /// row would take part of the comment with it, so a table's cells are not edited in its view.
+    public let isCutByComment: Bool
+
+    /// A table's or callout's lines as the note has them, comments and line endings included,
+    /// without the last line's break: what an edit of the block's own text starts from.
+    public var sourceLines: String { writtenLines ?? markdown }
+
+    init(kind: Kind, range: NSRange, markdown: String, writtenLines: String? = nil, isCutByComment: Bool = false) {
+        self.kind = kind
+        self.range = range
+        self.markdown = markdown
+        self.writtenLines = writtenLines
+        self.isCutByComment = isCutByComment
+    }
 
     /// The same block, found in text that starts `distance` characters later, as when
     /// some lines are scanned on their own.
     public func offset(by distance: Int) -> LivePreviewBlock {
-        LivePreviewBlock(kind: kind, range: NSRange(location: range.location + distance, length: range.length), markdown: markdown)
+        LivePreviewBlock(kind: kind, range: NSRange(location: range.location + distance, length: range.length), markdown: markdown,
+                         writtenLines: writtenLines, isCutByComment: isCutByComment)
     }
 }
 
@@ -40,7 +71,12 @@ public enum LivePreviewBlockScanner {
         let frontmatter = frontmatterBlock(in: text)
         if let frontmatter { blocks.append(frontmatter) }
         let frontmatterLength = frontmatter?.range.length ?? 0
-        let lines = lines(in: text, from: frontmatterLength)
+        // Reading view leaves a `%%` comment out before it looks for blocks, so a table, callout,
+        // embed or formula in one is not drawn here either.
+        let commentRanges = ObsidianComments.commentRanges(in: text as String)
+        let lines = lines(in: commentsBlankedOut(of: text, commentRanges: commentRanges), from: frontmatterLength)
+        // Most notes have no comment and no "\r\n": their blocks' Markdown is their lines.
+        let linesMayDifferFromMarkdown = !commentRanges.isEmpty || text.range(of: "\r\n", options: .literal).location != NSNotFound
         let mathLines = DisplayMathLines(lines.map(\.content))
         var listItems = ListItemContainers()
         var lineIndex = 0
@@ -52,6 +88,22 @@ public enum LivePreviewBlockScanner {
         }
         func markdown(_ firstIndex: Int, _ lastIndex: Int) -> String {
             lines[firstIndex...lastIndex].map(\.content).joined(separator: "\n")
+        }
+        /// A table or callout, which also keeps its lines as the note has them.
+        func editableBlock(_ kind: LivePreviewBlock.Kind, _ firstIndex: Int, _ lastIndex: Int) -> LivePreviewBlock {
+            let range = span(firstIndex, lastIndex)
+            let rendered = markdown(firstIndex, lastIndex)
+            guard linesMayDifferFromMarkdown else { return LivePreviewBlock(kind: kind, range: range, markdown: rendered) }
+            let linesEnd = lines[lastIndex].range.location + lines[lastIndex].content.utf16.count
+            let writtenRange = NSRange(location: range.location, length: linesEnd - range.location)
+            let written = text.substring(with: writtenRange)
+            let isCutByComment = commentRanges.contains { commentRange in
+                NSIntersectionRange(commentRange, writtenRange).length > 0
+                    && (commentRange.location < writtenRange.location || NSMaxRange(commentRange) > NSMaxRange(writtenRange)
+                        || text.rangeOfCharacter(from: lineBreakCharacters, options: .literal, range: commentRange).location != NSNotFound)
+            }
+            return LivePreviewBlock(kind: kind, range: range, markdown: rendered, writtenLines: written == rendered ? nil : written,
+                                    isCutByComment: isCutByComment)
         }
         while lineIndex < lines.count {
             let content = lines[lineIndex].content
@@ -99,10 +151,13 @@ public enum LivePreviewBlockScanner {
                     continue
                 }
             }
-            if MarkdownQuoteSyntax.isCalloutHeader(content) {
-                var lastIndex = lineIndex
-                while lastIndex + 1 < lines.count && lines[lastIndex + 1].content.hasPrefix(">") { lastIndex += 1 }
-                blocks.append(LivePreviewBlock(kind: .callout, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
+            // A callout may sit in a list item, indented with the item's text.
+            let containerColumn = listItems.innermostContentColumn
+            if MarkdownQuoteSyntax.isCalloutHeader(content, containerColumn: containerColumn) {
+                let bodyLineCount = MarkdownQuoteSyntax.calloutBodyLineCount(afterHeaderAt: lineIndex, lineCount: lines.count,
+                    containerColumn: containerColumn) { index in lines[index].content }
+                let lastIndex = lineIndex + bodyLineCount
+                blocks.append(editableBlock(.callout, lineIndex, lastIndex))
                 lineIndex = lastIndex + 1
                 lineIndexAfterBlock = lineIndex
                 continue
@@ -117,7 +172,7 @@ public enum LivePreviewBlockScanner {
                     guard row.hasPrefix("|") || (!hasOuterPipes && !row.isEmpty && row.contains("|")) else { break }
                     lastIndex += 1
                 }
-                blocks.append(LivePreviewBlock(kind: .table, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
+                blocks.append(editableBlock(.table, lineIndex, lastIndex))
                 lineIndex = lastIndex + 1
                 lineIndexAfterBlock = lineIndex
                 continue
@@ -144,6 +199,21 @@ public enum LivePreviewBlockScanner {
             lineIndex += 1
         }
         return blocks
+    }
+
+    /// `text` with its `%%` comments written over by spaces, line breaks kept, so every offset
+    /// is where it was and nothing in a comment is read as a block. Most notes have none.
+    private static func commentsBlankedOut(of text: NSString, commentRanges: [NSRange]) -> NSString {
+        guard !commentRanges.isEmpty else { return text }
+        let blanked = NSMutableString(string: text)
+        for commentRange in commentRanges {
+            let blankedUnits = (0..<commentRange.length).map { offset -> unichar in
+                let unit = text.character(at: commentRange.location + offset)
+                return unit == lineFeed || unit == carriageReturn ? unit : 0x20
+            }
+            blanked.replaceCharacters(in: commentRange, with: String(utf16CodeUnits: blankedUnits, count: blankedUnits.count))
+        }
+        return blanked
     }
 
     /// The leading frontmatter alone, for an editor that renders only the properties. It

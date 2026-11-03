@@ -6,7 +6,7 @@
  *              moved or resized selection frame carries them along.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
+ * Version: 0.12
  * Date: 01/11/2026
  */
 import Foundation
@@ -143,6 +143,7 @@ final class PaletteInkSelection {
 #if canImport(UIKit)
 import UIKit
 import PencilKit
+import PDFKit
 import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
@@ -194,7 +195,9 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     private var pastePoint: CGPoint = .zero
     /// The scale the frame and the loop were last drawn at, to redraw them after a zoom.
     private var shownScreenScale: CGFloat = 0
-    private var zoomObserver: NSObjectProtocol?
+    /// Listens to the zoom of the PDF view holding the canvas, while the lasso is on.
+    private var zoomObservation: NotificationObservation?
+    var isObservingZoom: Bool { zoomObservation != nil }
 
     /// The frame reaches this far beyond the ink, so its handles are clear of it.
     private static let frameMargin: CGFloat = 8
@@ -222,7 +225,9 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             guard isActive != oldValue else { return }
             if isActive {
                 installRecognizers()
+                observeZoomOfEnclosingPDFView()
             } else {
+                zoomObservation = nil
                 clearSelection()
             }
             loopRecognizer.isEnabled = isActive
@@ -241,11 +246,30 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         canvas.addGestureRecognizer(loopRecognizer)
         canvas.addGestureRecognizer(tapRecognizer)
         canvas.addInteraction(canvasMenu)
-        // A PDF view zooms its pages without laying out their canvases again; the frame's
-        // handles and the loop's line are redrawn to keep their size on screen.
-        zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.canvasDidChangeScale() }
+    }
+
+    /// A PDF view zooms its pages without laying out their canvases again; the frame's
+    /// handles and the loop's line are redrawn to keep their size on screen. Only the PDF view
+    /// holding the canvas matters: another PDF's zoom redraws nothing here.
+    private func observeZoomOfEnclosingPDFView() {
+        guard zoomObservation == nil else { return }
+        zoomObservation = NotificationObservation(name: .PDFViewScaleChanged, queue: .main) { [weak self] notification in
+            let zoomedViewIdentifier = notification.object.map { zoomedView in ObjectIdentifier(zoomedView as AnyObject) }
+            MainActor.assumeIsolated {
+                guard let self, self.canvasIsInside(viewIdentifiedBy: zoomedViewIdentifier) else { return }
+                self.canvasDidChangeScale()
+            }
         }
+    }
+
+    private func canvasIsInside(viewIdentifiedBy identifier: ObjectIdentifier?) -> Bool {
+        guard let identifier else { return false }
+        var ancestor: UIView? = canvas
+        while let currentView = ancestor {
+            if ObjectIdentifier(currentView) == identifier { return true }
+            ancestor = currentView.superview
+        }
+        return false
     }
 
     /// The lasso takes the touches the canvas would draw with: the Pencil, and a finger when

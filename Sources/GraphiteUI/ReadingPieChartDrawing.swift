@@ -1,31 +1,34 @@
+/**
+ * File: ReadingPieChartDrawing.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: A laid-out pie chart in the reading view.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
 
 /// A laid-out pie chart, centered and as wide as it was laid out (in proportion to the text size now, if that changed
 /// since the note was built), scaled down when the column is narrower.
+/// One too wide to stay readable scrolls sideways (`ReadingScaledDiagram`).
 struct ReadingPieChartDrawing: View {
     let chart: ReadingPieChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = chart.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / chart.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingPieChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(chart.title ?? "Pie chart")
-            .accessibilityValue(chart.description ?? chart.sliceSummaries.joined(separator: ", "))
+        ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
+            ReadingPieChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(chart.title ?? "Pie chart")
+        .accessibilityValue(chart.description ?? chart.sliceSummaries.joined(separator: ", "))
     }
 }
 

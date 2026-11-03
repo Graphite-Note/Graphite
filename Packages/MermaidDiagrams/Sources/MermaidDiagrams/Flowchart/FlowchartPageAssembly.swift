@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartPageAssembly.swift
+ * ---------------------------------
+ * Layer: Core
+ * Description: Puts a placed flowchart on the page.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import CoreGraphics
 
 /// Puts a placed flowchart on the page: nodes at their centers, edges from the outline of one shape to the other's
@@ -66,7 +77,7 @@ struct FlowchartPageAssembly {
         return FlowchartLayoutEdge(stroke: edge.stroke, path: drawn.path,
                                    sourceMark: mark(edge.sourceArrowhead, tip: points[0], direction: leaving),
                                    targetMark: mark(edge.targetArrowhead, tip: points[points.count - 1], direction: drawn.endDirection),
-                                   text: centered(measured.edgeTexts[edgeIndex], at: textCenter))
+                                   text: centered(measured.edgeTexts[edgeIndex], at: textCenter), style: edge.style)
     }
 
     /// The loops of every node that has edges to itself.
@@ -87,7 +98,8 @@ struct FlowchartPageAssembly {
                 edges[edgeIndex] = FlowchartLayoutEdge(stroke: edge.stroke, path: path,
                                                        sourceMark: mark(edge.sourceArrowhead, tip: loop.leave, direction: leaving),
                                                        targetMark: mark(edge.targetArrowhead, tip: loop.back, direction: arriving),
-                                                       text: loop.textCenter.flatMap { center in centered(measured.edgeTexts[edgeIndex], at: center) })
+                                                       text: loop.textCenter.flatMap { center in centered(measured.edgeTexts[edgeIndex], at: center) },
+                                                       style: edge.style)
             }
         }
     }
@@ -201,7 +213,7 @@ struct FlowchartPageAssembly {
             return FlowchartLayoutNode(shape: diagram.nodes[node].shape,
                                        frame: CGRect(x: nodeCenters[node].x - size.width / 2, y: nodeCenters[node].y - size.height / 2,
                                                      width: size.width, height: size.height),
-                                       text: text)
+                                       text: text, style: diagram.nodes[node].style)
         }
         // A node that stands for a group is its box, not a node.
         let nodes = clustered.map { clustered in

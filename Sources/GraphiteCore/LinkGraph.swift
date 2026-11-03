@@ -1,3 +1,14 @@
+/**
+ * File: LinkGraph.swift
+ * ---------------------
+ * Layer: Core
+ * Description: The notes of a vault and the links between them, as the graph view filters and walks them.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// A note, attachment, tag or link target without a file, as Obsidian's graph view shows it.
@@ -51,7 +62,8 @@ public struct GraphEdge: Hashable, Sendable {
 public struct GraphFilterOptions: Equatable, Sendable {
     /// Keeps the files whose path contains every word, ignoring case and accents. As in
     /// Obsidian's search, `tag:#name` keeps the files with that tag or a tag nested under
-    /// it, `path:` names a word of the path, and quotes keep spaces in a word.
+    /// it, `path:` names a word of the path, `file:` a word of the file name, `-` before a word
+    /// leaves out the files that match it, `OR` joins alternatives, and quotes keep spaces in a word.
     public var searchText = ""
     public var showsTags = false
     public var showsAttachments = false
@@ -182,7 +194,7 @@ public struct LinkGraph: Equatable, Sendable {
     /// their tags and unresolved links; a node the filters leave without links is an orphan.
     public func filtered(by options: GraphFilterOptions) -> LinkGraph {
         let search = GraphSearch(options.searchText)
-        let tagsByFile = search.tags.isEmpty ? [:] : foldedTagsByFile
+        let tagsByFile = search.usesTags ? foldedTagsByFile : [:]
         let kept = nodes.filter { node in
             switch node.kind {
             case .note: break
@@ -210,7 +222,7 @@ public struct LinkGraph: Equatable, Sendable {
     public func colorGroupIndexes(for queries: [String]) -> [String: Int] {
         let searches = queries.map(GraphSearch.init)
         guard searches.contains(where: { search in !search.isEmpty }) else { return [:] }
-        let tagsByFile = searches.contains { search in !search.tags.isEmpty } ? foldedTagsByFile : [:]
+        let tagsByFile = searches.contains { search in search.usesTags } ? foldedTagsByFile : [:]
         var groupIndexes: [String: Int] = [:]
         for node in nodes {
             switch node.kind {
@@ -272,25 +284,62 @@ public struct LinkGraph: Equatable, Sendable {
     }
 }
 
-/// The graph's filter read as Obsidian's search reads it: words of the path, `path:` words,
-/// and `tag:` tags, all of which a file must match, ignoring case and accents.
+/// The graph's filter read as Obsidian's search reads it, as far as the graph can use it: words
+/// of the path, `file:` words of the file name, `path:` words, and `tag:` tags, each of which a
+/// file must match, ignoring case and accents. A `-` before any of them leaves out the files that
+/// match it, and `OR` joins alternatives: a file is kept when it matches all the words of one of
+/// them. Content words, regular expressions and brackets are not read here.
 struct GraphSearch {
-    private(set) var pathWords: [String] = []
-    /// Tags with their `#`, folded.
-    private(set) var tags: [String] = []
+    private enum Condition {
+        case pathWord(String)
+        case fileName(String)
+        /// A tag with its `#`, folded.
+        case tag(String)
+    }
+
+    private struct Term {
+        let isExcluded: Bool
+        let condition: Condition
+    }
+
+    private var alternatives: [[Term]] = []
 
     init(_ text: String) {
-        for word in Self.words(text).map(Self.fold) {
-            if word.hasPrefix("tag:") {
-                let tag = word.dropFirst("tag:".count)
-                guard !tag.isEmpty, tag != "#" else { continue }
-                tags.append(tag.hasPrefix("#") ? String(tag) : "#" + tag)
-            } else if word.hasPrefix("path:") {
-                if word.count > "path:".count { pathWords.append(String(word.dropFirst("path:".count))) }
-            } else {
-                pathWords.append(word)
+        var current: [Term] = []
+        for word in Self.words(text) {
+            if word == "OR" {
+                if !current.isEmpty { alternatives.append(current) }
+                current = []
+            } else if let term = Self.term(from: Self.fold(word)) {
+                current.append(term)
             }
         }
+        if !current.isEmpty { alternatives.append(current) }
+    }
+
+    private static func term(from foldedWord: String) -> Term? {
+        var word = Substring(foldedWord)
+        let isExcluded = word.count > 1 && word.hasPrefix("-")
+        if isExcluded { word = word.dropFirst() }
+        if word.hasPrefix("tag:") {
+            let tag = word.dropFirst("tag:".count)
+            guard !tag.isEmpty, tag != "#" else { return nil }
+            return Term(isExcluded: isExcluded, condition: .tag(tag.hasPrefix("#") ? String(tag) : "#" + tag))
+        }
+        if word.hasPrefix("path:") {
+            guard word.count > "path:".count else { return nil }
+            return Term(isExcluded: isExcluded, condition: .pathWord(String(word.dropFirst("path:".count))))
+        }
+        if word.hasPrefix("file:") {
+            guard word.count > "file:".count else { return nil }
+            return Term(isExcluded: isExcluded, condition: .fileName(String(word.dropFirst("file:".count))))
+        }
+        return Term(isExcluded: isExcluded, condition: .pathWord(String(word)))
+    }
+
+    /// Whether a term needs the files' tags.
+    var usesTags: Bool {
+        alternatives.contains { terms in terms.contains { term in if case .tag = term.condition { true } else { false } } }
     }
 
     /// The words of the filter, a quoted part one word with its spaces (`path:"Mes Cours/"`).
@@ -317,7 +366,7 @@ struct GraphSearch {
     }
 
     /// Whether the filter has no words, so that it keeps every file and a group colors none.
-    var isEmpty: Bool { pathWords.isEmpty && tags.isEmpty }
+    var isEmpty: Bool { alternatives.isEmpty }
 
     /// Whether a file with this path and these folded tags is kept; a tag also matches the
     /// tags nested under it, as `tag:#course` matches `#course/vlsi`.
@@ -328,7 +377,18 @@ struct GraphSearch {
     /// `matches(path:tags:)` for a path already folded, as when one file is matched against
     /// several searches.
     func matches(foldedPath: String, tags fileTags: [String]) -> Bool {
-        guard pathWords.allSatisfy({ word in foldedPath.contains(word) }) else { return false }
-        return tags.allSatisfy { tag in fileTags.contains { fileTag in fileTag == tag || fileTag.hasPrefix(tag + "/") } }
+        guard !alternatives.isEmpty else { return true }
+        let foldedName = foldedPath.split(separator: "/").last.map(String.init) ?? foldedPath
+        return alternatives.contains { terms in
+            terms.allSatisfy { term in
+                let isMatch: Bool
+                switch term.condition {
+                case .pathWord(let word): isMatch = foldedPath.contains(word)
+                case .fileName(let word): isMatch = foldedName.contains(word)
+                case .tag(let tag): isMatch = fileTags.contains { fileTag in fileTag == tag || fileTag.hasPrefix(tag + "/") }
+                }
+                return isMatch != term.isExcluded
+            }
+        }
     }
 }

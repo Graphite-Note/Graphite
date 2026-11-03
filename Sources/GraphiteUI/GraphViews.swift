@@ -5,7 +5,7 @@
  * Description: The whole-vault graph, the local graph of a note, and their settings.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.15
+ * Version: 0.17
  * Date: 01/11/2026
  */
 
@@ -62,7 +62,7 @@ struct LocalGraphPanel: View {
         .task(id: workspace.currentVaultIdentifier) {
             if let vaultIdentifier = workspace.currentVaultIdentifier { colorGroupStore.loadGroups(ofVault: vaultIdentifier) }
         }
-        .task(id: workspace.indexVersion) {
+        .task(id: workspace.structureVersion) {
             vaultGraph = await workspace.vaultGraph()
             recolor()
         }
@@ -176,7 +176,7 @@ struct VaultGraphView: View {
         .task(id: workspace.currentVaultIdentifier) {
             if let vaultIdentifier = workspace.currentVaultIdentifier { colorGroupStore.loadGroups(ofVault: vaultIdentifier) }
         }
-        .task(id: workspace.indexVersion) {
+        .task(id: workspace.structureVersion) {
             vaultGraph = await workspace.vaultGraph()
             shownGraph = vaultGraph?.filtered(by: filters)
             recolor()
@@ -198,6 +198,7 @@ struct VaultGraphView: View {
                 Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField("Filter by path or tag:", text: $document.graphFilterText)
                     .textFieldStyle(.plain)
+                    .help("Words of the path, file: for the file name, path:, tag:#name, - before a word to leave it out, OR between alternatives")
                     #if canImport(UIKit)
                     .textInputAutocapitalization(.never)
                     #endif

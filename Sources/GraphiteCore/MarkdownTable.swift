@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownTable.swift
+ * -------------------------
+ * Layer: Core
+ * Description: A Markdown table read from its source, and the edits of its rows, columns and cells.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 02/11/2026
+ */
+
 import Foundation
 
 /// A Markdown table read from its source: the cells of every row with where each cell's
@@ -7,6 +18,11 @@ import Foundation
 /// Cells are split as GFM splits them: at every `|` that is not preceded by a backslash,
 /// so a pipe inside a code span still splits unless it is escaped. One pipe at each end
 /// of a line is optional. A row may have fewer or more cells than the header.
+///
+/// A `%%` comment is read as spaces, as the table drawn in Live Preview reads it, so the same
+/// indexes name the same cells: a pipe in one separates nothing, and its line break stays a
+/// line break. A comment in a cell is part of the cell's text, which the cell's editor holds;
+/// one outside the cells, past a row's outer pipes, is no cell's and stays where it is.
 public struct MarkdownTable: Equatable, Sendable {
     public enum ColumnAlignment: Equatable, Sendable { case none, left, center, right }
 
@@ -66,7 +82,23 @@ public enum MarkdownTableEditing {
         if column < line.cells.count, text == editableText(ofCellSource: layout.text(in: line.cells[column].textRange)) {
             return source
         }
-        return layout.applying(layout.replacements(settingCellTexts: [column: cellSafeText(text)], in: line))
+        return layout.applying(layout.replacements(settingCellTexts: [column: cellSafeText(text, writtenIn: column, of: line, layout: layout)], in: line))
+    }
+
+    /// Whether `replacingCell` with this text changes that cell's text alone. A `%%` in the text
+    /// can pair with a marker in another cell, or leave one without its partner, so that the
+    /// comments hide other pipes: the same row and column then name another cell, and an editor
+    /// holding them would write over it.
+    public static func keepsOtherCellsInPlace(writing text: String, row: Int, column: Int, in source: String) -> Bool {
+        guard let written = replacingCell(row: row, column: column, with: text, in: source), written != source,
+              let layout = MarkdownTableLayout(source: source) else { return true }
+        let table = layout.table
+        guard let writtenTable = MarkdownTable.parse(written), writtenTable.alignments == table.alignments else { return false }
+        var expectedRows = table.rows.map { cells in cells.map(\.source) }
+        expectedRows[row] += Array(repeating: "", count: max(column + 1 - expectedRows[row].count, 0))
+        let safeText = cellSafeText(text, writtenIn: column, of: layout.rowLine(row), layout: layout)
+        expectedRows[row][column] = safeText.trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
+        return writtenTable.rows.map { cells in cells.map(\.source) } == expectedRows
     }
 
     /// Inserts an empty body row so that it becomes body row `bodyRowIndex` (0 = first body row;
@@ -86,7 +118,8 @@ public enum MarkdownTableEditing {
         } else {
             rowText = Array(repeating: "", count: layout.columnCount).joined(separator: " | ")
         }
-        let indentation = Array(layout.units[header.contentRange.lowerBound..<header.trimmedRange.lowerBound])
+        // Spaces only: a comment before the header's first pipe is not repeated in new rows.
+        let indentation = Array(layout.units[header.contentRange.lowerBound..<header.trimmedRange.lowerBound].prefix(while: MarkdownTableUnit.isSpace))
         let rowUnits = indentation + Array(rowText.utf16)
         let replacement: MarkdownTableReplacement
         if bodyRowIndex < layout.bodyRowCount {
@@ -235,10 +268,12 @@ public enum MarkdownTableEditing {
 
     private static let lineBreakTagPattern = MarkdownTableEditingPattern.lineBreakTagPattern.compiled()
 
-    /// Escapes every pipe that is not already escaped (a pipe after a backslash, as the
-    /// parser reads it) and writes each line break, `\r\n` included, as one `<br>`.
-    private static func cellSafeText(_ text: String) -> String {
-        var safeUnits: [UInt16] = []
+    /// Writes each line break, `\r\n` included, as one `<br>`, and escapes every pipe that is not
+    /// already escaped (a pipe after a backslash, as the parser reads it). A pipe in a `%%` comment
+    /// separates nothing and stays as it is written; which comment is read with the text in its
+    /// place, since its markers can pair with others in the table instead of with each other.
+    private static func cellSafeText(_ text: String, writtenIn column: Int, of line: MarkdownTableLineLayout, layout: MarkdownTableLayout) -> String {
+        var oneLineUnits: [UInt16] = []
         let units = Array(text.utf16)
         var index = 0
         while index < units.count {
@@ -247,14 +282,23 @@ public enum MarkdownTableEditing {
                 if unit == MarkdownTableUnit.carriageReturn, index + 1 < units.count, units[index + 1] == MarkdownTableUnit.lineFeed {
                     index += 1
                 }
-                safeUnits.append(contentsOf: Array("<br>".utf16))
-            } else if unit == MarkdownTableUnit.pipe, safeUnits.last != MarkdownTableUnit.backslash {
-                safeUnits.append(MarkdownTableUnit.backslash)
-                safeUnits.append(unit)
+                oneLineUnits.append(contentsOf: Array("<br>".utf16))
             } else {
-                safeUnits.append(unit)
+                oneLineUnits.append(unit)
             }
             index += 1
+        }
+        guard oneLineUnits.contains(MarkdownTableUnit.pipe) else { return String(decoding: oneLineUnits, as: UTF16.self) }
+        let place = column < line.cells.count ? line.cells[column].textRange : line.trimmedRange.upperBound..<line.trimmedRange.upperBound
+        let written = Array(layout.units[..<place.lowerBound]) + oneLineUnits + Array(layout.units[place.upperBound...])
+        let commentRanges = ObsidianComments.commentRanges(in: String(decoding: written, as: UTF16.self))
+        var safeUnits: [UInt16] = []
+        for (offset, unit) in oneLineUnits.enumerated() {
+            if unit == MarkdownTableUnit.pipe, safeUnits.last != MarkdownTableUnit.backslash,
+               !commentRanges.contains(where: { commentRange in NSLocationInRange(place.lowerBound + offset, commentRange) }) {
+                safeUnits.append(MarkdownTableUnit.backslash)
+            }
+            safeUnits.append(unit)
         }
         return String(decoding: safeUnits, as: UTF16.self)
     }
@@ -382,7 +426,13 @@ private struct MarkdownTableLineLayout {
     let cells: [MarkdownTableCellLayout]
 
     /// Nil for a blank line, which ends a table.
-    static func make(units: [UInt16], contentRange: Range<Int>, endingRange: Range<Int>) -> MarkdownTableLineLayout? {
+    /// - Parameters:
+    ///   - units: The source with its comments read as spaces, which says where the line's text and cells are.
+    ///   - written: The source as it is.
+    ///   - keepsCommentsInCells: Whether a cell's text reaches to a comment at its ends. A delimiter row's does
+    ///     not: its text is rewritten as a whole by a change of alignment, which leaves the comment.
+    static func make(units: [UInt16], written: [UInt16], keepsCommentsInCells: Bool = true,
+                     contentRange: Range<Int>, endingRange: Range<Int>) -> MarkdownTableLineLayout? {
         var trimmedStart = contentRange.lowerBound
         var trimmedEnd = contentRange.upperBound
         while trimmedStart < trimmedEnd, MarkdownTableUnit.isSpace(units[trimmedStart]) { trimmedStart += 1 }
@@ -407,7 +457,8 @@ private struct MarkdownTableLineLayout {
         while location <= cellsEnd {
             if location == cellsEnd || isSeparatingPipe(at: location) {
                 let isLastCell = location == cellsEnd
-                cells.append(cellLayout(units: units, segmentRange: segmentStart..<location, isFollowedByPipe: !isLastCell || hasTrailingPipe))
+                cells.append(cellLayout(units: keepsCommentsInCells ? written : units, written: written, segmentRange: segmentStart..<location,
+                                        isFollowedByPipe: !isLastCell || hasTrailingPipe))
                 segmentStart = location + 1
             }
             location += 1
@@ -417,12 +468,14 @@ private struct MarkdownTableLineLayout {
             hasLeadingPipe: hasLeadingPipe, hasTrailingPipe: hasTrailingPipe, cells: cells)
     }
 
-    private static func cellLayout(units: [UInt16], segmentRange: Range<Int>, isFollowedByPipe: Bool) -> MarkdownTableCellLayout {
+    private static func cellLayout(units: [UInt16], written: [UInt16], segmentRange: Range<Int>, isFollowedByPipe: Bool) -> MarkdownTableCellLayout {
         var textStart = segmentRange.lowerBound
         var textEnd = segmentRange.upperBound
         while textStart < textEnd, MarkdownTableUnit.isSpace(units[textStart]) { textStart += 1 }
         guard textStart < textEnd else {
-            let insertionPoint = segmentRange.isEmpty ? segmentRange.lowerBound : segmentRange.lowerBound + 1
+            // Never inside a comment that a delimiter cell starts with.
+            let startsWithSpace = !segmentRange.isEmpty && MarkdownTableUnit.isSpace(written[segmentRange.lowerBound])
+            let insertionPoint = startsWithSpace ? segmentRange.lowerBound + 1 : segmentRange.lowerBound
             return MarkdownTableCellLayout(segmentRange: segmentRange, textRange: insertionPoint..<insertionPoint, isFollowedByPipe: isFollowedByPipe)
         }
         while MarkdownTableUnit.isSpace(units[textEnd - 1]) { textEnd -= 1 }
@@ -454,6 +507,7 @@ private struct MarkdownTableLayout {
 
     init?(source: String) {
         let units = Array(source.utf16)
+        let structure = Self.unitsWithCommentsReadAsSpaces(units, of: source)
         var rawLines: [(content: Range<Int>, ending: Range<Int>)] = []
         var lineStart = 0
         while lineStart < units.count {
@@ -472,18 +526,32 @@ private struct MarkdownTableLayout {
             lineStart = endingEnd
         }
         guard rawLines.count >= 2,
-              let header = MarkdownTableLineLayout.make(units: units, contentRange: rawLines[0].content, endingRange: rawLines[0].ending),
-              let delimiter = MarkdownTableLineLayout.make(units: units, contentRange: rawLines[1].content, endingRange: rawLines[1].ending),
-              MarkdownTableSyntax.startsTable(trimmedHeaderUnits: units[header.trimmedRange], trimmedDelimiterUnits: units[delimiter.trimmedRange])
+              let header = MarkdownTableLineLayout.make(units: structure, written: units, contentRange: rawLines[0].content, endingRange: rawLines[0].ending),
+              let delimiter = MarkdownTableLineLayout.make(units: structure, written: units, keepsCommentsInCells: false,
+                                                           contentRange: rawLines[1].content, endingRange: rawLines[1].ending),
+              MarkdownTableSyntax.startsTable(trimmedHeaderUnits: structure[header.trimmedRange], trimmedDelimiterUnits: structure[delimiter.trimmedRange])
         else { return nil }
         var lines = [header, delimiter]
         for rawLine in rawLines.dropFirst(2) {
-            guard let line = MarkdownTableLineLayout.make(units: units, contentRange: rawLine.content, endingRange: rawLine.ending) else { break }
+            guard let line = MarkdownTableLineLayout.make(units: structure, written: units, contentRange: rawLine.content,
+                                                          endingRange: rawLine.ending) else { break }
             lines.append(line)
         }
         self.units = units
         self.lines = lines
         self.lineEnding = Array(units[header.endingRange])
+    }
+
+    /// `units` with each `%%` comment written over by spaces, its line breaks kept.
+    private static func unitsWithCommentsReadAsSpaces(_ units: [UInt16], of source: String) -> [UInt16] {
+        var structure = units
+        for commentRange in ObsidianComments.commentRanges(in: source) {
+            for location in commentRange.location..<NSMaxRange(commentRange)
+            where units[location] != MarkdownTableUnit.lineFeed && units[location] != MarkdownTableUnit.carriageReturn {
+                structure[location] = MarkdownTableUnit.space
+            }
+        }
+        return structure
     }
 
     var table: MarkdownTable {

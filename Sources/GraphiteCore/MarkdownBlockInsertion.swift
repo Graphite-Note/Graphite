@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownBlockInsertion.swift
+ * ----------------------------------
+ * Layer: Core
+ * Description: The line breaks a block needs to sit on its own lines in existing Markdown.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import Markdown
 
@@ -22,6 +33,18 @@ public enum MarkdownBlockInsertion {
         let restIsEmpty = textAfter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if !restIsEmpty, !restStartsWithBlankLine, !insertion.hasSuffix(blankLine) { insertion += lineBreak }
         return insertion
+    }
+
+    /// Where `place`, a range of `block` as written, lies in `insertion`, the text
+    /// `text(inserting:…)` made of it, whose line breaks can be the note's and which can hold
+    /// line breaks around the block. Nil when the block is not in it.
+    public static func place(_ place: NSRange, inBlock block: String, inInsertion insertion: String) -> NSRange? {
+        let lineBreak = insertion.contains("\r\n") ? "\r\n" : "\n"
+        let written = lineBreak == "\n" ? block : block.replacingOccurrences(of: "\n", with: lineBreak)
+        let blockStart = (insertion as NSString).range(of: written, options: .literal).location
+        guard blockStart != NSNotFound else { return nil }
+        let textBefore = ((block as NSString).substring(to: place.location)).replacingOccurrences(of: "\n", with: lineBreak)
+        return NSRange(location: blockStart + textBefore.utf16.count, length: place.length)
     }
 
     /// The note's line ending, taken from its first line break; "\n" when it has none.

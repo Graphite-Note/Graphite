@@ -1,3 +1,14 @@
+/**
+ * File: NewNotebookSheetControls.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: The controls of the New Notebook sheet: the first page preview, size, page count, paper color and cover settings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -133,6 +144,27 @@ struct NotebookCustomSizeFields: View {
             #if os(iOS)
             .keyboardType(.decimalPad)
             #endif
+        }
+    }
+}
+
+/// The notebook's number of pages: typed as a number, or changed one page at a time with the stepper. A number outside
+/// the range is not clamped while it is typed; the sheet says why it cannot be made (`NewNotebookOptions.problem`).
+struct NotebookPageCountControl: View {
+    @Binding var pageCount: Int
+
+    var body: some View {
+        LabeledContent("Pages") {
+            HStack(spacing: 8) {
+                TextField("Pages", value: $pageCount, format: .number)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 64)
+                    #if os(iOS)
+                    .keyboardType(.numberPad)
+                    #endif
+                Stepper("Pages", value: $pageCount, in: NewNotebookOptions.pageCountRange)
+                    .labelsHidden()
+            }
         }
     }
 }

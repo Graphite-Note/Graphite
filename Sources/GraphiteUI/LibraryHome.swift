@@ -1,3 +1,15 @@
+/**
+ * File: LibraryHome.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The library as the window's home in Library mode: the house button of the tab bar, the sidebar folding away,
+ *              and what the library's top row offers of the window.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -52,6 +64,20 @@ struct LibraryWindowActions {
     let showSearch: () -> Void
     let showSettings: () -> Void
     let showVaults: () -> Void
+    /// What the window's navigation bar held, moved into the library's own row where that bar is hidden over the library (the
+    /// iPad); nil where the window keeps its bar.
+    var navigationControls: LibraryNavigationControls?
+}
+
+/// Back and Forward through the files seen, and the recording control: the controls of the iPad's navigation bar, which the
+/// library draws in its own row instead of leaving a band above it with a small capsule of buttons in it.
+struct LibraryNavigationControls {
+    let goBack: () -> Void
+    let goForward: () -> Void
+    let canGoBack: Bool
+    let canGoForward: Bool
+    /// The window's recording control, nil when it offers none.
+    let recordingControl: AnyView?
 }
 
 extension EnvironmentValues {
@@ -64,5 +90,41 @@ extension WorkspaceModel {
     /// there is nothing to keep there, else in a tab of its own.
     var libraryOpeningPlacement: TabPlacement {
         layout.activeTab.path == nil && layout.activeTab.coreView == nil && activeDocument.pluginViewIdentifier == nil ? .currentTab : .newTab
+    }
+}
+
+/// The window's buttons at the start of the library's controls, which the sidebar and the navigation bar offered before the
+/// library replaced them: Back, Forward and recording where the navigation bar is hidden over the library, then Settings and
+/// the quick switcher. A phone's sidebar still has Settings and the quick switcher.
+struct LibraryWindowButtons: View {
+    @Environment(\.libraryWindowActions) private var windowActions
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    var body: some View {
+        if let navigationControls = windowActions?.navigationControls, horizontalSizeClass != .compact {
+            Button("Back", systemImage: "chevron.backward", action: navigationControls.goBack)
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+                .disabled(!navigationControls.canGoBack)
+            Button("Forward", systemImage: "chevron.forward", action: navigationControls.goForward)
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+                .disabled(!navigationControls.canGoForward)
+            if let recordingControl = navigationControls.recordingControl {
+                recordingControl
+                    .labelStyle(.iconOnly)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+        }
+        if let windowActions, horizontalSizeClass != .compact {
+            Button("Settings", systemImage: "gearshape", action: windowActions.showSettings)
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+                .help("Settings")
+            Button("Find a File", systemImage: "magnifyingglass", action: windowActions.showSearch)
+                .labelStyle(.iconOnly)
+                .frame(width: 44, height: 44)
+                .help("Find a file (⌘O)")
+        }
     }
 }

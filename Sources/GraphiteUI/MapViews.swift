@@ -5,7 +5,7 @@
  * Description: The open note and the notes it links to, or that link to it, on a map in the right
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 01/11/2026
  */
 
@@ -57,7 +57,7 @@ struct LocalMapPanel: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task(id: workspace.indexVersion) {
+        .task(id: workspace.structureVersion) {
             placedNotes = await workspace.placedNotes()
             vaultGraph = await workspace.vaultGraph()
         }
@@ -119,6 +119,6 @@ struct VaultMapScreen: View {
                 }
             }
         }
-        .task(id: workspace.indexVersion) { placedNotes = await workspace.placedNotes() }
+        .task(id: workspace.structureVersion) { placedNotes = await workspace.placedNotes() }
     }
 }

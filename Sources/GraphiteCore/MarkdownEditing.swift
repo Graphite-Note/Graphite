@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownEditing.swift
+ * ---------------------------
+ * Layer: Core
+ * Description: Obsidian's editing commands on a note's text, each as one edit that leaves the rest unchanged.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// One replacement in note text, with where the selection goes afterwards.
@@ -19,32 +30,32 @@ public enum MarkdownEditing {
     /// Makes every selected line a heading of `level`, replacing any heading marks it has.
     /// When every line already is a heading of that level, the headings are removed, as
     /// Obsidian's "Toggle heading" does. Blank lines between selected paragraphs stay blank.
+    /// A quoted line keeps its `>` markers in front of the heading, so it stays in its quote
+    /// or callout; a callout's own `[!type]` line stays as it is. The selection stays on the
+    /// same text.
     public static func settingHeading(level: Int, in text: NSString, selection: NSRange) -> MarkdownTextEdit {
         let clampedLevel = min(max(level, 1), 6)
-        let linesRange = lineRange(covering: selection, in: text)
-        let lines = lineContents(in: text, range: linesRange)
+        let lines = lineContents(in: text, range: lineRange(covering: selection, in: text))
         // A cursor on an empty line makes it a heading, but a blank line inside a selection
         // separates paragraphs and never becomes an empty heading.
         let skipsBlankLines = lines.count > 1
-        func isSkipped(_ line: Line) -> Bool { skipsBlankLines && line.content.trimmingCharacters(in: .whitespaces).isEmpty }
-        let headingLines = lines.filter { line in !isSkipped(line) }
-        let removes = !headingLines.isEmpty && headingLines.allSatisfy { line in MarkdownHeadingSyntax.level(of: line.content) == clampedLevel }
-        let marker = String(repeating: "#", count: clampedLevel) + " "
-        var replacement = ""
-        var selectionShift = 0
-        for (lineIndex, line) in lines.enumerated() {
-            if isSkipped(line) { replacement += line.content + line.ending; continue }
-            let prefixLength = MarkdownHeadingSyntax.markerLength(of: line.content)
-            let body = (line.content as NSString).substring(from: prefixLength)
-            let newPrefix = removes ? "" : marker
-            replacement += newPrefix + body + line.ending
-            if lineIndex == 0 { selectionShift = (newPrefix as NSString).length - prefixLength }
+        func isSkipped(_ line: String) -> Bool {
+            (skipsBlankLines && line.trimmingCharacters(in: .whitespaces).isEmpty) || MarkdownQuoteSyntax.isCalloutHeader(line)
         }
-        let firstLineStart = linesRange.location
-        let cursorLocation = max(firstLineStart, selection.location + selectionShift)
-        let replacementLength = (replacement as NSString).length
-        let selectionLength = selection.length == 0 ? 0 : max(0, replacementLength - (cursorLocation - firstLineStart) - trailingLineEndingLength(replacement))
-        return MarkdownTextEdit(range: linesRange, replacement: replacement, selectionAfter: NSRange(location: cursorLocation, length: selectionLength))
+        func headingText(_ line: String) -> (start: Int, text: String) {
+            let start = MarkdownListSyntax.listLine(line)?.quotePrefix.utf16.count ?? 0
+            return (start, (line as NSString).substring(from: start))
+        }
+        let headingLines = lines.filter { line in !isSkipped(line.content) }
+        let removes = !headingLines.isEmpty && headingLines.allSatisfy { line in
+            MarkdownHeadingSyntax.level(of: headingText(line.content).text) == clampedLevel
+        }
+        let marker = removes ? "" : String(repeating: "#", count: clampedLevel) + " "
+        return transformingLines(in: text, selection: selection) { line in
+            guard !isSkipped(line) else { return nil }
+            let (start, body) = headingText(line)
+            return LineChange(range: NSRange(location: start, length: MarkdownHeadingSyntax.markerLength(of: body)), replacement: marker)
+        }
     }
 
     // MARK: Lists
@@ -53,7 +64,7 @@ public enum MarkdownEditing {
     /// line gets the same markup (the next number, an open checkbox), and the numbered
     /// items that follow are renumbered. On an empty item the markup is removed instead, or
     /// the item moves out one level when it is nested. Nil when Return should just insert
-    /// a line break, as it does in code blocks and frontmatter, where markup is text.
+    /// a line break, as it does in code blocks, math blocks and frontmatter, where markup is text.
     ///
     /// `tabSize` is how many spaces one level is when the vault indents with tabs.
     public static func continuingList(in text: NSString, selection: NSRange, indentUnit: String, tabSize: Int = 4) -> MarkdownTextEdit? {
@@ -67,7 +78,8 @@ public enum MarkdownEditing {
         guard !listLine.isListItem || !listLine.spacing.isEmpty else { return nil }
         let cursorInLine = selection.location - lineStart
         guard cursorInLine >= listLine.prefixLength else { return nil }
-        guard !isInCodeOrFrontmatter(lineStart: lineStart, in: text) else { return nil }
+        guard !isInCodeOrFrontmatter(lineStart: lineStart, in: text),
+              MarkdownStyleScanner.blockContext(atLineContaining: lineStart, in: text) != .mathBlock else { return nil }
         let itemText = (line as NSString).substring(from: min(listLine.prefixLength, (line as NSString).length))
         let isEmptyItem = itemText.trimmingCharacters(in: .whitespaces).isEmpty && NSMaxRange(selection) == contentsEnd
         if isEmptyItem {
@@ -363,14 +375,27 @@ public enum MarkdownEditing {
     /// line above or below. Nil at the start or end of the note. Line breaks are measured
     /// as NSString finds them (CRLF, LF, CR and the Unicode separators), so when the note's
     /// last line takes part, the line break moves with the lines and each keeps its kind.
-    public static func movingLines(up: Bool, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
-        let blockRange = lineRange(covering: selection, in: text)
-        let blockEnding = lineContents(in: text, range: blockRange).last?.ending ?? ""
+    ///
+    /// `foldedSections` are the whole lines of the sections folded away. A folded section
+    /// moves and is moved past as one unit, as in Obsidian: a line that swapped with its
+    /// header alone would land in the part that is hidden and seem to vanish.
+    public static func movingLines(up: Bool, in text: NSString, selection: NSRange, foldedSections: [NSRange] = []) -> MarkdownTextEdit? {
+        func wholeUnit(_ lines: NSRange) -> NSRange {
+            foldedSections.reduce(lines) { unit, section in
+                NSIntersectionRange(section, unit).length > 0 && NSMaxRange(section) <= text.length ? NSUnionRange(unit, section) : unit
+            }
+        }
+        func contentAndEnding(_ range: NSRange) -> (content: String, ending: String) {
+            let ending = lineContents(in: text, range: range).last?.ending ?? ""
+            return (text.substring(with: NSRange(location: range.location, length: range.length - ending.utf16.count)), ending)
+        }
+        let blockRange = wholeUnit(lineRange(covering: selection, in: text))
         let block = text.substring(with: blockRange)
+        let (blockContent, blockEnding) = contentAndEnding(blockRange)
         if up {
             guard blockRange.location > 0 else { return nil }
-            let previousRange = text.lineRange(for: NSRange(location: blockRange.location - 1, length: 0))
-            guard let previous = lineContents(in: text, range: previousRange).first else { return nil }
+            let previousRange = wholeUnit(text.lineRange(for: NSRange(location: blockRange.location - 1, length: 0)))
+            let previous = contentAndEnding(previousRange)
             // The note's last line has no line break: it takes the one the line above had.
             let replacement = blockEnding.isEmpty ? block + previous.ending + previous.content : block + previous.content + previous.ending
             let combined = NSRange(location: previousRange.location, length: NSMaxRange(blockRange) - previousRange.location)
@@ -378,9 +403,8 @@ public enum MarkdownEditing {
                                     selectionAfter: NSRange(location: selection.location - previousRange.length, length: selection.length))
         }
         guard NSMaxRange(blockRange) < text.length else { return nil }
-        let nextRange = text.lineRange(for: NSRange(location: NSMaxRange(blockRange), length: 0))
-        guard let next = lineContents(in: text, range: nextRange).first else { return nil }
-        let blockContent = (block as NSString).substring(to: (block as NSString).length - blockEnding.utf16.count)
+        let nextRange = wholeUnit(text.lineRange(for: NSRange(location: NSMaxRange(blockRange), length: 0)))
+        let next = contentAndEnding(nextRange)
         // When the line below is the note's last, the block's line break goes between them
         // and the block becomes the last line, so a selection that took in that break ends
         // at the block's text instead.
@@ -405,7 +429,7 @@ public enum MarkdownEditing {
         let openingLength = marker.utf16.count, closingLength = closing.utf16.count
         // The cursor inside a phrase in this markup, `**hello wo|rld**`, takes the markup off
         // the whole phrase, not only the word under the cursor.
-        if selection.length == 0, closingMarker == nil, let unwrapped = removingEnclosingMarkup(marker, at: selection.location, in: text) { return unwrapped }
+        if selection.length == 0, closing == marker, let unwrapped = removingEnclosingMarkup(marker, at: selection.location, in: text) { return unwrapped }
         var range = selection
         if range.length == 0 { range = wordRange(at: range.location, in: text) ?? range }
         let selectedText = text.substring(with: range)
@@ -581,15 +605,36 @@ public enum MarkdownEditing {
     public static func linkingSelection(to pastedText: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
         guard selection.length > 0, NSMaxRange(selection) <= text.length else { return nil }
         let address = pastedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !address.isEmpty, address.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
-              let scheme = URL(string: address)?.scheme?.lowercased(), ["http", "https", "mailto", "obsidian"].contains(scheme) else { return nil }
+        guard isLinkableAddress(address) else { return nil }
         let selectedText = text.substring(with: selection)
-        // Selected text that is itself an address is replaced as usual.
-        guard selectedText.rangeOfCharacter(from: .newlines) == nil, URL(string: selectedText)?.scheme == nil else { return nil }
+        // Selected text that is itself an address is replaced as usual. Words such as
+        // `Note: hello` are not one, though URL(string:) gives them a scheme of `Note`.
+        guard selectedText.rangeOfCharacter(from: .newlines) == nil, !isLinkableAddress(selectedText) else { return nil }
         let label = selectedText.replacingOccurrences(of: "[", with: "\\[").replacingOccurrences(of: "]", with: "\\]")
         let destination = address.contains("(") || address.contains(")") ? "<\(address)>" : address
         let replacement = "[\(label)](\(destination))"
         return MarkdownTextEdit(range: selection, replacement: replacement, selectionAfter: NSRange(location: selection.location + (replacement as NSString).length, length: 0))
+    }
+
+    /// One address, with no spaces, in a scheme a pasted link can have.
+    private static func isLinkableAddress(_ text: String) -> Bool {
+        guard !text.isEmpty, text.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              let scheme = URL(string: text)?.scheme?.lowercased() else { return false }
+        return ["http", "https", "mailto", "obsidian"].contains(scheme)
+    }
+
+    /// What typing or pasting `typed` does at the very end of a note whose last line closes
+    /// its properties: the text goes on a new line below them. On the closing line it would
+    /// make `---H`, which closes nothing, and the properties would become text. Nil elsewhere,
+    /// and for spaces, which the closing line may end with.
+    public static func typingBelowClosingProperties(typed: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
+        guard selection.length == 0, selection.location == text.length, text.length > 0, !typed.isEmpty,
+              typed.rangeOfCharacter(from: CharacterSet.whitespacesAndNewlines.inverted) != nil,
+              let firstCharacter = typed.utf16.first, !isLineBreakUnit(firstCharacter),
+              !isLineBreakUnit(text.character(at: text.length - 1)), FrontmatterLocator.length(in: text) == text.length else { return nil }
+        let replacement = lineBreakForNewLine(lineStart: text.lineRange(for: NSRange(location: text.length, length: 0)).location,
+                                              lineEnd: text.length, contentsEnd: text.length, in: text) + typed
+        return MarkdownTextEdit(range: selection, replacement: replacement, selectionAfter: NSRange(location: text.length + replacement.utf16.count, length: 0))
     }
 
     /// Backspace between an empty pair, such as `(|)` or `[[|]]`, removes both halves.
@@ -693,11 +738,5 @@ public enum MarkdownEditing {
     /// line, and the Unicode line and paragraph separators.
     private static func isLineBreakUnit(_ unit: unichar) -> Bool {
         unit == 10 || unit == 13 || unit == 0x85 || unit == 0x2028 || unit == 0x2029
-    }
-
-    private static func trailingLineEndingLength(_ text: String) -> Int {
-        let units = Array(text.utf16.suffix(2))
-        guard let last = units.last, isLineBreakUnit(last) else { return 0 }
-        return last == 10 && units.count == 2 && units[0] == 13 ? 2 : 1
     }
 }

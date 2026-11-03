@@ -5,7 +5,7 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 01/11/2026
  */
 
@@ -33,6 +33,8 @@ public final class ProcessServices {
     /// Where documents were left in each vault. One store for every window, so two windows
     /// on one vault do not overwrite each other's places with copies read earlier.
     let documentPlaceStore: DocumentPlaceStore
+    /// The recently opened files of each vault, one list for every window on the vault.
+    let recentFilesStore: RecentFilesStore
     /// Each vault's graph groups, for every window. Built the first time a graph or a vault's
     /// removal asks for it, so a launch that shows no graph builds nothing for it.
     private(set) lazy var graphColorGroups = GraphColorGroupStore(defaults: defaults, makeIdentifier: UUID.init)
@@ -72,6 +74,7 @@ public final class ProcessServices {
         preferences = GraphitePreferences(defaults: defaults)
         vaultLibrary = VaultLibrary(defaults: defaults)
         documentPlaceStore = DocumentPlaceStore(defaults: defaults)
+        recentFilesStore = RecentFilesStore(defaults: defaults)
         self.applicationFolders = applicationFolders
         addOns = .standard(applicationFolders: applicationFolders)
         vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)

@@ -1,3 +1,15 @@
+/**
+ * File: NotebookImportRun.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The work of one notebook import, away from the main actor: lists the chosen sources, converts the notebooks
+ *              one at a time into the vault, and leaves no empty folder behind.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteApple
@@ -7,7 +19,8 @@ import NotebookImport
 /// one at a time, each into a PDF and its recordings in the vault, never changing a source. A chosen folder becomes a
 /// new folder of its name (a free one, "Courses 1" when "Courses" is taken) holding the same subfolders as the source,
 /// and a chosen notebook goes into the destination folder itself. Each file takes a free name. Cancelling stops at the
-/// next page: the notebook being converted leaves nothing, the ones before stay, the rest are not started.
+/// next page: the notebook being converted leaves nothing, the ones before stay, the rest are not started. A folder the
+/// run made that holds nothing when it ends (cancelled, or every notebook in it failed) is removed again.
 struct NotebookImportRun: Sendable {
     /// The name of an imported notebook whose file name leaves nothing usable, such as ".goodnotes".
     static let fallbackNotebookName = "Imported Notebook"
@@ -32,7 +45,9 @@ struct NotebookImportRun: Sendable {
         let accessedSources = sources.filter { source in source.startAccessingSecurityScopedResource() }
         defer { for source in accessedSources { source.stopAccessingSecurityScopedResource() } }
         progress.yield(.listing)
-        let items = await items(for: sources, into: destination, summary: &summary)
+        var madeFolders: [VaultPath] = []
+        let items = await items(for: sources, into: destination, summary: &summary, madeFolders: &madeFolders)
+        defer { removeEmptyFolders(madeFolders, holdingNotebooksOf: items) }
         var state = NotebookImportProgress(notebookCount: items.count, finishedNotebookCount: 0, currentNotebookName: nil, currentPageCount: 0,
                                            finishedPageCount: 0)
         progress.yield(state)
@@ -57,7 +72,8 @@ struct NotebookImportRun: Sendable {
 
     /// The notebooks of the sources, in the order chosen: a notebook as it is, a folder's notebooks in Finder's order. A
     /// folder's own vault folder is made here, so its name is held before any notebook is written.
-    private func items(for sources: [URL], into destination: VaultPath, summary: inout NotebookImportSummary) async -> [Item] {
+    private func items(for sources: [URL], into destination: VaultPath, summary: inout NotebookImportSummary,
+                        madeFolders: inout [VaultPath]) async -> [Item] {
         var items: [Item] = []
         for source in sources {
             if let format = NotebookFileFormat(fileExtension: source.pathExtension), !source.hasDirectoryPath {
@@ -74,6 +90,7 @@ struct NotebookImportRun: Sendable {
                 }
                 let folder = try await vault.freePath(destination, folderName, "")
                 try await vault.makeFolder(folder)
+                madeFolders.append(folder)
                 for notebook in listing.notebooks {
                     let notebookFolder = notebook.folderPath.isEmpty ? folder : try folder.appending(notebook.folderPath.joined(separator: "/"))
                     items.append(Item(location: notebook.location, format: notebook.format, folder: notebookFolder))
@@ -110,6 +127,32 @@ struct NotebookImportRun: Sendable {
         } catch {
             // A free name or a folder the vault could not give: nothing of this notebook was written.
             return .failed(.notWritten)
+        }
+    }
+
+    /// Removes the folders this run made (`madeFolders`, and the subfolders of them that its notebooks go into) that hold
+    /// nothing, the deepest first; a folder that holds anything, or that was there before, stays.
+    private func removeEmptyFolders(_ madeFolders: [VaultPath], holdingNotebooksOf items: [Item]) {
+        var candidates = Set(madeFolders)
+        for item in items {
+            guard let madeFolder = madeFolders.first(where: { madeFolder in item.folder.isInside(madeFolder) }) else { continue }
+            var folder = item.folder
+            while folder != madeFolder {
+                candidates.insert(folder)
+                folder = folder.parent
+            }
+        }
+        let deepestFirst = candidates.sorted { leftFolder, rightFolder in
+            leftFolder.rawValue.split(separator: "/").count > rightFolder.rawValue.split(separator: "/").count
+        }
+        for folder in deepestFirst {
+            guard let location = try? vault.location(folder), // A folder with no location is not ours to remove.
+                  let contents = try? FileManager.default.contentsOfDirectory(atPath: location.path), // A folder that cannot be listed is kept.
+                  contents.isEmpty else { continue }
+            var coordinationError: NSError?
+            NSFileCoordinator().coordinate(writingItemAt: location, options: .forDeleting, error: &coordinationError) { coordinatedLocation in
+                try? FileManager.default.removeItem(at: coordinatedLocation) // An empty folder that stays is only clutter.
+            }
         }
     }
 
