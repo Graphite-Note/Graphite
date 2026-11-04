@@ -5,8 +5,8 @@
  * Description: A canvas group's background picture follows its file when the file changes (HUNT-108).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -20,7 +20,7 @@ import GraphiteTestSupport
 final class CanvasGroupBackgroundsTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "CanvasGroupBackgrounds", for: self).root
     }
 

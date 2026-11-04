@@ -7,8 +7,8 @@
  *              while the app is dark, and the sheet's preview, options and export.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 21/10/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -152,7 +152,7 @@ final class NotePDFExportHostedTests: XCTestCase {
         let controller = UIHostingController(rootView: NotePDFExportSheet(export: export))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let sheetWindow = UIWindow(windowScene: scene)
-        sheetWindow.frame = scene.coordinateSpace.bounds
+        sheetWindow.frame = scene.effectiveGeometry.coordinateSpace.bounds
         sheetWindow.rootViewController = controller
         sheetWindow.makeKeyAndVisible()
         defer { sheetWindow.isHidden = true }

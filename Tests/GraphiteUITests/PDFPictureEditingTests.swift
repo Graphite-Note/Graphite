@@ -23,7 +23,7 @@ import GraphiteTestSupport
 final class PDFPictureEditingTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFPictureEditing", for: self).root
     }
 
@@ -86,7 +86,7 @@ final class PDFPictureEditingTests: XCTestCase {
         let placed = try XCTUnwrap(session.pictures(on: page).first)
         let selection = try XCTUnwrap(session.selectedPicture)
 
-        try await step(in: session) { try await session.rotatePictureRight(selection) }
+        try await step(in: session) { try session.rotatePictureRight(selection) }
         let turned = try XCTUnwrap(session.pictures(on: page).first)
         XCTAssertEqual(turned.name, placed.name)
         XCTAssertEqual(turned.bounds.width, placed.bounds.height, accuracy: 0.01)

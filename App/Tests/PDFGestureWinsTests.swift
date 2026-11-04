@@ -1,3 +1,13 @@
+/**
+ * File: PDFGestureWinsTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: A person's drag or pinch on a PDF always wins.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.7
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -425,7 +435,7 @@ final class PDFGestureWinsTests: XCTestCase {
             window.frame = CGRect(origin: .zero, size: size)
             controller.traitOverrides.horizontalSizeClass = size.width < 700 ? .compact : .regular
         } else {
-            window.frame = scene.coordinateSpace.bounds
+            window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         }
         window.rootViewController = controller
         window.makeKeyAndVisible()

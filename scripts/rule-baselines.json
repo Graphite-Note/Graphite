@@ -38,6 +38,7 @@
     "user-defaults-standard-in-tests": 72,
     "visible-window-in-tests": 0,
     "wait-until-copies": 1,
+    "warning-directives": 0,
     "workspace-model-parameters": 24,
     "workspace-model-stored": 74,
     "xct-skip-count": 39

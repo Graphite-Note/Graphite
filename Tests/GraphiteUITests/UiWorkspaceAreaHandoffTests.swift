@@ -5,8 +5,8 @@
  * Description: PDF session behavior that other groups' fixes asked the workspace area to complete.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 02/11/2026
+ * Version: 0.9
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -28,7 +28,7 @@ import GraphiteTestSupport
 final class UiWorkspaceAreaPDFHandoffTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "WorkspaceAreaPDF", for: self).root
     }
 

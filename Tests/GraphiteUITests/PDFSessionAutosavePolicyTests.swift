@@ -1,3 +1,13 @@
+/**
+ * File: PDFSessionAutosavePolicyTests.swift
+ * -----------------------------------------
+ * Layer: Tests
+ * Description: How long PDF autosave waits and how many steps the history keeps.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -15,7 +25,7 @@ final class PDFSessionAutosavePolicyTests: XCTestCase {
     private var directory: URL!
     private let clock = ManualClock()
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionAutosavePolicy", for: self).root
     }
 

@@ -1,3 +1,13 @@
+/**
+ * File: PDFSessionSaveRevisionTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: A save replaces the PDF only if it still is the file that was read.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -12,11 +22,11 @@ import GraphiteTestSupport
 final class PDFSessionSaveRevisionTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionSaveRevision", for: self).root
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
         try? FileManager.default.removeItem(at: directory)
     }

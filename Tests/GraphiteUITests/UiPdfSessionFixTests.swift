@@ -1,3 +1,14 @@
+/**
+ * File: UiPdfSessionFixTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: A PDF session's saves: later saves replay only newer edits, overlapping saves keep every edit, and an
+ *              external change under unsaved edits is a conflict.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import Observation
@@ -22,11 +33,11 @@ private final class ObservationFlag: @unchecked Sendable {
 final class UiPdfSessionFixTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionFix", for: self).root
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
         try? FileManager.default.removeItem(at: directory)
     }

@@ -6,8 +6,8 @@
  *              and from page links, when the PDF is already open in another tab or on the other side.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 03/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -196,7 +196,7 @@ final class PDFLinkFollowingTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

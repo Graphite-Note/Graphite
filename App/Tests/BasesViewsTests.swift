@@ -1,3 +1,13 @@
+/**
+ * File: BasesViewsTests.swift
+ * ---------------------------
+ * Layer: Tests
+ * Description: Bases views hosted in the app.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -218,7 +228,7 @@ final class BasesViewsTests: XCTestCase {
         let controller = UIHostingController(rootView: AnyView(rootView))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()

@@ -5,7 +5,7 @@
  * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
  *
  * Authors: Bahey Shalash
- * Version: 0.21
+ * Version: 0.22
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -56,7 +56,9 @@ final class PencilToolsTests: XCTestCase {
             func deleteBackward() {}
             override var canBecomeFirstResponder: Bool { true }
         }
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 600, height: 600)
         windows.append(window)
         let canvas = HistoryCanvasView(frame: window.bounds)
         let toolPickerHost = PencilToolPickerHostView()
@@ -602,7 +604,7 @@ final class PencilToolsTests: XCTestCase {
     func testAHoverWhoseEndingWasLostStopsMakingFingersWait() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.makeKeyAndVisible()
         windows.append(window)
         let pageView = UIView(frame: window.bounds)
@@ -1206,7 +1208,7 @@ final class PencilToolsTests: XCTestCase {
         let controller = UIHostingController(rootView: rootView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()

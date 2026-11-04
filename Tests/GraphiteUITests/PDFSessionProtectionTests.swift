@@ -1,3 +1,14 @@
+/**
+ * File: PDFSessionProtectionTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: A PDF that is encrypted, forbids comments and changes, or is digitally signed is shown without being
+ *              changed.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -11,7 +22,7 @@ import GraphiteTestSupport
 final class PDFSessionProtectionTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionProtection", for: self).root
     }
 

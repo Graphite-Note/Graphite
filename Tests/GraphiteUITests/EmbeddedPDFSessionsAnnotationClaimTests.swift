@@ -1,3 +1,13 @@
+/**
+ * File: EmbeddedPDFSessionsAnnotationClaimTests.swift
+ * ---------------------------------------------------
+ * Layer: Tests
+ * Description: Only one embed annotates a given PDF at a time.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -13,11 +23,11 @@ import GraphiteTestSupport
 final class EmbeddedPDFSessionsAnnotationClaimTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "EmbeddedPDFSessionsClaim", for: self).root
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: directory.path)
         try? FileManager.default.removeItem(at: directory)
     }

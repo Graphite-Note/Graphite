@@ -5,8 +5,8 @@
  * Description: The iPad's note editor keeps its place through mode, width, fold and appearance changes, and its edits leave properties and folds whole.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -46,7 +46,7 @@ final class NoteEditorPlaceAndGuardHostedTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

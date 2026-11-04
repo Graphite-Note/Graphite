@@ -5,8 +5,8 @@
  * Description: A look chosen in Graphite on the Mac is written where Finder reads it, so the tile
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -20,7 +20,7 @@ import GraphiteTestSupport
 final class LibraryModelTests: XCTestCase {
     private var vault: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         let files = ["Courses/Week 1.pdf": "x", "Courses/Summary.md": "x", "Courses/Photos/board.png": "x", "Inbox.md": "x"]
         vault = try TemporaryVault.make(prefix: "LibraryModel", files: files, for: self).root
     }

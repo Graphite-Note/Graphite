@@ -180,7 +180,7 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
         // The wide case needs a window at least as wide: on a phone only the narrow one runs.
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
-        let widths: [CGFloat] = scene.coordinateSpace.bounds.width >= 700 ? [700, 170] : [170]
+        let widths: [CGFloat] = scene.effectiveGeometry.coordinateSpace.bounds.width >= 700 ? [700, 170] : [170]
         print("DEVICE-APPEARANCE: style \(scene.traitCollection.userInterfaceStyle.rawValue), bold text \(UIAccessibility.isBoldTextEnabled), "
               + "text size \(scene.traitCollection.preferredContentSizeCategory.rawValue)")
         for width in widths {
@@ -267,7 +267,7 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
         let controller = UIHostingController(rootView: rootView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

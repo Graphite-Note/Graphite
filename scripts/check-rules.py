@@ -1,4 +1,13 @@
 #!/usr/bin/env python3
+# File: check-rules.py
+# --------------------
+# Layer: Scripts
+# Description: The rule gates of Docs/solid/: counts what the rules forbid in Graphite's sources and fails when a
+#              count rises above its baseline; `#warning` has a baseline of 0.
+#
+# Authors: Bahey Shalash
+# Version: 0.6
+# Date: 04/11/2026
 """The ratchet of Docs/solid/rewrite-foundations.md section 12.2: counts what the rules forbid and fails when a count rises.
 
 Each gate is a grep or count taken from the "how to check" of a rule in Docs/solid/principles/ or Docs/solid/testing.md.
@@ -526,6 +535,10 @@ def build_gates():
              lambda tree: pattern_hits(tests(tree), r"\b\w+\.(?:orderFront|makeKeyAndOrderFront|orderFrontRegardless)\(")),
         Gate("test-round-names", "TR 2, FR-83", "test files named `Fix`, `Regression` or `Handoff` (name the file after the type it pins)",
              lambda tree: round_named_test_file_hits(tests(tree))),
+        # Warnings (RULES.md, "No warnings": warnings are errors in every build of Graphite's own code)
+        Gate("warning-directives", "RULES.md No warnings", "`#warning` in Graphite's own Swift files, production or tests (it fails the build; "
+             "an open task goes in the record, Docs/<Feature>-todo.md)",
+             lambda tree: pattern_hits(production(tree) + tests(tree), r"#warning\b")),
     ]
     return gates
 

@@ -6,8 +6,8 @@
  *              rejection, and Apple Pencil's double tap and squeeze are answered with the bar hidden.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 02/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -32,7 +32,7 @@ final class PencilWhileAnnotatingTests: XCTestCase {
         let controller = UIHostingController(rootView: AnyView(rootView))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()

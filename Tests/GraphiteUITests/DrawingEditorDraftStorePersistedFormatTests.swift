@@ -1,3 +1,13 @@
+/**
+ * File: DrawingEditorDraftStorePersistedFormatTests.swift
+ * -------------------------------------------------------
+ * Layer: Tests
+ * Description: The files the drawing editor keeps for a drawing still open.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 import XCTest
 import GraphiteCore
 import GraphiteApple
@@ -15,7 +25,7 @@ final class DrawingEditorDraftStorePersistedFormatTests: XCTestCase {
     private let vaultIdentifier = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
     private let requestIdentifier = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         temporaryDirectory = try TemporaryVault.make(prefix: "DrawingEditorDraftStorePersistedFormatTests", for: self).root
         draftDirectory = temporaryDirectory.appendingPathComponent("Drawing Drafts", isDirectory: true)
     }

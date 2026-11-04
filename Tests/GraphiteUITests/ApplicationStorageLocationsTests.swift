@@ -1,3 +1,13 @@
+/**
+ * File: ApplicationStorageLocationsTests.swift
+ * --------------------------------------------
+ * Layer: Tests
+ * Description: Where the app keeps its own files outside the vault.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 import XCTest
 import GraphiteCore
 import GraphiteApple
@@ -12,7 +22,7 @@ import GraphiteTestSupport
 final class ApplicationStorageLocationsTests: XCTestCase {
     private var temporaryDirectory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         temporaryDirectory = try TemporaryVault.make(prefix: "ApplicationStorageLocationsTests", for: self).root
     }
 

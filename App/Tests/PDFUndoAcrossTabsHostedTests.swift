@@ -64,7 +64,7 @@ final class PDFUndoAcrossTabsHostedTests: XCTestCase {
         let controller = UIHostingController(rootView: GraphiteRootView(workspace: workspace))
         controller.traitOverrides.horizontalSizeClass = .regular
         let window = UIWindow(windowScene: try scene)
-        window.frame = try scene.coordinateSpace.bounds
+        window.frame = try scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         return window

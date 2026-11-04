@@ -1,3 +1,13 @@
+/**
+ * File: LivePreviewRevealTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Live Preview showing markup one element at a time, in the hosted workspace's own text view.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -469,7 +479,7 @@ final class LivePreviewRevealTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

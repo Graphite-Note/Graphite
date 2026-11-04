@@ -5,14 +5,15 @@
  * Description: A Bases map's camera distances form a valid range at every zoom setting (HUNT-107).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import XCTest
 import MapKit
 @testable import GraphiteUI
 
+@MainActor
 final class BaseMapCameraDistancesTests: XCTestCase {
     /// At zoom 22 and a view 500 points high, both ends came to about 18.7 meters, so the range was
     /// 50...37 and forming it trapped as the map was shown.
