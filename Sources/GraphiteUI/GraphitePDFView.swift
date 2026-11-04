@@ -928,6 +928,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     func resume() {
         isParked = false
         hasAppliedInput = false
+        // Undo and redo reach the canvases shown again, whichever view of the session was attached meanwhile.
+        session.inkCanvasProvider = self
         if let pdfView { healthMonitor = PDFPaneHealthMonitor(coordinator: self, pdfView: pdfView) }
     }
     /// Watches that the PDF keeps taking touches (`PDFPaneHealthMonitor`).
@@ -999,6 +1001,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
+        session.registerUnrecordedInkRecorder(for: self) { [weak self] in self?.recordUnrecordedInkBeforeHistoryStep() }
         zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRenderingScaleUpdate() }
         }

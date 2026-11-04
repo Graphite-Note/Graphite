@@ -6,7 +6,7 @@
  *              page at once instead of building the view, decoding every page's ink and fitting the zoom again.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -35,6 +35,11 @@ final class HiddenPDFViews {
     static let maximumKeptViewCount = 1
 
     private var keptViews: [KeptView] = []
+    /// Kept views whose coordinator SwiftUI was given for a view being made, until that view takes them back
+    /// (`takeView`). Keeping another tab's view in the same update evicted the oldest kept view, this one, and
+    /// detached its coordinator after SwiftUI had it: the new view then ran on a detached coordinator, whose saves
+    /// skipped the ink's records and whose canvases stayed at their zoom.
+    private var handedOutViews: [KeptView] = []
     private let notificationCenter: NotificationCenter
     private var memoryWarningObserver: (any NSObjectProtocol)?
     /// For tests: how many views were kept and how many shown again.
@@ -51,7 +56,7 @@ final class HiddenPDFViews {
 
     isolated deinit {
         if let memoryWarningObserver { notificationCenter.removeObserver(memoryWarningObserver) }
-        for keptView in keptViews { keptView.coordinator.detach() }
+        for keptView in keptViews + handedOutViews { keptView.coordinator.detach() }
     }
 
     /// Keeps the view of a tab being hidden; a view kept before goes beyond `maximumKeptViewCount`.
@@ -71,11 +76,17 @@ final class HiddenPDFViews {
             letGo { candidate in candidate.coordinator === keptView.coordinator }
             return nil
         }
+        keptViews.removeAll { candidate in candidate.coordinator === keptView.coordinator }
+        handedOutViews.append(keptView)
         return keptView.coordinator
     }
 
     /// Takes the view kept with this coordinator out, to be shown again.
     func takeView(keptWith coordinator: PDFAnnotationCoordinator) -> GraphitePDFDisplayView? {
+        if let index = handedOutViews.firstIndex(where: { keptView in keptView.coordinator === coordinator }) {
+            shownAgainCount += 1
+            return handedOutViews.remove(at: index).view
+        }
         guard let index = keptViews.firstIndex(where: { keptView in keptView.coordinator === coordinator }) else { return nil }
         let keptView = keptViews.remove(at: index)
         shownAgainCount += 1
@@ -93,8 +104,9 @@ final class HiddenPDFViews {
     }
 
     private func letGo(where shouldLetGo: (KeptView) -> Bool) {
-        let leaving = keptViews.filter(shouldLetGo)
+        let leaving = keptViews.filter(shouldLetGo) + handedOutViews.filter(shouldLetGo)
         keptViews.removeAll(where: shouldLetGo)
+        handedOutViews.removeAll(where: shouldLetGo)
         for keptView in leaving { keptView.coordinator.detach() }
     }
 }

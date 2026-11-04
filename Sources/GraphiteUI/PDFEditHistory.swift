@@ -5,10 +5,11 @@
  * Description: A page named by steps of the undo history.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 import Foundation
+import OSLog
 import PDFKit
 import GraphiteCore
 import GraphiteApple
@@ -25,6 +26,25 @@ import PencilKit
 // saving replays on the file, so the file and the open document never disagree about what
 // an undo did. Steps name pages through `PDFHistoryPage` boxes, which follow a page when
 // undo or redo puts a new copy of it in the document (a deletion undone, an insertion redone).
+
+/// A PDF's undo history. Every way into it, the toolbar, a shortcut or Apple Pencil's double tap, first lets the views
+/// record ink their canvases show that the history does not know yet as a step of its own (`PDFSession.recordUnrecordedInk`):
+/// Undo then takes back the stroke the person sees last, and each step meets the drawing it recorded. Without it a
+/// step met a canvas holding a stroke it had not been told of, and Undo said "The ink on this page changed in a way
+/// this step does not know" (HUNT-005, seen by the owner on 2026-11-04).
+final class PDFUndoManager: UndoManager {
+    var beforeHistoryStep: (() -> Void)?
+
+    override func undo() {
+        beforeHistoryStep?()
+        super.undo()
+    }
+
+    override func redo() {
+        beforeHistoryStep?()
+        super.redo()
+    }
+}
 
 /// A page named by steps of the undo history. Holding it weakly lets a deleted page go;
 /// undoing the deletion inserts a copy and points the box at it.
@@ -96,6 +116,8 @@ protocol PDFInkCanvasProvider: AnyObject {
 extension PDFSession {
     private static let pageNoLongerExists = GraphiteError.invalidFile("This page no longer exists, so the change cannot be undone.")
     private static let inkChangedOutsideHistory = GraphiteError.invalidFile("The ink on this page changed in a way this step does not know, so it was not undone.")
+    /// Says what a step of ink met when it could not be applied, for the next report of HUNT-005.
+    private static let historyLog = Logger(subsystem: "com.graphite.study", category: "PDFHistory")
     /// Deleting copies the pages first, for Undo; edits made meanwhile make it copy again.
     private static let maximumDeletionCopyAttempts = 3
 
@@ -313,14 +335,24 @@ extension PDFSession {
         guard let page = drawnPage.page else { throw Self.pageNoLongerExists }
         if let canvas = inkCanvasProvider?.editingCanvas(for: page) {
             canvas.endInteractionsBeforeHistory()
-            guard let drawing = transform(canvas.drawing) else { throw Self.inkChangedOutsideHistory }
+            guard let drawing = transform(canvas.drawing) else {
+                let strokeCounts = "\(canvas.drawing.strokes.count) strokes shown, \(canvas.recordedDrawing.strokes.count) recorded"
+                Self.historyLog.error("A step of ink did not fit page \(pageIndex + 1, privacy: .public)'s canvas: \(strokeCounts, privacy: .public)")
+                throw Self.inkChangedOutsideHistory
+            }
             canvas.showDrawingFromHistory(drawing)
             showInk(in: changedBounds, on: page, at: pageIndex, overlaySize: overlaySize)
             return
         }
+        // No canvas edits the page: its stored record is its ink, which a view writes after its strokes, not at each one.
+        writePendingInkRecords()
         let currentInk = try Self.editableInk(on: page)
         var tracker = currentInk.tracker
-        guard let drawing = transform(currentInk.drawing) else { throw Self.inkChangedOutsideHistory }
+        guard let drawing = transform(currentInk.drawing) else {
+            let storedCount = currentInk.drawing.strokes.count
+            Self.historyLog.error("A step of ink did not fit page \(pageIndex + 1, privacy: .public)'s stored record of \(storedCount, privacy: .public)")
+            throw Self.inkChangedOutsideHistory
+        }
         let coordinates = try PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: overlaySize)
         try apply(.updateInk(tracker.update(for: drawing, pageIndex: pageIndex, coordinates: coordinates)))
         showInk(in: changedBounds, on: page, at: pageIndex, overlaySize: overlaySize)
