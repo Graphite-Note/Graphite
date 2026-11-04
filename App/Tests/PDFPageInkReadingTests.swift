@@ -7,7 +7,7 @@
  *              drawn while that ink is decoded, which are kept.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -221,22 +221,24 @@ final class PDFPageInkReadingTests: XCTestCase {
         XCTAssertFalse(session.undoAvailability.canUndo, "Reading the stored ink was no edit")
     }
 
-    /// HUNT-307: a save while the stored ink is still decoded reads it at once, so the strokes
+    /// HUNT-307: a save while the stored ink is still decoded reads it before writing, so the strokes
     /// drawn meanwhile reach the file after the stored ones, and the late decode adds nothing.
+    /// HUNT-313: it decodes the page away from the main actor; decoding it there froze the app.
     func testASaveWhileAPagesInkIsDecodedKeepsTheStrokesDrawnMeanwhile() async throws {
         let (session, pdfView, _, window) = try await hostedNotebook(named: "SaveWhileDecoding", pageCount: 8)
         defer { window.isHidden = true; window.rootViewController = nil }
         session.isWriting = true
         try await waitUntil("the PDF is written on") { pdfView.annotationCoordinator?.isWriting == true }
         let storedDrawing = drawing()
-        let (page, overlay, _) = try pageDecodingStoredInk(storedDrawing, in: session, pdfView: pdfView)
+        let (page, overlay, coordinator) = try pageDecodingStoredInk(storedDrawing, in: session, pdfView: pdfView)
         let canvas = overlay.canvas
         let newStroke = stroke(atHeight: 700, creationSeconds: 9_000)
         canvas.drawing = PKDrawing(strokes: [newStroke])
 
         try await session.save()
         let expectedDates = creationDates(of: storedDrawing) + [newStroke.path.creationDate]
-        XCTAssertFalse(canvas.isRestoringStoredInk, "The save read the stored ink at once")
+        XCTAssertFalse(canvas.isRestoringStoredInk, "The save read the stored ink before writing")
+        XCTAssertEqual(coordinator.mainActorDecodeCount, 0, "and decoded none of it on the main actor")
         XCTAssertEqual(creationDates(of: canvas.drawing), expectedDates)
         let reopened = try XCTUnwrap(PDFDocument(url: session.location)?.page(at: 7))
         let savedGroup = try XCTUnwrap(PDFInkGroups.editableGroup(on: reopened))
