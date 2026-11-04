@@ -230,6 +230,7 @@ private struct GeneralSettingsPage: View {
 
     var body: some View {
         Form {
+            AnnotationAuthorSettingsSection(preferences: workspace.preferences)
             Section {
                 if let identifier = workspace.currentVaultIdentifier, let vault = workspace.vaultLibrary.vault(withIdentifier: identifier) {
                     LabeledContent("Vault", value: vault.name)
