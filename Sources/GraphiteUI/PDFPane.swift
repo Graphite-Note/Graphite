@@ -6,7 +6,7 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.29
+ * Version: 0.30
  * Date: 04/11/2026
  */
 
@@ -424,6 +424,14 @@ private struct PDFPaneContent: View {
         // adding pages are in More, and while writing, the palette has its own Undo and Redo.
         // A narrow regular width folds adding pages first, then the pages and find.
         ToolbarItemGroup(placement: .primaryAction) { Group {
+            #if canImport(UIKit)
+            // With Apple's floating palette on screen, Graphite's own actions the palette cannot
+            // hold, one tap away as on the Fixed Bar, in the room of the palette's Undo and Redo (HUNT-309).
+            if annotationInput.showsToolPicker && !isCompactWidth {
+                PencilPaletteCompanionButtons(session: session, pictureSource: $pictureSource, offersReadAloudPen: readAloud != nil,
+                                              inkSelection: { PaletteInkSelection.of(session.pdfView?.window?.windowScene) })
+            }
+            #endif
             if !foldsFindAndPages {
                 Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
                     withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }

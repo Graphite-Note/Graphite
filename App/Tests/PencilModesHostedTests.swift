@@ -3,10 +3,11 @@
  * ----------------------------------
  * Layer: Tests
  * Description: Hosted tests that the two ways of writing on a PDF (Settings › Pencil Drawings: Graphite's fixed bar,
- *              or the system's floating palette with Graphite's button at its end) offer the same tools (HUNT-309).
+ *              or the system's floating palette with Graphite's button at its end) offer the same tools, and that with
+ *              the palette Add Image and Graphite's tools are buttons of the PDF's toolbar (HUNT-309).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -14,7 +15,9 @@
 import XCTest
 import SwiftUI
 import PencilKit
+import GraphiteApple
 import GraphiteCore
+import GraphiteIndex
 @testable import GraphiteUI
 
 /// The owner's report of 2026-11-04: "why is it that I cannot access a bunch of features when I use one of the two
@@ -98,6 +101,92 @@ final class PencilModesHostedTests: XCTestCase {
         attachment.name = "The fixed bar's tools"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    // MARK: The floating palette's companions in the toolbar
+
+    /// The owner's report of 2026-11-04: "When I'm using the floating Apple Pencil utilities, I cannot add an image." A
+    /// PDF written on with the Floating Palette, in a window of the 11-inch iPad held sideways: Add Image, the text tool,
+    /// Graphite's lasso and the laser pointer are buttons of the PDF's toolbar, each one tap away, as on the Fixed Bar.
+    func testWithTheFloatingPaletteAddImageAndGraphitesToolsAreButtonsOfTheToolbar() async throws {
+        let directory = try TemporaryVault.make(prefix: "FloatingPaletteActions", for: self).root
+        try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .ruled), pageCount: 2).write(to: directory.appendingPathComponent("Paper.pdf"))
+        try Data("# Untitled\n".utf8).write(to: directory.appendingPathComponent("Untitled.md"))
+        let workspace = WorkspaceModel()
+        workspace.folderAccess = FolderAccess(root: directory)
+        workspace.store = VaultStore(root: directory)
+        workspace.index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
+        await workspace.open(try VaultPath("Untitled.md"))
+        await workspace.open(try VaultPath("Paper.pdf"), placement: .newTab)
+        let session = try XCTUnwrap(workspace.pdfSession)
+        let deviceDefaults = workspace.deviceDefaults
+        let savedToolbarStyle = deviceDefaults.object(forKey: PencilToolbarStyle.preferenceKey)
+        deviceDefaults.set(PencilToolbarStyle.floating.rawValue, forKey: PencilToolbarStyle.preferenceKey)
+        try Self.setAccessibilityRuntimeEnabled(true)
+        defer {
+            try? Self.setAccessibilityRuntimeEnabled(false) // Left on, it slows later tests and changes nothing they check.
+            if let savedToolbarStyle { deviceDefaults.set(savedToolbarStyle, forKey: PencilToolbarStyle.preferenceKey) }
+            else { deviceDefaults.removeObject(forKey: PencilToolbarStyle.preferenceKey) }
+        }
+        session.isWriting = true
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let controller = UIHostingController(rootView: GraphiteRootView(workspace: workspace))
+        controller.traitOverrides.horizontalSizeClass = .regular
+        controller.traitOverrides.verticalSizeClass = .regular
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 1_194, height: 834)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await waitUntil("the PDF shows") { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
+
+        let actions = ["Add Image", "Text Box", "Select Ink", "Laser Pointer"]
+        var elements: [NSObject] = []
+        try await waitUntil("the palette's companions are in the toolbar", timeoutSeconds: 30, pollingIntervalSeconds: 0.25) {
+            elements = self.accessibilityElements(in: window)
+            return actions.allSatisfy { action in elements.contains { element in element.accessibilityLabel == action } }
+        }
+        let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let attachment = XCTAttachment(image: screenshot)
+        attachment.name = "Floating Palette: Add Image and Graphite's tools in the PDF's toolbar"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        XCTAssertFalse(PencilToolbarStyle.fixed.rawValue == deviceDefaults.string(forKey: PencilToolbarStyle.preferenceKey), "The Floating Palette is chosen.")
+        for action in actions {
+            let element = try XCTUnwrap(elements.first { element in element.accessibilityLabel == action }, "\(action) is in the toolbar.")
+            XCTAssertTrue(element.accessibilityTraits.contains(.button), "\(action) is a button, one tap away.")
+            XCTAssertTrue(window.bounds.intersects(element.accessibilityFrame), "\(action) is on screen.")
+        }
+
+        // A tap on Select Ink takes up Graphite's lasso for the palette's canvases, as the palette's own menu does.
+        let inkSelection = PaletteInkSelection.of(scene)
+        inkSelection.tool = .none
+        let selectInk = try XCTUnwrap(elements.first { element in element.accessibilityLabel == "Select Ink" })
+        XCTAssertTrue(selectInk.accessibilityActivate())
+        try await waitUntil("the lasso is taken up") { inkSelection.tool == .lasso }
+        inkSelection.tool = .none
+    }
+
+    private static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
+        let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW), "The simulator's accessibility library.")
+        typealias Setter = @convention(c) (Int32) -> Void
+        for name in ["_AXSSetAutomationEnabled", "_AXSApplicationAccessibilitySetEnabled"] {
+            let symbol = try XCTUnwrap(dlsym(library, name), name)
+            unsafeBitCast(symbol, to: Setter.self)(isEnabled ? 1 : 0)
+        }
+    }
+
+    private func accessibilityElements(in object: NSObject) -> [NSObject] {
+        var elements: [NSObject] = object.isAccessibilityElement ? [object] : []
+        let count = object.accessibilityElementCount()
+        if let children = object.accessibilityElements {
+            elements += children.compactMap { child in child as? NSObject }.flatMap(accessibilityElements)
+        } else if count != NSNotFound, count > 0 {
+            elements += (0..<count).compactMap { elementIndex in object.accessibilityElement(at: elementIndex) as? NSObject }.flatMap(accessibilityElements)
+        } else if let view = object as? UIView {
+            elements += view.subviews.flatMap(accessibilityElements)
+        }
+        return elements
     }
 }
 #endif

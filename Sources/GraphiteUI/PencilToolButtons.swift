@@ -6,7 +6,7 @@
  *              palette.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 04/11/2026
  */
 
@@ -18,13 +18,14 @@ import UIKit
 import PencilKit
 
 /// The buttons of the bar's tools, shared by the fixed bar and the palette Apple Pencil's
-/// squeeze opens.
+/// squeeze opens. Each is as wide as the bar's density sets (`PencilToolRowLayout.Density`)
+/// and touched over the row's whole height.
 @MainActor
 struct PencilToolButtons {
     let toolbox: PencilToolbox
     let rowHeight: CGFloat
+    var density: PencilToolRowLayout.Density = .regular
 
-    private var buttonSide: CGFloat { PencilToolbarMetrics.buttonSide }
     private var selectedFill: AnyShapeStyle { PencilToolbarMetrics.selectedFill }
 
     /// An ink preset; a tap on the one in use calls `tapOnPresetInUse`.
@@ -33,7 +34,8 @@ struct PencilToolButtons {
         return Button {
             if isInUse { tapOnPresetInUse() } else { toolbox.usePreset(at: presetIndex) }
         } label: {
-            glyphLabel(PencilToolGlyph(tool: .ink(preset.ink), inkHex: preset.colorHex, inkOpacity: preset.opacity, isInUse: isInUse))
+            glyphLabel(PencilToolGlyph(tool: .ink(preset.ink), inkHex: preset.colorHex, inkOpacity: preset.opacity, isInUse: isInUse,
+                                       side: density.toolSide))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(preset.ink.title)
@@ -46,32 +48,33 @@ struct PencilToolButtons {
         return Button {
             toolbox.use(kind)
         } label: {
-            glyphLabel(PencilToolGlyph(tool: PencilToolGlyph.Tool(kind: kind), isInUse: isInUse))
+            glyphLabel(PencilToolGlyph(tool: PencilToolGlyph.Tool(kind: kind), isInUse: isInUse, side: density.toolSide))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(kind.title)
         .accessibilityAddTraits(isInUse ? .isSelected : [])
     }
 
-    /// A tool centered in the row, taking touches over the row's whole height.
+    /// A tool centered in its width, taking touches over the row's whole height.
     private func glyphLabel(_ glyph: PencilToolGlyph) -> some View {
         glyph
-            .frame(width: buttonSide, height: rowHeight)
+            .frame(width: density.toolPitch, height: rowHeight)
             .contentShape(Rectangle())
     }
 
-    /// One of three sizes, of an ink or of the eraser. Where a second tap on the size in use
-    /// opens its width, VoiceOver says so.
-    /// One of the three sizes, as a dot as large as its width (`PencilSizeDot`).
+    /// One of the three sizes, of an ink or of the eraser, as a dot as large as its width
+    /// (`PencilSizeDot`). Where a second tap on the size in use opens its width, VoiceOver says so.
     func sizeButton(choiceIndex: Int, width: Double, isChosen: Bool, opensWidthWhenChosen: Bool = false, choose: @escaping () -> Void) -> some View {
-        let diameter = CGFloat(PencilSizeDot.diameter(forWidth: width))
+        let side = CGFloat(density.sizeSide)
+        // The broadest dots are drawn no wider than the button leaves room for.
+        let diameter = min(CGFloat(PencilSizeDot.diameter(forWidth: width)), side - 4)
         return Button(action: choose) {
             Circle()
                 .fill(.primary)
                 .frame(width: diameter, height: diameter)
-                .frame(width: buttonSide, height: buttonSide)
+                .frame(width: side, height: side)
                 .background(isChosen ? selectedFill : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
-                .frame(height: rowHeight)
+                .frame(width: density.sizePitch, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -90,10 +93,12 @@ struct PencilToolButtons {
                 .fill(Color(graphiteHex: hex) ?? .black)
                 // A ring in the text color, so a black ink shows on the dark bar of dark mode.
                 .overlay { Circle().strokeBorder(Color.primary.opacity(0.4), lineWidth: 1) }
-                .frame(width: 20, height: 20)
+                .frame(width: density.swatchDiameter, height: density.swatchDiameter)
                 // A ring, so the color in use is marked by shape as well.
-                .overlay { if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: 28, height: 28) } }
-                .frame(width: buttonSide, height: rowHeight)
+                .overlay {
+                    if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: density.swatchRingDiameter, height: density.swatchRingDiameter) }
+                }
+                .frame(width: density.swatchPitch, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -138,6 +143,8 @@ struct PencilToolGlyph: View {
     var inkHex: String = PencilInk.pen.defaultColorHex
     var inkOpacity: Double = 1
     let isInUse: Bool
+    /// The side of the faint fill of the tool in use: smaller on a narrow bar (`PencilToolRowLayout.Density.toolSide`).
+    var side: Double = PencilToolbarMetrics.buttonSide
 
     private var symbolName: String {
         switch tool {
@@ -175,7 +182,7 @@ struct PencilToolGlyph: View {
                 .overlay { if inkColor != nil { Capsule().strokeBorder(Color.primary.opacity(0.4), lineWidth: 0.5) } }
                 .frame(width: 16, height: 3)
         }
-        .frame(width: PencilToolbarMetrics.buttonSide, height: PencilToolbarMetrics.buttonSide)
+        .frame(width: side, height: side)
         .background(isInUse ? PencilToolbarMetrics.selectedFill : AnyShapeStyle(.clear),
                     in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
         .accessibilityHidden(true)
