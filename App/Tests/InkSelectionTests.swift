@@ -182,10 +182,12 @@ final class InkSelectionTests: XCTestCase {
         func recordState() { states.append(canvas.drawing.strokes.map(\.renderBounds)) }
 
         choose(.pen)
-        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 200), in: window), "The first pen stroke")
+        let strokeAt200 = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 200), in: window)
+        _ = try XCTUnwrap(strokeAt200, "The first pen stroke")
         endEvent(of: session.undoManager)
         recordState()
-        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window), "The second pen stroke")
+        let strokeAt320 = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window)
+        _ = try XCTUnwrap(strokeAt320, "The second pen stroke")
         endEvent(of: session.undoManager)
         recordState()
 
@@ -206,7 +208,8 @@ final class InkSelectionTests: XCTestCase {
         // The highlighter, across the second stroke; choosing it ends the lasso.
         choose(.highlighter)
         XCTAssertFalse(canvas.selectsInk)
-        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window), "The highlighter stroke")
+        let highlighterStroke = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window)
+        _ = try XCTUnwrap(highlighterStroke, "The highlighter stroke")
         endEvent(of: session.undoManager)
         recordState()
         XCTAssertEqual(canvas.drawing.strokes.last?.ink.inkType, .marker)

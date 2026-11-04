@@ -6,8 +6,8 @@
  *              sideways and the smallest zoom.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -111,6 +111,55 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, pdfFrame.minX - 1, "The tools are inside the PDF's side.")
         XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, pdfFrame.maxX + 1, "The tools do not run past the PDF's side.")
         XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, window.bounds.width + 0.5)
+    }
+
+    /// HUNT-106: a PDF beside a note, written on, its view holding first responder for the Pencil's history (beside
+    /// another side the fixed bar is in effect, so Apple's palette does not show). Closing its tab, and showing another
+    /// file in its place, dismantle the PDF's view in the middle of SwiftUI's update; the view gave up first responder
+    /// there, the known cause of the app computing without end. Each time the main queue answers, the PDF's view gives
+    /// up first responder after the update, and the note beside it stays.
+    func testClosingOrLeavingAPDFBesideANoteThatHoldsFirstResponderLeavesTheAppAnswering() async throws {
+        let directory = try makeDirectory("PDFLeavingBesideNote")
+        try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .ruled), pageCount: 2).write(to: directory.appendingPathComponent("Paper.pdf"))
+        try Data("# Lecture\n\nText beside the PDF.\n".utf8).write(to: directory.appendingPathComponent("Lecture.md"))
+        try Data("# Other\n".utf8).write(to: directory.appendingPathComponent("Other.md"))
+        let workspace = WorkspaceModel()
+        workspace.folderAccess = FolderAccess(root: directory)
+        workspace.store = VaultStore(root: directory)
+        workspace.index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
+        await workspace.open(try VaultPath("Lecture.md"))
+        let (window, _) = try host(workspace, size: CGSize(width: 1194, height: 834), horizontalSizeClass: .regular)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let paper = try VaultPath("Paper.pdf")
+
+        for (attempt, leavesByClosing) in [true, false, true].enumerated() {
+            await workspace.open(paper, placement: .otherGroup)
+            let session = try XCTUnwrap(workspace.tabDocuments.values.compactMap(\.pdfSession).first { pdf in pdf.location.lastPathComponent == "Paper.pdf" })
+            session.isWriting = true
+            try await waitUntil("the PDF is shown beside the note, attempt \(attempt)") { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
+            try await waitUntil("the PDF's view holds first responder, attempt \(attempt)") {
+                self.descendants(of: window, matching: PencilToolPickerHostView.self).contains { host in host.isFirstResponder }
+            }
+            let toolPickerHost = try XCTUnwrap(descendants(of: window, matching: PencilToolPickerHostView.self).first { host in host.isFirstResponder })
+            XCTAssertFalse(descendants(of: window, matching: MarkdownTextView.self).isEmpty, "The note is beside the PDF")
+            attachScreenshot(of: window, named: "PDF beside a note, attempt \(attempt)")
+            let pdfTabID = try XCTUnwrap(workspace.layout.tabID(showing: paper))
+            if leavesByClosing {
+                await workspace.closeTab(pdfTabID)
+            } else {
+                // Another file in the PDF's tab: its view goes as the tab shows the note.
+                await workspace.open(try VaultPath("Other.md"))
+                XCTAssertNil(workspace.layout.tabID(showing: paper), "The PDF's tab shows the other note")
+            }
+            var hasMainQueueAnswered = false
+            DispatchQueue.main.async { hasMainQueueAnswered = true }
+            try await waitUntil("the main queue answers after the PDF went, attempt \(attempt)", timeoutSeconds: 5) { hasMainQueueAnswered }
+            try await waitUntil("the PDF's view has gone from the window, attempt \(attempt)") { toolPickerHost.window == nil || !toolPickerHost.isFirstResponder }
+            XCTAssertFalse(toolPickerHost.isFirstResponder, "First responder was given up, attempt \(attempt)")
+            window.layoutIfNeeded()
+            XCTAssertFalse(descendants(of: window, matching: MarkdownTextView.self).isEmpty, "The note stays, attempt \(attempt)")
+            if !leavesByClosing, let otherTabID = workspace.layout.tabID(showing: try VaultPath("Other.md")) { await workspace.closeTab(otherTabID) }
+        }
     }
 
     /// HUNT-262, HUNT-289: the tool row is whole, compact or condensed in any width, never wider than its room.
@@ -269,6 +318,81 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         for button in buttons {
             XCTAssertGreaterThanOrEqual(button.bounds.height, 43.5, "\(button.accessibilityLabel ?? "A button") is a 44-point target.")
         }
+    }
+
+    /// HUNT-144: the keyboard's format bar on an iPhone held upright (393 points wide). The links, the tag and the
+    /// lists come right after Bold and Italic, the link on the first screen of the row, Find stays in view, and the
+    /// row's trailing edge fades while buttons wait beyond it; scrolled to its end, the fade goes. The row is laid out for a phone on this iPad
+    /// simulator through the device kind it is given.
+    func testOnAPhoneTheKeyboardBarShowsLinksListsAndTasksFirstAndFadesWhereItScrolls() throws {
+        var actions = EditorActions()
+        actions.attach = {}
+        actions.draw = {}
+        let toolbar = EditorKeyboardToolbar(actions: actions, idiom: .phone, run: { _ in })
+        toolbar.overrideUserInterfaceStyle = .light
+        let window = UIWindow(windowScene: try scene)
+        window.frame = CGRect(x: 0, y: 0, width: 393, height: 200)
+        window.traitOverrides.horizontalSizeClass = .compact
+        window.addSubview(toolbar)
+        window.isHidden = false
+        defer { window.isHidden = true }
+        toolbar.frame = CGRect(x: 0, y: 100, width: 393, height: EditorKeyboardToolbar.height)
+        toolbar.layoutIfNeeded()
+        let scrollView = try XCTUnwrap(descendants(of: toolbar, matching: UIScrollView.self).first)
+        let rowButtons = descendants(of: scrollView, matching: UIButton.self).filter { button in !button.isHidden && !(button.superview?.isHidden ?? false) }
+            .sorted { leftButton, rightButton in leftButton.convert(leftButton.bounds, to: scrollView).minX < rightButton.convert(rightButton.bounds, to: scrollView).minX }
+        let order = rowButtons.compactMap(\.accessibilityLabel)
+        print("KEYBOARD-BAR phone order: \(order)")
+        XCTAssertEqual(Array(order.prefix(10)), ["Undo", "Redo", "Heading", "Bold", "Italic", "Link to note", "Tag", "Bulleted list", "Numbered list", "Task"])
+        let visibleWidth = scrollView.bounds.width
+        let onFirstScreen = rowButtons.filter { button in button.convert(button.bounds, to: scrollView).maxX - scrollView.contentOffset.x <= visibleWidth + 0.5 }.compactMap(\.accessibilityLabel)
+        print("KEYBOARD-BAR phone first screen of \(visibleWidth) points: \(onFirstScreen)")
+        XCTAssertTrue(onFirstScreen.contains("Link to note"), "The link comes before the rarer marks, on the first screen: \(onFirstScreen)")
+        XCTAssertTrue(descendants(of: toolbar, matching: UIButton.self).contains { button in button.accessibilityLabel == "Find in note" && !button.isDescendant(of: scrollView) },
+                      "Find stays in view at the trailing end")
+        XCTAssertGreaterThan(scrollView.contentSize.width, visibleWidth, "The rarer buttons wait beyond the edge")
+        let scrollContainer = try XCTUnwrap(scrollView.superview)
+        XCTAssertNotNil(scrollContainer.layer.mask, "The trailing edge fades while buttons wait beyond it")
+        attachScreenshot(of: window, named: "Keyboard bar on an iPhone held upright")
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentSize.width - visibleWidth, y: 0), animated: false)
+        toolbar.layoutIfNeeded()
+        XCTAssertNil(scrollContainer.layer.mask, "At the row's end nothing waits, and nothing fades")
+    }
+
+    /// HUNT-155: while the sidebar's search shows its results, no panel of the picker above them is lit, as on an
+    /// iPhone held upright; choosing a panel ends the search and lights that panel.
+    func testWhileSearchingNoPanelOfTheSidebarsPickerIsLitAndChoosingOneEndsTheSearch() async throws {
+        let directory = try makeDirectory("SidebarSearchPicker")
+        try Data("# Lecture\n".utf8).write(to: directory.appendingPathComponent("Lecture.md"))
+        let workspace = WorkspaceModel()
+        workspace.folderAccess = FolderAccess(root: directory)
+        workspace.store = VaultStore(root: directory)
+        workspace.index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
+        let controller = UIHostingController(rootView: NavigationStack {
+            VaultSidebar(workspace: workspace, creation: .constant(nil), showsSettings: .constant(false), showsVaultManager: .constant(false))
+        })
+        controller.traitOverrides.horizontalSizeClass = .compact
+        let window = UIWindow(windowScene: try scene)
+        window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true; window.rootViewController = nil }
+        func panelPicker() -> UISegmentedControl? {
+            descendants(of: window, matching: UISegmentedControl.self).first { control in control.numberOfSegments > 1 && control.window != nil }
+        }
+        try await waitUntil("the sidebar's panel picker shows") { panelPicker() != nil }
+        let picker = try XCTUnwrap(panelPicker())
+        XCTAssertNotEqual(picker.selectedSegmentIndex, UISegmentedControl.noSegment, "A panel is lit before searching")
+
+        workspace.searchQuery = "lecture"
+        try await waitUntil("no panel is lit while the results show") { panelPicker()?.selectedSegmentIndex == UISegmentedControl.noSegment }
+        attachScreenshot(of: window, named: "Sidebar searching on a phone's width")
+
+        let shownPicker = try XCTUnwrap(panelPicker())
+        shownPicker.selectedSegmentIndex = 1
+        shownPicker.sendActions(for: .valueChanged)
+        try await waitUntil("choosing a panel ends the search") { workspace.searchQuery.isEmpty }
+        try await waitUntil("the chosen panel is lit") { panelPicker()?.selectedSegmentIndex == 1 }
     }
 
     /// What the navigation bar shows: whether a control with this system image is on it, and the frames of its titles

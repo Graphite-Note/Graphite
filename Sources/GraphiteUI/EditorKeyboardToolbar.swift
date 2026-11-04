@@ -6,8 +6,8 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 01/11/2026
+ * Version: 0.15
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -150,6 +150,8 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
     private var builtActions: AvailableActions
     /// Undo, Redo and the separator after them, on a phone; empty on an iPad.
     private var undoAndRedoViews: [UIView] = []
+    /// The kind of device the row is laid out for, the one it runs on outside tests.
+    private let idiom: UIUserInterfaceIdiom
 
     /// The pane's optional actions that add buttons; a change rebuilds the row, so no
     /// button stays for a feature that was turned off.
@@ -169,8 +171,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         }
     }
 
-    init(actions: EditorActions, run: @escaping (EditorCommand) -> Void) {
+    init(actions: EditorActions, idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom, run: @escaping (EditorCommand) -> Void) {
         self.run = run
+        self.idiom = idiom
         builtActions = AvailableActions(actions)
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.height), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -204,6 +207,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // The row's width is known once the scroll view has laid out its content, which can
+        // otherwise come after this pass and leave the row without its fade until it scrolls.
+        scrollView.layoutIfNeeded()
         updateTrailingFade()
     }
 
@@ -283,7 +289,7 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         // and the note's toolbar shows them only in a regular width, as on iPhone Duo's inner
         // display (`updateUndoAndRedoVisibility`).
         undoAndRedoViews = []
-        if UIDevice.current.userInterfaceIdiom != .pad {
+        if idiom != .pad {
             let firstIndex = stackView.arrangedSubviews.count
             add("Undo", "arrow.uturn.backward", .undo)
             add("Redo", "arrow.uturn.forward", .redo)
@@ -296,7 +302,7 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         add("Italic", "italic", .italic)
         // A phone shows about eight buttons before the row scrolls: the links and lists a note
         // is written with come before the rarer marks.
-        let putsLinksAndListsFirst = UIDevice.current.userInterfaceIdiom == .phone
+        let putsLinksAndListsFirst = idiom == .phone
         if putsLinksAndListsFirst { addLinksAndLists() }
         add("Strikethrough", "strikethrough", .strikethrough)
         add("Highlight", "highlighter", .highlight)
