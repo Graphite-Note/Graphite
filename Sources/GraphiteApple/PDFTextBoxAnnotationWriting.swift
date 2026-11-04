@@ -1,3 +1,13 @@
+/**
+ * File: PDFTextBoxAnnotationWriting.swift
+ * ---------------------------------------
+ * Layer: Apple
+ * Description: Writing a text box as a standard PDF free-text annotation, with the links over its text.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import Foundation
 import CoreGraphics
 import PDFKit
@@ -15,11 +25,13 @@ import GraphiteCore
 extension PDFTextBox {
     /// - Parameter isForWrittenDocument: Whether the annotation's document will be written,
     ///   where it draws its appearance, or is shown, where it draws itself on the page.
-    func makeAnnotation(isForWrittenDocument: Bool) throws -> PDFAnnotation {
+    /// - Parameter authorName: The annotation's author, or none when nil (`PDFAnnotationAuthor`).
+    func makeAnnotation(isForWrittenDocument: Bool, authorName: String?) throws -> PDFAnnotation {
         guard hasValidGeometry else { throw PDFTextBoxError.cannotBePlaced }
         let annotation: PDFTextBoxAnnotation = isForWrittenDocument ? PDFWrittenTextBoxAnnotation(box: self, drawsAppearance: true)
             : PDFTextBoxAnnotation(box: self, drawsAppearance: false)
         annotation.setPersistentName(name)
+        PDFAnnotationAuthor.write(authorName, on: annotation)
         annotation.contents = plainText
         PDFPlatformFont.apply(self, to: annotation)
         let border = PDFBorder()
@@ -75,7 +87,7 @@ extension PDFTextBox {
 
     /// A `/Link` annotation over each linked stretch of each line, named after the box and
     /// marked as its own (`textBoxLinkOwnerKey`), so moving or removing the box takes them.
-    func makeLinkAnnotations(layout: PDFTextBoxLayout) -> [PDFAnnotation] {
+    func makeLinkAnnotations(layout: PDFTextBoxLayout, authorName: String?) -> [PDFAnnotation] {
         let boxToPage = layout.boxToPage
         return layout.linkAreas().enumerated().map { linkIndex, area in
             let corners = [CGPoint(x: area.rectangle.minX, y: area.rectangle.maxY), CGPoint(x: area.rectangle.maxX, y: area.rectangle.maxY),
@@ -84,6 +96,7 @@ extension PDFTextBox {
             let bounds = area.rectangle.applying(boxToPage)
             let link = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
             link.url = area.url
+            PDFAnnotationAuthor.write(authorName, on: link)
             let border = PDFBorder()
             border.lineWidth = 0
             link.border = border

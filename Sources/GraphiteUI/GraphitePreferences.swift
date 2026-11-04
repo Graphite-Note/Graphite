@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.29
- * Date: 02/11/2026
+ * Version: 0.30
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -239,6 +239,7 @@ final class GraphitePreferences {
         static let makesShapesOnHold = StrokeHoldPreference.key
         static let pencilToolbarStyle = PencilToolbarStyle.preferenceKey
         static let usesVaultTheme = "GraphiteUsesVaultTheme"
+        static let annotationAuthorName = PDFAnnotationAuthor.preferenceKey
     }
     /// The smallest text a note draws, such as a footnote number: Apple's minimum text size
     /// on iPhone and iPad.
@@ -266,6 +267,16 @@ final class GraphitePreferences {
     let notePDFExport: NotePDFExportDefaults
     /// The language of month and weekday names in dates.
     let dateNames: DateNamePreferences
+
+    /// The name written as the author of the ink, highlights, text boxes and pictures added to a PDF
+    /// (Settings › General › You); empty when none is chosen, which writes the Mac owner's name, or none on an
+    /// iPad or iPhone (`PDFAnnotationAuthor`). A blank name is not stored.
+    var annotationAuthorName: String {
+        didSet {
+            let trimmedName = annotationAuthorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedName.isEmpty { defaults.removeObject(forKey: Key.annotationAuthorName) } else { defaults.set(annotationAuthorName, forKey: Key.annotationAuthorName) }
+        }
+    }
 
     var drawingFormat: DrawingFormat { didSet { defaults.set(drawingFormat.rawValue, forKey: Key.drawingFormat) } }
     var drawingBackground: DrawingBackground { didSet { defaults.set(drawingBackground.rawValue, forKey: Key.drawingBackground) } }
@@ -435,6 +446,7 @@ final class GraphitePreferences {
         notebookCreation = NotebookCreationDefaults(defaults: defaults)
         notePDFExport = NotePDFExportDefaults(defaults: defaults)
         dateNames = DateNamePreferences(defaults: defaults)
+        annotationAuthorName = defaults.string(forKey: Key.annotationAuthorName) ?? ""
         drawingFormat = defaults.string(forKey: Key.drawingFormat).flatMap(DrawingFormat.init(rawValue:)) ?? .png
         drawingBackground = defaults.string(forKey: Key.drawingBackground).flatMap(DrawingBackground.init(rawValue:)) ?? .white
         drawsOnPencilDoubleTap = defaults.object(forKey: Key.drawsOnPencilDoubleTap) as? Bool ?? true

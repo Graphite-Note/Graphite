@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.38
- * Date: 02/11/2026
+ * Version: 0.39
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -230,6 +230,7 @@ private struct GeneralSettingsPage: View {
 
     var body: some View {
         Form {
+            AnnotationAuthorSettingsSection(preferences: workspace.preferences)
             Section {
                 if let identifier = workspace.currentVaultIdentifier, let vault = workspace.vaultLibrary.vault(withIdentifier: identifier) {
                     LabeledContent("Vault", value: vault.name)

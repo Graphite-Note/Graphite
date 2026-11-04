@@ -6,13 +6,14 @@
  *              note's headings, and its web links made clickable where their words were drawn.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 21/10/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import Foundation
 import PDFKit
 import GraphiteCore
+import GraphiteApple
 
 /// Why a note's PDF could not be made.
 enum NotePDFExportError: Error, Equatable {
@@ -89,6 +90,7 @@ enum NotePDFFinishing {
     /// Link annotations over each link's words, found by their text inside the area, in order.
     private static func addLinks(of linkArea: LinkArea, to document: PDFDocument) {
         guard let page = document.page(at: linkArea.pageIndex), let pageText = page.string as NSString? else { return }
+        let authorName = PDFAnnotationAuthor().name
         var usedRanges: [NSRange] = []
         for link in linkArea.links {
             let match = occurrences(of: link.text, in: pageText).lazy
@@ -100,6 +102,7 @@ enum NotePDFFinishing {
             for line in selection.selectionsByLine() {
                 let annotation = PDFAnnotation(bounds: line.bounds(for: page), forType: .link, withProperties: nil)
                 annotation.url = link.destination
+                PDFAnnotationAuthor.write(authorName, on: annotation)
                 let border = PDFBorder()
                 border.lineWidth = 0
                 annotation.border = border

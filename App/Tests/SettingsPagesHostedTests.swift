@@ -4,17 +4,19 @@
  * Layer: Tests
  * Description: Hosted tests of the Settings pages on the iPad and the iPhone simulators: labels above their fields,
  *              colors that can be removed, a page that starts at its first screen, the font size slider, questions
- *              before anything is lost, the Pencil sections of the iPad only, pages without a vault and large text.
+ *              before anything is lost, the Pencil sections of the iPad only, pages without a vault, large text and the
+ *              name written as the author of what is added to a PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
 import XCTest
 import SwiftUI
 import GraphiteCore
+import GraphiteApple
 @testable import GraphiteUI
 
 /// What the Settings pages of the iPad and the iPhone show (the Settings section of the bug hunt, HUNT-239 to
@@ -71,6 +73,35 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
             let fieldMinX = folderField.convert(folderField.bounds, to: nil).minX
             XCTAssertGreaterThanOrEqual(fieldMinX - page.convert(page.bounds, to: nil).minX, labelWidth, "Beside the whole label where the row is wide.")
         }
+    }
+
+    // MARK: HUNT-315: the name written as the author of what is added to a PDF
+
+    func testGeneralShowsAFieldForTheNameWrittenAsTheAuthorOfWhatIsAddedToPDFsAndKeepsWhatIsTyped() async throws {
+        let workspace = device.makeWorkspace()
+        let controller = try settings(of: workspace)
+        try await open("General", in: controller)
+
+        var nameField: UITextField?
+        try await waitUntil("the Your Name field", timeoutSeconds: 10) {
+            nameField = self.textFields(in: controller.view).first { field in field.placeholder == (PDFAnnotationAuthor.deviceOwnerName ?? "Optional") }
+            return nameField != nil
+        }
+        let field = try XCTUnwrap(nameField)
+        XCTAssertEqual(field.text, "", "No name is chosen by default.")
+        _ = try await element(in: controller, "the footer of the name field") { object in
+            self.texts(of: object).contains { text in text.contains("author of the ink, highlights, text boxes and pictures you add to PDFs") }
+        }
+        if isPhone {
+            let label = try await element(in: controller, "the label of the name field") { object in object.accessibilityLabel == "Your Name" && !(object is UITextField) }
+            XCTAssertLessThanOrEqual(label.accessibilityFrame.maxY, field.accessibilityFrame.minY + 2, "On a phone the label is above the field.")
+        }
+
+        field.text = "Ada Lovelace"
+        field.sendActions(for: .editingChanged)
+
+        try await waitUntil("the name is stored", timeoutSeconds: 10) { workspace.preferences.annotationAuthorName == "Ada Lovelace" }
+        XCTAssertEqual(device.defaults.string(forKey: PDFAnnotationAuthor.preferenceKey), "Ada Lovelace", "The writer of annotations reads this key.")
     }
 
     // MARK: HUNT-242, HUNT-250: the colors page
