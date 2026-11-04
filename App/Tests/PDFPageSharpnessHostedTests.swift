@@ -7,7 +7,7 @@
  *              zoomed in, and prints what it measured.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -104,6 +104,87 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             return !layers.isEmpty && layers.allSatisfy { layer in !oldLayers.contains(ObjectIdentifier(layer)) && layer.contents != nil }
         }
         return Self.annotationLayers(in: pdfView).map { layer in format(layer.contentsScale) }
+    }
+
+    // MARK: The page's ink, zoomed far in
+
+    /// Settled ink is the page's Pencil canvas, drawn at the zoom. A canvas the size of the page
+    /// took more pixels than a page may past about 4.2 times on A4 at 2x, and it then drew the
+    /// whole page at that scale, magnified to the zoom. Now it draws the part of the page around
+    /// the screen at the zoom. Each zoom is measured both ways: as it drew before (the whole
+    /// page at the largest scale within the bound) and as it draws now, with the canvas's
+    /// pixels, which stay within the bound.
+    func testSettledInkZoomedFarInIsDrawnAtTheZoomWithinTheBound() async throws {
+        let location = try makeHostedBlankNotebook(named: "DeepZoomInk")
+        temporaryLocations.append(location)
+        let (pdfView, window) = try await show(location)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let page = try XCTUnwrap(pdfView.document?.page(at: 0))
+        let coordinator = try XCTUnwrap(pdfView.annotationCoordinator)
+        try await waitUntil("the page's canvas") { coordinator.editingCanvas(for: page)?.overlayView != nil }
+        let canvas = try XCTUnwrap(coordinator.editingCanvas(for: page))
+        let overlay = try XCTUnwrap(canvas.overlayView)
+        var points: [PKStrokePoint] = []
+        for step in 0...40 {
+            points.append(PKStrokePoint(location: CGPoint(x: 100 + CGFloat(step) * 10, y: 300), timeOffset: Double(step) / 60, size: CGSize(width: 4, height: 4),
+                                        opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2))
+        }
+        canvas.drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.monoline, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))])
+        pdfView.autoScales = false
+        let pageSize = page.bounds(for: .cropBox).size
+        let screenScale = window.traitCollection.displayScale
+        let largestWholePageScale = (PDFCanvasShownRegion.maximumCanvasPixelCount / (pageSize.width * pageSize.height * screenScale * screenScale)).squareRoot()
+
+        func softness(atZoom zoom: CGFloat, drawnAt scale: CGFloat?) async throws -> (rows: Double, pixelCount: CGFloat) {
+            if abs(pdfView.scaleFactor - zoom) > 0.001 {
+                pdfView.scaleFactor = zoom
+                try await waitUntil("the canvas draws at \(zoom)") { abs(canvas.zoomScale - pdfView.scaleFactor) < 0.02 }
+            }
+            overlay.setRenderingScale(scale ?? PDFPageOverlayView.renderingScale(forZoom: pdfView.scaleFactor))
+            overlay.layoutIfNeeded()
+            pdfView.go(to: CGRect(x: 296, y: pageSize.height - 304, width: 8, height: 8), on: page)
+            var lastRows = -1.0
+            var rows = 0.0
+            try await waitUntil("the ink shows the same twice", pollingIntervalSeconds: 0.3) {
+                let point = canvas.convert(CGPoint(x: 300 * canvas.zoomScale, y: 300 * canvas.zoomScale), to: window)
+                rows = try self.softEdgeRows(in: window, atWindowPoint: point)
+                defer { lastRows = rows }
+                return abs(rows - lastRows) < 0.01
+            }
+            return (rows, canvas.bounds.width * canvas.bounds.height * screenScale * screenScale)
+        }
+
+        let atTwo = try await softness(atZoom: 2, drawnAt: nil)
+        print("PDF-SHARP ink at zoom 2: \(format(CGFloat(atTwo.rows))) rows, canvas \(format(atTwo.pixelCount / 1_000_000)) megapixels; whole page fits up to \(format(largestWholePageScale))")
+        for zoom: CGFloat in [3.3, 6, 8] where zoom <= pdfView.maxScaleFactor {
+            let before = try await softness(atZoom: zoom, drawnAt: zoom > largestWholePageScale ? largestWholePageScale : nil)
+            let after = try await softness(atZoom: zoom, drawnAt: nil)
+            print("PDF-SHARP ink at zoom \(format(zoom)): before \(format(CGFloat(before.rows))) rows (scale \(format(min(zoom, largestWholePageScale))), \(format(before.pixelCount / 1_000_000)) megapixels), after \(format(CGFloat(after.rows))) rows (scale \(format(canvas.zoomScale)), region \(overlay.shownRegion), \(format(after.pixelCount / 1_000_000)) megapixels)")
+            XCTAssertEqual(canvas.zoomScale, zoom, accuracy: 0.02, "The canvas draws at the zoom \(zoom)")
+            XCTAssertLessThanOrEqual(after.pixelCount, PDFCanvasShownRegion.maximumCanvasPixelCount * 1.01, "Within the bound at \(zoom)")
+            XCTAssertLessThanOrEqual(after.rows, before.rows + 0.1, "No softer than before at \(zoom)")
+            if zoom > largestWholePageScale * 1.4 { XCTAssertLessThan(after.rows, before.rows, "Sharper than the magnified canvas at \(zoom)") }
+        }
+        XCTAssertEqual(canvas.drawingSize.width, pageSize.width, accuracy: 0.5, "The drawing keeps the page's points")
+    }
+
+    /// How many rows of a column of the window cross a stroke's edge, neither page nor ink: the
+    /// softness of what is on screen, in the screen's pixels (as `InkWidthAtZoomTests` measures).
+    private func softEdgeRows(in window: UIWindow, atWindowPoint point: CGPoint) throws -> Double {
+        let area = CGRect(x: point.x - 1, y: point.y - 30, width: 2, height: 60)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.traitCollection.displayScale
+        let picture = UIGraphicsImageRenderer(bounds: area, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let image = try XCTUnwrap(picture.cgImage)
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                              space: XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        let reds = (0..<image.height).map { row in Double(bytes[row * image.width * 4]) }
+        guard let darkest = reds.min(), let lightest = reds.max(), lightest > darkest else { return 0 }
+        return reds.reduce(0) { softness, red in softness + 2 * min(red - darkest, lightest - red) / (lightest - darkest) }
     }
 
     // MARK: Making and showing the PDF

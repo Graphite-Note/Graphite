@@ -6,7 +6,7 @@
  *              canvas's own drawing recognizer of stand-in touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -35,10 +35,9 @@ enum SynthesizedStrokes {
     /// to the recognizer are not among them, so a stroke begun before the canvas had the zoom was
     /// laid out again under PencilKit's live stroke, and PencilKit dropped it.
     static func waitForCanvasToDrawAtTheZoom(of canvas: PDFPageCanvasView, in pdfView: PDFView) async throws {
-        guard let page = canvas.page else { return }
+        guard canvas.page != nil else { return }
         try await waitUntil("the page's canvas draws at the PDF's zoom") {
-            let screenScale = pdfView.window?.screen.scale ?? pdfView.traitCollection.displayScale
-            let scale = PDFPageOverlayView.renderingScale(forZoom: pdfView.scaleFactor, pageSize: page.bounds(for: .cropBox).size, screenScale: max(screenScale, 1))
+            let scale = PDFPageOverlayView.renderingScale(forZoom: pdfView.scaleFactor)
             return canvas.window != nil && abs(canvas.zoomScale - scale) < 0.02
         }
     }
