@@ -1,3 +1,13 @@
+/**
+ * File: PDFTextBoxAnnotationWriting.swift
+ * ---------------------------------------
+ * Layer: Apple
+ * Description: Writing a text box as a standard PDF free-text annotation, with the links over its text.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import Foundation
 import CoreGraphics
 import PDFKit
@@ -15,11 +25,13 @@ import GraphiteCore
 extension PDFTextBox {
     /// - Parameter isForWrittenDocument: Whether the annotation's document will be written,
     ///   where it draws its appearance, or is shown, where it draws itself on the page.
-    func makeAnnotation(isForWrittenDocument: Bool) throws -> PDFAnnotation {
+    /// - Parameter authorName: The annotation's author, or none when nil (`PDFAnnotationAuthor`).
+    func makeAnnotation(isForWrittenDocument: Bool, authorName: String?) throws -> PDFAnnotation {
         guard hasValidGeometry else { throw PDFTextBoxError.cannotBePlaced }
         let annotation: PDFTextBoxAnnotation = isForWrittenDocument ? PDFWrittenTextBoxAnnotation(box: self, drawsAppearance: true)
             : PDFTextBoxAnnotation(box: self, drawsAppearance: false)
         annotation.setPersistentName(name)
+        PDFAnnotationAuthor.write(authorName, on: annotation)
         annotation.contents = plainText
         PDFPlatformFont.apply(self, to: annotation)
         let border = PDFBorder()

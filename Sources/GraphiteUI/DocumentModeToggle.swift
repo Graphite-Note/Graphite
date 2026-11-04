@@ -6,8 +6,8 @@
  *              tools.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.8
- * Date: 02/11/2026
+ * Version: 0.9
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -158,30 +158,6 @@ enum DocumentToolbarLayout {
         guard usesControlRow, showsTabBar, let tabBarWidth else { return false }
         return tabBarWidth >= minimumTabBarWidthForControls
     }
-
-    /// What a tab bar keeps for its tabs beside the tools: one tab at least.
-    static let minimumTabsWidthBesidePencilTools: CGFloat = 160
-    /// The tab bar's own buttons: the tab overview with the tab group menu, New Tab, and
-    /// Split Right, 36 points each with their spacing and the bar's end.
-    static let tabBarButtonsWidth: CGFloat = 122
-    /// Undo, Redo and Write, when the tab bar holds them, with room to spare for larger
-    /// Dynamic Type.
-    static let documentControlsWidth: CGFloat = 160
-
-    /// Whether a side's tab bar holds the fixed bar's tools, so they take no row of their
-    /// own above the page: when what is left beside the tabs, the tab bar's buttons and the
-    /// document's controls holds the tools' compact row, counted from the tools the bar has
-    /// (`PencilToolRowLayout.compactRowWidth`), not from a constant that a fourth ink would
-    /// make wrong. A row of their own never scrolls either (`PencilToolRow`), so this only
-    /// decides where they stand.
-    /// - Parameters:
-    ///   - tabBarWidth: The width of that side, nil when unknown.
-    ///   - toolCount: How many tools the bar shows (`PencilToolRowLayout.tools`).
-    static func showsPencilToolsInTabBar(showsTabBar: Bool, tabBarWidth: CGFloat?, showsDocumentControls: Bool, toolCount: Int) -> Bool {
-        guard showsTabBar, let tabBarWidth else { return false }
-        let widthBesideTools = minimumTabsWidthBesidePencilTools + tabBarButtonsWidth + (showsDocumentControls ? documentControlsWidth : 0)
-        return tabBarWidth - widthBesideTools >= PencilToolRowLayout.compactRowWidth(toolCount: toolCount)
-    }
 }
 
 extension EnvironmentValues {
@@ -192,9 +168,6 @@ extension EnvironmentValues {
     /// True where the side's tab bar shows those controls (`TabBarDocumentControls`), so
     /// the document shows no row for them.
     @Entry var showsDocumentControlsInTabBar = false
-    /// True where the side's tab bar has room for the fixed bar's tools
-    /// (`TabBarPencilTools`), so a PDF written on shows no row for them.
-    @Entry var showsPencilToolsInTabBar = false
     /// True where the window shows two sides at once, so the system's Pencil palette, which
     /// hangs from the window, gives way to the fixed bar (`PencilToolbarStyle.inEffect`).
     @Entry var sharesWindowWithOtherSide = false

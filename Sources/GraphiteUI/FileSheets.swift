@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: The Rename, New Folder and Move sheets of the file tree.
  *
- * Authors: felixchvl
- * Version: 0.4
- * Date: 01/11/2026
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -63,7 +63,7 @@ struct FileManagementPresentation: ViewModifier {
                 let change = pendingMove.path.parent == pendingMove.destination.parent
                     ? "Renaming “\(pendingMove.path.name)” to “\(pendingMove.destination.name)”"
                     : "Moving “\(pendingMove.path.name)” to “\(pendingMove.destination.parent.rawValue.isEmpty ? workspace.title : pendingMove.destination.parent.rawValue)”"
-                Text("\(change) changes \(linkCount == 1 ? "1 link" : "\(linkCount) links") in \(noteCount == 1 ? "1 note" : "\(noteCount) notes"). Without the update, those links stop working.")
+                Text("\(change) changes \(linkCount == 1 ? "1 link" : "\(linkCount.formatted()) links") in \(noteCount == 1 ? "1 note" : "\(noteCount.formatted()) notes"). Without the update, those links stop working.")
             }
             .confirmationDialog("Delete “\(workspace.pendingDeletion?.name ?? "")”?", isPresented: Binding(get: { workspace.pendingDeletion != nil }, set: { isPresented in
                 if !isPresented { workspace.pendingDeletion = nil }

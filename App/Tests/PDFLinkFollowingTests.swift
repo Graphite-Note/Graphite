@@ -1,3 +1,14 @@
+/**
+ * File: PDFLinkFollowingTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Opening a PDF from a note in the hosted workspace, from an embed's "Open in PDF View"
+ *              and from page links, when the PDF is already open in another tab or on the other side.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 03/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -225,9 +236,12 @@ final class PDFLinkFollowingTests: XCTestCase {
     }
 
     /// The first accessibility element on screen that satisfies `matches`, once there is one.
+    /// A loaded test machine has taken more than ten seconds to lay out the note and show its
+    /// embed. Each look builds the window's accessibility elements on the main thread that
+    /// does that work, so it looks four times a second rather than fifty.
     private func element(in controller: UIViewController, matching matches: @escaping (NSObject) -> Bool) async throws -> NSObject {
         var found: NSObject?
-        try await waitUntil(timeoutSeconds: 10) {
+        try await waitUntil("an accessibility element that matches", timeoutSeconds: 30, pollingIntervalSeconds: 0.25) {
             found = self.accessibilityElements(in: controller.view).first(where: matches)
             return found != nil
         }

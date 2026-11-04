@@ -7,7 +7,7 @@
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.46
- * Date: 03/11/2026
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -44,6 +44,13 @@ enum CreationKind: String, Identifiable {
         case .notebook: "Untitled Notebook"
         case .note, .base, .canvas: "Untitled"
         }
+    }
+
+    /// The name a new file gets from what was typed: the typed name without surrounding spaces, or `untitledName` when
+    /// nothing was typed, so Create works with an empty field, as Obsidian's new note does (HUNT-296).
+    func chosenName(typed: String) -> String {
+        let trimmedName = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.isEmpty ? untitledName : trimmedName
     }
 }
 

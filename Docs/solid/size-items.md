@@ -280,7 +280,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     41  function review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer.recognizeEllipse
     41  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseListView.item
     41  function review  Sources/GraphiteUI/CommunityPluginHost.swift  CommunityPluginHost.answerHostOperation
-    41  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
+    50  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
     41  function review  Sources/GraphiteUI/MapViews.swift  VaultMapScreen.body
     41  function review  Sources/GraphiteUI/MarkdownPane.swift  DrawingAtCursorTracker.findDrawingAtCursor
     41  function review  Sources/GraphiteUI/MarkdownPreview.swift  ReadingViewBuilder.render

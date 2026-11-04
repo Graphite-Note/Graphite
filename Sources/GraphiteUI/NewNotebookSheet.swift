@@ -5,8 +5,8 @@
  * Description: Creating a notebook after Goodnotes' New Notebook sheet: the first page large, its settings beside it, every paper below.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -164,10 +164,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
         FileNameRules.problem(with: chosenName, isNote: false)
     }
 
-    private var chosenName: String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? CreationKind.notebook.untitledName : trimmedName
-    }
+    private var chosenName: String { CreationKind.notebook.chosenName(typed: name) }
 
     private func createIfValid() {
         guard nameProblem == nil, options.problem == nil else { return }

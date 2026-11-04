@@ -5,8 +5,8 @@
  * Description: A Mac note editor in a window, with a note in a temporary vault or one a workspace has open.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 03/11/2026
  */
 
 #if os(macOS)
@@ -50,8 +50,10 @@ final class MacMarkdownEditorFixture {
         coordinator = NativeMarkdownEditor.Coordinator(session: session, configuration: EditorConfiguration())
         scrollView = MarkdownMacTextView.makeScrollableTextView()
         // No scroller: with classic scroll bars one appears at the window's next layout and takes
-        // its width. TextKit then drops its layout for the new width, so a test that scrolled
-        // first would find another line at that height, depending on when that layout ran.
+        // its width. A CI machine's preferred scroller style also turns from overlay to classic at
+        // a moment of its own while the tests run. TextKit then drops its layout for the new width,
+        // so a test that scrolled first would find another line at that height, depending on when
+        // that layout ran.
         scrollView.hasVerticalScroller = false
         textView = try XCTUnwrap(scrollView.documentView as? MarkdownMacTextView)
         textView.isRichText = false

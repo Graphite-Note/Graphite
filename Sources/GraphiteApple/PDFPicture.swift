@@ -6,8 +6,8 @@
  *              in.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 04/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -124,7 +124,8 @@ public struct PDFPicture: Sendable, Equatable {
     /// - Parameter isForWrittenDocument: Whether the annotation's document will be written,
     ///   where PDFKit asks the annotation for its appearance, or is shown, where it asks the
     ///   annotation to draw itself on the page; see `PDFPictureAnnotation`.
-    func makeAnnotation(isForWrittenDocument: Bool) throws -> PDFAnnotation {
+    /// - Parameter authorName: The annotation's author, or none when nil (`PDFAnnotationAuthor`).
+    func makeAnnotation(isForWrittenDocument: Bool, authorName: String?) throws -> PDFAnnotation {
         guard hasValidGeometry, let image = Self.decodedImage(imageData) else {
             throw GraphiteError.invalidFile("This image cannot be placed on the page.")
         }
@@ -143,6 +144,7 @@ public struct PDFPicture: Sendable, Equatable {
         }
         // A picture has no border or note of its own.
         annotation.shouldPrint = true
+        PDFAnnotationAuthor.write(authorName, on: annotation)
         return annotation
     }
 

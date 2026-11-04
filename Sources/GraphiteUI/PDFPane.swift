@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.28
- * Date: 02/11/2026
+ * Version: 0.29
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -100,7 +100,6 @@ private struct PDFPaneContent: View {
     @Environment(\.foldsSecondaryToolbarActions) private var foldsSecondaryToolbarActions
     @Environment(\.foldsFindAndPagesFromToolbar) private var foldsFindAndPagesFromToolbar
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
-    @Environment(\.showsPencilToolsInTabBar) private var showsPencilToolsInTabBar
     @Environment(\.isActiveInItsSide) private var isActiveInItsSide
     private var usesDocumentControlRow: Bool {
         usesDocumentControlRowSetting ?? DocumentToolbarLayout.usesControlRow(detailWidth: nil, horizontalSizeClass: horizontalSizeClass)
@@ -122,6 +121,14 @@ private struct PDFPaneContent: View {
         self.resolveConflict = resolveConflict
         _commands = State(initialValue: PDFPageCommands(session: session))
     }
+
+    #if canImport(UIKit)
+    /// A tap on the fixed bar's tools while the PDF is read: the bar stays above the page in
+    /// both, so writing starts with the tool tapped and nothing moves (HUNT-312).
+    private var beginWritingFromBar: (() -> Void)? {
+        session.isWriting ? nil : { focus(); session.isWriting = true }
+    }
+    #endif
 
     /// A phone, or a window as narrow as one, shows the pages in a sheet that closes once a page is chosen: a
     /// column of 210 points beside the page left 180 of a phone's 390 for the page itself.
@@ -230,14 +237,15 @@ private struct PDFPaneContent: View {
                 // down under the finger that tapped it.
                 let showsControlRow = usesDocumentControlRow && !showsDocumentControlsInTabBar && isActiveInItsSide && !session.isProtected
                 // The bar stays while a picture is arranged: removing it would move the page
-                // under the finger.
-                let showsFixedToolbar = !showsPencilToolsInTabBar
-                    && session.showsFixedPencilTools(style: toolbarStyle, showsTools: showsToolPicker, horizontalSizeClass: horizontalSizeClass)
+                // under the finger. It is a row of its own, centered, in every width and
+                // orientation: at the end of the tab bar it was squeezed to the right edge with
+                // its sizes and colors behind one control (HUNT-312).
+                let showsFixedToolbar = session.showsFixedPencilTools(style: toolbarStyle, showsTools: showsToolPicker, horizontalSizeClass: horizontalSizeClass)
                 if showsControlRow && showsFixedToolbar {
                     // One row for both, as in Focus, where no tab bar holds the controls.
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true) {
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar) {
                         EmptyView()
                     } trailingControls: {
                         HStack(spacing: 12) {
@@ -254,7 +262,7 @@ private struct PDFPaneContent: View {
                 } else if showsFixedToolbar {
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true)
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar)
                 }
             }
         }

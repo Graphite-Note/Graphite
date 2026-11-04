@@ -3,11 +3,11 @@
  * --------------------------------------
  * Layer: Tests
  * Description: The graph, Backlinks, Tags and Properties panels read the vault again only when their own
- *              inputs changed, and a web address in Outgoing Links never creates a note.
+ *              inputs changed, a web address in Outgoing Links never creates a note, and the quick switcher's rows.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -234,5 +234,77 @@ final class SwitcherQueryTests: XCTestCase {
         XCTAssertNotNil(SwitcherQuery("Note#Heading").creationProblem)
         XCTAssertNotNil(SwitcherQuery("Folder/bad:name").creationProblem)
         XCTAssertNil(SwitcherQuery("#only").fragment, "A field that starts with # names no note.")
+    }
+}
+
+/// The quick switcher's rows for the fields of HUNT-158, run as a tap runs them, against a
+/// real vault folder.
+@MainActor
+final class QuickSwitcherRowsTests: XCTestCase {
+    private var device: IsolatedWorkspaceDevice!
+
+    override func setUp() async throws {
+        device = try IsolatedWorkspaceDevice.make(for: self)
+    }
+
+    private func openWorkspace(files: [String: String]) async throws -> (WorkspaceModel, URL) {
+        let vault = try TemporaryVault.make(prefix: "SwitcherRowsVault", for: self).root.resolvingSymlinksInPath()
+        for (relativePath, contents) in files {
+            let location = vault.appendingPathComponent(relativePath)
+            try FileManager.default.createDirectory(at: location.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data(contents.utf8).write(to: location)
+        }
+        let workspace = WorkspaceModel(processServices: device.makeServices(), clock: LiveApplicationClock())
+        try await workspace.openFolderAsVault(vault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        return (workspace, vault)
+    }
+
+    /// `Folder/New note` offers to create the note in that folder, and the row does, making the folder.
+    func testAFolderAndANameOfferANoteInThatFolderAndTheRowMakesIt() async throws {
+        let (workspace, vault) = try await openWorkspace(files: ["Other.md": ""])
+        let switcher = QuickSwitcher(workspace: workspace, close: {})
+
+        let row = switcher.creationItem(for: SwitcherQuery("Course/Week 1/New note"))
+
+        XCTAssertEqual(row.title, "Create “New note”")
+        XCTAssertEqual(row.subtitle, "New note in Course/Week 1")
+        XCTAssertFalse(row.requiresExplicitChoice, "Return creates it once the vault is read")
+        row.run()
+        let created = vault.appendingPathComponent("Course/Week 1/New note.md")
+        try await waitUntil("the note is created in the folder") { FileManager.default.fileExists(atPath: created.path) }
+        try await waitUntil("the new note is opened") { workspace.selection == (try? VaultPath("Course/Week 1/New note.md")) }
+    }
+
+    /// A name a file cannot have, and a heading or block, give a row saying why no note is
+    /// created instead of "No files match." alone; the row does nothing.
+    func testAFieldThatNamesNoPossibleNoteSaysWhy() async throws {
+        let (workspace, vault) = try await openWorkspace(files: ["Other.md": ""])
+        let switcher = QuickSwitcher(workspace: workspace, close: {})
+        let filesBefore = try FileManager.default.contentsOfDirectory(atPath: vault.path).sorted()
+
+        for field in ["bad:name", "Lecture#Sampling", "Lecture#^abc"] {
+            let row = switcher.creationItem(for: SwitcherQuery(field))
+            XCTAssertTrue(row.title.hasPrefix("Can’t create"), "\(field): \(row.title)")
+            XCTAssertFalse(row.subtitle?.isEmpty ?? true, "\(field) gives a reason")
+            XCTAssertTrue(row.requiresExplicitChoice, "Return does not choose the explanation")
+            row.run()
+        }
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: vault.path).sorted(), filesBefore, "Nothing is created")
+    }
+
+    /// `Note#Heading` on a found note opens it at the heading, as a link to it does.
+    func testANoteAndAHeadingOpenTheNoteAtTheHeading() async throws {
+        let (workspace, _) = try await openWorkspace(files: ["Course/Lecture.md": "# Lecture\n\ntext\n\n## Sampling theorem\n\nmore\n", "Other.md": ""])
+        let switcher = QuickSwitcher(workspace: workspace, close: {})
+        let lecture = try VaultPath("Course/Lecture.md")
+
+        let row = switcher.fileItem(lecture, title: "Lecture", highlights: [], alias: nil, switcher: SwitcherQuery("Lecture#Sampling theorem"))
+        row.run()
+
+        try await waitUntil("the note opens") { workspace.selection == lecture }
+        let tabID = try XCTUnwrap(workspace.activeTabID)
+        try await waitUntil("the note is asked to show the heading") { workspace.document(for: tabID).headingScrollRequest != nil }
+        XCTAssertEqual(workspace.document(for: tabID).headingScrollRequest?.anchor, NotePreviewDocument.anchor(forHeading: "Sampling theorem"))
     }
 }

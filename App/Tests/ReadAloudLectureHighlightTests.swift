@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudLectureHighlightTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Read Aloud on the simulator: a lecture note's highlight following the voice, and the High
+ *              Quality voices preparing, caching and playing what is read.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -736,7 +747,9 @@ final class HighQualityReadAloudTests: XCTestCase {
         let start = pageText.range(of: "charlie"), end = pageText.range(of: "golf")
         reader.readPDFRange(pdf, start: PDFReadAloudEndpoint(pageIndex: 0, offset: start.location, revision: pdf.changeVersion),
                             end: PDFReadAloudEndpoint(pageIndex: 0, offset: NSMaxRange(end), revision: pdf.changeVersion))
-        try await waitUntil(timeoutSeconds: 20) { reader.session.document != nil && !reader.isPreparing }
+        // Preparing finds the page's language, which asks the system's speech voices: on a loaded
+        // runner their service answered after 30 seconds, as the first test of this class saw too.
+        try await waitUntil("the range is prepared", timeoutSeconds: 90) { reader.session.document != nil && !reader.isPreparing }
         if reader.session.state != .speaking { reader.session.play() }
         try await waitUntil(timeoutSeconds: 30) { reader.session.state == .finished }
         let rendered = renderer.renders.joined(separator: " ")

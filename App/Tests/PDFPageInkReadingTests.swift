@@ -3,11 +3,12 @@
  * ----------------------------------
  * Layer: Tests
  * Description: How much of a page's ink is read on the main thread as the page is shown and as it is
- *              saved, counted, since scrolling or pausing on a full page must not stutter.
+ *              saved, counted, since scrolling or pausing on a full page must not stutter; and the strokes
+ *              drawn while that ink is decoded, which are kept.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -140,6 +141,110 @@ final class PDFPageInkReadingTests: XCTestCase {
         try await waitUntil("the canvas has the ink") { !overlay.canvas.isRestoringStoredInk && overlay.canvas.delegate != nil }
         XCTAssertEqual(overlay.canvas.drawing.strokes.count, shorterStrokes.count, "What the edit left")
         XCTAssertEqual(overlay.canvas.recordedDrawing.strokes.count, shorterStrokes.count)
+    }
+
+    /// A page of the notebook with `drawing` stored on it, as a file holds it, and the overlay just
+    /// made for it, whose canvas's decode of that ink is under way. The caller keeps the overlay,
+    /// which holds the canvas.
+    private func pageDecodingStoredInk(_ drawing: PKDrawing, in session: PDFSession, pdfView: GraphitePDFDisplayView)
+        throws -> (page: PDFPage, overlay: PDFPageOverlayView, coordinator: PDFAnnotationCoordinator) {
+        let page = try XCTUnwrap(session.document.page(at: 7))
+        let coordinator = try XCTUnwrap(pdfView.annotationCoordinator)
+        let coordinates = try PageCoordinates(cropBox: page.bounds(for: .cropBox), overlaySize: page.bounds(for: .cropBox).size)
+        var tracker = PDFPageInkTracker(group: PDFInkGroups.newGroup(on: page))
+        try session.apply(.updateInk(tracker.update(for: drawing, pageIndex: 7, coordinates: coordinates)))
+        let overlay = try XCTUnwrap(coordinator.pdfView(pdfView, overlayViewFor: page) as? PDFPageOverlayView)
+        return (page, overlay, coordinator)
+    }
+
+    private func inkAnnotationCount(on page: PDFPage) -> Int {
+        page.annotations.filter { annotation in annotation.type == "Ink" }.count
+    }
+
+    private func creationDates(of drawing: PKDrawing) -> [Date] {
+        drawing.strokes.map(\.path.creationDate)
+    }
+
+    /// HUNT-307: the canvas of a page coming on screen takes touches while its stored ink is
+    /// decoded. A stroke drawn then waits for the ink, and one still under way when the ink
+    /// arrives holds it back until it ends. The page then has the stored strokes followed by the
+    /// new ones, the new ones are the only edit, so undo takes back just them, and the saved
+    /// record keeps every stored stroke under its name, with the new ones once each.
+    func testStrokesDrawnWhileAPagesInkIsDecodedComeAfterItAndAreTheOnlyEdit() async throws {
+        let (session, pdfView, _, window) = try await hostedNotebook(named: "DrawWhileDecoding", pageCount: 8)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        session.isWriting = true
+        try await waitUntil("the PDF is written on") { pdfView.annotationCoordinator?.isWriting == true }
+        let storedDrawing = drawing()
+        let (page, overlay, coordinator) = try pageDecodingStoredInk(storedDrawing, in: session, pdfView: pdfView)
+        let canvas = overlay.canvas
+        let storedGroup = try XCTUnwrap(PDFInkGroups.editableGroup(on: page))
+        XCTAssertTrue(canvas.isRestoringStoredInk, "The decode is under way")
+        XCTAssertTrue(canvas.isUserInteractionEnabled, "The canvas takes touches meanwhile")
+        XCTAssertTrue(canvas.delegate === coordinator, "and hears of its strokes")
+
+        // In the same turn, so the decode's result cannot have been taken yet: one stroke drawn
+        // and ended as PencilKit reports it, then a second one begun.
+        let firstNewStroke = stroke(atHeight: 700, creationSeconds: 9_000)
+        coordinator.canvasViewDidBeginUsingTool(canvas)
+        canvas.drawing = PKDrawing(strokes: [firstNewStroke])
+        coordinator.canvasViewDidEndUsingTool(canvas)
+        coordinator.canvasViewDidBeginUsingTool(canvas)
+        try await waitUntil("the decoded ink waits for the stroke under way") { canvas.heldStoredInk != nil }
+        XCTAssertTrue(canvas.isRestoringStoredInk)
+        XCTAssertEqual(creationDates(of: canvas.drawing), [firstNewStroke.path.creationDate], "Nothing replaced the canvas's drawing under the stroke")
+        XCTAssertEqual(inkAnnotationCount(on: page), Self.strokeCount, "Nothing is recorded before the stored ink")
+
+        let secondNewStroke = stroke(atHeight: 720, creationSeconds: 9_001)
+        canvas.drawing = PKDrawing(strokes: canvas.drawing.strokes + [secondNewStroke])
+        coordinator.canvasViewDidEndUsingTool(canvas)
+        try await waitUntil("the stored ink is shown") { !canvas.isRestoringStoredInk }
+        let expectedDates = creationDates(of: storedDrawing) + [firstNewStroke.path.creationDate, secondNewStroke.path.creationDate]
+        XCTAssertEqual(creationDates(of: canvas.drawing), expectedDates, "The stored strokes, then the new ones")
+        XCTAssertEqual(creationDates(of: canvas.recordedDrawing), expectedDates, "Recorded")
+        XCTAssertEqual(inkAnnotationCount(on: page), Self.strokeCount + 2, "Each new stroke added once, no stored one again")
+        XCTAssertEqual(canvas.inkTracker.group, storedGroup.group, "Added to the stored ink's group")
+
+        try await session.save()
+        let reopened = try XCTUnwrap(PDFDocument(url: session.location)?.page(at: 7))
+        let savedGroup = try XCTUnwrap(PDFInkGroups.editableGroup(on: reopened), "The file's ink can be edited again")
+        XCTAssertEqual(creationDates(of: try PKDrawing(data: savedGroup.record.drawingData)), expectedDates)
+        XCTAssertEqual(Array(savedGroup.record.strokeNames.prefix(Self.strokeCount)), storedGroup.record.strokeNames, "Every stored stroke keeps its name")
+        XCTAssertEqual(Set(savedGroup.record.strokeNames).count, Self.strokeCount + 2)
+        XCTAssertEqual(inkAnnotationCount(on: reopened), Self.strokeCount + 2)
+
+        try await waitUntil("the strokes are an undo step") { session.undoAvailability.canUndo }
+        session.undoAvailability.undo()
+        XCTAssertNil(session.errorMessage)
+        XCTAssertEqual(creationDates(of: canvas.drawing), creationDates(of: storedDrawing), "Undo takes back the new strokes alone")
+        XCTAssertEqual(inkAnnotationCount(on: page), Self.strokeCount)
+        XCTAssertFalse(session.undoAvailability.canUndo, "Reading the stored ink was no edit")
+    }
+
+    /// HUNT-307: a save while the stored ink is still decoded reads it before writing, so the strokes
+    /// drawn meanwhile reach the file after the stored ones, and the late decode adds nothing.
+    /// HUNT-313: it decodes the page away from the main actor; decoding it there froze the app.
+    func testASaveWhileAPagesInkIsDecodedKeepsTheStrokesDrawnMeanwhile() async throws {
+        let (session, pdfView, _, window) = try await hostedNotebook(named: "SaveWhileDecoding", pageCount: 8)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        session.isWriting = true
+        try await waitUntil("the PDF is written on") { pdfView.annotationCoordinator?.isWriting == true }
+        let storedDrawing = drawing()
+        let (page, overlay, coordinator) = try pageDecodingStoredInk(storedDrawing, in: session, pdfView: pdfView)
+        let canvas = overlay.canvas
+        let newStroke = stroke(atHeight: 700, creationSeconds: 9_000)
+        canvas.drawing = PKDrawing(strokes: [newStroke])
+
+        try await session.save()
+        let expectedDates = creationDates(of: storedDrawing) + [newStroke.path.creationDate]
+        XCTAssertFalse(canvas.isRestoringStoredInk, "The save read the stored ink before writing")
+        XCTAssertEqual(coordinator.mainActorDecodeCount, 0, "and decoded none of it on the main actor")
+        XCTAssertEqual(creationDates(of: canvas.drawing), expectedDates)
+        let reopened = try XCTUnwrap(PDFDocument(url: session.location)?.page(at: 7))
+        let savedGroup = try XCTUnwrap(PDFInkGroups.editableGroup(on: reopened))
+        XCTAssertEqual(creationDates(of: try PKDrawing(data: savedGroup.record.drawingData)), expectedDates)
+        XCTAssertEqual(inkAnnotationCount(on: reopened), Self.strokeCount + 1)
+        XCTAssertEqual(inkAnnotationCount(on: page), Self.strokeCount + 1)
     }
 
     /// HUNT-017: every save fingerprinted every stroke of all up to 8 kept canvases on the main

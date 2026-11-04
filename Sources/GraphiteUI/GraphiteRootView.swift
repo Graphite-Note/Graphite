@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.62
- * Date: 02/11/2026
+ * Version: 0.65
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -54,6 +54,8 @@ struct GraphiteRootView: View {
     /// In automatic mode an iPad shows only the detail column when the window is taller
     /// than wide, so toggling the sidebar has to know the window's shape.
     @State private var isWindowTallerThanWide = false
+    /// Whether the window's shape was measured once, after which a turn of the iPad keeps the sidebar as it was.
+    @State private var hasMeasuredWindowShape = false
     /// True until the remembered vault has opened or failed to, so the welcome screen does
     /// not flash up before the vault appears.
     @State private var isRestoringVault = true
@@ -125,6 +127,11 @@ struct GraphiteRootView: View {
                 }
         }
         .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > geometry.size.width } action: { isTallerThanWide in
+            // Turning the iPad keeps the view it showed: the sidebar beside the documents, or not (HUNT-311).
+            if hasMeasuredWindowShape, !isCompactWidth, isTallerThanWide != isWindowTallerThanWide {
+                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isWindowTallerThanWide)
+            }
+            hasMeasuredWindowShape = true
             isWindowTallerThanWide = isTallerThanWide
         }
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
@@ -318,6 +325,9 @@ struct GraphiteRootView: View {
         // packs too. Every window shares one library (`ProcessServices`).
         .environment(workspace.processServices.addOns)
         .environment(\.embeddedPDFSessions, workspace.embeddedPDFSessions)
+        #if canImport(UIKit)
+        .environment(\.hiddenPDFViews, workspace.hiddenPDFViews)
+        #endif
     }
 
     /// Opens the vault the window was opened on, or, for the window of a launch, the vault
@@ -690,6 +700,15 @@ struct GraphiteRootView: View {
         #endif
     }
 
+    /// The sidebar as the window showed it before the iPad turned. The system's automatic choice shows it beside the
+    /// documents sideways and hides it upright, so turning the iPad changed the whole view, the page's width and zoom
+    /// with it (the owner, 2026-11-04). What the window showed is kept as an explicit choice instead; a choice the
+    /// person made stays as it is, and the sidebar button still shows or hides it.
+    static func sidebarVisibility(keptAcrossTurnOf visibility: NavigationSplitViewVisibility, wasTallerThanWide: Bool) -> NavigationSplitViewVisibility {
+        guard visibility == .automatic else { return visibility }
+        return isSidebarHidden(visibility, automaticHidesSidebar: wasTallerThanWide) ? .detailOnly : .all
+    }
+
     static func sidebarVisibility(toggling visibility: NavigationSplitViewVisibility, automaticHidesSidebar: Bool) -> NavigationSplitViewVisibility {
         isSidebarHidden(visibility, automaticHidesSidebar: automaticHidesSidebar) ? .all : .detailOnly
     }
@@ -832,16 +851,14 @@ private struct CreateDocumentSheet: View {
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 180)
         #else
-        .frame(minWidth: 360, minHeight: 320)
+        // No minimum width: Slide Over is 320 points wide, and a phone's sheet takes the screen's width.
+        .frame(minHeight: 320)
         #endif
         .onAppear { isNameFocused = true }
     }
 
     /// An empty name is allowed: the file is then called "Untitled", as in Obsidian.
-    private var chosenName: String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? kind.untitledName : trimmedName
-    }
+    private var chosenName: String { kind.chosenName(typed: name) }
 
     private var nameProblem: String? {
         FileNameRules.problem(with: chosenName, isNote: kind == .note)

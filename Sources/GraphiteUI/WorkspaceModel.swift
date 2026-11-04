@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.83
- * Date: 02/11/2026
+ * Version: 0.84
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -290,6 +290,10 @@ final class WorkspaceModel {
     var newWindowRequest: GraphiteWindowContent?
     /// The PDFs embedded in this window's notes, which its views read from the environment.
     let embeddedPDFSessions = EmbeddedPDFSessions()
+    #if canImport(UIKit)
+    /// The PDF view of the tab left last, kept so showing it again builds nothing (`HiddenPDFViews`).
+    @ObservationIgnored let hiddenPDFViews = HiddenPDFViews(notificationCenter: .default)
+    #endif
     /// Takes turns for opening vaults, so a second pick while the first opens does not interleave with it.
     private let vaultSwitches = VaultSwitchQueue()
     /// This window among the process's windows (`OpenWindows`), for what one window runs at a time.

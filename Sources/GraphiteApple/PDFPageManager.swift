@@ -5,8 +5,8 @@
  * Description: Where a replaced picture goes among the pictures Graphite placed on its page.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 01/11/2026
+ * Version: 0.17
+ * Date: 04/11/2026
  */
 import Foundation
 import PDFKit
@@ -152,7 +152,10 @@ public enum PDFPageManager {
     /// Applies one edit. Documents that will be written pass `drawsInkOutlines` so Pencil
     /// ink is saved with its variable-width appearance (see `PDFOutlinedInkAnnotation`) and
     /// pictures draw their appearance rather than themselves (see `PDFPictureAnnotation`).
-    public static func apply(_ edit: PDFEdit, to document: PDFDocument, drawsInkOutlines: Bool = false) throws {
+    /// - Parameter author: Who the annotations this edit creates name as their author. An annotation an
+    ///   edit makes again, as when a picture or a text box is moved or changed, keeps the author it had.
+    public static func apply(_ edit: PDFEdit, to document: PDFDocument, drawsInkOutlines: Bool = false,
+                             author: PDFAnnotationAuthor = PDFAnnotationAuthor()) throws {
         func page(at index: Int) throws -> PDFPage {
             guard index >= 0, index < document.pageCount, let page = document.page(at: index) else { throw GraphiteError.invalidFile("Page no longer exists.") }
             return page
@@ -188,10 +191,10 @@ public enum PDFPageManager {
             let targetPage = try page(at: pageIndex)
             targetPage.rotation = (targetPage.rotation + (clockwise ? 90 : 270)) % 360
         case .updateInk(let update):
-            try applyInkUpdate(update, to: page(at: update.pageIndex), drawsInkOutlines: drawsInkOutlines)
+            try applyInkUpdate(update, to: page(at: update.pageIndex), drawsInkOutlines: drawsInkOutlines, authorName: author.name)
         case .addMarkup(let pageIndex, let markup):
             let targetPage = try page(at: pageIndex)
-            targetPage.addAnnotation(try markup.makeAnnotation(on: targetPage))
+            targetPage.addAnnotation(try markup.makeAnnotation(on: targetPage, authorName: author.name))
         case .recolorMarkup(let reference, let color):
             let targetPage = try page(at: reference.pageIndex)
             guard let annotation = referencedAnnotation(reference, on: targetPage) else { throw GraphiteError.invalidFile("This markup no longer exists.") }
@@ -208,7 +211,7 @@ public enum PDFPageManager {
             if let popup = annotation.popup, popup.page === targetPage { targetPage.removeAnnotation(popup) }
             targetPage.removeAnnotation(annotation)
         case .addPicture(let pageIndex, let picture):
-            try addPicture(picture, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines)
+            try addPicture(picture, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines, authorName: author.name)
         case .movePicture(let reference, let newBounds):
             let targetPage = try page(at: reference.pageIndex)
             guard let annotation = referencedAnnotation(reference, on: targetPage), var picture = PDFPicture(annotation: annotation) else {
@@ -219,15 +222,15 @@ public enum PDFPageManager {
             // keeps its angle; the bounds are its frame before it is turned.
             targetPage.removeAnnotation(annotation)
             picture.bounds = newBounds
-            try addPicture(picture, to: targetPage, isForWrittenDocument: drawsInkOutlines)
+            try addPicture(picture, to: targetPage, isForWrittenDocument: drawsInkOutlines, authorName: annotation.userName)
         case .replacePicture(let reference, let picture, let order):
             let targetPage = try page(at: reference.pageIndex)
             guard let annotation = referencedAnnotation(reference, on: targetPage), isPicture(annotation) else {
                 throw GraphiteError.invalidFile("This image no longer exists.")
             }
-            try replacePicture(annotation, with: picture, order: order, on: targetPage, isForWrittenDocument: drawsInkOutlines)
+            try replacePicture(annotation, with: picture, order: order, on: targetPage, isForWrittenDocument: drawsInkOutlines, authorName: annotation.userName)
         case .addTextBox(let pageIndex, let textBox):
-            try addTextBox(textBox, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines)
+            try addTextBox(textBox, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines, authorName: author.name)
         case .replaceTextBox(let reference, let textBox):
             try replaceTextBox(reference, with: textBox, in: document, isForWrittenDocument: drawsInkOutlines)
         case .removeTextBox(let reference):
@@ -258,8 +261,8 @@ public enum PDFPageManager {
 
     /// Adds the picture and puts the page's Pencil ink after it, so the ink stays over the
     /// picture in the file as it is on screen, where the Pencil canvas covers the page.
-    private static func addPicture(_ picture: PDFPicture, to page: PDFPage, isForWrittenDocument: Bool) throws {
-        page.addAnnotation(try picture.makeAnnotation(isForWrittenDocument: isForWrittenDocument))
+    private static func addPicture(_ picture: PDFPicture, to page: PDFPage, isForWrittenDocument: Bool, authorName: String?) throws {
+        page.addAnnotation(try picture.makeAnnotation(isForWrittenDocument: isForWrittenDocument, authorName: authorName))
         let inkAnnotations = page.annotations.filter { annotation in annotation.value(forAnnotationKey: groupKey) != nil }
         for annotation in inkAnnotations { page.removeAnnotation(annotation) }
         for annotation in inkAnnotations { page.addAnnotation(annotation) }
@@ -270,7 +273,7 @@ public enum PDFPageManager {
     /// them all. Only Graphite's own pictures and ink are taken off and put back; the
     /// page's other annotations stay as they are.
     private static func replacePicture(_ annotation: PDFAnnotation, with picture: PDFPicture, order: PDFPictureOrder,
-                                       on page: PDFPage, isForWrittenDocument: Bool) throws {
+                                       on page: PDFPage, isForWrittenDocument: Bool, authorName: String?) throws {
         let pictureAnnotations = page.annotations.filter(isPicture)
         guard let formerPosition = pictureAnnotations.firstIndex(where: { candidate in candidate === annotation }) else {
             throw GraphiteError.invalidFile("This image no longer exists.")
@@ -283,7 +286,7 @@ public enum PDFPageManager {
         case .back: 0
         case .position(let requestedPosition): min(max(requestedPosition, 0), orderedPictures.count)
         }
-        orderedPictures.insert(try picture.makeAnnotation(isForWrittenDocument: isForWrittenDocument), at: position)
+        orderedPictures.insert(try picture.makeAnnotation(isForWrittenDocument: isForWrittenDocument, authorName: authorName), at: position)
         let inkAnnotations = page.annotations.filter { candidate in candidate.value(forAnnotationKey: groupKey) != nil }
         for placed in pictureAnnotations + inkAnnotations { page.removeAnnotation(placed) }
         for placed in orderedPictures + inkAnnotations { page.addAnnotation(placed) }
@@ -323,31 +326,55 @@ public enum PDFPageManager {
         page.annotations.filter { annotation in annotation.value(forAnnotationKey: groupKey) as? String == group }
     }
 
-    /// Adds the strokes' annotations under the page's text boxes, which stay over the ink.
-    private static func addInkAnnotations(for update: PDFInkUpdate, to page: PDFPage, drawsInkOutlines: Bool) {
+    /// The author of each stroke the removal takes off, by stroke name, so a stroke added again, as
+    /// when the whole group is written again, keeps the author it had. A stroke without an author has none.
+    private static func authorsOfStrokes(removedBy removal: PDFInkUpdate.Removal, group: String, on page: PDFPage) -> [String: String?] {
+        var authorsByStrokeName: [String: String?] = [:]
+        for annotation in annotations(inGroup: group, on: page) {
+            guard let name = annotation.persistentName else { continue }
+            switch removal {
+            case .entireGroup: authorsByStrokeName[name] = annotation.userName
+            case .strokes(let names): if names.contains(name) { authorsByStrokeName[name] = annotation.userName }
+            }
+        }
+        return authorsByStrokeName
+    }
+
+    /// Adds the strokes' annotations under the page's text boxes, which stay over the ink. A stroke is
+    /// written with `authorName`, unless `formerAuthors` has it from the annotation it replaces.
+    private static func addInkAnnotations(for update: PDFInkUpdate, to page: PDFPage, drawsInkOutlines: Bool, authorName: String?,
+                                          formerAuthors: [String: String?] = [:]) {
         guard !update.addedStrokes.isEmpty else { return }
         let textBoxesOnTop = takeTextBoxesOffTop(of: page)
         for stroke in update.addedStrokes {
-            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines)
+            let strokeAuthorName: String?
+            if let strokeName = stroke.name, let formerAuthor = formerAuthors[strokeName] {
+                strokeAuthorName = formerAuthor
+            } else {
+                strokeAuthorName = authorName
+            }
+            guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines,
+                                                                      authorName: strokeAuthorName)
                 else { continue }
             page.addAnnotation(annotation)
         }
         for annotation in textBoxesOnTop { page.addAnnotation(annotation) }
     }
 
-    private static func applyInkUpdate(_ update: PDFInkUpdate, to page: PDFPage, drawsInkOutlines: Bool) throws {
+    private static func applyInkUpdate(_ update: PDFInkUpdate, to page: PDFPage, drawsInkOutlines: Bool, authorName: String?) throws {
         // Strokes only added, with the record kept where it is: the group's first annotation
         // stays first, or, in a group that had none, the first one added carries no record.
         // Nothing else of the page is read, so a stroke costs the same on a full page (FR-104).
         if update.defersEditableRecord, update.removal == .strokes([]) {
-            addInkAnnotations(for: update, to: page, drawsInkOutlines: drawsInkOutlines)
+            addInkAnnotations(for: update, to: page, drawsInkOutlines: drawsInkOutlines, authorName: authorName)
             return
         }
         // Read before the removal, which may remove the annotation that carries it.
         let keptRecordCarrier = update.defersEditableRecord ? annotations(inGroup: update.group, on: page).first : nil
         let keptRecordValues = (drawing: keptRecordCarrier?.value(forAnnotationKey: drawingKey), strokeNames: keptRecordCarrier?.value(forAnnotationKey: strokeNamesKey))
+        let formerAuthors = update.addedStrokes.isEmpty ? [:] : authorsOfStrokes(removedBy: update.removal, group: update.group, on: page)
         removeInkAnnotations(from: page, group: update.group, removal: update.removal)
-        addInkAnnotations(for: update, to: page, drawsInkOutlines: drawsInkOutlines)
+        addInkAnnotations(for: update, to: page, drawsInkOutlines: drawsInkOutlines, authorName: authorName, formerAuthors: formerAuthors)
         // Exactly one annotation, the group's first, carries the re-editing record, so a
         // replay of the same edits always leaves the record in the same place.
         let groupAnnotations = annotations(inGroup: update.group, on: page)

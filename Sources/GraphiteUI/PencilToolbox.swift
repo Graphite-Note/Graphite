@@ -5,8 +5,8 @@
  * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
- * Date: 01/11/2026
+ * Version: 0.20
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -441,6 +441,19 @@ final class PencilToolbox {
         guard eraserWidthChoices.contains(width), eraserWidth != width else { return }
         eraserWidth = width
     }
+
+    /// Erases with one of the eraser's three sizes. A width is the pixel eraser's, so a size
+    /// chosen while the eraser removes whole strokes turns it to erasing pixels: the bar
+    /// shows the eraser's sizes in both kinds, as it shows an ink's.
+    func useEraserWidthChoice(at choiceIndex: Int) {
+        guard eraserWidthChoices.indices.contains(choiceIndex) else { return }
+        if toolInUse != .eraser { use(.eraser) }
+        if erasesWholeStrokes { erasesWholeStrokes = false }
+        chooseEraserWidth(eraserWidthChoices[choiceIndex])
+    }
+
+    /// Which of the eraser's three sizes is in use; nil while it removes whole strokes.
+    var chosenEraserWidthIndex: Int? { erasesWholeStrokes ? nil : eraserWidthChoices.firstIndex(of: eraserWidth) }
 
     /// Gives one of the eraser's three sizes another width, within `eraserWidthRange`, and
     /// erases with it.

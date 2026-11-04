@@ -5,8 +5,8 @@
  * Description: Settings > Appearance > Font: Obsidian's font settings, stored in the vault's appearance.json, and the pages that choose a font family.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -93,7 +93,7 @@ struct FontSettingsSection: View {
                 workspace.updateVaultAppearance { appearance in appearance.adjustsFontSizeQuickly = isOn }
             })) {
                 Text("Quick Font Size Adjustment")
-                Text(Self.quickAdjustmentSummary)
+                Text(SettingsDevice.current.quickFontSizeAdjustmentSummary)
             }
             preview
         } header: {
@@ -115,17 +115,6 @@ struct FontSettingsSection: View {
     private func isDefaultBecauseMissing(_ role: VaultFontRole) -> Bool {
         let list = workspace.vaultAppearance[keyPath: role.keyPath]
         return !list.isEmpty && list.firstAvailableFamily { name in InstalledFontFamilies.family(named: name) } == nil
-    }
-
-    private static var quickAdjustmentSummary: String {
-        #if os(macOS)
-        "Control-scroll or pinch on the trackpad over a note, or press ⌘+, ⌘– and ⌘0."
-        #else
-        // A phone has no keyboard to speak of; the shortcuts are for the iPad.
-        UIDevice.current.userInterfaceIdiom == .phone
-            ? "Pinch a note with two fingers."
-            : "Pinch a note with two fingers, or press ⌘+, ⌘– and ⌘0 on a keyboard."
-        #endif
     }
 
     private var fontSizeRow: some View {

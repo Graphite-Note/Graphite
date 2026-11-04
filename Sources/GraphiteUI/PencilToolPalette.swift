@@ -1,3 +1,16 @@
+/**
+ * File: PencilToolPalette.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The system's floating Pencil palette as every canvas uses it, and the menu of Graphite's button at its end:
+ *              favorite colors and adding the color in use to them, shapes, Graphite's lasso, the laser pointer, the text
+ *              box and the Read Aloud pen.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 import PencilKit
@@ -136,6 +149,7 @@ enum PencilToolPalette {
         let colorsMenu = inkingToolInUse(of: toolPicker)?.inkType == .marker
             ? favoriteColorsMenu(for: toolPicker, palette: highlighterPalette, title: "Highlighter Colors")
             : favoriteColorsMenu(for: toolPicker, palette: palette)
+        let addColorMenus = addColorInUseMenus(for: toolPicker, palette: palette, highlighterPalette: highlighterPalette)
         let readAloudPenAction = UIAction(title: "Read Aloud Pen", subtitle: "Tap a word to read from it, then another to stop there",
                                           image: ReadAloudPenGlyph.templateImage(), state: inkSelection.pointsToRead ? .on : .off) { _ in
             inkSelection.pointsToRead.toggle()
@@ -146,7 +160,7 @@ enum PencilToolPalette {
             inkSelection.placesTextBoxes.toggle()
         }
         let textMenus: [UIMenuElement] = offersTextBoxes ? [UIMenu(options: .displayInline, children: [textBoxAction])] : []
-        return [colorsMenu, UIMenu(options: .displayInline, children: [shapesAction]),
+        return [colorsMenu] + addColorMenus + [UIMenu(options: .displayInline, children: [shapesAction]),
                 UIMenu(options: .displayInline, children: [
                     selectionAction,
                     UIMenu(title: "Lasso Type", subtitle: LassoShape.stored.title, image: UIImage(systemName: LassoShape.stored.symbolName),
@@ -180,6 +194,33 @@ enum PencilToolPalette {
             return UIMenu(options: .displayInline, children: [UIAction(title: "Add colors in Settings › Colors", attributes: .disabled) { _ in }])
         }
         return UIMenu(title: title, options: [.displayInline, .displayAsPalette], children: swatches)
+    }
+
+    /// Adds the color of the tool in use to the list the menu shows, as the fixed bar's plus does (HUNT-309): the color
+    /// the palette's own picker chose becomes one of the favorite colors, or the highlighter's. Nil while that color is
+    /// in the list already, or the tool takes no color. The list is stored under the key Settings › Colors reads, which
+    /// `GraphitePreferences` follows.
+    static func addColorInUseAction(for toolPicker: PKToolPicker, palette: [PaletteColor], storageKey: String,
+                                    defaults: UserDefaults) -> UIAction? {
+        guard let hexInUse = inkingToolInUse(of: toolPicker)?.color.graphiteHexWithoutOpacity,
+              !FavoriteColorEditing.contains(hex: hexInUse, in: palette) else { return nil }
+        let swatch = UIColor(graphiteHex: hexInUse).map { color in
+            UIImage(systemName: "plus.circle.fill")?.withTintColor(color, renderingMode: .alwaysOriginal)
+        }
+        return UIAction(title: "Add to Favorite Colors", image: swatch ?? UIImage(systemName: "plus.circle")) { _ in
+            let colors = FavoriteColorEditing.adding(hex: hexInUse, to: palette)
+            guard let encodedColors = try? JSONEncoder().encode(colors) else { return } // A list of names and hexes always encodes.
+            defaults.set(encodedColors, forKey: storageKey)
+        }
+    }
+
+    /// `addColorInUseAction` for the list the menu shows, the highlighter's while the marker is in use, in a section of its own.
+    private static func addColorInUseMenus(for toolPicker: PKToolPicker, palette: [PaletteColor], highlighterPalette: [PaletteColor]) -> [UIMenuElement] {
+        let isMarkerInUse = inkingToolInUse(of: toolPicker)?.inkType == .marker
+        let storageKey = isMarkerInUse ? GraphitePreferences.highlighterPaletteKey : GraphitePreferences.colorPaletteKey
+        guard let action = addColorInUseAction(for: toolPicker, palette: isMarkerInUse ? highlighterPalette : palette, storageKey: storageKey,
+                                               defaults: .standard) else { return [] }
+        return [UIMenu(options: .displayInline, children: [action])]
     }
 
     static func inkingToolInUse(of toolPicker: PKToolPicker) -> PKInkingTool? {
