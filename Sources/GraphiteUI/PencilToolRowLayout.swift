@@ -3,14 +3,12 @@
  * -------------------------------
  * Layer: UI
  * Description: Which of the Pencil bar's tools stay on a narrow bar and which move into the one control that opens the
- *              rest, and how wide the bar's compact row is, so a bar never has to scroll sideways.
+ *              rest, so a bar never has to scroll sideways.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
-
-import CoreGraphics
 
 /// The pure part of the Pencil bar's narrow forms: nothing here draws.
 enum PencilToolRowLayout {
@@ -20,12 +18,6 @@ enum PencilToolRowLayout {
         case eraser, lasso, laser, text, readAloud
     }
 
-    /// One tool's button with the gap that follows it (`PencilToolbarMetrics.buttonSide` and the row's spacing).
-    static let toolSlotWidth: CGFloat = 38
-    /// What the compact row spends besides its tools: the row's side padding, the separator, and the one control for
-    /// the rest (44 points).
-    static let compactRowFixedWidth: CGFloat = 81
-
     /// The tools of the row in the order the bar shows them: the presets, the eraser, the lasso, the laser pointer,
     /// then the text tool and the Read Aloud pen where the page has them.
     static func tools(presetCount: Int, offersTextBoxes: Bool, offersReadAloudPen: Bool) -> [Tool] {
@@ -34,11 +26,6 @@ enum PencilToolRowLayout {
         if offersTextBoxes { tools.append(.text) }
         if offersReadAloudPen { tools.append(.readAloud) }
         return tools
-    }
-
-    /// The width the compact row needs to show `toolCount` tools and its one control.
-    static func compactRowWidth(toolCount: Int) -> CGFloat {
-        CGFloat(max(toolCount, 0)) * toolSlotWidth + compactRowFixedWidth
     }
 
     /// Which tools a bar that keeps room for `shownCount` of them shows, and which it folds into its control. The tools

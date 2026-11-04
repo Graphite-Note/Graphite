@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.29
- * Date: 02/11/2026
+ * Version: 0.30
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -258,6 +258,8 @@ final class GraphitePreferences {
     }
 
     private let defaults: UserDefaults
+    /// The observer of `defaults` that keeps the palettes as stored (`followStoredPalettes`).
+    @ObservationIgnored private var storedPalettesObserver: (any NSObjectProtocol)?
     /// The library's own settings, kept apart from the rest.
     let library: NotebookLibraryPreferences
     /// The paper and size the next notebook starts with.
@@ -477,6 +479,30 @@ final class GraphitePreferences {
         snapshotIntervalMinutes = (1...60).contains(storedInterval) ? storedInterval : 5
         let storedHistory = defaults.integer(forKey: Key.snapshotHistoryDays)
         snapshotHistoryDays = (1...365).contains(storedHistory) ? storedHistory : 7
+        followStoredPalettes()
+    }
+
+    isolated deinit {
+        if let storedPalettesObserver { NotificationCenter.default.removeObserver(storedPalettesObserver) }
+    }
+
+    /// Follows the palettes as stored, which the Pencil bar changes too (moving, adding and removing its colors
+    /// through `FavoriteColorEditing`): without it, this copy would be stale, and the next change in Settings › Colors
+    /// would write the stale list back over the bar's.
+    private func followStoredPalettes() {
+        storedPalettesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: defaults,
+                                                                         queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.takeStoredPalettes() }
+        }
+    }
+
+    /// Takes the stored palettes where they differ from this copy; the same list is not assigned again, which would
+    /// write it back and post another change.
+    private func takeStoredPalettes() {
+        let storedColors = Self.storedColorPalette(in: defaults)
+        if storedColors != colorPalette { colorPalette = storedColors }
+        let storedHighlighterColors = Self.storedHighlighterPalette(in: defaults)
+        if storedHighlighterColors != highlighterPalette { highlighterPalette = storedHighlighterColors }
     }
 
     func isEnabled(_ plugin: CorePlugin) -> Bool { corePluginSwitches.isEnabled(plugin) }
