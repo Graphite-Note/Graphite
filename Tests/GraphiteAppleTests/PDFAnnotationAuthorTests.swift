@@ -3,6 +3,7 @@ import PDFKit
 import CoreGraphics
 import GraphiteCore
 @testable import GraphiteApple
+import GraphiteTestSupport
 
 /// The author written into a PDF for what Graphite adds (`/T`): the name chosen in Settings, else the Mac owner's name, else
 /// none. PDFKit's own author, "Mobile User" on an iPad or iPhone, is never left in the file. The files are written as saving
@@ -10,18 +11,19 @@ import GraphiteCore
 final class PDFAnnotationAuthorTests: XCTestCase {
     private var suiteName = ""
     private var defaults: UserDefaults!
-    private var savedFiles: [URL] = []
+    private var savedFolder: TemporaryVault!
 
     override func setUp() {
         suiteName = "PDFAnnotationAuthorTests-\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
+        savedFolder = try? TemporaryVault(prefix: "PDFAnnotationAuthorTests")
     }
 
     override func tearDown() {
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
-        for file in savedFiles { try? FileManager.default.removeItem(at: file) }
-        savedFiles = []
+        savedFolder?.remove()
+        savedFolder = nil
     }
 
     private func author(chosen: String?, owner: String? = nil) -> PDFAnnotationAuthor {
@@ -49,8 +51,7 @@ final class PDFAnnotationAuthorTests: XCTestCase {
 
     /// The file as saving leaves it, written and compacted, and read back.
     private func saved(_ document: PDFDocument) throws -> (reloaded: PDFDocument, data: Data) {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("PDFAnnotationAuthorTests-\(UUID().uuidString).pdf")
-        savedFiles.append(file)
+        let file = try XCTUnwrap(savedFolder).root.appendingPathComponent("\(UUID().uuidString).pdf")
         XCTAssertTrue(PDFFileService.write(document, to: file))
         return (try XCTUnwrap(PDFDocument(url: file)), try Data(contentsOf: file))
     }

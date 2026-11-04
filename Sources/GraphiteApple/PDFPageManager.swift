@@ -348,7 +348,11 @@ public enum PDFPageManager {
         let textBoxesOnTop = takeTextBoxesOffTop(of: page)
         for stroke in update.addedStrokes {
             let strokeAuthorName: String?
-            if let strokeName = stroke.name, let formerAuthor = formerAuthors[strokeName] { strokeAuthorName = formerAuthor } else { strokeAuthorName = authorName }
+            if let strokeName = stroke.name, let formerAuthor = formerAuthors[strokeName] {
+                strokeAuthorName = formerAuthor
+            } else {
+                strokeAuthorName = authorName
+            }
             guard let annotation = PDFInkAnnotationFactory.annotation(for: stroke, group: update.group, isForWrittenDocument: drawsInkOutlines,
                                                                       authorName: strokeAuthorName)
                 else { continue }

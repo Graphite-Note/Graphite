@@ -274,7 +274,11 @@ final class GraphitePreferences {
     var annotationAuthorName: String {
         didSet {
             let trimmedName = annotationAuthorName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmedName.isEmpty { defaults.removeObject(forKey: Key.annotationAuthorName) } else { defaults.set(annotationAuthorName, forKey: Key.annotationAuthorName) }
+            if trimmedName.isEmpty {
+                defaults.removeObject(forKey: Key.annotationAuthorName)
+            } else {
+                defaults.set(annotationAuthorName, forKey: Key.annotationAuthorName)
+            }
         }
     }
 
