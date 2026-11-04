@@ -7,7 +7,7 @@
  *              and decodes nothing (HUNT-313).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -81,6 +81,8 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         window.frame = scene.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
+        // SwiftUI makes the PDF's view at the window's first layout pass, after this returns, not inside it.
+        try await waitUntil("the pane made the PDF's view") { (session.pdfView as? GraphitePDFDisplayView)?.annotationCoordinator != nil }
         let pdfView = try XCTUnwrap(session.pdfView as? GraphitePDFDisplayView)
         let coordinator = try XCTUnwrap(pdfView.annotationCoordinator)
         try await waitUntil("the first page's ink is on its canvas") {
