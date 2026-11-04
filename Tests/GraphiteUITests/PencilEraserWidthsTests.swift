@@ -3,10 +3,11 @@
  * -----------------------------------
  * Layer: Tests
  * Description: The pixel eraser's sizes (HUNT-319): a smallest about a thin pen line, fine steps up to the
- *              broadest, three starting sizes, sizes kept as the bar keeps the others, and PencilKit's limits.
+ *              broadest, three starting sizes, sizes kept as the bar keeps the others, and which widths
+ *              PencilKit's own eraser makes.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 
@@ -18,7 +19,7 @@ import PencilKit
 import GraphiteTestSupport
 
 /// The owner's report of 2026-11-04: "eraser needs to go much much smaller, more granularity". Values only:
-/// the eraser cutting a gap in a stroke is a hosted test (`InkWidthAtZoomTests`).
+/// the cut itself is `PixelEraserPassTests` and, on a real canvas, the hosted `FinePixelEraserTests`.
 @MainActor
 final class PencilEraserWidthsTests: XCTestCase {
     private var defaults: UserDefaults!
@@ -111,14 +112,17 @@ final class PencilEraserWidthsTests: XCTestCase {
         XCTAssertEqual(PencilToolbox.storageKey, "GraphitePencilToolbox.v2", "The same record as before.")
     }
 
-    func testTheFixedWidthEraserCutsNoLessThanPencilKitsFloorOnTheScreenSoZoomingInGivesAFinerCut() {
+    /// PencilKit's eraser is 16.4 to 80.4 points of the screen wide: the widths it cannot make there are
+    /// Graphite's eraser's, which cuts the chosen width on the page at any zoom.
+    func testPencilKitErasesOnlyTheWidthsItMakesOnTheScreenAndGraphiteErasesTheRest() {
         let smallest = PencilEraserWidths.range.lowerBound
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: smallest, screenPointsPerPagePoint: 1), 16.4, accuracy: 0.0001, "At the page's size.")
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: smallest, screenPointsPerPagePoint: 4), 4.1, accuracy: 0.0001)
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: smallest, screenPointsPerPagePoint: 16.4), smallest, accuracy: 0.0001, "The chosen width, once the zoom allows it.")
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: 24, screenPointsPerPagePoint: 1.5), 24, accuracy: 0.0001, "HUNT-023: the same gap at any zoom.")
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: 64, screenPointsPerPagePoint: 3), 80.4 / 3, accuracy: 0.0001, "Up to PencilKit's widest.")
-        XCTAssertEqual(PencilEraserWidths.widthOnPage(chosen: 6, screenPointsPerPagePoint: 0), 6)
+        XCTAssertFalse(PencilEraserWidths.erasesWithPencilKit(chosen: smallest, screenPointsPerPagePoint: 1), "One point is narrower than PencilKit's eraser.")
+        XCTAssertFalse(PencilEraserWidths.erasesWithPencilKit(chosen: 2, screenPointsPerPagePoint: 4), "Eight points of the screen.")
+        XCTAssertTrue(PencilEraserWidths.erasesWithPencilKit(chosen: smallest, screenPointsPerPagePoint: 16.4), "PencilKit's narrowest.")
+        XCTAssertTrue(PencilEraserWidths.erasesWithPencilKit(chosen: 24, screenPointsPerPagePoint: 1.5), "HUNT-023: within PencilKit's reach.")
+        XCTAssertTrue(PencilEraserWidths.erasesWithPencilKit(chosen: 80.4, screenPointsPerPagePoint: 1), "PencilKit's widest.")
+        XCTAssertFalse(PencilEraserWidths.erasesWithPencilKit(chosen: 64, screenPointsPerPagePoint: 3), "Wider than PencilKit's eraser.")
+        XCTAssertTrue(PencilEraserWidths.erasesWithPencilKit(chosen: 6, screenPointsPerPagePoint: 0), "A canvas not laid out yet keeps PencilKit's tool.")
     }
 
     #if canImport(PencilKit)

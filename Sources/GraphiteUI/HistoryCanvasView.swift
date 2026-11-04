@@ -5,8 +5,8 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.27
- * Date: 02/11/2026
+ * Version: 0.28
+ * Date: 04/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -22,6 +22,11 @@ import GraphiteApple
 /// new drawing (`PencilDrawingChange`) and records the change in the document's history,
 /// which undo and redo give back through `showDrawingFromHistory`.
 class HistoryCanvasView: PKCanvasView {
+    /// Graphite's pixel eraser, erasing on this canvas, takes the drawing on from the one given now.
+    override var drawing: PKDrawing {
+        didSet { if hasPixelEraser { pixelEraser.canvasDrawingWasReplaced() } }
+    }
+
     /// The drawing as of the last change the history knows, to tell what the next change
     /// removed and added.
     var recordedDrawing = PKDrawing() {
@@ -102,13 +107,13 @@ class HistoryCanvasView: PKCanvasView {
     /// tool's width in the drawing whatever the canvas's zoom (INK-22), so a pen is as wide on
     /// the page at any zoom without any change to the tool. The pixel eraser is the other way
     /// round: it cuts its width on the screen, whatever the canvas's own zoom, so it is given the
-    /// chosen width times the zoom on screen. PencilKit makes it no wider than 80.4 points, so
-    /// at a high zoom a broad eraser cuts 80 points of the screen, less than it would on the
-    /// page. While the highlighter ignores tilt, the canvas draws with an invisible stand-in and shows the stroke itself (`EvenHighlighter`): PencilKit's
+    /// chosen width times the zoom on screen. PencilKit makes it 16.4 to 80.4 points of the screen
+    /// wide; for any other width Graphite's own eraser erases (`PixelEraserController`, HUNT-319).
+    /// While the highlighter ignores tilt, the canvas draws with an invisible stand-in and shows the stroke itself (`EvenHighlighter`): PencilKit's
     /// live stroke follows the Pencil's tilt, and changed at the lift into the even one.
     func toolForDrawing(_ chosenTool: PKTool) -> PKTool {
         if let eraser = chosenTool as? PKEraserTool, eraser.eraserType != .vector, zoomScale > 0 {
-            return PKEraserTool(eraser.eraserType, width: eraser.width * screenPointsPerDrawingPoint)
+            return PKEraserTool(eraser.eraserType, width: chosenWidth(of: eraser) * screenPointsPerDrawingPoint)
         }
         isEvenHighlighterPreferenceOn = EvenHighlighterPreference.isOn()
         guard isEvenHighlighterPreferenceOn, let highlighter = chosenTool as? PKInkingTool, highlighter.inkType == .marker,
@@ -160,9 +165,40 @@ class HistoryCanvasView: PKCanvasView {
         }
     }
 
-    /// Draws with the tool `toolForDrawing` makes of a chosen one.
+    /// Draws with the tool `toolForDrawing` makes of a chosen one, or erases with Graphite's own
+    /// pixel eraser at a width PencilKit's cannot make on the screen.
     private func drawWith(_ chosenTool: PKTool) {
         tool = toolForDrawing(chosenTool)
+        let pixelEraserWidth = (chosenTool as? PKEraserTool).flatMap { eraser in eraser.eraserType == .vector ? nil : chosenWidth(of: eraser) }
+        graphiteEraserWidth = pixelEraserWidth.flatMap { width in
+            PencilEraserWidths.erasesWithPencilKit(chosen: Double(width), screenPointsPerPagePoint: Double(screenPointsPerDrawingPoint)) ? nil : width
+        }
+    }
+
+    /// The pixel eraser's width as chosen, in the drawing's points: PencilKit makes a tool of the
+    /// bar's width no narrower than it can draw, so the bar's own is read.
+    private func chosenWidth(of eraser: PKEraserTool) -> CGFloat {
+        fixedTool.flatMap { barTool in barTool.kind == .eraser && !barTool.erasesWholeStrokes ? CGFloat(barTool.eraserWidth) : nil } ?? eraser.width
+    }
+
+    /// The width Graphite's pixel eraser erases with, in the drawing's points; nil while PencilKit's tool is used.
+    private var graphiteEraserWidth: CGFloat? {
+        didSet { if graphiteEraserWidth != oldValue { applyDrawingEnabled() } }
+    }
+
+    private var hasPixelEraser = false
+    /// Graphite's pixel eraser on this canvas (`PixelEraserController`).
+    private(set) lazy var pixelEraser: PixelEraserController = {
+        hasPixelEraser = true
+        return PixelEraserController(canvas: self)
+    }()
+
+    /// Gives the canvas the drawing Graphite's pixel eraser left, as one change its owner records;
+    /// the canvas as it was, with the swept ink hidden, stays over it until PencilKit has drawn it.
+    func showErasedDrawing(_ erasedDrawing: PKDrawing, afterCovering removeSweptInkPreview: () -> Void) {
+        coverUntilRendered()
+        removeSweptInkPreview()
+        setDrawingMadeByCanvas(erasedDrawing)
     }
 
     /// How large a point of the drawing is on screen, through the canvas's zoom and whatever
@@ -207,7 +243,7 @@ class HistoryCanvasView: PKCanvasView {
             placesTextBoxes = newFixedTool.kind == .text
             // The lasso, the laser, the Read Aloud pen and the text tool are Graphite's own;
             // PencilKit's tool stays what it was and draws nothing.
-            if newFixedTool.kind.drawsInk { drawWith(newFixedTool.tool) }
+            if newFixedTool.kind.drawsInk { drawWith(newFixedTool.tool) } else { graphiteEraserWidth = nil }
             isRulerActive = newFixedTool.isRulerActive
         } else if !followsToolPicker {
             fixedTool = nil
@@ -323,7 +359,10 @@ class HistoryCanvasView: PKCanvasView {
     }
 
     private func applyDrawingEnabled() {
-        isDrawingEnabled = !isDrawingSuspended && !selectsInk && !pointsWithLaser && !pointsToRead && !placesTextBoxes
+        let usesGraphiteTool = isDrawingSuspended || selectsInk || pointsWithLaser || pointsToRead || placesTextBoxes
+        let erasesWithGraphite = !usesGraphiteTool && graphiteEraserWidth != nil
+        if erasesWithGraphite || hasPixelEraser { pixelEraser.erase(withWidth: erasesWithGraphite ? graphiteEraserWidth : nil) }
+        isDrawingEnabled = !usesGraphiteTool && !erasesWithGraphite
     }
 
     // MARK: Pointing
