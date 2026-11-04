@@ -395,7 +395,8 @@ private struct CorePluginsSettingsPage: View {
                     }
                 }
             } footer: {
-                Text("Turning a plugin off hides it in Graphite. It never changes your notes. These switches are kept on this device, for every vault; Obsidian's own list of core plugins is not read, since the two apps have different plugins.")
+                Text("Turning a plugin off hides it in Graphite. It never changes your notes. These switches are kept on this device, for every vault; "
+                    + "Obsidian's own list of core plugins is not read, since the two apps have different plugins.")
                     .formFooterAlignment()
             }
         }

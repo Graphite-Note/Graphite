@@ -80,6 +80,8 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         try await waitUntil("the file list comes to the front") { !self.isNoteEditorShown() }
         attachScreenshot(named: "Phone's file list before the rename")
 
+        // A rename plans its link updates from the index, as in the workspace's own tests of it.
+        try await waitUntil("the vault is indexed") { workspace.hasCompletedIndexScan }
         await workspace.rename(try VaultPath("Old.md"), to: "New")
         XCTAssertEqual(workspace.selection?.rawValue, "New.md", "The rename changed the selection, as before the fix.")
         let quietUntil = ContinuousClock.now + .seconds(2)
