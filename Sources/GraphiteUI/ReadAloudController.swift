@@ -5,8 +5,8 @@
  * Description: One Read Aloud session per window: preparing, playing and following a note or PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.21
- * Date: 01/11/2026
+ * Version: 0.22
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -725,8 +725,13 @@ final class ReadAloudController {
         let knownRunningText = pdfRunningText
         let vaultRoot = vaultRoot
         // The page's own language: the session's is still the previous document's here, and
-        // the code goes up to its first `-`, as "fil" and "yue" have three letters.
-        let pageLanguage = ReadAloudLanguage.language(ofText: snapshot.text) ?? session.readingLanguage
+        // the code goes up to its first `-`, as "fil" and "yue" have three letters. It is found
+        // away from the main actor: it asks the system's speech voices, whose service answered
+        // only after 30 seconds on a loaded machine, and the app stood still until it did.
+        let pageText = snapshot.text
+        let detectedLanguage = await Task.detached(priority: .userInitiated) { ReadAloudLanguage.language(ofText: pageText) }.value
+        guard identifier == preparationIdentifier, !Task.isCancelled else { return }
+        let pageLanguage = detectedLanguage ?? session.readingLanguage
         let hyphenationWords = ReadAloudSpelling.dictionaryWords(among: ReadAloudDocument.hyphenationCandidates(in: snapshot.text),
                                                                  language: String(pageLanguage.prefix { character in character != "-" && character != "_" }))
         let worker = Task.detached(priority: .userInitiated) {

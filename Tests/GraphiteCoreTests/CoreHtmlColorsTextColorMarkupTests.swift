@@ -1,3 +1,14 @@
+/**
+ * File: CoreHtmlColorsTextColorMarkupTests.swift
+ * ----------------------------------------------
+ * Layer: Tests
+ * Description: Regression tests for colors that ran past their block or were hidden by code and math.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport
@@ -80,10 +91,21 @@ final class CoreHtmlColorsTextColorMarkupTests: XCTestCase {
 
     func testDenseColorsParseQuickly() {
         let line = "Line with `code $x$` and $y+1$ with ~={#ff0000}red=~ and ~={#00ff00}green=~ text.\n"
-        XCTAssertEqual(TextColorMarkup.sections(in: String(repeating: line, count: 8_000) as NSString).count, 16_000)
-        // Every marker scanned every code span and formula in the note: this took about five seconds.
-        ScalingChecks.assertScalesLinearly(smallSize: 2_000, largeSize: 8_000, "dense colors") { lineCount in
-            _ = TextColorMarkup.sections(in: String(repeating: line, count: lineCount) as NSString)
-        }
+        let text = String(repeating: line, count: 8_000) as NSString
+        XCTAssertEqual(TextColorMarkup.sections(in: text).count, 16_000)
+        // Every marker scanned every code span and formula in the note: this took about five seconds, some 2,500 times a
+        // plain pass that reads the same text line by line, as the parse does. The parse is about 40 times that pass in a
+        // debug build. It is timed against the pass, made on the same machine a moment before, and not as a ratio of two
+        // sizes: GitHub's loaded runners put that ratio anywhere from 4.3 to 8.1 for the same linear code (2026-11-03 and
+        // 04), against a limit of 8.
+        ScalingChecks.assertNoSlowerThan(factor: 250, reference: {
+            var lineStart = 0, lineCount = 0
+            while lineStart < text.length {
+                let lineRange = text.lineRange(for: NSRange(location: lineStart, length: 0))
+                if text.substring(with: lineRange).hasPrefix("Line") { lineCount += 1 }
+                lineStart = NSMaxRange(lineRange)
+            }
+            XCTAssertEqual(lineCount, 8_000)
+        }, "dense colors, 8,000 lines", work: { _ = TextColorMarkup.sections(in: text) })
     }
 }

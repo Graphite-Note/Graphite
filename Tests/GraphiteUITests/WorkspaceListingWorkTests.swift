@@ -5,8 +5,8 @@
  * Description: What a change in the vault costs the workspace, counted in listings done and versions moved.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -618,7 +618,8 @@ final class PDFThumbnailListWorkTests: XCTestCase {
                         }
                     }
                 }
-                .onChange(of: state.scrollTarget) { if let target = state.scrollTarget { scrollProxy.scrollTo(target) } }
+                // In the middle, as the app's page list scrolls to the page in view.
+                .onChange(of: state.scrollTarget) { if let target = state.scrollTarget { scrollProxy.scrollTo(target, anchor: .center) } }
             }
         }
     }
@@ -631,6 +632,19 @@ final class PDFThumbnailListWorkTests: XCTestCase {
         return window
     }
 
+    /// `waitUntil`, with the window laid out and drawn before each check, as AppKit does between
+    /// run-loop turns for a window on screen. The rows a scroll brings in appear in that pass, which
+    /// AppKit need not run for an invisible test window: on GitHub's loaded runners a jump's row
+    /// now and then did not appear in 20 seconds (3 of about 40 runs), where it takes 25 ms here.
+    private func waitUntilLaidOut(_ window: NSWindow, _ description: String, file: StaticString = #filePath, line: UInt = #line,
+                                  _ condition: () -> Bool) async throws {
+        try await waitUntil(description, file: file, line: line) {
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.displayIfNeeded()
+            return condition()
+        }
+    }
+
     func testJumpingInAListOf1000PagesAsksOnlyForThePagesItShows() async throws {
         let document = CountingPDFDocument()
         for pageIndex in 0..<1_000 { document.insert(PDFPage(), at: pageIndex) }
@@ -639,13 +653,15 @@ final class PDFThumbnailListWorkTests: XCTestCase {
         let window = show(RowList(document: document, state: state))
         defer { window.close() }
 
-        try await waitUntil { state.indicesShown.contains(0) }
+        try await waitUntilLaidOut(window, "the first row is shown") { state.indicesShown.contains(0) }
         XCTAssertLessThan(document.pageRequests, 12, "Opening the list asked for all 1,000, each time its body ran.")
 
         for target in [900, 950, 3] {
             document.pageRequests = 0
+            // Rows shown before do not count: row 3 is on screen when the list opens.
+            state.indicesShown = []
             state.scrollTarget = target
-            try await waitUntil { state.indicesShown.contains(target) }
+            try await waitUntilLaidOut(window, "row \(target) is shown") { state.indicesShown.contains(target) }
             XCTAssertLessThan(document.pageRequests, 12, "A jump to \(target) asked for 900 or more pages when each row asked as it was laid out.")
         }
     }
@@ -670,7 +686,7 @@ final class PDFThumbnailListWorkTests: XCTestCase {
         defer { window.close(); renderer.removeThumbnails() }
 
         let pageInView = try XCTUnwrap(session.document.page(at: 900))
-        try await waitUntil { renderer.hasDrawn(pageInView) }
+        try await waitUntilLaidOut(window, "the page in view is drawn") { renderer.hasDrawn(pageInView) }
         XCTAssertLessThan(renderer.drawnPageCount, 12, "The rows on the way to the page are laid out, not drawn.")
     }
 
@@ -681,12 +697,12 @@ final class PDFThumbnailListWorkTests: XCTestCase {
         let state = ListState()
         let window = show(RowList(document: document, state: state))
         defer { window.close() }
-        try await waitUntil { state.pagesShownAtFirstRow.last === pages[0] }
+        try await waitUntilLaidOut(window, "the first page is shown") { state.pagesShownAtFirstRow.last === pages[0] }
 
         document.removePage(at: 0)
         state.pageListVersion += 1
 
-        try await waitUntil { state.pagesShownAtFirstRow.last === pages[1] }
+        try await waitUntilLaidOut(window, "the second page is shown at the first row") { state.pagesShownAtFirstRow.last === pages[1] }
     }
     #endif
 }

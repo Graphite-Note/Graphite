@@ -6,13 +6,14 @@
  *              canvas's own drawing recognizer of stand-in touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import SwiftUI
 import UIKit
 import PencilKit
+import PDFKit
 @testable import GraphiteUI
 
 /// PencilKit draws nothing from touches sent through UIKit's event path (`SynthesizedTouches`),
@@ -26,6 +27,20 @@ enum SynthesizedStrokes {
     /// to it, and the rendering scale takes a fixed time to settle after a zoom.
     static func waitForPageToDraw(milliseconds: Int = 400) async throws {
         try await Task.sleep(for: .milliseconds(milliseconds))
+    }
+
+    /// Waits until a PDF page's canvas draws at the scale its view's zoom calls for. The canvas
+    /// takes a new zoom a moment after the view, and not while a stroke is under way: the touches
+    /// UIKit gave its drawing recognizer hold the change back. The stand-in touches told straight
+    /// to the recognizer are not among them, so a stroke begun before the canvas had the zoom was
+    /// laid out again under PencilKit's live stroke, and PencilKit dropped it.
+    static func waitForCanvasToDrawAtTheZoom(of canvas: PDFPageCanvasView, in pdfView: PDFView) async throws {
+        guard let page = canvas.page else { return }
+        try await waitUntil("the page's canvas draws at the PDF's zoom") {
+            let screenScale = pdfView.window?.screen.scale ?? pdfView.traitCollection.displayScale
+            let scale = PDFPageOverlayView.renderingScale(forZoom: pdfView.scaleFactor, pageSize: page.bounds(for: .cropBox).size, screenScale: max(screenScale, 1))
+            return canvas.window != nil && abs(canvas.zoomScale - scale) < 0.02
+        }
     }
 
     /// Lets a finger draw on a PDF page, which reads the standard preference, until `restore` is called.

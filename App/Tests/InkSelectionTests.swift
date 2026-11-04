@@ -6,8 +6,8 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 02/11/2026
+ * Version: 0.15
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -142,11 +142,13 @@ final class InkSelectionTests: XCTestCase {
         pdfView.autoScales = false
         pdfView.scaleFactor = 3.27
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
         let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 100, y: middle.y), to: CGPoint(x: middle.x + 100, y: middle.y)), in: window)
         let stroke = try XCTUnwrap(drawnStroke)
         pdfView.scaleFactor = 0.91
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         canvas.selectsInk = true
         let around = stroke.renderBounds.insetBy(dx: -12, dy: -12)
         let loop = [CGPoint(x: around.minX, y: around.minY), CGPoint(x: around.maxX, y: around.minY), CGPoint(x: around.maxX, y: around.maxY), CGPoint(x: around.minX, y: around.maxY), CGPoint(x: around.minX, y: around.minY)]
@@ -188,15 +190,18 @@ final class InkSelectionTests: XCTestCase {
         pdfView.autoScales = false
         pdfView.scaleFactor = 0.91
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         let middleAtFit = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
         let drawnAtFit = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleAtFit.x - 100, y: middleAtFit.y - 200), to: CGPoint(x: middleAtFit.x + 100, y: middleAtFit.y - 200)), in: window)
         pdfView.scaleFactor = 3.27
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         let middleZoomed = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
         let drawnZoomed = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleZoomed.x - 100, y: middleZoomed.y), to: CGPoint(x: middleZoomed.x + 100, y: middleZoomed.y)), in: window)
         let strokeAtFit = try XCTUnwrap(drawnAtFit), strokeZoomed = try XCTUnwrap(drawnZoomed)
         pdfView.scaleFactor = 0.91
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         canvas.selectsInk = true
 
         try await drawLoopOfTouches(around: strokeZoomed.renderBounds.insetBy(dx: -30, dy: -30), on: canvas, in: window)
@@ -223,6 +228,7 @@ final class InkSelectionTests: XCTestCase {
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
         pdfView.go(to: CGRect(x: 100, y: page.bounds(for: .cropBox).height - 400, width: 300, height: 200), on: page)
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         canvas.selectsInk = true
 
         try await drawLoopOfTouches(around: CGRect(x: 120, y: 270, width: 160, height: 60), on: canvas, in: window)
