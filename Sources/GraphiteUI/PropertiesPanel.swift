@@ -1,3 +1,14 @@
+/**
+ * File: PropertiesPanel.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The properties of a note, shown above its text.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.8
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -37,7 +48,7 @@ struct PropertiesPanel: View {
                 HStack(spacing: 8) {
                     Text("Properties").font(.title3.weight(.semibold)).foregroundStyle(.primary)
                     if !isExpanded {
-                        Text("\(shownProperties.count)").font(.callout).foregroundStyle(.secondary)
+                        Text(shownProperties.count.formatted()).font(.callout).foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

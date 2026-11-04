@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 21/10/2026
+ * Version: 0.30
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -51,6 +51,12 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
         }
+    }
+
+    /// The summary for a window with no room for the right sidebar, as on a phone, where
+    /// the panels are in the Links and Outline sheet.
+    func summary(hasRightSidebar: Bool) -> String {
+        hasRightSidebar ? summary : summary.replacingOccurrences(of: "in the right sidebar", with: "in the Links and Outline sheet")
     }
 
     var summary: String {
@@ -233,6 +239,7 @@ final class GraphitePreferences {
         static let makesShapesOnHold = StrokeHoldPreference.key
         static let pencilToolbarStyle = PencilToolbarStyle.preferenceKey
         static let usesVaultTheme = "GraphiteUsesVaultTheme"
+        static let annotationAuthorName = PDFAnnotationAuthor.preferenceKey
     }
     /// The smallest text a note draws, such as a footnote number: Apple's minimum text size
     /// on iPhone and iPad.
@@ -252,12 +259,30 @@ final class GraphitePreferences {
     }
 
     private let defaults: UserDefaults
+    /// The observer of `defaults` that keeps the palettes as stored (`followStoredPalettes`).
+    @ObservationIgnored private var storedPalettesObserver: (any NSObjectProtocol)?
     /// The library's own settings, kept apart from the rest.
     let library: NotebookLibraryPreferences
     /// The paper and size the next notebook starts with.
     let notebookCreation: NotebookCreationDefaults
     /// The options the last note was exported to PDF with.
     let notePDFExport: NotePDFExportDefaults
+    /// The language of month and weekday names in dates.
+    let dateNames: DateNamePreferences
+
+    /// The name written as the author of the ink, highlights, text boxes and pictures added to a PDF
+    /// (Settings › General › You); empty when none is chosen, which writes the Mac owner's name, or none on an
+    /// iPad or iPhone (`PDFAnnotationAuthor`). A blank name is not stored.
+    var annotationAuthorName: String {
+        didSet {
+            let trimmedName = annotationAuthorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedName.isEmpty {
+                defaults.removeObject(forKey: Key.annotationAuthorName)
+            } else {
+                defaults.set(annotationAuthorName, forKey: Key.annotationAuthorName)
+            }
+        }
+    }
 
     var drawingFormat: DrawingFormat { didSet { defaults.set(drawingFormat.rawValue, forKey: Key.drawingFormat) } }
     var drawingBackground: DrawingBackground { didSet { defaults.set(drawingBackground.rawValue, forKey: Key.drawingBackground) } }
@@ -382,9 +407,9 @@ final class GraphitePreferences {
     }
     /// The accent exactly as chosen, for the color picker.
     var chosenAccentColor: Color { Color(graphiteHex: accentHex) ?? Color(graphiteHex: GraphiteTheme.defaultAccentHex) ?? .blue }
-    /// File recovery's "Snapshot interval": at most one copy of a note per this many minutes.
+    /// File recovery's "Snapshot Interval": at most one copy of a note per this many minutes.
     var snapshotIntervalMinutes: Int { didSet { defaults.set(snapshotIntervalMinutes, forKey: Key.snapshotIntervalMinutes) } }
-    /// File recovery's "History length": copies older than this many days are removed.
+    /// File recovery's "History Length": copies older than this many days are removed.
     var snapshotHistoryDays: Int { didSet { defaults.set(snapshotHistoryDays, forKey: Key.snapshotHistoryDays) } }
     /// Double-tapping Apple Pencil in a note being written starts a drawing at the cursor.
     var drawsOnPencilDoubleTap: Bool { didSet { defaults.set(drawsOnPencilDoubleTap, forKey: Key.drawsOnPencilDoubleTap) } }
@@ -426,6 +451,8 @@ final class GraphitePreferences {
         library = NotebookLibraryPreferences(defaults: defaults)
         notebookCreation = NotebookCreationDefaults(defaults: defaults)
         notePDFExport = NotePDFExportDefaults(defaults: defaults)
+        dateNames = DateNamePreferences(defaults: defaults)
+        annotationAuthorName = defaults.string(forKey: Key.annotationAuthorName) ?? ""
         drawingFormat = defaults.string(forKey: Key.drawingFormat).flatMap(DrawingFormat.init(rawValue:)) ?? .png
         drawingBackground = defaults.string(forKey: Key.drawingBackground).flatMap(DrawingBackground.init(rawValue:)) ?? .white
         drawsOnPencilDoubleTap = defaults.object(forKey: Key.drawsOnPencilDoubleTap) as? Bool ?? true
@@ -468,6 +495,30 @@ final class GraphitePreferences {
         snapshotIntervalMinutes = (1...60).contains(storedInterval) ? storedInterval : 5
         let storedHistory = defaults.integer(forKey: Key.snapshotHistoryDays)
         snapshotHistoryDays = (1...365).contains(storedHistory) ? storedHistory : 7
+        followStoredPalettes()
+    }
+
+    isolated deinit {
+        if let storedPalettesObserver { NotificationCenter.default.removeObserver(storedPalettesObserver) }
+    }
+
+    /// Follows the palettes as stored, which the Pencil bar changes too (moving, adding and removing its colors
+    /// through `FavoriteColorEditing`): without it, this copy would be stale, and the next change in Settings › Colors
+    /// would write the stale list back over the bar's.
+    private func followStoredPalettes() {
+        storedPalettesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: defaults,
+                                                                         queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.takeStoredPalettes() }
+        }
+    }
+
+    /// Takes the stored palettes where they differ from this copy; the same list is not assigned again, which would
+    /// write it back and post another change.
+    private func takeStoredPalettes() {
+        let storedColors = Self.storedColorPalette(in: defaults)
+        if storedColors != colorPalette { colorPalette = storedColors }
+        let storedHighlighterColors = Self.storedHighlighterPalette(in: defaults)
+        if storedHighlighterColors != highlighterPalette { highlighterPalette = storedHighlighterColors }
     }
 
     func isEnabled(_ plugin: CorePlugin) -> Bool { corePluginSwitches.isEnabled(plugin) }

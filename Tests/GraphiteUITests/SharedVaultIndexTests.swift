@@ -1,3 +1,14 @@
+/**
+ * File: SharedVaultIndexTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Two windows of one process on the same vault share its index (decision 12 of
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -101,11 +112,16 @@ final class SharedVaultIndexTests: XCTestCase {
         let secondWindow = makeWindow()
         try await secondWindow.openFolderAsVault(vault)
         let versionBeforeScans = secondWindow.indexVersion
+        let index = try XCTUnwrap(secondWindow.index)
 
         secondWindow.startIndexing()
+        // Written after the running scan may have passed it: only the scan that follows finds it.
+        try Data("late".utf8).write(to: vault.appendingPathComponent("Late note.md"))
         try await waitUntil { !secondWindow.isIndexing && !firstWindow.isIndexing }
 
-        XCTAssertGreaterThanOrEqual(secondWindow.indexVersion - versionBeforeScans, 2, "The running scan, then the one asked for during it.")
+        let indexedFileCount = try await index.fileCount()
+        XCTAssertEqual(indexedFileCount, 201, "The running scan, then the one asked for during it.")
+        XCTAssertGreaterThanOrEqual(secondWindow.indexVersion - versionBeforeScans, 1)
         XCTAssertTrue(firstWindow.hasCompletedIndexScan)
         XCTAssertNil(secondWindow.errorMessage)
     }

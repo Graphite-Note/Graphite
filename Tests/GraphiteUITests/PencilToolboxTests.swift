@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolboxTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: The Pencil bar's state, presets, undo steps and where the document controls go.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteUI
 import GraphiteCore
@@ -352,11 +363,19 @@ final class PencilToolboxTests: XCTestCase {
 
     // MARK: Apple Pencil's double tap and squeeze
 
+    /// Just after launch there is no earlier tool, and the gesture still answers (HUNT-025).
+    func testSwitchingToThePreviousToolWithNoneTakesUpTheEraser() {
+        let toolbox = PencilToolbox(defaults: defaults)
+        XCTAssertNil(toolbox.previousTool)
+        toolbox.switchToPreviousTool()
+        XCTAssertEqual(toolbox.toolInUse, .eraser)
+        toolbox.switchToPreviousTool()
+        XCTAssertEqual(toolbox.toolInUse, .ink, "And the next one goes back.")
+    }
+
     func testSwitchingToThePreviousToolGoesBackAndForthBetweenTwoTools() {
         let toolbox = PencilToolbox(defaults: defaults)
-        toolbox.switchToPreviousTool()
-        XCTAssertEqual(toolbox.toolInUse, .ink, "Nothing to go back to yet.")
-        XCTAssertEqual(toolbox.presetInUseIndex, 0)
+        toolbox.usePreset(at: 0)
         toolbox.usePreset(at: 2)
         toolbox.switchToPreviousTool()
         XCTAssertEqual(toolbox.presetInUseIndex, 0)
@@ -481,24 +500,6 @@ final class PencilToolboxTests: XCTestCase {
         XCTAssertFalse(DocumentToolbarLayout.showsControlsInTabBar(usesControlRow: true, showsTabBar: false, tabBarWidth: 1_032), "Focus hides the tab bar")
         XCTAssertFalse(DocumentToolbarLayout.showsControlsInTabBar(usesControlRow: false, showsTabBar: true, tabBarWidth: 1_376), "The toolbar has room")
         XCTAssertFalse(DocumentToolbarLayout.showsControlsInTabBar(usesControlRow: true, showsTabBar: true, tabBarWidth: nil), "Not measured yet")
-    }
-
-    func testTheToolsGoInTheTabBarWhereTheyGetAtLeastTheirNarrowestRow() {
-        func showsTools(width: CGFloat?, controls: Bool, tabBar: Bool = true) -> Bool {
-            DocumentToolbarLayout.showsPencilToolsInTabBar(showsTabBar: tabBar, tabBarWidth: width, showsDocumentControls: controls)
-        }
-        XCTAssertTrue(showsTools(width: 1_032, controls: true), "iPad portrait")
-        XCTAssertTrue(showsTools(width: 834, controls: true), "11-inch iPad portrait")
-        XCTAssertTrue(showsTools(width: 1_056, controls: true), "iPad landscape beside the sidebar")
-        XCTAssertTrue(showsTools(width: 688, controls: false), "Half of iPad landscape, the controls in the toolbar")
-        XCTAssertFalse(showsTools(width: 712, controls: true), "iPad portrait beside the sidebar")
-        XCTAssertFalse(showsTools(width: 516, controls: true), "Half of iPad portrait")
-        XCTAssertFalse(showsTools(width: 1_376, controls: false, tabBar: false), "Focus hides the tab bar")
-        XCTAssertFalse(showsTools(width: nil, controls: false), "Not measured yet")
-        let narrowest = DocumentToolbarLayout.minimumPencilToolsWidthInTabBar + DocumentToolbarLayout.minimumTabsWidthBesidePencilTools
-            + DocumentToolbarLayout.tabBarButtonsWidth
-        XCTAssertTrue(showsTools(width: narrowest, controls: false))
-        XCTAssertFalse(showsTools(width: narrowest - 1, controls: false))
     }
 
     /// The tool kinds and the stored state as main, without the laser pointer, reads them.

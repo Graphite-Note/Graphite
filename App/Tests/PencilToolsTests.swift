@@ -1,3 +1,13 @@
+/**
+ * File: PencilToolsTests.swift
+ * ----------------------------
+ * Layer: Tests
+ * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.20
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -363,7 +373,7 @@ final class PencilToolsTests: XCTestCase {
         let highlight = try XCTUnwrap(canvas.drawing.strokes.first)
         let firstPointSize = try XCTUnwrap(Array(highlight.path).first?.size)
         for point in highlight.path { XCTAssertEqual(point.size, firstPointSize, "One tip at every point.") }
-        XCTAssertEqual(highlight.renderBounds.height, toolWidth / canvas.zoomScale, accuracy: 3, "As tall as the tool is wide, across a line.")
+        XCTAssertEqual(highlight.renderBounds.height, toolWidth, accuracy: 3, "As tall in the drawing as the tool is wide, across a line, at any zoom (INK-22).")
         XCTAssertEqual(history.undoActionName, "Drawing", "One step with the stroke.")
 
         // A pen keeps every point as it was drawn.
@@ -469,9 +479,16 @@ final class PencilToolsTests: XCTestCase {
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank)).write(to: location)
         temporaryLocations.append(location)
         let session = try await PDFSession.open(location)
+        PencilToolRowForm.lastShown = nil
         let controller = try host(AnyView(NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) }))
+        // The whole row with the default palette needs 899 points; a portrait iPad's 834 rightly
+        // puts the colors behind the bar's one control, so this hosts at a landscape width,
+        // whichever way the simulator happens to be held.
+        let window = try XCTUnwrap(controller.view.window)
+        window.frame = CGRect(x: 0, y: 0, width: 1_100, height: window.bounds.height)
         let defaultRed = (red: 0xe9, green: 0x31, blue: 0x47)
         let brown = (red: 0xa0, green: 0x5a, blue: 0x2c)
+        try await waitUntil { PencilToolRowForm.lastShown?.form == .full }
         try await waitUntil { (try? self.showsColor(defaultRed, in: controller, withinTop: 240)) == true }
         XCTAssertFalse(try showsColor(brown, in: controller, withinTop: 240))
 
@@ -729,17 +746,31 @@ final class PencilToolsTests: XCTestCase {
         XCTAssertTrue(accessoryButton.isSelected)
         XCTAssertEqual(accessoryButton.accessibilityValue, "Shapes on", "The state is announced, not shown by color alone.")
 
-        // The menu: the favorite colors, the Draw Shapes switch showing the preference, then
-        // Select Ink with the lasso's type, and the laser pointer with its kind.
-        let elements = PencilToolPalette.menuElements(for: toolPicker, inkSelection: PaletteInkSelection(), palette: [PaletteColor(name: "red", hex: "#e93147")])
-        XCTAssertEqual(elements.count, 4)
-        let shapesSwitch = try XCTUnwrap((elements[1] as? UIMenu)?.children.first as? UIAction)
-        XCTAssertEqual(shapesSwitch.title, "Draw Shapes")
+        // The menu: the favorite colors and, for a color in use that is not among them, adding it (HUNT-309), so
+        // everything about colors comes first; then the Draw Shapes switch showing the preference, Select Ink with the
+        // lasso's type, and the laser pointer with its kind. The pen in use takes a color of the test's own, and the
+        // simulator's remembered tools are left as they were.
+        toolPicker.stateAutosaveName = nil
+        let pen = try XCTUnwrap(toolPicker.toolItems.first { item in (item as? PKToolPickerInkingItem)?.inkingTool.inkType == .pen })
+        toolPicker.selectedToolItemIdentifier = pen.identifier
+        PencilToolPalette.applyColor(try XCTUnwrap(UIColor(graphiteHex: "#123abc")), to: toolPicker)
+        let favorites = [PaletteColor(name: "red", hex: "#e93147")]
+        let elements = PencilToolPalette.menuElements(for: toolPicker, inkSelection: PaletteInkSelection(), palette: favorites)
+        XCTAssertEqual(elements.count, 5)
+        XCTAssertEqual((elements[0] as? UIMenu)?.title, "Favorite Colors")
+        XCTAssertEqual((elements[1] as? UIMenu)?.children.map(\.title), ["Add to Favorite Colors"], "Adding the color in use goes with the colors")
+        let shapesSwitch = try XCTUnwrap((elements[2] as? UIMenu)?.children.first as? UIAction)
+        XCTAssertEqual(shapesSwitch.title, "Draw Shapes", "Draw Shapes comes right after the colors")
         XCTAssertEqual(shapesSwitch.state, .off)
-        XCTAssertEqual((elements[2] as? UIMenu)?.children.map(\.title), ["Select Ink", "Lasso Type"])
-        XCTAssertEqual((elements[3] as? UIMenu)?.children.map(\.title), ["Laser Pointer", "Laser Type"])
+        XCTAssertEqual((elements[3] as? UIMenu)?.children.map(\.title), ["Select Ink", "Lasso Type"])
+        XCTAssertEqual((elements[4] as? UIMenu)?.children.map(\.title), ["Laser Pointer", "Laser Type"])
+        // With a favorite color in use there is nothing to add, and Draw Shapes still follows the colors.
+        PencilToolPalette.applyColor(try XCTUnwrap(UIColor(graphiteHex: "#e93147")), to: toolPicker)
+        let elementsWithAFavoriteInUse = PencilToolPalette.menuElements(for: toolPicker, inkSelection: PaletteInkSelection(), palette: favorites)
+        XCTAssertEqual(elementsWithAFavoriteInUse.count, 4)
+        XCTAssertEqual(((elementsWithAFavoriteInUse[1] as? UIMenu)?.children.first as? UIAction)?.title, "Draw Shapes")
         UserDefaults.standard.set(true, forKey: PDFAnnotationPreferenceKey.drawsShapes)
-        let elementsWithShapesOn = PencilToolPalette.menuElements(for: toolPicker, inkSelection: PaletteInkSelection(), palette: [])
+        let elementsWithShapesOn = PencilToolPalette.menuElements(for: toolPicker, inkSelection: PaletteInkSelection(), palette: favorites)
         XCTAssertEqual(((elementsWithShapesOn[1] as? UIMenu)?.children.first as? UIAction)?.state, .on)
     }
 

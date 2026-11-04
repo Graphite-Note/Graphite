@@ -1,3 +1,14 @@
+/**
+ * File: RecordingController.swift
+ * -------------------------------
+ * Layer: Apple
+ * Description: Records audio and video lectures into a recovery folder and saves them into the vault.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 04/11/2026
+ */
+
 import Foundation
 import AVFoundation
 import Observation
@@ -51,6 +62,11 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
     @ObservationIgnored private var pendingResume: Task<Void, Never>?
     @ObservationIgnored private var isAbandoningRecorder = false
     private var videoRecording: VideoRecording?
+    /// Asks the system for the microphone and says whether the person allowed it. Tests replace it, so no permission prompt
+    /// appears and no microphone is touched.
+    @ObservationIgnored var requestMicrophoneAccess: @Sendable () async -> Bool = { await AVCaptureDevice.requestAccess(for: .audio) }
+    /// Whether the microphone is refused by a restriction (Screen Time, a managed device) rather than by the person.
+    @ObservationIgnored var isMicrophoneRestricted: @Sendable () -> Bool = { AVCaptureDevice.authorizationStatus(for: .audio) == .restricted }
     /// Makes the camera and microphone of a video recording. Tests replace it with a
     /// source that makes its own frames and sound.
     @ObservationIgnored var makeVideoCaptureSource: @MainActor () -> any VideoCaptureSource = { CameraCaptureSource() }
@@ -109,10 +125,12 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
         state = .requestingPermission; message = nil; accessProblem = nil; retainedElapsedSeconds = 0; kind = .audio
         let attempt = UUID()
         startAttempt = attempt
-        let hasMicrophonePermission = await AVCaptureDevice.requestAccess(for: .audio)
+        let hasMicrophonePermission = await requestMicrophoneAccess()
         guard startAttempt == attempt else { return }
         guard hasMicrophonePermission else {
             startAttempt = nil
+            // Set, so that the controls offer Open Settings as they do for a video recording.
+            accessProblem = isMicrophoneRestricted() ? .microphoneRestricted : .microphoneDenied
             state = .failed; message = "Microphone access is required. Enable it in system privacy settings."; return
         }
         var recordingURL: URL?
@@ -310,7 +328,7 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
             deactivateAudioSession()
         } catch {
             recorder = nil; deactivateAudioSession()
-            state = .failed; message = "\(error.localizedDescription) Your recording remains at \(source.path)."
+            state = .failed; message = "\(error.localizedDescription) The recording is kept on this device until it is saved or discarded."
         }
     }
     /// Deactivation can fail while other audio is playing. The recording is already
@@ -612,6 +630,13 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
             UIApplication.shared.endBackgroundTask(backgroundTask)
         }
         #endif
+    }
+
+    /// Waits until the video parts an interruption cut short are complete files, as the
+    /// background task above does. The writer closes a part on its own queue after the
+    /// interruption is reported, so the file is still being written for a moment after.
+    func waitForClosingVideoParts() async {
+        await videoRecording?.waitForClosingParts()
     }
 
     private func finishVideo(_ recording: VideoRecording, notice: String?) async {

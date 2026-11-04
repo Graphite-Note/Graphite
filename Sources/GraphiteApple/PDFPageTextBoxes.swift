@@ -1,3 +1,13 @@
+/**
+ * File: PDFPageTextBoxes.swift
+ * ----------------------------
+ * Layer: Apple
+ * Description: Adding, replacing and removing the text boxes on a PDF page.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -10,8 +20,8 @@ import GraphiteCore
 /// boxes are over the ink in every reader, as they are on screen. A box another application
 /// made stays where it is among the page's annotations until Graphite writes it again.
 extension PDFPageManager {
-    static func addTextBox(_ textBox: PDFTextBox, to page: PDFPage, isForWrittenDocument: Bool) throws {
-        try add(textBox, to: page, isForWrittenDocument: isForWrittenDocument)
+    static func addTextBox(_ textBox: PDFTextBox, to page: PDFPage, isForWrittenDocument: Bool, authorName: String?) throws {
+        try add(textBox, to: page, isForWrittenDocument: isForWrittenDocument, authorName: authorName)
     }
 
     static func replaceTextBox(_ reference: PDFAnnotationReference, with textBox: PDFTextBox, in document: PDFDocument, isForWrittenDocument: Bool) throws {
@@ -20,7 +30,8 @@ extension PDFPageManager {
         // The box keeps the keys of the application that made it, whatever the edit says.
         replacement.preservedEntries = PDFTextBox(annotation: annotation)?.preservedEntries ?? textBox.preservedEntries
         removeTextBox(annotation, from: page)
-        try add(replacement, to: page, isForWrittenDocument: isForWrittenDocument)
+        // The box keeps its author, as it keeps the keys of the application that made it.
+        try add(replacement, to: page, isForWrittenDocument: isForWrittenDocument, authorName: annotation.userName)
     }
 
     static func removeTextBox(_ reference: PDFAnnotationReference, from document: PDFDocument) throws {
@@ -33,8 +44,8 @@ extension PDFPageManager {
         page.annotations.compactMap(PDFTextBox.init(annotation:))
     }
 
-    private static func add(_ textBox: PDFTextBox, to page: PDFPage, isForWrittenDocument: Bool) throws {
-        let annotation = try textBox.makeAnnotation(isForWrittenDocument: isForWrittenDocument)
+    private static func add(_ textBox: PDFTextBox, to page: PDFPage, isForWrittenDocument: Bool, authorName: String?) throws {
+        let annotation = try textBox.makeAnnotation(isForWrittenDocument: isForWrittenDocument, authorName: authorName)
         // Added after everything: the page's text boxes are its last annotations.
         page.addAnnotation(annotation)
         let layout = PDFTextBoxLayout(box: textBox)

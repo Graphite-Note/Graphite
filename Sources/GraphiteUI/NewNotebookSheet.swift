@@ -1,3 +1,14 @@
+/**
+ * File: NewNotebookSheet.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: Creating a notebook after Goodnotes' New Notebook sheet: the first page large, its settings beside it, every paper below.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -103,7 +114,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
     private var settings: some View {
         VStack(alignment: .leading, spacing: 6) {
             NotebookSettingsCard {
-                TextField("Untitled Notebook", text: $name)
+                TextField(CreationKind.notebook.untitledName, text: $name)
                     .submitLabel(.done)
                     .onSubmit(createIfValid)
                     .accessibilityLabel("Name")
@@ -118,10 +129,8 @@ struct NewNotebookSheet<PlacementContent: View>: View {
                     LabeledContent("Page size", value: "From the template").padding(.vertical, 12)
                 }
                 Divider()
-                Stepper(value: $options.pageCount, in: NewNotebookOptions.pageCountRange) {
-                    LabeledContent("Pages", value: options.pageCount.formatted())
-                }
-                .padding(.vertical, 8)
+                NotebookPageCountControl(pageCount: $options.pageCount)
+                    .padding(.vertical, 8)
                 Divider()
                 NotebookCoverSettings(cover: $options.cover)
             }
@@ -155,10 +164,7 @@ struct NewNotebookSheet<PlacementContent: View>: View {
         FileNameRules.problem(with: chosenName, isNote: false)
     }
 
-    private var chosenName: String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? "Untitled Notebook" : trimmedName
-    }
+    private var chosenName: String { CreationKind.notebook.chosenName(typed: name) }
 
     private func createIfValid() {
         guard nameProblem == nil, options.problem == nil else { return }

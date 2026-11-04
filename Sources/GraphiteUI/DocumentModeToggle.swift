@@ -1,3 +1,15 @@
+/**
+ * File: DocumentModeToggle.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: The Write toggle, the control row, and where a document puts Write, Undo and Redo and the Pencil
+ *              tools.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.9
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -83,11 +95,23 @@ enum DocumentToolbarLayout {
     /// Whether the controls leave the window's toolbar for the tab bar or a row below it.
     /// A compact width never does: there, as on a phone, the navigation bar holds only the
     /// document's controls, and moving between files happens in the bottom bar.
-    /// - Parameter detailWidth: The width of the documents area, nil when unknown.
-    static func usesControlRow(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {
-        if horizontalSizeClass == .compact { return false }
+    /// Nor does a window of compact height: a Plus or Max phone held sideways is a regular
+    /// width but has 430 points of height, and a row of 44 points for three controls is a
+    /// tenth of it; its navigation bar holds them.
+    /// - Parameters:
+    ///   - detailWidth: The width of the documents area, nil when unknown.
+    ///   - verticalSizeClass: The window's vertical size class, nil when unknown.
+    static func usesControlRow(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?,
+                               verticalSizeClass: UserInterfaceSizeClass? = nil) -> Bool {
+        if horizontalSizeClass == .compact || verticalSizeClass == .compact { return false }
         guard let detailWidth else { return false }
         return detailWidth < minimumDetailWidthForToolbarControls
+    }
+
+    /// Whether the navigation bar and the tab bar give way while the keyboard is up: in a window of compact height, a
+    /// phone held sideways, where the keyboard and its format toolbar leave the note about 40 of 400 points otherwise.
+    static func hidesChromeWhileTyping(verticalSizeClass: UserInterfaceSizeClass?, isKeyboardShown: Bool) -> Bool {
+        verticalSizeClass == .compact && isKeyboardShown
     }
 
     /// Narrower than this, a document's secondary toolbar actions (a PDF's pages, find and
@@ -102,6 +126,30 @@ enum DocumentToolbarLayout {
         return detailWidth < minimumDetailWidthForSecondaryActions
     }
 
+    /// One icon-only button of the bar, with its share of the capsule around it.
+    static let toolbarSlotWidth: CGFloat = 44
+    /// What the bar always spends: Back, Forward, recording and More, its margins and the gaps between its groups.
+    static let toolbarFixedWidth: CGFloat = 4 * toolbarSlotWidth + 56
+    /// How far the title shortens before a button gives way.
+    static let minimumToolbarTitleWidth: CGFloat = 100
+    /// With no sidebar beside the documents, their bar also holds the sidebar's button and, in a window, the window's
+    /// controls, which otherwise stand in the sidebar.
+    static let toolbarWidthForWindowControls: CGFloat = toolbarSlotWidth + 80
+
+    /// The narrowest documents area that keeps a PDF's pages and find on the bar, as icons beside the title and More.
+    static func minimumDetailWidthForFindAndPages(sidebarIsBeside: Bool) -> CGFloat {
+        toolbarFixedWidth + minimumToolbarTitleWidth + 2 * toolbarSlotWidth + (sidebarIsBeside ? 0 : toolbarWidthForWindowControls)
+    }
+
+    /// Whether a PDF's pages and find go to More too. They stay on the bar longer than adding pages
+    /// (`foldsSecondaryActions`), as the two used most: in a portrait iPad with the sidebar open, about 430 points, the
+    /// title shortens for them, and only a narrower bar folds them, so they never push the title and More out.
+    static func foldsFindAndPages(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?, sidebarIsBeside: Bool) -> Bool {
+        if horizontalSizeClass == .compact { return true }
+        guard let detailWidth else { return false }
+        return detailWidth < minimumDetailWidthForFindAndPages(sidebarIsBeside: sidebarIsBeside)
+    }
+
     /// Whether the controls the toolbar has no room for go to the end of a side's tab bar.
     /// A row of their own would take a strip of the page for three controls; the tab bar is
     /// there anyway and mostly empty.
@@ -109,27 +157,6 @@ enum DocumentToolbarLayout {
     static func showsControlsInTabBar(usesControlRow: Bool, showsTabBar: Bool, tabBarWidth: CGFloat?) -> Bool {
         guard usesControlRow, showsTabBar, let tabBarWidth else { return false }
         return tabBarWidth >= minimumTabBarWidthForControls
-    }
-
-    /// The narrowest a tab bar gives the fixed bar's tools, which scroll sideways where
-    /// they need more; narrower, they keep a row of their own.
-    static let minimumPencilToolsWidthInTabBar: CGFloat = 380
-    /// What a tab bar keeps for its tabs beside the tools: one tab at least.
-    static let minimumTabsWidthBesidePencilTools: CGFloat = 160
-    /// The tab bar's own buttons: the tab overview with the tab group menu, New Tab, and
-    /// Split Right, 36 points each with their spacing and the bar's end.
-    static let tabBarButtonsWidth: CGFloat = 122
-    /// Undo, Redo and Write, when the tab bar holds them, with room to spare for larger
-    /// Dynamic Type.
-    static let documentControlsWidth: CGFloat = 160
-
-    /// Whether a side's tab bar holds the fixed bar's tools, so they take no row of their
-    /// own above the page.
-    /// - Parameter tabBarWidth: The width of that side, nil when unknown.
-    static func showsPencilToolsInTabBar(showsTabBar: Bool, tabBarWidth: CGFloat?, showsDocumentControls: Bool) -> Bool {
-        guard showsTabBar, let tabBarWidth else { return false }
-        let widthBesideTools = minimumTabsWidthBesidePencilTools + tabBarButtonsWidth + (showsDocumentControls ? documentControlsWidth : 0)
-        return tabBarWidth - widthBesideTools >= minimumPencilToolsWidthInTabBar
     }
 }
 
@@ -141,12 +168,20 @@ extension EnvironmentValues {
     /// True where the side's tab bar shows those controls (`TabBarDocumentControls`), so
     /// the document shows no row for them.
     @Entry var showsDocumentControlsInTabBar = false
-    /// True where the side's tab bar has room for the fixed bar's tools
-    /// (`TabBarPencilTools`), so a PDF written on shows no row for them.
-    @Entry var showsPencilToolsInTabBar = false
+    /// True where the window shows two sides at once, so the system's Pencil palette, which
+    /// hangs from the window, gives way to the fixed bar (`PencilToolbarStyle.inEffect`).
+    @Entry var sharesWindowWithOtherSide = false
+    /// False for the panes of a stacked side that are not its active tab, which share the
+    /// side's controls and show no row of their own for them. A side's panes show the row
+    /// whether or not the side is focused, so tapping the other side moves nothing.
+    @Entry var isActiveInItsSide = true
     /// True where a document's secondary toolbar actions go to its More menu
     /// (`DocumentToolbarLayout.foldsSecondaryActions`).
     @Entry var foldsSecondaryToolbarActions = false
+    /// True where a PDF's pages and find go to its More menu as well (`DocumentToolbarLayout.foldsFindAndPages`).
+    @Entry var foldsFindAndPagesFromToolbar = false
+    /// Whether the sidebar stands beside the documents area, not hidden: it holds the window's controls then.
+    @Entry var isSidebarBesideDocuments = false
 }
 
 /// Undo, Redo and Write of a side's active document, at the end of its tab bar.
@@ -158,7 +193,8 @@ struct TabBarDocumentControls: View {
     var isFocused = true
     #if canImport(UIKit)
     @AppStorage(PDFAnnotationPreferenceKey.showsToolPicker) private var showsPencilTools = true
-    @AppStorage(PencilToolbarStyle.preferenceKey) private var pencilToolbarStyle = PencilToolbarStyle.floating
+    @AppStorage(PencilToolbarStyle.preferenceKey) private var chosenPencilToolbarStyle = PencilToolbarStyle.floating
+    @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
@@ -184,7 +220,8 @@ struct TabBarDocumentControls: View {
                 if let session = document.pdfSession, !session.isProtected {
                     controls(isWriting: Binding(get: { session.isWriting }, set: { isWriting in session.isWriting = isWriting })) {
                         // The floating palette has Undo and Redo of its own.
-                        if !session.showsFloatingPencilPalette(style: pencilToolbarStyle, showsTools: showsPencilTools,
+                        if !session.showsFloatingPencilPalette(style: chosenPencilToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide),
+                                                                showsTools: showsPencilTools,
                                                                 horizontalSizeClass: horizontalSizeClass, isFocused: isFocused) {
                             UndoRedoButtons(availability: session.undoAvailability)
                         }

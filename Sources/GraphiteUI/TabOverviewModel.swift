@@ -1,3 +1,14 @@
+/**
+ * File: TabOverviewModel.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The tab overview of one window: whether it covers the window, and the thumbnails of the tabs.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -39,7 +50,7 @@ final class TabOverviewModel {
         guard !isPresented else { return }
         forgetThumbnailsOfAnotherVault(vaultIdentifier)
         thumbnails.captureShownTabs(in: layout)
-        thumbnails.keepOnly(Set(layout.allTabs.map(\.id)))
+        thumbnails.keepThumbnails(of: layout.allTabs)
         loadFilePreviews(of: layout.allTabs, with: previewLoader)
         withAnimation(GraphiteMotion.animation(.smooth(duration: 0.3))) { isPresented = true }
     }
@@ -53,7 +64,7 @@ final class TabOverviewModel {
     /// Captures a side's tab once it has been on screen for `settleDelayMilliseconds` and
     /// `isSettled` says its file is loaded and nothing is being typed, so a capture costs no
     /// tab switch and no keystroke. Another tab shown on that side cancels the wait.
-    func captureWhenSettled(groupID: UUID, tabID: UUID, vaultIdentifier: UUID?, isSettled: @escaping @MainActor () -> Bool) {
+    func captureWhenSettled(groupID: UUID, tabID: UUID, file: VaultPath?, vaultIdentifier: UUID?, isSettled: @escaping @MainActor () -> Bool) {
         cancelSettledCapture(ofGroup: groupID)
         settledCaptureTasks[groupID] = Task { [weak self, clock] in
             for _ in 0..<Self.maximumSettleAttempts {
@@ -62,7 +73,7 @@ final class TabOverviewModel {
                 guard !isPresented else { continue }
                 if isSettled() {
                     forgetThumbnailsOfAnotherVault(vaultIdentifier)
-                    thumbnails.captureActiveTab(ofGroup: groupID, tabID: tabID)
+                    thumbnails.captureActiveTab(ofGroup: groupID, tabID: tabID, showing: file)
                     settledCaptureTasks[groupID] = nil
                     return
                 }

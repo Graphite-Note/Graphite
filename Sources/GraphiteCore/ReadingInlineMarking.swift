@@ -1,3 +1,14 @@
+/**
+ * File: ReadingInlineMarking.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: Rewrites a note's tasks, colors and highlights for the reading view, and removes block identifiers.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// The reading-view rewrite of a note's inline Obsidian syntax that Markdown renderers do
@@ -19,7 +30,7 @@ enum ReadingInlineMarking {
         let lines = markdown.components(separatedBy: "\n")
         let knownLineIndices = lineIndices?.count == lines.count ? lineIndices : nil
         return lines.enumerated().map { linePosition, line in
-            if fenceTracker.isCodeLine(untrimmedLine: line) { return line }
+            if fenceTracker.isCodeLine(quotedLine: line) { return line }
             let source = line as NSString
             guard let match = taskPattern.firstMatch(in: line, range: NSRange(location: 0, length: source.length)),
                   let status = source.substring(with: match.range(at: 2)).unicodeScalars.first else { return line }
@@ -52,7 +63,7 @@ enum ReadingInlineMarking {
                 // An identifier may follow the closing `$$` of a formula.
                 mathClosingLineIndex = nil
                 searchStart = closingOffset + 2
-            } else if fenceTracker.isCodeLine(untrimmedLine: line) {
+            } else if fenceTracker.isCodeLine(quotedLine: line) {
                 outputLines.append(line)
                 continue
             } else if let opening = mathLines.opening(at: lineIndex) {
@@ -95,7 +106,7 @@ enum ReadingInlineMarking {
     static func markingHighlights(in markdown: String) -> String {
         var fenceTracker = CodeFenceTracker()
         return markdown.components(separatedBy: "\n").map { line in
-            if fenceTracker.isCodeLine(untrimmedLine: line) { return line }
+            if fenceTracker.isCodeLine(quotedLine: line) { return line }
             guard line.contains("==") else { return line }
             let source = line as NSString
             // `==` in a code span, of any number of backticks, is not a highlight.

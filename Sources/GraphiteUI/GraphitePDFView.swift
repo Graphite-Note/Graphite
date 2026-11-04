@@ -1,3 +1,15 @@
+/**
+ * File: GraphitePDFView.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The PDF view: PDFKit with a PencilKit canvas on each page, zoom and resize handling, the palette and
+ *              text markup.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.34
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import os
@@ -239,10 +251,27 @@ struct GraphitePDFView: UIViewRepresentable {
     /// The note a PDF embedded in a note belongs to, for the lasso's pictures; a PDF pane's
     /// is the note beside it, from `linkActions`.
     var noteDestination: LassoNoteDestination?
+    /// Where the view is kept while its tab is hidden, to come back as it was; nil outside a
+    /// window, where it goes. An embed's view always goes with its note.
+    @Environment(\.hiddenPDFViews) private var hiddenViews
 
-    func makeCoordinator() -> PDFAnnotationCoordinator { PDFAnnotationCoordinator(session: session, isEmbedded: isEmbedded) }
+    func makeCoordinator() -> PDFAnnotationCoordinator {
+        if !isEmbedded, let keptCoordinator = hiddenViews?.coordinator(for: session) { return keptCoordinator }
+        let coordinator = PDFAnnotationCoordinator(session: session, isEmbedded: isEmbedded)
+        coordinator.viewGeneration = session.viewGeneration
+        return coordinator
+    }
 
     func makeUIView(context: Context) -> GraphitePDFDisplayView {
+        // The view of a tab shown again, as it was left: its pages drawn, its canvases with
+        // their ink, its zoom and place (HUNT-308).
+        if !isEmbedded, let keptView = hiddenViews?.takeView(keptWith: context.coordinator) {
+            keptView.removeFromSuperview()
+            context.coordinator.resume()
+            session.livePlace = { [weak keptView] in keptView?.pagePlace }
+            session.pdfView = keptView
+            return keptView
+        }
         let view = GraphitePDFDisplayView()
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
@@ -277,6 +306,7 @@ struct GraphitePDFView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: GraphitePDFDisplayView, context: Context) {
+        context.coordinator.hiddenViews = isEmbedded ? nil : hiddenViews
         context.coordinator.beginInteraction = beginInteraction
         context.coordinator.linkActions = linkActions
         context.coordinator.noteDestination = noteDestination ?? linkActions?.noteDestination
@@ -290,12 +320,17 @@ struct GraphitePDFView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: GraphitePDFDisplayView, coordinator: PDFAnnotationCoordinator) {
-        // A view made for the PDF again, as when its tab is shown again, comes back here,
-        // unless a newer view of it already shows it.
-        if coordinator.session.pdfView === view || coordinator.session.pdfView == nil, let place = view.pagePlace {
-            coordinator.session.keptPlace = place
+        // A view made for the PDF again comes back here, unless a newer view of it already shows it.
+        let isNewestView = coordinator.session.pdfView === view || coordinator.session.pdfView == nil
+        if isNewestView, let place = view.pagePlace { coordinator.session.keptPlace = place }
+        // A tab hidden keeps its view, so showing it again builds nothing; a view built again,
+        // or one a newer view replaced, goes.
+        if isNewestView, !coordinator.isEmbedded, coordinator.session.viewGeneration == coordinator.viewGeneration,
+           let hiddenViews = coordinator.hiddenViews {
+            hiddenViews.keep(view, coordinator: coordinator)
+        } else {
+            coordinator.detach()
         }
-        coordinator.detach()
     }
 }
 
@@ -459,10 +494,24 @@ final class GraphitePDFDisplayView: PDFView {
                 show(placeBeforeResize)
             }
         }
+        limitZoomingOut()
         if bounds.width > 0, abs(bounds.width - widthOfLastZoom) > 0.5 {
             pdfResizeLog.debug("PDF view width \(self.widthOfLastZoom, privacy: .public) -> \(self.bounds.width, privacy: .public), scale \(self.scaleFactor, privacy: .public)")
             widthOfLastZoom = bounds.width
         }
+    }
+
+    /// How far a pinch may shrink the pages, as a fraction of the zoom that fits the width: down to half of it, so
+    /// a whole page of a portrait iPad can be seen, and never to the 20 percent stamp PDFKit allows (HUNT-266).
+    static let smallestZoomAsFractionOfFitting: CGFloat = 0.5
+
+    /// PDFKit resets its zoom limits as the view's size changes, so they are set again at each layout, to the same
+    /// values (which changes nothing).
+    private func limitZoomingOut() {
+        let fittingScale = scaleFactorForSizeToFit
+        guard bounds.width > 0, fittingScale.isFinite, fittingScale > 0 else { return }
+        let smallestScale = fittingScale * Self.smallestZoomAsFractionOfFitting
+        if abs(minScaleFactor - smallestScale) > 0.0001 { minScaleFactor = smallestScale }
     }
 
     /// Fits the pages to the new width when they fitted the old one, and keeps them as far
@@ -577,6 +626,16 @@ private extension UIView {
         }
         return nil
     }
+
+    /// The page canvas this view is, or is inside, as PencilKit's recognizers are.
+    var enclosingPageCanvas: PDFPageCanvasView? {
+        var candidate: UIView? = self
+        while let view = candidate {
+            if let canvas = view as? PDFPageCanvasView { return canvas }
+            candidate = view.superview
+        }
+        return nil
+    }
 }
 
 /// A PencilKit canvas over one PDF page. Its drawing is in the page's points; the canvas
@@ -586,12 +645,33 @@ private extension UIView {
 final class PDFPageCanvasView: HistoryCanvasView {
     weak var page: PDFPage?
     var inkTracker: PDFPageInkTracker
-    /// The page's stored ink is decoded into the canvas the first time it is shown for
-    /// annotating; pages only viewed never pay for it.
+    /// The page's stored ink is decoded into the canvas the first time the page is shown,
+    /// in Read mode too, since the canvas shows it there as well (`configure`).
     var hasRestoredStoredInk = false
-    /// True while the stored drawing is decoded in the background. The canvas is empty
-    /// and takes no input meanwhile, and the page's ink annotations stay visible.
+    /// True while the stored drawing is decoded in the background. The page's ink annotations
+    /// show the stored ink meanwhile, and the canvas takes touches over them: what is drawn
+    /// then is recorded after the stored strokes once they arrive (`mergeStoredInk`), so a
+    /// stroke begun as the page comes on screen is never lost (HUNT-307).
     var isRestoringStoredInk = false
+    /// The decoded stored ink, held while a stroke is under way: setting the canvas's drawing
+    /// under PencilKit's live stroke would lose that stroke (`applyHeldStoredInk`).
+    var heldStoredInk: HeldStoredInk?
+    /// Counts the restores begun, so the result of a decode that a newer read overtook is dropped.
+    var storedInkRestoreCount = 0
+    /// When PencilKit began using a tool on the canvas, until it ends.
+    var toolUseBeginTime: TimeInterval?
+    /// How many strokes the drawing had when PencilKit began using a tool: an inking tool's
+    /// stroke arrives after the use ends, in PencilKit's own time.
+    var strokeCountWhenToolUseBegan = 0
+    /// How many edits the page had when the canvas was let go, while PDFKit may still show it
+    /// again (`PDFAnnotationCoordinator.adoptCanvasShownAgain`); nil while it is the page's own.
+    var editCountWhenLetGo: Int?
+    /// What the page's ink annotations were last set to, and after how many edits of the page:
+    /// setting them walks every annotation, and most configuring changes nothing of them.
+    var inkAnnotationsState: (isHidden: Bool, pageEditCount: Int)?
+    /// Whether the canvas may show ink the PDF does not have: set by what can change its drawing,
+    /// cleared once that is recorded, so a save compares no strokes of a page nobody touched.
+    var mayHoldUnrecordedInk = false
     /// The view PDFKit places over the page, which holds this canvas and the writing guides.
     private(set) weak var overlayView: PDFPageOverlayView?
     /// The owner of the PDF view's canvases, whose session the lasso's pictures belong to.
@@ -605,6 +685,20 @@ final class PDFPageCanvasView: HistoryCanvasView {
 
     required init?(coder: NSCoder) { nil }
 
+    /// The longest a stroke is taken to last when only PencilKit's report of using a tool says
+    /// it is under way, in case the report of its end never comes.
+    private static let longestStrokeSeconds: TimeInterval = 10
+
+    /// Whether a stroke is under way: PencilKit's recognizer stays `.possible` until a stroke
+    /// has moved a little, so the touches it follows count, and touches another recognizer hands
+    /// it (the Pencil's first touch while reading) are not among those, so its report counts too.
+    var hasStrokeUnderWay: Bool {
+        let recognizerState = drawingGestureRecognizer.state
+        if recognizerState == .began || recognizerState == .changed || drawingGestureRecognizer.numberOfTouches > 0 { return true }
+        guard let toolUseBeginTime else { return false }
+        return PencilActivity.now - toolUseBeginTime < Self.longestStrokeSeconds
+    }
+
     /// The size of the drawing's space: the page overlay's size, in the page's points,
     /// whatever the scale the canvas draws at.
     var drawingSize: CGSize {
@@ -616,30 +710,10 @@ final class PDFPageCanvasView: HistoryCanvasView {
         overlayView?.writingGuides = guides
     }
 
-    /// PencilKit draws a tool as wide on screen at any zoom of its canvas, so a canvas zoomed
-    /// to draw sharper would write finer on the page. It draws with the width multiplied by
-    /// its zoom instead, and a stroke is as wide on the page at any zoom of the PDF, as on
-    /// paper. The pen, the pencil and the highlighter stop at their widest width, so the
-    /// canvas is drawn no larger than keeps the chosen width (`prepareToDraw(with:)`).
-    override func toolForDrawing(_ chosenTool: PKTool) -> PKTool {
-        Self.tool(super.toolForDrawing(chosenTool), scaledBy: zoomScale)
-    }
-
-    override func prepareToDraw(with chosenTool: PKTool) {
-        overlayView?.limitRenderingScale(to: PDFPageOverlayView.largestRenderingScale(keepingWidthOf: chosenTool))
-    }
-
-    /// Draws with the chosen tool at the canvas's new zoom.
-    fileprivate func zoomScaleDidChange() {
-        retakeChosenTool()
-    }
-
     var writingGuides: DrawingPaper { overlayView?.writingGuides ?? .plain }
 
     fileprivate func placeIn(_ overlayView: PDFPageOverlayView) {
         self.overlayView = overlayView
-        // A canvas PDFKit put in a new overlay keeps its tool; the overlay learns its limit.
-        if let chosenTool { prepareToDraw(with: chosenTool) }
     }
 }
 
@@ -657,36 +731,29 @@ final class PDFPageOverlayView: UIView {
     private let guideView = DrawingPaperView()
     /// Graphite's text boxes of the page, over the ink (`PDFPageTextBoxesView`).
     let textBoxesView = PDFPageTextBoxesView(frame: .zero)
-    /// How many times the page's size the canvas draws at: the PDF view's zoom, within what
-    /// keeps the chosen tool's width on the page.
-    var renderingScale: CGFloat { min(zoomRenderingScale, toolRenderingScaleLimit) }
-    private var zoomRenderingScale: CGFloat = 1
-    private var toolRenderingScaleLimit = PDFPageOverlayView.maximumRenderingScale
+    /// How many times the page's size the canvas draws at (`renderingScale(forZoom:pageSize:screenScale:)`).
+    private(set) var renderingScale: CGFloat = 1
 
-    /// The most the canvas is enlarged: PencilKit keeps tiles for the whole canvas, and
-    /// past this a page's tiles take more memory than the sharper ink is worth.
-    static let maximumRenderingScale: CGFloat = 3
-    /// Rendering scales go in steps, so the canvas is not redrawn for every small change.
-    static let renderingScaleStep: CGFloat = 0.5
+    /// The most pixels a canvas is drawn with. PencilKit keeps tiles for the whole canvas, so
+    /// this bounds what one page can take: 144 MB, reached by an A4 page at about 4.2 times its
+    /// size on a 2x screen and by an A3 page at about 3. Only the pages on screen are drawn
+    /// large (`PDFAnnotationCoordinator.updateRenderingScale`).
+    static let maximumCanvasPixelCount: CGFloat = 36_000_000
+    /// The least a canvas is reduced: a zoomed-out page needs no sharper ink than this, and a
+    /// smaller canvas takes less memory than the page's own size.
+    static let minimumRenderingScale: CGFloat = 0.5
+    /// A change of zoom smaller than this, as a fraction, is not worth drawing the page again.
+    static let smallestScaleChange: CGFloat = 0.01
 
-    /// The scale to draw ink at for a PDF view's zoom: never below the page's own size,
-    /// and in steps.
-    static func renderingScale(forZoom zoom: CGFloat) -> CGFloat {
-        guard zoom.isFinite, zoom > 1 else { return 1 }
-        return min((zoom / renderingScaleStep).rounded(.up) * renderingScaleStep, maximumRenderingScale)
-    }
-
-    /// The largest scale, in steps and never below the page's own size, at which the canvas
-    /// can draw the chosen tool's width times the scale. PencilKit gives the pen, the pencil
-    /// and the highlighter no more than their widest width: a broad pencil on a page drawn
-    /// three times its size would land narrower on the page. Inks PencilKit does not hold
-    /// to their widest width, and erasers, allow the largest scale.
-    static func largestRenderingScale(keepingWidthOf chosenTool: PKTool) -> CGFloat {
-        guard let inkingTool = chosenTool as? PKInkingTool, inkingTool.width > 0 else { return maximumRenderingScale }
-        let widestWidth = inkingTool.inkType.validWidthRange.upperBound
-        guard PKInkingTool(inkingTool.inkType, width: widestWidth * 2).width <= widestWidth else { return maximumRenderingScale }
-        let largestScale = (widestWidth / inkingTool.width / renderingScaleStep).rounded(.down) * renderingScaleStep
-        return min(max(largestScale, 1), maximumRenderingScale)
+    /// The scale to draw ink at for a PDF view's zoom: the zoom itself, so a pixel of the ink's
+    /// tiles is a pixel of the screen and settled ink is as sharp as a line can be, within the
+    /// memory a page may take. It does not depend on the tool in hand: a tool's width is its
+    /// width in the drawing at any zoom of the canvas (`Docs/solid/invariants.md`, INK-22).
+    static func renderingScale(forZoom zoom: CGFloat, pageSize: CGSize, screenScale: CGFloat) -> CGFloat {
+        let pagePixelCount = pageSize.width * pageSize.height * screenScale * screenScale
+        guard zoom.isFinite, zoom > 0, pagePixelCount > 0 else { return 1 }
+        let largestScale = max((maximumCanvasPixelCount / pagePixelCount).squareRoot(), 1)
+        return min(max(zoom, minimumRenderingScale), largestScale)
     }
 
     init(canvas: PDFPageCanvasView) {
@@ -713,22 +780,11 @@ final class PDFPageOverlayView: UIView {
         didSet { guideView.alpha = showsWritingGuides ? 1 : 0 }
     }
 
-    /// The scale for the PDF view's zoom (`renderingScale(forZoom:)`).
+    /// The scale the canvas is to draw at.
     func setRenderingScale(_ scale: CGFloat) {
-        guard scale != zoomRenderingScale else { return }
-        zoomRenderingScale = scale
+        guard abs(scale - renderingScale) / renderingScale >= Self.smallestScaleChange else { return }
+        renderingScale = scale
         setNeedsLayout()
-    }
-
-    /// The largest scale the chosen tool allows (`largestRenderingScale(keepingWidthOf:)`).
-    /// The canvas takes it at once, so the tool it is about to take is made for its zoom.
-    func limitRenderingScale(to limit: CGFloat) {
-        guard limit != toolRenderingScaleLimit else { return }
-        let scaleBefore = renderingScale
-        toolRenderingScaleLimit = limit
-        guard renderingScale != scaleBefore else { return }
-        setNeedsLayout()
-        layoutIfNeeded()
     }
 
     override func layoutSubviews() {
@@ -749,7 +805,6 @@ final class PDFPageOverlayView: UIView {
             canvas.maximumZoomScale = scale
             canvas.contentOffset = .zero
             canvas.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
-            canvas.zoomScaleDidChange()
         }
         canvas.center = CGPoint(x: bounds.midX, y: bounds.midY)
     }
@@ -798,7 +853,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private lazy var presentedScreenObserver = PresentedScreenObserver(view: toolPickerHost) { [weak self] in
         self?.updateToolPickerVisibility()
     }
-    private var canvasesByPage: [ObjectIdentifier: PDFPageCanvasView] = [:]
+    var canvasesByPage: [ObjectIdentifier: PDFPageCanvasView] = [:]
     private var displayedPages: Set<ObjectIdentifier> = []
     private var hiddenCanvasOrder: [ObjectIdentifier] = []
     private var input = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false)
@@ -818,8 +873,17 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var zoomObserver: NSObjectProtocol?
     /// Draws the canvases at the zoom once it has settled, not at every step of a pinch.
     private var renderingScaleUpdate: DispatchWorkItem?
+    private static let renderingScaleAfterMemoryWarning: CGFloat = 2
+    private var isHoldingRenderingScaleForMemory = false
+    private var scaleFactorAtMemoryWarning: CGFloat = 0
+    private var memoryWarningObserver: NSObjectProtocol?
     /// For tests, which cannot send touches.
     var pictureSelectionController: PDFPictureSelectionController? { pictureSelection }
+    /// For tests: how many times a canvas's strokes were all compared with those last recorded.
+    var everyStrokeComparisonCount = 0
+    /// For tests: how many decodes of a page's stored ink were begun, and how many of them ran on the main actor.
+    var storedInkDecodeCount = 0
+    var mainActorDecodeCount = 0
     /// Held weakly: a recognizer made later at a freed one's address is observed too.
     private let observedScrollRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
     /// The scroll views around this embed that it restricts while annotating.
@@ -827,7 +891,37 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var hasAppliedInput = false
     private var hasPendingFirstResponderUpdate = false
     /// True once the view is dismantled; the coordinator is not used again.
-    private var isDetached = false
+    var isDetached = false
+    /// The session's view generation this coordinator's view was made for (`PDFSession.rebuildView`).
+    var viewGeneration = 0
+    /// The window's kept PDF views, where this view goes while its tab is hidden.
+    weak var hiddenViews: HiddenPDFViews?
+    /// True while the view is kept for its hidden tab (`HiddenPDFViews`), off screen.
+    private(set) var isParked = false
+
+    /// Whether the kept view can come back: still its session's newest view, not built again since.
+    var canShowAgain: Bool { isParked && !isDetached && pdfView != nil && session.viewGeneration == viewGeneration }
+
+    /// The view leaves the screen with its tab and is kept: its ink recorded, the palette put
+    /// away, nothing watching touches; the canvases, their ink and the history stay, and the
+    /// session's saves and undo still reach them.
+    func park() {
+        for canvas in canvasesByPage.values { recordUnrecordedInk(of: canvas) }
+        healthMonitor?.stop()
+        healthMonitor = nil
+        presentedScreenObserver.isObserving = false
+        toolPicker.setVisible(false, forFirstResponder: toolPickerHost)
+        toolPickerHost.takesFirstResponderBackFromSelections = false
+        toolPickerHost.resignFirstResponderOnNextTurn()
+        isParked = true
+    }
+
+    /// The kept view is shown again; its window change brings back the palette and first responder.
+    func resume() {
+        isParked = false
+        hasAppliedInput = false
+        if let pdfView { healthMonitor = PDFPaneHealthMonitor(coordinator: self, pdfView: pdfView) }
+    }
     /// Watches that the PDF keeps taking touches (`PDFPaneHealthMonitor`).
     private var healthMonitor: PDFPaneHealthMonitor?
 
@@ -859,6 +953,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         session.inkCanvasProvider = self
         view.addSubview(toolPickerHost)
         toolPicker.accessoryItem = paletteAccessoryItem
+        if !isEmbedded { toolPicker.addObserver(paletteInsetObserver) }
         let fingerAndPointer = [UITouch.TouchType.direct, .indirectPointer].map { touchType in NSNumber(value: touchType.rawValue) }
 
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -874,11 +969,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         view.addGestureRecognizer(selectionRecognizer)
         textSelectionRecognizer = selectionRecognizer
 
-        let pencilRecognizer = PencilTouchDownRecognizer(target: self, action: #selector(handlePencilTouchWhileReading(_:)))
-        pencilRecognizer.delegate = self
-        pencilRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
-        view.addGestureRecognizer(pencilRecognizer)
-        pencilWhileReadingRecognizer = pencilRecognizer
+        installPencilWhileReadingRecognizer(in: view)
 
         // A hand resting on a page while the Pencil writes does not tap, select, scroll or zoom.
         palmRejection = PencilActivity.installRecognizers(in: view, isWriting: { [weak self] in self?.input.isEnabled ?? false },
@@ -897,9 +988,35 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         self.pictureSelection = pictureSelection
         session.visiblePageCenter = { [weak pictureSelection] in pictureSelection?.visiblePageCenter() }
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
-        session.registerPendingInkRecordWriter(for: self) { [weak self] in self?.writeDeferredInkRecords() }
+        session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
+            await self?.writeDeferredInkRecordsInBackground()
+        }) { [weak self] in self?.writeDeferredInkRecords() }
         zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRenderingScaleUpdate() }
+        }
+        observeMemoryWarnings()
+    }
+
+    /// A Pencil on a page while reading switches to writing, and draws (`handlePencilTouchWhileReading`).
+    private func installPencilWhileReadingRecognizer(in view: GraphitePDFDisplayView) {
+        let pencilRecognizer = PencilTouchDownRecognizer(target: self, action: #selector(handlePencilTouchWhileReading(_:)))
+        pencilRecognizer.drawingRecognizerUnderTouch = { [weak self, weak view] touch in
+            guard let self, let view, !self.input.isEnabled, self.beginWritingWithPencil != nil,
+                  let canvas = self.shownCanvas(at: touch.location(in: view), in: view) else { return nil }
+            // PencilKit draws only on a canvas that takes touches; going on writing leaves it so.
+            canvas.isUserInteractionEnabled = true
+            return canvas.drawingGestureRecognizer
+        }
+        pencilRecognizer.delegate = self
+        pencilRecognizer.allowedTouchTypes = [NSNumber(value: UITouch.TouchType.pencil.rawValue)]
+        view.addGestureRecognizer(pencilRecognizer)
+        pencilWhileReadingRecognizer = pencilRecognizer
+    }
+
+    private func observeMemoryWarnings() {
+        memoryWarningObserver = NotificationCenter.default.addObserver(forName: UIApplication.didReceiveMemoryWarningNotification, object: nil,
+            queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.releaseMemoryOfCanvases() }
         }
     }
 
@@ -907,6 +1024,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// again at the new scale once the zoom has stayed for a moment.
     private func scheduleRenderingScaleUpdate() {
         renderingScaleUpdate?.cancel()
+        if let pdfView, abs(pdfView.scaleFactor - scaleFactorAtMemoryWarning) > 0.001 { isHoldingRenderingScaleForMemory = false }
         let update = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.updateRenderingScale() }
         }
@@ -914,10 +1032,58 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: update)
     }
 
+    /// A stroke under way keeps its canvas as it is: the new scale waits for the lift, since
+    /// laying the canvas out again changes its bounds and zoom under PencilKit's live stroke.
     private func updateRenderingScale() {
         guard !isDetached, let pdfView else { return }
-        let scale = PDFPageOverlayView.renderingScale(forZoom: pdfView.scaleFactor)
-        for canvas in canvasesByPage.values { canvas.overlayView?.setRenderingScale(scale) }
+        if isStrokeUnderWay {
+            scheduleRenderingScaleUpdate()
+            return
+        }
+        // Only what is on screen; a kept page stays at its own size (`willEndDisplayingOverlayView`).
+        for identifier in displayedPages {
+            guard let canvas = canvasesByPage[identifier], let page = canvas.page else { continue }
+            canvas.overlayView?.setRenderingScale(renderingScale(of: page, in: pdfView))
+            // Laid out now, while no stroke is known to be under way: left to the next layout
+            // pass, the canvas changed size under a stroke begun in between.
+            canvas.overlayView?.layoutIfNeeded()
+            // The eraser follows the zoom on screen, also past where the canvas's scale stops.
+            if canvas.tool is PKEraserTool { canvas.retakeChosenTool() }
+        }
+    }
+
+    /// PencilKit's recognizer stays `.possible` until a stroke has moved a little, so the touches
+    /// it follows count as well.
+    private var isStrokeUnderWay: Bool {
+        PencilActivity.isPencilTouching(at: PencilActivity.now)
+            || canvasesByPage.values.contains { canvas in
+                canvas.drawingGestureRecognizer.state != .possible || canvas.drawingGestureRecognizer.numberOfTouches > 0
+            }
+    }
+
+    /// The scale a page's canvas draws at for the view's zoom. After a memory warning, until the
+    /// next change of zoom, it is held to the page's size at twice its points.
+    private func renderingScale(of page: PDFPage, in view: PDFView) -> CGFloat {
+        let screenScale = view.window?.screen.scale ?? view.traitCollection.displayScale
+        let scale = PDFPageOverlayView.renderingScale(forZoom: view.scaleFactor, pageSize: page.bounds(for: .cropBox).size, screenScale: max(screenScale, 1))
+        return isHoldingRenderingScaleForMemory ? min(scale, Self.renderingScaleAfterMemoryWarning) : scale
+    }
+
+    /// The system is short of memory: pages kept for scrolling back go, after their ink is
+    /// recorded, and the pages on screen draw smaller. Being killed would lose what was written
+    /// since the last save.
+    private func releaseMemoryOfCanvases() {
+        guard !isDetached, let pdfView else { return }
+        for identifier in hiddenCanvasOrder {
+            if let canvas = canvasesByPage.removeValue(forKey: identifier) { release(canvas) }
+        }
+        hiddenCanvasOrder.removeAll()
+        isHoldingRenderingScaleForMemory = true
+        scaleFactorAtMemoryWarning = pdfView.scaleFactor
+        for identifier in displayedPages {
+            guard let canvas = canvasesByPage[identifier], let page = canvas.page else { continue }
+            canvas.overlayView?.setRenderingScale(renderingScale(of: page, in: pdfView))
+        }
     }
 
     func detach() {
@@ -927,7 +1093,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         presentedScreenObserver.isObserving = false
         toolPicker.setVisible(false, forFirstResponder: toolPickerHost)
         toolPickerHost.takesFirstResponderBackFromSelections = false
-        toolPickerHost.resignFirstResponder()
+        // Called as SwiftUI dismantles the view, in the middle of its update.
+        toolPickerHost.resignFirstResponderOnNextTurn()
         for canvas in canvasesByPage.values { release(canvas) }
         canvasesByPage.removeAll()
         session.unregisterPendingInkRecordWriter(for: self)
@@ -943,6 +1110,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         toolboxObserver = nil
         if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
         zoomObserver = nil
+        if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
+        memoryWarningObserver = nil
         renderingScaleUpdate?.cancel()
     }
 
@@ -972,6 +1141,22 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
     }
     private var paletteFrameObserver: PaletteFrameObserver?
+    /// Keeps the last page clear of a palette docked along the bottom of a phone's screen.
+    private lazy var paletteInsetObserver = PaletteFrameObserver { [weak self] in self?.clearPagesOfPalette() }
+
+    /// A palette docked at the bottom of a phone covers the last 70 to 100 points of the pages, and the PDF reaches
+    /// under the bottom safe area: the pages scroll that far past their end while it shows, and no further after.
+    private func clearPagesOfPalette() {
+        guard let pdfView, let scrollView = pdfView.pagesScrollView else { return }
+        var coveredHeight: CGFloat = 0
+        if pdfView.window != nil, toolPicker.isVisible {
+            let obscured = toolPicker.frameObscured(in: pdfView)
+            if !obscured.isNull, !obscured.isEmpty { coveredHeight = pdfView.bounds.intersection(obscured).height }
+        }
+        guard abs(scrollView.contentInset.bottom - coveredHeight) > 0.5 else { return }
+        scrollView.contentInset.bottom = coveredHeight
+        scrollView.verticalScrollIndicatorInsets.bottom = coveredHeight
+    }
     /// The height along the bottom of the window that a floating palette takes, with its margin.
     private static let floatingPaletteBand: CGFloat = 150
 
@@ -1094,9 +1279,14 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     // MARK: Touch routing
 
     func canvas(at point: CGPoint, in view: PDFView) -> PDFPageCanvasView? {
-        guard input.isEnabled else { return nil }
+        input.isEnabled ? shownCanvas(at: point, in: view) : nil
+    }
+
+    /// The canvas shown at a point, while writing or reading, also while its stored ink is
+    /// decoded: what it draws then is recorded after that ink (`mergeStoredInk`).
+    private func shownCanvas(at point: CGPoint, in view: PDFView) -> PDFPageCanvasView? {
         for identifier in displayedPages {
-            guard let canvas = canvasesByPage[identifier], canvas.window != nil, !canvas.isHidden, !canvas.isRestoringStoredInk else { continue }
+            guard let canvas = canvasesByPage[identifier], canvas.window != nil, !canvas.isHidden else { continue }
             if canvas.bounds.contains(canvas.convert(point, from: view)) { return canvas }
         }
         return nil
@@ -1127,6 +1317,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private func makeWaitForPalmRejection(_ recognizers: [UIGestureRecognizer]) {
         palmRejection?.makeWait(recognizers)
     }
+
+    /// For tests, which cannot send a Pencil's touches.
+    var pencilTouchWhileReadingRecognizer: PencilTouchDownRecognizer? { pencilWhileReadingRecognizer }
 
     /// For tests, which cannot send touches: whether a recognizer waits for palm rejection.
     func waitsForPalmRejection(_ recognizer: UIGestureRecognizer) -> Bool {
@@ -1194,6 +1387,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
                 scrollView.pinchGestureRecognizer?.allowedTouchTypes = pinchTouchTypes.filter { touchType in touchType != pencil }
             }
             scrollView.panGestureRecognizer.addTarget(self, action: #selector(scrollGestureChanged(_:)))
+            // A hand resting on the page does not scroll the note under the Pencil. The wait
+            // fails at once for a finger while the Pencil is away, and when nothing is written.
+            makeWaitForPalmRejection([scrollView.panGestureRecognizer])
         }
     }
 
@@ -1245,14 +1441,14 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             // every stroke drawn since, on screen and, at the next stroke, in the file
             // (seen on the owner's iPad, 2026-10-13).
             let overlayView = PDFPageOverlayView(canvas: existing)
-            overlayView.setRenderingScale(PDFPageOverlayView.renderingScale(forZoom: view.scaleFactor))
+            overlayView.setRenderingScale(renderingScale(of: page, in: view))
             return overlayView
         }
         if let replaced = canvasesByPage.removeValue(forKey: identifier) { release(replaced) }
         let canvas = makeCanvas(for: page)
         canvasesByPage[identifier] = canvas
         let overlayView = PDFPageOverlayView(canvas: canvas)
-        overlayView.setRenderingScale(PDFPageOverlayView.renderingScale(forZoom: view.scaleFactor))
+        overlayView.setRenderingScale(renderingScale(of: page, in: view))
         return overlayView
     }
 
@@ -1261,8 +1457,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         makeWaitForPalmRejection(pageTapsAndPresses(in: overlayView.superview ?? overlayView))
         guard let canvas = (overlayView as? PDFPageOverlayView)?.canvas else { return }
         let identifier = ObjectIdentifier(page)
+        if canvasesByPage[identifier] !== canvas, canvas.page === page { adoptCanvasShownAgain(canvas, on: page) }
         displayedPages.insert(identifier)
         hiddenCanvasOrder.removeAll { hiddenIdentifier in hiddenIdentifier == identifier }
+        // PDFKit shows a page's view again as a zoom changes, which may be during a stroke.
+        if isStrokeUnderWay {
+            scheduleRenderingScaleUpdate()
+        } else {
+            (overlayView as? PDFPageOverlayView)?.setRenderingScale(renderingScale(of: page, in: pdfView))
+        }
         configure(canvas)
         placeReadAloudMarkers(on: canvas)
         if let overlay = overlayView as? PDFPageOverlayView { textBoxInteraction?.pageDidAppear(page, in: overlay) }
@@ -1274,8 +1477,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         displayedPages.remove(identifier)
         // Thumbnails and other views show the saved ink while no canvas covers the page.
         setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group)
+        canvas.inkAnnotationsState = (false, session.editCount(of: page))
         textBoxInteraction?.pageDidDisappear(page)
         hiddenCanvasOrder.append(identifier)
+        // A page kept for scrolling back takes no more than a page's memory. It leaves the
+        // screen now, where nothing lays it out by itself.
+        if let keptOverlay = overlayView as? PDFPageOverlayView {
+            keptOverlay.setRenderingScale(1)
+            keptOverlay.layoutIfNeeded()
+        }
         while hiddenCanvasOrder.count > Self.retainedHiddenCanvasCount {
             let evictedIdentifier = hiddenCanvasOrder.removeFirst()
             if let evictedCanvas = canvasesByPage.removeValue(forKey: evictedIdentifier) { release(evictedCanvas) }
@@ -1283,7 +1493,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     private func makeCanvas(for page: PDFPage) -> PDFPageCanvasView {
-        let canvas = PDFPageCanvasView(page: page, inkTracker: PDFPageInkTracker(group: PDFInkGroups.newGroup(on: page)))
+        // The page's annotations are read once, for the group of new ink and for the ink to restore.
+        let storedInk = PDFInkGroups.storedInk(on: page)
+        let canvas = PDFPageCanvasView(page: page, inkTracker: PDFPageInkTracker(group: storedInk.newGroup()))
         canvas.annotationCoordinator = self
         canvas.backgroundColor = .clear
         canvas.isOpaque = false
@@ -1293,6 +1505,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         // Its overlay zooms it to the scale it draws at, which nothing else changes.
         canvas.pinchGestureRecognizer?.isEnabled = false
         canvas.contentInsetAdjustmentBehavior = .never
+        canvas.drawingGestureRecognizer.addTarget(self, action: #selector(drawingGestureChanged(_:)))
+        restoreStoredInkIfNeeded(on: canvas, knownStoredInk: storedInk)
         configure(canvas)
         // PencilKit's own finger long press (its Select All and Insert Space menu) waits
         // until the press is known not to select PDF text.
@@ -1308,41 +1522,6 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         return canvas
     }
 
-    /// Decoding a stored drawing takes tens of milliseconds for a full page, so it runs in
-    /// the background; reading the group from the page's annotations stays here, on the
-    /// main actor that owns the document.
-    private func restoreStoredInkIfNeeded(on canvas: PDFPageCanvasView) {
-        guard !canvas.hasRestoredStoredInk, let page = canvas.page else { return }
-        canvas.hasRestoredStoredInk = true
-        guard let editableGroup = PDFInkGroups.editableGroup(on: page) else {
-            canvas.delegate = self
-            return
-        }
-        canvas.isRestoringStoredInk = true
-        Task { [weak self, weak canvas] in
-            let decodedDrawing = await Task.detached(priority: .userInitiated) {
-                try? PKDrawing(data: editableGroup.record.drawingData)
-            }.value
-            guard let self, let canvas, canvas.page === page, self.canvasesByPage[ObjectIdentifier(page)] === canvas else { return }
-            canvas.isRestoringStoredInk = false
-            // Undo or redo may have changed the page's stored ink while it was decoded.
-            guard PDFInkGroups.editableGroup(on: page) == editableGroup else {
-                canvas.hasRestoredStoredInk = false
-                self.restoreStoredInkIfNeeded(on: canvas)
-                self.configure(canvas)
-                return
-            }
-            if let decodedDrawing, let restored = PDFPageInkTracker.restoring(editableGroup, decodedDrawing: decodedDrawing) {
-                canvas.inkTracker = restored.tracker
-                // Set before the delegate, so loading the stored drawing is not recorded as an edit.
-                canvas.drawing = restored.drawing
-                canvas.recordedDrawing = restored.drawing
-            }
-            canvas.delegate = self
-            self.configure(canvas)
-        }
-    }
-
     private func longPressRecognizers(in view: UIView) -> [UILongPressGestureRecognizer] {
         (view.gestureRecognizers ?? []).compactMap { recognizer in recognizer as? UILongPressGestureRecognizer }
             + view.subviews.flatMap { subview in longPressRecognizers(in: subview) }
@@ -1354,7 +1533,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// became a thin opaque line, a pencil lost its grain and every stroke its pressure, and
     /// the page changed each time writing was turned on or off. The annotations, which other
     /// PDF readers show, stay hidden only while a displayed canvas shows the same ink.
-    private func configure(_ canvas: PDFPageCanvasView) {
+    func configure(_ canvas: PDFPageCanvasView) {
         restoreStoredInkIfNeeded(on: canvas)
         canvas.readAloudPenTapped = readAloudPen == nil ? nil : { [weak self] windowPoint in self?.handleReadAloudPenTap(atWindowPoint: windowPoint) }
         canvas.textToolTapped = { [weak self] windowPoint in self?.textBoxInteraction?.handleTextToolTap(atWindowPoint: windowPoint) }
@@ -1362,21 +1541,57 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         canvas.drawingPolicy = input.drawsWithFinger ? .anyInput : .pencilOnly
         canvas.showWritingGuides(input.writingGuides)
         canvas.overlayView?.showsWritingGuides = input.isEnabled
-        // While its stored ink is decoded, a reading page shows the annotations instead.
-        canvas.isHidden = !input.isEnabled && canvas.isRestoringStoredInk
-        canvas.isUserInteractionEnabled = input.isEnabled && !canvas.isRestoringStoredInk
+        // While its stored ink is decoded, the page's annotations show it under the canvas, which
+        // takes touches: a stroke begun then is kept and recorded after the stored ink (HUNT-307).
+        canvas.isUserInteractionEnabled = input.isEnabled
         if let page = canvas.page {
-            let isDisplayed = displayedPages.contains(ObjectIdentifier(page))
-            setInkAnnotationsHidden(isDisplayed && !canvas.isRestoringStoredInk, on: page, group: canvas.inkTracker.group)
+            let isHidden = displayedPages.contains(ObjectIdentifier(page)) && !canvas.isRestoringStoredInk
+            let pageEditCount = session.editCount(of: page)
+            if canvas.inkAnnotationsState?.isHidden != isHidden || canvas.inkAnnotationsState?.pageEditCount != pageEditCount {
+                setInkAnnotationsHidden(isHidden, on: page, group: canvas.inkTracker.group)
+                canvas.inkAnnotationsState = (isHidden, pageEditCount)
+            }
         }
     }
 
     private func release(_ canvas: PDFPageCanvasView) {
-        recordUnrecordedInk(of: canvas)
+        recordUnrecordedInk(of: canvas, isGoingAway: true)
         writeDeferredInkRecord(of: canvas)
         canvas.stopFollowing(toolPicker)
         canvas.delegate = nil
-        if let page = canvas.page { setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group) }
+        if let page = canvas.page {
+            setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group)
+            canvas.editCountWhenLetGo = session.editCount(of: page)
+        }
+    }
+
+    /// PDFKit shows a page's view again with the overlay it kept, without asking for one, after
+    /// the page's canvas was let go (more than `retainedHiddenCanvasCount` other pages shown, or
+    /// a memory warning). The canvas becomes the page's own again: until 2026-11-04 it stayed let
+    /// go, took strokes it never recorded, and the health check, finding a canvas on screen "not
+    /// its own" within a second, built the whole view again, which decoded every page shown,
+    /// fitted the zoom and showed blank pages meanwhile (HUNT-313). A page whose ink did not
+    /// change since keeps its drawing; one that did reads it again.
+    private func adoptCanvasShownAgain(_ canvas: PDFPageCanvasView, on page: PDFPage) {
+        let identifier = ObjectIdentifier(page)
+        if let pagesCanvas = canvasesByPage[identifier], pagesCanvas !== canvas { release(pagesCanvas) }
+        canvasesByPage[identifier] = canvas
+        if let editCountWhenLetGo = canvas.editCountWhenLetGo, editCountWhenLetGo == session.editCount(of: page), canvas.hasRestoredStoredInk,
+           !canvas.isRestoringStoredInk {
+            canvas.delegate = self
+        } else {
+            // Its drawing is not the page's ink any more: emptied, as a new canvas is, and read again.
+            canvas.storedInkRestoreCount += 1
+            canvas.heldStoredInk = nil
+            canvas.isRestoringStoredInk = false
+            canvas.hasRestoredStoredInk = false
+            canvas.inkTracker = PDFPageInkTracker(group: PDFInkGroups.storedInk(on: page).newGroup())
+            canvas.recordedDrawing = PKDrawing()
+            canvas.showWithoutRecording(PKDrawing())
+        }
+        canvas.editCountWhenLetGo = nil
+        canvas.inkAnnotationsState = nil
+        canvas.mayHoldUnrecordedInk = false
     }
 
     /// While a canvas covers a page, it shows the ink; the ink annotations are hidden so
@@ -1405,7 +1620,17 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         (canvasView as? HistoryCanvasView)?.drawingDidFinishRendering()
     }
 
+    @objc private func drawingGestureChanged(_ recognizer: UIGestureRecognizer) {
+        recognizer.view?.enclosingPageCanvas?.mayHoldUnrecordedInk = true
+    }
+
     func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
+        (canvasView as? PDFPageCanvasView)?.mayHoldUnrecordedInk = true
+        // Drawn before the stored ink arrived: recorded after it once it has (`mergeStoredInk`).
+        if let canvas = canvasView as? PDFPageCanvasView, canvas.isRestoringStoredInk {
+            applyHeldStoredInkOnTheNextTurn(on: canvas)
+            return
+        }
         guard let canvas = canvasView as? PDFPageCanvasView, !canvas.isShowingWithoutRecording, let page = canvas.page,
               canvas.bounds.width > 0, canvas.bounds.height > 0 else { return }
         let pageIndex = session.document.index(for: page)
@@ -1442,6 +1667,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
                 }
             }
             canvas.recordedDrawing = drawing
+            canvas.mayHoldUnrecordedInk = false
             if displayedPages.contains(ObjectIdentifier(page)) {
                 PencilWritingTrace.measure("Hide ink annotations") {
                     if appendingUpdate != nil {
@@ -1456,26 +1682,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
     }
 
-    /// Writes the re-editing records that drawing deferred, for every canvas.
-    func writeDeferredInkRecords() {
-        for canvas in canvasesByPage.values {
-            recordUnrecordedInk(of: canvas)
-            writeDeferredInkRecord(of: canvas)
-        }
-    }
-
     // MARK: Health (`PDFPaneHealthMonitor`)
 
     var drawsWithFinger: Bool { input.drawsWithFinger }
     var isWriting: Bool { input.isEnabled }
-
-    /// Records ink a canvas shows that the PDF does not have yet, as when a change of the
-    /// canvas never reached its delegate. A stroke still being drawn is not part of it.
-    func recordUnrecordedInk(of canvas: PDFPageCanvasView) {
-        guard canvas.delegate === self, canvas.hasRestoredStoredInk, !canvas.isRestoringStoredInk,
-              PencilDrawingChange(from: canvas.recordedDrawing, to: canvas.drawing) != nil else { return }
-        canvasViewDrawingDidChange(canvas)
-    }
 
     /// Puts right what must hold for every canvas on screen, and says what it changed: the
     /// canvas is the page's own, counted as shown, recording its changes, and taking touches
@@ -1490,12 +1700,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             let pageIndex = session.document.index(for: page)
             guard pageIndex != NSNotFound else { continue }
             let identifier = ObjectIdentifier(page)
-            guard canvasesByPage[identifier] === canvas else {
-                repairs.append("Page \(pageIndex + 1) showed a canvas that is not its own; the view was built again")
-                rebuildViewAfterRecordingInk()
-                return repairs
-            }
             var needsConfiguring = false
+            if canvasesByPage[identifier] !== canvas {
+                // Shown again by PDFKit after it was let go, without the display call that adopts it.
+                adoptCanvasShownAgain(canvas, on: page)
+                repairs.append("Page \(pageIndex + 1) showed a canvas let go of; it is the page's own again")
+                needsConfiguring = true
+            }
             if !displayedPages.contains(identifier) {
                 displayedPages.insert(identifier)
                 hiddenCanvasOrder.removeAll { hiddenIdentifier in hiddenIdentifier == identifier }
@@ -1504,12 +1715,14 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             }
             if canvas.hasRestoredStoredInk, !canvas.isRestoringStoredInk, canvas.delegate == nil {
                 canvas.delegate = self
+                canvas.mayHoldUnrecordedInk = true
                 repairs.append("Page \(pageIndex + 1)'s canvas did not record its changes")
             }
             if canvas.resumeDrawingLeftOff(forLongerThan: PDFPaneHealthMonitor.stuckGestureSeconds) {
                 repairs.append("Page \(pageIndex + 1)'s canvas had drawing switched off for a held shape whose touch never ended")
             }
-            if input.isEnabled, !canvas.isRestoringStoredInk, !canvas.isUserInteractionEnabled || canvas.isHidden {
+            if canvas.heldStoredInk != nil { applyHeldStoredInk(on: canvas) }
+            if input.isEnabled, !canvas.isUserInteractionEnabled || canvas.isHidden {
                 repairs.append("Page \(pageIndex + 1)'s canvas took no touches while writing")
                 needsConfiguring = true
             }
@@ -1539,6 +1752,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// does. An embedded PDF is not rebuilt: the note around it is.
     func rebuildViewAfterRecordingInk() {
         guard !isDetached, !isEmbedded else { return }
+        for canvas in canvasesByPage.values { recordUnrecordedInk(of: canvas) }
         writeDeferredInkRecords()
         PencilActivity.forgetPencil()
         session.rebuildView()
@@ -1548,21 +1762,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         ((view as? PDFPageOverlayView).map { [$0] } ?? []) + view.subviews.flatMap { subview in overlays(in: subview) }
     }
 
-    private func writeDeferredInkRecord(of canvas: PDFPageCanvasView) {
-        guard canvas.inkTracker.hasDeferredEditableRecord, let page = canvas.page else { return }
-        let pageIndex = session.document.index(for: page)
-        // A deleted page's ink went with it.
-        guard pageIndex != NSNotFound,
-              let update = canvas.inkTracker.deferredEditableRecordUpdate(for: canvas.drawing, pageIndex: pageIndex) else { return }
-        do {
-            try session.apply(.updateInk(update))
-        } catch {
-            session.errorMessage = error.localizedDescription
-        }
-    }
-
     func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
         (canvasView as? HistoryCanvasView)?.toolUseDidBegin()
+        (canvasView as? PDFPageCanvasView)?.mayHoldUnrecordedInk = true
+        if let canvas = canvasView as? PDFPageCanvasView {
+            canvas.toolUseBeginTime = PencilActivity.now
+            canvas.strokeCountWhenToolUseBegan = canvas.drawing.strokes.count
+        }
         beginInteraction?()
         pdfView?.clearSelection()
         // Drawing ends arranging a picture or a text box, and typing in one.
@@ -1573,6 +1779,14 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
         // A text field or the selection menu may have taken first responder.
         if input.holdsFirstResponder, !toolPickerHost.isFirstResponder { toolPickerHost.becomeFirstResponder() }
+    }
+
+    func canvasViewDidEndUsingTool(_ canvasView: PKCanvasView) {
+        guard let canvas = canvasView as? PDFPageCanvasView else { return }
+        canvas.toolUseBeginTime = nil
+        // An inking tool's stroke still to arrive looks at held stored ink when it does.
+        let strokeMayStillArrive = canvas.tool is PKInkingTool && canvas.drawing.strokes.count == canvas.strokeCountWhenToolUseBegan
+        if !strokeMayStillArrive { applyHeldStoredInkOnTheNextTurn(on: canvas) }
     }
 
     /// - Parameter isInsideViewUpdate: True when SwiftUI is updating its views, as in
@@ -1755,11 +1969,11 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         gestureRecognizer === markupTapRecognizer || gestureRecognizer === pencilWhileReadingRecognizer
     }
 
-    /// A Pencil on a page while reading switches to writing. The touch that switched does
-    /// not draw, since the page's canvas did not exist for it, and the page does not scroll
-    /// with it; the next stroke draws.
+    /// A Pencil on a page while reading switches to writing, and the page does not scroll with
+    /// it. The touch that switched draws: the page's canvas takes no touches while reading, so
+    /// the recognizer tells the canvas's own drawing recognizer of it (`PencilTouchDownRecognizer`).
     @objc private func handlePencilTouchWhileReading(_ recognizer: PencilTouchDownRecognizer) {
-        guard recognizer.state == .recognized, !input.isEnabled, let beginWritingWithPencil, let pdfView else { return }
+        guard recognizer.state == .began, !input.isEnabled, let beginWritingWithPencil, let pdfView else { return }
         for scrollView in scrollViews(in: pdfView) {
             scrollView.panGestureRecognizer.isEnabled = false
             scrollView.panGestureRecognizer.isEnabled = true
@@ -1790,8 +2004,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 }
 /// Recognizes the moment a touch begins, without waiting for it to move or lift. It never
-/// cancels or delays the touch for other views.
+/// cancels or delays the touch for other views. It follows the touch to its end, telling a
+/// canvas's drawing recognizer of it, so a touch that a canvas could not take draws all the same.
 final class PencilTouchDownRecognizer: UIGestureRecognizer {
+    /// The drawing recognizer of the canvas under a touch that begins, if it is to draw.
+    var drawingRecognizerUnderTouch: ((UITouch) -> UIGestureRecognizer?)?
+    private var followingDrawingRecognizer: UIGestureRecognizer?
+
     override init(target: Any?, action: Selector?) {
         super.init(target: target, action: action)
         cancelsTouchesInView = false
@@ -1800,7 +2019,27 @@ final class PencilTouchDownRecognizer: UIGestureRecognizer {
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        state = .recognized
+        guard state == .possible else { return }
+        followingDrawingRecognizer = touches.first.flatMap { touch in drawingRecognizerUnderTouch?(touch) }
+        followingDrawingRecognizer?.touchesBegan(touches, with: event)
+        state = .began
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        followingDrawingRecognizer?.touchesMoved(touches, with: event)
+        state = .changed
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        followingDrawingRecognizer?.touchesEnded(touches, with: event)
+        followingDrawingRecognizer = nil
+        state = .ended
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        followingDrawingRecognizer?.touchesCancelled(touches, with: event)
+        followingDrawingRecognizer = nil
+        state = .cancelled
     }
 }
 

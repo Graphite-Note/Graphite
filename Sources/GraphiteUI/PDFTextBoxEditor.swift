@@ -1,3 +1,14 @@
+/**
+ * File: PDFTextBoxEditor.swift
+ * ----------------------------
+ * Layer: UI
+ * Description: The view a PDF text box is typed in, and what gives the document the box as typed.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 02/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
 import PDFKit
@@ -74,7 +85,7 @@ final class PDFTextBoxEditor: NSObject, UITextViewDelegate {
         } else {
             textView.selectedRange = NSRange(location: textView.attributedText.length, length: 0)
         }
-        session.registerPendingInkRecordWriter(for: self) { [weak self] in self?.commit() }
+        session.registerPendingInkRecordWriter(for: self) { [weak self] in self?.commit(typingContinues: true) }
     }
 
     private func showText() {
@@ -153,8 +164,9 @@ final class PDFTextBoxEditor: NSObject, UITextViewDelegate {
     // MARK: Ending
 
     /// Gives the document the box as typed, as the one step of this typing.
-    func commit() {
-        do { try session.commitTextBox(box, in: step) }
+    /// - Parameter typingContinues: For a save while typing pauses (`PDFSession.commitTextBox`).
+    func commit(typingContinues: Bool = false) {
+        do { try session.commitTextBox(box, in: step, typingContinues: typingContinues) }
         catch { session.reportFailedChange(error) }
     }
 

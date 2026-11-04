@@ -1,3 +1,14 @@
+/**
+ * File: PDFSession.swift
+ * ----------------------
+ * Layer: UI
+ * Description: An open PDF: its pages, edits, saving and conflicts.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.18
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import Observation
 import PDFKit
@@ -160,6 +171,7 @@ enum PDFSignatureDetection {
 @MainActor @Observable
 private final class PDFPageAppearance {
     var version = 0
+    @ObservationIgnored var editCount = 0
 }
 
 /// One entry of the PDF outline (its table of contents and bookmarks).
@@ -248,6 +260,7 @@ final class PDFSession {
     /// page's ink reads back as not editable, so every save, export and page-structure
     /// change runs them first.
     @ObservationIgnored private var pendingInkRecordWriters: [ObjectIdentifier: () -> Void] = [:]
+    @ObservationIgnored private var backgroundInkRecordWriters: [ObjectIdentifier: () async -> Void] = [:]
     /// Told when a page's text boxes change, keyed by the view drawing them
     /// (`registerTextBoxChangeObserver`).
     @ObservationIgnored private var textBoxChangeObservers: [ObjectIdentifier: () -> Void] = [:]
@@ -409,7 +422,10 @@ final class PDFSession {
         let changedPage = edit.changedPageIndex.flatMap(document.page(at:))
         try PDFPageManager.apply(edit, to: document)
         record(edit)
-        if let changedPage { appearance(of: changedPage).version += 1 }
+        if let changedPage {
+            appearance(of: changedPage).version += 1
+            appearance(of: changedPage).editCount += 1
+        }
         // Page changes can move or remove the pages outline entries point to.
         if edit.changesPageTree { pageListVersion += 1 }
         if edit.changesPageTree || edit.changesOutline { outlineVersion += 1 }
@@ -428,13 +444,16 @@ final class PDFSession {
         viewGeneration += 1
     }
 
-    /// Registers the view that owns Pencil canvases; `write` applies their deferred records.
-    func registerPendingInkRecordWriter(for owner: AnyObject, _ write: @escaping () -> Void) {
+    /// Registers the view that owns Pencil canvases; `write` applies their deferred records,
+    /// and `writeInBackground`, for a save, does so without archiving them on the main actor.
+    func registerPendingInkRecordWriter(for owner: AnyObject, inBackground writeInBackground: (() async -> Void)? = nil, _ write: @escaping () -> Void) {
         pendingInkRecordWriters[ObjectIdentifier(owner)] = write
+        backgroundInkRecordWriters[ObjectIdentifier(owner)] = writeInBackground
     }
 
     func unregisterPendingInkRecordWriter(for owner: AnyObject) {
         pendingInkRecordWriters[ObjectIdentifier(owner)] = nil
+        backgroundInkRecordWriters[ObjectIdentifier(owner)] = nil
     }
 
     func writePendingInkRecords() {
@@ -470,6 +489,12 @@ final class PDFSession {
         appearance(of: page).version
     }
 
+    /// How many edits the page has had, for what must notice one and is no view: reading it
+    /// from a view's update does not tie that view to every stroke, as `appearanceVersion(of:)` does.
+    func editCount(of page: PDFPage) -> Int {
+        appearance(of: page).editCount
+    }
+
     private func appearance(of page: PDFPage) -> PDFPageAppearance {
         if let existingAppearance = pageAppearances[ObjectIdentifier(page)] { return existingAppearance }
         let newAppearance = PDFPageAppearance()
@@ -482,12 +507,20 @@ final class PDFSession {
     /// Saves pending edits. A save already running is awaited first, so navigation,
     /// autosave, and explicit saves never reject each other.
     func save() async throws {
-        while let previousSave = runningSave {
-            _ = try? await previousSave.value
-            // Whichever waiter resumes first clears the finished save, so no waiter spins on it.
-            if runningSave == previousSave { runningSave = nil }
-        }
-        // Ink a canvas shows but has not recorded yet is recorded first, so it is saved too.
+        repeat {
+            while let previousSave = runningSave {
+                _ = try? await previousSave.value
+                // Whichever waiter resumes first clears the finished save, so no waiter spins on it.
+                if runningSave == previousSave { runningSave = nil }
+            }
+            // A full page's record takes a while to archive, and a stroke begun meanwhile does not
+            // wait for it (HUNT-017). Another save may have begun by the time it is done.
+            if !hasExternalConflict {
+                for writeInBackground in Array(backgroundInkRecordWriters.values) { await writeInBackground() }
+            }
+        } while runningSave != nil
+        // Ink a canvas shows but has not recorded yet is recorded first, so it is saved too. A
+        // stroke that came during the archiving has its record archived here.
         if !hasExternalConflict { writePendingInkRecords() }
         guard hasUnsavedChanges else { return }
         guard !hasExternalConflict else { throw GraphiteError.conflict }
@@ -563,10 +596,14 @@ final class PDFSession {
         try await save()
     }
 
-    func saveSeparateCopy() async throws -> URL {
-        let directory = location.deletingLastPathComponent()
-        let filename = location.deletingPathExtension().lastPathComponent + " Graphite edits " + UUID().uuidString.prefix(8) + ".pdf"
+    /// Writes the edits to a new PDF beside this one, or in `folder`, as when the PDF has
+    /// moved while its session still points at the old place.
+    func saveSeparateCopy(inFolder folder: URL? = nil) async throws -> URL {
+        let directory = folder ?? location.deletingLastPathComponent()
+        let filename = FileNameRules.separateCopyStem(of: location.deletingPathExtension().lastPathComponent) + " " + UUID().uuidString.prefix(8) + ".pdf"
         let destination = directory.appendingPathComponent(filename)
+        // The copy has a place even when another app renamed or removed the PDF's folder.
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         writePendingInkRecords()
         let currentBaseline = baseline
         _ = try await fileService.saveCopy(baselineURL: currentBaseline.location, edits: edits, destination: destination)

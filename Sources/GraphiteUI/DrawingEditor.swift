@@ -1,3 +1,14 @@
+/**
+ * File: DrawingEditor.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The full-screen drawing editor and its canvas controller.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.23
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -83,6 +94,9 @@ import UniformTypeIdentifiers
 struct DrawingEditor: View {
     let request: DrawingEditorRequest
     let save: (DrawingContent, DrawingFormat) async throws -> Void
+    let saveAsNewDrawing: (DrawingContent, DrawingFormat) async throws -> Void
+    /// Times the draft kept while drawing goes on.
+    let clock: any ApplicationClock
     let exportCopy: (DrawingContent, DrawingFormat) async throws -> URL
     /// Keeps a recovery copy of unsaved strokes while the app is in the background.
     let preserveDraft: (DrawingContent) -> Void
@@ -100,6 +114,8 @@ struct DrawingEditor: View {
     @State private var errorMessage: String?
     /// Set when a PNG is too large to save sharply, so the alert can offer the vector formats.
     @State private var failedPNGSave = false
+    /// Set when the drawing's file changed elsewhere, so the alert can offer the ways out.
+    @State private var failedBecauseOfConflict = false
     @State private var showsDiscardConfirmation = false
     @State private var sharedFile: SharedFile?
     @State private var showsPhotoPicker = false
@@ -112,13 +128,17 @@ struct DrawingEditor: View {
 
     init(request: DrawingEditorRequest,
          noteDestination: LassoNoteDestination? = nil,
+         clock: any ApplicationClock = LiveApplicationClock(),
          save: @escaping (DrawingContent, DrawingFormat) async throws -> Void,
+         saveAsNewDrawing: @escaping (DrawingContent, DrawingFormat) async throws -> Void = { _, _ in throw SeparateCopyRefusal.drawingHasNoFile },
          exportCopy: @escaping (DrawingContent, DrawingFormat) async throws -> URL,
          preserveDraft: @escaping (DrawingContent) -> Void,
          removeDraft: @escaping () -> Void) {
         self.request = request
         self.noteDestination = noteDestination
         self.save = save
+        self.saveAsNewDrawing = saveAsNewDrawing
+        self.clock = clock
         self.exportCopy = exportCopy
         self.preserveDraft = preserveDraft
         self.removeDraft = removeDraft
@@ -162,7 +182,8 @@ struct DrawingEditor: View {
                 }
                 // The message's first sentence is the title (`MessageAlert`).
                 .alert(MessageAlert.parts(of: errorMessage ?? "").title,
-                       isPresented: Binding(get: { errorMessage != nil }, set: { isPresented in if !isPresented { errorMessage = nil; failedPNGSave = false } })) {
+                       isPresented: Binding(get: { errorMessage != nil }, set: { isPresented in if !isPresented { errorMessage = nil; failedBecauseOfConflict = false
+                           failedPNGSave = false } })) {
                     if failedPNGSave {
                         ForEach([DrawingFormat.pdf, .svg]) { vectorFormat in
                             if request.isNewDrawing {
@@ -176,8 +197,12 @@ struct DrawingEditor: View {
                             }
                         }
                     }
+                    if failedBecauseOfConflict {
+                        Button("Save as New Drawing") { Task { await saveAsNewDrawingAndClose() } }
+                        Button("Use Other Version", role: .destructive) { close() }
+                    }
                     // With other ways to save offered, the button that saves nothing is Cancel.
-                    Button(failedPNGSave ? "Cancel" : "OK", role: .cancel) {}
+                    Button(failedPNGSave || failedBecauseOfConflict ? "Cancel" : "OK", role: .cancel) {}
                 } message: { Text(MessageAlert.parts(of: errorMessage ?? "").detail) }
                 .sheet(item: $sharedFile) { file in ShareSheet(items: [file.location]) }
                 .photosPicker(isPresented: $showsPhotoPicker, selection: $pickedPhoto, matching: .images)
@@ -201,6 +226,8 @@ struct DrawingEditor: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .background, canvasController.hasChanges, let content = currentContent { preserveDraft(content) }
         }
+        // A crash or a forced end gives no notice, so strokes also go to the draft once they pause.
+        .background { DrawingDraftTimer(controller: canvasController, clock: clock) { if let content = currentContent { preserveDraft(content) } } }
         .interactiveDismissDisabled(isSaving || canvasController.hasChanges)
         // The page is white paper in every appearance, so its controls use light styling.
         .preferredColorScheme(.light)
@@ -340,8 +367,24 @@ struct DrawingEditor: View {
             close()
         } catch {
             if chosenFormat == .png, case GraphiteError.oversized = error { failedPNGSave = true }
-            errorMessage = error.localizedDescription
+            if error as? GraphiteError == .conflict { failedBecauseOfConflict = true }
+            errorMessage = failedBecauseOfConflict ? Self.conflictMessage : error.localizedDescription
         }
+    }
+
+    /// What the alert says when the drawing's file changed elsewhere, naming what it offers.
+    private static let conflictMessage = "This drawing changed in another app. "
+        + "Save yours as a new drawing beside it, or use the other version and let yours go."
+
+    /// Keeps the strokes in a new file beside the one that changed elsewhere.
+    private func saveAsNewDrawingAndClose() async {
+        guard let content = currentContent else { return }
+        isSaving = true
+        defer { isSaving = false }
+        do {
+            try await saveAsNewDrawing(content, format)
+            close()
+        } catch { errorMessage = error.localizedDescription }
     }
 
     /// Removes the recovery copy only when the user closes the editor. Disappearing is not
@@ -436,7 +479,11 @@ final class DrawingCanvasController {
     fileprivate weak var canvasView: InfiniteCanvasView? {
         didSet { showPicturesAndPaper() }
     }
-    var hasChanges: Bool
+    var hasChanges: Bool {
+        didSet { if hasChanges { changeCount += 1 } }
+    }
+    /// Counts the changes to the drawing, for the draft kept while drawing goes on.
+    private(set) var changeCount = 0
     /// Turning or cropping a picture re-encodes it off the main thread; only one runs at a time.
     let pictureOperations = ExclusiveOperationRunner()
     var hasInk = false
@@ -1071,23 +1118,8 @@ final class InfiniteCanvasView: HistoryCanvasView {
         setZoomScale(minimumZoomScale, animated: !GraphiteMotion.isReduced)
     }
 
-    /// The zoom the canvas's tool was last made for.
-    private var toolZoomScale: CGFloat = 1
-
-    /// A stroke is as wide in the drawing, and so in the note, at any zoom, as on paper and
-    /// as on a PDF page (`PDFPageCanvasView`): the canvas draws with the chosen width times
-    /// its zoom, the drawing's own points being the page's.
-    override func toolForDrawing(_ chosenTool: PKTool) -> PKTool {
-        Self.tool(super.toolForDrawing(chosenTool), scaledBy: zoomScale)
-    }
-
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Zooming lays the canvas out at every step; the tool follows the zoom.
-        if zoomScale != toolZoomScale {
-            toolZoomScale = zoomScale
-            retakeChosenTool()
-        }
         // The paper follows what is on screen; this runs at every scroll step.
         if paperView.frame != bounds { paperView.frame = bounds }
         paperView.drawingRegion = visibleDrawingRegion
@@ -1305,7 +1337,8 @@ private struct DrawingCanvas: UIViewRepresentable {
         coordinator.toolPickerHost.takesFirstResponderBackFromSelections = false
         canvasView.stopFollowing(coordinator.toolPicker)
         coordinator.stopObservingToolbox()
-        coordinator.toolPickerHost.resignFirstResponder()
+        // SwiftUI is updating its views as it dismantles this one.
+        coordinator.toolPickerHost.resignFirstResponderOnNextTurn()
         coordinator.controller.history.removeAllActions()
     }
 
@@ -1392,4 +1425,21 @@ private struct DrawingCanvas: UIViewRepresentable {
         }
     }
 }
+/// Keeps the draft of a drawing while it is being made: some seconds after the strokes pause.
+/// A view of its own, so a stroke updates this rather than the whole editor.
+private struct DrawingDraftTimer: View {
+    let controller: DrawingCanvasController
+    let clock: any ApplicationClock
+    let preserveDraft: () -> Void
+    private static let pauseBeforeKeepingDraft = Duration.seconds(5)
+
+    var body: some View {
+        Color.clear.task(id: controller.changeCount) {
+            guard controller.changeCount > 0 else { return }
+            do { try await clock.sleep(for: Self.pauseBeforeKeepingDraft) } catch { return }
+            preserveDraft()
+        }
+    }
+}
+
 #endif

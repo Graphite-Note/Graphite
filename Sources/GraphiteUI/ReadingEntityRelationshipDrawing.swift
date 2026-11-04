@@ -1,31 +1,34 @@
+/**
+ * File: ReadingEntityRelationshipDrawing.swift
+ * --------------------------------------------
+ * Layer: UI
+ * Description: A laid-out entity relationship diagram in the reading view.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
 
 /// A laid-out entity relationship diagram, centered and as wide as it was laid out (in proportion to the text size
 /// now, if that changed since the note was built), scaled down when the column is narrower.
+/// One too wide to stay readable scrolls sideways (`ReadingScaledDiagram`).
 struct ReadingEntityRelationshipDrawing: View {
     let diagram: ReadingEntityRelationshipDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
 
     var body: some View {
-        let size = diagram.layout.size
-        Color.clear
-            .aspectRatio(size.width / size.height, contentMode: .fit)
-            .frame(maxWidth: size.width * textSize / diagram.layout.font.size)
-            .overlay(alignment: .topLeading) {
-                GeometryReader { proxy in
-                    ReadingEntityRelationshipPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme))
-                        .frame(width: size.width, height: size.height, alignment: .topLeading)
-                        .scaleEffect(proxy.size.width / size.width, anchor: .topLeading)
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .ignore)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityLabel(diagram.title ?? "Entity relationship diagram")
-            .accessibilityValue(diagram.description ?? diagram.summary.joined(separator: ", "))
+        ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
+            ReadingEntityRelationshipPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme))
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isImage)
+        .accessibilityLabel(diagram.title ?? "Entity relationship diagram")
+        .accessibilityValue(diagram.description ?? diagram.summary.joined(separator: ", "))
     }
 }
 

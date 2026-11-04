@@ -1,3 +1,14 @@
+/**
+ * File: PDFPagesSidebar.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.11
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import PDFKit
 import UniformTypeIdentifiers
@@ -12,6 +23,8 @@ struct PDFPagesSidebar: View {
     @Bindable var session: PDFSession
     let commands: PDFPageCommands
     let renderer: PDFThumbnailRenderer
+    /// Called after a page is chosen to read, so a sheet that holds the list can close.
+    var didChoosePage: (() -> Void)?
     @State private var content = Content.pages
     @State private var isSelecting = false
     @State private var selectedPages = PDFPageSelection()
@@ -38,14 +51,24 @@ struct PDFPagesSidebar: View {
 
     private var pagesList: some View {
         let bookmarkedPages = session.bookmarkedPageIndices
+        // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
+        let pageListVersion = session.pageListVersion
+        let placeholderSize = session.document.page(at: 0)?.thumbnailSize(fitting: Self.thumbnailSize) ?? Self.thumbnailSize
         return VStack(spacing: 0) {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
-                        let _ = session.pageListVersion
-                        ForEach(PDFThumbnailListPage.pages(of: session.document)) { listPage in
-                            pageRow(page: listPage.page, pageIndex: listPage.pageIndex, isBookmarked: bookmarkedPages.contains(listPage.pageIndex))
+                        // Only the rows on screen ask PDFKit for their page.
+                        ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
+                            PDFThumbnailListRow(document: session.document, pageIndex: pageIndex, pageListVersion: pageListVersion) { page in
+                                pageRow(page: page, pageIndex: pageIndex, isBookmarked: bookmarkedPages.contains(pageIndex))
+                            } placeholder: {
+                                VStack(spacing: 6) {
+                                    Color.clear.frame(width: placeholderSize.width, height: placeholderSize.height)
+                                    Text("\(pageIndex + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                                .padding(8)
+                            }
                         }
                     }
                     .padding(.vertical, 8)
@@ -66,6 +89,7 @@ struct PDFPagesSidebar: View {
                 selectedPages.toggle(page)
             } else {
                 session.go(to: pageIndex)
+                didChoosePage?()
             }
         } label: {
             VStack(spacing: 6) {
@@ -131,6 +155,11 @@ struct PDFPagesSidebar: View {
         PDFPageActionsMenuContent(commands: commands, pageIndices: [pageIndex], isBookmarked: isBookmarked)
     }
 
+    /// "1 page", "12 pages", "1,200 pages".
+    static func pageCountText(_ pageCount: Int) -> String {
+        pageCount == 1 ? "1 page" : "\(pageCount.formatted()) pages"
+    }
+
     @ViewBuilder private var selectionBar: some View {
         HStack {
             if isSelecting {
@@ -150,10 +179,10 @@ struct PDFPagesSidebar: View {
                     selectedPages = PDFPageSelection(pages: [session.document.page(at: session.currentPageIndex)].compactMap { page in page })
                 }
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             } else {
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .font(.callout)
@@ -177,7 +206,10 @@ struct PDFPagesSidebar: View {
         } else {
             List(entries) { entry in
                 Button {
-                    if let pageIndex = entry.pageIndex { session.go(to: pageIndex) }
+                    if let pageIndex = entry.pageIndex {
+                        session.go(to: pageIndex)
+                        didChoosePage?()
+                    }
                 } label: {
                     HStack {
                         if entry.isBookmark { Image(systemName: "bookmark.fill").foregroundStyle(.red).imageScale(.small) }
@@ -245,6 +277,12 @@ struct PDFCurrentPageFollower: View {
                 hasAppeared = true
                 scrollToCurrentPage(animated: false)
             }
+            // A scroll asked for before the list has a height is lost, and the list stays at page 1:
+            // the list appearing before its first layout, as on a busy machine, is scrolled again
+            // once it has a height.
+            .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > 0 } action: { hasHeight in
+                if hasHeight { scrollToCurrentPage(animated: false) }
+            }
             .task(id: session.currentPageIndex) {
                 guard hasAppeared else { return }
                 do { try await Task.sleep(for: Self.followDelay) } catch { return }
@@ -253,8 +291,9 @@ struct PDFCurrentPageFollower: View {
     }
 
     private func scrollToCurrentPage(animated: Bool) {
-        guard let page = session.document.page(at: session.currentPageIndex) else { return }
-        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(ObjectIdentifier(page), anchor: .center) }
+        // A row asks PDFKit for its page only when it shows (`PDFThumbnailListRow`), so a jump does not ask for those on the way.
+        guard session.document.pageCount > session.currentPageIndex else { return }
+        withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(session.currentPageIndex, anchor: .center) }
     }
 }
 

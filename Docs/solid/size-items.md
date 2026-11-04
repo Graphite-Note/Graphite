@@ -3,14 +3,14 @@
 Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, level (review / strong / smell), file, declaration.
 
 ```
-  2631  file     smell   Sources/GraphiteUI/NativeMarkdownEditor.swift  (file)
+  3159  file     smell   Sources/GraphiteUI/NativeMarkdownEditor.swift  (file)
   2293  file     smell   Sources/GraphiteUI/MarkdownPreview.swift  (file)
   1947  type     strong  Sources/GraphiteUI/NativeMarkdownEditor.swift  NativeMarkdownEditor
   1616  type     strong  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator
   1332  file     smell   Sources/GraphiteUI/GraphitePDFView.swift  (file)
   1113  file     smell   Sources/GraphiteCore/BaseEvaluator.swift  (file)
   1090  file     smell   Sources/GraphiteUI/DrawingEditor.swift  (file)
-  1050  file     smell   Sources/GraphiteUI/WorkspaceModel.swift  (file)
+  1268  file     smell   Sources/GraphiteUI/WorkspaceModel.swift  (file)
   1010  type     strong  Sources/GraphiteUI/WorkspaceModel.swift  WorkspaceModel
   1005  type     strong  Sources/GraphiteCore/BaseEvaluator.swift  BaseEvaluator
   1000  file     strong  Sources/GraphiteUI/MarkdownPane.swift  (file)
@@ -94,8 +94,9 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
    347  type     review  Sources/GraphiteCore/NoteProperties.swift  NoteProperties
    334  type     review  Sources/GraphiteUI/CanvasSession.swift  CanvasSession
    330  type     review  Sources/GraphiteCore/NotePreviewDocument.swift  ObsidianInlineMarkup
-   329  type     review  Sources/GraphiteUI/VaultSidebar.swift  VaultSidebar
+   398  type     review  Sources/GraphiteUI/VaultSidebar.swift  VaultSidebar
    318  type     review  Sources/GraphiteUI/MarkdownSession.swift  MarkdownSession
+   312  type     review  Sources/GraphiteUI/NativeMarkdownEditor.swift  MarkdownMacTextView
    311  type     review  Sources/GraphiteUI/ConcealedReplacementLayoutFragment.swift  ConcealedReplacementLayoutFragment
    310  type     review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer
    303  type     review  Sources/GraphiteUI/ReadAloudFloatingPlayer.swift  ReadAloudFloatingPlayer
@@ -236,7 +237,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     46  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseCardsView.card
     46  function review  Sources/GraphiteUI/GraphViews.swift  VaultGraphScreen.body
     46  function review  Sources/GraphiteUI/LivePreviewTableEditing.swift  LivePreviewTableEditor.menuItems
-    46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
+    56  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator.connect
     46  function review  Sources/GraphiteUI/NativeMarkdownEditor.swift  NativeMarkdownEditor.update
     46  function review  Sources/GraphiteUI/SettingsView.swift  GeneralSettingsPage.body
     45  function review  Sources/GraphiteCore/BaseEvaluator.swift  BaseEvaluator.field
@@ -280,7 +281,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     41  function review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer.recognizeEllipse
     41  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseListView.item
     41  function review  Sources/GraphiteUI/CommunityPluginHost.swift  CommunityPluginHost.answerHostOperation
-    41  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
+    50  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
     41  function review  Sources/GraphiteUI/MapViews.swift  VaultMapScreen.body
     41  function review  Sources/GraphiteUI/MarkdownPane.swift  DrawingAtCursorTracker.findDrawingAtCursor
     41  function review  Sources/GraphiteUI/MarkdownPreview.swift  ReadingViewBuilder.render

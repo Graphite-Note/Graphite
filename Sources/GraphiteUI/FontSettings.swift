@@ -1,3 +1,14 @@
+/**
+ * File: FontSettings.swift
+ * ------------------------
+ * Layer: UI
+ * Description: Settings > Appearance > Font: Obsidian's font settings, stored in the vault's appearance.json, and the pages that choose a font family.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 #if canImport(UIKit)
@@ -57,6 +68,9 @@ struct FontSettingsSection: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The size under the slider while it is dragged; written when the drag ends.
     @State private var draggedFontSize: Double?
+    /// Whether a finger is on the slider. A step by VoiceOver or the keyboard moves it without
+    /// the editing callbacks, so it is saved as it is made.
+    @State private var isDraggingSlider = false
 
     private var shownFontSize: Int { draggedFontSize.map { size in Int(size.rounded()) } ?? workspace.noteBaseFontSize }
 
@@ -79,7 +93,7 @@ struct FontSettingsSection: View {
                 workspace.updateVaultAppearance { appearance in appearance.adjustsFontSizeQuickly = isOn }
             })) {
                 Text("Quick Font Size Adjustment")
-                Text(Self.quickAdjustmentSummary)
+                Text(SettingsDevice.current.quickFontSizeAdjustmentSummary)
             }
             preview
         } header: {
@@ -103,19 +117,13 @@ struct FontSettingsSection: View {
         return !list.isEmpty && list.firstAvailableFamily { name in InstalledFontFamilies.family(named: name) } == nil
     }
 
-    private static var quickAdjustmentSummary: String {
-        #if os(macOS)
-        "Control-scroll or pinch on the trackpad over a note, or press ⌘+, ⌘– and ⌘0."
-        #else
-        "Pinch a note with two fingers, or press ⌘+, ⌘– and ⌘0 on a keyboard."
-        #endif
-    }
-
     private var fontSizeRow: some View {
         LabeledContent {
             HStack(spacing: 12) {
-                Slider(value: Binding(get: { draggedFontSize ?? Double(workspace.noteBaseFontSize) }, set: { size in draggedFontSize = size }),
-                       in: Double(NoteFontSize.adjustableRange.lowerBound)...Double(NoteFontSize.adjustableRange.upperBound), step: 1) { isEditing in
+                Slider(value: Binding(get: { draggedFontSize ?? Double(workspace.noteBaseFontSize) }, set: { size in
+                    if isDraggingSlider { draggedFontSize = size } else { workspace.setNoteBaseFontSize(Int(size.rounded())) }
+                }), in: Double(NoteFontSize.adjustableRange.lowerBound)...Double(NoteFontSize.adjustableRange.upperBound), step: 1) { isEditing in
+                    isDraggingSlider = isEditing
                     guard !isEditing, let draggedFontSize else { return }
                     workspace.setNoteBaseFontSize(Int(draggedFontSize.rounded()))
                     self.draggedFontSize = nil
@@ -123,6 +131,14 @@ struct FontSettingsSection: View {
                 .frame(maxWidth: 240)
                 .accessibilityLabel("Font Size")
                 .accessibilityValue("\(shownFontSize) points")
+                // A step by VoiceOver is one point, as ⌘+ is, and is saved as it is made.
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: workspace.adjustNoteBaseFontSize(bySteps: 1)
+                    case .decrement: workspace.adjustNoteBaseFontSize(bySteps: -1)
+                    @unknown default: break
+                    }
+                }
                 Text("\(shownFontSize)").monospacedDigit().foregroundStyle(.secondary)
                     .frame(minWidth: 24, alignment: .trailing)
                     .accessibilityHidden(true)
@@ -157,8 +173,8 @@ struct FontSettingsSection: View {
 }
 
 /// The installed font families, each in its own face, with Default first: Obsidian's font
-/// list, choosing one family. Fonts another app installed through Settings › General ›
-/// Fonts are added with the system's font picker, which is the way apps reach them.
+/// list, choosing one family. Fonts another app installed through the system Settings app
+/// (General › Fonts) are added with the system's font picker, which is the way apps reach them.
 struct FontFamilyPickerPage: View {
     @Bindable var workspace: WorkspaceModel
     let role: VaultFontRole
@@ -208,8 +224,8 @@ struct FontFamilyPickerPage: View {
         .toolbar {
             #if os(iOS)
             ToolbarItem(placement: .primaryAction) {
-                Button("Fonts Installed in Settings…") { showsSystemFontPicker = true }
-                    .help("Choose a font installed through Settings › General › Fonts")
+                Button("Choose an Installed Font…") { showsSystemFontPicker = true }
+                    .help("Choose a font that another app installed through the system Settings app, under General › Fonts")
             }
             #endif
         }

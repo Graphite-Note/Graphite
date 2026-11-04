@@ -1,3 +1,14 @@
+/**
+ * File: InkSelectionTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: Graphite's lasso on a hosted PDF page: selecting ink, and moving, resizing, recoloring,
+ *              duplicating, copying and deleting what is selected.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.16
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -89,6 +100,224 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertTrue(descendants(of: canvas, matching: SelectionFrameView.self).isEmpty)
     }
 
+    /// Writing resized keeps its weight in proportion: what PencilKit draws, not the points' sizes.
+    func testResizedInkDrawsInProportionAndNeverVanishes() async throws {
+        let inks: [(type: PKInk.InkType, size: CGFloat)] = [(.pen, 4.8), (.monoline, 3.4), (.pencil, 3), (.marker, 12)]
+        for ink in inks {
+            let (session, canvas, page) = try await openPageWithCanvas()
+            let points = (0...40).map { step in
+                PKStrokePoint(location: CGPoint(x: 100 + CGFloat(step) * 5, y: 200), timeOffset: Double(step) / 60, size: CGSize(width: ink.size, height: ink.size), opacity: 1, force: 1, azimuth: .pi / 2, altitude: .pi / 2)
+            }
+            let writing = PKStroke(ink: PKInk(ink.type, color: .black), path: PKStrokePath(controlPoints: points, creationDate: Date()))
+            try await draw([writing], on: canvas, page: page, session: session)
+            let widthBefore = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: writing))
+            canvas.selectsInk = true
+            let selection = canvas.inkSelection
+            selection.select([0])
+            for scale: CGFloat in [0.5, 0.25, 2] {
+                let frame = try XCTUnwrap(selection.selectionFrame)
+                let drawnBefore = try XCTUnwrap(canvas.drawing.strokes.first)
+                let lengthBefore = (drawnBefore.path.last?.location.x ?? 0) - (drawnBefore.path.first?.location.x ?? 0)
+                let widthWas = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: drawnBefore))
+                selection.moveSelection(in: canvas.drawing, from: frame, to: CGRect(x: frame.minX, y: frame.minY, width: frame.width * scale, height: frame.height * scale))
+                let resized = try XCTUnwrap(canvas.drawing.strokes.first)
+                let lengthAfter = (resized.path.last?.location.x ?? 0) - (resized.path.first?.location.x ?? 0)
+                let inkScale = lengthAfter / lengthBefore
+                let widthAfter = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: resized))
+                print("INK-WIDTH resize \(ink.type.rawValue) \(scale): \(widthWas) -> \(widthAfter), length scale \(inkScale)")
+                XCTAssertGreaterThan(widthAfter, 0, "\(ink.type.rawValue) still draws")
+                XCTAssertEqual(widthAfter / widthWas, inkScale, accuracy: inkScale * 0.3, "\(ink.type.rawValue) resized by \(scale): the weight follows the size")
+            }
+            XCTAssertGreaterThan(widthBefore, 0)
+        }
+    }
+
+    /// Stroke B of the bug: drawn with the page zoomed in, then lassoed at the fitted zoom.
+    func testAStrokeDrawnWhileZoomedInIsSelectedByALoopAroundIt() async throws {
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, _) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 3.27
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x - 100, y: middle.y), to: CGPoint(x: middle.x + 100, y: middle.y)), in: window)
+        let stroke = try XCTUnwrap(drawnStroke)
+        pdfView.scaleFactor = 0.91
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        canvas.selectsInk = true
+        let around = stroke.renderBounds.insetBy(dx: -12, dy: -12)
+        let loop = [CGPoint(x: around.minX, y: around.minY), CGPoint(x: around.maxX, y: around.minY), CGPoint(x: around.maxX, y: around.maxY), CGPoint(x: around.minX, y: around.maxY), CGPoint(x: around.minX, y: around.minY)]
+        canvas.inkSelection.selectContents(enclosedBy: loop.map { point in CGPoint(x: point.x * canvas.zoomScale, y: point.y * canvas.zoomScale) })
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
+    }
+
+    /// HUNT-005 as the hunt met it: pen strokes, the lasso taking one by a loop of touches and a drag of its frame
+    /// moving it, then the highlighter, and Undo all the way back and Redo all the way forward. Each step is undone
+    /// exactly, with no "changed in a way this step does not know", through the real canvas and UIKit's touches.
+    func testUndoAndRedoWorkStepByStepAfterTheLassoAndTheHighlighter() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        XCTAssertFalse(EvenHighlighterPreference.isOn(), "The highlighter as Apple Notes' draws it, the default")
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, page) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        let toolPicker = PKToolPicker()
+        func choose(_ ink: PencilInk) {
+            canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .ink, preset: InkPreset(ink: ink), erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false))
+        }
+        func windowLine(atDrawingHeight height: CGFloat) -> [CGPoint] {
+            SynthesizedStrokes.line(from: canvas.convert(canvasPoint(CGPoint(x: 150, y: height), on: canvas), to: window),
+                                    to: canvas.convert(canvasPoint(CGPoint(x: 350, y: height), on: canvas), to: window))
+        }
+        var states: [[CGRect]] = [canvas.drawing.strokes.map(\.renderBounds)]
+        func recordState() { states.append(canvas.drawing.strokes.map(\.renderBounds)) }
+
+        choose(.pen)
+        let strokeAt200 = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 200), in: window)
+        _ = try XCTUnwrap(strokeAt200, "The first pen stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+        let strokeAt320 = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window)
+        _ = try XCTUnwrap(strokeAt320, "The second pen stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+
+        // The lasso takes the first stroke, and its frame is dragged 90 points down the screen.
+        canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .lasso, preset: InkPreset(ink: .pen), erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false))
+        XCTAssertTrue(canvas.selectsInk)
+        try await drawLoopOfTouches(around: canvas.drawing.strokes[0].renderBounds.insetBy(dx: -20, dy: -20), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        let frame = try XCTUnwrap(canvas.inkSelection.selectionFrame)
+        let frameMiddle = canvas.convert(CGPoint(x: frame.midX, y: frame.midY), to: window)
+        let boundsBeforeDrag = canvas.drawing.strokes[0].renderBounds
+        await SynthesizedTouches(window: window).drag(from: frameMiddle, to: CGPoint(x: frameMiddle.x, y: frameMiddle.y + 90))
+        try await waitUntil("the dragged stroke has moved") { canvas.drawing.strokes.count == 2 && canvas.drawing.strokes[0].renderBounds.minY > boundsBeforeDrag.minY + 20 }
+        endEvent(of: session.undoManager)
+        XCTAssertNil(session.errorMessage)
+        recordState()
+
+        // The highlighter, across the second stroke; choosing it ends the lasso.
+        choose(.highlighter)
+        XCTAssertFalse(canvas.selectsInk)
+        let highlighterStroke = try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window)
+        _ = try XCTUnwrap(highlighterStroke, "The highlighter stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+        XCTAssertEqual(canvas.drawing.strokes.last?.ink.inkType, .marker)
+        try await waitUntil("the page's annotations have every stroke") { page.annotations.filter { annotation in annotation.type == "Ink" }.count == 3 }
+
+        func assertShows(_ expected: [CGRect], _ step: String) {
+            let shown = canvas.drawing.strokes.map(\.renderBounds)
+            XCTAssertEqual(shown.count, expected.count, step)
+            for (shownBounds, expectedBounds) in zip(shown, expected) {
+                XCTAssertEqual(shownBounds.minY, expectedBounds.minY, accuracy: 0.5, step)
+                XCTAssertEqual(shownBounds.minX, expectedBounds.minX, accuracy: 0.5, step)
+            }
+        }
+        for stepIndex in stride(from: states.count - 2, through: 0, by: -1) {
+            XCTAssertTrue(session.undoAvailability.canUndo, "Undo is offered before step \(stepIndex)")
+            session.undoAvailability.undo()
+            endEvent(of: session.undoManager)
+            XCTAssertNil(session.errorMessage, "Undo back to step \(stepIndex)")
+            assertShows(states[stepIndex], "Undone to step \(stepIndex)")
+        }
+        XCTAssertEqual(page.annotations.filter { annotation in annotation.type == "Ink" }.count, 0, "Nothing is left on the page")
+        for stepIndex in 1..<states.count {
+            XCTAssertTrue(session.undoAvailability.canRedo, "Redo is offered before step \(stepIndex)")
+            session.undoAvailability.redo()
+            endEvent(of: session.undoManager)
+            XCTAssertNil(session.errorMessage, "Redo to step \(stepIndex)")
+            assertShows(states[stepIndex], "Redone to step \(stepIndex)")
+        }
+    }
+
+    /// A closed loop of a finger through UIKit's own event path, around a rectangle of the drawing, so it goes through
+    /// the lasso's own recognizer, `handleLoop`, and the conversion from the touch to the drawing at the zoom shown.
+    private func drawLoopOfTouches(around drawingRectangle: CGRect, on canvas: PDFPageCanvasView, in window: UIWindow) async throws {
+        let shapeBefore = LassoShape.stored
+        LassoShape.stored = .freehand
+        defer { LassoShape.stored = shapeBefore }
+        let corners = loop(around: drawingRectangle).map { drawingPoint in canvas.convert(canvasPoint(drawingPoint, on: canvas), to: window) }
+        let touches = SynthesizedTouches(window: window)
+        let closedLoop = corners + [corners[0]]
+        touches.begin(at: [closedLoop[0]])
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 16)
+        for (start, end) in zip(closedLoop, closedLoop.dropFirst()) {
+            for point in SynthesizedStrokes.line(from: start, to: end, steps: 10).dropFirst() {
+                touches.moveTo([point])
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 16)
+            }
+        }
+        touches.end()
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 50)
+    }
+
+    /// HUNT-007 through the real path: a stroke drawn at 3.27 and one drawn at the fitted zoom, each taken at 0.91 by a
+    /// loop of touches, whichever is around it, with a loop around neither marking an area.
+    func testALoopOfTouchesAtAnotherZoomTakesAStrokeDrawnWhileZoomedIn() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, _) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 0.91
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        let middleAtFit = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnAtFit = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleAtFit.x - 100, y: middleAtFit.y - 200), to: CGPoint(x: middleAtFit.x + 100, y: middleAtFit.y - 200)), in: window)
+        pdfView.scaleFactor = 3.27
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        let middleZoomed = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let drawnZoomed = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middleZoomed.x - 100, y: middleZoomed.y), to: CGPoint(x: middleZoomed.x + 100, y: middleZoomed.y)), in: window)
+        let strokeAtFit = try XCTUnwrap(drawnAtFit), strokeZoomed = try XCTUnwrap(drawnZoomed)
+        pdfView.scaleFactor = 0.91
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        canvas.selectsInk = true
+
+        try await drawLoopOfTouches(around: strokeZoomed.renderBounds.insetBy(dx: -30, dy: -30), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [1], "The stroke drawn zoomed in is taken at another zoom.")
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea, "Its menu has Cut, Copy and Duplicate, not only an area's.")
+
+        try await drawLoopOfTouches(around: strokeAtFit.renderBounds.insetBy(dx: -30, dy: -30), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+    }
+
+    /// HUNT-007 for ink already in files: a stroke as the code before the width fix saved it, 2.7 times as wide, read back
+    /// from its saved form, is selected at another zoom by a loop of touches. Its points are where they always were.
+    func testALoopOfTouchesTakesAStrokeSavedAtTheOldWidth() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, page) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        let saved = try PKDrawing(data: PKDrawing(strokes: [stroke(from: CGPoint(x: 150, y: 300), to: CGPoint(x: 250, y: 300), width: 4 * 2.7)]).dataRepresentation())
+        try await draw(saved.strokes, on: canvas, page: page, session: session)
+        pdfView.autoScales = false
+        pdfView.scaleFactor = 1.4
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+        pdfView.go(to: CGRect(x: 100, y: page.bounds(for: .cropBox).height - 400, width: 300, height: 200), on: page)
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        canvas.selectsInk = true
+
+        try await drawLoopOfTouches(around: CGRect(x: 120, y: 270, width: 160, height: 60), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
+    }
+
     func testMovingAndResizingTheSelectionChangesItsStrokesAsOneUndoStep() async throws {
         let (session, canvas, page) = try await openPageWithCanvas()
         let selectedStroke = stroke(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 200, y: 100), width: 4)
@@ -117,7 +346,8 @@ final class InkSelectionTests: XCTestCase {
         // The extra scale depends on the canvas-to-screen scale and PencilKit's padding;
         // the frame width above verifies the actual requested size without a guessed cap.
         XCTAssertGreaterThan(movedStroke.renderBounds.width, inkBoundsBefore.width * 2)
-        XCTAssertEqual(movedStroke.path.first?.size.width ?? 0, 4 * inkScale, accuracy: 0.01, "Larger ink is broader by as much.")
+        // PencilKit draws a pen's point of size s as 2s - 4 wide: a size of 4 draws 4.
+        XCTAssertEqual(movedStroke.path.first?.size.width ?? 0, (4 * inkScale + 4) / 2, accuracy: 0.01, "Larger ink draws broader by as much.")
         XCTAssertEqual(canvas.drawing.strokes[1].path.first?.location, otherStroke.path.first?.location, "Other strokes stay.")
         XCTAssertEqual(selection.selectedStrokeIndices, [0], "The moved strokes stay selected.")
 

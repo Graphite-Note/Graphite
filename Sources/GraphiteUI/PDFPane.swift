@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.22
- * Date: 21/10/2026
+ * Version: 0.29
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -87,16 +87,20 @@ private struct PDFPaneContent: View {
     @AppStorage(PDFAnnotationPreferenceKey.drawsShapes) private var drawsShapes = false
     @AppStorage(PDFAnnotationPreferenceKey.writingGuidePattern) private var writingGuidePattern = DrawingPaperPattern.plain
     @AppStorage(PDFAnnotationPreferenceKey.writingGuideSpacing) private var writingGuideSpacing = DrawingPaperSpacing.standard
-    @AppStorage(PencilToolbarStyle.preferenceKey) private var toolbarStyle = PencilToolbarStyle.floating
+    @AppStorage(PencilToolbarStyle.preferenceKey) private var chosenToolbarStyle = PencilToolbarStyle.floating
     @State private var toolbox = PencilToolbox.shared
     @State private var pictureSource: PDFPictureSource?
+    @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
+    /// The style that shows: the one chosen in Settings, except in a split (`PencilToolbarStyle.inEffect`).
+    private var toolbarStyle: PencilToolbarStyle { chosenToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) }
     /// The fixed bar takes the place of the floating palette; compact layouts keep the palette.
     private var usesFixedToolbar: Bool { toolbarStyle == .fixed && horizontalSizeClass != .compact }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.foldsSecondaryToolbarActions) private var foldsSecondaryToolbarActions
+    @Environment(\.foldsFindAndPagesFromToolbar) private var foldsFindAndPagesFromToolbar
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
-    @Environment(\.showsPencilToolsInTabBar) private var showsPencilToolsInTabBar
+    @Environment(\.isActiveInItsSide) private var isActiveInItsSide
     private var usesDocumentControlRow: Bool {
         usesDocumentControlRowSetting ?? DocumentToolbarLayout.usesControlRow(detailWidth: nil, horizontalSizeClass: horizontalSizeClass)
     }
@@ -116,6 +120,24 @@ private struct PDFPaneContent: View {
         self.isRecording = isRecording
         self.resolveConflict = resolveConflict
         _commands = State(initialValue: PDFPageCommands(session: session))
+    }
+
+    #if canImport(UIKit)
+    /// A tap on the fixed bar's tools while the PDF is read: the bar stays above the page in
+    /// both, so writing starts with the tool tapped and nothing moves (HUNT-312).
+    private var beginWritingFromBar: (() -> Void)? {
+        session.isWriting ? nil : { focus(); session.isWriting = true }
+    }
+    #endif
+
+    /// A phone, or a window as narrow as one, shows the pages in a sheet that closes once a page is chosen: a
+    /// column of 210 points beside the page left 180 of a phone's 390 for the page itself.
+    private var presentsPagesAsSheet: Bool {
+        #if canImport(UIKit)
+        isCompactWidth
+        #else
+        false
+        #endif
     }
 
     /// While this PDF is read, where its highlighted word is, for the floating player.
@@ -179,7 +201,7 @@ private struct PDFPaneContent: View {
         VStack(spacing: 0) {
             statusBanner
             HStack(spacing: 0) {
-                if showsPages {
+                if showsPages && !presentsPagesAsSheet {
                     PDFPagesSidebar(session: session, commands: commands, renderer: thumbnailRenderer)
                         .frame(width: 210)
                         .transition(GraphiteMotion.slide(from: .leading))
@@ -211,16 +233,19 @@ private struct PDFPaneContent: View {
         // all the height on macOS 27 and left the page 0 points tall, a blank PDF.
         .safeAreaInset(edge: .top, spacing: 0) {
             VStack(spacing: 0) {
-                let showsControlRow = usesDocumentControlRow && !showsDocumentControlsInTabBar && isFocused && !session.isProtected
+                // On both sides, focused or not: a row that came with the focus pushed the page
+                // down under the finger that tapped it.
+                let showsControlRow = usesDocumentControlRow && !showsDocumentControlsInTabBar && isActiveInItsSide && !session.isProtected
                 // The bar stays while a picture is arranged: removing it would move the page
-                // under the finger.
-                let showsFixedToolbar = !showsPencilToolsInTabBar
-                    && session.showsFixedPencilTools(style: toolbarStyle, showsTools: showsToolPicker, horizontalSizeClass: horizontalSizeClass, isFocused: isFocused)
+                // under the finger. It is a row of its own, centered, in every width and
+                // orientation: at the end of the tab bar it was squeezed to the right edge with
+                // its sizes and colors behind one control (HUNT-312).
+                let showsFixedToolbar = session.showsFixedPencilTools(style: toolbarStyle, showsTools: showsToolPicker, horizontalSizeClass: horizontalSizeClass)
                 if showsControlRow && showsFixedToolbar {
                     // One row for both, as in Focus, where no tab bar holds the controls.
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true) {
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar) {
                         EmptyView()
                     } trailingControls: {
                         HStack(spacing: 12) {
@@ -237,8 +262,15 @@ private struct PDFPaneContent: View {
                 } else if showsFixedToolbar {
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true)
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar)
                 }
+            }
+        }
+        // The bar's row answers Apple Pencil's double tap and squeeze; with the bar hidden, the
+        // page does, since no palette of Apple's is there to answer them either.
+        .background {
+            if usesFixedToolbar, !showsToolPicker, session.isWriting {
+                PencilGestureReceiver(toolbox: toolbox, undoAvailability: session.undoAvailability)
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -269,6 +301,17 @@ private struct PDFPaneContent: View {
             embeddedPDFSessions?.remove(session)
         }
         .toolbar { if isFocused { toolbarContent } }
+        .sheet(isPresented: Binding(get: { showsPages && presentsPagesAsSheet }, set: { isShown in if !isShown { showsPages = false } })) {
+            NavigationStack {
+                PDFPagesSidebar(session: session, commands: commands, renderer: thumbnailRenderer, didChoosePage: { showsPages = false })
+                    .navigationTitle("Pages")
+                    #if canImport(UIKit)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showsPages = false } } }
+            }
+            .presentationDetents([.medium, .large])
+        }
         // Go to Page, from the More menu: a sheet rather than a popover from the menu, which
         // may not show once the menu has closed.
         .sheet(isPresented: $showsPageJump) {
@@ -347,15 +390,8 @@ private struct PDFPaneContent: View {
             .padding(.horizontal, 20).padding(.vertical, 10)
             .background(.quaternary.opacity(0.5))
         } else if session.hasExternalConflict {
-            HStack(spacing: 12) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("This PDF changed in another app. Your annotations are still here.").font(.callout)
-                Spacer()
-                Button("Save a Copy", action: saveSeparateCopy)
-                Button("Use Other Version") { showsReloadConfirmation = true }
-            }
-            .padding(.horizontal, 20).padding(.vertical, 12)
-            .background(.orange.opacity(0.12))
+            ExternalChangeBanner(message: "This PDF changed in another app. Your annotations are still here.",
+                                 saveCopy: saveSeparateCopy, useOtherVersion: { showsReloadConfirmation = true })
         } else if let errorMessage = session.errorMessage {
             HStack {
                 Label(errorMessage, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
@@ -386,8 +422,9 @@ private struct PDFPaneContent: View {
         // Neutral icons, as in Obsidian; the accent is kept for selection and toggles. A
         // compact width shows only Undo, Redo, Write and More: the pages, the search and
         // adding pages are in More, and while writing, the palette has its own Undo and Redo.
+        // A narrow regular width folds adding pages first, then the pages and find.
         ToolbarItemGroup(placement: .primaryAction) { Group {
-            if !foldsSecondaryActions {
+            if !foldsFindAndPages {
                 Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
                     withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
                 }
@@ -458,12 +495,16 @@ private struct PDFPaneContent: View {
         }
         if foldsSecondaryActions {
             Section {
-                Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
-                    withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
+                if foldsFindAndPages {
+                    Button(showsPages ? "Hide Pages" : "Show Pages", systemImage: "square.grid.2x2") {
+                        withAnimation(GraphiteMotion.animation(.snappy)) { showsPages.toggle() }
+                    }
                 }
                 goToPageButton
                 #if canImport(UIKit)
-                Button("Find in PDF", systemImage: "magnifyingglass") { presentFindNavigator() }
+                if foldsFindAndPages {
+                    Button("Find in PDF", systemImage: "magnifyingglass") { presentFindNavigator() }
+                }
                 #endif
                 if !session.isProtected {
                     CurrentPageAddPageMenu(session: session, commands: commands)
@@ -534,6 +575,15 @@ private struct PDFPaneContent: View {
     private var foldsSecondaryActions: Bool {
         #if canImport(UIKit)
         isCompactWidth || foldsSecondaryToolbarActions
+        #else
+        false
+        #endif
+    }
+
+    /// Whether the pages and find are in More as well: they stay on the bar longer than adding pages.
+    private var foldsFindAndPages: Bool {
+        #if canImport(UIKit)
+        isCompactWidth || foldsFindAndPagesFromToolbar
         #else
         false
         #endif
@@ -832,7 +882,7 @@ struct PDFPageActionsMenuContent: View {
 
     var body: some View {
         if pageIndices.count == 1, let pageIndex = pageIndices.first {
-            Button(isBookmarked ? "Remove Bookmark" : "Add Bookmark", systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
                 commands.toggleBookmark(page: pageIndex)
             }
         }

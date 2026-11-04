@@ -1,3 +1,15 @@
+/**
+ * File: PencilToolButtons.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The buttons of the Pencil bar's tools, sizes and colors, shared by the fixed bar and the squeeze
+ *              palette.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -57,7 +69,7 @@ struct PencilToolButtons {
             Circle()
                 .fill(.primary)
                 .frame(width: diameter, height: diameter)
-                .frame(width: 28, height: buttonSide)
+                .frame(width: buttonSide, height: buttonSide)
                 .background(isChosen ? selectedFill : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
                 .frame(height: rowHeight)
                 .contentShape(Rectangle())
@@ -76,11 +88,12 @@ struct PencilToolButtons {
         } label: {
             Circle()
                 .fill(Color(graphiteHex: hex) ?? .black)
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5) }
+                // A ring in the text color, so a black ink shows on the dark bar of dark mode.
+                .overlay { Circle().strokeBorder(Color.primary.opacity(0.4), lineWidth: 1) }
                 .frame(width: 20, height: 20)
                 // A ring, so the color in use is marked by shape as well.
                 .overlay { if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: 28, height: 28) } }
-                .frame(width: 30, height: rowHeight)
+                .frame(width: buttonSide, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -91,8 +104,6 @@ struct PencilToolButtons {
 
 enum PencilToolbarMetrics {
     static let height: CGFloat = 44
-    /// The tools' row inside a tab bar: a little lower than the bar, which centers it.
-    static let heightInTabBar: CGFloat = 40
     static let buttonSide: CGFloat = 36
     /// The background of the tool in use.
     static var selectedFill: AnyShapeStyle { AnyShapeStyle(Color(PlatformColor.primaryText(opacity: 0.1, increasedContrastOpacity: 0.2))) }
@@ -161,7 +172,7 @@ struct PencilToolGlyph: View {
             .frame(height: 22)
             Capsule()
                 .fill(inkColor ?? .clear)
-                .overlay { if inkColor != nil { Capsule().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5) } }
+                .overlay { if inkColor != nil { Capsule().strokeBorder(Color.primary.opacity(0.4), lineWidth: 0.5) } }
                 .frame(width: 16, height: 3)
         }
         .frame(width: PencilToolbarMetrics.buttonSide, height: PencilToolbarMetrics.buttonSide)

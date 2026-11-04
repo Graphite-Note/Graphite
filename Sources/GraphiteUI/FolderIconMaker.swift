@@ -1,3 +1,14 @@
+/**
+ * File: FolderIconMaker.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Graphite's icon maker: a picture made into a folder icon with templates, framing and background removal.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import UniformTypeIdentifiers
 import CoreGraphics
@@ -57,7 +68,8 @@ struct FolderIconMaker: View {
             .fileExporter(isPresented: Binding(get: { exportedIcon != nil }, set: { isShown in if !isShown { exportedIcon = nil } }),
                           document: exportedIcon, contentType: .png, defaultFilename: "\(folderName) Icon") { _ in }
         }
-        .frame(minWidth: 520, minHeight: 560)
+        // On the iPad the page-sized sheet has room for the template column; a phone's sheet is narrower than 520 points.
+        .sheetMinimumSize(width: 520, height: 560)
     }
 
     /// The editor beside the template column, or above a row of templates on a narrow screen.
@@ -139,12 +151,20 @@ struct FolderIconMaker: View {
         defer { isRemovingBackground = false }
         let source = picture
         do {
-            picture = try await Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }.value
+            let removal = Task.detached(priority: .userInitiated) { try PictureBackgroundRemoval.removingBackground(from: source) }
+            let pictureWithoutBackground = try await removal.value
+            picture = Self.picture(afterEditOf: source, resultingIn: pictureWithoutBackground, current: picture)
         } catch PictureBackgroundRemoval.Failure.noForeground {
             problem = .noForeground
         } catch {
             problem = .backgroundRemovalUnavailable
         }
+    }
+
+    /// The picture to show when an edit of `source` finishes: the edit's result, unless a picture dropped meanwhile
+    /// replaced `source`, which the person chose later and keeps.
+    static func picture(afterEditOf source: CGImage, resultingIn editedPicture: CGImage, current: CGImage) -> CGImage {
+        current === source ? editedPicture : current
     }
 
     /// A picture replaces the picture; on the Mac a folder gets the icon as Finder's custom icon.

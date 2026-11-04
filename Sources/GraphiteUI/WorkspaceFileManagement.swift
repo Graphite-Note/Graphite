@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceFileManagement.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.25
+ * Date: 02/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 import GraphiteIndex
@@ -15,6 +26,8 @@ struct PendingMove: Identifiable {
     let path: VaultPath
     let destination: VaultPath
     let plan: LinkUpdatePlan
+    /// The vault the move was planned in, where its answer must act.
+    let fileOperations: VaultFileOperations
     /// Moves asked for while this question is open, such as the other items of a
     /// multi-item drop. They run in order once it is answered.
     let queuedMoves = QueuedMoves()
@@ -37,8 +50,12 @@ enum FileMoveRefusal: Equatable {
     case alreadyMoving
     case destinationTaken(VaultPath)
     case vaultStillBeingRead(movedName: String)
+    /// Another vault opened in the window before the item moved.
+    case vaultClosed(movedName: String)
     /// The person dismissed the "Update links?" question without answering it.
     case cancelled(movedName: String)
+    /// Notes name the item in Wikilinks, which cannot hold `newName`.
+    case nameBreaksWikilinks(newName: String, movedName: String)
     case failed(message: String)
 
     var message: String {
@@ -47,7 +64,10 @@ enum FileMoveRefusal: Equatable {
         case .alreadyMoving: "The item is already being moved."
         case .destinationTaken(let destination): "“\(destination.rawValue)” already exists."
         case .vaultStillBeingRead(let movedName): "Graphite is still reading the vault, so the links to “\(movedName)” cannot be updated yet. Try again when reading has finished."
+        case .vaultClosed(let movedName): "“\(movedName)” was not moved, because its vault is no longer open here."
         case .cancelled(let movedName): "“\(movedName)” was not renamed."
+        case .nameBreaksWikilinks(let newName, let movedName):
+            "“\(newName)” cannot be used, because notes link to “\(movedName)” with Wikilinks, and a Wikilink cannot hold # ^ [ ] or |. Nothing was moved."
         case .failed(let message): message
         }
     }
@@ -70,7 +90,7 @@ final class QueuedMoves {
 }
 
 /// Changes made to an open note or canvas while its file was moving, for its new place.
-private struct EditDuringMove {
+struct EditDuringMove {
     let newPath: VaultPath
     /// The whole file as the open document would save it.
     let data: Data
@@ -79,6 +99,8 @@ private struct EditDuringMove {
     /// The file as it was just before the move, which the changes were made over;
     /// nil when it could not be read then.
     let revisionBeforeMove: FileRevision?
+    /// The draft of the text, which goes once the text is in a file.
+    var draftKeeper: DocumentDraftKeeper?
 }
 
 /// File explorer actions: new folders, renaming and moving with link updates, copies,
@@ -125,7 +147,10 @@ extension WorkspaceModel {
     @discardableResult
     func move(_ path: VaultPath, to destination: VaultPath) async -> FileMoveOutcome {
         guard let fileOperations else { return .refused(.noVaultOpen) }
-        guard !pathsBeingMoved.contains(path) else { return .refused(.alreadyMoving) }
+        guard !pathsBeingMoved.contains(path) else {
+            notice = FileMoveRefusal.alreadyMoving.message
+            return .refused(.alreadyMoving)
+        }
         // A drop of several items asks one question at a time; the rest wait for its answer,
         // and their links are planned only once the earlier moves are done.
         if let pendingMove {
@@ -138,31 +163,163 @@ extension WorkspaceModel {
             errorMessage = refusal.message
             return .refused(refusal)
         }
-        // Notes linking to the item are found through the index. Before its first scan
-        // finishes, some would be missed and their links silently left broken.
-        guard hasCompletedIndexScan else {
+        // Notes linking to the item are found through the index. Before a scan this launch
+        // finishes, some would be missed and their links silently left broken. An index
+        // complete from an earlier launch is checked in moments, so that is waited for.
+        guard await isIndexCompleteAfterRunningScan() else {
             let refusal = FileMoveRefusal.vaultStillBeingRead(movedName: path.name)
             errorMessage = refusal.message
             return .refused(refusal)
         }
         pathsBeingMoved.insert(path)
-        defer { pathsBeingMoved.remove(path) }
+        let stopShowingProgress = startShowingMoveProgress(of: path)
+        defer {
+            pathsBeingMoved.remove(path)
+            stopShowingProgress()
+        }
+        return await planAndCompleteMove(of: path, to: destination, through: fileOperations)
+    }
+
+    /// Whether the window still has the vault `fileOperations` acts on. Paths mean nothing in
+    /// another one, where the same path can name another file.
+    private func isVaultOpen(_ fileOperations: VaultFileOperations) -> Bool {
+        store === fileOperations.store
+    }
+
+    private func refuseMoveInClosedVault(of path: VaultPath) -> FileMoveOutcome {
+        let refusal = FileMoveRefusal.vaultClosed(movedName: path.name)
+        errorMessage = refusal.message
+        return .refused(refusal)
+    }
+
+    private func completeMove(_ path: VaultPath, to destination: VaultPath, plan: LinkUpdatePlan, updatesLinks: Bool,
+                              through fileOperations: VaultFileOperations) async -> FileMoveOutcome {
+        guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
+        let vaultIdentifier = currentVaultIdentifier
+        let stopShowingProgress = startShowingMoveProgress(of: path)
+        defer { stopShowingProgress() }
+        do {
+            // Changes made while the question was open are saved before anything moves.
+            try await saveOpenDocuments()
+            guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
+            // Before anything can suspend: from here until the file has its new place, no save
+            // aims at the old path. Typing goes on, and is saved once the move is over.
+            let heldSaves = holdSavesOfOpenNotes(inside: path)
+            defer { heldSaves.release() }
+            await heldSaves.waitForSavesInFlight()
+            let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
+            let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
+            guard isVaultOpen(fileOperations) else {
+                return finishMoveInClosedVault(vaultIdentifier, report, from: path, to: destination, updatesLinks: updatesLinks)
+            }
+            // A note goes on at the new place in its own session, undo history included; one
+            // whose file the move itself rewrote under typing is left behind, below.
+            let notesFollowing = followMoveInOpenNotes(from: path, to: destination) { session, newPath in
+                !session.hasUnsavedChanges || !report.updatedNotes.contains(newPath)
+            }
+            // After those notes put aside the drafts that must not reach the new place.
+            moveDrafts(from: path, to: destination)
+            // Read before the tabs let go of their sessions, with no suspension in between,
+            // so every keystroke made during the move is kept.
+            let editsDuringMove = unsavedEdits(inside: path, movedTo: destination, revisionsBeforeMove: revisionsBeforeMove)
+            let pdfsEditedDuringMove = pdfSessionsWithEdits(inside: path)
+            expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(path, with: destination)) ?? folder })
+            // Tabs whose session could not follow load their files again from the new place.
+            followMoveInNavigation(from: path, to: destination)
+            heldSaves.release()
+            await saveTextOfNotes(notesFollowing)
+            let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(editsDuringMove, in: fileOperations.store)
+            let (keptPDFPaths, pdfProblems) = await savePDFEditsMadeDuringMove(pdfsEditedDuringMove, from: path, to: destination, in: fileOperations.store)
+            // Without link updates the report lists only the moved item itself; the plan
+            // lists every indexed file inside a moved folder.
+            let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
+            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths)
+            await checkOpenDocuments(changedByMove: Set(report.updatedNotes + keptEditPaths))
+            await refreshDirectory()
+            tellAbout(report, problems: editProblems + pdfProblems, movedItemName: destination.name, updatesLinks: updatesLinks)
+            return .moved
+        } catch {
+            errorMessage = error.localizedDescription
+            return .refused(.failed(message: error.localizedDescription))
+        }
+    }
+
+    /// Another vault opened as this one's file moved. Its paths mean nothing to the tabs and
+    /// sessions here now, so only the drafts of the vault it left follow.
+    private func finishMoveInClosedVault(_ vaultIdentifier: UUID?, _ report: MoveReport, from path: VaultPath, to destination: VaultPath,
+                                         updatesLinks: Bool) -> FileMoveOutcome {
+        if let vaultIdentifier { processServices.unsavedDrafts.moveDrafts(from: path, to: destination, inVault: vaultIdentifier) }
+        tellAbout(report, problems: [], movedItemName: destination.name, updatesLinks: updatesLinks)
+        return .moved
+    }
+
+    func pdfSessionsWithEdits(inside path: VaultPath) -> [PDFSession] {
+        tabDocuments.values.compactMap(\.pdfSession).filter { session in
+            session.hasUnsavedChanges && vaultPath(for: session.location)?.isInside(path) == true
+        }
+    }
+
+    /// Open documents whose files the move wrote read them again.
+    private func checkOpenDocuments(changedByMove changedNotes: Set<VaultPath>) async {
+        for document in tabDocuments.values {
+            if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
+            if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
+        }
+    }
+
+    private func tellAbout(_ report: MoveReport, problems: [String], movedItemName: String, updatesLinks: Bool) {
+        var problems = problems
+        if !report.failures.isEmpty { problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: movedItemName)) }
+        if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
+        if !report.notesNotChecked.isEmpty, updatesLinks {
+            notice = Self.describeNotesNotChecked(report.notesNotChecked, movedItemName: movedItemName)
+        }
+    }
+
+    /// The file revisions of open notes and canvases inside `path`, just before it moves.
+    private func revisionsOfOpenDocuments(inside path: VaultPath) async -> [VaultPath: FileRevision] {
+        guard let store else { return [:] }
+        var revisions: [VaultPath: FileRevision] = [:]
+        for session in tabDocuments.values.compactMap(\.markdownSession) where session.path.isInside(path) {
+            // A note that cannot be read now has no revision to write over; text typed into
+            // it during the move is kept as a separate copy instead.
+            revisions[session.path] = try? await store.read(session.path, maximumBytes: MarkdownSession.maximumEditableBytes).revision
+        }
+        for session in tabDocuments.values.compactMap(\.canvasSession) where session.path.isInside(path) {
+            // As for a note: a canvas that cannot be read now is kept as a separate copy.
+            revisions[session.path] = try? await store.read(session.path, maximumBytes: CanvasFile.maximumSourceBytes).revision
+        }
+        return revisions
+    }
+
+    private func planAndCompleteMove(of path: VaultPath, to destination: VaultPath, through fileOperations: VaultFileOperations) async -> FileMoveOutcome {
         do {
             let editedNotePaths = tabDocuments.values.compactMap(\.markdownSession).filter(\.hasUnsavedChanges).map(\.path)
                 + tabDocuments.values.compactMap(\.canvasSession).filter(\.hasUnsavedChanges).map(\.path)
             try await saveOpenDocuments()
+            guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
             // Links just typed into those notes are planned only once the index has read them.
             if let index, let root = folderAccess?.root, !editedNotePaths.isEmpty { try await index.refresh(paths: editedNotePaths, root: root) }
+            // The index must know where the last move put things, or the notes it moved would
+            // be looked for at their old paths and their links silently left broken.
+            await indexRefreshFollowingMoves?.value
             let plan = try await fileOperations.linkUpdates(forMoving: path, to: destination)
+            if plan.hasNameThatBreaksWikilinks {
+                // Nothing has moved yet, so no link is broken.
+                let refusal = FileMoveRefusal.nameBreaksWikilinks(newName: destination.name, movedName: path.name)
+                errorMessage = refusal.message
+                return .refused(refusal)
+            }
+            guard isVaultOpen(fileOperations) else { return refuseMoveInClosedVault(of: path) }
             if let pendingMove {
                 // Another move asked its question while this one was being planned.
                 pendingMove.queuedMoves.append(path, to: destination)
                 return .queued
             } else if plan.changedLinkCount > 0 && !vaultSettings.updatesLinksAutomatically {
-                pendingMove = PendingMove(path: path, destination: destination, plan: plan)
+                pendingMove = PendingMove(path: path, destination: destination, plan: plan, fileOperations: fileOperations)
                 return .awaitingAnswer
             } else {
-                return await completeMove(path, to: destination, plan: plan, updatesLinks: true)
+                return await completeMove(path, to: destination, plan: plan, updatesLinks: true, through: fileOperations)
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -185,7 +342,9 @@ extension WorkspaceModel {
             settings.updatesLinksAutomatically = true
             await updateVaultSettings(settings)
         }
-        answeredMoveOutcomes[pendingMove.path] = await completeMove(pendingMove.path, to: pendingMove.destination, plan: pendingMove.plan, updatesLinks: updatesLinks)
+        answeredMoveOutcomes[pendingMove.path] = await completeMove(pendingMove.path, to: pendingMove.destination, plan: pendingMove.plan,
+                                                                    updatesLinks: updatesLinks, through: pendingMove.fileOperations)
+        guard isVaultOpen(pendingMove.fileOperations) else { return } // The moves queued behind it name paths of that vault.
         // A queued move that needs its own question asks it, and the rest queue behind that one.
         for request in pendingMove.queuedMoves.removeAll() {
             let outcome = await move(request.path, to: request.destination)
@@ -194,39 +353,21 @@ extension WorkspaceModel {
         }
     }
 
-    private func completeMove(_ path: VaultPath, to destination: VaultPath, plan: LinkUpdatePlan, updatesLinks: Bool) async -> FileMoveOutcome {
-        guard let fileOperations else { return .refused(.noVaultOpen) }
-        do {
-            // Changes made while the question was open are saved before anything moves.
-            try await saveOpenDocuments()
-            let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
-            let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
-            // Read before the tabs let go of their sessions, with no suspension in between,
-            // so every keystroke made during the move is kept.
-            let editsDuringMove = unsavedEdits(inside: path, movedTo: destination, revisionsBeforeMove: revisionsBeforeMove)
-            expandedFolders = Set(expandedFolders.map { folder in (try? folder.replacingPrefix(path, with: destination)) ?? folder })
-            // Tabs of moved files load them again from their new place.
-            followMoveInNavigation(from: path, to: destination)
-            let (keptEditPaths, editProblems) = await saveEditsMadeDuringMove(editsDuringMove)
-            // Without link updates the report lists only the moved item itself; the plan
-            // lists every indexed file inside a moved folder.
-            let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
-            refreshIndexAfterFileChanges(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths)
-            let changedNotes = Set(report.updatedNotes + keptEditPaths)
-            for document in tabDocuments.values {
-                if let session = document.markdownSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-                if let session = document.canvasSession, changedNotes.contains(session.path) { await session.checkExternalChange() }
-            }
-            await refreshDirectory()
-            var problems = editProblems
-            if !report.failures.isEmpty {
-                problems.append(Self.describeNotesNotUpdated(report.failures, movedItemName: destination.name))
-            }
-            if !problems.isEmpty { errorMessage = problems.joined(separator: "\n\n") }
-            return .moved
-        } catch {
-            errorMessage = error.localizedDescription
-            return .refused(.failed(message: error.localizedDescription))
+    /// How long a move runs before it says so. A big folder's links are planned and rewritten
+    /// before the file tree changes, which otherwise looks as if nothing is happening.
+    private static let moveProgressDelay = Duration.seconds(1)
+
+    /// Says that `path` is being moved, once that has taken a moment.
+    /// - Returns: What to call as the move ends; another message by then stays.
+    func startShowingMoveProgress(of path: VaultPath) -> () -> Void {
+        let message = "Moving “\(path.name)”…"
+        let showing = Task { [weak self, clock] in
+            do { try await clock.sleep(for: Self.moveProgressDelay) } catch { return }
+            self?.notice = message
+        }
+        return { [weak self] in
+            showing.cancel()
+            if self?.notice == message { self?.notice = nil }
         }
     }
 
@@ -240,68 +381,6 @@ extension WorkspaceModel {
               let destinationIdentifier = try? destinationLocation.resourceValues(forKeys: [.fileResourceIdentifierKey]).fileResourceIdentifier
         else { return true }
         return !sourceIdentifier.isEqual(destinationIdentifier)
-    }
-
-    /// The file revisions of open notes and canvases inside `path`, just before it moves.
-    private func revisionsOfOpenDocuments(inside path: VaultPath) async -> [VaultPath: FileRevision] {
-        guard let store else { return [:] }
-        var revisions: [VaultPath: FileRevision] = [:]
-        for session in tabDocuments.values.compactMap(\.markdownSession) where session.path.isInside(path) {
-            // A note that cannot be read now has no revision to write over; text typed into
-            // it during the move is kept as a separate copy instead.
-            revisions[session.path] = try? await store.read(session.path, maximumBytes: MarkdownSession.maximumEditableBytes).revision
-        }
-        for session in tabDocuments.values.compactMap(\.canvasSession) where session.path.isInside(path) {
-            // As for a note: a canvas that cannot be read now is kept as a separate copy.
-            revisions[session.path] = try? await store.read(session.path, maximumBytes: CanvasFile.maximumSourceBytes).revision
-        }
-        return revisions
-    }
-
-    /// Open notes and canvases inside the moved item with changes not yet saved, made while it moved.
-    private func unsavedEdits(inside path: VaultPath, movedTo destination: VaultPath, revisionsBeforeMove: [VaultPath: FileRevision]) -> [EditDuringMove] {
-        let noteEdits = tabDocuments.values.compactMap(\.markdownSession).compactMap { session -> EditDuringMove? in
-            guard session.path.isInside(path), session.hasUnsavedChanges,
-                  let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
-            return EditDuringMove(newPath: newPath, data: NoteTextEncoding.encode(session.text, hasByteOrderMark: session.hasByteOrderMark),
-                                  copyExtension: "md", revisionBeforeMove: revisionsBeforeMove[session.path])
-        }
-        let canvasEdits = tabDocuments.values.compactMap(\.canvasSession).compactMap { session -> EditDuringMove? in
-            guard session.path.isInside(path), let newPath = try? session.path.replacingPrefix(path, with: destination) else { return nil }
-            // Text typed into a card is part of the file only once committed.
-            session.commitTextEdit()
-            guard session.hasUnsavedChanges else { return nil }
-            return EditDuringMove(newPath: newPath, data: session.file.data, copyExtension: "canvas", revisionBeforeMove: revisionsBeforeMove[session.path])
-        }
-        return noteEdits + canvasEdits
-    }
-
-    /// Writes changes made during a move into the note or canvas at its new place. A file
-    /// that the move itself changed (a note's own links were rewritten) keeps that version,
-    /// and the changes are saved beside it as a separate copy, so neither is lost.
-    /// - Returns: The files written, and a message for each edit saved as a copy or not saved.
-    private func saveEditsMadeDuringMove(_ edits: [EditDuringMove]) async -> (writtenPaths: [VaultPath], problems: [String]) {
-        guard let store else { return ([], []) }
-        var writtenPaths: [VaultPath] = []
-        var problems: [String] = []
-        for edit in edits {
-            let data = edit.data
-            do {
-                guard let revisionBeforeMove = edit.revisionBeforeMove else { throw GraphiteError.conflict }
-                _ = try await store.save(data, at: edit.newPath, expecting: .revision(revisionBeforeMove))
-                writtenPaths.append(edit.newPath)
-            } catch {
-                do {
-                    let copyPath = try await store.uniquePath(directory: edit.newPath.parent, stem: edit.newPath.stem + " Graphite edits", extension: edit.copyExtension)
-                    _ = try await store.save(data, at: copyPath, expecting: .absent)
-                    writtenPaths.append(copyPath)
-                    problems.append("“\(edit.newPath.name)” changed while it moved, so the changes made meanwhile were saved separately as “\(copyPath.name)”.")
-                } catch {
-                    problems.append("The changes made to “\(edit.newPath.name)” while it moved could not be saved. " + error.localizedDescription)
-                }
-            }
-        }
-        return (writtenPaths, problems)
     }
 
     /// The notes shown by name in the message; a folder move can leave many more.
@@ -318,6 +397,14 @@ extension WorkspaceModel {
         return "“\(movedItemName)” was moved, but the links to it in \(noteCount) were not updated: " + listedNotes.joined(separator: "; ") + "."
     }
 
+    /// Notes in the cloud could not be looked at. A notice, not an alert: a vault with
+    /// many such notes would otherwise stop the work at every rename.
+    static func describeNotesNotChecked(_ notes: [VaultPath], movedItemName: String) -> String {
+        let noteCount = notes.count == 1 ? "1 note is" : "\(notes.count.formatted()) notes are"
+        return "\(noteCount) in the cloud and not on this device, so links to “\(movedItemName)” in them could not be updated. "
+            + "They may still name it as it was."
+    }
+
     func duplicate(_ path: VaultPath) async {
         guard let store else { return }
         do {
@@ -327,8 +414,8 @@ extension WorkspaceModel {
             // A copied folder's files are indexed one by one; the folder itself has no row.
             let copiedFiles = filesInFolder.isEmpty ? [copy] : filesInFolder.compactMap { file in try? file.replacingPrefix(path, with: copy) }
             refreshIndexAfterFileChanges(copiedFiles)
-            await refreshDirectory()
             if !isDirectory(copy) { await open(copy) }
+            await showInListings(copy)
         } catch { errorMessage = error.localizedDescription }
     }
 
@@ -373,14 +460,19 @@ extension WorkspaceModel {
             try await saveDocuments(inside: path)
             let removedFiles = isDirectory(path) ? (try await index?.paths(inside: path) ?? []) : [path]
             // Copies first, with any unsaved edits: the vault's settings may delete permanently.
-            await snapshotBeforeDeleting(removedFiles)
+            let notesWithoutCopy = await snapshotBeforeDeleting(removedFiles)
             let outcome = try await store.delete(path, method: vaultSettings.deletionMethod)
+            await forgetDrafts(inside: path)
             expandedFolders = expandedFolders.filter { folder in !folder.isInside(path) }
             forgetInNavigation(path)
             refreshIndexAfterFileChanges(removedFiles)
-            await refreshDirectory()
+            await showInListings(path)
             if case .movedToVaultTrash = outcome, vaultSettings.deletionMethod == .systemTrash {
                 notice = "This storage has no system trash, so “\(path.name)” was moved to the vault's .trash folder instead."
+            }
+            if notesWithoutCopy > 0 {
+                notice = "File recovery kept copies of \(Self.maximumNotesCopiedBeforeDeletion) of the notes in “\(path.name)”, the most it copies at once; "
+                    + "\(notesWithoutCopy.formatted()) more have none."
             }
         } catch { errorMessage = error.localizedDescription }
     }
@@ -415,53 +507,24 @@ extension WorkspaceModel {
         for document in tabDocuments.values where document.loadedPath?.isInside(path) == true { try await document.save() }
     }
 
+    /// Refreshes the index rows of moved files, with the next move waiting for it. A scan would
+    /// leave no way to wait short of the whole vault, and it reads these same files.
+    func refreshIndexFollowingMove(_ paths: [VaultPath]) {
+        guard let index, let root = folderAccess?.root else { return }
+        let uniquePaths = Array(Set(paths))
+        let previousRefresh = indexRefreshFollowingMoves
+        indexRefreshFollowingMoves = Task(priority: .userInitiated) { [weak self] in
+            await previousRefresh?.value
+            do { try await index.refresh(paths: uniquePaths, root: root) } catch { self?.indexingMessage = "Index needs attention" }
+            self?.recordIndexChange(paths: nil)
+        }
+    }
+
     /// Refreshes the index rows of changed files; beyond a few hundred, one scan is cheaper.
     /// A scan already running may have passed these files, and starting another does
     /// nothing until it ends, so the rows are then refreshed one by one instead.
     private func refreshIndexAfterFileChanges(_ paths: [VaultPath]) {
         let uniquePaths = Array(Set(paths))
         if uniquePaths.count > Self.maximumIncrementalRefreshCount, !isIndexing { startIndexing() } else { refreshIndex(for: uniquePaths) }
-    }
-}
-
-extension WorkspaceModel {
-    /// Copies files chosen outside the vault into `directory`, each under a free name, as
-    /// Goodnotes' Import does. The originals stay where they are. A file of a type an importer
-    /// of `DroppedFileImporters` takes goes to it; a text file becomes a note. A file that fails
-    /// is reported; the others are still copied.
-    func importFiles(from chosenSources: [URL], into directory: VaultPath) async {
-        guard let store, let root = folderAccess?.root else { return }
-        // Goodnotes and Notability notebooks, and folders of them, are converted rather than copied.
-        let notebookSources = notebookImportSources(in: chosenSources)
-        if !notebookSources.isEmpty { importNotebooks(notebookSources, into: directory) }
-        let routing = DroppedFileImporters.route(chosenSources.filter { source in !notebookSources.contains(source) },
-                                                 through: DroppedFileImporters.registered)
-        for routed in routing.routed { await routed.importer.importFiles(routed.files, directory) }
-        let sources = routing.remaining
-        var importedPaths: [VaultPath] = []
-        var failedNames: [String] = []
-        for source in sources {
-            let hasAccess = source.startAccessingSecurityScopedResource()
-            defer { if hasAccess { source.stopAccessingSecurityScopedResource() } }
-            do {
-                try await store.createDirectory(directory)
-                let stem = source.deletingPathExtension().lastPathComponent
-                let fileExtension = ImportedFileName.fileExtension(forSourceExtension: source.pathExtension)
-                let path = try await store.uniquePath(directory: directory, stem: stem, extension: fileExtension)
-                let destination = try path.url(in: root)
-                let writer = store.writer
-                _ = try await Task.detached { try writer.copy(from: source, to: destination, expecting: .absent) }.value
-                importedPaths.append(path)
-            } catch {
-                failedNames.append(source.lastPathComponent)
-            }
-        }
-        if !importedPaths.isEmpty {
-            refreshIndex(for: importedPaths)
-            await refreshDirectory()
-        }
-        if !failedNames.isEmpty {
-            errorMessage = "Could not import " + failedNames.map { name in "“\(name)”" }.joined(separator: ", ") + "."
-        }
     }
 }

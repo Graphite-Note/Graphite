@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceBookmarks.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: Bookmarks of the workspace: reading, changing and opening them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -73,6 +84,8 @@ extension WorkspaceModel {
             reveal(folder: path)
         case "search":
             searchQuery = bookmark.query ?? ""
+        case "graph":
+            showGraph()
         default:
             break
         }
@@ -91,7 +104,13 @@ extension WorkspaceModel {
 
     /// Bookmarks on renamed or moved files and folders follow them, as in Obsidian.
     func followMoveInBookmarks(from oldPath: VaultPath, to newPath: VaultPath) {
-        guard bookmarks.allBookmarks.contains(where: { bookmark in bookmark.vaultPath?.isInside(oldPath) == true }) else { return }
-        Task { await updateBookmarks { bookmarks in bookmarks.followMove(from: oldPath, to: newPath) } }
+        Task { await updateBookmarksFollowingMove(from: oldPath, to: newPath) }
+    }
+
+    /// The file's own bookmarks are changed, not the copy in memory, which is stale until the Bookmarks
+    /// panel has been shown: Obsidian may have added a bookmark to the moved file since the vault opened.
+    /// A file with nothing to change is left as it is.
+    func updateBookmarksFollowingMove(from oldPath: VaultPath, to newPath: VaultPath) async {
+        await updateBookmarks { bookmarks in bookmarks.followMove(from: oldPath, to: newPath) }
     }
 }

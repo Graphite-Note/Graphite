@@ -1,3 +1,14 @@
+/**
+ * File: TemplateTests.swift
+ * -------------------------
+ * Layer: Tests
+ * Description: Moment date formats, and the variables and templates that use them.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -31,6 +42,57 @@ final class MomentDateFormatTests: XCTestCase {
         XCTAssertEqual(formatted("kk"), "09")
     }
 
+    func testLowerCaseLongFormatsAreTheShortForms() {
+        XCTAssertEqual(formatted("l"), "9/24/2026")
+        XCTAssertEqual(formatted("ll"), "Sep 24, 2026")
+        XCTAssertEqual(formatted("lll"), "Sep 24, 2026 9:05 AM")
+        XCTAssertEqual(formatted("llll"), "Thu, Sep 24, 2026 9:05 AM")
+        XCTAssertEqual(formatted("LT"), "9:05 AM")
+        XCTAssertEqual(formatted("LTS"), "9:05:07 AM")
+    }
+
+    func testBackslashWritesTheTokenAfterItAsText() {
+        XCTAssertEqual(formatted("YYYY-MM-DD \\W\\e\\e\\k"), "2026-09-24 Week")
+        XCTAssertEqual(formatted("\\YYYY YYYY"), "YYYY 2026", "The whole token after a backslash is text.")
+        XCTAssertEqual(formatted("\\LL"), "LL", "A long format after a backslash is not expanded.")
+        XCTAssertEqual(formatted("\\[YYYY]"), "[2026]", "An escaped bracket opens no bracketed text.")
+        XCTAssertEqual(formatted("D\\-M\\"), "24-9", "A backslash at the end writes nothing.")
+        XCTAssertEqual(formatted("[abc"), "[ambc", "A bracket with no end stands alone, and the rest is a format.")
+        XCTAssertEqual(formatted("[a[b]"), "[amb", "A second opening bracket ends the first one's reach.")
+    }
+
+    func testMomentTokensBeyondTheCommonOnes() {
+        XCTAssertEqual(formatted("S SS SSS SSSS SSSSSS SSSSSSSSS"), "2 25 250 2500 250000 250000000")
+        XCTAssertEqual(formatted("z|zz"), "|", "Moment writes no zone name for a local time.")
+        XCTAssertEqual(formatted("N NNNN NNNNN"), "AD Anno Domini AD")
+        XCTAssertEqual(formatted("y yyyy yo"), "2026 2026 2026th")
+        XCTAssertEqual(formatted("YYYYY YYYYYY"), "02026 +002026")
+        XCTAssertEqual(formatted("ggggg GGGGG"), "02026 02026")
+    }
+
+    func testAReaderPreparedOnceReadsTheSameDaysAsReadingEachName() throws {
+        let formats = ["YYYY-MM-DD", "DD.MM.YYYY", "dddd, MMMM Do YYYY", "ll", "YY-M-D"]
+        let names = ["2026-09-24", "24.09.2026", "Thursday, September 24th 2026", "Sep 24, 2026", "26-9-24", "Meeting notes", "2026-04-31", "2026-09-24 09"]
+        for format in formats {
+            let reader = try XCTUnwrap(MomentDateReader(format: format), format)
+            for name in names {
+                XCTAssertEqual(reader.date(from: name, timeZone: zurich), MomentDateFormat.date(from: name, format: format, timeZone: zurich), "\(format) reading \(name)")
+            }
+        }
+        XCTAssertNil(MomentDateReader(format: "YYYY-MM-DD HH"), "Hours are not read.")
+    }
+
+    func testDailyNotesOfAFolderAreReadWithOneReader() throws {
+        let settings = DailyNoteSettings(format: "YYYY-MM-DD", folder: "Daily", template: "", opensOnStartup: false)
+        let reader = try XCTUnwrap(MomentDateReader(format: settings.format))
+        let paths = try ["Daily/2026-09-24.md", "Daily/2026-09-25.md", "Daily/notes.md", "Other/2026-09-24.md", "Daily/2026-09-24.png"].map { path in try VaultPath(path) }
+
+        let dated = paths.compactMap { path in settings.date(ofNoteAt: path, using: reader, timeZone: zurich) }
+
+        XCTAssertEqual(dated.count, 2)
+        XCTAssertEqual(settings.date(ofNoteAt: paths[0], timeZone: zurich), dated.first)
+    }
+
     func testOrdinalsAndTwelveHourClock() {
         let calendar = Calendar(identifier: .gregorian)
         var components = DateComponents(year: 2026, month: 1, day: 11, hour: 0, minute: 30)
@@ -42,7 +104,7 @@ final class MomentDateFormatTests: XCTestCase {
     }
 
     func testReadsDatesBack() throws {
-        let formats = ["YYYY-MM-DD", "DD.MM.YYYY", "YYYY/MM/YYYY-MM-DD", "dddd, MMMM Do YYYY", "YY-M-D"]
+        let formats = ["YYYY-MM-DD", "DD.MM.YYYY", "YYYY/MM/YYYY-MM-DD", "dddd, MMMM Do YYYY", "YY-M-D", "ll", "\\D\\a\\y YYYY-MM-DD"]
         for format in formats {
             let text = formatted(format)
             let date = try XCTUnwrap(MomentDateFormat.date(from: text, format: format, timeZone: zurich), format)

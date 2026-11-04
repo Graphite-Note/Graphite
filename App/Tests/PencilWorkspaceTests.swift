@@ -1,3 +1,15 @@
+/**
+ * File: PencilWorkspaceTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Hosted tests of the Pencil workspace: PDFs written on, the fixed bar, window sizes and the tool
+ *              picker.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.14
+ * Date: 02/11/2026
+ */
+
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -204,12 +216,11 @@ final class PencilWorkspaceTests: XCTestCase {
             stroke(.pencil, color: .darkGray, width: 4, atY: 170),
         ])
         try await waitUntil { page.annotations.filter { $0.type == "Ink" }.count == 3 }
-        try await Task.sleep(for: .milliseconds(500))
 
         // In the page's points, top down, as the overlay over the page and its canvas count them.
         let inkArea = CGRect(x: 40, y: 90, width: 340, height: 110)
         let overlayView = try XCTUnwrap(canvas.overlayView)
-        func pixels() throws -> [UInt8] {
+        func capture() throws -> (image: UIImage, pixels: [UInt8]) {
             let area = overlayView.convert(inkArea, to: nil)
             let format = UIGraphicsImageRendererFormat()
             format.scale = 2
@@ -221,7 +232,7 @@ final class PencilWorkspaceTests: XCTestCase {
             let context = try XCTUnwrap(CGContext(data: &bytes, width: cgImage.width, height: cgImage.height, bitsPerComponent: 8, bytesPerRow: cgImage.width * 4,
                                                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
-            return bytes
+            return (image, bytes)
         }
         func differingFraction(_ first: [UInt8], _ second: [UInt8]) -> Double {
             var inked = 0, differing = 0
@@ -233,22 +244,46 @@ final class PencilWorkspaceTests: XCTestCase {
             }
             return inked == 0 ? 1 : Double(differing) / Double(inked)
         }
+        // PencilKit draws in its own time, slower on a loaded machine: each look is taken once the
+        // ink is there and has stayed the same for a second. Time alone cannot end a change that
+        // turning writing on or off makes, which the comparisons below still see.
+        func settled(_ description: String) async throws -> (image: UIImage, pixels: [UInt8]) {
+            var latest = try capture()
+            var unchangedSince = ContinuousClock.now
+            try await waitUntil("the ink has settled \(description)", pollingIntervalSeconds: 0.1) {
+                let next = try capture()
+                if differingFraction(latest.pixels, next.pixels) > 0.001 { unchangedSince = ContinuousClock.now }
+                latest = next
+                return unchangedSince.duration(to: .now) >= .seconds(1)
+            }
+            return latest
+        }
+        func attach(_ image: UIImage, named name: String) {
+            let attachment = XCTAttachment(image: image)
+            attachment.name = name
+            attachment.lifetime = .keepAlways
+            add(attachment)
+        }
 
         for zoom in [pdfView.scaleFactor, pdfView.scaleFactor * 3] {
             pdfView.scaleFactor = zoom
             pdfView.go(to: pdfView.convert(overlayView.convert(inkArea, to: pdfView), to: page), on: page)
-            try await Task.sleep(for: .milliseconds(800))
-            let whileWriting = try pixels()
+            let whileWriting = try await settled("while writing")
             session.isWriting = false
             try await waitUntil { !canvas.isUserInteractionEnabled }
-            try await Task.sleep(for: .milliseconds(500))
-            let whileReading = try pixels()
-            let fraction = differingFraction(whileWriting, whileReading)
+            let whileReading = try await settled("while reading")
+            let fraction = differingFraction(whileWriting.pixels, whileReading.pixels)
             XCTAssertLessThan(fraction, 0.01, "At \(Int(zoom * 100)) percent, \(Int(fraction * 100)) percent of the inked pixels change when writing is turned off.")
             session.isWriting = true
             try await waitUntil { canvas.isUserInteractionEnabled }
-            try await Task.sleep(for: .milliseconds(300))
-            XCTAssertLessThan(differingFraction(whileWriting, try pixels()), 0.01, "And nothing changes when it is turned on again.")
+            let writingAgain = try await settled("while writing again")
+            let fractionAgain = differingFraction(whileWriting.pixels, writingAgain.pixels)
+            XCTAssertLessThan(fractionAgain, 0.01, "And nothing changes when it is turned on again.")
+            if fraction >= 0.01 || fractionAgain >= 0.01 {
+                attach(whileWriting.image, named: "Ink while writing at \(Int(zoom * 100)) percent")
+                attach(whileReading.image, named: "Ink while reading at \(Int(zoom * 100)) percent")
+                attach(writingAgain.image, named: "Ink while writing again at \(Int(zoom * 100)) percent")
+            }
         }
         attachScreenshot(of: window, named: "Ink while writing, zoomed")
     }
@@ -309,7 +344,7 @@ final class PencilWorkspaceTests: XCTestCase {
 
     /// The checks a PDF workspace passes in a window of any size: the page fits the PDF's
     /// width, with no empty column; the PDF, the fixed Pencil bar and every bar control are
-    /// inside the window; the Pencil bar is whole or compact; the title stays readable.
+    /// inside the window; the Pencil bar is whole, compact or condensed and inside the window, never scrolling; the title stays readable.
     private func checkPDFWorkspaceFits(_ window: UIWindow, session: PDFSession, name: String, showsPencilBar: Bool) throws {
         let (page, viewWidth) = try pageEdges(of: session)
         XCTAssertGreaterThanOrEqual(page.minX, -1, "\(name): the page starts inside its view.")
@@ -321,7 +356,6 @@ final class PencilWorkspaceTests: XCTestCase {
 
         if showsPencilBar {
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown, "\(name): the fixed Pencil bar shows.")
-            XCTAssertNotEqual(shownRow.form, .scrolling, "\(name): the Pencil bar is whole or compact, not cut off.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, -0.5, "\(name): the Pencil bar starts inside the window.")
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, window.bounds.width + 0.5, "\(name): the Pencil bar ends inside the window.")
         }
@@ -557,15 +591,11 @@ final class PencilWorkspaceTests: XCTestCase {
         let pageSize = page.bounds(for: .cropBox).size
         let pdfView = try XCTUnwrap(session.pdfView as? GraphitePDFDisplayView)
 
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 0.8), 1, "Never below the page's own size")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 1.2), 1.5, "In steps, never below the zoom")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 2.5), 2.5)
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 8), PDFPageOverlayView.maximumRenderingScale)
-
         pdfView.autoScales = false
         pdfView.scaleFactor = 2.2
-        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2)
-        try await waitUntil { canvas.zoomScale == expectedScale }
+        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2, pageSize: pageSize, screenScale: window.screen.scale)
+        XCTAssertEqual(expectedScale, 2.2, accuracy: 0.001, "The canvas draws at the zoom it is seen at")
+        try await waitUntil { abs(canvas.zoomScale - expectedScale) < 0.01 }
         XCTAssertEqual(canvas.overlayView?.renderingScale, expectedScale)
         XCTAssertEqual(canvas.drawingSize.width, pageSize.width, accuracy: 0.5, "The drawing stays in the page's points")
         XCTAssertEqual(canvas.drawingSize.height, pageSize.height, accuracy: 0.5)
@@ -578,15 +608,9 @@ final class PencilWorkspaceTests: XCTestCase {
         XCTAssertEqual(pointOverCanvas.x, pointOverPage.x, accuracy: 1)
         XCTAssertEqual(pointOverCanvas.y, pointOverPage.y, accuracy: 1)
 
-        // PencilKit keeps a tool as wide on screen at any zoom of its canvas: the canvas draws
-        // with the chosen width times its zoom, so the stroke is as wide on the page.
+        // PencilKit stores a stroke at the tool's width at any zoom of its canvas (INK-22).
         let chosenPen = PKInkingTool(.pen, color: .black, width: 3)
-        let drawingPen = try XCTUnwrap(canvas.toolForDrawing(chosenPen) as? PKInkingTool)
-        XCTAssertEqual(drawingPen.width, 3 * canvas.zoomScale, accuracy: 0.01)
-        // PencilKit gives a pixel eraser a width of at least 16.4 when it is made.
-        let chosenEraser = PKEraserTool(.bitmap, width: 20)
-        let drawingEraser = try XCTUnwrap(canvas.toolForDrawing(chosenEraser) as? PKEraserTool)
-        XCTAssertEqual(drawingEraser.width, chosenEraser.width * canvas.zoomScale, accuracy: 0.01)
+        XCTAssertEqual(try XCTUnwrap(canvas.toolForDrawing(chosenPen) as? PKInkingTool).width, 3, accuracy: 0.01)
 
         // Ink drawn at this zoom is stored where it is on the page.
         let strokePoints = (0...10).map { pointIndex in
@@ -605,7 +629,7 @@ final class PencilWorkspaceTests: XCTestCase {
 
         // Back at the page's size, the canvas draws at it again.
         pdfView.scaleFactor = 1
-        try await waitUntil { canvas.zoomScale == 1 }
+        try await waitUntil { abs(canvas.zoomScale - 1) < 0.01 }
         XCTAssertEqual(canvas.drawing.strokes.count, 1)
         XCTAssertEqual(canvas.drawingSize.width, pageSize.width, accuracy: 0.5)
     }

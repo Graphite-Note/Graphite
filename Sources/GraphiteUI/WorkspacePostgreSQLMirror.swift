@@ -1,3 +1,14 @@
+/**
+ * File: WorkspacePostgreSQLMirror.swift
+ * -------------------------------------
+ * Layer: UI
+ * Description: The PostgreSQL Mirror core plugin for the open vault: when copies start, retry and are refused.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -36,6 +47,8 @@ final class PostgreSQLMirrorController {
     /// A copy asked for while one runs; it starts when that one ends.
     @ObservationIgnored private var pendingCopy: (source: PostgreSQLMirrorSource, rechecksDatabase: Bool)?
     @ObservationIgnored private var automaticCopiesResumeAt: Duration?
+    /// The one copy tried again when the wait after a failed copy ends.
+    @ObservationIgnored private var retryCopy: Task<Void, Never>?
 
     init(clock: any ApplicationClock) {
         self.clock = clock
@@ -44,9 +57,13 @@ final class PostgreSQLMirrorController {
     /// Whether a copy waits for the vault to be still for `settleDelay`.
     var isCopyScheduled: Bool { scheduledCopy != nil }
 
+    /// Whether a failed copy will be tried again by itself when `retryDelay` is over.
+    var isRetryScheduled: Bool { retryCopy != nil }
+
     /// Starts a copy after `settleDelay`, replacing a copy scheduled earlier.
     func schedule(_ source: PostgreSQLMirrorSource) {
         if let automaticCopiesResumeAt, clock.now < automaticCopiesResumeAt { return }
+        cancelRetry()
         scheduledCopy?.cancel()
         scheduledCopy = Task { [clock] in
             do { try await clock.sleep(for: Self.settleDelay) } catch { return } // Replaced by a later change, or stopped.
@@ -59,6 +76,7 @@ final class PostgreSQLMirrorController {
     /// when nothing changed in the index.
     func copyNow(_ source: PostgreSQLMirrorSource) {
         scheduledCopy?.cancel()
+        cancelRetry()
         automaticCopiesResumeAt = nil
         start(source, rechecksDatabase: true)
     }
@@ -68,13 +86,38 @@ final class PostgreSQLMirrorController {
     func stop() {
         scheduledCopy?.cancel()
         runningCopy?.cancel()
+        cancelRetry()
         scheduledCopy = nil
         runningCopy = nil
         pendingCopy = nil
         if status == .copying { status = .idle }
     }
 
+    /// Says why the vault cannot be copied, in the place a failed copy is shown, and copies nothing.
+    func refuse(because message: String) {
+        stop()
+        status = .failed(message, finishedAt: .now)
+    }
+
+    private func cancelRetry() {
+        retryCopy?.cancel()
+        retryCopy = nil
+    }
+
+    /// Tries a failed copy once more when the wait after it ends: no later change of the vault is needed to ask again.
+    private func scheduleRetry(of source: PostgreSQLMirrorSource) {
+        cancelRetry()
+        // The wait is counted from the failure, not from when the task first runs, which a busy main actor can delay.
+        let retryAt = clock.now + Self.retryDelay
+        retryCopy = Task { [clock] in
+            do { try await clock.sleep(for: max(retryAt - clock.now, .zero)) } catch { return } // Another copy started, or stopped.
+            retryCopy = nil
+            start(source, rechecksDatabase: false)
+        }
+    }
+
     private func start(_ source: PostgreSQLMirrorSource, rechecksDatabase: Bool) {
+        cancelRetry()
         guard runningCopy == nil else {
             pendingCopy = (source, rechecksDatabase || pendingCopy?.rechecksDatabase == true)
             return
@@ -97,6 +140,7 @@ final class PostgreSQLMirrorController {
                 guard !Task.isCancelled else { return }
                 status = .failed(Self.message(for: error), finishedAt: .now)
                 automaticCopiesResumeAt = clock.now + Self.retryDelay
+                scheduleRetry(of: source)
             }
             runningCopy = nil
             if let pendingCopy {
@@ -104,6 +148,15 @@ final class PostgreSQLMirrorController {
                 start(pendingCopy.source, rechecksDatabase: pendingCopy.rechecksDatabase)
             }
         }
+    }
+
+    /// Why the open vault cannot be copied while another vault of this device's library has the same folder name, or nil.
+    /// The database keys a vault's rows by its folder name, so that the same vault on the Mac and on the iPad copies into
+    /// the same rows; two vaults with one name would share rows, and each copy would delete the other vault's notes.
+    static func refusalForSharedName(of vault: KnownVault, among vaults: [KnownVault]) -> String? {
+        guard vaults.contains(where: { other in other.id != vault.id && other.name == vault.name }) else { return nil }
+        return "Another vault in the vault list is also named “\(vault.name)”. The copy keeps a vault's notes under its folder name, "
+            + "so these two would overwrite each other. Rename one of the folders, then copy again."
     }
 
     /// The server these settings reach, for the settings page's connection test.
@@ -154,15 +207,29 @@ extension WorkspaceModel {
                                                      configuration: preferences.postgreSQLMirrorConfiguration)
     }
 
+    /// Says why the open vault is not copied when its folder name is another vault's too; nil when it may be copied.
+    private var postgreSQLMirrorRefusal: String? {
+        guard let currentVaultIdentifier, let vault = vaultLibrary.vault(withIdentifier: currentVaultIdentifier) else { return nil }
+        return PostgreSQLMirrorController.refusalForSharedName(of: vault, among: vaultLibrary.vaults)
+    }
+
     /// After the index takes in changes.
     func schedulePostgreSQLMirrorCopy() {
         guard let source = postgreSQLMirrorSource else { return }
+        if let refusal = postgreSQLMirrorRefusal {
+            postgreSQLMirror.refuse(because: refusal)
+            return
+        }
         postgreSQLMirror.schedule(source)
     }
 
     /// Copy Now, and after the settings change or the plugin is turned on.
     func copyToPostgreSQLMirrorNow() {
         guard let source = postgreSQLMirrorSource else { return }
+        if let refusal = postgreSQLMirrorRefusal {
+            postgreSQLMirror.refuse(because: refusal)
+            return
+        }
         postgreSQLMirror.copyNow(source)
     }
 }

@@ -1,3 +1,13 @@
+/**
+ * File: PDFInkAnnotation.swift
+ * ----------------------------
+ * Layer: Apple
+ * Description: Standard PDF ink for one Pencil stroke.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
 import Foundation
 import CoreGraphics
 import PDFKit
@@ -22,8 +32,12 @@ public struct PortableInkStroke: Sendable, Equatable {
     /// The stroke's filled outline in page space, with the width variation PencilKit drew.
     /// When present it becomes the annotation's appearance; `/InkList` keeps the center line.
     public let outline: [[CGPoint]]?
+    /// A highlighter's stroke is multiplied into the page, so what it crosses stays readable.
+    public let multipliesOverPage: Bool
 
-    public init(name: String?, segments: [[CGPoint]], width: Double, red: Double, green: Double, blue: Double, alpha: Double, outline: [[CGPoint]]?) {
+    public init(name: String?, segments: [[CGPoint]], width: Double, red: Double, green: Double, blue: Double, alpha: Double, outline: [[CGPoint]]?,
+                multipliesOverPage: Bool = false) {
+        self.multipliesOverPage = multipliesOverPage
         self.name = name
         self.segments = segments
         self.width = width
@@ -39,10 +53,11 @@ public struct PortableInkStroke: Sendable, Equatable {
 /// `/InkList` center line stays in the file: readers that rebuild ink appearances, or
 /// edit the annotation, fall back to a line of the average width.
 ///
-/// Only documents that are written use this class. PDFKit draws annotations for display
-/// in unrotated page space and expects them to apply the page rotation themselves, but
-/// generates appearance streams in page space; a subclass cannot tell the two apart, so
-/// the displayed document keeps plain ink annotations (the Pencil canvas shows the ink).
+/// PDFKit draws annotations for display in unrotated page space and expects them to apply the
+/// page rotation themselves, but generates appearance streams in page space; a subclass
+/// cannot tell the two apart, so each annotation is made for one of them (`drawsAppearance`).
+/// The displayed document uses it too: its plain ink would show one average width in a flat
+/// color wherever no canvas covers the page, as while a page's stored ink is decoded.
 final class PDFOutlinedInkAnnotation: PDFAnnotation {
     // Optional object references only: PDFKit copies annotations (page duplication,
     // export) through Objective-C, which leaves Swift properties zeroed until
@@ -50,8 +65,13 @@ final class PDFOutlinedInkAnnotation: PDFAnnotation {
     // Never mutated after the annotation is shared, since PDFKit renders on other threads.
     private var outlinePath: CGPath?
     private var fillColor: CGColor?
+    /// False, as zeroed, draws an ordinary stroke.
+    private var multipliesOverPage = false
+    private var drawsAppearance = false
 
-    init(bounds: CGRect, outlineSubpaths: [[CGPoint]], fillColor: CGColor) {
+    init(bounds: CGRect, outlineSubpaths: [[CGPoint]], fillColor: CGColor, multipliesOverPage: Bool, drawsAppearance: Bool) {
+        self.multipliesOverPage = multipliesOverPage
+        self.drawsAppearance = drawsAppearance
         let path = CGMutablePath()
         for subpath in outlineSubpaths {
             guard let firstPoint = subpath.first else { continue }
@@ -77,6 +97,8 @@ final class PDFOutlinedInkAnnotation: PDFAnnotation {
         if let copiedAnnotation = copiedAnnotation as? PDFOutlinedInkAnnotation {
             copiedAnnotation.outlinePath = outlinePath
             copiedAnnotation.fillColor = fillColor
+            copiedAnnotation.multipliesOverPage = multipliesOverPage
+            copiedAnnotation.drawsAppearance = drawsAppearance
         }
         return copiedAnnotation
     }
@@ -90,11 +112,16 @@ final class PDFOutlinedInkAnnotation: PDFAnnotation {
         // The outline is in page space, but PDFKit generates the appearance stream with
         // the MediaBox origin as the origin. Pages whose MediaBox does not start at (0, 0),
         // common in cropped PDFs, would otherwise get ink outside the appearance's box.
-        if let mediaBoxOrigin = page?.bounds(for: .mediaBox).origin {
-            context.translateBy(x: -mediaBoxOrigin.x, y: -mediaBoxOrigin.y)
+        if drawsAppearance {
+            if let mediaBoxOrigin = page?.bounds(for: .mediaBox).origin {
+                context.translateBy(x: -mediaBoxOrigin.x, y: -mediaBoxOrigin.y)
+            }
+        } else {
+            page?.transform(context, for: box)
         }
         context.addPath(outlinePath)
         context.setFillColor(fillColor)
+        if multipliesOverPage { context.setBlendMode(.multiply) }
         // Nonzero winding fills overlapping parts of one translucent stroke once.
         context.fillPath(using: .winding)
         context.restoreGState()
@@ -107,17 +134,20 @@ enum PDFInkAnnotationFactory {
     /// Room around the ink so no reader clips anti-aliased edges at the annotation rectangle.
     private static let boundsMargin = 1.0
 
-    /// `drawsOutline` selects the outlined appearance for documents that are written.
-    static func annotation(for stroke: PortableInkStroke, group: String, drawsOutline: Bool) -> PDFAnnotation? {
+    /// `isForWrittenDocument` makes the outline an appearance for a document that is written
+    /// rather than a drawing on a shown page (`PDFOutlinedInkAnnotation`). `authorName` is
+    /// written as the annotation's author, or no author when nil (`PDFAnnotationAuthor`).
+    static func annotation(for stroke: PortableInkStroke, group: String, isForWrittenDocument: Bool, authorName: String?) -> PDFAnnotation? {
         let segments = stroke.segments.filter { segment in !segment.isEmpty && segment.allSatisfy { point in point.x.isFinite && point.y.isFinite } }
         guard !segments.isEmpty, stroke.width.isFinite else { return nil }
         let color = CGColor(srgbRed: stroke.red, green: stroke.green, blue: stroke.blue, alpha: stroke.alpha)
         let outline = stroke.outline ?? []
         let inkPoints = Array(segments.joined()) + Array(outline.joined())
         let inkBounds = bounds(of: inkPoints).insetBy(dx: -(stroke.width / 2 + boundsMargin), dy: -(stroke.width / 2 + boundsMargin))
-        let annotation: PDFAnnotation = outline.isEmpty || !drawsOutline
+        let annotation: PDFAnnotation = outline.isEmpty
             ? PDFAnnotation(bounds: inkBounds, forType: .ink, withProperties: nil)
-            : PDFOutlinedInkAnnotation(bounds: inkBounds, outlineSubpaths: outline, fillColor: color)
+            : PDFOutlinedInkAnnotation(bounds: inkBounds, outlineSubpaths: outline, fillColor: color,
+                                       multipliesOverPage: stroke.multipliesOverPage, drawsAppearance: isForWrittenDocument)
         #if canImport(UIKit)
         annotation.color = UIColor(cgColor: color)
         #else
@@ -135,7 +165,9 @@ enum PDFInkAnnotationFactory {
         border.lineWidth = max(0.5, stroke.width)
         annotation.border = border
         annotation.shouldPrint = true
+        PDFAnnotationAuthor.write(authorName, on: annotation)
         annotation.setValue(group, forAnnotationKey: PDFPageManager.groupKey)
+        if stroke.multipliesOverPage { annotation.setValue(NSNumber(value: true), forAnnotationKey: PDFPageManager.inkMultipliesKey) }
         if let name = stroke.name { annotation.setPersistentName(name) }
         return annotation
     }
@@ -250,9 +282,55 @@ public struct PDFInkUpdate: Sendable, Equatable {
 public struct PDFEditableInkGroup: Sendable, Equatable {
     public let group: String
     public let record: PDFEditableInkRecord
+    /// The annotations of the group already multiplied into the page. A highlight saved before
+    /// highlights were is rewritten the next time the page's ink is edited (`PDFPageInkTracker`).
+    public var multipliedStrokeNames: Set<String> = []
     /// False for files written before stroke names were stored: the first edit then
     /// replaces the whole group, because strokes cannot be matched to annotations.
     public var hasStrokeNames: Bool { !record.strokeNames.isEmpty }
+}
+
+/// What a page's annotations say about its ink, as they were read: nothing of it is decoded
+/// yet and it refers to no annotation, so decoding it can leave the actor that owns the
+/// document. A full page's record is megabytes of text and thousands of names (HUNT-015).
+public struct PDFStoredInk: Sendable {
+    /// A group whose first annotation carries a drawing.
+    struct Candidate: Sendable {
+        let group: String
+        let encodedDrawing: String
+        let encodedNames: String?
+        let annotationNames: [String]
+        let multipliedNames: [String]
+    }
+
+    let candidates: [Candidate]
+    let usesDefaultGroup: Bool
+
+    /// Whether any group on the page may be editable; decoding it says which.
+    public var mayHaveEditableGroup: Bool { !candidates.isEmpty }
+
+    /// The group for new ink on the page, as `PDFInkGroups.newGroup(on:)` gives it.
+    public func newGroup() -> String { PDFInkGroups.newGroup(usesDefaultGroup: usesDefaultGroup) }
+
+    /// The first group that qualifies, as `PDFInkGroups.editableGroup(on:)` tells it.
+    public func editableGroup() -> PDFEditableInkGroup? {
+        for candidate in candidates {
+            guard candidate.encodedDrawing.utf8.count <= PDFInkGroups.maximumEncodedDrawingBytes,
+                  let drawingData = Data(base64Encoded: candidate.encodedDrawing) else { continue }
+            guard let encodedNames = candidate.encodedNames else {
+                return PDFEditableInkGroup(group: candidate.group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: []))
+            }
+            guard encodedNames.utf8.count <= PDFInkGroups.maximumEncodedStrokeNameBytes else { continue }
+            let strokeNames = PDFInkGroups.decodeStrokeNames(encodedNames)
+            let annotationNames = candidate.annotationNames
+            let namedStrokes = strokeNames.filter { name in !name.isEmpty }
+            guard !strokeNames.isEmpty, !annotationNames.contains(""), Set(annotationNames).count == annotationNames.count,
+                  Set(namedStrokes).count == namedStrokes.count, Set(namedStrokes) == Set(annotationNames) else { continue }
+            return PDFEditableInkGroup(group: candidate.group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: strokeNames),
+                                       multipliedStrokeNames: Set(candidate.multipliedNames))
+        }
+        return nil
+    }
 }
 
 public enum PDFInkGroups {
@@ -267,6 +345,12 @@ public enum PDFInkGroups {
     /// added, or renamed by another application make the group read-only: its visible
     /// ink stays exactly as it is and new strokes go into a new group.
     public static func editableGroup(on page: PDFPage) -> PDFEditableInkGroup? {
+        storedInk(on: page).editableGroup()
+    }
+
+    /// What the page's annotations say about its ink, read once: on the actor that owns the
+    /// document, and with nothing decoded, which `PDFStoredInk.editableGroup()` does anywhere.
+    public static func storedInk(on page: PDFPage) -> PDFStoredInk {
         var groupsInOrder: [String] = []
         var annotationsByGroup: [String: [PDFAnnotation]] = [:]
         for annotation in page.annotations {
@@ -274,24 +358,23 @@ public enum PDFInkGroups {
             if annotationsByGroup[group] == nil { groupsInOrder.append(group) }
             annotationsByGroup[group, default: []].append(annotation)
         }
+        var candidates: [PDFStoredInk.Candidate] = []
         for group in groupsInOrder {
             guard let groupAnnotations = annotationsByGroup[group], let carrier = groupAnnotations.first,
-                  let encodedDrawing = carrier.value(forAnnotationKey: PDFPageManager.drawingKey) as? String,
-                  encodedDrawing.utf8.count <= maximumEncodedDrawingBytes,
-                  let drawingData = Data(base64Encoded: encodedDrawing) else { continue }
+                  let encodedDrawing = carrier.value(forAnnotationKey: PDFPageManager.drawingKey) as? String else { continue }
             let encodedNames = carrier.value(forAnnotationKey: PDFPageManager.strokeNamesKey) as? String
-            guard let encodedNames else {
-                return PDFEditableInkGroup(group: group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: []))
+            guard encodedNames != nil else {
+                candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: nil,
+                                                         annotationNames: [], multipliedNames: []))
+                continue
             }
-            guard encodedNames.utf8.count <= maximumEncodedStrokeNameBytes else { continue }
-            let strokeNames = decodeStrokeNames(encodedNames)
-            let annotationNames = groupAnnotations.map { annotation in annotation.persistentName ?? "" }
-            let namedStrokes = strokeNames.filter { name in !name.isEmpty }
-            guard !strokeNames.isEmpty, !annotationNames.contains(""), Set(annotationNames).count == annotationNames.count,
-                  Set(namedStrokes).count == namedStrokes.count, Set(namedStrokes) == Set(annotationNames) else { continue }
-            return PDFEditableInkGroup(group: group, record: PDFEditableInkRecord(drawingData: drawingData, strokeNames: strokeNames))
+            let multipliedNames = groupAnnotations.filter
+                { annotation in annotation.value(forAnnotationKey: PDFPageManager.inkMultipliesKey) != nil }.compactMap(\.persistentName)
+            candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: encodedNames,
+                                                     annotationNames: groupAnnotations.map { annotation in annotation.persistentName ?? "" },
+                                                     multipliedNames: multipliedNames))
         }
-        return nil
+        return PDFStoredInk(candidates: candidates, usesDefaultGroup: annotationsByGroup[defaultGroup] != nil)
     }
 
     /// The group for new ink on a page without an editable group. It never reuses a
@@ -300,7 +383,11 @@ public enum PDFInkGroups {
         let usesDefaultGroup = page.annotations.contains { annotation in
             annotation.value(forAnnotationKey: PDFPageManager.groupKey) as? String == defaultGroup
         }
-        return usesDefaultGroup ? "GraphitePageInk-" + UUID().uuidString : defaultGroup
+        return newGroup(usesDefaultGroup: usesDefaultGroup)
+    }
+
+    fileprivate static func newGroup(usesDefaultGroup: Bool) -> String {
+        usesDefaultGroup ? "GraphitePageInk-" + UUID().uuidString : defaultGroup
     }
 
     static func encodeStrokeNames(_ strokeNames: [String]) -> String {

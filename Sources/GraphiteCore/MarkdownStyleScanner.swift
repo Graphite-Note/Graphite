@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownStyleScanner.swift
+ * --------------------------------
+ * Layer: Core
+ * Description: The line-oriented scanner that finds what the editor styles, and the block state from line to line.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Presentation roles for Markdown source text. The editor maps roles to fonts and
@@ -116,6 +127,12 @@ public struct MarkdownBlockCheckpoint: Equatable, Sendable {
     public var context: MarkdownBlockContext { state.context }
 }
 
+/// See `MarkdownStyleScanner.displayMathEffect(ofLine:)`.
+public struct DisplayMathLineEffect: Equatable, Sendable {
+    public let opensBlock: Bool
+    public let closesBlock: Bool
+}
+
 /// A line-oriented scanner for editor styling. It is intentionally tolerant: it styles
 /// what Obsidian users type and never needs a whole-document parse per keystroke. Only
 /// the block context before the styled lines depends on earlier text, and finding it
@@ -194,6 +211,23 @@ public enum MarkdownStyleScanner {
     public static func lineAffectsFollowingLines(_ line: String) -> Bool {
         let content = contentWithoutQuoteMarkers(line)
         return content.hasPrefix("```") || content.hasPrefix("~~~") || content.hasPrefix("$$") || line.trimmingCharacters(in: .whitespacesAndNewlines) == "---"
+    }
+
+    /// Whether `line` opens or closes code or frontmatter, leaving display math to
+    /// `displayMathEffect(ofLine:)`.
+    public static func lineAffectsFollowingLinesApartFromMath(_ line: String) -> Bool {
+        let content = contentWithoutQuoteMarkers(line)
+        let trimmedLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+        return content.hasPrefix("```") || content.hasPrefix("~~~") || trimmedLine == "---" || trimmedLine == "..."
+    }
+
+    /// What a line can do to the display math around it: open a block that runs on past it,
+    /// or close one that is open. A balanced `$$E=mc^2$$` opens none, so typing inside it
+    /// changes no later line while this answer stays the same. Nil for a line with no `$$`.
+    public static func displayMathEffect(ofLine line: String) -> DisplayMathLineEffect? {
+        guard line.contains("$$") else { return nil }
+        let (_, content) = MarkdownQuoteSyntax.markersAndTrimmedContent(of: line, maximumDepth: .max)
+        return DisplayMathLineEffect(opensBlock: opensDisplayMathBlock(content), closesBlock: DisplayMathLines.closesOpenBlock(line))
     }
 
     // MARK: Block structure
@@ -589,6 +623,12 @@ public enum MarkdownStyleScanner {
         for match in TagSyntax.pattern.matches(in: lineString, range: range) where isUnclaimed(match.range) {
             add(match.range, .tag, in: match.range)
         }
+        // `\*` reads as a star: only the backslash is markup.
+        if line.range(of: "\\", options: .literal, range: range).location != NSNotFound {
+            for match in Patterns.backslashEscape.matches(in: lineString, range: range) where isUnclaimed(match.range) {
+                add(NSRange(location: match.range.location, length: 1), .concealableMarker, in: match.range)
+            }
+        }
         return spans
     }
 
@@ -614,6 +654,7 @@ public enum MarkdownStyleScanner {
         static let emphasis = MarkdownStyleScannerPattern.emphasis.compiled()
         static let strikethrough = MarkdownStyleScannerPattern.strikethrough.compiled()
         static let highlight = MarkdownStyleScannerPattern.highlight.compiled()
+        static let backslashEscape = MarkdownStyleScannerPattern.backslashEscape.compiled()
     }
 }
 
@@ -626,10 +667,12 @@ enum MarkdownStyleScannerPattern: String, StaticPatternSet {
     case wikilink = #"(!?)\[\[[^\]\n]+\]\]"#
     case footnoteDefinition = #"^\[\^[^\]\s]+\]:"#
     case markdownLink = #"(!?)\[([^\]\n]*)\]\((?:[^()\n]|\([^()\n]*\))*\)"#
-    case strong = #"(?<![*_])(\*\*|__)(?!\s)[^\n]+?(?<!\s)\1(?![*_])"#
-    case emphasis = #"(?<![*\w])([*_])(?![\s*_])[^*_\n]+?(?<![\s])\1(?![*\w])"#
-    case strikethrough = #"~~(?!\s)[^~\n]+?(?<!\s)~~"#
-    case highlight = #"==(?!\s)[^=\n]+?(?<!\s)=="#
+    case strong = #"(?<![*_])(?<!(?<!\\)(?:\\\\){0,8}\\)(\*\*|__)(?!\s)[^\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)\1(?![*_])"#
+    case emphasis = #"(?<![*\w])(?<!(?<!\\)(?:\\\\){0,8}\\)([*_])(?![\s*_])[^*_\n]+?(?<![\s])(?<!(?<!\\)(?:\\\\){0,8}\\)\1(?![*\w])"#
+    case strikethrough = #"(?<!(?<!\\)(?:\\\\){0,8}\\)~~(?!\s)[^~\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)~~"#
+    case highlight = #"(?<!(?<!\\)(?:\\\\){0,8}\\)==(?!\s)[^=\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)=="#
+    /// A backslash before ASCII punctuation: the backslash hides, as Markdown reads it.
+    case backslashEscape = #"\\[!-/:-@\[-`{-~]"#
 
     /// Every pattern reads one line at a time, so `^` and `$` match at each line's ends.
     var options: NSRegularExpression.Options { [.anchorsMatchLines] }

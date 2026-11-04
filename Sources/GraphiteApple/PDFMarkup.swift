@@ -1,3 +1,13 @@
+/**
+ * File: PDFMarkup.swift
+ * ---------------------
+ * Layer: Apple
+ * Description: Text markup (highlight, underline, strike-out) as standard PDF annotations.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import Foundation
 import CoreGraphics
 import PDFKit
@@ -220,8 +230,9 @@ public struct PDFMarkup: Sendable, Equatable {
         #endif
     }
 
-    /// The annotation for this markup on `page`, whose text decides which way each line runs.
-    func makeAnnotation(on page: PDFPage) throws -> PDFAnnotation {
+    /// The annotation for this markup on `page`, whose text decides which way each line runs. A markup
+    /// made again from one that was in the file keeps that one's author; a new one gets `authorName`.
+    func makeAnnotation(on page: PDFPage, authorName: String?) throws -> PDFAnnotation {
         let markupBounds = bounds
         guard !lineBounds.isEmpty, !markupBounds.isNull else { throw GraphiteError.invalidFile("Select some PDF text first.") }
         let annotation = PDFAnnotation(bounds: markupBounds, forType: kind.annotationSubtype, withProperties: nil)
@@ -236,9 +247,10 @@ public struct PDFMarkup: Sendable, Equatable {
         if let originalDetails {
             annotation.color = originalDetails.platformColor
             annotation.contents = originalDetails.note
-            annotation.userName = originalDetails.author
+            PDFAnnotationAuthor.write(originalDetails.author, on: annotation)
         } else {
             annotation.color = color.platformColor
+            PDFAnnotationAuthor.write(authorName, on: annotation)
         }
         annotation.shouldPrint = true
         annotation.setPersistentName(name)

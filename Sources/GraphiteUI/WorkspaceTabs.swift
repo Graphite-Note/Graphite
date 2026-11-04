@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceTabs.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Each tab's documents and opening a file in a tab.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.33
+ * Date: 04/11/2026
+ */
+
 import Foundation
 import Observation
 import GraphiteCore
@@ -5,6 +16,13 @@ import GraphiteApple
 
 /// What one tab has open: the editor session of its note or PDF, and a heading or search
 /// match waiting to be shown there.
+/// A PDF a tab showed before another file opened in it, and when it was replaced (`TabDocument.replacedPDF`).
+struct ReplacedPDF {
+    let path: VaultPath
+    let session: PDFSession
+    let time: ContinuousClock.Instant
+}
+
 @MainActor @Observable
 final class TabDocument {
     /// The file the sessions belong to; nil until the tab's file is loaded. A tab restored
@@ -13,6 +31,8 @@ final class TabDocument {
     var markdownSession: MarkdownSession?
     var pdfSession: PDFSession?
     var canvasSession: CanvasSession?
+    /// A note too large to edit, shown read-only in place of a session.
+    var oversizedNote: OversizedNoteDocument?
     /// A heading to show once the note is open (from `[[Note#Heading]]` or the outline).
     var headingScrollRequest: HeadingScrollRequest?
     /// The node the graph's tab centers on, asked for by a note's local graph.
@@ -26,8 +46,11 @@ final class TabDocument {
     /// Where the graph was left (its zoom, position and framing), so it comes back as it was
     /// when the tab is in front again.
     var graphPlace: GraphCanvasPlace?
-    /// The view a `[[Books.base#Gallery]]` link asked the tab's base to show.
+    /// The view a `[[Books.base#Gallery]]` link asked the tab's base to show, until it is shown.
     var baseViewRequest: BaseViewRequest?
+    /// The tab's base as the person left it (the view chosen, a column's sort), while another
+    /// document is in front and its view is gone.
+    let baseModelCache = EmbeddedBaseModelCache(capacity: 1)
     /// A notebook to create from the tab's note, asked for by the note's menus or the
     /// command palette; the note's pane shows the New Notebook sheet for it.
     var notebookInsertion: NotebookInsertionRequest?
@@ -43,6 +66,9 @@ final class TabDocument {
     @ObservationIgnored var requestIdentifier = UUID()
     /// A PDF let go of while its tab was hidden, and the page it reopens at.
     @ObservationIgnored var releasedPDFPage: (path: VaultPath, pageIndex: Int)?
+    /// The PDF this tab showed before another file opened in it, kept open (with its view, `HiddenPDFViews`) as a
+    /// hidden tab's is, so opening it here again reads, lays out and decodes nothing (HUNT-308).
+    @ObservationIgnored var replacedPDF: ReplacedPDF?
     /// When the tab was last seen on screen, to keep the most recently hidden PDF open.
     @ObservationIgnored var lastVisibleTime = ContinuousClock.now
 
@@ -52,7 +78,8 @@ final class TabDocument {
 
     /// Forgets the sessions after their file moved; the tab loads the file again.
     func unload() {
-        loadedPath = nil; markdownSession = nil; pdfSession = nil; canvasSession = nil
+        loadedPath = nil; markdownSession = nil; pdfSession = nil; canvasSession = nil; oversizedNote = nil
+        replacedPDF = nil
     }
 
     func save() async throws {
@@ -298,10 +325,19 @@ extension WorkspaceModel {
             tabDocuments[tabID] = nil
         }
         markdownEditorRetention.discardStaleEditors()
+        keepOnlyTheViewsOfOpenPDFs()
     }
 
+    /// Whether the vault has a file or folder at `path` now, as another app may have removed it.
+    func fileExistsInVault(_ path: VaultPath) -> Bool {
+        guard let root = folderAccess?.root, let location = try? path.url(in: root) else { return false } // A path outside the vault names nothing.
+        return FileManager.default.fileExists(atPath: location.path)
+    }
+
+    /// Opens the file of the tab closed last again, skipping those open again and those
+    /// deleted in another app.
     func reopenClosedTab() async {
-        guard let path = layout.popClosedPath() else { return }
+        guard let path = layout.popClosedPath(fileExists: fileExistsInVault) else { return }
         await open(path, placement: .newTab)
     }
 
@@ -327,28 +363,6 @@ extension WorkspaceModel {
                 try await document.save()
                 releaseHiddenPDFSessions()
             } catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    /// Hidden tabs keep at most this many PDFs open; the others are let go once saved.
-    private static let maximumHiddenPDFSessionCount = 1
-
-    /// Lets go of the PDFs of hidden tabs, beyond the most recently hidden one, so memory
-    /// does not grow with every PDF ever opened in a tab. A PDF with unsaved edits, a save
-    /// running, or a conflict is kept. A released tab reopens its PDF, at the same page,
-    /// when it is shown again, which loses PDFKit's undo history for it.
-    private func releaseHiddenPDFSessions() {
-        let visibleTabIDs = Set(layout.groups.map(\.activeTabID))
-        let now = ContinuousClock.now
-        for tabID in visibleTabIDs { tabDocuments[tabID]?.lastVisibleTime = now }
-        let hiddenPDFDocuments = tabDocuments.filter { tabID, document in !visibleTabIDs.contains(tabID) && document.pdfSession != nil }
-            .values.sorted { leftDocument, rightDocument in leftDocument.lastVisibleTime > rightDocument.lastVisibleTime }
-        for document in hiddenPDFDocuments.dropFirst(Self.maximumHiddenPDFSessionCount) {
-            guard let session = document.pdfSession, let path = document.loadedPath, !document.isOpening,
-                  !session.hasUnsavedChanges, !session.isSaving, !session.hasExternalConflict else { continue }
-            document.releasedPDFPage = (path, session.currentPageIndex)
-            rememberPlaces(of: [document])
-            document.unload()
         }
     }
 
@@ -407,8 +421,10 @@ extension WorkspaceModel {
 
     /// Opens `path` in a tab, replacing what it showed, and returns whether it did.
     /// - Parameter reportsFailure: False to show a failure only in the tab, not in an alert.
+    /// - Parameter editsOversizedNote: True for Edit Anyway: a note over the limit for editing loads into the editor.
     @discardableResult
-    func load(_ path: VaultPath, into tabID: UUID, pdfPageIndex: Int?, recordsHistory: Bool, reportsFailure: Bool = true) async -> Bool {
+    func load(_ path: VaultPath, into tabID: UUID, pdfPageIndex: Int?, recordsHistory: Bool, reportsFailure: Bool = true,
+              editsOversizedNote: Bool = false) async -> Bool {
         guard let store, let folderAccess else { return false }
         let document = document(for: tabID)
         // A page asked for, as by a link, is shown at its top; otherwise the PDF opens where
@@ -424,29 +440,24 @@ extension WorkspaceModel {
             let newMarkdown: MarkdownSession?
             let newPDF: PDFSession?
             var newCanvas: CanvasSession?
+            var newOversizedNote: OversizedNoteDocument?
             switch DocumentKind(path: path) {
             case .markdown:
-                let snapshot = try await store.read(path, maximumBytes: MarkdownSession.maximumEditableBytes)
-                newMarkdown = try MarkdownSession(path: path, snapshot: snapshot, store: store, openNotes: processServices.openNotes) { [weak self] savedPath in
-                    self?.refreshIndex(for: [savedPath])
+                let maximumBytes = editsOversizedNote ? MarkdownSession.maximumBytesEditableAnyway : MarkdownSession.maximumEditableBytes
+                guard let snapshot = try await snapshotUnlessTooLarge(path, maximumBytes: maximumBytes, in: store) else {
+                    newOversizedNote = try await OversizedNoteDocument.open(path, in: store)
+                    newMarkdown = nil; newPDF = nil
+                    break
                 }
-                // An edit while the note is read: reading goes on at the same sentence.
-                newMarkdown?.textDidChange = { [weak self, weak newMarkdown] in
-                    guard let self, let newMarkdown else { return }
-                    readAloud?.noteTextDidChange(path: path, text: newMarkdown.text,
-                        hiddenRanges: ReadAloudFolding.hiddenRanges(in: newMarkdown.text, foldedKeys: newMarkdown.foldedKeys,
-                                                                    calloutExpansion: calloutFolds.expansion(for: path.rawValue)))
-                }
-                if let newMarkdown {
-                    restoreViewMode(of: newMarkdown); restoreFolds(of: newMarkdown)
-                    returnToRememberedPlace(of: newMarkdown); watchForRecovery(newMarkdown)
-                }
+                newMarkdown = try await openNoteSession(at: path, snapshot: snapshot, store: store, maximumBytesRead: maximumBytes)
                 newPDF = nil
             case .pdf:
                 let location = try path.url(in: folderAccess.root)
                 // A Graphite drawing saved as PDF opens as a drawing, not as a notebook to annotate.
                 if await ImageFileService().isEditableDrawingPDF(at: location) {
                     newPDF = nil
+                } else if let shownAgain = await replacedPDFToShowAgain(at: path, in: document) {
+                    newPDF = shownAgain
                 } else {
                     newPDF = try await openPDFSession(at: location, password: pdfPasswords[path])
                     if let pdfPageIndex, let newPDF { newPDF.currentPageIndex = min(max(pdfPageIndex, 0), max(newPDF.pageCount - 1, 0)) }
@@ -476,7 +487,13 @@ extension WorkspaceModel {
             if document.baseViewRequest?.path != path { document.baseViewRequest = nil }
             document.loadFailure = nil
             document.releasedPDFPage = nil
+            // The PDF shown until now stays open, as a hidden tab's would, to come back at once.
+            if let replacedSession = document.pdfSession, replacedSession !== newPDF, let replacedPath = document.loadedPath, replacedPath != path {
+                // Last seen as the tab was last laid out, which orders it among the hidden tabs' PDFs.
+                document.replacedPDF = ReplacedPDF(path: replacedPath, session: replacedSession, time: document.lastVisibleTime)
+            }
             document.markdownSession = newMarkdown; document.pdfSession = newPDF; document.canvasSession = newCanvas; document.loadedPath = path
+            document.oversizedNote = newOversizedNote
             // The editor of the note this tab showed before goes with its session.
             markdownEditorRetention.discardStaleEditors()
             layout.show(path, inTab: tabID, recordsHistory: recordsHistory)
@@ -484,6 +501,7 @@ extension WorkspaceModel {
             if let currentVaultIdentifier { vaultLibrary.setLastOpenedDocument(path, inVault: currentVaultIdentifier) }
             releaseHiddenPDFSessions()
             checkConflictVersions(of: [path])
+            if let newOversizedNote { await tellAboutDraft(ofOversizedNote: newOversizedNote) }
             return true
         } catch let passwordRequired as PDFPasswordRequired {
             // The tab asks for the password; an alert would add nothing.
@@ -519,11 +537,8 @@ extension WorkspaceModel {
     /// - Parameter windowLayout: The tabs this window had, kept with the window by the
     ///   system; nil for the vault's tabs as last left on this device, in any window.
     func restoreTabLayout(_ windowLayout: SavedTabLayout? = nil) {
-        guard let currentVaultIdentifier, let root = folderAccess?.root else { return }
-        let fileExists: (VaultPath) -> Bool = { path in
-            guard let location = try? path.url(in: root) else { return false }
-            return FileManager.default.fileExists(atPath: location.path)
-        }
+        guard let currentVaultIdentifier, folderAccess != nil else { return }
+        let fileExists = fileExistsInVault
         if let saved = windowLayout ?? deviceDefaults.data(forKey: Self.tabLayoutKey(for: currentVaultIdentifier))
             .flatMap({ data in try? JSONDecoder().decode(SavedTabLayout.self, from: data) }) { // tabs saved by another build start the vault afresh
             layout = TabLayout(saved: saved, fileExists: fileExists)

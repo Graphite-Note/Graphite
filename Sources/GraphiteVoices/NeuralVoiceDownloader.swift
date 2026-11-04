@@ -1,3 +1,14 @@
+/**
+ * File: NeuralVoiceDownloader.swift
+ * ---------------------------------
+ * Layer: Apple
+ * Description: Downloads voices file by file in a background session, resuming partial files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -97,7 +108,7 @@ public final class NeuralVoiceDownloader: NSObject, URLSessionDownloadDelegate, 
                                 continue
                             }
                             let task: URLSessionDownloadTask
-                            if let resumeData = try? Data(contentsOf: self.resumeDataFile(for: file, of: voice)) {
+                            if let resumeData = self.takeResumeData(for: file, of: voice) {
                                 task = self.session.downloadTask(withResumeData: resumeData)
                             } else {
                                 task = self.session.downloadTask(with: self.manifest.downloadAddress(of: file, in: source))
@@ -242,6 +253,18 @@ public final class NeuralVoiceDownloader: NSObject, URLSessionDownloadDelegate, 
 
     private func resumeDataFile(for file: NeuralVoiceFile, of voice: NeuralVoiceDescription) -> URL {
         installation.stagingFolder(of: voice).appendingPathComponent(file.localPath + ".resume")
+    }
+
+    /// The resume data kept for the file, which is used once: the file is deleted as it is read, so a task that fails
+    /// from it without new resume data leaves nothing stale for every Retry and Resume to fail from again, and the file is
+    /// then started again from its address. A file that is not resume data (a property list) is not used either.
+    private func takeResumeData(for file: NeuralVoiceFile, of voice: NeuralVoiceDescription) -> Data? {
+        let location = resumeDataFile(for: file, of: voice)
+        guard let resumeData = try? Data(contentsOf: location) else { return nil }
+        try? FileManager.default.removeItem(at: location) // Best effort: a copy that stays is read once more and fails as before.
+        let propertyList = try? PropertyListSerialization.propertyList(from: resumeData, options: [], format: nil) // Not one: not resume data.
+        guard propertyList is NSDictionary else { return nil }
+        return resumeData
     }
 
     private func saveResumeData(_ resumeData: Data, for file: NeuralVoiceFile, of voice: NeuralVoiceDescription) {

@@ -1,3 +1,14 @@
+/**
+ * File: BaseMapView.swift
+ * -----------------------
+ * Layer: UI
+ * Description: The Maps plugin's map view of a base, drawn with MapKit: a marker per file with coordinates.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import MapKit
 import GraphiteCore
@@ -219,10 +230,17 @@ struct BaseMapView: View {
     }
 
     private func cameraDistances(for size: CGSize) -> ClosedRange<CLLocationDistance> {
+        Self.cameraDistances(for: size, minimumZoom: options.minimumZoom, maximumZoom: options.maximumZoom)
+    }
+
+    /// The nearest camera distance is never under 50 meters, and the farthest never under the nearest:
+    /// a range whose lower end is above its upper end traps, as a high minimum zoom made it.
+    static func cameraDistances(for size: CGSize, minimumZoom: Double, maximumZoom: Double) -> ClosedRange<CLLocationDistance> {
         let viewHeight = max(Double(size.height), 100)
-        let closestDistance = Self.metersPerPoint(zoom: options.maximumZoom, latitude: 0) * viewHeight
-        let farthestDistance = Self.metersPerPoint(zoom: max(options.minimumZoom, 0), latitude: 0) * viewHeight
-        return max(closestDistance, 50)...max(farthestDistance, closestDistance * 2)
+        let closestDistance = metersPerPoint(zoom: maximumZoom, latitude: 0) * viewHeight
+        let farthestDistance = metersPerPoint(zoom: max(minimumZoom, 0), latitude: 0) * viewHeight
+        let nearestAllowedDistance = max(closestDistance, 50)
+        return nearestAllowedDistance...max(farthestDistance, nearestAllowedDistance * 2)
     }
 
     // MARK: Markers

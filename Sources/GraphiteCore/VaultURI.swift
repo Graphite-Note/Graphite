@@ -1,3 +1,14 @@
+/**
+ * File: VaultURI.swift
+ * --------------------
+ * Layer: Core
+ * Description: graphite:// and obsidian:// links that open Graphite, with Obsidian's actions and parameters.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Links that open Graphite from other apps, as Obsidian's `obsidian://` links do, with the
@@ -13,8 +24,10 @@ public struct VaultURI: Equatable, Sendable {
         case open(file: String?, path: String?)
         /// Shows the search with this query.
         case search(query: String)
-        /// Creates a note. `name` goes in the new-note folder, `file` is a vault path.
-        case new(name: String?, file: String?, content: String, opensNote: Bool, mode: NewNoteMode)
+        /// Creates a note. `name` goes in the new-note folder, `file` is a vault path, and
+        /// `path` is a full file system path inside a vault (Obsidian's, which overrides
+        /// `vault` and `file`).
+        case new(name: String?, file: String?, path: String?, content: String, opensNote: Bool, mode: NewNoteMode)
         /// Opens today's daily note.
         case daily
         /// Graphite's own: opens a note, as `open` does, and reads it aloud from the start,
@@ -64,9 +77,9 @@ public struct VaultURI: Equatable, Sendable {
         case "search":
             self.init(vault: nonEmpty("vault"), action: .search(query: parameters["query"] ?? ""))
         case "new":
-            let name = nonEmpty("name"), file = nonEmpty("file")
+            let name = nonEmpty("name"), file = nonEmpty("file"), path = nonEmpty("path")
             let mode: NewNoteMode = flag("overwrite") ? .overwrite : (flag("append") ? .append : .unique)
-            self.init(vault: nonEmpty("vault"), action: .new(name: name, file: file, content: parameters["content"] ?? "", opensNote: !flag("silent"), mode: mode))
+            self.init(vault: nonEmpty("vault"), action: .new(name: name, file: file, path: path, content: parameters["content"] ?? "", opensNote: !flag("silent"), mode: mode))
         case "daily":
             self.init(vault: nonEmpty("vault"), action: .daily)
         case "read":

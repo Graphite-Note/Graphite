@@ -1,10 +1,28 @@
+/**
+ * File: LibrarySettingsSection.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: Settings > Appearance: how files are shown, as a library or as a list.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 
 /// Library or List, in Settings › Appearance; the same switch is where files are browsed.
 struct LibrarySettingsSection: View {
     @Bindable var preferences: NotebookLibraryPreferences
-    private static let explanation = "Library shows folders and files as pictures of their pages; List shows Obsidian's file tree. "
-        + "The switch beside your files changes it too."
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// What the section says. The switch beside the files is named only where it can be seen:
+    /// a phone has it in the library's top row, so not while it lists files as a tree.
+    static func explanation(presentation: LibraryPresentation, isCompactWidth: Bool) -> String {
+        let choices = "Library shows folders and files as pictures of their pages; List shows Obsidian's file tree."
+        if !isCompactWidth { return choices + " The switch beside your files changes it too." }
+        return presentation == .library ? choices + " The switch at the top of the library changes it too." : choices
+    }
 
     var body: some View {
         Section {
@@ -14,7 +32,7 @@ struct LibrarySettingsSection: View {
         } header: {
             Text("Files")
         } footer: {
-            Text(Self.explanation)
+            Text(Self.explanation(presentation: preferences.presentation, isCompactWidth: horizontalSizeClass == .compact))
                 .formFooterAlignment()
         }
     }

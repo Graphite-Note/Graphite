@@ -1,3 +1,14 @@
+/**
+ * File: WorkspaceRecordingRecovery.swift
+ * --------------------------------------
+ * Layer: UI
+ * Description: Recordings Graphite did not finish, offered back when their vault is open.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -16,7 +27,7 @@ extension WorkspaceModel {
     func checkForUnfinishedRecordings() {
         // Another window's recording in progress is not unfinished.
         guard store != nil, !isRecordingInAnyWindow else { return }
-        recordingRecoveryOffer = recordingsToRecover().first
+        recordingRecoveryOffer = recordingsToRecover().first { unfinished in !recordingsNotOfferedAgain.contains(unfinished.id) }
     }
 
     /// Saves an unfinished recording where it was meant to go, beside anything already
@@ -30,10 +41,13 @@ extension WorkspaceModel {
             try await store.createDirectory(directory)
             let path = try await store.uniquePath(directory: directory, stem: stem, extension: unfinished.kind.fileExtension)
             try await recording.recover(unfinished, to: try path.url(in: root))
-            await refreshDirectory()
             refreshIndex(for: [path])
             await open(path)
-        } catch { errorMessage = error.localizedDescription }
+            await showInListings(path)
+        } catch {
+            errorMessage = error.localizedDescription
+            recordingsNotOfferedAgain.insert(unfinished.id)
+        }
         checkForUnfinishedRecordings()
     }
 
