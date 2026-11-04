@@ -6,8 +6,8 @@
  *              Textual can find where a line may break inside inline math.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 24/10/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 extension Math {
@@ -33,15 +33,17 @@ extension Math {
 
   /// The class of the command `\name` (`name` without its backslash), as the typesetter sets
   /// it; nil when the command is not a symbol (a fraction, an accent, a space, unknown).
+  /// Nonisolated, though `Math` is a view: it reads only the typesetter's tables, which are
+  /// constants or behind a lock, and Textual asks from any thread.
   @_spi(Textual)
-  public static func symbolClass(ofCommand name: String) -> SymbolClass? {
+  public nonisolated static func symbolClass(ofCommand name: String) -> SymbolClass? {
     AtomFactory.atom(forLatexSymbol: name).flatMap { atom in SymbolClass(atom.type) }
   }
 
   /// The class of a character written as itself in a formula; nil when it is not a symbol on
   /// its own (`^`, `{`, a space).
   @_spi(Textual)
-  public static func symbolClass(ofCharacter character: Character) -> SymbolClass? {
+  public nonisolated static func symbolClass(ofCharacter character: Character) -> SymbolClass? {
     AtomFactory.atom(forCharacter: character).flatMap { atom in SymbolClass(atom.type) }
   }
 }

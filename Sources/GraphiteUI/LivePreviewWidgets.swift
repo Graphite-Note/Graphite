@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math and embeds.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.34
- * Date: 02/11/2026
+ * Version: 0.35
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -105,7 +105,7 @@ struct LivePreviewEnvironment {
     /// Ticks or unticks the task at a place of the note; nil draws the checkboxes of rendered blocks as pictures.
     var toggleTask: (@MainActor (ReadingTasks.Location) async -> Bool)? = nil
     /// Opens a search for a tag a rendered block links; nil leaves tags as text.
-    var searchTag: ((String) -> Void)? = nil
+    var tagSearch: ReadingTagSearch? = nil
     /// Remembers what the note's text says about footnotes and callouts for every block that asks.
     var noteSnapshots: NoteReadingSnapshots? = nil
 }
@@ -284,7 +284,7 @@ private struct LivePreviewNoteReadingModifier: ViewModifier {
         let blockStart: @MainActor () -> Int? = currentLocation ?? { block.range.location }
         return content
             .environment(\.readingTaskContext, ReadingTaskContext.ofRenderedBlock(environment: environment, blockStart: blockStart))
-            .environment(\.readingTagSearch, environment.searchTag)
+            .environment(\.readingTagSearch, environment.tagSearch)
             .task(id: key) {
                 guard key != nil, let noteText = environment.noteText?() else { noteReading = nil; return }
                 let snapshot = environment.noteSnapshots?.snapshot(for: noteText) ?? NoteReadingSnapshot(noteText: noteText)
