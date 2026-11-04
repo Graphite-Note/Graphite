@@ -3,10 +3,11 @@
  * -------------------------
  * Layer: UI
  * Description: The fixed Pencil bar and its tool row: the whole row, closer and with smaller colors as the bar narrows,
- *              then a compact form that keeps every color and the ruler on the bar, then a condensed one.
+ *              then the least used controls folded into a More control a stage at a time, the writing tools, every color,
+ *              the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
+ * Version: 0.13
  * Date: 04/11/2026
  */
 
@@ -96,10 +97,12 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
 /// sizes of the ink or eraser in use; black and every favorite color, or for a highlighter its own
 /// lighter colors, from Settings › Colors, with Other Color and its plus; then Shapes, the Ruler
 /// and Add Image. The row takes the first form that fits (`PencilToolRowLayout`): the whole row,
-/// closer and with smaller colors as the bar narrows; then the compact row, which keeps the
-/// tools a person writes with, the sizes, every color and the ruler on the bar and puts the rest
-/// behind one More control; then the compact row with its colors in a strip that scrolls, only
-/// where they do not all fit even at the mini size; then fewer tools. Nothing is cut off.
+/// closer and with smaller colors as the bar narrows; then, at the mini size, the least used
+/// controls behind one More control a stage at a time (`PencilToolRowLayout.FoldStage`: the
+/// laser, text and Read Aloud tools; then the tool's choices, Other Color and Shapes; then Add
+/// Image), the tools a person writes with, the sizes, every color and the ruler staying on the
+/// bar; then that row with its colors in a strip that scrolls, only where they do not all fit
+/// even at the mini size; then fewer tools. Nothing is cut off.
 ///
 /// A second tap on the ink in use opens its options: every ink PencilKit has, any width and
 /// opacity, and adding or removing a preset. A second tap on the size in use, of an ink or
@@ -159,92 +162,78 @@ struct PencilToolRow: View {
 
     /// What the row holds, counted for the scrolling strip's width; the other forms are measured by `ViewThatFits`.
     private var layoutContents: PencilToolRowLayout.Contents {
-        let favorites = GraphitePreferences.colorPalette(decoding: storedColorPalette)
-        let highlighterColors = GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette)
-        let offersColors = Self.offersColors(toolInUse: toolbox.toolInUse)
-        return PencilToolRowLayout.Contents(
-            tools: allTools, toolInUse: toolInUse, sizeCount: hasSizes ? 3 : 0, offersColors: offersColors,
-            swatchCount: offersColors ? PencilColorButtons.swatchCount(toolbox, favorites: favorites, highlighterColors: highlighterColors) : 0,
-            showsAddColor: PencilColorButtons.showsAddColor(toolbox, favorites: favorites, highlighterColors: highlighterColors),
-            offersImages: addImage != nil)
+        PencilToolRowLayout.contents(of: toolbox, favorites: GraphitePreferences.colorPalette(decoding: storedColorPalette),
+                                     highlighterColors: GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette),
+                                     offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen, offersImages: addImage != nil)
     }
 
     @ViewBuilder private func row(_ arrangement: PencilToolRowLayout.Arrangement, holding contents: PencilToolRowLayout.Contents) -> some View {
-        switch arrangement {
-        case .whole(let density):
-            wholeRow(density).reportingLayout(.full, arrangement)
-        case .compact(let density):
-            compactRow(density, showsSwatches: contents.swatchCount > 0, visibleSwatchCount: nil).reportingLayout(.compact, arrangement)
-        case .compactWithScrollingColors(let visibleSwatchCount):
-            compactRow(.tightest, showsSwatches: true, visibleSwatchCount: visibleSwatchCount).reportingLayout(.compact, arrangement)
-        case .condensed:
+        if let placement = PencilToolRowLayout.placement(of: arrangement, holding: contents) {
+            placedRow(placement).reportingLayout(placement.hasMoreControl ? .compact : .full, arrangement)
+        } else {
             condensedRow(showing: Int.max, showsSizes: true)
         }
     }
 
-    /// Everything on the bar, nothing behind a menu: the form of the 11-inch iPad sideways (1,194 points) at the
-    /// regular density, and upright (834 points) or beside the sidebar sideways (about 874) closer.
-    private func wholeRow(_ density: Density) -> some View {
-        HStack(spacing: 0) {
-            toolButtons(allTools, density: density)
-            separator(density)
-            toolChoices
-            sizeButtons(opensWidth: true, density: density)
-            if Self.offersColors(toolInUse: toolbox.toolInUse) {
-                separator(density)
-                PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density)
-            }
-            separator(density)
-            toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: density)
-            toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: density)
-            addImageButton(density: density)
-        }
-        .padding(.horizontal, density.edgeInset)
-    }
-
-    /// The tools a person writes with, the sizes, every color (or as many as fit, in a strip that scrolls, where
-    /// `visibleSwatchCount` is given) and the ruler, with the rest behind one More control: the form of the 11-inch iPad
-    /// upright beside the sidebar (about 514 points).
-    private func compactRow(_ density: Density, showsSwatches: Bool, visibleSwatchCount: Int?) -> some View {
-        let tools = PencilToolRowLayout.compactSplit(allTools, toolInUse: toolInUse)
+    /// The row as `PencilToolRowLayout.placement` sets it: everything on the bar, the form of the 11-inch iPad sideways
+    /// (1,194 points) at the regular density and upright (834) closer; or, narrower, at the mini density with the least
+    /// used controls behind one More control, a stage at a time. The ink presets, the eraser, the lasso, the tool in
+    /// use, the sizes, every color and the ruler are on the bar in every one of these forms.
+    private func placedRow(_ placement: PencilToolRowLayout.Placement) -> some View {
+        let density = placement.density
         return HStack(spacing: 0) {
-            toolButtons(tools.shown, density: density)
-            if hasSizes {
+            toolButtons(placement.shownTools, density: density)
+            if placement.showsToolChoices || placement.showsSizes {
                 separator(density)
-                sizeButtons(opensWidth: true, density: density)
+                if placement.showsToolChoices { toolChoices }
+                if placement.showsSizes { sizeButtons(opensWidth: true, density: density) }
             }
-            if showsSwatches {
+            if placement.showsSwatches || placement.showsOtherColor {
                 separator(density)
-                if let visibleSwatchCount {
-                    PencilColorStrip(toolbox: toolbox, rowHeight: rowHeight, visibleSwatchCount: visibleSwatchCount)
-                } else {
-                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density, controls: .swatches)
-                }
+                colorControls(placement)
             }
             separator(density)
+            if placement.showsShapes { shapesToggle(density: density) }
             toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: density)
-            moreToolsButton(foldedTools: tools.folded, density: density)
+            if placement.showsAddImage { addImageButton(density: density) }
+            if placement.hasMoreControl { moreToolsButton(placement) }
         }
         .padding(.horizontal, density.edgeInset)
     }
 
-    /// The compact row's More control: the tools used now and then (the laser pointer, the text tool, the Read Aloud
-    /// pen), the tool's own choices (the eraser's kind, the lasso's type), Other Color with its plus, Shapes and Add Image.
-    private func moreToolsButton(foldedTools: [PencilToolRowLayout.Tool], density: Density) -> some View {
-        PencilBarMoreButton(accessibilityLabel: "More Tools", width: density.toolPitch, rowHeight: rowHeight) { isPresented in
+    /// The colors the form keeps on the bar: every one, or a strip of whole colors that scrolls, with Other Color and
+    /// its plus where the form keeps them.
+    @ViewBuilder private func colorControls(_ placement: PencilToolRowLayout.Placement) -> some View {
+        if let scrollingSwatchCount = placement.scrollingSwatchCount {
+            PencilColorStrip(toolbox: toolbox, rowHeight: rowHeight, visibleSwatchCount: scrollingSwatchCount)
+        } else {
+            let controls: PencilColorControls = !placement.showsSwatches ? .otherColorAndAdd : placement.showsOtherColor ? .all : .swatches
+            PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: placement.density, controls: controls)
+        }
+    }
+
+    /// The folded row's More control: what the form's fold stage moved off the bar, in the bar's order: the tools used
+    /// now and then (the laser pointer, the text tool, the Read Aloud pen), the tool's own choices (the eraser's kind,
+    /// the lasso's type), Other Color with its plus, Shapes, and Add Image.
+    private func moreToolsButton(_ placement: PencilToolRowLayout.Placement) -> some View {
+        PencilBarMoreButton(accessibilityLabel: "More Tools", width: placement.density.toolPitch, rowHeight: rowHeight) { isPresented in
             Image(systemName: drawsShapes || isPresented ? "ellipsis.circle.fill" : "ellipsis.circle")
                 .font(.system(size: 17))
         } content: {
-            if !foldedTools.isEmpty { toolButtons(foldedTools, density: .regular) }
-            HStack(spacing: 2) { toolChoices }
+            if !placement.foldedTools.isEmpty { toolButtons(placement.foldedTools, density: .regular) }
+            if !placement.showsToolChoices { HStack(spacing: 2) { toolChoices } }
             HStack(spacing: 2) {
-                if Self.offersColors(toolInUse: toolbox.toolInUse) {
+                if !placement.showsOtherColor, Self.offersColors(toolInUse: toolbox.toolInUse) {
                     PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColorAndAdd)
                 }
-                toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: .regular)
-                addImageButton(density: .regular)
+                if !placement.showsShapes { shapesToggle(density: .regular) }
+                if !placement.showsAddImage { addImageButton(density: .regular) }
             }
         }
+    }
+
+    private func shapesToggle(density: Density) -> some View {
+        toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: density)
     }
 
     /// The tools, the sizes of the ink or eraser in use, and one control for the tool's other
@@ -270,17 +259,8 @@ struct PencilToolRow: View {
         PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen)
     }
 
-    /// The tool in use as a tool of the row; nil for one the row does not have.
-    private var toolInUse: PencilToolRowLayout.Tool? {
-        switch toolbox.toolInUse {
-        case .ink: .preset(index: toolbox.presetInUseIndex)
-        case .eraser: .eraser
-        case .lasso: .lasso
-        case .laser: .laser
-        case .text: .text
-        case .readAloud: .readAloud
-        }
-    }
+    /// The tool in use as a tool of the row.
+    private var toolInUse: PencilToolRowLayout.Tool? { PencilToolRowLayout.toolInUse(of: toolbox) }
 
     /// The tool in use's own choices apart from its sizes (`PencilToolChoices`).
     private var toolChoices: some View {
@@ -373,7 +353,7 @@ struct PencilToolRow: View {
                 HStack(spacing: 2) { PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight) }
             }
             HStack(spacing: 2) {
-                toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: .regular)
+                shapesToggle(density: .regular)
                 toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: .regular)
                 addImageButton(density: .regular)
             }
@@ -404,7 +384,7 @@ struct PencilToolRow: View {
 
     /// Whether the colors follow the tool's own controls: not for the laser pointer, which
     /// points in its own red, nor for the Read Aloud pen or the text tool, which have their own.
-    static func offersColors(toolInUse: PencilToolKind) -> Bool { toolInUse != .laser && toolInUse != .readAloud && toolInUse != .text }
+    static func offersColors(toolInUse: PencilToolKind) -> Bool { PencilToolRowLayout.offersColors(toolInUse: toolInUse) }
 
     /// A hairline between two sections, as wide as the density's room for it.
     private func separator(_ density: Density) -> some View {
@@ -462,8 +442,9 @@ struct PencilToolRow: View {
 }
 
 /// Which form of the Pencil tool row is shown: the whole row, at one of three densities; the
-/// compact one, with every color and the ruler on the bar and the rest behind one More control,
-/// its colors scrolling only where they do not all fit; or the condensed one, with some tools,
+/// compact one, folded at one of its stages, with every color and the ruler on the bar and the
+/// rest behind one More control, its colors scrolling only where they do not all fit; or the
+/// condensed one, with some tools,
 /// the colors and the rest behind one control, in a window too narrow even for that.
 enum PencilToolRowForm: Equatable {
     case full, compact, condensed
