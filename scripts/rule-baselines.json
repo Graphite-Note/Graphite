@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "comment": "Counts of what the rules forbid; they only go down. Lower them with `python3 scripts/check-rules.py --record`. See Docs/solid/rewrite-foundations.md section 12.2.",
-  "recordedOn": "2026-11-03",
-  "recordedAtRevision": "9df7c756 plus the working tree",
+  "recordedOn": "2026-11-04",
+  "recordedAtRevision": "fb9d88b7 plus the working tree",
   "gates": {
     "ambient-time-and-randomness": 63,
     "app-storage-literals": 6,
@@ -10,7 +10,7 @@
     "audible-output-in-tests": 0,
     "blocking-sleep-in-tests": 7,
     "concurrency-escapes-unlisted": 0,
-    "concurrency-escapes-without-comment": 42,
+    "concurrency-escapes-without-comment": 41,
     "constant-pattern-try": 6,
     "core-io": 10,
     "default-over-own-enum": 86,
