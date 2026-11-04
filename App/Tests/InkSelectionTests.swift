@@ -6,7 +6,7 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
+ * Version: 0.17
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -162,7 +162,10 @@ final class InkSelectionTests: XCTestCase {
     /// exactly, with no "changed in a way this step does not know", through the real canvas and UIKit's touches.
     func testUndoAndRedoWorkStepByStepAfterTheLassoAndTheHighlighter() async throws {
         XCTAssertNil(SynthesizedTouches.unavailableReason)
-        XCTAssertFalse(EvenHighlighterPreference.isOn(), "The highlighter as Apple Notes' draws it, the default")
+        // The highlighter as Apple Notes' draws it, the default, whatever the device has saved: the owner's iPad has the
+        // even one, and this test ran with it on 2026-11-04. Its saved value is put back.
+        let restoreEvenHighlighter = HostedDevicePreferences.set(false, forKey: EvenHighlighterPreference.key)
+        defer { restoreEvenHighlighter() }
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let (session, canvas, page) = try await openPageWithCanvas()
@@ -435,8 +438,8 @@ final class InkSelectionTests: XCTestCase {
     }
 
     func testThePalettesSwitchPutsCanvasesIntoSelectingAndAToolChoiceEndsIt() async throws {
-        UserDefaults.standard.set(PencilToolbarStyle.floating.rawValue, forKey: PencilToolbarStyle.preferenceKey)
-        defer { UserDefaults.standard.removeObject(forKey: PencilToolbarStyle.preferenceKey) }
+        let restoreToolbarStyle = HostedDevicePreferences.set(PencilToolbarStyle.floating.rawValue, forKey: PencilToolbarStyle.preferenceKey)
+        defer { restoreToolbarStyle() }
         let (session, canvas, _) = try await openPageWithCanvas()
         XCTAssertTrue(canvas.followsToolPicker)
         XCTAssertFalse(canvas.selectsInk)

@@ -5,8 +5,8 @@
  * Description: Undo and redo across tab switches, tab moves, renames and reading view, in the hosted workspace.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 02/11/2026
+ * Version: 0.11
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -462,6 +462,10 @@ final class EditingContinuityTests: XCTestCase {
         try await waitUntil { (try? self.font(at: source.range(of: "Body").location, in: editor).familyName) == "Avenir Next" }
         XCTAssertEqual(editor.selectedRange, cursor, "Restyling keeps the cursor where it was.")
         XCTAssertTrue(editor.isFirstResponder)
+        // The restyled text places its blocks in a layout pass of its own. Looked for at once, the block was not found on
+        // the owner's iPad (2026-11-04), whose software keyboard comes up as the editor begins editing: it is looked for
+        // once a block is placed again, and must still be the same view.
+        try await waitUntil("the math block is placed again") { self.renderedBlockViews(in: editor).count == 1 }
         XCTAssertTrue(renderedBlockViews(in: editor).contains { view in view === blockViewBefore }, "The rendered math block is kept, not built again.")
         await workspace.saveVaultAppearanceNow()
         let written = try String(contentsOf: try XCTUnwrap(vaultDirectory).appendingPathComponent(".obsidian/appearance.json"), encoding: .utf8)
@@ -491,7 +495,10 @@ final class EditingContinuityTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(300))
             return measurement.width
         }
-        let words = "Illustrated quietly"
+        // Georgia's figures are old style and narrow. Words in letters set as wide in Georgia as in the system font when
+        // the device has Bold Text on, which makes the system font semibold: "Illustrated quietly" differed by 1.14 points
+        // on the owner's iPad (2026-11-04), as Georgia and the semibold system font do on a Mac.
+        let words = "pages 1234567890 1234567890"
         let georgiaWidth = (words as NSString).size(withAttributes: [.font: typography.textFont(ofSize: size)]).width
         let systemWidth = (words as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: size)]).width
         XCTAssertGreaterThan(abs(georgiaWidth - systemWidth), 4, "The two fonts set these words at clearly different widths.")

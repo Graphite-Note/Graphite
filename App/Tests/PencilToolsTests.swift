@@ -5,7 +5,7 @@
  * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
  *
  * Authors: Bahey Shalash
- * Version: 0.20
+ * Version: 0.21
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -25,10 +25,15 @@ import GraphiteIndex
 final class PencilToolsTests: XCTestCase {
     private var windows: [UIWindow] = []
     private var temporaryLocations: [URL] = []
-    private var savedShapesPreference: Any?
+    /// The preferences these tests change, saved before each test and put back after it, also when it stops early:
+    /// on a person's iPad the hosted tests run in their own app. The first run on the owner's iPad (2026-11-04) left
+    /// the even highlighter and holding for a shape removed from its settings.
+    private static let changedPreferenceKeys = [PDFAnnotationPreferenceKey.drawsShapes, EvenHighlighterPreference.key, StrokeHoldPreference.key,
+                                                PencilToolbarStyle.preferenceKey, "GraphiteDrawsOnPencilDoubleTap"]
+    private var restoreChangedPreferences: (() -> Void)?
 
     override func setUp() async throws {
-        savedShapesPreference = UserDefaults.standard.object(forKey: PDFAnnotationPreferenceKey.drawsShapes)
+        restoreChangedPreferences = HostedDevicePreferences.saving(Self.changedPreferenceKeys)
     }
 
     override func tearDown() async throws {
@@ -36,10 +41,8 @@ final class PencilToolsTests: XCTestCase {
         windows = []
         for location in temporaryLocations { try? FileManager.default.removeItem(at: location) }
         temporaryLocations = []
-        if let savedShapesPreference { UserDefaults.standard.set(savedShapesPreference, forKey: PDFAnnotationPreferenceKey.drawsShapes) }
-        else { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsShapes) }
-        // A test that stops early must not leave double-tap turned off on the simulator.
-        UserDefaults.standard.removeObject(forKey: "GraphiteDrawsOnPencilDoubleTap")
+        restoreChangedPreferences?()
+        restoreChangedPreferences = nil
     }
 
     // MARK: Lasso
@@ -424,6 +427,9 @@ final class PencilToolsTests: XCTestCase {
         toolbox.useWidthChoice(at: 2)
         let controller = try host(AnyView(PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
+        // The dot is counted as dark pixels on a light bar. In dark appearance the bar is dark and the dot light, and
+        // both waits below timed out on the owner's iPad on 2026-11-04, whatever the dot did.
+        try XCTUnwrap(controller.view.window).overrideUserInterfaceStyle = .light
         func darkPixelCount() throws -> Int { try countOfPixels(in: controller) { red, green, blue in red < 80 && green < 80 && blue < 80 } }
         try await waitUntil { (try? darkPixelCount()) ?? 0 > 0 }
         try await Task.sleep(for: .milliseconds(200))
@@ -472,8 +478,11 @@ final class PencilToolsTests: XCTestCase {
         }
         UserDefaults.standard.removeObject(forKey: paletteKey)
         UserDefaults.standard.set(PencilToolbarStyle.fixed.rawValue, forKey: PencilToolbarStyle.preferenceKey)
-        let penIndex = try XCTUnwrap(toolbox.presets.firstIndex { preset in preset.ink == .pen })
-        toolbox.usePreset(at: penIndex)
+        // The device's own presets: the owner's iPad had no pen among them on 2026-11-04. Any ink but the
+        // highlighter, whose bar shows the highlighter colors instead, shows the favorite colors.
+        let inkIndex = try XCTUnwrap(toolbox.presets.firstIndex { preset in preset.ink != .highlighter }, "An ink that shows the favorite colors")
+        toolbox.usePreset(at: inkIndex)
+        print("PENCIL-BAR favorite colors: presets \(toolbox.presets.map(\.ink.rawValue)), toolbar style \(String(describing: savedStyle))")
 
         let location = FileManager.default.temporaryDirectory.appendingPathComponent("FavoriteColors-\(UUID().uuidString).pdf")
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank)).write(to: location)
@@ -662,7 +671,7 @@ final class PencilToolsTests: XCTestCase {
 
         let highlight = try XCTUnwrap(canvas.drawing.strokes.last)
         XCTAssertFalse(EvenHighlighter.isInvisible(highlight.ink), "The stroke kept takes the highlighter's ink.")
-        XCTAssertEqual(highlight.ink.color.cgColor.alpha, 1, accuracy: 0.001)
+        XCTAssertEqual(highlight.ink.color.cgColor.alpha, EvenHighlighter.colorAlphaFraction, accuracy: 0.001, "Translucent, so text under it stays readable")
         let inked = { (pixel: (Int, Int, Int)) in pixel.2 < 200 }
         let inkedWhileDrawing = whileDrawing.filter(inked).count, inkedAfterTheLift = afterTheLift.filter(inked).count
         XCTAssertGreaterThan(inkedWhileDrawing, 1000)

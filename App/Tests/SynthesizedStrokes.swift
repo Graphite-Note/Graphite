@@ -6,7 +6,7 @@
  *              canvas's own drawing recognizer of stand-in touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -43,11 +43,13 @@ enum SynthesizedStrokes {
         }
     }
 
-    /// Lets a finger draw on a PDF page, which reads the standard preference, until `restore` is called.
+    /// Lets a finger draw on a PDF page, which reads the standard preference, until `restore` is called,
+    /// which puts back what the device had: on a person's iPad the hosted tests run in their own app.
     static func letFingersDraw() -> () -> Void {
+        let restore = HostedDevicePreferences.saving([PDFAnnotationPreferenceKey.drawsWithFinger])
         let preference = AppStorage(wrappedValue: false, PDFAnnotationPreferenceKey.drawsWithFinger)
         preference.wrappedValue = true
-        return { preference.wrappedValue = false }
+        return restore
     }
 
     /// One stroke through points in the window's coordinates. Returns when the canvas has
@@ -87,7 +89,12 @@ enum SynthesizedStrokes {
     }
 
     /// How wide a stroke along the rows draws in the drawing's points: the ink crossed by the
-    /// columns of its picture, on average, each pixel counted by how opaque it is.
+    /// columns of its picture, on average, each row counted by how opaque it is against the
+    /// stroke's most opaque row. Rows are averaged over many columns of the stroke's middle half
+    /// before the most opaque one is taken: a pencil's grain makes any one pixel vary widely, and
+    /// counting against the single most opaque pixel, as until 2026-11-04, made the same pencil
+    /// 2.4 measure 0.57 points at zoom 1 and 0.71 at 1.5, 2 and 3 on an iPad, its stored sizes all
+    /// 1.2. A stroke drawn lighter or darker all over keeps its width in this measure.
     static func renderedWidth(of stroke: PKStroke, pixelsPerPoint: CGFloat = 8) -> CGFloat? {
         let region = stroke.renderBounds.insetBy(dx: -4, dy: -4)
         guard let picture = PKDrawing(strokes: [stroke]).image(from: region, scale: pixelsPerPoint).cgImage,
@@ -96,16 +103,13 @@ enum SynthesizedStrokes {
         guard let context = CGContext(data: &bytes, width: picture.width, height: picture.height, bitsPerComponent: 8, bytesPerRow: picture.width * 4,
                                       space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         context.draw(picture, in: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))
-        // Many columns of the stroke's middle half: a pencil's grain makes any one of them vary widely.
         let columns = Array(stride(from: picture.width / 4, to: picture.width * 3 / 4, by: max(picture.width / 80, 1)))
-        let strongest = columns.lazy.flatMap { column in (0..<picture.height).map { row in bytes[(row * picture.width + column) * 4 + 3] } }.max() ?? 0
-        guard strongest > 0, !columns.isEmpty else { return 0 }
-        let opaqueTotal = columns.reduce(0.0) { total, column in
-            total + (0..<picture.height).reduce(0.0) { columnTotal, row in
-                columnTotal + Double(bytes[(row * picture.width + column) * 4 + 3]) / Double(strongest)
-            }
-        } / Double(columns.count)
-        return CGFloat(opaqueTotal) / pixelsPerPoint
+        guard !columns.isEmpty else { return 0 }
+        let rowOpacities = (0..<picture.height).map { row in
+            columns.reduce(0.0) { total, column in total + Double(bytes[(row * picture.width + column) * 4 + 3]) } / Double(columns.count)
+        }
+        guard let mostOpaqueRow = rowOpacities.max(), mostOpaqueRow > 0 else { return 0 }
+        return CGFloat(rowOpacities.reduce(0, +) / mostOpaqueRow) / pixelsPerPoint
     }
 }
 

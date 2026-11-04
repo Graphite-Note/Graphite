@@ -6,7 +6,7 @@
  *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 
@@ -214,8 +214,21 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         try await waitUntil("the navigation bar shows without the keyboard") { visibleNavigationBarHeight() > 20 }
         attachScreenshot(of: window, named: "Phone held sideways, no keyboard")
 
+        // A device has a software keyboard, which a simulator with a hardware keyboard never shows: one still leaving
+        // the text view of an earlier test sends its hide after the show posted here, and the bar comes back as it
+        // should. The owner's iPad timed out here on 2026-11-04. The show is posted once the keyboard is quiet.
+        let keyboardNotifications = KeyboardNotificationCounter()
+        defer { keyboardNotifications.stop() }
+        for shownWindow in try scene.windows { shownWindow.endEditing(true) }
+        try await waitUntilSettled("the device's keyboard is quiet", quietMilliseconds: 1_000) { CGFloat(keyboardNotifications.count) }
+        let notificationsBeforeTheShow = keyboardNotifications.count
         NotificationCenter.default.post(name: UIResponder.keyboardWillShowNotification, object: nil)
-        try await waitUntil("the navigation bar gives way while the keyboard is up") { visibleNavigationBarHeight() < 4 }
+        do {
+            try await waitUntil("the navigation bar gives way while the keyboard is up") { visibleNavigationBarHeight() < 4 }
+        } catch {
+            print("KEYBOARD notifications after the posted show: \(keyboardNotifications.count - notificationsBeforeTheShow - 1) from the device")
+            throw error
+        }
         attachScreenshot(of: window, named: "Phone held sideways, keyboard up")
 
         NotificationCenter.default.post(name: UIResponder.keyboardWillHideNotification, object: nil)
@@ -566,6 +579,26 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         for icon in icons {
             XCTAssertGreaterThanOrEqual(darkContrast(of: icon.tintColor, against: platter), 3, "A menu icon reads: \(icon.image?.description ?? "")")
         }
+    }
+}
+
+/// Counts the keyboard's notifications, which a device's software keyboard sends as it comes and goes, until `stop`.
+@MainActor
+private final class KeyboardNotificationCounter {
+    private(set) var count = 0
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        observers = [UIResponder.keyboardWillShowNotification, UIResponder.keyboardWillHideNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.count += 1 }
+            }
+        }
+    }
+
+    func stop() {
+        for observer in observers { NotificationCenter.default.removeObserver(observer) }
+        observers = []
     }
 }
 #endif

@@ -6,7 +6,7 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
+ * Version: 0.7
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -106,6 +106,11 @@ final class InkWidthAtZoomTests: XCTestCase {
     /// the saved file is read back. PencilKit stores a stroke at the tool's width whatever its
     /// canvas's zoom, so a tool scaled by the zoom landed up to 1.75 times too thick in this
     /// measure and 2.64 times on the simulator's screen.
+    ///
+    /// The touch moves as fast on the screen at every zoom, 240 points of the screen in 30 moves,
+    /// as a person's hand does: the speed PencilKit's pen thickens with (see `linesShownOnScreen`).
+    /// A pencil's grain varies from stroke to stroke, which `SynthesizedStrokes.renderedWidth`
+    /// averages out.
     func testTheSamePenLandsEquallyWideOnThePageAtEveryZoomAndInTheSavedFile() async throws {
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
@@ -419,6 +424,16 @@ final class InkWidthAtZoomTests: XCTestCase {
             let inkOnPage = CGRect(x: 280, y: page.bounds(for: .cropBox).maxY - 300, width: 40, height: 1)
             pdfView.go(to: inkOnPage, on: page)
             try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+            // What is measured is the scale it is said to be: the canvas takes a new zoom only once no stroke is under
+            // way. On the iPad on 2026-11-04 a real Apple Pencil touched the page while this test read it (a pen stroke
+            // of 202 points, the palette's, at 20:14:17), the canvas stayed at zoom 2 under the PDF's 3.3, and the ink
+            // measured 3.47 rows soft where 2.67 were allowed.
+            if let scale {
+                try await waitUntil("the canvas draws at \(scale)") { abs(canvas.zoomScale - scale) < 0.02 }
+            } else {
+                try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+            }
+            XCTAssertEqual(canvas.drawing.strokes.count, 1, "Only the measured line is on the page at zoom \(zoom), nothing drawn by a touch meanwhile")
             let point = canvas.convert(CGPoint(x: 300 * canvas.zoomScale, y: 300 * canvas.zoomScale), to: window)
             return try softEdgeRows(in: window, atWindowPoint: point)
         }
