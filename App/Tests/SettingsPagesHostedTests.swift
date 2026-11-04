@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Hosted tests of the Settings pages on the iPad and the iPhone simulators: labels above their fields,
  *              colors that can be removed, a page that starts at its first screen, the font size slider, questions
- *              before anything is lost, the Pencil sections of the iPad only, pages without a vault and large text.
+ *              before anything is lost, the Pencil sections of the iPad only, pages without a vault and large text, and
+ *              the phone's layout in a compact width.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -27,6 +28,11 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
 
     private func settings(of workspace: WorkspaceModel, dynamicTypeSize: DynamicTypeSize = .large) throws -> UIHostingController<AnyView> {
         try host(SettingsView(workspace: workspace) {}.dynamicTypeSize(dynamicTypeSize))
+    }
+
+    /// Settings in a window as wide as an iPhone 17 Pro, at a compact width: the layout a phone gets.
+    private func phoneWidthSettings(of workspace: WorkspaceModel) throws -> UIHostingController<AnyView> {
+        try host(SettingsView(workspace: workspace) {}, size: CGSize(width: 402, height: 874), horizontalSizeClass: .compact)
     }
 
     /// Picks the page of the list as a finger does.
@@ -70,6 +76,54 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
             let labelWidth = (title as NSString).size(withAttributes: [.font: UIFont.preferredFont(forTextStyle: .body)]).width
             let fieldMinX = folderField.convert(folderField.bounds, to: nil).minX
             XCTAssertGreaterThanOrEqual(fieldMinX - page.convert(page.bounds, to: nil).minX, labelWidth, "Beside the whole label where the row is wide.")
+        }
+    }
+
+    /// HUNT-239 at a phone's width on any simulator: the field's label is above it, as wide as the row.
+    func testALabelSitsAboveItsFieldInACompactWidth() async throws {
+        let workspace = device.makeWorkspace()
+        workspace.setCorePluginEnabled(.templates, true)
+        try await workspace.openFolderAsVault(try makeVault())
+        let controller = try phoneWidthSettings(of: workspace)
+        try await open("Templates", in: controller)
+
+        var field: UITextField?
+        try await waitUntil("the folder field", timeoutSeconds: 10) {
+            field = self.textFields(in: controller.view).first { textField in textField.placeholder == "Templates" }
+            return field != nil
+        }
+        let folderField = try XCTUnwrap(field)
+        let label = try await element(in: controller, "the label of the folder field, an element of its own above it") { object in
+            object.accessibilityLabel == "Template Folder Location" && !(object is UITextField)
+        }
+        let fieldFrame = folderField.accessibilityFrame
+        let labelFrame = label.accessibilityFrame
+        XCTAssertLessThanOrEqual(labelFrame.maxY, fieldFrame.minY + 2, "At a compact width the label is above the field, so it is not cut to “Template folder loc…”.")
+        XCTAssertGreaterThan(labelFrame.width, (("Template Folder Location" as NSString).size(withAttributes: [.font: UIFont.preferredFont(forTextStyle: .body)]).width) - 2,
+                             "The whole label shows.")
+        XCTAssertGreaterThan(fieldFrame.width, 250, "The field has the row's width under it.")
+    }
+
+    /// HUNT-248 at a phone's width: Core Plugins names the Links and Outline sheet, not a right sidebar a phone does not
+    /// have, and Files and Links has a Files, a Links and an Attachments section.
+    func testACompactWidthNamesTheLinksSheetAndFilesAndLinksHasItsThreeSections() async throws {
+        let workspace = device.makeWorkspace()
+        try await workspace.openFolderAsVault(try makeVault())
+        let corePlugins = try phoneWidthSettings(of: workspace)
+        try await open("Core Plugins", in: corePlugins)
+        _ = try await elementScrolling(in: corePlugins, "a summary naming the Links and Outline sheet") { object in
+            self.texts(of: object).contains { text in text.contains("in the Links and Outline sheet") }
+        }
+        try await scrollToEnd(in: corePlugins)
+        XCTAssertNil(find(in: corePlugins) { object in self.texts(of: object).contains { text in text.contains("right sidebar") } },
+                     "A phone has no right sidebar to name.")
+
+        let filesAndLinks = try phoneWidthSettings(of: workspace)
+        try await open("Files and Links", in: filesAndLinks)
+        for header in ["Files", "Links", "Attachments"] {
+            _ = try await elementScrolling(in: filesAndLinks, "the \(header) section") { object in
+                object.accessibilityLabel == header
+            }
         }
     }
 

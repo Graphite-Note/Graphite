@@ -1,3 +1,15 @@
+/**
+ * File: SettingsPagesTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: What Settings opens on, what its wording says on each device, and what changing an option does to the
+ *              vault and the device.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
@@ -57,6 +69,22 @@ final class SettingsPagesTests: XCTestCase {
         XCTAssertTrue(LibrarySettingsSection.explanation(presentation: .library, isCompactWidth: true).contains("top of the library"))
         XCTAssertTrue(LibrarySettingsSection.explanation(presentation: .list, isCompactWidth: false).contains("switch beside your files"))
         XCTAssertTrue(LibrarySettingsSection.explanation(presentation: .library, isCompactWidth: false).contains("switch beside your files"))
+    }
+
+    // MARK: HUNT-248, HUNT-255: what each device is told and offered
+
+    func testAPhoneIsNotToldAboutKeyboardShortcutsForTheFontSize() {
+        XCTAssertEqual(SettingsDevice.phone.quickFontSizeAdjustmentSummary, "Pinch a note with two fingers.")
+        XCTAssertTrue(SettingsDevice.pad.quickFontSizeAdjustmentSummary.contains("⌘+"), "An iPad has a keyboard.")
+        XCTAssertTrue(SettingsDevice.mac.quickFontSizeAdjustmentSummary.contains("⌘0"))
+        XCTAssertFalse(SettingsDevice.phone.quickFontSizeAdjustmentSummary.contains("⌘"))
+    }
+
+    func testOnlyAnIPadIsOfferedThePencilsOptions() {
+        XCTAssertTrue(SettingsDevice.pad.writesWithApplePencil)
+        XCTAssertFalse(SettingsDevice.phone.writesWithApplePencil, "Palm Rejection, Hold to Make a Shape and Pencil Tools do nothing on a phone.")
+        XCTAssertFalse(SettingsDevice.mac.writesWithApplePencil)
+        XCTAssertEqual(SettingsDevice.current, .mac, "The package tests run on the Mac.")
     }
 
     func testCorePluginSummariesNameTheLinksSheetWhereThereIsNoRightSidebar() {

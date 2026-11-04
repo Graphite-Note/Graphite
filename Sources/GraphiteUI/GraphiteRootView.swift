@@ -839,10 +839,7 @@ private struct CreateDocumentSheet: View {
     }
 
     /// An empty name is allowed: the file is then called "Untitled", as in Obsidian.
-    private var chosenName: String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? kind.untitledName : trimmedName
-    }
+    private var chosenName: String { kind.chosenName(typed: name) }
 
     private var nameProblem: String? {
         FileNameRules.problem(with: chosenName, isNote: kind == .note)
