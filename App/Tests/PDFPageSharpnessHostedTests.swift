@@ -7,7 +7,7 @@
  *              zoomed in, and prints what it measured.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -35,10 +35,13 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
     private static let zoomsOfFit: [CGFloat] = [1, 2, 4]
 
     private var temporaryLocations: [URL] = []
+    /// The session of the PDF `show` showed last.
+    private var shownSession: PDFSession?
 
     override func tearDown() async throws {
         for location in temporaryLocations { try? FileManager.default.removeItem(at: location) } // A file left in the temporary folder harms nothing.
         temporaryLocations = []
+        shownSession = nil
     }
 
     // MARK: The page's own text
@@ -187,6 +190,46 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
         return reds.reduce(0) { softness, red in softness + 2 * min(red - darkest, lightest - red) / (lightest - darkest) }
     }
 
+    // MARK: A text box with emoji
+
+    /// A text box with emoji is a picture of its own over the page. It was made for a zoom of 3
+    /// at most and magnified past that; now it is drawn at the zoom times the screen's scale once
+    /// the zoom settles, within its 16 megapixels.
+    func testATextBoxWithEmojiIsDrawnAtTheZoomsResolutionOnceTheZoomSettles() async throws {
+        let location = try makeHostedBlankNotebook(named: "EmojiTextBox")
+        temporaryLocations.append(location)
+        let (pdfView, window) = try await show(location)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let page = try XCTUnwrap(pdfView.document?.page(at: 0))
+        let coordinator = try XCTUnwrap(pdfView.annotationCoordinator)
+        try await waitUntil("the page's canvas") { coordinator.editingCanvas(for: page)?.overlayView != nil }
+        let canvas = try XCTUnwrap(coordinator.editingCanvas(for: page))
+        let overlay = try XCTUnwrap(canvas.overlayView)
+        let cropBox = page.bounds(for: .cropBox)
+        let box = PDFTextBox(name: "emoji", runs: [PDFTextRun(text: "Rank 0 \u{1F600}", attributes: .plain)],
+                             origin: CGPoint(x: cropBox.minX + 100, y: cropBox.maxY - 200), width: 220, height: 40)
+        let session = try XCTUnwrap(shownSession)
+        try session.changeTextBox(from: nil, to: box, on: PDFHistoryPage(page), actionName: "Add Text Box")
+        func pictureLayer() -> PDFTextBoxPictureLayer? {
+            func layers(under layer: CALayer) -> [CALayer] { [layer] + (layer.sublayers ?? []).flatMap(layers(under:)) }
+            return layers(under: overlay.textBoxesView.layer).lazy.compactMap { layer in layer as? PDFTextBoxPictureLayer }.first
+        }
+        let screenScale = window.traitCollection.displayScale
+        pdfView.autoScales = false
+        for zoom: CGFloat in [1, 2, 5, 8] where zoom <= pdfView.maxScaleFactor {
+            pdfView.scaleFactor = zoom
+            try await waitUntil("the canvas draws at \(zoom)") { abs(canvas.zoomScale - zoom) < 0.02 }
+            let layer = try XCTUnwrap(pictureLayer(), "The box with emoji is drawn as a picture")
+            let wanted = PDFTextBoxPictureLayer.boundedScale(forPixelsPerPoint: zoom * screenScale, size: layer.bounds.size)
+            let before = PDFTextBoxPictureLayer.boundedScale(forPixelsPerPoint: screenScale * 3, size: layer.bounds.size)
+            try await waitUntil("the box is drawn at the zoom's resolution") { abs(layer.contentsScale - wanted) <= wanted * 0.02 }
+            let pixelCount = layer.bounds.width * layer.bounds.height * layer.contentsScale * layer.contentsScale
+            print("PDF-SHARP emoji text box at zoom \(format(zoom)): screen \(format(zoom * screenScale)) px/pt, drawn at \(format(layer.contentsScale)) px/pt (before HUNT-320 \(format(before))), \(format(pixelCount / 1_000_000)) megapixels")
+            XCTAssertGreaterThanOrEqual(layer.contentsScale, min(zoom * screenScale, wanted) * 0.98, "As many pixels as the screen shows at \(zoom)")
+            XCTAssertLessThanOrEqual(pixelCount, PDFTextBoxPictureLayer.maximumPixelCount * 1.01, "Within the box's bound at \(zoom)")
+        }
+    }
+
     // MARK: Making and showing the PDF
 
     /// A page of text drawn into the PDF itself, and a picture of hard black and white stripes
@@ -233,6 +276,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
     /// The PDF in the PDF pane, in a window filling the screen, as the owner reads it.
     private func show(_ location: URL) async throws -> (GraphitePDFDisplayView, UIWindow) {
         let session = try await PDFSession.open(location)
+        shownSession = session
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)

@@ -6,8 +6,8 @@
  *              over the ink in the file (`PDFPageTextBoxes`).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -36,6 +36,23 @@ final class PDFPageTextBoxesView: UIView {
     /// The boxes in the page's points, scaled to the view's size in `layoutSubviews`: PDFKit
     /// may make a page's overlay another size than the page.
     private let pageLayer = CALayer()
+    /// The screen's pixels per page point the page is seen at (the zoom times the screen's
+    /// scale), set by the page's overlay when the zoom settles; 0 until then, when the
+    /// screen's own scale is taken. A box with emoji is drawn as a picture at that resolution.
+    var screenPixelsPerPagePoint: CGFloat = 0 {
+        didSet {
+            guard screenPixelsPerPagePoint != oldValue else { return }
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            for pictureLayer in (pageLayer.sublayers ?? []).compactMap({ sublayer in sublayer as? PDFTextBoxPictureLayer }) {
+                pictureLayer.draw(atPixelsPerPoint: pictureResolution)
+            }
+            CATransaction.commit()
+        }
+    }
+
+    /// The pixels per page point a box's picture is drawn at.
+    private var pictureResolution: CGFloat { screenPixelsPerPagePoint > 0 ? screenPixelsPerPagePoint : traitCollection.displayScale }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -82,7 +99,8 @@ final class PDFPageTextBoxesView: UIView {
         pageLayer.sublayers?.forEach { sublayer in sublayer.removeFromSuperlayer() }
         let pageToView = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: -cropBox.minX, ty: cropBox.maxY)
         for box in shownBoxes where box.name != hiddenBoxName && !carriedBoxNames.contains(box.name) {
-            pageLayer.addSublayer(Self.boxLayer(for: box, pageToView: pageToView, displayScale: traitCollection.displayScale))
+            pageLayer.addSublayer(Self.boxLayer(for: box, pageToView: pageToView, displayScale: traitCollection.displayScale,
+                                                pictureResolution: pictureResolution))
         }
         CATransaction.commit()
         setNeedsLayout()
@@ -90,9 +108,9 @@ final class PDFPageTextBoxesView: UIView {
 
     /// One box: its fill, its text's outlines in each of its colors, and its border; or, for a
     /// box with emoji, whose glyphs are pictures, the whole box drawn as a picture.
-    private static func boxLayer(for box: PDFTextBox, pageToView: CGAffineTransform, displayScale: CGFloat) -> CALayer {
+    private static func boxLayer(for box: PDFTextBox, pageToView: CGAffineTransform, displayScale: CGFloat, pictureResolution: CGFloat) -> CALayer {
         let layout = PDFTextBoxLayout(box: box)
-        if layout.usesColorGlyphs { return PDFTextBoxPictureLayer(layout: layout, pageToView: pageToView, displayScale: displayScale) }
+        if layout.usesColorGlyphs { return PDFTextBoxPictureLayer(layout: layout, pageToView: pageToView, pixelsPerPoint: pictureResolution) }
         var boxToView = layout.boxToPage.concatenating(pageToView)
         let container = CALayer()
         let outline = CGPath(rect: layout.boxRectangle, transform: &boxToView)
@@ -131,24 +149,40 @@ final class PDFPageTextBoxesView: UIView {
     }
 }
 /// A text box drawn as a picture, for one with emoji, whose glyphs have no outlines to draw
-/// as shapes. It is drawn as sharp as the PDF view's largest zoom shows it, within a bound of
-/// pixels, as the page's canvas is (`largestRenderingScale`).
+/// as shapes. It is drawn at the screen's pixels per point of the zoom it is seen at, drawn
+/// again when the zoom settles, within a bound of pixels. Before HUNT-320 it was drawn for a
+/// zoom of 3 at most and magnified past it.
 final class PDFTextBoxPictureLayer: CALayer {
     private let layout: PDFTextBoxLayout?
     /// The most pixels one box is drawn with: 16 megapixels, 64 MB.
-    private static let maximumPixelCount: CGFloat = 16_777_216
-    /// The zoom a box's picture is made for.
-    private static let largestRenderingScale: CGFloat = 3
+    static let maximumPixelCount: CGFloat = 16_777_216
+    /// A change of resolution smaller than this fraction is not worth drawing the box again.
+    private static let resolutionTolerance: CGFloat = 0.02
 
-    init(layout: PDFTextBoxLayout, pageToView: CGAffineTransform, displayScale: CGFloat) {
+    init(layout: PDFTextBoxLayout, pageToView: CGAffineTransform, pixelsPerPoint: CGFloat) {
         self.layout = layout
         super.init()
         let bounds = layout.box.annotationBounds
         frame = bounds.applying(pageToView)
-        let wantedScale = displayScale * Self.largestRenderingScale
-        let pixelLimitedScale = (Self.maximumPixelCount / max(frame.width * frame.height, 1)).squareRoot()
-        contentsScale = max(min(wantedScale, pixelLimitedScale), 1)
+        contentsScale = Self.boundedScale(forPixelsPerPoint: pixelsPerPoint, size: frame.size)
         setNeedsDisplay()
+    }
+
+    /// Draws the box again at this many pixels per point, within the bound, when that is not
+    /// what it is drawn at already.
+    func draw(atPixelsPerPoint pixelsPerPoint: CGFloat) {
+        let scale = Self.boundedScale(forPixelsPerPoint: pixelsPerPoint, size: bounds.size)
+        guard abs(contentsScale - scale) > scale * Self.resolutionTolerance else { return }
+        contentsScale = scale
+        setNeedsDisplay()
+    }
+
+    /// The pixels per point a box of this size is drawn at: those asked for, at most
+    /// `maximumPixelCount` pixels in all and at least one pixel per point.
+    static func boundedScale(forPixelsPerPoint pixelsPerPoint: CGFloat, size: CGSize) -> CGFloat {
+        let wantedScale = pixelsPerPoint.isFinite && pixelsPerPoint > 0 ? pixelsPerPoint : 1
+        let pixelLimitedScale = (maximumPixelCount / max(size.width * size.height, 1)).squareRoot()
+        return max(min(wantedScale, pixelLimitedScale), 1)
     }
 
     override init(layer: Any) {
