@@ -5,8 +5,8 @@
  * Description: Settings > Colors: the palette notes and the Pencil tools offer, and the highlighter colors.
  *
  * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -65,8 +65,10 @@ struct ColorsSettingsPage: View {
         }
         .navigationTitle("Colors")
         #if canImport(UIKit)
-        // Rows are dragged to a new place only in edit mode, which nothing else enters.
-        .toolbar { ToolbarItem(placement: .secondaryAction) { EditButton() } }
+        // Rows are dragged to a new place only in edit mode, which nothing else enters. On the
+        // bar itself: a secondary action hides in the "…" menu, and on the leading side its
+        // "Done" is not beside the one that closes Settings.
+        .toolbar { ToolbarItem(placement: .topBarLeading) { EditButton() } }
         #endif
         .confirmationDialog(palettePendingRestore?.title ?? "", isPresented: Binding(get: { palettePendingRestore != nil }, set: { isPresented in
             if !isPresented { palettePendingRestore = nil }

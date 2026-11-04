@@ -5,7 +5,7 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.15
+ * Version: 0.16
  * Date: 01/11/2026
  */
 
@@ -57,10 +57,12 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
             PaletteCommand(id: "collapse-folders", command: .collapseFolders, systemImage: "arrow.down.right.and.arrow.up.left") { workspace.collapseAllFolders() },
         ]
+        // The Mac cannot write in a notebook, so it does not offer to make one (`CreationKind.canBeEditedOnThisDevice`).
+        if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }
         if workspace.preferences.isEnabled(.bases) {
             commands.append(PaletteCommand(id: "new-base", command: .newBase, systemImage: "tablecells") { window.create(.base) })
         }
-        if workspace.preferences.isEnabled(.canvas) {
+        if workspace.preferences.isEnabled(.canvas), CreationKind.canvas.canBeEditedOnThisDevice {
             commands.append(PaletteCommand(id: "new-canvas", command: .newCanvas, systemImage: "rectangle.3.group") { window.create(.canvas) })
         }
         if workspace.history.canGoBack {
@@ -211,7 +213,7 @@ enum WorkspaceCommandList {
                                        systemImage: layout.focusedGroup.isStacked ? "rectangle" : "rectangle.stack") {
             workspace.toggleStackedTabs()
         })
-        if !layout.closedPaths.isEmpty {
+        if layout.canReopenClosedTab {
             commands.append(PaletteCommand(id: "reopen-tab", command: .reopenClosedTab, systemImage: "arrow.uturn.backward") {
                 Task { await workspace.reopenClosedTab() }
             })
@@ -269,9 +271,11 @@ enum WorkspaceCommandList {
         }
         commands += [
             PaletteCommand(id: "task", command: .insertTask, systemImage: "checklist") { session.insertBlock("- [ ] ") },
-            PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlock("| Column | Column |\n| --- | --- |\n|  |  |") },
-            PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlock("$$\n\n$$") },
-            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") { session.insertBlock("> [!note]\n> ") },
+            PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) },
+            PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) },
+            PaletteCommand(id: "callout", command: .insertCallout, systemImage: "text.bubble") {
+                session.insertBlockFromMenu(EditorContextMenuContent.calloutBlock)
+            },
         ]
         let document = workspace.activeDocument
         if document.markdownSession === session {

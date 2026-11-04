@@ -67,7 +67,7 @@ struct ReadingHighlight: ViewModifier {
             line.compactMap { run -> CGRect? in
               guard let attribute = run[ReadingSourceRange.self],
                     NSIntersectionRange(sourceRange, attribute.range).length > 0 else { return nil }
-              return run.typographicBounds.rect.offsetBy(dx: origin.x, dy: origin.y)
+              return run.contentBounds.offsetBy(dx: origin.x, dy: origin.y)
             }
           }
           Canvas { context, _ in

@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartDrawingParts.swift
+ * ---------------------------------
+ * Layer: Core
+ * Description: A laid-out flowchart's geometry grouped by how it is painted.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import CoreGraphics
 
 /// A laid-out flowchart's geometry grouped by how it is painted, so that drawing it in any colors is a handful of
@@ -25,6 +36,10 @@ public struct FlowchartDrawingParts {
     /// The node shapes' outlines and inner lines, stroked one point wide in the border color.
     public let nodeOutlines: CGPath
     public let nodeTexts: [DiagramTextBlock]
+    /// The edges the diagram gave colors or a stroke of their own (`linkStyle`), apart from the edges above.
+    public let styledEdges: [FlowchartStyledEdgeParts]
+    /// The nodes the diagram gave colors of their own (`classDef`, `class`, `style`), apart from the nodes above.
+    public let styledNodes: [FlowchartStyledNodeParts]
     /// The title, drawn bold, or nil.
     public let title: DiagramTextBlock?
 
@@ -50,7 +65,9 @@ public struct FlowchartDrawingParts {
         edgeTexts = layout.edges.compactMap(\.text)
         nodeFills = nodes.fills
         nodeOutlines = nodes.outlines
-        nodeTexts = layout.nodes.map(\.text)
+        nodeTexts = nodes.texts
+        styledEdges = edges.styled
+        styledNodes = nodes.styled
         title = layout.title
     }
 
@@ -62,18 +79,23 @@ public struct FlowchartDrawingParts {
         let filledMarks = CGMutablePath()
         let strokedMarks = CGMutablePath()
         let textPatches = CGMutablePath()
+        var styled: [FlowchartStyledEdgeParts] = []
 
         init(edges: [FlowchartLayoutEdge]) {
             for edge in edges {
-                switch edge.stroke {
-                case .solid: solid.addPath(DiagramEdgeDrawing.path(edge.path))
-                case .thick: thick.addPath(DiagramEdgeDrawing.path(edge.path))
-                case .dotted: dotted.addPath(DiagramEdgeDrawing.path(edge.path))
-                case .invisible: break
-                }
-                if edge.stroke != .invisible {
-                    for mark in [edge.sourceMark, edge.targetMark].compactMap({ mark in mark }) {
-                        DiagramEdgeDrawing.addMark(mark, filled: filledMarks, stroked: strokedMarks)
+                if let style = edge.style, edge.stroke != .invisible {
+                    styled.append(FlowchartStyledEdgeParts(edge: edge, style: style))
+                } else {
+                    switch edge.stroke {
+                    case .solid: solid.addPath(DiagramEdgeDrawing.path(edge.path))
+                    case .thick: thick.addPath(DiagramEdgeDrawing.path(edge.path))
+                    case .dotted: dotted.addPath(DiagramEdgeDrawing.path(edge.path))
+                    case .invisible: break
+                    }
+                    if edge.stroke != .invisible {
+                        for mark in [edge.sourceMark, edge.targetMark].compactMap({ mark in mark }) {
+                            DiagramEdgeDrawing.addMark(mark, filled: filledMarks, stroked: strokedMarks)
+                        }
                     }
                 }
                 if let text = edge.text {
@@ -89,14 +111,21 @@ public struct FlowchartDrawingParts {
     private struct NodePaths {
         let fills = CGMutablePath()
         let outlines = CGMutablePath()
+        var texts: [DiagramTextBlock] = []
+        var styled: [FlowchartStyledNodeParts] = []
 
         init(nodes: [FlowchartLayoutNode]) {
             for node in nodes {
+                if let style = node.style {
+                    styled.append(FlowchartStyledNodeParts(node: node, style: style))
+                    continue
+                }
                 if let outline = FlowchartShapeDrawing.outline(of: node.shape, in: node.frame) {
                     fills.addPath(outline)
                     outlines.addPath(outline)
                 }
                 if let innerLines = FlowchartShapeDrawing.innerLines(of: node.shape, in: node.frame) { outlines.addPath(innerLines) }
+                texts.append(node.text)
             }
         }
     }

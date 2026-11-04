@@ -5,8 +5,8 @@
  * Description: The picture of a PDF page that is selected for moving, resizing or removing.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 03/11/2026
  */
 import Foundation
 import PDFKit
@@ -157,7 +157,10 @@ extension PDFSession {
     /// Keeps the part of the picture shown inside `pageBounds`, a rectangle of the page's
     /// coordinates inside the picture's bounds, given as the bounds are: before the picture
     /// is turned by hand.
-    func cropPicture(_ selection: PDFPictureSelection, to pageBounds: CGRect) async throws {
+    func cropPicture(_ selection: PDFPictureSelection, to pageBounds: CGRect,
+                     croppingImage cropImage: @Sendable (Data, CGRect) async throws -> Data = { imageData, imageRegion in
+                         try await Task.detached(priority: .userInitiated) { try PictureEditing.cropped(imageData, to: imageRegion) }.value
+                     }) async throws {
         let (_, picture) = try pageAndPicture(of: selection)
         let pictureBounds = picture.bounds
         let croppedBounds = pageBounds.intersection(pictureBounds)
@@ -172,7 +175,9 @@ extension PDFSession {
         let imageRegion = PictureEditing.imageRegion(forDisplayedRegion: unturnedRegion, turnedClockwise: -picture.quarterTurns)
         let pictureData = picture.imageData
         var cropped = picture
-        cropped.imageData = try await Task.detached(priority: .userInitiated) { try PictureEditing.cropped(pictureData, to: imageRegion) }.value
+        cropped.imageData = try await cropImage(pictureData, imageRegion)
+        // The bar is back while the crop is worked out; a picture turned or moved meanwhile is not put back as it was.
+        guard try pageAndPicture(of: selection).1 == picture else { throw PDFPictureCropError.pictureChangedMeanwhile }
         // The part kept stays where it was shown: a picture of its own, turned as the
         // picture was, about its own middle. Page coordinates count upward, where a
         // clockwise turn is a negative angle.
@@ -227,4 +232,11 @@ extension PDFSession {
         let centerX = min(max(rectangle.midX, pageBox.minX), pageBox.maxX), centerY = min(max(rectangle.midY, pageBox.minY), pageBox.maxY)
         return CGRect(x: centerX - rectangle.width / 2, y: centerY - rectangle.height / 2, width: rectangle.width, height: rectangle.height)
     }
+}
+
+/// Why a crop did not happen: what the person is told, typed so a caller can tell it from a failed edit.
+enum PDFPictureCropError: LocalizedError, Equatable {
+    case pictureChangedMeanwhile
+
+    var errorDescription: String? { "This image changed while it was being cropped. Crop it again." }
 }

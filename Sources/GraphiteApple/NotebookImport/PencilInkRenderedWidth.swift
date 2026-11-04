@@ -6,8 +6,8 @@
  *              uses.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 import Foundation
 import PencilKit
@@ -21,8 +21,8 @@ import NotebookImport
 /// 4 pixels per point, counting as ink the rows at least half as opaque as the stroke's middle, averaged over three
 /// renderings. Force, altitude and drawing speed do not change the drawn width of stored points. The azimuth turns
 /// the fountain pen's nib and the marker's tip; the widths here are with them across the stroke, as
-/// `ImportedStrokeBuilder` turns them. Along the stroke the fountain pen draws a quarter of the width, the marker
-/// about a third. The pencil's grain makes its edge vary by about 2%.
+/// `ImportedStrokeBuilder` turns them, and `nibTurnMeasurements` tells the rest of the way round. The pencil's grain
+/// makes its edge vary by about 2%.
 enum PencilInkRenderedWidth {
     /// One measurement: a point size and the width PencilKit draws it, both in points.
     struct Measurement: Equatable {
@@ -54,6 +54,22 @@ enum PencilInkRenderedWidth {
         Measurement(pointSize: 24, renderedWidth: 32.5), Measurement(pointSize: 32, renderedWidth: 43.75),
         Measurement(pointSize: 48, renderedWidth: 65.63)
     ]
+
+    /// How much of its width across the stroke a turning ink draws with its nib part way round: the nib's angle to the
+    /// stroke's way is written as the sine of it, every 15 degrees (and at 7.5) from along it (0) to across it (1). Measured at 8 pixels
+    /// per point, sizes 5, 12 and 24 agreeing to 0.02 (2026-11-02). A straight line between the two ends drew 22% too wide
+    /// for a fountain pen at 15 degrees. The fountain pen's nib draws as an ellipse does; the marker's tip does not.
+    private static let nibAcrossnessSteps = [0, 0.1305, 0.259, 0.5, 0.707, 0.866, 0.966, 1]
+    private static let fountainPenNibTurnMeasurements = [0.25, 0.28, 0.365, 0.545, 0.735, 0.875, 0.962, 1]
+    private static let markerNibTurnMeasurements = [0.362, 0.39, 0.466, 0.623, 0.771, 0.897, 0.977, 1]
+
+    private static func fractionOfWidthAcross(nibAcrossness: Double, measurements: [Double]) -> Double {
+        let acrossness = min(max(nibAcrossness, 0), 1)
+        let upperIndex = max(nibAcrossnessSteps.firstIndex { step in step >= acrossness } ?? nibAcrossnessSteps.count - 1, 1)
+        let lowerStep = nibAcrossnessSteps[upperIndex - 1], upperStep = nibAcrossnessSteps[upperIndex]
+        let lower = measurements[upperIndex - 1], upper = measurements[upperIndex]
+        return lower + (acrossness - lowerStep) * (upper - lower) / (upperStep - lowerStep)
+    }
 
     /// In increasing order of both size and width.
     static func measurements(for ink: ImportedStroke.Ink) -> [Measurement] {
@@ -103,16 +119,16 @@ enum PencilInkRenderedWidth {
     }
 
     /// How wide PencilKit draws a point of a stroke across its way, for saved outlines: a turning
-    /// ink draws as `renderedWidth(forPointSize:inkType:)` tells with its nib across the stroke
-    /// and a part of it with its nib along (the fountain pen a quarter, the marker about a
-    /// third). `nibAcrossness` is 1 with the nib across and 0 along. An ink not measured keeps
-    /// its point size.
+    /// ink draws as its table tells with its nib across the stroke and a part of that as the nib
+    /// turns (`nibAcrossnessSteps`; along the stroke the fountain pen draws a quarter, the marker
+    /// 0.36). `nibAcrossness` is the sine of the nib's angle to the stroke: 1 across, 0 along. An
+    /// ink not measured keeps its point size.
     static func drawnWidth(forPointSize pointSize: Double, inkType: PKInkingTool.InkType, nibAcrossness: Double) -> Double {
         guard pointSize.isFinite, pointSize > 0, let table = acrossMeasurements(forInkType: inkType) else { return pointSize }
         let across = interpolatedWidth(forPointSize: pointSize, in: table)
         switch inkType {
-        case .fountainPen: return across * (0.25 + 0.75 * nibAcrossness)
-        case .marker: return across * (1.0 / 3 + 2.0 / 3 * nibAcrossness)
+        case .fountainPen: return across * fractionOfWidthAcross(nibAcrossness: nibAcrossness, measurements: fountainPenNibTurnMeasurements)
+        case .marker: return across * fractionOfWidthAcross(nibAcrossness: nibAcrossness, measurements: markerNibTurnMeasurements)
         default: return across
         }
     }

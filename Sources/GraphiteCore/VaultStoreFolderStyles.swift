@@ -5,8 +5,8 @@
  * Description: Graphite's folder colors and symbols, read and written as bookmarks are.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -76,7 +76,7 @@ extension VaultStore {
     public func moveFolderStylesAside() throws -> VaultPath {
         let path = try VaultPath(FolderStyleList.configurationPath)
         let keptCopy = try uniquePath(directory: path.parent, stem: FolderStyleList.unreadableCopyStem, extension: "json")
-        try move(path, to: keptCopy)
+        try moveOnActor(path, to: keptCopy)
         return keptCopy
     }
 }

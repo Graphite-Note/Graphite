@@ -1,3 +1,14 @@
+/**
+ * File: NoteFolding.swift
+ * -----------------------
+ * Layer: Core
+ * Description: What folds in a note: heading sections and list items, and how their regions follow typing.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.7
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// A part of a note that folds, as in Obsidian: a heading's section, up to the next
@@ -77,7 +88,7 @@ public enum NoteFolding {
                 }
                 // Blank lines just before the next heading stay visible, as in Obsidian.
                 while lastIndex > index, lines[lastIndex].content.trimmingCharacters(in: .whitespaces).isEmpty { lastIndex -= 1 }
-                let headingKey = key("h\(level)|" + line.content.trimmingCharacters(in: .whitespaces))
+                let headingKey = key(LineStructure.heading(level: level).keyBase(ofLine: line.content) ?? "")
                 // A setext heading's underline is part of the heading, not of what folds under it.
                 let firstBodyIndex = hasSetextUnderline[index] ? index + 2 : index + 1
                 if let region = region(kind: .heading(level: level), header: line, last: lines[lastIndex], hasBody: lastIndex >= firstBodyIndex, key: headingKey) {
@@ -97,7 +108,7 @@ public enum NoteFolding {
                     lastIndex = nextIndex
                     nextIndex += 1
                 }
-                let itemKey = key("l|" + line.content.trimmingCharacters(in: .whitespaces))
+                let itemKey = key(LineStructure.listItem.keyBase(ofLine: line.content) ?? "")
                 if let region = region(kind: .listItem, header: line, last: lines[lastIndex], hasBody: lastIndex > index, key: itemKey) {
                     regions.append(region)
                 }
@@ -177,10 +188,12 @@ public enum NoteFolding {
     }
 
     /// The regions after an edit, moved rather than found again, or nil when they must be
-    /// found again. Typing in a long note edits one line of plain text at a time, and such an
-    /// edit changes no region: it only moves the ones after it and lengthens or shortens the
-    /// ones around it. Anything else (a line break, a heading, a list item, a code fence, a
-    /// blank line or a change of indentation, before or after the edit) is found again.
+    /// found again. Typing in a long note edits one line at a time, and such an edit changes
+    /// no region when the line stays what it was: it only moves the ones after it and lengthens
+    /// or shortens the ones around it. On a heading or a list item, whose marker and indentation
+    /// stay, it also gives the line's own region a new key. Anything else (a line break, a
+    /// code fence, a blank line, a new marker or a change of indentation, or a line whose
+    /// text is another heading's or item's, whose keys count them) is found again.
     /// `regions` must describe `before`; `replacedRange` is in `before`.
     public static func regions(_ regions: [FoldableRegion], across editedRange: NSRange, replacementLength: Int,
                                before: NSString, after: NSString) -> [FoldableRegion]? {
@@ -206,7 +219,8 @@ public enum NoteFolding {
             return text.substring(with: NSRange(location: start, length: contentsEnd - start))
         }
         let lineBefore = lineText(before, containing: replacedRange), lineAfter = lineText(after, containing: insertedRange)
-        guard isPlainText(lineBefore), isPlainText(lineAfter), indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
+        guard let lineStructure = structure(of: lineBefore), lineStructure == structure(of: lineAfter),
+              indentWidth(of: lineBefore) == indentWidth(of: lineAfter) else { return nil }
         // A line that underlines the one above it (`===`), or is underlined by the one below,
         // is part of a setext heading, so editing it can change a region or its key.
         func nextLineText(_ text: NSString, after range: NSRange) -> String? {
@@ -223,13 +237,56 @@ public enum NoteFolding {
         // A line's start at the edit stays; a line's text end at the edit moves with the typing.
         func movedStart(_ location: Int) -> Int { location <= editStart ? location : location + change }
         func movedEnd(_ location: Int) -> Int { location >= editEnd ? location + change : location }
+        let lineStart = before.lineRange(for: replacedRange).location
+        var newKeyOfEditedLine: String?
+        if let keyBase = lineStructure.keyBase(ofLine: lineBefore), let newKeyBase = lineStructure.keyBase(ofLine: lineAfter), keyBase != newKeyBase {
+            // Keys count the lines of the same text, so one that shares either text moves others'.
+            let othersShareAKey = regions.contains { region in
+                region.headerRange.location != lineStart && (hasKey(region.key, withBase: keyBase) || hasKey(region.key, withBase: newKeyBase))
+            }
+            guard !othersShareAKey else { return nil }
+            if regions.contains(where: { region in region.headerRange.location == lineStart }) {
+                // A line above with the new text, which need not fold, would take this one's count.
+                let lineText = lineAfter.trimmingCharacters(in: .whitespaces)
+                guard after.range(of: lineText, options: .literal, range: NSRange(location: 0, length: lineStart)).location == NSNotFound else { return nil }
+                newKeyOfEditedLine = newKeyBase + "|0"
+            }
+        }
         return regions.map { region in
             let headerStart = movedStart(region.headerRange.location), hiddenStart = movedEnd(region.hiddenRange.location)
             return FoldableRegion(kind: region.kind,
                                   headerRange: NSRange(location: headerStart, length: movedEnd(NSMaxRange(region.headerRange)) - headerStart),
                                   hiddenRange: NSRange(location: hiddenStart, length: movedEnd(NSMaxRange(region.hiddenRange)) - hiddenStart),
-                                  endLocation: movedStart(region.endLocation), key: region.key)
+                                  endLocation: movedStart(region.endLocation),
+                                  key: region.headerRange.location == lineStart ? newKeyOfEditedLine ?? region.key : region.key)
         }
+    }
+
+    /// What a line is to folding, while an edit leaves it the same; nil for what has to be
+    /// found again.
+    private enum LineStructure: Equatable {
+        case plain, heading(level: Int), listItem
+
+        /// The line's key without its count; nil for a line with no key.
+        func keyBase(ofLine line: String) -> String? {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            switch self {
+            case .plain: return nil
+            case .heading(let level): return "h\(level)|" + text
+            case .listItem: return "l|" + text
+            }
+        }
+    }
+
+    private static func structure(of line: String) -> LineStructure? {
+        if isPlainText(line) { return .plain }
+        if let level = headingLevel(ofLine: line) { return .heading(level: level) }
+        return isListItem(line) ? .listItem : nil
+    }
+
+    /// Whether `key` is `base`, `|`, and a count.
+    private static func hasKey(_ key: String, withBase base: String) -> Bool {
+        key.hasPrefix(base + "|") && key.dropFirst(base.count + 1).allSatisfy(\.isNumber)
     }
 
     /// A line that starts no region and ends none early: not blank, not a heading, list item,
@@ -238,6 +295,21 @@ public enum NoteFolding {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard let first = trimmed.first, first != "#", first != "`", first != "~", !trimmed.hasPrefix("---"), !trimmed.hasPrefix("...") else { return false }
         return !isListItem(line)
+    }
+
+    /// Whether an edit reaches into what `region` hides, so it must unfold first. An edit that
+    /// covers the header's line break counts: Forward Delete at the end of a folded line
+    /// pulled the first hidden line up into the heading, with the section still folded.
+    public static func edit(replacing range: NSRange, touchesHiddenTextOf region: FoldableRegion) -> Bool {
+        let hidden = NSRange(location: region.hiddenRange.location + 1, length: max(0, region.endLocation - region.hiddenRange.location - 1))
+        if range.length == 0 { return NSLocationInRange(range.location, hidden) }
+        return NSIntersectionRange(hidden, range).length > 0 || NSLocationInRange(region.hiddenRange.location, range)
+    }
+
+    /// The whole lines of each folded region, header line through its last hidden line, which
+    /// move together when lines are moved.
+    public static func foldedSections(_ folded: [FoldableRegion]) -> [NSRange] {
+        folded.map { region in NSRange(location: region.headerRange.location, length: region.endLocation - region.headerRange.location) }
     }
 
     /// The regions that are folded, given the folded keys. A region inside a folded region

@@ -1,5 +1,17 @@
+/**
+ * File: TabThumbnailsTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: The thumbnails the tab overview's cards show.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import XCTest
 import CoreGraphics
+import GraphiteCore
 @testable import GraphiteUI
 #if os(macOS)
 import AppKit
@@ -13,20 +25,59 @@ final class TabThumbnailsTests: XCTestCase {
         let thumbnails = TabThumbnails()
         let tabIDs = (0..<(TabThumbnails.maximumThumbnailCount + 6)).map { _ in UUID() }
         let image = try XCTUnwrap(blankImage())
-        for tabID in tabIDs { thumbnails.store(image, for: tabID) }
+        for tabID in tabIDs { thumbnails.store(image, for: tabID, showing: nil) }
         XCTAssertEqual(thumbnails.thumbnailCount, TabThumbnails.maximumThumbnailCount)
         XCTAssertNil(thumbnails.thumbnail(of: tabIDs[0]), "The oldest thumbnails go first.")
         XCTAssertNotNil(thumbnails.thumbnail(of: try XCTUnwrap(tabIDs.last)))
 
         // Capturing a tab again makes its thumbnail the newest.
-        thumbnails.store(image, for: tabIDs[6])
-        thumbnails.store(image, for: UUID())
+        thumbnails.store(image, for: tabIDs[6], showing: nil)
+        thumbnails.store(image, for: UUID(), showing: nil)
         XCTAssertNotNil(thumbnails.thumbnail(of: tabIDs[6]))
         XCTAssertNil(thumbnails.thumbnail(of: tabIDs[7]))
 
-        thumbnails.keepOnly([tabIDs[6]])
+        let remainingLayout = TabLayout()
+        thumbnails.store(image, for: remainingLayout.activeTab.id, showing: nil)
+        thumbnails.keepThumbnails(of: remainingLayout.allTabs)
         XCTAssertEqual(thumbnails.thumbnailCount, 1)
         thumbnails.removeAllThumbnails()
+        XCTAssertEqual(thumbnails.thumbnailCount, 0)
+    }
+
+    /// HUNT-189: the thumbnails of closed tabs stayed until the overview was opened again; the
+    /// window now lets them go as the tabs change.
+    func testTheThumbnailOfAClosedTabIsLetGoWhenTheTabsChange() throws {
+        let thumbnails = TabThumbnails()
+        let image = try XCTUnwrap(blankImage())
+        var layout = TabLayout()
+        let keptTabID = layout.tabForOpeningHere()
+        layout.show(try VaultPath("Kept.md"), inTab: keptTabID, recordsHistory: true)
+        let closedTabID = layout.addTab(showing: try VaultPath("Closed.md"))
+        thumbnails.store(image, for: keptTabID, showing: try VaultPath("Kept.md"))
+        thumbnails.store(image, for: closedTabID, showing: try VaultPath("Closed.md"))
+        layout.closeTab(closedTabID)
+
+        thumbnails.keepThumbnails(of: layout.allTabs)
+
+        XCTAssertNotNil(thumbnails.thumbnail(of: keptTabID))
+        XCTAssertNil(thumbnails.thumbnail(of: closedTabID))
+        XCTAssertEqual(thumbnails.thumbnailCount, 1)
+    }
+
+    /// HUNT-195: a tab that shows another file since its picture was taken drew the old file.
+    func testTheThumbnailOfATabThatShowsAnotherFileNowIsLetGo() throws {
+        let thumbnails = TabThumbnails()
+        let image = try XCTUnwrap(blankImage())
+        var layout = TabLayout()
+        let tabID = layout.tabForOpeningHere()
+        layout.show(try VaultPath("X.md"), inTab: tabID, recordsHistory: true)
+        thumbnails.store(image, for: tabID, showing: try VaultPath("X.md"))
+
+        thumbnails.keepThumbnails(of: layout.allTabs)
+        XCTAssertNotNil(thumbnails.thumbnail(of: tabID), "The same file keeps its picture.")
+        layout.show(try VaultPath("Y.md"), inTab: tabID, recordsHistory: true)
+        thumbnails.keepThumbnails(of: layout.allTabs)
+        XCTAssertNil(thumbnails.thumbnail(of: tabID))
         XCTAssertEqual(thumbnails.thumbnailCount, 0)
     }
 

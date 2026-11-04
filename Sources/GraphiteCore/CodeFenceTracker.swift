@@ -1,3 +1,14 @@
+/**
+ * File: CodeFenceTracker.swift
+ * ----------------------------
+ * Layer: Core
+ * Description: Follows fenced code line by line, in a note or in a block quote.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 01/11/2026
+ */
+
 import Foundation
 
 /// Follows fenced code line by line, as CommonMark reads fences: a longer fence is not
@@ -11,6 +22,8 @@ public struct CodeFenceTracker {
     /// Past this column, a line inside the open fence is code even when it repeats the fence.
     private var openFenceIndentationLimit = 0
     private var listItems = ListItemContainers()
+    /// How many quote markers the open fence is inside of, for `isCodeLine(quotedLine:)`.
+    private var openFenceQuoteDepth = 0
 
     public init() {}
 
@@ -35,6 +48,21 @@ public struct CodeFenceTracker {
         case .fenceCandidate(let lineStart, let containerColumn):
             return finishStep(past: lineStart, containerColumn: containerColumn, trimmedLine: line.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+    }
+
+    /// `isCodeLine(untrimmedLine:)` for a walk over lines that may be in a block quote or callout,
+    /// which holds fences too (`> ```python`): the quote markers are read off first, and a
+    /// fence opened in a quote ends with the quote, at the first line that has fewer markers.
+    public mutating func isCodeLine(quotedLine line: String) -> Bool {
+        let (depth, content) = MarkdownQuoteSyntax.markersRemoved(from: Substring(line), maximumDepth: openFence == nil ? .max : openFenceQuoteDepth)
+        if openFence != nil, depth < openFenceQuoteDepth {
+            openFence = nil
+            openFenceQuoteDepth = 0
+        }
+        let wasInsideFence = openFence != nil
+        let isCode = isCodeLine(untrimmedLine: content)
+        if !wasInsideFence, openFence != nil { openFenceQuoteDepth = depth }
+        return isCode
     }
 
     /// `isCodeLine(untrimmedLine:)` for a line's UTF-8 bytes, for a walk that reads a note as bytes.

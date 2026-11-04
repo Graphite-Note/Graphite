@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartRenderer.swift
+ * -----------------------------
+ * Layer: Core
+ * Description: Draws a laid-out flowchart into a Core Graphics context.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import CoreGraphics
 
 /// Draws a laid-out flowchart into a Core Graphics context whose origin is the layout's top left and whose y runs
@@ -18,14 +29,40 @@ public enum FlowchartRenderer {
         context.setLineDash(phase: 0, lengths: [])
         fill(parts.filledMarks, color: palette.line, in: context)
         stroke(parts.strokedMarks, width: FlowchartDrawingParts.lineWidth, color: palette.line, in: context)
+        drawStyledEdges(parts.styledEdges, in: context, palette: palette)
         drawCrossedClusterTitles(parts.clusters, text: &text, in: context, palette: palette)
         fill(parts.edgeTextPatches, color: palette.background, in: context)
         for edgeText in parts.edgeTexts { text.draw(edgeText, color: palette.foreground, in: context) }
         fill(parts.nodeFills, color: palette.surface, in: context)
         stroke(parts.nodeOutlines, width: FlowchartDrawingParts.lineWidth, color: palette.border, in: context)
+        drawStyledNodes(parts.styledNodes, in: context, palette: palette)
         for nodeText in parts.nodeTexts { text.draw(nodeText, color: palette.foreground, in: context) }
+        for node in parts.styledNodes { text.draw(node.text, color: node.style.textColor?.cgColor ?? palette.foreground, in: context) }
         if let title = parts.title { text.draw(title, color: palette.foreground, isBold: true, in: context) }
         context.restoreGState()
+    }
+
+    /// The edges with a stroke or colors of their own, over the others: each line with its dashes and width, and its marks,
+    /// in the color it sets or the usual line color.
+    private static func drawStyledEdges(_ edges: [FlowchartStyledEdgeParts], in context: CGContext, palette: DiagramPalette) {
+        for edge in edges {
+            let color = edge.style.stroke?.cgColor ?? palette.line
+            context.setLineDash(phase: 0, lengths: edge.dashLengths)
+            stroke(edge.line, width: edge.lineWidth, color: color, in: context)
+            context.setLineDash(phase: 0, lengths: [])
+            fill(edge.filledMarks, color: color, in: context)
+            stroke(edge.strokedMarks, width: FlowchartDrawingParts.lineWidth, color: color, in: context)
+        }
+    }
+
+    /// The nodes with colors of their own: the inside in the fill they set, the outline in their stroke.
+    private static func drawStyledNodes(_ nodes: [FlowchartStyledNodeParts], in context: CGContext, palette: DiagramPalette) {
+        for node in nodes {
+            if let shape = node.fill { fill(shape, color: node.style.fill?.cgColor ?? palette.surface, in: context) }
+            context.setLineDash(phase: 0, lengths: node.style.strokeDashLengths ?? [])
+            stroke(node.outline, width: node.lineWidth, color: node.style.stroke?.cgColor ?? palette.border, in: context)
+            context.setLineDash(phase: 0, lengths: [])
+        }
     }
 
     /// The groups' boxes, behind everything: their fills depth by depth, their outlines and the titles no edge crosses.

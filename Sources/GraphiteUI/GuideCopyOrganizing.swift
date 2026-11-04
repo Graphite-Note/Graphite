@@ -5,8 +5,8 @@
  * Description: The Guide's words for organizing a vault: folders, links, search, the command palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 21/10/2026
+ * Version: 0.7
+ * Date: 01/11/2026
  */
 
 import Foundation
@@ -152,7 +152,7 @@ enum GuideOrganizingCopy {
             GuideStep("Make a folder for templates, for example Templates, and write a note in it to copy from. " +
                       "It can fill in the title, date and time:",
                       example: "# {{title}}\nCreated {{date:YYYY-MM-DD}} at {{time}}"),
-            GuideStep("Tell Graphite where it is: Settings › Templates › **Template folder location**."),
+            GuideStep("Tell Graphite where it is: Settings › Templates › **Template Folder Location**."),
             GuideStep(forPlatform(touch: "In a note, choose **More** › **Insert** › **Template…** and pick one. It goes in at the cursor.",
                                   mac: "In a note, choose **Insert** › **Template…** in the toolbar, or Edit › **Insert Template…**, and pick " +
                                        "one. It goes in at the cursor.")),

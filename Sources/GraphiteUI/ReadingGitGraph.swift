@@ -1,3 +1,14 @@
+/**
+ * File: ReadingGitGraph.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: A Git graph laid out, its shapes ready to paint.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import MermaidDiagrams
 
 /// A Git graph laid out, its shapes ready to paint, and what a screen reader says of it.
@@ -25,15 +36,13 @@ struct ReadingGitGraph: Sendable {
         }
     }
 
-    /// The reading view's diagram for a Git graph, or nil to show it as code when it sets options of Git graphs, which
-    /// are not applied (`GitGraphLayoutError.optionsNotApplied`).
-    static func diagram(_ diagram: GitGraphDiagram, typography: DiagramTypography) -> ReadingDiagram? {
+    /// The reading view's diagram for a Git graph, or its source with why when it sets options of Git graphs, which are
+    /// not applied (`GitGraphLayoutError.optionsNotApplied`).
+    static func diagram(_ diagram: GitGraphDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             return .gitGraph(ReadingGitGraph(diagram: diagram, layout: try GitGraphLayoutEngine.layout(diagram, typography: typography)))
         } catch {
-            switch error {
-            case .optionsNotApplied: return nil
-            }
+            return .unreadable(source: source, failure: .gitGraphLayout(error))
         }
     }
 }

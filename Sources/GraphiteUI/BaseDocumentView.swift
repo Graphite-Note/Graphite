@@ -5,7 +5,7 @@
  * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.18
  * Date: 01/11/2026
  */
 
@@ -342,6 +342,12 @@ struct BaseContainerView: View {
         .padding(.horizontal, 16).padding(.vertical, 8)
     }
 
+    /// The file an embed shows, which Open Base opens on its own; nil for a base in its own tab or a ```` ```base ```` block.
+    private var embeddedBaseFile: VaultPath? {
+        guard isEmbedded, case .file(let basePath) = model.source else { return nil }
+        return basePath
+    }
+
     private func beginEditingSelectedView() {
         guard let definition = model.definition, let view = model.selectedView else { return }
         editedView = EditedView(definition: definition, target: BaseViewTarget(view))
@@ -441,11 +447,7 @@ struct BaseContainerView: View {
         } else if let view = model.selectedView, case .unsupported(let typeName) = view.type, pluginHost?.viewTypeMayStillArrive(typeName) == true {
             CommunityPluginBasesWaiting(text: "Waiting for community plugins…")
         } else if let view = model.selectedView, case .unsupported(let typeName) = view.type {
-            ContentUnavailableView {
-                Label("“\(typeName)” Views Aren't Supported", systemImage: "questionmark.square.dashed")
-            } description: {
-                Text(BaseUnsupportedViewMessage.text(canChooseAnotherView: model.views.count > 1 && !isLockedToNamedView))
-            }
+            unsupportedViewContent(typeName: typeName)
         } else if let result = model.result, result.view.id == model.selectedView?.id {
             if result.rows.isEmpty && result.view.type != .map {
                 ContentUnavailableView {
@@ -461,6 +463,24 @@ struct BaseContainerView: View {
             // text would shrink around it and grow again by its rows seconds later.
             ProgressView().controlSize(.large)
                 .preference(key: LivePreviewEmbedLoadingKey.self, value: true)
+        }
+    }
+
+    /// A view type nothing draws: what is drawn, and the one step that leads on (`BaseUnsupportedViewWay`).
+    @ViewBuilder private func unsupportedViewContent(typeName: String) -> some View {
+        let canChooseAnotherView = model.views.count > 1 && !isLockedToNamedView
+        let way = BaseUnsupportedViewWay.available(canChooseAnotherView: canChooseAnotherView, canEditView: model.canEditDefinition && !isLockedToNamedView,
+                                                   baseFile: embeddedBaseFile)
+        ContentUnavailableView {
+            Label("“\(typeName)” Views Aren't Supported", systemImage: "questionmark.square.dashed")
+        } description: {
+            Text(BaseUnsupportedViewMessage.text(canChooseAnotherView: canChooseAnotherView))
+        } actions: {
+            switch way {
+            case .editView: Button("Edit View…", action: beginEditingSelectedView)
+            case .openBase(let basePath): Button("Open Base") { openBase(basePath, model.selectedView?.name) }
+            case nil: EmptyView()
+            }
         }
     }
 
@@ -556,6 +576,20 @@ enum BaseUnsupportedViewMessage {
     static func text(canChooseAnotherView: Bool) -> String {
         let shown = "Graphite shows table, cards, list, Kanban and map views, and views drawn by community plugins that are on."
         return canChooseAnotherView ? shown + " Choose another view from the menu above." : shown
+    }
+}
+
+/// The one step a base offers when its only way forward is not the view menu: changing this
+/// view's layout in the view editor, or, in an embed that cannot edit the base, opening the base.
+enum BaseUnsupportedViewWay: Equatable {
+    case editView
+    case openBase(VaultPath)
+
+    /// Nil when another view can be chosen from the menu, or nothing here can change the view.
+    static func available(canChooseAnotherView: Bool, canEditView: Bool, baseFile: VaultPath?) -> BaseUnsupportedViewWay? {
+        guard !canChooseAnotherView else { return nil }
+        if canEditView { return .editView }
+        return baseFile.map(BaseUnsupportedViewWay.openBase)
     }
 }
 

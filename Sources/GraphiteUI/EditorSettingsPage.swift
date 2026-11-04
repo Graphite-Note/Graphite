@@ -5,8 +5,8 @@
  * Description: Settings > Editor: how notes open and look while they are written, and how typing behaves.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -33,14 +33,11 @@ struct EditorSettingsPage: View {
         workspace.binding(vaultOption: vaultOption, deviceOption: deviceOption, changes: vaultSettingsChanges)
     }
 
+    /// The same on the Mac and the iPad: both continue lists, pair brackets and indent with Tab.
     private static var typingFooter: String {
-        let pasting = " Pasting a web page or rich text writes it as Markdown. Shared with Obsidian in .obsidian/app.json."
-        #if canImport(UIKit)
-        return "Return continues a list, a task list, or a quote, and Tab indents it. Brackets and quotes are typed in pairs, and *, _, ~, =, ` or $ wrap "
-            + "selected text." + pasting
-        #else
-        return "Indent and Outdent insert a tab, or this many spaces." + pasting
-        #endif
+        "Return continues a list, a task list, or a quote, and Tab indents it. Brackets and quotes are typed in pairs, and *, _, ~, =, ` or $ wrap "
+        + "selected text. Indent and Outdent insert a tab, or this many spaces. Pasting a web page or rich text writes it as Markdown. Shared with Obsidian in "
+        + ".obsidian/app.json."
     }
 
     var body: some View {
@@ -112,16 +109,12 @@ struct EditorSettingsPage: View {
     @ViewBuilder private var typingSection: some View {
         if workspace.store != nil {
             Section {
-                // Only the iPad editor continues lists and pairs characters as you type;
-                // the Mac editor has neither, so they would do nothing there.
-                #if canImport(UIKit)
                 Toggle("Smart Indent Lists", isOn: vaultSetting(\.continuesLists))
                 Toggle("Auto Pair Brackets", isOn: vaultSetting(\.pairsBrackets))
                 Toggle("Auto Pair Markdown Syntax", isOn: vaultSetting(\.pairsMarkdown))
-                #endif
                 Toggle("Indent Using Tabs", isOn: vaultSetting(\.indentsWithTabs))
                 if !vaultSettings.indentsWithTabs {
-                    Stepper("Tab indent size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)
+                    Stepper("Tab Indent Size: \(vaultSettings.tabSize)", value: vaultSetting(\.tabSize), in: 1...8)
                 }
                 Toggle("Auto Convert HTML on Paste", isOn: vaultSetting(\.convertsPastedHTML))
             } header: {

@@ -1,3 +1,14 @@
+/**
+ * File: MermaidDiagramReaderTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Reading Mermaid text: front matter, comments, directives and the diagram type.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.10
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import MermaidDiagrams
 
@@ -81,5 +92,36 @@ final class MermaidDiagramReaderTests: XCTestCase {
         XCTAssertEqual(try SankeyReading.diagram("%% flows\nsankey\na,b,1").links.count, 1)
         XCTAssertEqual(try SankeyReading.diagram("sankey-beta\na,b,1").nodes.count, 2)
         XCTAssertEqual(readError("sankey-alpha\na,b,1"), .unsupportedDiagramType(keyword: "sankey-alpha"))
+    }
+
+    func testADirectiveWrittenOverSeveralLinesComesBeforeTheKeyword() throws {
+        let diagram = try flowchart("%%{\n  init: {\n    \"theme\": \"dark\"\n  }\n}%%\nflowchart LR\nA --> B")
+        XCTAssertEqual(diagram.nodes.map(\.identifier), ["A", "B"])
+        XCTAssertEqual(diagram.direction, .leftToRight)
+        XCTAssertEqual(try flowchart("%%{init: {\n \"flowchart\": {\"curve\": \"linear\"}\n}}%%\n%% a comment\ngraph TD\nA-->B").edges.count, 1)
+    }
+
+    func testADirectiveWrittenOverSeveralLinesInsideTheDiagramIsSkippedInEveryType() throws {
+        let directive = "%%{\n  init: { \"theme\": \"dark\" }\n}%%\n"
+        XCTAssertEqual(try flowchart("flowchart TD\nA --> B\n" + directive + "B --> C").edges.count, 2)
+        XCTAssertEqual(try SequenceReading.sequence("sequenceDiagram\n" + directive + "Alice->>Bob: Hi").participantIdentifiers, ["Alice", "Bob"])
+        XCTAssertEqual(try PieChartReading.pieChart("pie\n" + directive + "\"Dogs\" : 3").slices.count, 1)
+        XCTAssertEqual(try GanttChartReading.ganttChart("gantt\n" + directive + "dateFormat YYYY-MM-DD\nsection A\nTask :a1, 2024-01-01, 3d").tasks.count, 1)
+    }
+
+    func testLineNumbersOfErrorsAfterADirectiveOfSeveralLinesStayTheTextsOwn() {
+        XCTAssertEqual(readError("%%{\n init: {}\n}%%\nflowchart sideways\nA --> B"), .invalidSyntax(line: 4, problem: .unknownDirection("sideways")))
+        XCTAssertEqual(readError("flowchart TD\n%%{\n init: {}\n}%%\nA --> B\nA --> ["), .invalidSyntax(line: 6, problem: .unexpectedText("[")))
+    }
+
+    func testADirectiveNeverClosedIsAComment() throws {
+        XCTAssertEqual(try flowchart("%%{ never closed\nflowchart TD\nA --> B").edges.count, 1)
+        XCTAssertEqual(try flowchart("flowchart TD\n%%{ never closed\nA --> B").edges.count, 1)
+    }
+
+    func testAGitGraphKeepsItsMultiLineDirectiveForItsOptions() throws {
+        let diagram = try GitGraphReading.gitGraph("%%{\n init: {'gitGraph': {'mainBranchName': 'trunk'}}\n}%%\ngitGraph\n commit")
+        XCTAssertTrue(diagram.setsGitGraphOptions)
+        XCTAssertEqual(diagram.commits.count, 1)
     }
 }

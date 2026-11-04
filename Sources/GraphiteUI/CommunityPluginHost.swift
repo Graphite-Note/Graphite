@@ -6,8 +6,8 @@
  *              Graphite.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 01/11/2026
+ * Version: 0.36
+ * Date: 02/11/2026
  */
 
 import Foundation
@@ -1055,7 +1055,7 @@ final class CommunityPluginHost {
         switch refusal {
         case .destinationTaken: "alreadyExists"
         case .cancelled: "cancelled"
-        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .nameBreaksWikilinks, .failed: "unavailable"
+        case .noVaultOpen, .alreadyMoving, .vaultStillBeingRead, .vaultClosed, .nameBreaksWikilinks, .failed: "unavailable"
         }
     }
 

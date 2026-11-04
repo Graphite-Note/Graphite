@@ -1,3 +1,14 @@
+/**
+ * File: FlowchartParserTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Reading flowcharts: nodes, edges, groups, statements and errors.
+ *
+ * Authors: Félix Chevalier
+ * Version: 0.3
+ * Date: 01/11/2026
+ */
+
 import XCTest
 @testable import MermaidDiagrams
 
@@ -85,10 +96,11 @@ final class FlowchartParserTests: XCTestCase {
         XCTAssertEqual(diagram.nodes[2].shape, .cylinder)
     }
 
-    func testClassesOnANodeAreCountedAndTheNodeIsKept() throws {
+    func testClassesOnANodeNobodyDefinedLeaveTheNodeKeptAndUnstyled() throws {
         let diagram = try flowchart("A[Start]:::important --> B:::quiet")
         XCTAssertEqual(diagram.nodes.map(\.identifier), ["A", "B"])
-        XCTAssertEqual(diagram.unappliedStatementCount, 2)
+        XCTAssertEqual(diagram.nodes.map(\.style), [nil, nil])
+        XCTAssertEqual(diagram.unappliedStatementCount, 0)
     }
 
     // MARK: Edges
@@ -160,7 +172,7 @@ final class FlowchartParserTests: XCTestCase {
         XCTAssertEqual(diagram.edges.count, 1)
     }
 
-    func testStyleStatementsAreCountedAndLeft() throws {
+    func testStyleStatementsAreAppliedAndOnlyTheClickIsCountedAndLeft() throws {
         let diagram = try flowchart("""
         A --> B
         classDef warm fill:#f96,stroke:#333;
@@ -169,8 +181,10 @@ final class FlowchartParserTests: XCTestCase {
         linkStyle 0 stroke:#ff3,stroke-width:4px
         click A "https://example.com" "Tooltip; with a semicolon"
         """)
-        XCTAssertEqual(diagram.unappliedStatementCount, 5)
+        XCTAssertEqual(diagram.unappliedStatementCount, 1)
         XCTAssertEqual(diagram.edges.count, 2, "A statement after a style's semicolon is read")
+        XCTAssertNotNil(diagram.nodes[0].style)
+        XCTAssertNotNil(diagram.edges[0].style)
     }
 
     func testAccessibilityTitleAndDescriptionAreKept() throws {

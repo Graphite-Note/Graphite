@@ -76,7 +76,7 @@ Status: **Missing**, **Partial**, or **Done**. "Desktop only" items are left out
 | Tags view | Done | Every tag with its count in the left sidebar, nested or flat, sorted by name or frequency; tap to search. No tag renaming (Obsidian has none either) |
 | Templates | Done | `{{title}}`, `{{date}}`, `{{time}}` with formats; properties merged; no Templater syntax |
 | Unique note creator | Missing | |
-| Word count | Done | Whitespace splitting miscounts Chinese, Japanese and Korean; no selection count |
+| Word count | Done | Counts words by Obsidian's own rule (checked against its pattern), so both apps show the same number; no selection count |
 | Workspaces | Missing | Tabs exist; saved named layouts do not |
 | Publish, Sync | Missing | Paid Obsidian services; out of scope. Vaults sync through iCloud Drive or other file providers |
 
@@ -103,7 +103,7 @@ Status: **Missing**, **Partial**, or **Done**. "Desktop only" items are left out
 | Nested embeds | Partial | One level deep |
 | Unresolved links | Partial | Tapping creates the note; they still look like normal links |
 | Footnotes (`[^1]`, `^[inline]`) | Done | Raised numbers and a list at the end when reading; raised labels in Live Preview (an undefined reference is styled there too); no back links from a footnote to its reference |
-| HTML (`<u>`, `<br>`, `<details>`, `<span style>`) | Missing | Shown as text |
+| HTML (`<u>`, `<br>`, `<details>`, `<span style>`) | Partial | Reading view and Live Preview's callouts and tables hide `<!-- -->` comments and draw `<br>` as a line break, `<mark>`, `<u>`, `<b>`, `<i>`, `<s>`, `<kbd>`, and `<sub>`/`<sup>` as lowered or raised characters when they have them; `<details>`, `<span style>` and other tags are shown as text |
 | Mermaid diagrams | Partial | Flowcharts (subgraphs included), sequence, class, state, entity relationship and Gantt diagrams, pie charts, mindmaps, timelines, Git graphs, user journeys, quadrant charts, XY charts and Sankey diagrams are drawn natively in reading view and in Live Preview (over the concealed fence, the source showing while the cursor is in it), in Pele's style (Obsidian's renderer); a collapsed subgraph, composite states, class namespaces, sequence boxes, a Git graph's options, a Sankey diagram's circular links and a few other statements and the other diagram types (requirement, C4, block, packet, kanban, architecture and the rest) are still shown as code, and a wide diagram is scaled down rather than laid out for the width; see [Native-diagrams-todo.md](Native-diagrams-todo.md) |
 | Code highlighting while editing | Partial | Highlighted in reading view only; no copy button |
 | Comments `%%` in Live Preview | Partial | Hidden in reading view; not dimmed while editing |

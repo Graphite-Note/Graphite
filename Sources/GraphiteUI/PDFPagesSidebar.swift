@@ -5,8 +5,8 @@
  * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 02/11/2026
  */
 
 import SwiftUI
@@ -51,16 +51,23 @@ struct PDFPagesSidebar: View {
 
     private var pagesList: some View {
         let bookmarkedPages = session.bookmarkedPageIndices
+        // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
+        let pageListVersion = session.pageListVersion
+        let placeholderSize = session.document.page(at: 0)?.thumbnailSize(fitting: Self.thumbnailSize) ?? Self.thumbnailSize
         return VStack(spacing: 0) {
             ScrollViewReader { scrollProxy in
                 ScrollView {
                     LazyVStack(spacing: 14) {
-                        // Reading the version refreshes the rows after pages are inserted, deleted, or moved.
-                        let _ = session.pageListVersion
                         // Only the rows on screen ask PDFKit for their page.
                         ForEach(PDFThumbnailListPage.rowIndices(of: session.document), id: \.self) { pageIndex in
-                            if let page = session.document.page(at: pageIndex) {
+                            PDFThumbnailListRow(document: session.document, pageIndex: pageIndex, pageListVersion: pageListVersion) { page in
                                 pageRow(page: page, pageIndex: pageIndex, isBookmarked: bookmarkedPages.contains(pageIndex))
+                            } placeholder: {
+                                VStack(spacing: 6) {
+                                    Color.clear.frame(width: placeholderSize.width, height: placeholderSize.height)
+                                    Text("\(pageIndex + 1)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                }
+                                .padding(8)
                             }
                         }
                     }
@@ -148,6 +155,11 @@ struct PDFPagesSidebar: View {
         PDFPageActionsMenuContent(commands: commands, pageIndices: [pageIndex], isBookmarked: isBookmarked)
     }
 
+    /// "1 page", "12 pages", "1,200 pages".
+    static func pageCountText(_ pageCount: Int) -> String {
+        pageCount == 1 ? "1 page" : "\(pageCount.formatted()) pages"
+    }
+
     @ViewBuilder private var selectionBar: some View {
         HStack {
             if isSelecting {
@@ -167,10 +179,10 @@ struct PDFPagesSidebar: View {
                     selectedPages = PDFPageSelection(pages: [session.document.page(at: session.currentPageIndex)].compactMap { page in page })
                 }
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             } else {
                 Spacer()
-                Text("\(session.pageCount) pages").font(.caption).foregroundStyle(.secondary)
+                Text(Self.pageCountText(session.pageCount)).font(.caption).foregroundStyle(.secondary)
             }
         }
         .font(.callout)
@@ -273,7 +285,7 @@ struct PDFCurrentPageFollower: View {
     }
 
     private func scrollToCurrentPage(animated: Bool) {
-        // A row is known by its page's index, so nothing asks PDFKit for pages to scroll.
+        // A row asks PDFKit for its page only when it shows (`PDFThumbnailListRow`), so a jump does not ask for those on the way.
         guard session.document.pageCount > session.currentPageIndex else { return }
         withAnimation(animated ? GraphiteMotion.animation() : nil) { scrollProxy.scrollTo(session.currentPageIndex, anchor: .center) }
     }

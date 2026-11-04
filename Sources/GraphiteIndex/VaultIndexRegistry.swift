@@ -6,7 +6,7 @@
  *              shares.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 01/11/2026
  */
 
@@ -106,7 +106,8 @@ public final class VaultIndexRegistry {
         } catch {
             continuation.finish()
             shared.listeners[leaseIdentifier] = nil
-            // A failed opening is not kept: the next window to open the vault tries again.
+            // A failed opening is not kept: the next window to open the vault tries again. (A damaged
+            // database never gets here: opening it made it again.)
             if sharedIndexes[vaultIdentifier] === shared { sharedIndexes[vaultIdentifier] = nil }
             throw error
         }
@@ -116,7 +117,7 @@ public final class VaultIndexRegistry {
         let cachesFolder = cachesFolder
         let shared = SharedIndex(vaultIdentifier: vaultIdentifier, root: root, opening: Task.detached(priority: .utility) {
             let location = try VaultIndex.cacheURL(forVault: vaultIdentifier, legacyRoot: root, in: cachesFolder)
-            return try VaultIndex(databaseURL: location)
+            return try VaultIndex.openRebuildingIfDamaged(databaseURL: location)
         })
         sharedIndexes[vaultIdentifier] = shared
         return shared

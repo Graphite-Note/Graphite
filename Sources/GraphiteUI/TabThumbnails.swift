@@ -1,3 +1,14 @@
+/**
+ * File: TabThumbnails.swift
+ * -------------------------
+ * Layer: UI
+ * Description: The small pictures of tabs as they were last seen, for the tab overview's cards.
+ *
+ * Authors: felixchvl
+ * Version: 0.2
+ * Date: 01/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 #if canImport(UIKit)
@@ -17,7 +28,14 @@ final class TabThumbnails {
     static let maximumThumbnailCount = 24
     nonisolated static let longestSidePixels: CGFloat = 640
 
-    private var thumbnails: [UUID: CGImage] = [:]
+    /// A tab's picture, with the file the tab showed in it: a tab that shows another file
+    /// since has a stale picture, which is let go (`keepThumbnails`).
+    private struct Capture {
+        let image: CGImage
+        let file: VaultPath?
+    }
+
+    private var captures: [UUID: Capture] = [:]
     /// The tabs with a thumbnail, least recently captured first.
     private var captureOrder: [UUID] = []
     /// Each side's document areas, by tab group. SwiftUI can make a side's new area before
@@ -44,27 +62,30 @@ final class TabThumbnails {
         #endif
     }
 
-    func thumbnail(of tabID: UUID) -> CGImage? { thumbnails[tabID] }
+    func thumbnail(of tabID: UUID) -> CGImage? { captures[tabID]?.image }
 
-    var thumbnailCount: Int { thumbnails.count }
+    var thumbnailCount: Int { captures.count }
 
-    func store(_ thumbnail: CGImage, for tabID: UUID) {
-        thumbnails[tabID] = thumbnail
+    /// Keeps the picture of `tabID`, which showed `file` (nil for a tab without a file).
+    func store(_ thumbnail: CGImage, for tabID: UUID, showing file: VaultPath?) {
+        captures[tabID] = Capture(image: thumbnail, file: file)
         captureOrder.removeAll { capturedTabID in capturedTabID == tabID }
         captureOrder.append(tabID)
         while captureOrder.count > Self.maximumThumbnailCount {
-            thumbnails[captureOrder.removeFirst()] = nil
+            captures[captureOrder.removeFirst()] = nil
         }
     }
 
-    /// Lets go of the thumbnails of tabs that were closed.
-    func keepOnly(_ openTabIDs: Set<UUID>) {
-        captureOrder.removeAll { capturedTabID in !openTabIDs.contains(capturedTabID) }
-        thumbnails = thumbnails.filter { tabID, _ in openTabIDs.contains(tabID) }
+    /// Lets go of the thumbnails of tabs that were closed, and of tabs that show another file
+    /// than the one pictured, as after following a link or going back in the tab.
+    func keepThumbnails(of tabs: [WorkspaceTab]) {
+        let shownFiles = Dictionary(tabs.map { tab in (tab.id, tab.path) }, uniquingKeysWith: { firstFile, _ in firstFile })
+        captures = captures.filter { tabID, capture in shownFiles[tabID].map { shownFile in shownFile == capture.file } ?? false }
+        captureOrder.removeAll { capturedTabID in captures[capturedTabID] == nil }
     }
 
     func removeAllThumbnails() {
-        thumbnails.removeAll()
+        captures.removeAll()
         captureOrder.removeAll()
     }
 
@@ -96,15 +117,15 @@ final class TabThumbnails {
     /// side shows several tabs at once, so none of them is captured.
     func captureShownTabs(in layout: TabLayout) {
         for group in layout.groups where !group.isStacked {
-            captureActiveTab(ofGroup: group.id, tabID: group.activeTabID)
+            captureActiveTab(ofGroup: group.id, tabID: group.activeTabID, showing: group.activeTab.path)
         }
     }
 
     /// Captures what a side's document area shows, for the tab it shows.
     @discardableResult
-    func captureActiveTab(ofGroup groupID: UUID, tabID: UUID) -> Bool {
+    func captureActiveTab(ofGroup groupID: UUID, tabID: UUID, showing file: VaultPath?) -> Bool {
         guard let area = documentArea(ofGroup: groupID), let thumbnail = Self.thumbnail(of: area) else { return false }
-        store(thumbnail, for: tabID)
+        store(thumbnail, for: tabID, showing: file)
         return true
     }
 
