@@ -6,7 +6,7 @@
  *              over the whole page or the part of it on screen, the writing guides and the text boxes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if canImport(UIKit)
@@ -117,6 +117,8 @@ final class PDFPageOverlayView: UIView {
         guideView.frame = bounds
         guideView.drawingRegion = bounds
         textBoxesView.frame = bounds
+        // A box with emoji is a picture, drawn at the zoom's resolution once the zoom settles.
+        textBoxesView.screenPixelsPerPagePoint = renderingScale * (window?.screen.scale ?? traitCollection.displayScale)
         let scale = renderingScale
         let region = wantedRegion()
         shownRegion = region
