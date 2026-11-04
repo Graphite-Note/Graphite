@@ -1,3 +1,14 @@
+/**
+ * File: ReadingTasksAndEquationsTests.swift
+ * -----------------------------------------
+ * Layer: Tests
+ * Description: Ticking tasks and equation numbers in the hosted reading view, and a callout's task and footnote
+ *              in Live Preview.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -127,6 +138,36 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
         _ = try await element(in: controller) { element in element.accessibilityLabel == "Flour" && element.accessibilityValue == "Completed" }
         XCTAssertEqual(hostSession.text, "Before the embed.\n\n![[Groceries]]\n", "The note that embeds the task is unchanged.")
         attachScreenshot(named: "Embedded task ticked")
+    }
+
+    /// HUNT-135 and HUNT-131 in Live Preview, where a callout is drawn rendered while the cursor is outside it: its
+    /// task's checkbox ticks the task in the note, as in the reading view, and its footnote reference shows as the
+    /// note's number for it, never as the literal `[^a]`. Intro's `[^b]` comes first, so b is 1 and a is 2.
+    func testInLivePreviewACalloutsTaskIsTickedAndItsFootnoteIsNumbered() async throws {
+        let note = "Intro[^b] of the lecture.\n\n> [!todo] Homework\n> - [ ] Write it[^a]\n> - [x] Read it\n\nAfter the callout.\n\n[^a]: Alpha\n[^b]: Beta\n"
+        let workspace = try await makeWorkspace(notes: ["Homework.md": note])
+        await workspace.open(try VaultPath("Homework.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        session.viewMode = .livePreview
+        session.selection = NSRange(location: 0, length: 0)
+        let controller = try host(workspace)
+        _ = try await visibleEditor(in: controller, showing: session)
+        let checkbox = try await element(in: controller) { element in
+            (element.accessibilityLabel ?? "").hasPrefix("Write it") && element.accessibilityValue == "Not completed"
+        }
+        attachScreenshot(named: "Callout in Live Preview")
+        let calloutLabels = accessibilityElements(in: controller.view).compactMap(\.accessibilityLabel).filter { label in label.contains("Write it") }
+        XCTAssertFalse(calloutLabels.isEmpty)
+        XCTAssertFalse(calloutLabels.contains { label in label.contains("[^") }, "No literal footnote reference: \(calloutLabels)")
+        XCTAssertTrue(calloutLabels.contains { label in label.contains("2") }, "The reference shows the note's number for it: \(calloutLabels)")
+
+        XCTAssertTrue(checkbox.accessibilityActivate())
+        let tickedNote = note.replacingOccurrences(of: "> - [ ] Write it", with: "> - [x] Write it")
+        try await waitUntil("the callout's task is ticked in the note") { session.text == tickedNote }
+        _ = try await element(in: controller) { element in (element.accessibilityLabel ?? "").hasPrefix("Write it") && element.accessibilityValue == "Completed" }
+        attachScreenshot(named: "Callout task ticked in Live Preview")
+        let file = try XCTUnwrap(vaultDirectory).appendingPathComponent("Homework.md")
+        try await waitUntil(timeoutSeconds: 5) { (try? Data(contentsOf: file)) == Data(tickedNote.utf8) }
     }
 
     // MARK: Equation numbers

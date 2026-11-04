@@ -28,9 +28,14 @@ public enum RoundedRunBackgroundAttribute: AttributedStringKey {
 
 struct RoundedRunBackgroundText: TextAttribute {
   let background: RoundedRunBackground
+  /// For an attachment, how far its font's text reaches around the baseline: what the background
+  /// behind it covers, whatever the attachment's own height. Nil for text, whose run says.
+  let attachmentFontExtent: FontVerticalExtent?
 }
 
-/// Draws the rounded backgrounds of a fragment's marked runs, behind its text.
+/// Draws the rounded backgrounds of a fragment's marked runs, behind its text. A background is as
+/// tall as its text, as a Web page draws an inline element's background: a formula taller than
+/// that stands out of it, rather than making the background taller along the whole line.
 struct RoundedRunBackgrounds: ViewModifier {
   func body(content: Content) -> some View {
     content.backgroundPreferenceValue(Text.LayoutKey.self) { layouts in
@@ -71,11 +76,13 @@ struct RoundedRunBackgrounds: ViewModifier {
     for line in layout {
       var current: (frame: CGRect, background: RoundedRunBackground)?
       for run in line {
-        guard let background = run[RoundedRunBackgroundText.self]?.background else {
+        guard let marked = run[RoundedRunBackgroundText.self] else {
           if let finished = current { shapes.append(finished); current = nil }
           continue
         }
-        let bounds = run.typographicBounds.rect.offsetBy(dx: origin.x, dy: origin.y)
+        let background = marked.background
+        let bounds = backgroundBounds(of: run, attachmentFontExtent: marked.attachmentFontExtent, baseline: line.typographicBounds.origin.y)
+          .offsetBy(dx: origin.x, dy: origin.y)
         if let existing = current, existing.background == background {
           current = (existing.frame.union(bounds), background)
         } else {
@@ -86,5 +93,16 @@ struct RoundedRunBackgrounds: ViewModifier {
       if let finished = current { shapes.append(finished) }
     }
     return shapes.map { shape in (shape.frame.insetBy(dx: -shape.background.horizontalPadding, dy: 0), shape.background) }
+  }
+
+  private static func backgroundBounds(of run: Text.Layout.Run, attachmentFontExtent: FontVerticalExtent?, baseline: CGFloat) -> CGRect {
+    let bounds = run.contentBounds
+    guard let attachmentFontExtent else { return bounds }
+    return CGRect(
+      x: bounds.minX,
+      y: baseline - attachmentFontExtent.ascent,
+      width: bounds.width,
+      height: attachmentFontExtent.ascent + attachmentFontExtent.descent
+    )
   }
 }

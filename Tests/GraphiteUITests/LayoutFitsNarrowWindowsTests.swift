@@ -6,8 +6,8 @@
  *              where they stand, and the phone's palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -57,32 +57,6 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
         let withoutReadAloud = PencilToolRowLayout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: false)
         let split = PencilToolRowLayout.split(withoutReadAloud, showing: 2, toolInUse: .readAloud)
         XCTAssertEqual(split.shown, Array(withoutReadAloud.prefix(2)), "The Read Aloud pen is not on a page without text.")
-    }
-
-    func testTheToolsGoInTheTabBarWhereTheirCompactRowFitsBesideTheTabsAndButtons() {
-        func showsTools(width: CGFloat?, controls: Bool, toolCount: Int = 8, tabBar: Bool = true) -> Bool {
-            DocumentToolbarLayout.showsPencilToolsInTabBar(showsTabBar: tabBar, tabBarWidth: width, showsDocumentControls: controls, toolCount: toolCount)
-        }
-        XCTAssertTrue(showsTools(width: 1_032, controls: true), "iPad portrait")
-        XCTAssertTrue(showsTools(width: 1_056, controls: true), "iPad landscape beside the sidebar")
-        XCTAssertTrue(showsTools(width: 688, controls: false), "Half of iPad landscape, the controls in the toolbar")
-        XCTAssertFalse(showsTools(width: 712, controls: true), "iPad portrait beside the sidebar")
-        XCTAssertFalse(showsTools(width: 516, controls: true), "Half of iPad portrait")
-        XCTAssertFalse(showsTools(width: 1_376, controls: false, tabBar: false), "Focus hides the tab bar")
-        XCTAssertFalse(showsTools(width: nil, controls: false), "Not measured yet")
-        // The width comes from the tools the bar has: a fourth ink on the 11-inch iPad held upright (834 points)
-        // moves the tools to a row of their own instead of squeezing the tabs to an icon (HUNT-289, HUNT-265).
-        XCTAssertTrue(showsTools(width: 834, controls: true, toolCount: 8))
-        XCTAssertFalse(showsTools(width: 834, controls: true, toolCount: 9))
-        let beside = DocumentToolbarLayout.minimumTabsWidthBesidePencilTools + DocumentToolbarLayout.tabBarButtonsWidth
-        let narrowest = beside + PencilToolRowLayout.compactRowWidth(toolCount: 8)
-        XCTAssertTrue(showsTools(width: narrowest, controls: false))
-        XCTAssertFalse(showsTools(width: narrowest - 1, controls: false))
-    }
-
-    func testTheCompactRowWidthGrowsByOneToolSlotPerTool() {
-        XCTAssertEqual(PencilToolRowLayout.compactRowWidth(toolCount: 7) - PencilToolRowLayout.compactRowWidth(toolCount: 6), PencilToolRowLayout.toolSlotWidth)
-        XCTAssertEqual(PencilToolRowLayout.compactRowWidth(toolCount: 6), 309, "The 306 to 309 points the hunt measured for a canvas's six tools.")
     }
 
     // MARK: HUNT-264, HUNT-261: a split uses the fixed bar

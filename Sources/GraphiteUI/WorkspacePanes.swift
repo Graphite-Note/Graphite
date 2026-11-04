@@ -6,8 +6,8 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.47
- * Date: 02/11/2026
+ * Version: 0.48
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -150,15 +150,10 @@ private struct TabGroupPane: View {
         let showsDocumentControlsInTabBar = DocumentToolbarLayout.showsControlsInTabBar(
             usesControlRow: usesDocumentControlRowSetting ?? DocumentToolbarLayout.usesControlRow(detailWidth: nil, horizontalSizeClass: horizontalSizeClass),
             showsTabBar: showsTabBar, tabBarWidth: width)
-        // Compact widths keep Apple's palette; there is no fixed bar to place.
-        let showsPencilToolsInTabBar = horizontalSizeClass != .compact && DocumentToolbarLayout.showsPencilToolsInTabBar(
-            showsTabBar: showsTabBar, tabBarWidth: width, showsDocumentControls: showsDocumentControlsInTabBar,
-            toolCount: PencilToolRowLayout.tools(presetCount: PencilToolbox.shared.presets.count, offersTextBoxes: true,
-                                                 offersReadAloudPen: workspace.readAloud != nil).count)
         VStack(spacing: 0) {
             if showsTabBar {
                 TabBar(workspace: workspace, group: group, isFocused: isFocused, showsBothGroups: showsBothGroups,
-                       showsDocumentControls: showsDocumentControlsInTabBar, showsPencilTools: showsPencilToolsInTabBar)
+                       showsDocumentControls: showsDocumentControlsInTabBar)
                 Hairline()
             }
             if let library, showsLibraryHome, library.isShownAsHome {
@@ -167,7 +162,6 @@ private struct TabGroupPane: View {
                 ConflictVersionsBanner(workspace: workspace, path: tab.path)
                 tabDocuments(activeTab: tab)
                 .environment(\.showsDocumentControlsInTabBar, showsDocumentControlsInTabBar)
-                .environment(\.showsPencilToolsInTabBar, showsPencilToolsInTabBar)
                 // The area the tab overview's thumbnail of this side is captured from.
                 .background {
                     if let tabOverview { TabThumbnailArea(groupID: group.id, thumbnails: tabOverview.thumbnails) }
@@ -255,8 +249,6 @@ private struct TabBar: View {
     let showsBothGroups: Bool
     /// Whether the bar ends with Undo, Redo and Write of the active tab's document.
     let showsDocumentControls: Bool
-    /// Whether the bar has room for the fixed bar's tools, for a PDF written on in the active tab.
-    let showsPencilTools: Bool
 
     @State private var isDropTargeted = false
     @Environment(\.accent) private var accent
@@ -271,14 +263,6 @@ private struct TabBar: View {
     private var groupIndex: Int { layout.groups.firstIndex { candidate in candidate.id == group.id } ?? 0 }
     /// The room at each end of the row of tabs.
     private static let tabsInset: CGFloat = 8
-    @AppStorage(PencilToolbarStyle.preferenceKey) private var chosenPencilToolbarStyle = PencilToolbarStyle.floating
-    @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
-    /// Whether tabs stay narrow enough for the tab area the fixed bar's tools leave them:
-    /// wherever those tools can share this tab bar, whichever tab is shown, so tabs keep
-    /// their width when a PDF and a note take turns.
-    private var keepsTabsBesidePencilTools: Bool {
-        showsPencilTools && chosenPencilToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) == .fixed
-    }
 
     var body: some View {
         HStack(spacing: 4) {
@@ -292,23 +276,14 @@ private struct TabBar: View {
             } else {
                 tabRow
             }
-            #if canImport(UIKit)
-            if showsPencilTools && !isLibraryHomeShown {
-                let document = workspace.document(for: group.activeTabID)
-                // A tab whose file is still loading has the sessions of the file before it.
-                if let session = document.pdfSession, group.activeTab.path != nil, document.loadedPath == group.activeTab.path {
-                    Hairline(axis: .vertical).frame(height: 18)
-                    TabBarPencilTools(session: session, offersReadAloudPen: workspace.readAloud != nil)
-                        .layoutPriority(1)
-                }
-            }
-            #endif
+            // The fixed bar's Pencil tools are not here: they take a row of their own under this
+            // bar, centered over the page and whole, in portrait and landscape alike (`PDFPane`).
             if showsDocumentControls && !isLibraryHomeShown {
                 TabBarDocumentControls(tab: group.activeTab, document: workspace.document(for: group.activeTabID),
                                        defaultEditingMode: workspace.defaultEditingMode, isFocused: isFocused)
                     .padding(.horizontal, 4)
             }
-            if (showsDocumentControls || showsPencilTools) && !isLibraryHomeShown {
+            if showsDocumentControls && !isLibraryHomeShown {
                 Hairline(axis: .vertical).frame(height: 18)
             }
             groupButtons
@@ -339,7 +314,7 @@ private struct TabBar: View {
                                 marksFocus: isFocused && showsBothGroups,
                                 activate: { library?.leaveHome(); workspace.activateTab(tab.id) },
                                 close: { Task { await workspace.closeTab(tab.id) } },
-                                maximumWidth: keepsTabsBesidePencilTools ? DocumentToolbarLayout.minimumTabsWidthBesidePencilTools - 2 * Self.tabsInset : 220)
+                                maximumWidth: 220)
                             .contextMenu { tabMenu(for: tab) }
                             .draggable(TabTransfer(tab: tab, vaultIdentifier: workspace.currentVaultIdentifier), contentType: .graphiteTab,
                                        opening: tab.path.map { path in .showing(path, inVault: workspace.currentVaultIdentifier) }) {
@@ -354,7 +329,6 @@ private struct TabBar: View {
                 .padding(.horizontal, Self.tabsInset)
                 .frame(maxHeight: .infinity)
             }
-            .frame(minWidth: showsPencilTools ? DocumentToolbarLayout.minimumTabsWidthBesidePencilTools : nil)
             // Past the last tab, a dropped tab goes to the end.
             .dropDestination(for: TabTransfer.self) { items, _ in moveDroppedTabs(items, to: group.tabs.count) }
             .onChange(of: group.activeTabID) { _, activeTabID in
@@ -988,7 +962,8 @@ struct DelayedProgressView: View {
         ProgressView().controlSize(.large)
             .opacity(isVisible ? 1 : 0)
             .task {
-                do { try await Task.sleep(for: .milliseconds(300)); isVisible = true } catch {}
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return } // the view went away first
+                isVisible = true
             }
     }
 }

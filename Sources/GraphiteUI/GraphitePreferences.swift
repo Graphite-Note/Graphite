@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.29
- * Date: 02/11/2026
+ * Version: 0.30
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -239,6 +239,7 @@ final class GraphitePreferences {
         static let makesShapesOnHold = StrokeHoldPreference.key
         static let pencilToolbarStyle = PencilToolbarStyle.preferenceKey
         static let usesVaultTheme = "GraphiteUsesVaultTheme"
+        static let annotationAuthorName = PDFAnnotationAuthor.preferenceKey
     }
     /// The smallest text a note draws, such as a footnote number: Apple's minimum text size
     /// on iPhone and iPad.
@@ -258,6 +259,8 @@ final class GraphitePreferences {
     }
 
     private let defaults: UserDefaults
+    /// The observer of `defaults` that keeps the palettes as stored (`followStoredPalettes`).
+    @ObservationIgnored private var storedPalettesObserver: (any NSObjectProtocol)?
     /// The library's own settings, kept apart from the rest.
     let library: NotebookLibraryPreferences
     /// The paper and size the next notebook starts with.
@@ -266,6 +269,20 @@ final class GraphitePreferences {
     let notePDFExport: NotePDFExportDefaults
     /// The language of month and weekday names in dates.
     let dateNames: DateNamePreferences
+
+    /// The name written as the author of the ink, highlights, text boxes and pictures added to a PDF
+    /// (Settings › General › You); empty when none is chosen, which writes the Mac owner's name, or none on an
+    /// iPad or iPhone (`PDFAnnotationAuthor`). A blank name is not stored.
+    var annotationAuthorName: String {
+        didSet {
+            let trimmedName = annotationAuthorName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmedName.isEmpty {
+                defaults.removeObject(forKey: Key.annotationAuthorName)
+            } else {
+                defaults.set(annotationAuthorName, forKey: Key.annotationAuthorName)
+            }
+        }
+    }
 
     var drawingFormat: DrawingFormat { didSet { defaults.set(drawingFormat.rawValue, forKey: Key.drawingFormat) } }
     var drawingBackground: DrawingBackground { didSet { defaults.set(drawingBackground.rawValue, forKey: Key.drawingBackground) } }
@@ -435,6 +452,7 @@ final class GraphitePreferences {
         notebookCreation = NotebookCreationDefaults(defaults: defaults)
         notePDFExport = NotePDFExportDefaults(defaults: defaults)
         dateNames = DateNamePreferences(defaults: defaults)
+        annotationAuthorName = defaults.string(forKey: Key.annotationAuthorName) ?? ""
         drawingFormat = defaults.string(forKey: Key.drawingFormat).flatMap(DrawingFormat.init(rawValue:)) ?? .png
         drawingBackground = defaults.string(forKey: Key.drawingBackground).flatMap(DrawingBackground.init(rawValue:)) ?? .white
         drawsOnPencilDoubleTap = defaults.object(forKey: Key.drawsOnPencilDoubleTap) as? Bool ?? true
@@ -477,6 +495,30 @@ final class GraphitePreferences {
         snapshotIntervalMinutes = (1...60).contains(storedInterval) ? storedInterval : 5
         let storedHistory = defaults.integer(forKey: Key.snapshotHistoryDays)
         snapshotHistoryDays = (1...365).contains(storedHistory) ? storedHistory : 7
+        followStoredPalettes()
+    }
+
+    isolated deinit {
+        if let storedPalettesObserver { NotificationCenter.default.removeObserver(storedPalettesObserver) }
+    }
+
+    /// Follows the palettes as stored, which the Pencil bar changes too (moving, adding and removing its colors
+    /// through `FavoriteColorEditing`): without it, this copy would be stale, and the next change in Settings › Colors
+    /// would write the stale list back over the bar's.
+    private func followStoredPalettes() {
+        storedPalettesObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: defaults,
+                                                                         queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.takeStoredPalettes() }
+        }
+    }
+
+    /// Takes the stored palettes where they differ from this copy; the same list is not assigned again, which would
+    /// write it back and post another change.
+    private func takeStoredPalettes() {
+        let storedColors = Self.storedColorPalette(in: defaults)
+        if storedColors != colorPalette { colorPalette = storedColors }
+        let storedHighlighterColors = Self.storedHighlighterPalette(in: defaults)
+        if storedHighlighterColors != highlighterPalette { highlighterPalette = storedHighlighterColors }
     }
 
     func isEnabled(_ plugin: CorePlugin) -> Bool { corePluginSwitches.isEnabled(plugin) }

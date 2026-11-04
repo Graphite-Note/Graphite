@@ -5,8 +5,8 @@
  * Description: Standard PDF ink for one Pencil stroke.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -135,8 +135,9 @@ enum PDFInkAnnotationFactory {
     private static let boundsMargin = 1.0
 
     /// `isForWrittenDocument` makes the outline an appearance for a document that is written
-    /// rather than a drawing on a shown page (`PDFOutlinedInkAnnotation`).
-    static func annotation(for stroke: PortableInkStroke, group: String, isForWrittenDocument: Bool) -> PDFAnnotation? {
+    /// rather than a drawing on a shown page (`PDFOutlinedInkAnnotation`). `authorName` is
+    /// written as the annotation's author, or no author when nil (`PDFAnnotationAuthor`).
+    static func annotation(for stroke: PortableInkStroke, group: String, isForWrittenDocument: Bool, authorName: String?) -> PDFAnnotation? {
         let segments = stroke.segments.filter { segment in !segment.isEmpty && segment.allSatisfy { point in point.x.isFinite && point.y.isFinite } }
         guard !segments.isEmpty, stroke.width.isFinite else { return nil }
         let color = CGColor(srgbRed: stroke.red, green: stroke.green, blue: stroke.blue, alpha: stroke.alpha)
@@ -164,6 +165,7 @@ enum PDFInkAnnotationFactory {
         border.lineWidth = max(0.5, stroke.width)
         annotation.border = border
         annotation.shouldPrint = true
+        PDFAnnotationAuthor.write(authorName, on: annotation)
         annotation.setValue(group, forAnnotationKey: PDFPageManager.groupKey)
         if stroke.multipliesOverPage { annotation.setValue(NSNumber(value: true), forAnnotationKey: PDFPageManager.inkMultipliesKey) }
         if let name = stroke.name { annotation.setPersistentName(name) }

@@ -7,3 +7,7 @@ xcuserdata/
 BenchmarkResults/
 Tests/test_vault/
 node_modules/
+
+# Python bytecode the scripts leave behind
+__pycache__/
+*.pyc

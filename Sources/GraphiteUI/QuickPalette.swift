@@ -6,8 +6,8 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -327,7 +327,7 @@ struct QuickSwitcher: View {
         return matches.filter { match in seenIdentifiers.insert(match.id).inserted }
     }
 
-    private func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?, switcher: SwitcherQuery) -> PaletteItem {
+    func fileItem(_ path: VaultPath, title: String, highlights: [Range<Int>], alias: String?, switcher: SwitcherQuery) -> PaletteItem {
         let folder = path.parent.rawValue
         let subtitle = alias != nil ? workspace.preferences.displayName(for: path) + (folder.isEmpty ? "" : " — " + folder) : (folder.isEmpty ? nil : folder)
         var item = PaletteItem(id: path.rawValue + "|" + (alias ?? ""), title: title, titleHighlights: highlights, subtitle: subtitle,

@@ -6,7 +6,7 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
+ * Version: 0.11
  * Date: 02/11/2026
  */
 
@@ -877,15 +877,20 @@ final class AppProjectTextualPatchTests: XCTestCase {
         return hostingView.fittingSize.height
     }
 
-    /// Patches 19 and 20: a line with an inline fraction or sum is far less tall in the reading view.
-    /// `\\dfrac` is the fraction drawn tall on purpose, and stays as it was.
+    /// SwiftUIMath's patches 19 and 20 and Textual's patch 22: a line with an inline fraction or
+    /// sum grows only by what the formula needs, in whole points. `\\dfrac` is the fraction drawn
+    /// tall on purpose. What was added before Textual's patch is in each message.
     func testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView() {
         let plain = readingViewHeight(ofMarkdown: "Some words here")
         func addedHeight(_ latex: String) -> CGFloat { readingViewHeight(ofMarkdown: "Some $\(latex)$ words") - plain }
-        XCTAssertLessThan(addedHeight(#"\frac{a}{b}"#), 18, "It added 23 points.")
-        XCTAssertLessThan(addedHeight(#"\sum_{i=1}^n x_i"#), 25, "It added 48 points.")
-        XCTAssertLessThan(addedHeight(#"\lim_{x\to 0} f"#), 15, "It added 26 points.")
-        XCTAssertGreaterThan(addedHeight(#"\dfrac{a}{b}"#), 30)
+        XCTAssertLessThanOrEqual(addedHeight(#"x"#), 0)
+        XCTAssertLessThanOrEqual(addedHeight(#"x_i"#), 2)
+        XCTAssertLessThanOrEqual(addedHeight(#"\frac{a}{b}"#), 4, "It added 14 points.")
+        XCTAssertLessThanOrEqual(addedHeight(#"\frac{x^2+1}{\sqrt{y}}"#), 13, "It added 28 points.")
+        XCTAssertLessThanOrEqual(addedHeight(#"\sum_{i=1}^n x_i"#), 8, "It added 20 points.")
+        XCTAssertLessThanOrEqual(addedHeight(#"\lim_{x\to 0} f"#), 2, "It added 10 points.")
+        XCTAssertLessThanOrEqual(addedHeight(#"\dfrac{a}{b}"#), 18, "It added 37 points.")
+        XCTAssertGreaterThan(addedHeight(#"\dfrac{a}{b}"#), 15)
     }
 
     /// Commands rewritten for the typesetter reach it as text it can draw.

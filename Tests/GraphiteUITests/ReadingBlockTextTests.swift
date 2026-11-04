@@ -6,8 +6,8 @@
  *              tasks, callout fold keys, raw HTML, tags, reference links and nested heading links.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -257,6 +257,17 @@ final class ReadingBlockTextTests: XCTestCase {
         XCTAssertEqual(plain.runs.filter { $0.foregroundColor != nil }.map { String(plain[$0.range].characters) }, ["#project/alpha"])
         let emoji = try ObsidianMarkdownParser(baseURL: vault, textSize: 17, linksTags: true).attributedString(for: "Rocket #🚀 here, and C# and a#b")
         XCTAssertEqual(emoji.runs.compactMap { run in run.link.flatMap(GraphiteOpenLink.tagName(of:)) }, ["🚀"])
+    }
+
+    /// A tag ending a paragraph or a list item ends there: the next paragraph's first word is not part of it. GitHub's
+    /// iPad showed `Filed` in the tag's pill and a tap on the tag searched for `project/alphaFiled` (2026-11-04).
+    func testATagEndsWithItsParagraphOrListItem() throws {
+        let parser = ObsidianMarkdownParser(baseURL: vault, textSize: 17, linksTags: true)
+        let paragraphs = try parser.attributedString(for: "#project/alpha\n\nFiled for the week.")
+        XCTAssertEqual(paragraphs.runs.compactMap { run in run.link.flatMap(GraphiteOpenLink.tagName(of:)) }, ["project/alpha"])
+        XCTAssertEqual(paragraphs.runs.filter { $0.foregroundColor != nil }.map { String(paragraphs[$0.range].characters) }, ["#project/alpha"])
+        let items = try parser.attributedString(for: "- one #first\n- two #second\n- three")
+        XCTAssertEqual(items.runs.compactMap { run in run.link.flatMap(GraphiteOpenLink.tagName(of:)) }, ["first", "second"])
     }
 
     func testATagInACodeBlockIsNotATag() throws {

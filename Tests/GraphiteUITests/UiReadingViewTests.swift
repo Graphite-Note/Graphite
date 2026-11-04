@@ -329,7 +329,7 @@ final class UiReadingViewTests: XCTestCase {
         let scalarValues = attributed.unicodeScalars.map(\.value)
         XCTAssertFalse(scalarValues.contains(0xE003))
         XCTAssertFalse(scalarValues.contains(0xE004))
-        let highlightedText = attributed.runs.filter { run in run.backgroundColor != nil }.map { run in String(attributed[run.range].characters) }.joined()
+        let highlightedText = attributed.runs.filter { run in run[RoundedRunBackgroundAttribute.self] != nil }.map { run in String(attributed[run.range].characters) }.joined()
         XCTAssertEqual(highlightedText, "\u{0301}e accent")
         XCTAssertTrue(String(attributed.characters).hasSuffix(" after"))
     }

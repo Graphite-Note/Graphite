@@ -6,8 +6,8 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 01/11/2026
+ * Version: 0.16
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -150,6 +150,14 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
     private var builtActions: AvailableActions
     /// Undo, Redo and the separator after them, on a phone; empty on an iPad.
     private var undoAndRedoViews: [UIView] = []
+    /// The kind of device the row is laid out for, the one it runs on outside tests.
+    private let idiom: UIUserInterfaceIdiom
+    /// A phone's row is set closer, so Undo, Redo, Heading, Bold, Italic and the link fit its first screen beside Find and
+    /// Hide Keyboard (393 points upright): at the iPad's spacing the link was cut off by the edge (HUNT-144). The buttons
+    /// stay 44 points high and at least 42 wide.
+    private var rowSpacing: (betweenButtons: CGFloat, aroundSeparator: CGFloat, buttonInset: CGFloat) {
+        idiom == .phone ? (0, 4, 8) : (2, 8, 10)
+    }
 
     /// The pane's optional actions that add buttons; a change rebuilds the row, so no
     /// button stays for a feature that was turned off.
@@ -169,8 +177,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         }
     }
 
-    init(actions: EditorActions, run: @escaping (EditorCommand) -> Void) {
+    init(actions: EditorActions, idiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom, run: @escaping (EditorCommand) -> Void) {
         self.run = run
+        self.idiom = idiom
         builtActions = AvailableActions(actions)
         super.init(frame: CGRect(x: 0, y: 0, width: 0, height: Self.height), inputViewStyle: .keyboard)
         allowsSelfSizing = true
@@ -179,11 +188,11 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         scrollView.showsHorizontalScrollIndicator = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         stackView.axis = .horizontal
-        stackView.spacing = 2
+        stackView.spacing = rowSpacing.betweenButtons
         stackView.alignment = .center
         stackView.translatesAutoresizingMaskIntoConstraints = false
         pinnedStackView.axis = .horizontal
-        pinnedStackView.spacing = 2
+        pinnedStackView.spacing = rowSpacing.betweenButtons
         pinnedStackView.alignment = .center
         pinnedStackView.translatesAutoresizingMaskIntoConstraints = false
         scrollContainer.translatesAutoresizingMaskIntoConstraints = false
@@ -204,6 +213,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // The row's width is known once the scroll view has laid out its content, which can
+        // otherwise come after this pass and leave the row without its fade until it scrolls.
+        scrollView.layoutIfNeeded()
         updateTrailingFade()
     }
 
@@ -283,7 +295,7 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         // and the note's toolbar shows them only in a regular width, as on iPhone Duo's inner
         // display (`updateUndoAndRedoVisibility`).
         undoAndRedoViews = []
-        if UIDevice.current.userInterfaceIdiom != .pad {
+        if idiom != .pad {
             let firstIndex = stackView.arrangedSubviews.count
             add("Undo", "arrow.uturn.backward", .undo)
             add("Redo", "arrow.uturn.forward", .redo)
@@ -294,9 +306,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         addHeadingMenu()
         add("Bold", "bold", .bold)
         add("Italic", "italic", .italic)
-        // A phone shows about eight buttons before the row scrolls: the links and lists a note
-        // is written with come before the rarer marks.
-        let putsLinksAndListsFirst = UIDevice.current.userInterfaceIdiom == .phone
+        // A phone shows six buttons before the row scrolls, the link the last of them: the links
+        // and lists a note is written with come before the rarer marks.
+        let putsLinksAndListsFirst = idiom == .phone
         if putsLinksAndListsFirst { addLinksAndLists() }
         add("Strikethrough", "strikethrough", .strikethrough)
         add("Highlight", "highlighter", .highlight)
@@ -331,7 +343,7 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         separator.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([separator.widthAnchor.constraint(equalToConstant: 1), separator.heightAnchor.constraint(equalToConstant: 22)])
         pinnedStackView.addArrangedSubview(separator)
-        pinnedStackView.setCustomSpacing(8, after: separator)
+        pinnedStackView.setCustomSpacing(rowSpacing.aroundSeparator, after: separator)
         add("Find in note", "magnifyingglass", .find, to: pinnedStackView)
         add("Hide keyboard", "keyboard.chevron.compact.down", .dismissKeyboard, to: pinnedStackView)
     }
@@ -350,7 +362,7 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         // Muted, as Obsidian mobile's editing toolbar: the text being written stays the
         // strongest thing on screen.
         configuration.baseForegroundColor = .secondaryLabel
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 10, bottom: 8, trailing: 10)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: rowSpacing.buttonInset, bottom: 8, trailing: rowSpacing.buttonInset)
         let button = UIButton(configuration: configuration)
         button.accessibilityLabel = title
         button.toolTip = title
@@ -399,8 +411,8 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         separator.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([separator.widthAnchor.constraint(equalToConstant: 1), separator.heightAnchor.constraint(equalToConstant: 22)])
         stackView.addArrangedSubview(separator)
-        stackView.setCustomSpacing(8, after: stackView.arrangedSubviews[max(stackView.arrangedSubviews.count - 2, 0)])
-        stackView.setCustomSpacing(8, after: separator)
+        stackView.setCustomSpacing(rowSpacing.aroundSeparator, after: stackView.arrangedSubviews[max(stackView.arrangedSubviews.count - 2, 0)])
+        stackView.setCustomSpacing(rowSpacing.aroundSeparator, after: separator)
     }
 }
 #endif

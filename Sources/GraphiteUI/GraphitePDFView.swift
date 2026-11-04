@@ -251,10 +251,27 @@ struct GraphitePDFView: UIViewRepresentable {
     /// The note a PDF embedded in a note belongs to, for the lasso's pictures; a PDF pane's
     /// is the note beside it, from `linkActions`.
     var noteDestination: LassoNoteDestination?
+    /// Where the view is kept while its tab is hidden, to come back as it was; nil outside a
+    /// window, where it goes. An embed's view always goes with its note.
+    @Environment(\.hiddenPDFViews) private var hiddenViews
 
-    func makeCoordinator() -> PDFAnnotationCoordinator { PDFAnnotationCoordinator(session: session, isEmbedded: isEmbedded) }
+    func makeCoordinator() -> PDFAnnotationCoordinator {
+        if !isEmbedded, let keptCoordinator = hiddenViews?.coordinator(for: session) { return keptCoordinator }
+        let coordinator = PDFAnnotationCoordinator(session: session, isEmbedded: isEmbedded)
+        coordinator.viewGeneration = session.viewGeneration
+        return coordinator
+    }
 
     func makeUIView(context: Context) -> GraphitePDFDisplayView {
+        // The view of a tab shown again, as it was left: its pages drawn, its canvases with
+        // their ink, its zoom and place (HUNT-308).
+        if !isEmbedded, let keptView = hiddenViews?.takeView(keptWith: context.coordinator) {
+            keptView.removeFromSuperview()
+            context.coordinator.resume()
+            session.livePlace = { [weak keptView] in keptView?.pagePlace }
+            session.pdfView = keptView
+            return keptView
+        }
         let view = GraphitePDFDisplayView()
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
@@ -289,6 +306,7 @@ struct GraphitePDFView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: GraphitePDFDisplayView, context: Context) {
+        context.coordinator.hiddenViews = isEmbedded ? nil : hiddenViews
         context.coordinator.beginInteraction = beginInteraction
         context.coordinator.linkActions = linkActions
         context.coordinator.noteDestination = noteDestination ?? linkActions?.noteDestination
@@ -302,12 +320,17 @@ struct GraphitePDFView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: GraphitePDFDisplayView, coordinator: PDFAnnotationCoordinator) {
-        // A view made for the PDF again, as when its tab is shown again, comes back here,
-        // unless a newer view of it already shows it.
-        if coordinator.session.pdfView === view || coordinator.session.pdfView == nil, let place = view.pagePlace {
-            coordinator.session.keptPlace = place
+        // A view made for the PDF again comes back here, unless a newer view of it already shows it.
+        let isNewestView = coordinator.session.pdfView === view || coordinator.session.pdfView == nil
+        if isNewestView, let place = view.pagePlace { coordinator.session.keptPlace = place }
+        // A tab hidden keeps its view, so showing it again builds nothing; a view built again,
+        // or one a newer view replaced, goes.
+        if isNewestView, !coordinator.isEmbedded, coordinator.session.viewGeneration == coordinator.viewGeneration,
+           let hiddenViews = coordinator.hiddenViews {
+            hiddenViews.keep(view, coordinator: coordinator)
+        } else {
+            coordinator.detach()
         }
-        coordinator.detach()
     }
 }
 
@@ -869,6 +892,36 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var hasPendingFirstResponderUpdate = false
     /// True once the view is dismantled; the coordinator is not used again.
     var isDetached = false
+    /// The session's view generation this coordinator's view was made for (`PDFSession.rebuildView`).
+    var viewGeneration = 0
+    /// The window's kept PDF views, where this view goes while its tab is hidden.
+    weak var hiddenViews: HiddenPDFViews?
+    /// True while the view is kept for its hidden tab (`HiddenPDFViews`), off screen.
+    private(set) var isParked = false
+
+    /// Whether the kept view can come back: still its session's newest view, not built again since.
+    var canShowAgain: Bool { isParked && !isDetached && pdfView != nil && session.viewGeneration == viewGeneration }
+
+    /// The view leaves the screen with its tab and is kept: its ink recorded, the palette put
+    /// away, nothing watching touches; the canvases, their ink and the history stay, and the
+    /// session's saves and undo still reach them.
+    func park() {
+        for canvas in canvasesByPage.values { recordUnrecordedInk(of: canvas) }
+        healthMonitor?.stop()
+        healthMonitor = nil
+        presentedScreenObserver.isObserving = false
+        toolPicker.setVisible(false, forFirstResponder: toolPickerHost)
+        toolPickerHost.takesFirstResponderBackFromSelections = false
+        toolPickerHost.resignFirstResponderOnNextTurn()
+        isParked = true
+    }
+
+    /// The kept view is shown again; its window change brings back the palette and first responder.
+    func resume() {
+        isParked = false
+        hasAppliedInput = false
+        if let pdfView { healthMonitor = PDFPaneHealthMonitor(coordinator: self, pdfView: pdfView) }
+    }
     /// Watches that the PDF keeps taking touches (`PDFPaneHealthMonitor`).
     private var healthMonitor: PDFPaneHealthMonitor?
 

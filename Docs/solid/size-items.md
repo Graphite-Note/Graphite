@@ -3,7 +3,7 @@
 Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, level (review / strong / smell), file, declaration.
 
 ```
-  2631  file     smell   Sources/GraphiteUI/NativeMarkdownEditor.swift  (file)
+  3159  file     smell   Sources/GraphiteUI/NativeMarkdownEditor.swift  (file)
   2293  file     smell   Sources/GraphiteUI/MarkdownPreview.swift  (file)
   1947  type     strong  Sources/GraphiteUI/NativeMarkdownEditor.swift  NativeMarkdownEditor
   1616  type     strong  Sources/GraphiteUI/NativeMarkdownEditor.swift  Coordinator
@@ -96,6 +96,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
    330  type     review  Sources/GraphiteCore/NotePreviewDocument.swift  ObsidianInlineMarkup
    398  type     review  Sources/GraphiteUI/VaultSidebar.swift  VaultSidebar
    318  type     review  Sources/GraphiteUI/MarkdownSession.swift  MarkdownSession
+   312  type     review  Sources/GraphiteUI/NativeMarkdownEditor.swift  MarkdownMacTextView
    311  type     review  Sources/GraphiteUI/ConcealedReplacementLayoutFragment.swift  ConcealedReplacementLayoutFragment
    310  type     review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer
    303  type     review  Sources/GraphiteUI/ReadAloudFloatingPlayer.swift  ReadAloudFloatingPlayer
@@ -280,7 +281,7 @@ Output of `python3 scripts/size-report.py --list` on b13dec3: code lines, kind, 
     41  function review  Sources/GraphiteCore/ShapeRecognizer.swift  ShapeRecognizer.recognizeEllipse
     41  function review  Sources/GraphiteUI/BaseCardsAndListViews.swift  BaseListView.item
     41  function review  Sources/GraphiteUI/CommunityPluginHost.swift  CommunityPluginHost.answerHostOperation
-    41  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
+    50  function review  Sources/GraphiteUI/GraphitePreferences.swift  GraphitePreferences.init
     41  function review  Sources/GraphiteUI/MapViews.swift  VaultMapScreen.body
     41  function review  Sources/GraphiteUI/MarkdownPane.swift  DrawingAtCursorTracker.findDrawingAtCursor
     41  function review  Sources/GraphiteUI/MarkdownPreview.swift  ReadingViewBuilder.render

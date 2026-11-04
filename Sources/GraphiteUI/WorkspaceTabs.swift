@@ -5,8 +5,8 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.32
- * Date: 02/11/2026
+ * Version: 0.33
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -16,6 +16,13 @@ import GraphiteApple
 
 /// What one tab has open: the editor session of its note or PDF, and a heading or search
 /// match waiting to be shown there.
+/// A PDF a tab showed before another file opened in it, and when it was replaced (`TabDocument.replacedPDF`).
+struct ReplacedPDF {
+    let path: VaultPath
+    let session: PDFSession
+    let time: ContinuousClock.Instant
+}
+
 @MainActor @Observable
 final class TabDocument {
     /// The file the sessions belong to; nil until the tab's file is loaded. A tab restored
@@ -59,6 +66,9 @@ final class TabDocument {
     @ObservationIgnored var requestIdentifier = UUID()
     /// A PDF let go of while its tab was hidden, and the page it reopens at.
     @ObservationIgnored var releasedPDFPage: (path: VaultPath, pageIndex: Int)?
+    /// The PDF this tab showed before another file opened in it, kept open (with its view, `HiddenPDFViews`) as a
+    /// hidden tab's is, so opening it here again reads, lays out and decodes nothing (HUNT-308).
+    @ObservationIgnored var replacedPDF: ReplacedPDF?
     /// When the tab was last seen on screen, to keep the most recently hidden PDF open.
     @ObservationIgnored var lastVisibleTime = ContinuousClock.now
 
@@ -69,6 +79,7 @@ final class TabDocument {
     /// Forgets the sessions after their file moved; the tab loads the file again.
     func unload() {
         loadedPath = nil; markdownSession = nil; pdfSession = nil; canvasSession = nil; oversizedNote = nil
+        replacedPDF = nil
     }
 
     func save() async throws {
@@ -314,6 +325,7 @@ extension WorkspaceModel {
             tabDocuments[tabID] = nil
         }
         markdownEditorRetention.discardStaleEditors()
+        keepOnlyTheViewsOfOpenPDFs()
     }
 
     /// Whether the vault has a file or folder at `path` now, as another app may have removed it.
@@ -351,28 +363,6 @@ extension WorkspaceModel {
                 try await document.save()
                 releaseHiddenPDFSessions()
             } catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    /// Hidden tabs keep at most this many PDFs open; the others are let go once saved.
-    private static let maximumHiddenPDFSessionCount = 1
-
-    /// Lets go of the PDFs of hidden tabs, beyond the most recently hidden one, so memory
-    /// does not grow with every PDF ever opened in a tab. A PDF with unsaved edits, a save
-    /// running, or a conflict is kept. A released tab reopens its PDF, at the same page,
-    /// when it is shown again, which loses PDFKit's undo history for it.
-    private func releaseHiddenPDFSessions() {
-        let visibleTabIDs = layout.shownTabIDs
-        let now = ContinuousClock.now
-        for tabID in visibleTabIDs { tabDocuments[tabID]?.lastVisibleTime = now }
-        let hiddenPDFDocuments = tabDocuments.filter { tabID, document in !visibleTabIDs.contains(tabID) && document.pdfSession != nil }
-            .values.sorted { leftDocument, rightDocument in leftDocument.lastVisibleTime > rightDocument.lastVisibleTime }
-        for document in hiddenPDFDocuments.dropFirst(Self.maximumHiddenPDFSessionCount) {
-            guard let session = document.pdfSession, let path = document.loadedPath, !document.isOpening,
-                  !session.hasUnsavedChanges, !session.isSaving, !session.hasExternalConflict else { continue }
-            document.releasedPDFPage = (path, session.currentPageIndex)
-            rememberPlaces(of: [document])
-            document.unload()
         }
     }
 
@@ -466,6 +456,8 @@ extension WorkspaceModel {
                 // A Graphite drawing saved as PDF opens as a drawing, not as a notebook to annotate.
                 if await ImageFileService().isEditableDrawingPDF(at: location) {
                     newPDF = nil
+                } else if let shownAgain = await replacedPDFToShowAgain(at: path, in: document) {
+                    newPDF = shownAgain
                 } else {
                     newPDF = try await openPDFSession(at: location, password: pdfPasswords[path])
                     if let pdfPageIndex, let newPDF { newPDF.currentPageIndex = min(max(pdfPageIndex, 0), max(newPDF.pageCount - 1, 0)) }
@@ -495,6 +487,11 @@ extension WorkspaceModel {
             if document.baseViewRequest?.path != path { document.baseViewRequest = nil }
             document.loadFailure = nil
             document.releasedPDFPage = nil
+            // The PDF shown until now stays open, as a hidden tab's would, to come back at once.
+            if let replacedSession = document.pdfSession, replacedSession !== newPDF, let replacedPath = document.loadedPath, replacedPath != path {
+                // Last seen as the tab was last laid out, which orders it among the hidden tabs' PDFs.
+                document.replacedPDF = ReplacedPDF(path: replacedPath, session: replacedSession, time: document.lastVisibleTime)
+            }
             document.markdownSession = newMarkdown; document.pdfSession = newPDF; document.canvasSession = newCanvas; document.loadedPath = path
             document.oversizedNote = newOversizedNote
             // The editor of the note this tab showed before goes with its session.

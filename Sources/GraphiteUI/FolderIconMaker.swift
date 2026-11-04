@@ -5,8 +5,8 @@
  * Description: Graphite's icon maker: a picture made into a folder icon with templates, framing and background removal.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -68,7 +68,8 @@ struct FolderIconMaker: View {
             .fileExporter(isPresented: Binding(get: { exportedIcon != nil }, set: { isShown in if !isShown { exportedIcon = nil } }),
                           document: exportedIcon, contentType: .png, defaultFilename: "\(folderName) Icon") { _ in }
         }
-        .frame(minWidth: 520, minHeight: 560)
+        // On the iPad the page-sized sheet has room for the template column; a phone's sheet is narrower than 520 points.
+        .sheetMinimumSize(width: 520, height: 560)
     }
 
     /// The editor beside the template column, or above a row of templates on a narrow screen.
