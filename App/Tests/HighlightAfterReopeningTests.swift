@@ -35,7 +35,6 @@ final class HighlightAfterReopeningTests: XCTestCase {
         windows = []
         for location in temporaryLocations { try? FileManager.default.removeItem(at: location) } // A file left in the temporary folder harms nothing.
         temporaryLocations = []
-        UserDefaults.standard.removeObject(forKey: EvenHighlighterPreference.key)
     }
 
     private func pdfWithBlackBar() throws -> URL {
@@ -127,8 +126,8 @@ final class HighlightAfterReopeningTests: XCTestCase {
     }
 
     func testAHighlightOverTextLeavesItReadableOnTheScreenAndInThePageAfterThePDFIsOpenedAgain() async throws {
-        // The highlighter as Apple Notes' draws, the bar's own default.
-        UserDefaults.standard.set(false, forKey: EvenHighlighterPreference.key)
+        // The highlighter as Apple Notes' draws it, the default (`EvenHighlighterPreference` is off unless turned on).
+        XCTAssertFalse(EvenHighlighterPreference.isOn())
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let location = try pdfWithBlackBar()

@@ -86,7 +86,8 @@ final class ReadingLinkFollowingTests: XCTestCase {
             XCTFail(reason)
             return
         }
-        let workspace = try await makeWorkspace(notes: ["Lecture.md": "# Lecture\n\nFiled under #project/alpha for the week.\n", "Other.md": "#project/alpha\n"])
+        // The tag alone on its line, so the element found is the tag's own text and a tap near its start lands on it.
+        let workspace = try await makeWorkspace(notes: ["Lecture.md": "# Lecture\n\n#project/alpha\n\nFiled for the week.\n", "Other.md": "#project/alpha\n"])
         // The vault has no .obsidian folder, so no theme: the case that showed tags as plain text.
         await workspace.open(try VaultPath("Lecture.md"))
         let session = try XCTUnwrap(workspace.markdownSession)
@@ -94,7 +95,7 @@ final class ReadingLinkFollowingTests: XCTestCase {
         _ = try host(workspace)
         let controller = try XCTUnwrap(window?.rootViewController)
         let tag = try await element(in: controller) { element in
-            (element.accessibilityLabel ?? "").contains("#project/alpha") && element.accessibilityTraits.contains(.link)
+            element.accessibilityLabel == "#project/alpha" && (element.accessibilityTraits.contains(.staticText) || element.accessibilityTraits.contains(.link))
         }
         let window = try XCTUnwrap(window)
         let tagPoint = CGPoint(x: tag.accessibilityFrame.minX + 12, y: tag.accessibilityFrame.midY)

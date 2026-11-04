@@ -162,8 +162,7 @@ final class InkSelectionTests: XCTestCase {
     /// exactly, with no "changed in a way this step does not know", through the real canvas and UIKit's touches.
     func testUndoAndRedoWorkStepByStepAfterTheLassoAndTheHighlighter() async throws {
         XCTAssertNil(SynthesizedTouches.unavailableReason)
-        UserDefaults.standard.set(false, forKey: EvenHighlighterPreference.key)
-        defer { UserDefaults.standard.removeObject(forKey: EvenHighlighterPreference.key) }
+        XCTAssertFalse(EvenHighlighterPreference.isOn(), "The highlighter as Apple Notes' draws it, the default")
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let (session, canvas, page) = try await openPageWithCanvas()
