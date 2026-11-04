@@ -96,6 +96,9 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         let savedPresetIndex = toolbox.toolInUse == .ink ? toolbox.presetInUseIndex : nil
         defer { if let savedPresetIndex { toolbox.usePreset(at: savedPresetIndex) } }
         toolbox.usePreset(at: 0)
+        // The bar shows the device's own presets: on the owner's iPad (2026-11-04) the upright bar folded to its compact form.
+        let savedToolbarStyle = HostedDevicePreferences.value(forKey: PencilToolbarStyle.preferenceKey)
+        print("PENCIL-BAR placement: presets \(toolbox.presets.map(\.ink.rawValue)), toolbar style \(String(describing: savedToolbarStyle))")
         var formsByOrientation: [String: PencilToolRowForm] = [:]
         for (name, size) in [("sideways", CGSize(width: 1_194, height: 834)), ("upright", CGSize(width: 834, height: 1_194))] {
             let (workspace, session) = try await pdfWorkspace(named: "BarPlacement\(name)")

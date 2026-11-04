@@ -1,3 +1,14 @@
+/**
+ * File: EvenHighlighter.swift
+ * ---------------------------
+ * Layer: Apple
+ * Description: Graphite's even highlighter: a marker stroke drawn again through its points with one upright tip as
+ *              wide as the tool, at an even pressure, in a color that leaves the text under it readable.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 #if canImport(UIKit)
 import Foundation
 import PencilKit
@@ -33,6 +44,19 @@ public enum EvenHighlighter {
     /// them stronger the more they have: 1 draws the color at about four fifths, 1.5 at about
     /// nine tenths. The even stroke takes the value of a slow, steady stroke everywhere.
     public static let tipOpacity: CGFloat = 1.5
+    /// How much of the highlighter color's alpha the even stroke's ink keeps. PencilKit draws a
+    /// canvas's ink over a PDF's page in the normal blend, so the even stroke at the color's full
+    /// alpha drew its band at nine tenths of the color and hid the text under it: on the owner's
+    /// iPad on 2026-11-04 a black bar under the band showed 0.87 as light as the band beside it
+    /// (HUNT-002). At this fraction the band is about half the color, as PencilKit's own
+    /// highlighter drew the same stroke on the simulator, and the text stays dark under it. The
+    /// band drawn while the stroke is drawn takes the same color, so nothing changes at the lift.
+    public static let colorAlphaFraction: CGFloat = 0.55
+
+    /// The color the even stroke draws in for the highlighter's color.
+    public static func inkColor(for highlighterColor: UIColor) -> UIColor {
+        highlighterColor.withAlphaComponent(highlighterColor.cgColor.alpha * colorAlphaFraction)
+    }
 
     /// The stroke with every point's tip drawing a band `width` points across in the
     /// drawing, turned across the stroke and at the stroke's average pressure, in `ink`
