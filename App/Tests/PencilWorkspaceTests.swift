@@ -6,8 +6,8 @@
  *              picker.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 02/11/2026
+ * Version: 0.15
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -593,7 +593,7 @@ final class PencilWorkspaceTests: XCTestCase {
 
         pdfView.autoScales = false
         pdfView.scaleFactor = 2.2
-        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2, pageSize: pageSize, screenScale: window.screen.scale)
+        let expectedScale = PDFPageOverlayView.renderingScale(forZoom: 2.2)
         XCTAssertEqual(expectedScale, 2.2, accuracy: 0.001, "The canvas draws at the zoom it is seen at")
         try await waitUntil { abs(canvas.zoomScale - expectedScale) < 0.01 }
         XCTAssertEqual(canvas.overlayView?.renderingScale, expectedScale)
