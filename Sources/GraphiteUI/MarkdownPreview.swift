@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.47
- * Date: 01/11/2026
+ * Version: 0.48
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -2152,17 +2152,30 @@ struct ObsidianMarkdownParser: MarkupParser {
     /// `#tags` as the accent's (or the theme's) pill, a link to a search for the tag when
     /// the reading view can open one. A tag in code or in a link is text.
     private func styleTags(in text: inout AttributedString) {
-        let plain = String(text.characters)
-        guard plain.contains("#") else { return }
-        let nsPlain = plain as NSString
+        guard text.characters.contains("#") else { return }
         let tagColor = themeColors?.tag ?? accent
         let tagBackground = themeColors == nil ? accent.opacity(0.14) : themeColors?.tagBackground
         let tagRadius = themeColors?.tagRadius ?? Double(NoteThemeStyle.pillRadius)
-        for match in TagSyntax.pattern.matches(in: plain, range: NSRange(location: 0, length: nsPlain.length)) {
-            guard let stringRange = Range(match.range, in: plain),
-                  let lower = AttributedString.Index(stringRange.lowerBound, within: text),
-                  let upper = AttributedString.Index(stringRange.upperBound, within: text) else { continue }
-            let range = lower..<upper
+        // Paragraphs and list items follow one another with no character between them, so the tags are found in each
+        // on its own: across the whole text a tag ending one paragraph took the first word of the next, and
+        // `#project/alpha` above `Filed for the week.` linked a search for `project/alphaFiled`.
+        var tags: [(characterOffset: Int, characterCount: Int, name: String)] = []
+        for (_, paragraphRange) in text.runs[\.presentationIntent] {
+            let paragraph = String(text[paragraphRange].characters)
+            guard paragraph.contains("#") else { continue }
+            let paragraphOffset = text.characters.distance(from: text.startIndex, to: paragraphRange.lowerBound)
+            let nsParagraph = paragraph as NSString
+            for match in TagSyntax.pattern.matches(in: paragraph, range: NSRange(location: 0, length: nsParagraph.length)) {
+                guard let stringRange = Range(match.range, in: paragraph) else { continue }
+                tags.append((paragraphOffset + paragraph.distance(from: paragraph.startIndex, to: stringRange.lowerBound),
+                             paragraph.distance(from: stringRange.lowerBound, to: stringRange.upperBound),
+                             nsParagraph.substring(with: match.range(at: 1))))
+            }
+        }
+        for tag in tags {
+            // Found again from its offset after each change of attributes, which leaves the characters as they are.
+            let lower = text.characters.index(text.startIndex, offsetBy: tag.characterOffset)
+            let range = lower..<text.characters.index(lower, offsetBy: tag.characterCount)
             guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) }) else { continue }
             text[range].foregroundColor = tagColor
             // A pill: the background, corners and border, narrow enough that the space between
@@ -2173,7 +2186,7 @@ struct ObsidianMarkdownParser: MarkupParser {
                     horizontalPadding: NoteThemeStyle.scaled(1.5, textSize: textSize), borderColor: themeColors?.tagBorder,
                     borderWidth: CGFloat(themeColors?.tagBorderWidth ?? 0))
             }
-            if linksTags, let destination = URL(string: GraphiteOpenLink.tagDestination(name: String(nsPlain.substring(with: match.range(at: 1))))) {
+            if linksTags, let destination = URL(string: GraphiteOpenLink.tagDestination(name: tag.name)) {
                 text[range].link = destination
             }
         }

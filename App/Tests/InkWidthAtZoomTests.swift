@@ -6,7 +6,7 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -274,11 +274,26 @@ final class InkWidthAtZoomTests: XCTestCase {
             // The band the first half of the line has crossed when the touch is halfway.
             let bandWidth = 30 * zoom
             var widthWhileWriting: CGFloat = 0
-            let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: start, to: end, steps: 30), in: window) {
-                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 60)
-                let shown = try self.shownInkWidth(in: window, around: measuredPoint, bandWidth: bandWidth, inkLevel: inkLevel)
-                widthWhileWriting = shown.width / zoom
-                self.attach(shown.picture, named: "While writing, \(label)")
+            // The hand moves as fast on the screen at every zoom, as a person's does: 4 points of the screen a move.
+            // PencilKit's pen grows heavier with the speed of the touch on the screen, so the same 30 moves at every
+            // zoom crossed the line 3 times as fast at zoom 3 and stored it 11% wider (2.50, 2.59 and 2.77 points of
+            // the page on GitHub's iPad, 2026-11-04), where the monoline, which ignores speed, stayed 4.0 at every zoom.
+            let moves = Int((30 * zoom).rounded())
+            let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: start, to: end, steps: moves), in: window) {
+                // PencilKit shows the stroke under way in its own time: on a busy runner the band was still blank
+                // after 60 milliseconds at zoom 2 and 3. The touch stays down until two looks agree on its ink.
+                var previousWidth: CGFloat = 0
+                var shown: (width: CGFloat, picture: UIImage)?
+                try await waitUntil("the stroke under way shows in the band, \(label)", timeoutSeconds: 5, pollingIntervalSeconds: 0.05) {
+                    let look = try self.shownInkWidth(in: window, around: measuredPoint, bandWidth: bandWidth, inkLevel: inkLevel)
+                    defer { previousWidth = look.width }
+                    shown = look
+                    return look.width > 0 && abs(look.width - previousWidth) <= look.width * 0.05
+                }
+                if let shown {
+                    widthWhileWriting = shown.width / zoom
+                    self.attach(shown.picture, named: "While writing, \(label)")
+                }
             }
             let stroke = try XCTUnwrap(drawnStroke, "\(label) drew nothing")
             try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)

@@ -6,8 +6,8 @@
  *              palette.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 01/11/2026
+ * Version: 0.7
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -104,8 +104,6 @@ struct PencilToolButtons {
 
 enum PencilToolbarMetrics {
     static let height: CGFloat = 44
-    /// The tools' row inside a tab bar: a little lower than the bar, which centers it.
-    static let heightInTabBar: CGFloat = 40
     static let buttonSide: CGFloat = 36
     /// The background of the tool in use.
     static var selectedFill: AnyShapeStyle { AnyShapeStyle(Color(PlatformColor.primaryText(opacity: 0.1, increasedContrastOpacity: 0.2))) }

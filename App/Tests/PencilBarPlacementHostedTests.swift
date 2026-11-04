@@ -7,7 +7,7 @@
  *              tools in the same order both ways (HUNT-312, HUNT-310, HUNT-311).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -167,14 +167,21 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         let savedPresetIndex = toolbox.toolInUse == .ink ? toolbox.presetInUseIndex : nil
         defer { if let savedPresetIndex { toolbox.usePreset(at: savedPresetIndex) } }
         let scene = try scene
+        // The row of the width before, its window put away, still follows the shared toolbox until it is let go: on
+        // GitHub's iPad it laid the eraser out at 874 points after the switch to the eraser and reported that (727.5
+        // points wide) as the row at 514, where the screenshot showed the compact row fitting.
+        weak var previousController: UIViewController?
         for tool in [PencilToolKind.ink, .eraser] {
+            try await waitUntil("the row of the width before is let go") { previousController == nil }
             if tool == .ink { toolbox.usePreset(at: 0) } else { toolbox.use(.eraser) }
             for width in [514, 834, 874] as [CGFloat] {
+                try await waitUntil("the row of the width before is let go") { previousController == nil }
                 PencilToolRowForm.lastShown = nil
                 let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
                                                                              offersReadAloudPen: true, offersTextBoxes: true)
                     .frame(width: width, height: PencilToolbarMetrics.height)
                     .background(Color(uiColor: .systemBackground)))
+                previousController = controller
                 let window = UIWindow(windowScene: scene)
                 window.frame = CGRect(x: 0, y: 100, width: width, height: 60)
                 window.rootViewController = controller

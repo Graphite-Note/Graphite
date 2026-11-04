@@ -2161,7 +2161,7 @@ Not established: real double taps and squeezes of an Apple Pencil (2nd generatio
 ### The tools in the tab bar
 
 - `PencilToolboxTests.testTheToolsGoInTheTabBarWhereTheyGetAtLeastTheirNarrowestRow` (macOS): the widths at which a side's tab bar holds the tools, for 13-inch and 11-inch iPads in portrait, landscape beside the sidebar, half of a landscape split, beside the sidebar in portrait, half of a portrait split, focus, and an unmeasured side; the limit itself.
-- `PicturesAndPaperTests.testTheToolsGoInTheTabBarWhereItHasRoomAndInARowOfTheirOwnWhereItHasNot` (hosted, 11-inch iPad simulator in portrait): with a notebook open in the workspace and the fixed bar chosen, the tools are one row inside the tab bar and nothing but its divider lies between them and the page; opening a split gives them their own row again (screenshots inspected).
+- `PicturesAndPaperTests.testTheToolsAreARowOfTheirOwnCenteredOverThePageWithOrWithoutASplit` (hosted, 11-inch iPad simulator in portrait): with a notebook open in the workspace and the fixed bar chosen, the tools are a row of their own at the bar's full height, centered over the PDF and inside its side, with nothing but the bar's divider between them and the page; beside a split they keep that row over the focused side's PDF (HUNT-312, replacing the tools in the tab bar, which the owner rejected on 2026-11-04). Written 2026-11-04; not yet run.
 
 Not established: how the scrolling tool row feels by finger and Pencil in the narrower tab bars.
 

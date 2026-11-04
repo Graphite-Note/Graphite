@@ -7,7 +7,7 @@
  *              drawing's draft once they pause. Hosted, since saving a drawing is iOS code.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 
@@ -93,8 +93,16 @@ final class DrawingConflictSaveTests: XCTestCase {
         XCTAssertTrue(message.contains("new drawing") && message.contains("other version"), "It says only what it offers: \(message)")
         XCTAssertFalse(message.contains("Reload"), "It names no option it does not offer: \(message)")
 
+        // A finger's tap on the alert's button, through UIKit's event path: the alert's buttons answer no
+        // accessibilityActivate() from inside the app (it returned false on GitHub's iPad, 2026-11-04, and nothing was saved).
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        try await waitUntil("the alert has finished appearing") { !alert.isBeingPresented && alert.view.window != nil }
+        let alertWindow = try XCTUnwrap(alert.view.window)
         let saveAsNew = try await element(in: alert, "Save as New Drawing in the alert") { element in element.accessibilityLabel == "Save as New Drawing" }
-        XCTAssertTrue(saveAsNew.accessibilityActivate())
+        let buttonFrame = alertWindow.convert(saveAsNew.accessibilityFrame, from: alertWindow.screen.coordinateSpace)
+        let buttonMiddle = CGPoint(x: buttonFrame.midX, y: buttonFrame.midY)
+        XCTAssertTrue(alertWindow.hitTest(buttonMiddle, with: nil)?.isDescendant(of: alert.view) == true, "The tap lands on the alert")
+        await SynthesizedTouches(window: alertWindow).move(paths: [(buttonMiddle, buttonMiddle)], steps: 1, stepSeconds: 0.03, holdSeconds: 0.05)
         let copy = vault.appendingPathComponent("Sketches/Drawing Graphite edits.svg")
         try await waitUntil("the strokes go to a new drawing beside the file") { FileManager.default.fileExists(atPath: copy.path) }
         XCTAssertEqual(try String(contentsOf: location, encoding: .utf8), "<svg/>", "The other version is not written over")

@@ -1,3 +1,14 @@
+/**
+ * File: PicturesAndPaperTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Hosted tests of pictures on PDF pages and on drawings, paper patterns, and the fixed Pencil bar, which is
+ *              a row of its own centered over the PDF.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -830,9 +841,12 @@ final class PicturesAndPaperTests: XCTestCase {
         try await waitUntil { controller.presentedViewController == nil }
     }
 
-    func testTheToolsGoInTheTabBarWhereItHasRoomAndInARowOfTheirOwnWhereItHasNot() async throws {
+    /// The owner's choice of 2026-11-04 (HUNT-312): the fixed bar is a row of its own, centered over the PDF, in every
+    /// width. At the end of the tab bar, where it went while the tab bar had room, its tools were squeezed to the right
+    /// edge with their sizes and colors behind one control.
+    func testTheToolsAreARowOfTheirOwnCenteredOverThePageWithOrWithoutASplit() async throws {
         UserDefaults.standard.set(PencilToolbarStyle.fixed.rawValue, forKey: PencilToolbarStyle.preferenceKey)
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ToolsInTabBar-\(UUID().uuidString)")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("ToolsInTheirOwnRow-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         locations.append(directory)
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .ruled)).write(to: directory.appendingPathComponent("Notebook.pdf"))
@@ -848,24 +862,47 @@ final class PicturesAndPaperTests: XCTestCase {
         func toolRows() -> [PencilGestureReceiverView] {
             descendants(of: controller.view, matching: PencilGestureReceiverView.self).filter { row in row.window != nil && row.bounds.height > 0 }
         }
-        func pdfViewTop() -> CGFloat? {
-            descendants(of: controller.view, matching: PDFView.self).first { pdfView in pdfView.window != nil }.map { pdfView in pdfView.convert(pdfView.bounds, to: nil).minY }
+        func shownPDFView() -> PDFView? {
+            descendants(of: controller.view, matching: PDFView.self).first { pdfView in pdfView.window != nil }
         }
-        // The tools' row in the tab bar is 40 points high, centered in the 44-point bar; the bar of its own, 44.
-        try await waitUntil { toolRows().count == 1 && abs((toolRows().first?.bounds.height ?? 0) - PencilToolbarMetrics.heightInTabBar) < 0.5 }
-        let tabBarRow = try XCTUnwrap(toolRows().first).convert(try XCTUnwrap(toolRows().first).bounds, to: nil)
-        let pageTop = try XCTUnwrap(pdfViewTop())
-        let barMarginBelowTools = (GraphiteChrome.barHeight - PencilToolbarMetrics.heightInTabBar) / 2
-        XCTAssertLessThan(pageTop - tabBarRow.maxY, barMarginBelowTools + 1, "Nothing but the tab bar's margin and divider lies between the tools and the page.")
-        attachScreenshot(of: controller, named: "Tools in the tab bar")
+        /// The tools' row and the PDF's view in the window, once the row has stood still for a while.
+        func settledRowAndPage(_ description: String) async throws -> (row: CGRect, page: CGRect) {
+            var lastRowFrame = CGRect.null
+            var unchangedPolls = 0
+            try await waitUntil(description) {
+                guard toolRows().count == 1, let row = toolRows().first, shownPDFView() != nil else { return false }
+                let frame = row.convert(row.bounds, to: nil)
+                unchangedPolls = frame == lastRowFrame ? unchangedPolls + 1 : 0
+                lastRowFrame = frame
+                return unchangedPolls >= 15
+            }
+            let row = try XCTUnwrap(toolRows().first)
+            let pdfView = try XCTUnwrap(shownPDFView())
+            return (row.convert(row.bounds, to: nil), pdfView.convert(pdfView.bounds, to: nil))
+        }
+        func assertARowOfItsOwn(_ row: CGRect, over page: CGRect, _ place: String) {
+            XCTAssertEqual(row.height, PencilToolbarMetrics.height, accuracy: 0.5, "\(place): the bar's full height, not the tab bar's")
+            XCTAssertEqual(row.midX, page.midX, accuracy: 24, "\(place): the tools are centered over the PDF, not at the end of the tab bar")
+            XCTAssertGreaterThanOrEqual(row.minX, page.minX - 1, "\(place): inside the PDF's side")
+            XCTAssertLessThanOrEqual(row.maxX, page.maxX + 1, "\(place): inside the PDF's side")
+            XCTAssertLessThan(page.minY - row.maxY, 1, "\(place): nothing but the bar's divider lies between the tools and the page")
+        }
 
-        // Half of the width has no room beside the tabs and Read/Write: the tools get their row back.
+        let wholeWindow = try await settledRowAndPage("the tools' row has settled over the whole window")
+        assertARowOfItsOwn(wholeWindow.row, over: wholeWindow.page, "The whole window")
+        attachScreenshot(of: controller, named: "Tools in a row of their own")
+
+        // Beside a split the tools keep that row, over the focused side's PDF.
         let notebookTab = try XCTUnwrap(workspace.layout.tabID(showing: try VaultPath("Notebook.pdf")))
         let notebookSide = try XCTUnwrap(workspace.layout.group(containing: notebookTab)?.id)
         workspace.splitRight()
-        // The tools are the focused side's.
         workspace.focusGroup(notebookSide)
-        try await waitUntil { toolRows().count == 1 && abs((toolRows().first?.bounds.height ?? 0) - PencilToolbarMetrics.height) < 0.5 }
+        try await waitUntil("the PDF's side narrows for the split") {
+            guard let pdfView = shownPDFView() else { return false }
+            return pdfView.convert(pdfView.bounds, to: nil).width < wholeWindow.page.width * 0.75
+        }
+        let besideASplit = try await settledRowAndPage("the tools' row has settled beside a split")
+        assertARowOfItsOwn(besideASplit.row, over: besideASplit.page, "Beside a split")
         attachScreenshot(of: controller, named: "Tools in a row of their own beside a split")
     }
 
