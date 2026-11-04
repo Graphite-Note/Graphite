@@ -962,7 +962,8 @@ struct DelayedProgressView: View {
         ProgressView().controlSize(.large)
             .opacity(isVisible ? 1 : 0)
             .task {
-                do { try await Task.sleep(for: .milliseconds(300)); isVisible = true } catch {}
+                do { try await Task.sleep(for: .milliseconds(300)) } catch { return } // the view went away first
+                isVisible = true
             }
     }
 }
