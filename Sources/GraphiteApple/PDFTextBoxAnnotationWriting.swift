@@ -87,7 +87,7 @@ extension PDFTextBox {
 
     /// A `/Link` annotation over each linked stretch of each line, named after the box and
     /// marked as its own (`textBoxLinkOwnerKey`), so moving or removing the box takes them.
-    func makeLinkAnnotations(layout: PDFTextBoxLayout, authorName: String?) -> [PDFAnnotation] {
+    func makeLinkAnnotations(layout: PDFTextBoxLayout) -> [PDFAnnotation] {
         let boxToPage = layout.boxToPage
         return layout.linkAreas().enumerated().map { linkIndex, area in
             let corners = [CGPoint(x: area.rectangle.minX, y: area.rectangle.maxY), CGPoint(x: area.rectangle.maxX, y: area.rectangle.maxY),
@@ -96,7 +96,6 @@ extension PDFTextBox {
             let bounds = area.rectangle.applying(boxToPage)
             let link = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
             link.url = area.url
-            PDFAnnotationAuthor.write(authorName, on: link)
             let border = PDFBorder()
             border.lineWidth = 0
             link.border = border

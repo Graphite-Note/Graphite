@@ -49,7 +49,7 @@ extension PDFPageManager {
         // Added after everything: the page's text boxes are its last annotations.
         page.addAnnotation(annotation)
         let layout = PDFTextBoxLayout(box: textBox)
-        for link in textBox.makeLinkAnnotations(layout: layout, authorName: authorName) { page.addAnnotation(link) }
+        for link in textBox.makeLinkAnnotations(layout: layout) { page.addAnnotation(link) }
     }
 
     private static func textBoxAnnotation(_ reference: PDFAnnotationReference, in document: PDFDocument) throws -> (PDFPage, PDFAnnotation) {
