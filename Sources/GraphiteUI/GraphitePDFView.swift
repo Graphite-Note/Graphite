@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.32
+ * Version: 0.33
  * Date: 04/11/2026
  */
 
@@ -640,6 +640,9 @@ final class PDFPageCanvasView: HistoryCanvasView {
     /// How many strokes the drawing had when PencilKit began using a tool: an inking tool's
     /// stroke arrives after the use ends, in PencilKit's own time.
     var strokeCountWhenToolUseBegan = 0
+    /// How many edits the page had when the canvas was let go, while PDFKit may still show it
+    /// again (`PDFAnnotationCoordinator.adoptCanvasShownAgain`); nil while it is the page's own.
+    var editCountWhenLetGo: Int?
     /// What the page's ink annotations were last set to, and after how many edits of the page:
     /// setting them walks every annotation, and most configuring changes nothing of them.
     var inkAnnotationsState: (isHidden: Bool, pageEditCount: Int)?
@@ -855,6 +858,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     var pictureSelectionController: PDFPictureSelectionController? { pictureSelection }
     /// For tests: how many times a canvas's strokes were all compared with those last recorded.
     var everyStrokeComparisonCount = 0
+    /// For tests: how many decodes of a page's stored ink were begun, and how many of them ran on the main actor.
+    var storedInkDecodeCount = 0
+    var mainActorDecodeCount = 0
     /// Held weakly: a recognizer made later at a freed one's address is observed too.
     private let observedScrollRecognizers = NSHashTable<UIGestureRecognizer>.weakObjects()
     /// The scroll views around this embed that it restricts while annotating.
@@ -1398,6 +1404,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         makeWaitForPalmRejection(pageTapsAndPresses(in: overlayView.superview ?? overlayView))
         guard let canvas = (overlayView as? PDFPageOverlayView)?.canvas else { return }
         let identifier = ObjectIdentifier(page)
+        if canvasesByPage[identifier] !== canvas, canvas.page === page { adoptCanvasShownAgain(canvas, on: page) }
         displayedPages.insert(identifier)
         hiddenCanvasOrder.removeAll { hiddenIdentifier in hiddenIdentifier == identifier }
         // PDFKit shows a page's view again as a zoom changes, which may be during a stroke.
@@ -1495,11 +1502,43 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     private func release(_ canvas: PDFPageCanvasView) {
-        recordUnrecordedInk(of: canvas, evenDuringAStroke: true)
+        recordUnrecordedInk(of: canvas, isGoingAway: true)
         writeDeferredInkRecord(of: canvas)
         canvas.stopFollowing(toolPicker)
         canvas.delegate = nil
-        if let page = canvas.page { setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group) }
+        if let page = canvas.page {
+            setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group)
+            canvas.editCountWhenLetGo = session.editCount(of: page)
+        }
+    }
+
+    /// PDFKit shows a page's view again with the overlay it kept, without asking for one, after
+    /// the page's canvas was let go (more than `retainedHiddenCanvasCount` other pages shown, or
+    /// a memory warning). The canvas becomes the page's own again: until 2026-11-04 it stayed let
+    /// go, took strokes it never recorded, and the health check, finding a canvas on screen "not
+    /// its own" within a second, built the whole view again, which decoded every page shown,
+    /// fitted the zoom and showed blank pages meanwhile (HUNT-313). A page whose ink did not
+    /// change since keeps its drawing; one that did reads it again.
+    private func adoptCanvasShownAgain(_ canvas: PDFPageCanvasView, on page: PDFPage) {
+        let identifier = ObjectIdentifier(page)
+        if let pagesCanvas = canvasesByPage[identifier], pagesCanvas !== canvas { release(pagesCanvas) }
+        canvasesByPage[identifier] = canvas
+        if let editCountWhenLetGo = canvas.editCountWhenLetGo, editCountWhenLetGo == session.editCount(of: page), canvas.hasRestoredStoredInk,
+           !canvas.isRestoringStoredInk {
+            canvas.delegate = self
+        } else {
+            // Its drawing is not the page's ink any more: emptied, as a new canvas is, and read again.
+            canvas.storedInkRestoreCount += 1
+            canvas.heldStoredInk = nil
+            canvas.isRestoringStoredInk = false
+            canvas.hasRestoredStoredInk = false
+            canvas.inkTracker = PDFPageInkTracker(group: PDFInkGroups.storedInk(on: page).newGroup())
+            canvas.recordedDrawing = PKDrawing()
+            canvas.showWithoutRecording(PKDrawing())
+        }
+        canvas.editCountWhenLetGo = nil
+        canvas.inkAnnotationsState = nil
+        canvas.mayHoldUnrecordedInk = false
     }
 
     /// While a canvas covers a page, it shows the ink; the ink annotations are hidden so
@@ -1608,12 +1647,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             let pageIndex = session.document.index(for: page)
             guard pageIndex != NSNotFound else { continue }
             let identifier = ObjectIdentifier(page)
-            guard canvasesByPage[identifier] === canvas else {
-                repairs.append("Page \(pageIndex + 1) showed a canvas that is not its own; the view was built again")
-                rebuildViewAfterRecordingInk()
-                return repairs
-            }
             var needsConfiguring = false
+            if canvasesByPage[identifier] !== canvas {
+                // Shown again by PDFKit after it was let go, without the display call that adopts it.
+                adoptCanvasShownAgain(canvas, on: page)
+                repairs.append("Page \(pageIndex + 1) showed a canvas let go of; it is the page's own again")
+                needsConfiguring = true
+            }
             if !displayedPages.contains(identifier) {
                 displayedPages.insert(identifier)
                 hiddenCanvasOrder.removeAll { hiddenIdentifier in hiddenIdentifier == identifier }

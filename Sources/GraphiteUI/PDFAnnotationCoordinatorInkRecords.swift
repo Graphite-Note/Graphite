@@ -7,7 +7,7 @@
  *              compares only what was touched.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 #if canImport(UIKit)
@@ -46,17 +46,24 @@ extension PDFAnnotationCoordinator {
         canvas.storedInkRestoreCount += 1
         let restoreNumber = canvas.storedInkRestoreCount
         let editCountWhenRead = session.editCount(of: page)
+        storedInkDecodeCount += 1
         Task { [weak self, weak canvas] in
-            // Made there and handed over whole, so nothing of it is shared; a mask's CGPath is not Sendable.
-            let restored: (tracker: PDFPageInkTracker, drawing: PKDrawing)? = await withCheckedContinuation { continuation in
-                DispatchQueue.global(qos: .userInitiated).async {
-                    continuation.resume(returning: storedInk.editableGroup().flatMap { editableGroup in PDFPageInkTracker.restoring(editableGroup) })
-                }
-            }
+            let restored = await Self.decodedInBackground(storedInk)
             guard let self, let canvas, canvas.isRestoringStoredInk, canvas.storedInkRestoreCount == restoreNumber, canvas.page === page,
                   self.canvasesByPage[ObjectIdentifier(page)] === canvas else { return }
             canvas.heldStoredInk = HeldStoredInk(restored: restored, editCountWhenRead: editCountWhenRead)
             self.applyHeldStoredInk(on: canvas)
+        }
+    }
+
+    /// The page's stored ink decoded away from the main actor: the record's base64 and names, the drawing and each
+    /// stroke's fingerprint grow with the page's strokes. Made there and handed over whole, so nothing of it is shared;
+    /// a mask's CGPath is not Sendable.
+    nonisolated private static func decodedInBackground(_ storedInk: PDFStoredInk) async -> (tracker: PDFPageInkTracker, drawing: PKDrawing)? {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                continuation.resume(returning: storedInk.editableGroup().flatMap { editableGroup in PDFPageInkTracker.restoring(editableGroup) })
+            }
         }
     }
 
@@ -99,33 +106,53 @@ extension PDFAnnotationCoordinator {
         let strokesDrawnMeanwhile = canvas.drawing.strokes
         if let restored {
             canvas.inkTracker = restored.tracker
-            // Set while still restoring, so the delegate does not record the stored drawing as an edit.
-            canvas.drawing = restored.drawing
             canvas.recordedDrawing = restored.drawing
+            // One drawing, set while still restoring, so the delegate records nothing of the stored strokes: they and
+            // those drawn meanwhile. Set twice, as until 2026-11-04, PencilKit laid out and drew every stored stroke
+            // twice at the end of the first stroke on the page (HUNT-313).
+            canvas.drawing = strokesDrawnMeanwhile.isEmpty ? restored.drawing : PKDrawing(strokes: restored.drawing.strokes + strokesDrawnMeanwhile)
         }
         canvas.isRestoringStoredInk = false
         guard !strokesDrawnMeanwhile.isEmpty else {
             canvas.mayHoldUnrecordedInk = false
             return
         }
-        if restored != nil {
-            canvas.showWithoutRecording(PKDrawing(strokes: canvas.recordedDrawing.strokes + strokesDrawnMeanwhile))
-        }
         canvasViewDrawingDidChange(canvas)
     }
 
-    /// A save, or the canvas going away, while the stored ink is still decoded: strokes drawn
-    /// meanwhile are recorded with the stored ink, read here at once, so none is lost and the
-    /// record keeps every stored stroke. The decode under way is then dropped. A stroke under
-    /// way holds this back for a save, as it holds back the decode.
-    private func finishRestoringAtOnce(_ canvas: PDFPageCanvasView, evenDuringAStroke: Bool) {
-        guard canvas.isRestoringStoredInk, !canvas.drawing.strokes.isEmpty, evenDuringAStroke || !canvas.hasStrokeUnderWay,
-              let page = canvas.page else { return }
+    /// The canvas going away while the stored ink is still decoded: strokes drawn meanwhile are
+    /// recorded with the stored ink, read here at once, so none is lost and the record keeps
+    /// every stored stroke. The decode under way is then dropped. This is the only decode on the
+    /// main actor, and only for a canvas that goes with strokes on it; a save decodes in the
+    /// background (`finishRestoringInBackground`).
+    private func finishRestoringAtOnce(_ canvas: PDFPageCanvasView) {
+        guard canvas.isRestoringStoredInk, !canvas.drawing.strokes.isEmpty, let page = canvas.page else { return }
         canvas.heldStoredInk = nil
         canvas.storedInkRestoreCount += 1
+        mainActorDecodeCount += 1
         let restored = PDFInkGroups.editableGroup(on: page).flatMap { editableGroup in PDFPageInkTracker.restoring(editableGroup) }
         mergeStoredInk(restored, into: canvas)
         if canvasesByPage[ObjectIdentifier(page)] === canvas { configure(canvas) }
+    }
+
+    /// A save while a page's stored ink is decoded and strokes were drawn on it meanwhile: the
+    /// ink is decoded again away from the main actor and the strokes merged after it, so the
+    /// save writes them. Until 2026-11-04 the save decoded the page on the main actor: the
+    /// autosave two seconds after a stroke, or a tab's save, froze the app for as long as a
+    /// heavy page takes to decode, just as writing began on a page coming on screen (HUNT-313).
+    /// A stroke under way leaves the strokes for the decode under way to merge.
+    private func finishRestoringInBackground(_ canvas: PDFPageCanvasView) async {
+        guard canvas.isRestoringStoredInk, !canvas.drawing.strokes.isEmpty, !canvas.hasStrokeUnderWay, let page = canvas.page else { return }
+        canvas.heldStoredInk = nil
+        canvas.storedInkRestoreCount += 1
+        let restoreNumber = canvas.storedInkRestoreCount
+        let editCountWhenRead = session.editCount(of: page)
+        storedInkDecodeCount += 1
+        let restored = await Self.decodedInBackground(PDFInkGroups.storedInk(on: page))
+        guard !isDetached, canvas.isRestoringStoredInk, canvas.storedInkRestoreCount == restoreNumber, canvas.page === page,
+              canvasesByPage[ObjectIdentifier(page)] === canvas else { return }
+        canvas.heldStoredInk = HeldStoredInk(restored: restored, editCountWhenRead: editCountWhenRead)
+        applyHeldStoredInk(on: canvas)
     }
 
     /// Writes the re-editing records that drawing deferred, for every canvas.
@@ -141,6 +168,7 @@ extension PDFAnnotationCoordinator {
     /// stroke that comes before an archive is done leaves its record deferred.
     func writeDeferredInkRecordsInBackground() async {
         for canvas in Array(canvasesByPage.values) {
+            await finishRestoringInBackground(canvas)
             recordInkIfTheCanvasChanged(canvas)
             guard let archive = canvas.inkTracker.deferredRecordArchive(for: canvas.recordedDrawing) else { continue }
             let record = await Task.detached(priority: .userInitiated) { archive.archived() }.value
@@ -154,9 +182,11 @@ extension PDFAnnotationCoordinator {
 
     /// Records ink a canvas shows that the PDF does not have yet, as when a change of the
     /// canvas never reached its delegate. A stroke still being drawn is not part of it.
-    /// `evenDuringAStroke` is for a canvas going away, whose live stroke is lost anyway.
-    func recordUnrecordedInk(of canvas: PDFPageCanvasView, evenDuringAStroke: Bool = false) {
-        finishRestoringAtOnce(canvas, evenDuringAStroke: evenDuringAStroke)
+    /// `isGoingAway` is for a canvas let go of, whose live stroke is lost anyway and whose
+    /// strokes drawn while its ink is decoded are merged at once. Otherwise such strokes wait
+    /// on the canvas for the decode under way, which records them when it lands.
+    func recordUnrecordedInk(of canvas: PDFPageCanvasView, isGoingAway: Bool = false) {
+        if isGoingAway { finishRestoringAtOnce(canvas) }
         guard canvas.delegate === self, canvas.hasRestoredStoredInk, !canvas.isRestoringStoredInk else { return }
         everyStrokeComparisonCount += 1
         guard PencilDrawingChange(from: canvas.recordedDrawing, to: canvas.drawing) != nil else {
