@@ -6,7 +6,7 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
+ * Version: 0.17
  * Date: 04/11/2026
  */
 
@@ -140,6 +140,9 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
     /// itself would scroll away with the buttons.
     private let scrollContainer = UIView()
     private let trailingFade = CAGradientLayer()
+    /// The hairline along the top's height: one pixel of the screen the row is shown on, set
+    /// once the row is in a window.
+    private var topSeparatorHeight: NSLayoutConstraint?
     /// How wide the trailing fade is, the hint that more buttons wait beyond the edge.
     private static let trailingFadeWidth: CGFloat = 28
     private let stackView = UIStackView()
@@ -266,12 +269,19 @@ final class EditorKeyboardToolbar: UIInputView, UIScrollViewDelegate {
         topSeparator.backgroundColor = .separator
         topSeparator.translatesAutoresizingMaskIntoConstraints = false
         addSubview(topSeparator)
+        let topSeparatorHeight = topSeparator.heightAnchor.constraint(equalToConstant: 1)
+        self.topSeparatorHeight = topSeparatorHeight
         NSLayoutConstraint.activate([
             background.leadingAnchor.constraint(equalTo: leadingAnchor), background.trailingAnchor.constraint(equalTo: trailingAnchor),
             background.topAnchor.constraint(equalTo: topAnchor), background.bottomAnchor.constraint(equalTo: bottomAnchor),
             topSeparator.leadingAnchor.constraint(equalTo: leadingAnchor), topSeparator.trailingAnchor.constraint(equalTo: trailingAnchor),
-            topSeparator.topAnchor.constraint(equalTo: topAnchor), topSeparator.heightAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            topSeparator.topAnchor.constraint(equalTo: topAnchor), topSeparatorHeight,
         ])
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let screen = window?.windowScene?.screen { topSeparatorHeight?.constant = 1 / screen.scale }
     }
 
     override var intrinsicContentSize: CGSize { CGSize(width: UIView.noIntrinsicMetric, height: Self.height) }
