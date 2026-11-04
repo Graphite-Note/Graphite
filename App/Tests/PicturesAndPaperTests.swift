@@ -6,7 +6,7 @@
  *              a row of its own centered over the PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -939,7 +939,8 @@ final class PicturesAndPaperTests: XCTestCase {
             selection.eraserWidth = width
             let eraser = try XCTUnwrap(selection.tool as? PKEraserTool)
             XCTAssertEqual(eraser.eraserType, .fixedWidthBitmap)
-            XCTAssertEqual(eraser.width, CGFloat(width), accuracy: 0.01)
+            // PencilKit makes a fixed-width eraser at least as wide as its own floor (16.4 points of the screen).
+            XCTAssertEqual(eraser.width, max(CGFloat(width), PKEraserTool.EraserType.fixedWidthBitmap.validWidthRange.lowerBound), accuracy: 0.01)
         }
     }
 

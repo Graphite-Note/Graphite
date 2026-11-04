@@ -5,7 +5,7 @@
  * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
  *
  * Authors: Bahey Shalash
- * Version: 0.20
+ * Version: 0.21
  * Date: 04/11/2026
  */
 
@@ -218,10 +218,10 @@ final class PencilToolbox {
     static let shared = PencilToolbox()
     static let storageKey = "GraphitePencilToolbox.v2"
     static let maximumPresetCount = 6
-    /// The three sizes the eraser that removes only the ink it passes over starts with.
-    static let defaultEraserWidthChoices: [Double] = [18, 36, 64]
-    /// The widths those sizes can be changed to, in points.
-    static let eraserWidthRange: ClosedRange<Double> = 4...100
+    /// The three sizes the eraser that removes only the ink it passes over starts with (`PencilEraserWidths`).
+    static let defaultEraserWidthChoices: [Double] = PencilEraserWidths.defaultChoices
+    /// The widths those sizes can be changed to, in points of the page.
+    static let eraserWidthRange: ClosedRange<Double> = PencilEraserWidths.range
 
     static var defaultPresets: [InkPreset] { [InkPreset(ink: .pen), InkPreset(ink: .pencil), InkPreset(ink: .highlighter)] }
 
@@ -275,14 +275,9 @@ final class PencilToolbox {
         toolInUse = storedTool
         toolSavedInPlaceOfLaser = storedTool.isPutAwayWithApp ? .ink : storedTool
         erasesWholeStrokes = stored?.erasesWholeStrokes ?? true
-        let storedEraserWidthChoices = stored?.eraserWidthChoices.flatMap { widths in Self.validatedEraserWidthChoices(widths) } ?? Self.defaultEraserWidthChoices
-        eraserWidthChoices = storedEraserWidthChoices
-        eraserWidth = stored.map(\.eraserWidth).flatMap { width in storedEraserWidthChoices.contains(width) ? width : nil } ?? storedEraserWidthChoices[1]
-    }
-
-    /// Three widths the eraser can erase with, or nil for anything else.
-    private static func validatedEraserWidthChoices(_ widths: [Double]) -> [Double]? {
-        widths.count == defaultEraserWidthChoices.count && widths.allSatisfy(eraserWidthRange.contains) ? widths : nil
+        let storedEraserWidths = PencilEraserWidths.restored(choices: stored?.eraserWidthChoices, widthInUse: stored?.eraserWidth)
+        eraserWidthChoices = storedEraserWidths.choices
+        eraserWidth = storedEraserWidths.widthInUse
     }
 
     /// The tool kept between launches in place of the laser pointer: the one in use before
@@ -455,11 +450,11 @@ final class PencilToolbox {
     /// Which of the eraser's three sizes is in use; nil while it removes whole strokes.
     var chosenEraserWidthIndex: Int? { erasesWholeStrokes ? nil : eraserWidthChoices.firstIndex(of: eraserWidth) }
 
-    /// Gives one of the eraser's three sizes another width, within `eraserWidthRange`, and
-    /// erases with it.
+    /// Gives one of the eraser's three sizes another width, the nearest of its steps
+    /// (`PencilEraserWidths.steps`) within `eraserWidthRange`, and erases with it.
     func changeEraserWidthChoice(at choiceIndex: Int, to width: Double) {
         guard eraserWidthChoices.indices.contains(choiceIndex), width.isFinite else { return }
-        let erasingWidth = min(max(width, Self.eraserWidthRange.lowerBound), Self.eraserWidthRange.upperBound)
+        let erasingWidth = PencilEraserWidths.snapped(width)
         if eraserWidthChoices[choiceIndex] != erasingWidth { eraserWidthChoices[choiceIndex] = erasingWidth }
         if eraserWidth != erasingWidth { eraserWidth = erasingWidth }
     }
