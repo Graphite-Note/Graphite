@@ -86,7 +86,7 @@ Three of upstream's choices in `Vendor/swiftui-math` now do what TeX and MathJax
 
 `MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` failed once in CI on #128, at character 2185 instead of 1690, in a run where it took 24.8 seconds rather than 0.2. Reproduced on this Mac by waiting between the jump and the check: with classic scroll bars, `MacMarkdownEditorFixture`'s scroller appears at the window's next layout and narrows the text view from 600 to 583 points, TextKit 2 replaces its layout with estimates (the note's height goes from 8010 to 6668 points), and the scroll offset stays, so another line is at the top. 72 runs under full CPU load did not show it; only the wait did. The fixture now has no vertical scroller, so its width does not change, and the line stays in place through the same wait.
 
-Not fixed: this comes from the editor, not only the fixture. In the fixture with its scroller on, narrowing the window after a jump moved the top of the view from character 1690 to 2257 in a 300-line note. Not checked in the app itself.
+The editor itself had the same behaviour: in the fixture with its scroller on, narrowing the window after a jump moved the top of the view from character 1690 to 2257 in a 300-line note. #134 fixes it; see "The Mac editor keeps its line when its width changes".
 
 Followed up on CI, where the test still failed now and then at 2185:
 
@@ -118,6 +118,15 @@ Two faults where a formula was typeset but drawn differently from Obsidian's Mat
 - **Automated tests, passing on macOS:** `AppProjectTextualPatchTests` (with `testNamedColorsAreReadAsMathJaxReadsThem`, `testBlackAndWhiteAreTheTextColorEvenInsideAColor` and `testFractionStylesSetTheWholeFractionInTheirStyle`, all three failing on the source without these patches), `LaTeXCompatibilityTests`, `NumberedEquationTests`, `NotePreviewDocumentTests`, `CorePreviewTypesetterCompatibilityTests`, `ParserNestingLimitsTests`, `StaticPatternTests`, `UiNumberedEquationTests`, `InlineMathRuleTests`, `DisplayMathEscapedDollarTests`. The full package suite was not run locally (no-sound rule); CI runs it.
 - **Compared with MathJax 3.2.2:** a sheet of 42 formulas drawn through `Math` beside MathJax in a browser, in display and inline math: the 21 colors on dark and light pages, the 21 fractions on a dark page and the first 12 on a light one too. All 216 color names were read back from what MathJax draws, with no difference from Graphite's tables. Fraction heights agree within about 0.1 em (`\tfrac{a}{b}` 1.06 against 1.06, `\dfrac{a}{b}` 1.82 against 1.81, `\dbinom{n}{k}` 2.39 against 2.40). **Not checked in the app** on the Mac, iPad or iPhone. The vault scan was not run again on these patches.
 - **Still drawn differently from MathJax after this section:** `\colorbox`'s background has never been drawn (none in the vault). The three other differences listed here were fixed by patches 19 to 21, in the section above.
+
+
+## The Mac editor keeps its line when its width changes: 2026-11-02
+
+A new width makes TextKit 2 replace its layout with estimates while the scroll offset stays the same number, so the Mac editor showed another passage: about 60 lines further in a 300-line note. `MarkdownMacEditorTopLineHold` holds the line at the top when the width begins to change, or when the editor leaves the window, and returns to it 0.35 seconds after the width stops changing. Scrolling, a jump or an edit in that time releases it. This is the Mac side of `HUNT-065`.
+
+- **Tests:** `MacMarkdownEditorWidthChangeTests`, 10 tests; 6 fail without the fix, including the split. They pass with the scroller on, and with it off as `MacMarkdownEditorFixture` has it from #128.
+- **Checked in a copy of the Mac app, with a generated 400-paragraph note:** hiding the Files sidebar, opening a split (the text rewraps) and closing it left paragraph 192 at the top, and switching from reading view opened the editor at the passage read (paragraph 269). The first split check failed: a split takes the editor out of the window and gives it width 0 before its new width, which is why leaving the window also holds the line.
+- **Limits:** until the width settles the view shows another passage, for 0.35 seconds in a split and throughout a window drag. Going back on every step of a drag would lay out everything before the line each time: measured at 12 ms in a 40 KB note, 125 ms in 400 KB and 1.3 s in 4 MB. Estimated positions cost under 1 ms but landed off target, in the longer notes at the note's start. The line held is a whole paragraph, so a paragraph taller than the view returns to its start. A window drag itself and a tab hidden during a resize were not checked in the app, only by tests that change the width and move the editor out of the window.
 
 ## KaTeX arrows typeset, and the Mac editor opens at the passage read: 2026-10-24
 

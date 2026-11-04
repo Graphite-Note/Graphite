@@ -5,7 +5,7 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.72
+ * Version: 0.73
  * Date: 02/11/2026
  */
 
@@ -2720,6 +2720,7 @@ final class MarkdownMacTextView: NSTextView {
         // Control-scrolling changes the font size and does not scroll, so reading keeps following.
         if quickFontSizeInput.handleScroll(event, adjustment: quickFontSize) { return }
         suspendReadingFollow?()
+        didScrollByWheel?()
         // A link's card stays where the link was; the note moves away from it.
         linkPreviews?.closeCard()
         super.scrollWheel(with: event)
@@ -2735,6 +2736,13 @@ final class MarkdownMacTextView: NSTextView {
     /// Called when the text column moves or changes width, which the views placed over the
     /// text follow; set by the coordinator.
     var didMoveTextColumn: (() -> Void)?
+    /// Called before the view leaves its window or takes a new width, while its lines are still
+    /// where they were, and after the new width; set by the coordinator.
+    var willLeaveWindow: (() -> Void)?
+    var willChangeWidth: (() -> Void)?
+    var didChangeWidth: (() -> Void)?
+    /// Called when the person scrolls with the wheel or trackpad; set by the coordinator.
+    var didScrollByWheel: (() -> Void)?
     /// Called once TextKit has laid out the viewport, as the view scrolls or its text
     /// changes, where the rendered blocks are placed; set by the coordinator.
     var didLayOutViewport: (() -> Void)?
@@ -2758,6 +2766,11 @@ final class MarkdownMacTextView: NSTextView {
         return didResign
     }
 
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if newWindow == nil { willLeaveWindow?() }
+        super.viewWillMove(toWindow: newWindow)
+    }
+
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         if window != nil { didBecomeMeasurable?(self) }
@@ -2765,10 +2778,14 @@ final class MarkdownMacTextView: NSTextView {
 
     override func setFrameSize(_ newSize: NSSize) {
         let previousWidth = frame.width
+        if newSize.width != previousWidth { willChangeWidth?() }
         super.setFrameSize(newSize)
         updateReadableInset()
         // The view grows taller with its text; only a new width moves the column.
-        if newSize.width != previousWidth { didMoveTextColumn?() }
+        if newSize.width != previousWidth {
+            didMoveTextColumn?()
+            didChangeWidth?()
+        }
         if previousWidth <= 0, newSize.width > 0 { didBecomeMeasurable?(self) }
     }
 
@@ -3298,6 +3315,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         var actions = EditorActions()
         var follow: (String, Bool) -> Void = { _, _ in }
         var appliedInsertionIdentifier: UUID?
+        let topLineHold = MarkdownMacEditorTopLineHold(clock: LiveApplicationClock())
         /// Where the view goes once it is in a window and has a width, where the note can
         /// be measured.
         enum Jump: Equatable {
@@ -3497,9 +3515,11 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                     // at the next update, as the note switched back to reading.
                     self.goToReadingPlaceIfSwitched(in: measurableView)
                     self.performPendingJumpIfReady(in: measurableView)
+                    self.returnToTopLineOnceSettled(in: measurableView)
                     self.startEditingIfRequested(in: measurableView)
                 }
             }
+            holdTopLineThroughWidthChanges(of: textView)
             observeCharacterEdits(in: textView)
         }
 
@@ -4139,6 +4159,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             // The note's start is the top of the view.
             guard location > 0 else {
                 pendingJump = nil
+                topLineHold.release()
                 textView.scroll(NSPoint(x: 0, y: 0))
                 return
             }
@@ -4167,6 +4188,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         func performPendingJumpIfReady(in textView: NSTextView) {
             guard let jump = pendingJump, textView.window != nil, textView.bounds.width > 0 else { return }
             pendingJump = nil
+            topLineHold.release()
             let textLength = textView.textStorage?.length ?? 0
             switch jump {
             case .heading(let anchor, let occurrence):
@@ -4212,8 +4234,13 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// How far, in points, the clip view's alignment to device pixels can move a scroll position.
         private static let scrollAlignmentAllowance: CGFloat = 1
 
-        /// Remembers the character at the top of the view in the session.
+        /// Remembers the character at the top of the view in the session. While the editor
+        /// waits for a new width to settle, that is the line it will return to.
         func recordScrollLocation(of textView: NSTextView) {
+            if let heldLocation = topLineHold.heldLocation {
+                session.savedScrollLocation = heldLocation
+                return
+            }
             guard textView.visibleRect.minY > 1 else {
                 session.savedScrollLocation = nil
                 return
