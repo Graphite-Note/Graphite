@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.64
+ * Version: 0.65
  * Date: 04/11/2026
  */
 
@@ -54,6 +54,8 @@ struct GraphiteRootView: View {
     /// In automatic mode an iPad shows only the detail column when the window is taller
     /// than wide, so toggling the sidebar has to know the window's shape.
     @State private var isWindowTallerThanWide = false
+    /// Whether the window's shape was measured once, after which a turn of the iPad keeps the sidebar as it was.
+    @State private var hasMeasuredWindowShape = false
     /// True until the remembered vault has opened or failed to, so the welcome screen does
     /// not flash up before the vault appears.
     @State private var isRestoringVault = true
@@ -125,6 +127,11 @@ struct GraphiteRootView: View {
                 }
         }
         .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > geometry.size.width } action: { isTallerThanWide in
+            // Turning the iPad keeps the view it showed: the sidebar beside the documents, or not (HUNT-311).
+            if hasMeasuredWindowShape, !isCompactWidth, isTallerThanWide != isWindowTallerThanWide {
+                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isWindowTallerThanWide)
+            }
+            hasMeasuredWindowShape = true
             isWindowTallerThanWide = isTallerThanWide
         }
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
@@ -691,6 +698,15 @@ struct GraphiteRootView: View {
             await workspace.communityPlugins.saveOpenFileViews()
         }
         #endif
+    }
+
+    /// The sidebar as the window showed it before the iPad turned. The system's automatic choice shows it beside the
+    /// documents sideways and hides it upright, so turning the iPad changed the whole view, the page's width and zoom
+    /// with it (the owner, 2026-11-04). What the window showed is kept as an explicit choice instead; a choice the
+    /// person made stays as it is, and the sidebar button still shows or hides it.
+    static func sidebarVisibility(keptAcrossTurnOf visibility: NavigationSplitViewVisibility, wasTallerThanWide: Bool) -> NavigationSplitViewVisibility {
+        guard visibility == .automatic else { return visibility }
+        return isSidebarHidden(visibility, automaticHidesSidebar: wasTallerThanWide) ? .detailOnly : .all
     }
 
     static func sidebarVisibility(toggling visibility: NavigationSplitViewVisibility, automaticHidesSidebar: Bool) -> NavigationSplitViewVisibility {
