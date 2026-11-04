@@ -1,3 +1,14 @@
+/**
+ * File: InkLassoTests.swift
+ * -------------------------
+ * Layer: Tests
+ * Description: The geometry of Graphite's lasso: points inside the closed loop, the share of a stroke or
+ *              picture inside it, the frame's transform, and the lasso's remembered type.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 import CoreGraphics
 @testable import GraphiteUI
@@ -24,12 +35,13 @@ final class InkLassoTests: XCTestCase {
         XCTAssertFalse(InkLasso.isPoint(CGPoint(x: 5, y: 0), insideLoop: [CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)]))
     }
 
-    func testAStrokeIsTakenWhenMostOfItIsInside() {
+    func testAStrokeIsTakenWhenAThirdOrMoreOfItIsInside() {
         let strokeAcrossTheEdge = (0..<10).map { pointIndex in CGPoint(x: 55 + Double(pointIndex) * 10, y: 50) }
         XCTAssertEqual(InkLasso.enclosedFraction(of: strokeAcrossTheEdge, inLoop: square), 0.5)
-        XCTAssertLessThan(0.5, InkLasso.minimumEnclosedFraction, "Half inside is not selected.")
-        let strokeMostlyInside = (0..<10).map { pointIndex in CGPoint(x: 25 + Double(pointIndex) * 10, y: 50) }
-        XCTAssertGreaterThanOrEqual(InkLasso.enclosedFraction(of: strokeMostlyInside, inLoop: square), InkLasso.minimumEnclosedFraction)
+        XCTAssertTrue(InkLasso.takesStroke(sampledAt: strokeAcrossTheEdge, inLoop: square), "Half inside is selected.")
+        let strokeGrazed = (0..<10).map { pointIndex in CGPoint(x: 85 + Double(pointIndex) * 10, y: 50) }
+        XCTAssertEqual(InkLasso.enclosedFraction(of: strokeGrazed, inLoop: square), 0.2)
+        XCTAssertFalse(InkLasso.takesStroke(sampledAt: strokeGrazed, inLoop: square), "A fifth inside is not.")
         XCTAssertEqual(InkLasso.enclosedFraction(of: [], inLoop: square), 0)
         XCTAssertEqual(InkLasso.length(of: square), 300)
         XCTAssertEqual(InkLasso.length(of: [CGPoint(x: 3, y: 4)]), 0)
@@ -90,12 +102,12 @@ final class InkLassoTests: XCTestCase {
         XCTAssertTrue(InkLasso.bounds(of: []).isNull)
     }
 
-    func testAPictureIsTakenWhenMostOfItsAreaIsInsideTheLoopAsTurned() {
-        // A picture half over the loop's right edge is not taken; one mostly inside is.
+    func testAPictureIsTakenWhenEnoughOfItsAreaIsInsideTheLoopAsTurned() {
+        // A picture half over the loop's right edge is taken; one with a sliver inside is not.
         let halfOutside = InkLasso.samplePoints(ofRectangle: CGRect(x: 50, y: 20, width: 100, height: 60), turnedBy: 0)
         XCTAssertEqual(InkLasso.enclosedFraction(of: halfOutside, inLoop: square), 0.5)
-        let mostlyInside = InkLasso.samplePoints(ofRectangle: CGRect(x: 10, y: 20, width: 100, height: 60), turnedBy: 0)
-        XCTAssertGreaterThanOrEqual(InkLasso.enclosedFraction(of: mostlyInside, inLoop: square), InkLasso.minimumEnclosedFraction)
+        XCTAssertTrue(InkLasso.takesPicture(framed: CGRect(x: 50, y: 20, width: 100, height: 60), turnedBy: 0, inLoop: square))
+        XCTAssertFalse(InkLasso.takesPicture(framed: CGRect(x: 90, y: 20, width: 100, height: 60), turnedBy: 0, inLoop: square))
         // A long, thin picture turned a quarter fits where it would not upright.
         let tall = CGRect(x: -20, y: 40, width: 140, height: 20)
         XCTAssertLessThan(InkLasso.enclosedFraction(of: InkLasso.samplePoints(ofRectangle: tall, turnedBy: 0), inLoop: [CGPoint(x: 35, y: -30), CGPoint(x: 65, y: -30), CGPoint(x: 65, y: 130), CGPoint(x: 35, y: 130)]), 0.6)

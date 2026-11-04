@@ -3,10 +3,11 @@
  * ------------------------------
  * Layer: UI
  * Description: The Pencil bar's colors: black and the favorite colors, or the highlighter's own, Other Color, and the
- *              moves, removal and adding of a color at the bar itself; and the one well that opens them on a narrower bar.
+ *              moves, removal and adding of a color at the bar itself; and the strip that scrolls them on a bar too narrow
+ *              for every color even at the mini size.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -15,6 +16,16 @@ import GraphiteCore
 
 #if canImport(UIKit)
 import UIKit
+
+/// Which of the bar's color controls a place shows.
+enum PencilColorControls {
+    /// The swatches, Other Color and the plus: the whole bar, and the condensed form's popover.
+    case all
+    /// The swatches alone: the compact bar, which keeps every color a tap away.
+    case swatches
+    /// Other Color and the plus alone: the compact bar's More popover.
+    case otherColorAndAdd
+}
 
 /// The colors of the ink in use on the fixed bar. A highlighter marks text in light colors of
 /// its own; a pen writes in black and the note colors. The lists are the ones Settings › Colors
@@ -26,6 +37,8 @@ import UIKit
 struct PencilColorButtons: View {
     @Bindable var toolbox: PencilToolbox
     let rowHeight: CGFloat
+    var density: PencilToolRowLayout.Density = .regular
+    var controls: PencilColorControls = .all
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
 
@@ -35,11 +48,23 @@ struct PencilColorButtons: View {
         case favorites, highlighter
     }
 
-    private var buttonSide: CGFloat { PencilToolbarMetrics.buttonSide }
-    private var buttons: PencilToolButtons { PencilToolButtons(toolbox: toolbox, rowHeight: rowHeight) }
-    private var editedPalette: EditedPalette { toolbox.presetInUse.ink == .highlighter ? .highlighter : .favorites }
+    private var buttons: PencilToolButtons { PencilToolButtons(toolbox: toolbox, rowHeight: rowHeight, density: density) }
+    private var editedPalette: EditedPalette { Self.editsHighlighterColors(toolbox) ? .highlighter : .favorites }
 
     var body: some View {
+        if controls != .otherColorAndAdd { swatches }
+        if controls != .swatches {
+            ColorPicker("Other Color", selection: Binding(
+                get: { Color(graphiteHex: toolbox.presetInUse.colorHex) ?? .black },
+                set: { newColor in if let hex = newColor.sRGBHex { toolbox.chooseColor(hex: hex) } }), supportsOpacity: false)
+                .labelsHidden()
+                .frame(width: density.otherColorWidth, height: rowHeight)
+            if Self.showsAddColor(toolbox, favorites: palette(.favorites), highlighterColors: palette(.highlighter)) { addColorButton }
+        }
+    }
+
+    /// Black and the favorite colors, or the highlighter's colors, each with its editing menu.
+    @ViewBuilder private var swatches: some View {
         switch editedPalette {
         case .highlighter:
             ForEach(palette(.highlighter)) { highlighterColor in
@@ -53,13 +78,30 @@ struct PencilColorButtons: View {
                     .contextMenu { editingMenu(for: favorite, in: .favorites) }
             }
         }
-        ColorPicker("Other Color", selection: Binding(
-            get: { Color(graphiteHex: toolbox.presetInUse.colorHex) ?? .black },
-            set: { newColor in if let hex = newColor.sRGBHex { toolbox.chooseColor(hex: hex) } }), supportsOpacity: false)
-            .labelsHidden()
-            .frame(width: buttonSide, height: rowHeight)
-        addColorButton
     }
+
+    // MARK: Counted by the bar
+
+    /// Whether the bar shows the highlighter's colors rather than black and the favorite colors.
+    static func editsHighlighterColors(_ toolbox: PencilToolbox) -> Bool { toolbox.presetInUse.ink == .highlighter }
+
+    /// How many swatches the bar shows for the ink in use: black and the favorite colors, or the highlighter's colors.
+    static func swatchCount(_ toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor]) -> Int {
+        editsHighlighterColors(toolbox) ? highlighterColors.count : 1 + favorites.count
+    }
+
+    /// Whether the plus that adds the color in use shows: only while an ink's color, as Other Color chose it, is not
+    /// in the list the bar shows (black is always on a pen's bar).
+    static func showsAddColor(_ toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor]) -> Bool {
+        let colorInUse = toolbox.presetInUse.colorHex
+        let editsHighlighterColors = editsHighlighterColors(toolbox)
+        let isBlackOnAPensBar = !editsHighlighterColors
+            && TextColorMarkup.canonicalHex(colorInUse) == TextColorMarkup.canonicalHex(PencilInk.pen.defaultColorHex)
+        return toolbox.toolInUse == .ink && !isBlackOnAPensBar
+            && !FavoriteColorEditing.contains(hex: colorInUse, in: editsHighlighterColors ? highlighterColors : favorites)
+    }
+
+    // MARK: Editing
 
     private func palette(_ palette: EditedPalette) -> [PaletteColor] {
         switch palette {
@@ -88,64 +130,39 @@ struct PencilColorButtons: View {
         }
     }
 
-    /// Adds the color in use, as Other Color chose it, to the list the bar shows; there only
-    /// while that color is not in it (black is always on a pen's bar).
-    @ViewBuilder private var addColorButton: some View {
-        let colorInUse = toolbox.presetInUse.colorHex
-        let isBlackOnAPensBar = editedPalette == .favorites
-            && TextColorMarkup.canonicalHex(colorInUse) == TextColorMarkup.canonicalHex(PencilInk.pen.defaultColorHex)
-        if toolbox.toolInUse == .ink, !isBlackOnAPensBar, !FavoriteColorEditing.contains(hex: colorInUse, in: palette(editedPalette)) {
-            Button {
-                store(FavoriteColorEditing.adding(hex: colorInUse, to: palette(editedPalette)), as: editedPalette)
-            } label: {
-                Image(systemName: "plus.circle")
-                    .font(.system(size: 17))
-                    .frame(width: buttonSide, height: rowHeight)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Add to Favorite Colors")
-        }
-    }
-}
-
-/// The color in use as one well, which opens the colors (`PencilColorButtons`) in a popover: the
-/// row's form where the bar has room for the tools and sizes but not for every color.
-struct PencilColorWell: View {
-    @Bindable var toolbox: PencilToolbox
-    let rowHeight: CGFloat
-    @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
-    @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
-    @State private var showsColors = false
-
-    /// The name of the color in use where a list has it, else its hex.
-    private var colorInUseName: String {
-        let canonicalHex = TextColorMarkup.canonicalHex(toolbox.presetInUse.colorHex)
-        let colors = GraphitePreferences.colorPalette(decoding: storedColorPalette) + GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette)
-        return colors.first { color in TextColorMarkup.canonicalHex(color.hex) == canonicalHex }?.name ?? toolbox.presetInUse.colorHex
-    }
-
-    var body: some View {
+    /// Adds the color in use, as Other Color chose it, to the list the bar shows.
+    private var addColorButton: some View {
         Button {
-            showsColors = true
+            store(FavoriteColorEditing.adding(hex: toolbox.presetInUse.colorHex, to: palette(editedPalette)), as: editedPalette)
         } label: {
-            Circle()
-                .fill(Color(graphiteHex: toolbox.presetInUse.colorHex) ?? .black)
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.4), lineWidth: 1) }
-                .frame(width: 20, height: 20)
-                .overlay { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: 28, height: 28) }
-                .frame(width: PencilToolbarMetrics.buttonSide, height: rowHeight)
+            Image(systemName: "plus.circle")
+                .font(.system(size: 17))
+                .frame(width: density.swatchPitch, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Colors")
-        .accessibilityValue(colorInUseName)
-        .popover(isPresented: $showsColors) {
-            HStack(spacing: 2) { PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight) }
-                .padding(12)
-                .tint(.primary)
-                .presentationCompactAdaptation(.popover)
+        .accessibilityLabel("Add to Favorite Colors")
+    }
+}
+
+/// The colors as a strip that scrolls sideways, as wide as `visibleSwatchCount` whole colors and coming to rest on a
+/// color's edge, so none is ever cut in half: the compact bar's form where every color does not fit even at the mini
+/// size (`PencilToolRowLayout.Arrangement.compactWithScrollingColors`).
+struct PencilColorStrip: View {
+    @Bindable var toolbox: PencilToolbox
+    let rowHeight: CGFloat
+    let visibleSwatchCount: Int
+
+    var body: some View {
+        let density = PencilToolRowLayout.Density.tightest
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 0) {
+                PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density, controls: .swatches)
+            }
+            .scrollTargetLayout()
         }
+        .scrollTargetBehavior(.viewAligned)
+        .frame(width: CGFloat(Double(visibleSwatchCount) * density.swatchPitch), height: rowHeight)
     }
 }
 #endif

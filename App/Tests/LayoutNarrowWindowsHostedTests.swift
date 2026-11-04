@@ -6,7 +6,7 @@
  *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 
@@ -162,7 +162,8 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         }
     }
 
-    /// HUNT-262, HUNT-289: the tool row is whole, compact or condensed in any width, never wider than its room.
+    /// HUNT-262, HUNT-289: the tool row is whole, compact or condensed in any width, never wider than its room. Only its
+    /// colors may scroll, in a strip of whole colors, where they do not all fit even at the mini size (HUNT-317).
     func testThePencilToolRowFitsAnyWidthWithoutScrolling() async throws {
         let scene = try scene
         var formsByWidth: [CGFloat: PencilToolRowForm] = [:]
@@ -181,7 +182,16 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
             attachScreenshot(of: window, named: "Pencil tool row at \(Int(width)) points: \(shownRow.form)")
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.width, width + 0.5, "At \(Int(width)) points the row is no wider than its room.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, -0.5)
-            XCTAssertTrue(descendants(of: controller.view, matching: UIScrollView.self).isEmpty, "At \(Int(width)) points nothing scrolls sideways.")
+            let scrollViews = descendants(of: controller.view, matching: UIScrollView.self)
+            if case .compactWithScrollingColors(let visibleSwatchCount) = shownRow.arrangement {
+                let stripWidth = CGFloat(Double(visibleSwatchCount) * PencilToolRowLayout.Density.tightest.swatchPitch)
+                XCTAssertFalse(scrollViews.isEmpty, "At \(Int(width)) points the colors scroll in their strip.")
+                for scrollView in scrollViews {
+                    XCTAssertEqual(scrollView.bounds.width, stripWidth, accuracy: 0.5, "At \(Int(width)) points only the strip of whole colors scrolls.")
+                }
+            } else {
+                XCTAssertTrue(scrollViews.isEmpty, "At \(Int(width)) points nothing scrolls sideways.")
+            }
             formsByWidth[width] = shownRow.form
             window.isHidden = true
             window.rootViewController = nil

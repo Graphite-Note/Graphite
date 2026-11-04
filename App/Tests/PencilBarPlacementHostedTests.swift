@@ -3,11 +3,12 @@
  * -----------------------------------------
  * Layer: Tests
  * Description: Hosted tests of the fixed Pencil bar over a PDF on the 11-inch iPad, upright and sideways: a row of its
- *              own, centered over the page, with every tool and the sizes of the tool in use on it, and the same
- *              tools in the same order both ways (HUNT-312, HUNT-310, HUNT-311).
+ *              own, centered over the page, with every tool and the sizes of the tool in use on it, the same tools in
+ *              the same order both ways, and every favorite color and the ruler on the bar at every width (HUNT-312,
+ *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 
@@ -118,7 +119,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             XCTAssertEqual(shownRow.frameInWindow.midX, pdfFrame.midX, accuracy: 24, "\(name): the tools are centered over the PDF, not at the right edge.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, pdfFrame.minX - 1, "\(name): the bar is inside the PDF's side.")
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, pdfFrame.maxX + 1, "\(name): the bar is inside the PDF's side.")
-            XCTAssertTrue([.full, .colorWell].contains(shownRow.form), "\(name): every tool and its sizes are on the bar, not behind one control (\(shownRow.form)).")
+            XCTAssertEqual(shownRow.form, .full, "\(name): every tool, its sizes and every color are on the bar, nothing behind a menu (\(shownRow.arrangement)).")
             formsByOrientation[name] = shownRow.form
         }
         XCTAssertEqual(formsByOrientation.count, 2)
@@ -161,7 +162,8 @@ final class PencilBarPlacementHostedTests: XCTestCase {
     }
 
     /// The row alone, at the widths of the 11-inch iPad: 834 upright, about 874 sideways beside the sidebar, and 514
-    /// upright beside it. The sizes of the tool in use are on the bar at every one of them, for an ink and the eraser.
+    /// upright beside it. The sizes of the tool in use are on the bar at every one of them, for an ink and the eraser;
+    /// beside the sidebar the laser pointer, the text tool and the Read Aloud pen are behind the More control (HUNT-317).
     func testTheSizesOfTheToolInUseAreOnTheBarAtEveryWidthOfTheElevenInchIPad() async throws {
         let toolbox = PencilToolbox.shared
         let savedPresetIndex = toolbox.toolInUse == .ink ? toolbox.presetInUseIndex : nil
@@ -191,10 +193,107 @@ final class PencilBarPlacementHostedTests: XCTestCase {
                 let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
                 attachScreenshot(of: window, named: "Pencil row, \(tool), \(Int(width)) points: \(shownRow.form)")
                 XCTAssertLessThanOrEqual(shownRow.frameInWindow.width, width + 0.5)
-                // Every form but the condensed one has every tool and the sizes of the ink or eraser in use on the bar.
-                XCTAssertNotEqual(shownRow.form, .condensed, "\(tool) at \(Int(width)) points: every tool and the sizes stay on the bar.")
+                // Every form but the condensed one has the sizes of the ink or eraser in use on the bar.
+                XCTAssertNotEqual(shownRow.form, .condensed, "\(tool) at \(Int(width)) points: the sizes stay on the bar.")
             }
         }
+    }
+
+    // MARK: HUNT-317: every favorite color and the ruler on the bar
+
+    /// The owner's report of 2026-11-04: "what happened to the row of colors we used to see", and the ruler and the other
+    /// tools only behind the bar's "…". The row alone, with the pen in use and the default favorite colors, at 514 points
+    /// (upright beside the sidebar), 834 (upright) and 1,194 (sideways): black and every favorite color are whole on
+    /// screen, each its own button, and the ruler is a button on the bar. The form shown is the one `PencilToolRowLayout`
+    /// chooses for the width, and the row is as wide as it says.
+    func testEveryFavoriteColorAndTheRulerAreButtonsOnTheBarAtEveryWidthOfTheElevenInchIPad() async throws {
+        let toolbox = PencilToolbox.shared
+        let savedTool = toolbox.toolInUse
+        let savedPresetIndex = toolbox.presetInUseIndex
+        // Settings of their own, which hold no colors: the row shows the default favorite colors.
+        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: "PencilBarColors-\(UUID().uuidString)"))
+        try Self.setAccessibilityRuntimeEnabled(true)
+        defer {
+            try? Self.setAccessibilityRuntimeEnabled(false) // Left on, it slows later tests and changes nothing they check.
+            if savedTool == .ink { toolbox.usePreset(at: savedPresetIndex) } else { toolbox.use(savedTool) }
+        }
+        toolbox.usePreset(at: try XCTUnwrap(toolbox.presets.firstIndex { preset in preset.ink == .pen }))
+        let favorites = PaletteColor.defaultPalette
+        let contents = PencilToolRowLayout.Contents(
+            tools: PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextBoxes: true, offersReadAloudPen: true),
+            toolInUse: .preset(index: toolbox.presetInUseIndex), sizeCount: 3, offersColors: true, swatchCount: 1 + favorites.count,
+            showsAddColor: PencilColorButtons.showsAddColor(toolbox, favorites: favorites, highlighterColors: PaletteColor.defaultHighlighterPalette),
+            offersImages: true)
+        let scene = try scene
+        weak var previousController: UIViewController?
+        for width in [514, 834, 1_194] as [CGFloat] {
+            try await waitUntil("the row of the width before is let go") { previousController == nil }
+            PencilToolRowForm.lastShown = nil
+            let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
+                                                                         offersReadAloudPen: true, offersTextBoxes: true)
+                .frame(width: width, height: PencilToolbarMetrics.height)
+                .background(Color(uiColor: .systemBackground))
+                .defaultAppStorage(isolatedDefaults))
+            previousController = controller
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 100, width: width, height: 60)
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            defer { window.isHidden = true; window.rootViewController = nil }
+            let expected = PencilToolRowLayout.arrangement(forWidth: Double(width), holding: contents)
+            try await waitUntil("the row shows at \(Int(width)) points") { PencilToolRowForm.lastShown?.arrangement == expected }
+            let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
+            attachScreenshot(of: window, named: "Pencil row with the pen, \(Int(width)) points: \(shownRow.arrangement)")
+            XCTAssertNotEqual(shownRow.form, .condensed, "\(Int(width)) points: the colors are on the bar, not behind a control.")
+            if case .compactWithScrollingColors = expected { XCTFail("\(Int(width)) points: the default colors all fit; none scrolls.") }
+            // The bar is built at the layout's widths: the row measured here is as wide as the layout says.
+            let expectedWidth = try XCTUnwrap(PencilToolRowLayout.width(of: expected, holding: contents))
+            XCTAssertEqual(Double(shownRow.frameInWindow.width), expectedWidth, accuracy: 1, "\(Int(width)) points: the row's measured width.")
+            XCTAssertLessThanOrEqual(shownRow.frameInWindow.width, width + 0.5)
+
+            var elements: [NSObject] = []
+            try await waitUntil("the row's buttons are accessible at \(Int(width)) points", pollingIntervalSeconds: 0.25) {
+                elements = self.accessibilityElements(in: controller.view)
+                return elements.contains { element in element.accessibilityLabel == "Ruler" }
+            }
+            let windowFrame = window.frame
+            /// Whether an element with `label` stands wholly inside the window, at least as wide as a mini color.
+            func isWhollyOnScreen(_ label: String) -> Bool {
+                elements.contains { element in
+                    let frame = element.accessibilityFrame
+                    return element.accessibilityLabel == label && frame.minX >= windowFrame.minX - 0.5 && frame.maxX <= windowFrame.maxX + 0.5
+                        && frame.width >= PencilToolRowLayout.Density.tightest.swatchPitch - 0.5
+                }
+            }
+            for colorName in ["black"] + favorites.map(\.name) {
+                XCTAssertTrue(isWhollyOnScreen(colorName), "\(Int(width)) points: \(colorName) is a button wholly on the bar.")
+            }
+            let ruler = elements.first { element in element.accessibilityLabel == "Ruler" }
+            XCTAssertTrue(isWhollyOnScreen("Ruler"), "\(Int(width)) points: the ruler is on the bar.")
+            XCTAssertTrue(ruler?.accessibilityTraits.contains(.button) == true, "\(Int(width)) points: the ruler is a button, not a menu item.")
+        }
+    }
+
+    private static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
+        let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW), "The simulator's accessibility library.")
+        typealias Setter = @convention(c) (Int32) -> Void
+        for name in ["_AXSSetAutomationEnabled", "_AXSApplicationAccessibilitySetEnabled"] {
+            let symbol = try XCTUnwrap(dlsym(library, name), name)
+            unsafeBitCast(symbol, to: Setter.self)(isEnabled ? 1 : 0)
+        }
+    }
+
+    private func accessibilityElements(in object: NSObject) -> [NSObject] {
+        var elements: [NSObject] = object.isAccessibilityElement ? [object] : []
+        let count = object.accessibilityElementCount()
+        if let children = object.accessibilityElements {
+            elements += children.compactMap { child in child as? NSObject }.flatMap(accessibilityElements)
+        } else if count != NSNotFound, count > 0 {
+            elements += (0..<count).compactMap { elementIndex in object.accessibilityElement(at: elementIndex) as? NSObject }.flatMap(accessibilityElements)
+        } else if let view = object as? UIView {
+            elements += view.subviews.flatMap(accessibilityElements)
+        }
+        return elements
     }
 }
 #endif

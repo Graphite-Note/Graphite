@@ -1,3 +1,14 @@
+/**
+ * File: InkSelectionControllerTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: Graphite's lasso on a canvas: what a loop or a tap selects, what a resize does to the
+ *              strokes it carries, and the time smoothing gives the strokes it changes.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 #if canImport(UIKit)
 import XCTest
 import PencilKit
@@ -44,24 +55,29 @@ final class InkSelectionControllerTests: XCTestCase {
 
     // MARK: Which strokes a loop takes
 
-    func testALoopTakesAStrokeWhenSeventyPercentOfItIsInsideAndMarksAnAreaWhenFiftyPercentIs() throws {
+    func testALoopTakesAStrokeWhenFortyPercentOfItIsInsideAndMarksAnAreaWhenTwentyPercentIs() throws {
         let (_, controller) = try controller(showing: [horizontalStroke(y: 50)])
-        drawLoop(box(from: -10, to: 70), with: controller)
-        XCTAssertEqual(controller.selectedStrokeIndices, [0], "70 % of the stroke is inside.")
+        drawLoop(box(from: -10, to: 40), with: controller)
+        XCTAssertEqual(controller.selectedStrokeIndices, [0], "40 % of the stroke is inside.")
+        XCTAssertNotNil(controller.shownLoopLayers, "The loop shows closed around the selection.")
 
         controller.clearSelection()
-        drawLoop(box(from: -10, to: 50), with: controller)
-        XCTAssertEqual(controller.selectedStrokeIndices, [], "50 % is not enough.")
+        XCTAssertNil(controller.shownLoopLayers)
+        drawLoop(box(from: -10, to: 20), with: controller)
+        XCTAssertEqual(controller.selectedStrokeIndices, [], "20 % is a graze.")
         XCTAssertTrue(controller.isShowingLassoedArea, "A loop that takes nothing marks its area.")
     }
 
-    func testALoopShorterThanTwentyFourPointsIsASlipAndOneOfTwentyFourPointsIsNot() throws {
+    func testALoopIsASlipUnderTwentyFourPointsLongOrSixtyFourSquarePointsInsideAndALoopAtThoseIsNot() throws {
         let (_, controller) = try controller(showing: [])
-        drawLoop([CGPoint(x: 100, y: 100), CGPoint(x: 111, y: 100), CGPoint(x: 123, y: 100)], with: controller)
-        XCTAssertFalse(controller.isShowingLassoedArea, "A 23-point loop is a slip: nothing is selected or marked.")
+        drawLoop([CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 107), CGPoint(x: 107, y: 107), CGPoint(x: 107, y: 100)], with: controller)
+        XCTAssertFalse(controller.isShowingLassoedArea, "A 7-point square is a slip: nothing is selected or marked.")
         controller.clearSelection()
         drawLoop([CGPoint(x: 100, y: 100), CGPoint(x: 112, y: 100), CGPoint(x: 124, y: 100)], with: controller)
-        XCTAssertTrue(controller.isShowingLassoedArea, "A 24-point loop is a loop.")
+        XCTAssertFalse(controller.isShowingLassoedArea, "A line 24 points long encloses nothing once closed.")
+        controller.clearSelection()
+        drawLoop([CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 108), CGPoint(x: 108, y: 108), CGPoint(x: 108, y: 100)], with: controller)
+        XCTAssertTrue(controller.isShowingLassoedArea, "An 8-point square is a loop.")
     }
 
     func testATapReachesFourteenPointsBeyondTheInkOfAStrokeAndNoFurther() throws {

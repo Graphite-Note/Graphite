@@ -2,11 +2,11 @@
  * File: PencilToolbar.swift
  * -------------------------
  * Layer: UI
- * Description: The fixed Pencil bar and its tool row, which folds into a compact and a condensed form instead of
- *              scrolling.
+ * Description: The fixed Pencil bar and its tool row: the whole row, closer and with smaller colors as the bar narrows,
+ *              then a compact form that keeps every color and the ruler on the bar, then a condensed one.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
+ * Version: 0.12
  * Date: 04/11/2026
  */
 
@@ -91,20 +91,23 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
     }
 }
 
-/// The fixed bar's tools in one row: the ink presets, the eraser and the lasso; the width of
-/// the tool in use; its color, from the favorite colors of Settings › Colors, or for a
-/// highlighter from its own lighter colors there; then the shape tool, the ruler, and adding
-/// an image. The row takes the width it needs where that fits and folds where it does not
-/// (`body`), never scrolling. The fixed bar shows it, in a row of its own, centered.
+/// The fixed bar's tools in one row: the ink presets, the eraser, the lasso, the laser pointer,
+/// and on PDF pages the text tool and the Read Aloud pen; the tool's own choices and the three
+/// sizes of the ink or eraser in use; black and every favorite color, or for a highlighter its own
+/// lighter colors, from Settings › Colors, with Other Color and its plus; then Shapes, the Ruler
+/// and Add Image. The row takes the first form that fits (`PencilToolRowLayout`): the whole row,
+/// closer and with smaller colors as the bar narrows; then the compact row, which keeps the
+/// tools a person writes with, the sizes, every color and the ruler on the bar and puts the rest
+/// behind one More control; then the compact row with its colors in a strip that scrolls, only
+/// where they do not all fit even at the mini size; then fewer tools. Nothing is cut off.
 ///
 /// A second tap on the ink in use opens its options: every ink PencilKit has, any width and
 /// opacity, and adding or removing a preset. A second tap on the size in use, of an ink or
 /// of the eraser, opens its width, to change it. A long press on a favorite color moves or
 /// removes it, and the plus beside Other Color adds the color in use.
 ///
-/// The inks, the eraser and the lasso are drawn standing upright, as in Apple's palette,
-/// each ink's tip in its color; the tool in use stands raised and has the selected trait,
-/// so it is not told apart by color alone.
+/// Each tool is its SF Symbol (`PencilToolGlyph`); the tool in use stands on a faint fill and has
+/// the selected trait, so it is not told apart by color alone.
 struct PencilToolRow: View {
     @Bindable var toolbox: PencilToolbox
     @Binding var drawsShapes: Bool
@@ -118,32 +121,25 @@ struct PencilToolRow: View {
     /// The text tool, on PDF pages.
     var offersTextBoxes = false
     @State private var showsInkOptions = false
-    @AppStorage(LassoShape.preferenceKey) private var lassoShape = LassoShape.freehand
-    @AppStorage(LaserPointerStyle.preferenceKey) private var laserPointerStyle = LaserPointerStyle.dot
+    @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
+    @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
     /// The size whose width is open for changing.
     @State private var adjustedSize: PencilSizeChoice?
+    /// The width the row is offered, which sets how many colors a scrolling strip shows.
+    @State private var availableWidth: Double = 0
 
-    private var buttonSide: CGFloat { PencilToolbarMetrics.buttonSide }
-    private var selectedFill: AnyShapeStyle { PencilToolbarMetrics.selectedFill }
-
-    /// How much of the row shows, by the width it has (`PencilToolRowLayout`).
-    @State private var showsCompactOptions = false
+    private typealias Density = PencilToolRowLayout.Density
 
     var body: some View {
-        // The whole row where it fits. Narrower, the row folds one thing at a time and keeps
-        // the rest: first Shapes and Ruler into one menu, then the colors behind one well of
-        // the color in use, then the tool's other choices and the colors behind one control.
-        // The sizes of the ink or eraser in use stay on the bar in every form but the last
-        // two, so a thickness is always one tap away (HUNT-310); only in a window too narrow
-        // for every tool do the tools that do not fit join the rest behind that control, the
-        // tool in use always staying on the bar. Nothing is cut off and nothing scrolls.
+        // The forms in `PencilToolRowLayout`'s order, the first that fits shown. The sizes of the
+        // ink or eraser in use stay on the bar in every form but the last two (HUNT-310), and every
+        // color and the ruler in every form but the condensed ones (HUNT-317).
+        let contents = layoutContents
         ViewThatFits(in: .horizontal) {
-            fullRow(foldsToggles: false)
-                .reportingLayout(.full)
-            fullRow(foldsToggles: true)
-                .reportingLayout(.full)
-            rowWithColorWell
-                .reportingLayout(.colorWell)
+            ForEach(PencilToolRowLayout.preferredArrangements, id: \.self) { arrangement in row(arrangement, holding: contents) }
+            if let scrollingColors = PencilToolRowLayout.scrollingColorsArrangement(forWidth: availableWidth, holding: contents) {
+                row(scrollingColors, holding: contents)
+            }
             condensedRow(showing: Int.max, showsSizes: true)
             condensedRow(showing: 6, showsSizes: true)
             condensedRow(showing: 5, showsSizes: true)
@@ -153,46 +149,102 @@ struct PencilToolRow: View {
             condensedRow(showing: 2, showsSizes: false)
             condensedRow(showing: 1, showsSizes: false)
         }
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: Double.self) { geometry in Double(geometry.size.width) } action: { width in availableWidth = width }
         .frame(height: rowHeight)
         .tint(.primary)
         // Apple's palette answers Apple Pencil's double tap and squeeze; the row takes its place.
         .background { PencilGestureReceiver(toolbox: toolbox, undoAvailability: undoAvailability) }
     }
 
-    private func fullRow(foldsToggles: Bool) -> some View {
-        HStack(spacing: 2) {
-            toolButtons(allTools)
-            separator
-            toolChoices
-            sizeButtons(opensWidth: true)
-            separator
-            if Self.offersColors(toolInUse: toolbox.toolInUse) {
-                colorButtons
-                separator
-            }
-            if foldsToggles { foldedExtraButtons } else { extraButtons }
-        }
-        .padding(.horizontal, 10)
+    /// What the row holds, counted for the scrolling strip's width; the other forms are measured by `ViewThatFits`.
+    private var layoutContents: PencilToolRowLayout.Contents {
+        let favorites = GraphitePreferences.colorPalette(decoding: storedColorPalette)
+        let highlighterColors = GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette)
+        let offersColors = Self.offersColors(toolInUse: toolbox.toolInUse)
+        return PencilToolRowLayout.Contents(
+            tools: allTools, toolInUse: toolInUse, sizeCount: hasSizes ? 3 : 0, offersColors: offersColors,
+            swatchCount: offersColors ? PencilColorButtons.swatchCount(toolbox, favorites: favorites, highlighterColors: highlighterColors) : 0,
+            showsAddColor: PencilColorButtons.showsAddColor(toolbox, favorites: favorites, highlighterColors: highlighterColors),
+            offersImages: addImage != nil)
     }
 
-    /// Every tool, the tool's own choices and sizes, and the colors behind one well of the
-    /// color in use: the form of an 11-inch iPad, whose bar is 834 points wide upright and
-    /// about 870 beside the sidebar in landscape, too narrow for the colors and the tools in
-    /// one row.
-    private var rowWithColorWell: some View {
-        HStack(spacing: 2) {
-            toolButtons(allTools)
-            separator
-            toolChoices
-            sizeButtons(opensWidth: true)
-            separator
-            if Self.offersColors(toolInUse: toolbox.toolInUse) {
-                colorWell
-                separator
-            }
-            foldedExtraButtons
+    @ViewBuilder private func row(_ arrangement: PencilToolRowLayout.Arrangement, holding contents: PencilToolRowLayout.Contents) -> some View {
+        switch arrangement {
+        case .whole(let density):
+            wholeRow(density).reportingLayout(.full, arrangement)
+        case .compact(let density):
+            compactRow(density, showsSwatches: contents.swatchCount > 0, visibleSwatchCount: nil).reportingLayout(.compact, arrangement)
+        case .compactWithScrollingColors(let visibleSwatchCount):
+            compactRow(.tightest, showsSwatches: true, visibleSwatchCount: visibleSwatchCount).reportingLayout(.compact, arrangement)
+        case .condensed:
+            condensedRow(showing: Int.max, showsSizes: true)
         }
-        .padding(.horizontal, 10)
+    }
+
+    /// Everything on the bar, nothing behind a menu: the form of the 11-inch iPad sideways (1,194 points) at the
+    /// regular density, and upright (834 points) or beside the sidebar sideways (about 874) closer.
+    private func wholeRow(_ density: Density) -> some View {
+        HStack(spacing: 0) {
+            toolButtons(allTools, density: density)
+            separator(density)
+            toolChoices
+            sizeButtons(opensWidth: true, density: density)
+            if Self.offersColors(toolInUse: toolbox.toolInUse) {
+                separator(density)
+                PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density)
+            }
+            separator(density)
+            toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: density)
+            toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: density)
+            addImageButton(density: density)
+        }
+        .padding(.horizontal, density.edgeInset)
+    }
+
+    /// The tools a person writes with, the sizes, every color (or as many as fit, in a strip that scrolls, where
+    /// `visibleSwatchCount` is given) and the ruler, with the rest behind one More control: the form of the 11-inch iPad
+    /// upright beside the sidebar (about 514 points).
+    private func compactRow(_ density: Density, showsSwatches: Bool, visibleSwatchCount: Int?) -> some View {
+        let tools = PencilToolRowLayout.compactSplit(allTools, toolInUse: toolInUse)
+        return HStack(spacing: 0) {
+            toolButtons(tools.shown, density: density)
+            if hasSizes {
+                separator(density)
+                sizeButtons(opensWidth: true, density: density)
+            }
+            if showsSwatches {
+                separator(density)
+                if let visibleSwatchCount {
+                    PencilColorStrip(toolbox: toolbox, rowHeight: rowHeight, visibleSwatchCount: visibleSwatchCount)
+                } else {
+                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density, controls: .swatches)
+                }
+            }
+            separator(density)
+            toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: density)
+            moreToolsButton(foldedTools: tools.folded, density: density)
+        }
+        .padding(.horizontal, density.edgeInset)
+    }
+
+    /// The compact row's More control: the tools used now and then (the laser pointer, the text tool, the Read Aloud
+    /// pen), the tool's own choices (the eraser's kind, the lasso's type), Other Color with its plus, Shapes and Add Image.
+    private func moreToolsButton(foldedTools: [PencilToolRowLayout.Tool], density: Density) -> some View {
+        PencilBarMoreButton(accessibilityLabel: "More Tools", width: density.toolPitch, rowHeight: rowHeight) { isPresented in
+            Image(systemName: drawsShapes || isPresented ? "ellipsis.circle.fill" : "ellipsis.circle")
+                .font(.system(size: 17))
+        } content: {
+            if !foldedTools.isEmpty { toolButtons(foldedTools, density: .regular) }
+            HStack(spacing: 2) { toolChoices }
+            HStack(spacing: 2) {
+                if Self.offersColors(toolInUse: toolbox.toolInUse) {
+                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColorAndAdd)
+                }
+                toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: .regular)
+                addImageButton(density: .regular)
+            }
+        }
     }
 
     /// The tools, the sizes of the ink or eraser in use, and one control for the tool's other
@@ -201,15 +253,16 @@ struct PencilToolRow: View {
     /// tools, the others are in that popover too; where it has no room for the sizes either,
     /// so are they.
     private func condensedRow(showing shownCount: Int, showsSizes: Bool) -> some View {
+        let density = Density.tightest
         let tools = PencilToolRowLayout.split(allTools, showing: shownCount, toolInUse: toolInUse)
-        return HStack(spacing: 2) {
-            toolButtons(tools.shown)
-            separator
-            if showsSizes { sizeButtons(opensWidth: true) }
-            compactOptionsButton(foldedTools: tools.folded, includesSizes: !showsSizes)
+        return HStack(spacing: 0) {
+            toolButtons(tools.shown, density: density)
+            separator(density)
+            if showsSizes { sizeButtons(opensWidth: true, density: density) }
+            condensedOptionsButton(foldedTools: tools.folded, includesSizes: !showsSizes)
         }
-        .padding(.horizontal, 10)
-        .reportingLayout(tools.folded.isEmpty && showsSizes ? .compact : .condensed)
+        .padding(.horizontal, density.edgeInset)
+        .reportingLayout(.condensed, .condensed)
     }
 
     /// Every tool of the row, in order.
@@ -229,78 +282,50 @@ struct PencilToolRow: View {
         }
     }
 
-    private func toolButtons(_ tools: [PencilToolRowLayout.Tool]) -> some View {
-        HStack(spacing: 2) {
-            ForEach(tools, id: \.self) { tool in toolButton(for: tool) }
+    /// The tool in use's own choices apart from its sizes (`PencilToolChoices`).
+    private var toolChoices: some View {
+        PencilToolChoices(toolbox: toolbox, offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes)
+    }
+
+    /// Whether the tool in use has the three sizes: an ink or the eraser.
+    private var hasSizes: Bool { toolbox.toolInUse == .ink || toolbox.toolInUse == .eraser }
+
+    private func toolButtons(_ tools: [PencilToolRowLayout.Tool], density: Density) -> some View {
+        HStack(spacing: 0) {
+            ForEach(tools, id: \.self) { tool in toolButton(for: tool, density: density) }
         }
     }
 
-    @ViewBuilder private func toolButton(for tool: PencilToolRowLayout.Tool) -> some View {
+    @ViewBuilder private func toolButton(for tool: PencilToolRowLayout.Tool, density: Density) -> some View {
+        let buttons = buttons(density)
         switch tool {
         case .preset(let presetIndex):
-            if toolbox.presets.indices.contains(presetIndex) { presetButton(toolbox.presets[presetIndex], at: presetIndex) }
-        case .eraser: toolButton(.eraser)
-        case .lasso: toolButton(.lasso)
-        case .laser: toolButton(.laser)
-        case .text: toolButton(.text)
-        case .readAloud: toolButton(.readAloud)
+            if toolbox.presets.indices.contains(presetIndex) { presetButton(toolbox.presets[presetIndex], at: presetIndex, density: density) }
+        case .eraser: buttons.toolButton(.eraser)
+        case .lasso: buttons.toolButton(.lasso)
+        case .laser: buttons.toolButton(.laser)
+        case .text: buttons.toolButton(.text)
+        case .readAloud: buttons.toolButton(.readAloud)
         }
     }
-
-    /// The tool in use's own choices apart from its sizes: the eraser's kind, the lasso's
-    /// shape, the laser's style, the text box's look, the Read Aloud pen's hint. An ink has
-    /// none here; its options open with a second tap on it.
-    @ViewBuilder private var toolChoices: some View {
-        switch toolbox.toolInUse {
-        case .ink:
-            EmptyView()
-        case .eraser:
-            Picker("Eraser", selection: $toolbox.erasesWholeStrokes) {
-                Text("Strokes").tag(true)
-                Text("Pixels").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .fixedSize()
-        case .lasso:
-            // Remembered for every canvas, as Goodnotes keeps its lasso's type.
-            Picker("Lasso Type", selection: $lassoShape) {
-                ForEach(LassoShape.allCases) { shape in Text(shape.title).tag(shape) }
-            }
-            .pickerStyle(.segmented)
-            .fixedSize()
-        case .laser:
-            Picker("Laser Pointer", selection: $laserPointerStyle) {
-                ForEach(LaserPointerStyle.allCases) { style in Text(style.title).tag(style) }
-            }
-            .pickerStyle(.segmented)
-            .fixedSize()
-        case .text:
-            PencilTextToolOptions(offersTextBoxes: offersTextBoxes)
-        case .readAloud:
-            Text(offersReadAloudPen ? "Tap a word to read; tap another to stop there" : "Nothing to read here")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .fixedSize()
-        }
-    }
-
     /// The three sizes of the ink or the eraser in use, as dots as wide as they draw: the
     /// thickness control, on the bar beside the tools in every form that has room for it. A
     /// second tap on the size in use opens its width, to change that size (`PencilSizeEditor`),
     /// where `opensWidth`. The eraser shows its sizes while it removes whole strokes too: a
     /// size chosen then erases pixels at that width. Other tools have no width.
-    @ViewBuilder private func sizeButtons(opensWidth: Bool) -> some View {
+    @ViewBuilder private func sizeButtons(opensWidth: Bool, density: Density) -> some View {
         switch toolbox.toolInUse {
         case .ink:
             ForEach(Array(toolbox.presetInUse.widthChoices.enumerated()), id: \.offset) { choiceIndex, width in
-                sizeButton(.ink(choiceIndex: choiceIndex), width: width, isChosen: toolbox.chosenWidthIndex == choiceIndex, opensWidth: opensWidth) {
+                sizeButton(.ink(choiceIndex: choiceIndex), width: width, isChosen: toolbox.chosenWidthIndex == choiceIndex, opensWidth: opensWidth,
+                           density: density) {
                     toolbox.useWidthChoice(at: choiceIndex)
                 }
             }
         case .eraser:
             ForEach(Array(toolbox.eraserWidthChoices.enumerated()), id: \.offset) { choiceIndex, width in
-                sizeButton(.eraser(choiceIndex: choiceIndex), width: width, isChosen: toolbox.chosenEraserWidthIndex == choiceIndex, opensWidth: opensWidth) {
+                sizeButton(.eraser(choiceIndex: choiceIndex), width: width, isChosen: toolbox.chosenEraserWidthIndex == choiceIndex, opensWidth: opensWidth,
+                           density: density) {
                     toolbox.useEraserWidthChoice(at: choiceIndex)
                 }
                 .opacity(toolbox.erasesWholeStrokes ? 0.55 : 1)
@@ -311,91 +336,51 @@ struct PencilToolRow: View {
         }
     }
 
-    @ViewBuilder private func sizeButton(_ size: PencilSizeChoice, width: Double, isChosen: Bool, opensWidth: Bool, choose: @escaping () -> Void) -> some View {
+    @ViewBuilder private func sizeButton(_ size: PencilSizeChoice, width: Double, isChosen: Bool, opensWidth: Bool, density: Density,
+                                         choose: @escaping () -> Void) -> some View {
         if opensWidth {
-            adjustableSizeButton(size, width: width, isChosen: isChosen, choose: choose)
+            adjustableSizeButton(size, width: width, isChosen: isChosen, density: density, choose: choose)
         } else {
-            buttons.sizeButton(choiceIndex: size.choiceIndex, width: width, isChosen: isChosen, choose: choose)
+            buttons(density).sizeButton(choiceIndex: size.choiceIndex, width: width, isChosen: isChosen, choose: choose)
         }
     }
 
-    /// The colors of the ink in use, with their editing (`PencilColorButtons`).
-    private var colorButtons: some View { PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight) }
-
-    /// The color in use as one well that opens the colors (`PencilColorWell`).
-    private var colorWell: some View { PencilColorWell(toolbox: toolbox, rowHeight: rowHeight) }
-
-    /// Shapes and Ruler as one menu, then Add Image: the extra buttons in one button's less room.
-    @ViewBuilder private var foldedExtraButtons: some View {
-        Menu {
-            Toggle("Draw Shapes", systemImage: "square.on.circle", isOn: $drawsShapes)
-            Toggle("Ruler", systemImage: "ruler", isOn: $toolbox.isRulerActive)
-        } label: {
-            Image(systemName: drawsShapes || toolbox.isRulerActive ? "ellipsis.circle.fill" : "ellipsis.circle")
-                .frame(width: buttonSide, height: rowHeight)
-        }
-        .menuIndicator(.hidden)
-        .accessibilityLabel("Shapes and Ruler")
-        if let addImage {
-            Button("Add Image", systemImage: "photo.badge.plus", action: addImage)
-                .labelStyle(.iconOnly)
-                .frame(width: buttonSide, height: rowHeight)
-        }
-    }
-
-    @ViewBuilder private var extraButtons: some View {
-        toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes)
-        toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive)
-        if let addImage {
-            Button("Add Image", systemImage: "photo.badge.plus", action: addImage)
-                .labelStyle(.iconOnly)
-                .frame(width: buttonSide, height: rowHeight)
-        }
-    }
-
-    /// The compact row's one control for everything after the tools. It shows the ink in
+    /// The condensed row's one control for everything after the tools. It shows the ink in
     /// use as a dot of its color and size inside a ring, or the tool's symbol, with a
     /// chevron, so it reads as a control that opens; it opens the rest, and the tools the
     /// bar had no room for.
-    private func compactOptionsButton(foldedTools: [PencilToolRowLayout.Tool], includesSizes: Bool) -> some View {
-        Button {
-            showsCompactOptions = true
-        } label: {
+    private func condensedOptionsButton(foldedTools: [PencilToolRowLayout.Tool], includesSizes: Bool) -> some View {
+        PencilBarMoreButton(accessibilityLabel: "Size, Color and More", accessibilityValue: condensedOptionsDescription,
+                            width: 44, rowHeight: rowHeight) { isPresented in
             HStack(spacing: 2) {
-                compactOptionsGlyph
-                    .frame(width: 24, height: buttonSide)
+                condensedOptionsGlyph
+                    .frame(width: 24, height: PencilToolbarMetrics.buttonSide)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.secondary)
             }
-            .frame(width: buttonSide + 8, height: buttonSide)
-            .background(showsCompactOptions ? selectedFill : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
-            .frame(width: 44, height: rowHeight)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Size, Color and More")
-        .accessibilityValue(compactOptionsDescription)
-        .popover(isPresented: $showsCompactOptions) {
-            VStack(alignment: .leading, spacing: 4) {
-                if !foldedTools.isEmpty { toolButtons(foldedTools) }
-                HStack(spacing: 2) {
-                    toolChoices
-                    // In the popover a size is chosen; its width changes on the bar, or in the ink's options.
-                    if includesSizes { sizeButtons(opensWidth: false) }
-                }
-                if Self.offersColors(toolInUse: toolbox.toolInUse) {
-                    HStack(spacing: 2) { colorButtons }
-                }
-                HStack(spacing: 2) { extraButtons }
+            .frame(width: PencilToolbarMetrics.buttonSide + 8, height: PencilToolbarMetrics.buttonSide)
+            .background(isPresented ? PencilToolbarMetrics.selectedFill : AnyShapeStyle(.clear),
+                        in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
+        } content: {
+            if !foldedTools.isEmpty { toolButtons(foldedTools, density: .regular) }
+            HStack(spacing: 2) {
+                toolChoices
+                // In the popover a size is chosen; its width changes on the bar, or in the ink's options.
+                if includesSizes { sizeButtons(opensWidth: false, density: .regular) }
             }
-            .padding(12)
-            .tint(.primary)
-            .presentationCompactAdaptation(.popover)
+            if Self.offersColors(toolInUse: toolbox.toolInUse) {
+                HStack(spacing: 2) { PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight) }
+            }
+            HStack(spacing: 2) {
+                toggleButton("Shapes", symbolName: drawsShapes ? "square.fill.on.circle.fill" : "square.on.circle", isOn: $drawsShapes, density: .regular)
+                toggleButton("Ruler", symbolName: "ruler", isOn: $toolbox.isRulerActive, density: .regular)
+                addImageButton(density: .regular)
+            }
         }
     }
 
-    @ViewBuilder private var compactOptionsGlyph: some View {
+    @ViewBuilder private var condensedOptionsGlyph: some View {
         switch toolbox.toolInUse {
         case .ink:
             let diameter = CGFloat(PencilSizeDot.diameter(forWidth: toolbox.presetInUse.width))
@@ -409,7 +394,7 @@ struct PencilToolRow: View {
         }
     }
 
-    private var compactOptionsDescription: String {
+    private var condensedOptionsDescription: String {
         switch toolbox.toolInUse {
         case .ink: PencilWidthText.millimeters(toolbox.presetInUse.width)
         case .eraser: toolbox.erasesWholeStrokes ? "Strokes" : PencilWidthText.millimeters(toolbox.eraserWidth)
@@ -418,30 +403,29 @@ struct PencilToolRow: View {
     }
 
     /// Whether the colors follow the tool's own controls: not for the laser pointer, which
-    /// points in its own red and whose only choice is Dot or Line.
+    /// points in its own red, nor for the Read Aloud pen or the text tool, which have their own.
     static func offersColors(toolInUse: PencilToolKind) -> Bool { toolInUse != .laser && toolInUse != .readAloud && toolInUse != .text }
 
-    private var separator: some View {
-        Hairline(axis: .vertical).frame(height: 20).padding(.horizontal, 6)
+    /// A hairline between two sections, as wide as the density's room for it.
+    private func separator(_ density: Density) -> some View {
+        Hairline(axis: .vertical).frame(width: density.separatorWidth, height: 20)
     }
 
-    private var buttons: PencilToolButtons { PencilToolButtons(toolbox: toolbox, rowHeight: rowHeight) }
+    private func buttons(_ density: Density) -> PencilToolButtons { PencilToolButtons(toolbox: toolbox, rowHeight: rowHeight, density: density) }
 
-    private func presetButton(_ preset: InkPreset, at presetIndex: Int) -> some View {
+    private func presetButton(_ preset: InkPreset, at presetIndex: Int, density: Density) -> some View {
         let isInUse = toolbox.toolInUse == .ink && toolbox.presetInUseIndex == presetIndex
-        return buttons.presetButton(preset, at: presetIndex) { showsInkOptions = true }
+        return buttons(density).presetButton(preset, at: presetIndex) { showsInkOptions = true }
             .popover(isPresented: Binding(get: { showsInkOptions && isInUse }, set: { isPresented in showsInkOptions = isPresented })) {
                 PencilInkOptions(toolbox: toolbox)
                     .presentationCompactAdaptation(.popover)
             }
     }
 
-    private func toolButton(_ kind: PencilToolKind) -> some View { buttons.toolButton(kind) }
-
     /// One of the three sizes. A tap on another size draws with it; a second tap on the size
     /// in use opens its width.
-    private func adjustableSizeButton(_ size: PencilSizeChoice, width: Double, isChosen: Bool, choose: @escaping () -> Void) -> some View {
-        buttons.sizeButton(choiceIndex: size.choiceIndex, width: width, isChosen: isChosen, opensWidthWhenChosen: true) {
+    private func adjustableSizeButton(_ size: PencilSizeChoice, width: Double, isChosen: Bool, density: Density, choose: @escaping () -> Void) -> some View {
+        buttons(density).sizeButton(choiceIndex: size.choiceIndex, width: width, isChosen: isChosen, opensWidthWhenChosen: true) {
             if isChosen { adjustedSize = size } else { choose() }
         }
         .popover(isPresented: Binding(get: { adjustedSize == size }, set: { isPresented in if !isPresented, adjustedSize == size { adjustedSize = nil } })) {
@@ -450,66 +434,49 @@ struct PencilToolRow: View {
         }
     }
 
-
-    private func toggleButton(_ title: String, symbolName: String, isOn: Binding<Bool>) -> some View {
+    /// Shapes or the Ruler: a switch drawn as a tool, on the fill of the tool in use while it is on.
+    private func toggleButton(_ title: String, symbolName: String, isOn: Binding<Bool>, density: Density) -> some View {
         Button {
             isOn.wrappedValue.toggle()
         } label: {
             Image(systemName: symbolName)
                 .font(.system(size: 16, weight: isOn.wrappedValue ? .semibold : .regular))
-                .frame(width: buttonSide, height: buttonSide)
-                .background(isOn.wrappedValue ? selectedFill : AnyShapeStyle(.clear), in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
-                .frame(height: rowHeight)
+                .frame(width: density.toolSide, height: density.toolSide)
+                .background(isOn.wrappedValue ? PencilToolbarMetrics.selectedFill : AnyShapeStyle(.clear),
+                            in: RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius, style: .continuous))
+                .frame(width: density.toolPitch, height: rowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
         .accessibilityValue(isOn.wrappedValue ? "On" : "Off")
     }
-}
 
-/// Which form of the Pencil tool row is shown: the whole row; every tool and size with the
-/// colors behind one well; the compact one, the tools and sizes with the rest behind one
-/// control; or the condensed one, with some tools behind that control, in a window too
-/// narrow even for that. None of them scrolls.
-enum PencilToolRowForm: Equatable {
-    case full, colorWell, compact, condensed
-
-    /// For tests, which cannot see SwiftUI's views: the form last shown, and where, in its
-    /// window's coordinates.
-    @MainActor static var lastShown: (form: PencilToolRowForm, frameInWindow: CGRect)?
-}
-
-/// The text tool's options on the bar: the look of the next new text box, where there is a
-/// page to put it on.
-struct PencilTextToolOptions: View {
-    let offersTextBoxes: Bool
-    /// The look of the next new text box, which these options change.
-    @AppStorage(PDFTextBoxDefaults.preferenceKey) private var storedTextBoxDefaults: Data?
-
-    var body: some View {
-        if offersTextBoxes {
-            let defaults = PDFTextBoxDefaults.stored(decoding: storedTextBoxDefaults)
-            PDFTextFormatControls(attributes: defaults.attributes, style: defaults.boxStyle, apply: { change in
-                var changed = defaults
-                changed.attributes = change.applied(to: defaults.attributes)
-                changed.boxStyle = change.applied(to: defaults.boxStyle, textColor: defaults.attributes.color)
-                if let encoded = changed.encoded { storedTextBoxDefaults = encoded }
-            }, isCompact: true)
-        } else {
-            Text("Text boxes go on PDF pages")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .fixedSize()
+    @ViewBuilder private func addImageButton(density: Density) -> some View {
+        if let addImage {
+            Button("Add Image", systemImage: "photo.badge.plus", action: addImage)
+                .labelStyle(.iconOnly)
+                .frame(width: density.toolPitch, height: rowHeight)
         }
     }
 }
 
+/// Which form of the Pencil tool row is shown: the whole row, at one of three densities; the
+/// compact one, with every color and the ruler on the bar and the rest behind one More control,
+/// its colors scrolling only where they do not all fit; or the condensed one, with some tools,
+/// the colors and the rest behind one control, in a window too narrow even for that.
+enum PencilToolRowForm: Equatable {
+    case full, compact, condensed
+
+    /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
+    /// where it is, in its window's coordinates.
+    @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
+}
+
 private extension View {
-    func reportingLayout(_ form: PencilToolRowForm) -> some View {
+    func reportingLayout(_ form: PencilToolRowForm, _ arrangement: PencilToolRowLayout.Arrangement) -> some View {
         onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .global) } action: { frame in
-            PencilToolRowForm.lastShown = (form, frame)
+            PencilToolRowForm.lastShown = (form, arrangement, frame)
         }
     }
 }
