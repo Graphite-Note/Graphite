@@ -1,3 +1,13 @@
+/**
+ * File: CommunityPluginHostTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: A community plugin running in WebKit inside the app, on the iPad and the Mac.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.15
+ * Date: 04/11/2026
+ */
 import XCTest
 import SwiftUI
 import WebKit
@@ -648,7 +658,7 @@ final class CommunityPluginHostTests: XCTestCase {
         let controller = UIHostingController(rootView: rootView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         #else

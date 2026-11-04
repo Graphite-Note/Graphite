@@ -6,8 +6,8 @@
  *              picker.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 02/11/2026
+ * Version: 0.15
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -44,7 +44,7 @@ final class PencilWorkspaceTests: XCTestCase {
         let controller = UIHostingController(rootView: panes(showsTabs: true))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -90,7 +90,7 @@ final class PencilWorkspaceTests: XCTestCase {
         let controller = UIHostingController(rootView: preview())
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -135,7 +135,7 @@ final class PencilWorkspaceTests: XCTestCase {
         })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()
@@ -188,7 +188,7 @@ final class PencilWorkspaceTests: XCTestCase {
         })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()
@@ -455,7 +455,7 @@ final class PencilWorkspaceTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
         try await Task.sleep(for: .milliseconds(1500))
-        let sceneSize = scene.coordinateSpace.bounds.size
+        let sceneSize = scene.effectiveGeometry.coordinateSpace.bounds.size
         let sizeClass = window.traitCollection.horizontalSizeClass
         let name = "scene \(Int(sceneSize.width))x\(Int(sceneSize.height)) \(sizeClass == .compact ? "compact" : "regular")"
         print("Graphite's own window: \(name), window \(window.bounds.size)")
@@ -498,7 +498,7 @@ final class PencilWorkspaceTests: XCTestCase {
             XCTAssertLessThanOrEqual(restrictions.minimumSize.height, 600)
             XCTAssertGreaterThanOrEqual(restrictions.maximumSize.width, scene.screen.bounds.width, "A window as wide as the screen.")
             XCTAssertGreaterThanOrEqual(restrictions.maximumSize.height, scene.screen.bounds.height)
-            let sceneSize = scene.coordinateSpace.bounds.size
+            let sceneSize = scene.effectiveGeometry.coordinateSpace.bounds.size
             for window in scene.windows where window.rootViewController != nil && !window.isHidden && window.windowLevel == .normal {
                 XCTAssertEqual(window.bounds.size, sceneSize, "The window is laid out at the scene's size.")
                 if let rootView = window.rootViewController?.view { XCTAssertEqual(rootView.bounds.width, sceneSize.width, accuracy: 0.5) }
@@ -580,7 +580,7 @@ final class PencilWorkspaceTests: XCTestCase {
         })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()
@@ -659,7 +659,7 @@ final class PencilWorkspaceTests: XCTestCase {
         })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()
@@ -717,7 +717,7 @@ final class PencilWorkspaceTests: XCTestCase {
             exportCopy: { _, _ in throw CocoaError(.featureUnsupported) }, preserveDraft: { _ in }, removeDraft: {}))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()

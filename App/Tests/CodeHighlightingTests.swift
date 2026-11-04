@@ -1,3 +1,14 @@
+/**
+ * File: CodeHighlightingTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Fenced code in the hosted workspace on the iPad is colored by its language in Live Preview, Source
+ *              mode and reading view, in light and dark appearance.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -225,7 +236,7 @@ final class CodeHighlightingTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = controller
         window.makeKeyAndVisible()

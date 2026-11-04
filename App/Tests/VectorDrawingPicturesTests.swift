@@ -1,3 +1,13 @@
+/**
+ * File: VectorDrawingPicturesTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Drawings with pictures saved as PDF and SVG, through the drawing service and the workspace.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -316,7 +326,7 @@ final class VectorDrawingPicturesTests: XCTestCase {
         controller.view.addSubview(webView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { connectedScene in connectedScene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         windows.append(window)

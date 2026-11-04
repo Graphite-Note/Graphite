@@ -4,9 +4,9 @@
  * Layer: Tests
  * Description: Live Preview's rendered blocks stay over the space their text reserves for them.
  *
- * Authors: Bahey Shalash, felixchvl
- * Version: 0.7
- * Date: 02/11/2026
+ * Authors: Bahey Shalash, felixchvl, Félix Chevalier
+ * Version: 0.8
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -335,7 +335,7 @@ final class LivePreviewBlockPlacementTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = controller
         window.makeKeyAndVisible()

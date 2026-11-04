@@ -5,8 +5,8 @@
  * Description: Undo and redo across tab switches, tab moves, renames and reading view, in the hosted workspace.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 02/11/2026
+ * Version: 0.11
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -817,7 +817,7 @@ final class EditingContinuityTests: XCTestCase {
     private func present(_ controller: UIViewController) throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

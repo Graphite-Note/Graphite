@@ -1,3 +1,14 @@
+/**
+ * File: ReadAloudScanHighlightTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: Read Aloud on a scanned PDF page: the word read is highlighted where it sits, stays aligned through a
+ *              zoom, and is cleared afterwards without changing the PDF.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -51,7 +62,7 @@ final class ReadAloudScanHighlightTests: XCTestCase {
         reader.session.chooseVoice("scan-test")
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         let hosting = UIHostingController(rootView: ScanHighlightHost(pdf: pdf, reader: reader))
         window.rootViewController = hosting
         window.makeKeyAndVisible()

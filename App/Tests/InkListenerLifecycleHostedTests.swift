@@ -5,8 +5,8 @@
  * Description: The listeners and first-responder changes of the ink views end with the views (HUNT-106, HUNT-110, HUNT-111).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -27,7 +27,7 @@ final class InkListenerLifecycleHostedTests: XCTestCase {
     private func showInAWindow(_ view: UIView) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         let controller = UIViewController()
         window.rootViewController = controller
         window.makeKeyAndVisible()

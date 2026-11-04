@@ -6,7 +6,7 @@
  *              technology reads, tapped as a finger taps and scrolled to the row wanted.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 04/11/2026
  */
 
@@ -63,7 +63,7 @@ class SettingsHostedTestCase: XCTestCase {
         if let horizontalSizeClass { controller.traitOverrides.horizontalSizeClass = horizontalSizeClass }
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = size.map { size in CGRect(origin: .zero, size: size) } ?? scene.coordinateSpace.bounds
+        window.frame = size.map { size in CGRect(origin: .zero, size: size) } ?? scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

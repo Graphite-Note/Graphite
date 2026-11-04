@@ -1,3 +1,15 @@
+/**
+ * File: PerformanceBenchmarkTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: Time, processor and memory use of opening, scrolling and typing in a long note (in a paragraph, a
+ *              list item and a callout), of switching between open tabs, of opening and scrolling a long PDF with
+ *              its pages sidebar, of an embedded PDF while other files change, and of the map's updates.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.8
+ * Date: 04/11/2026
+ */
 import XCTest
 import SwiftUI
 import PDFKit
@@ -84,7 +96,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             let tab = try XCTUnwrap(workspace.layout.tabID(showing: notePath))
             let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
             session.viewMode = .livePreview
-            let window = host(NavigationStack {
+            let window = try host(NavigationStack {
                 WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
             })
             let editor = try await waitForValue(timeout: .seconds(20)) { () -> BenchmarkTextView? in
@@ -179,7 +191,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             let index = try VaultIndex(databaseURL: vault.appendingPathComponent("index.sqlite"))
             workspace.index = index
             _ = try await index.reconcile(root: vault)
-            let window = host(NavigationStack {
+            let window = try host(NavigationStack {
                 WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
             })
             var noteTabs: [UUID] = []
@@ -249,7 +261,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             let footprintBeforeOpening = ProcessResourceUsage.memoryFootprintBytes()
             let opening = BenchmarkMeasurement(scenario: "pdf-open", run: run)
             let session = try await PDFSession.open(location)
-            let window = host(NavigationStack {
+            let window = try host(NavigationStack {
                 HStack(spacing: 0) {
                     PDFPagesSidebar(session: session, commands: PDFPageCommands(session: session), renderer: PDFThumbnailRenderer())
                         .frame(width: 210)
@@ -290,7 +302,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
         let location = try Self.makeScannedPDF(at: directory.appendingPathComponent("Scans.pdf"), pageCount: 30)
         for run in 1...Self.runCount {
             let model = EmbedBenchmarkModel()
-            let window = host(EmbedBenchmarkContainer(model: model, location: location))
+            let window = try host(EmbedBenchmarkContainer(model: model, location: location))
             _ = try await waitForValue(timeout: .seconds(20)) { () -> PDFView? in
                 self.layOut(window)
                 return self.descendants(of: self.contentView(of: window), matching: PDFView.self).first { pdfView in !pdfView.visiblePages.isEmpty }
@@ -345,7 +357,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
         }
         for run in 1...Self.runCount {
             let model = MapBenchmarkModel()
-            let window = host(MapBenchmarkContainer(model: model, notes: notes))
+            let window = try host(MapBenchmarkContainer(model: model, notes: notes))
             try await Task.sleep(for: .seconds(2))
             layOut(window)
             let updates = BenchmarkMeasurement(scenario: "map-updates", run: run)
@@ -503,9 +515,10 @@ final class PerformanceBenchmarkTests: XCTestCase {
     typealias BenchmarkTextView = MarkdownTextView
     typealias BenchmarkWindow = UIWindow
 
-    private func host(_ view: some View) -> UIWindow {
-        let scene = UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first
-        let window = scene.map { scene in UIWindow(windowScene: scene) } ?? UIWindow()
+    /// The hosted tests always run inside the app, so a window scene is there to show the window in.
+    private func host(_ view: some View) throws -> UIWindow {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
         window.frame = CGRect(origin: .zero, size: Self.windowSize)
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = UIHostingController(rootView: AnyView(view))
@@ -556,7 +569,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     typealias BenchmarkTextView = MarkdownMacTextView
     typealias BenchmarkWindow = NSWindow
 
-    private func host(_ view: some View) -> NSWindow {
+    private func host(_ view: some View) throws -> NSWindow {
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: Self.windowSize), styleMask: [.titled, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)

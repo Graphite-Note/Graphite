@@ -1,3 +1,13 @@
+/**
+ * File: ReadAloudWhileWritingTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Reading aloud while writing.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.6
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -278,7 +288,7 @@ final class ReadAloudWhileWritingTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

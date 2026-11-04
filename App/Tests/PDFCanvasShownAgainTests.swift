@@ -7,7 +7,7 @@
  *              and decodes nothing (HUNT-313).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -78,7 +78,7 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         // SwiftUI makes the PDF's view at the window's first layout pass, after this returns, not inside it.

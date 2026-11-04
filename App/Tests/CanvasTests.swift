@@ -1,3 +1,13 @@
+/**
+ * File: CanvasTests.swift
+ * -----------------------
+ * Layer: Tests
+ * Description: Canvases in the hosted workspace.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -340,7 +350,7 @@ final class CanvasTests: XCTestCase {
     /// contents, as intended; what the tests check needs an iPad's width.
     private func skipWhereTheBoardIsFittedToAPhone() throws {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
-        if scene.coordinateSpace.bounds.width < 700 {
+        if scene.effectiveGeometry.coordinateSpace.bounds.width < 700 {
             throw XCTSkip("The board fitted to a phone's width draws its cards without detail.")
         }
     }
@@ -351,7 +361,7 @@ final class CanvasTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = controller
         window.makeKeyAndVisible()
