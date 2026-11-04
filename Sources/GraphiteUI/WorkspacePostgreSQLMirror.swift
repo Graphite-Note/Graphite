@@ -5,8 +5,8 @@
  * Description: The PostgreSQL Mirror core plugin for the open vault: when copies start, retry and are refused.
  *
  * Authors: Félix Chevalier
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -107,8 +107,10 @@ final class PostgreSQLMirrorController {
     /// Tries a failed copy once more when the wait after it ends: no later change of the vault is needed to ask again.
     private func scheduleRetry(of source: PostgreSQLMirrorSource) {
         cancelRetry()
+        // The wait is counted from the failure, not from when the task first runs, which a busy main actor can delay.
+        let retryAt = clock.now + Self.retryDelay
         retryCopy = Task { [clock] in
-            do { try await clock.sleep(for: Self.retryDelay) } catch { return } // Another copy started, or stopped.
+            do { try await clock.sleep(for: max(retryAt - clock.now, .zero)) } catch { return } // Another copy started, or stopped.
             retryCopy = nil
             start(source, rechecksDatabase: false)
         }

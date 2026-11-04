@@ -7,6 +7,10 @@ and the iPad mini last. The tests measure a regular-width window that has room f
 window has not, so choosing it (as "iPad mini (A17 Pro)" contains "Pro") fails them. Exits with status 1 and a message when no iPad simulator exists, so the job
 fails with a clear reason rather than with an xcodebuild destination error.
 
+The runtime of the installed iOS Simulator SDK comes first: a runner image has had iPads only on an older runtime, which
+xcodebuild then refused as a destination ("The iOS 27.0 simulator runtime is not available"). When that runtime has no
+iPad, one is created on it, of the preferred model.
+
 Usage:
   python3 scripts/select-ipad-simulator.py            prints the UDID
 """
@@ -40,10 +44,46 @@ def model_preference(device):
     return (rank, -max(chip_numbers, default=0), name)
 
 
+def simulator_json(*arguments):
+    return json.loads(subprocess.run(["xcrun", "simctl", "list", *arguments, "--json"],
+                                     capture_output=True, text=True, check=True).stdout)
+
+
+def runtime_of_the_installed_sdk():
+    """The available iOS runtime whose version is the iOS Simulator SDK's, or None."""
+    sdk_version = subprocess.run(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"],
+                                 capture_output=True, text=True).stdout.strip()
+    runtimes = [runtime for runtime in simulator_json("runtimes")["runtimes"]
+                if runtime.get("platform", "iOS") == "iOS" and runtime.get("isAvailable", False)
+                and runtime_sort_key(runtime["identifier"]) != (0, 0)]
+    matching = [runtime for runtime in runtimes if runtime.get("version") == sdk_version]
+    # A runtime made for one device family (`iOS-27-2-iPhone19-4`) holds no iPad: the plain one first.
+    matching.sort(key=lambda runtime: len(runtime["identifier"]))
+    return matching[0]["identifier"] if matching else None
+
+
+def ipad_created_on(runtime_identifier):
+    """Creates an iPad of the preferred model on the runtime and returns its UDID, or None."""
+    device_types = [device_type for device_type in simulator_json("devicetypes")["devicetypes"]
+                    if device_type.get("productFamily") == "iPad" or "iPad" in device_type["name"]]
+    if not device_types:
+        return None
+    device_type = min(device_types, key=model_preference)
+    created = subprocess.run(["xcrun", "simctl", "create", device_type["name"], device_type["identifier"], runtime_identifier],
+                             capture_output=True, text=True)
+    return created.stdout.strip() if created.returncode == 0 and created.stdout.strip() else None
+
+
 def main():
-    listing = subprocess.run(["xcrun", "simctl", "list", "devices", "available", "--json"],
-                             capture_output=True, text=True, check=True).stdout
-    devices_by_runtime = json.loads(listing)["devices"]
+    devices_by_runtime = simulator_json("devices", "available")["devices"]
+    sdk_runtime = runtime_of_the_installed_sdk()
+    if sdk_runtime is not None:
+        ipads = [device for device in devices_by_runtime.get(sdk_runtime, [])
+                 if "iPad" in device["name"] and device.get("isAvailable", True)]
+        udid = min(ipads, key=model_preference)["udid"] if ipads else ipad_created_on(sdk_runtime)
+        if udid:
+            print(udid)
+            return 0
     for runtime_identifier in sorted(devices_by_runtime, key=runtime_sort_key, reverse=True):
         if "iOS" not in runtime_identifier:
             continue

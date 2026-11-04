@@ -5,8 +5,8 @@
  * Description: Records audio and video lectures into a recovery folder and saves them into the vault.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -630,6 +630,13 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
             UIApplication.shared.endBackgroundTask(backgroundTask)
         }
         #endif
+    }
+
+    /// Waits until the video parts an interruption cut short are complete files, as the
+    /// background task above does. The writer closes a part on its own queue after the
+    /// interruption is reported, so the file is still being written for a moment after.
+    func waitForClosingVideoParts() async {
+        await videoRecording?.waitForClosingParts()
     }
 
     private func finishVideo(_ recording: VideoRecording, notice: String?) async {
