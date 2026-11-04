@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.63
+ * Version: 0.64
  * Date: 04/11/2026
  */
 
@@ -318,6 +318,9 @@ struct GraphiteRootView: View {
         // packs too. Every window shares one library (`ProcessServices`).
         .environment(workspace.processServices.addOns)
         .environment(\.embeddedPDFSessions, workspace.embeddedPDFSessions)
+        #if canImport(UIKit)
+        .environment(\.hiddenPDFViews, workspace.hiddenPDFViews)
+        #endif
     }
 
     /// Opens the vault the window was opened on, or, for the window of a launch, the vault
