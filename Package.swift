@@ -1,4 +1,15 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
+/**
+ * File: Package.swift
+ * -------------------
+ * Layer: Build
+ * Description: The Swift package of Graphite's modules, tests and benchmarks, its dependencies, and the setting that
+ *              makes a warning in any of its targets fail the build.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.17
+ * Date: 04/11/2026
+ */
 import PackageDescription
 
 let package = Package(
@@ -62,3 +73,9 @@ let package = Package(
                                                        .product(name: "MermaidDiagrams", package: "MermaidDiagrams")])
     ]
 )
+
+// Graphite's own code builds with no warning (RULES.md, "No warnings"): a warning in any of this package's
+// targets fails the build. Dependencies are other packages and keep their own settings.
+for target in package.targets {
+    target.swiftSettings = (target.swiftSettings ?? []) + [.treatAllWarnings(as: .error)]
+}
