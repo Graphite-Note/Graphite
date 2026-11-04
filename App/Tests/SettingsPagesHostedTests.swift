@@ -126,6 +126,7 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
                 object.accessibilityLabel == header
             }
         }
+    }
 
     // MARK: HUNT-315: the name written as the author of what is added to a PDF
 
