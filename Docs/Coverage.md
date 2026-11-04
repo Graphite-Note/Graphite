@@ -4,6 +4,17 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-04.
 
+## A line in the reading view grows only by what its formula needs: 2026-11-02
+
+A line with an inline formula was far taller in the reading view than in Live Preview. The cause is how SwiftUI measures a line around an image with a negative baseline offset, which is how Textual set a formula on its baseline: the line's ascent stays the image's whole height, as if the offset had not moved it up, and its descent is the font's descent plus the offset, even when the font's descent had room (`Vendor/textual/GRAPHITE-PATCHES.md`, 22). The placeholder is now only the formula's part above the baseline, moved down only by the part of its descent the font's line does not hold. Figures are in the table of the next section.
+
+- **Automated tests, passing on macOS:** `HangingAttachmentPlacementTests` (13, new): the placeholder from plain values; each formula's line in the layout SwiftUI makes, in four fonts and sizes, has the taller of the two ascents and of the two descents and holds the formula at its own size on the baseline; a line holding only `$x$` is as tall as a line of text; pieces of a wrapped formula stay inside their lines; a table row; display math keeps its room; selection's bounds; the reading highlight's frame; and, reading the pixels, a formula's first letter stands on the baseline of the word beside it, within 0.75 points. `testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView` has limits at the figures above. Ten of the 14 tests fail with the placement turned off. The other classes run are `AppProjectTextualPatchTests`, `ObsidianMarkdownTextLinkActionTests`, `TextLinkHoverActionTests`, `UiCodeHighlightingMacTests`, `UiNumberedEquationTests` and `UiReadingViewTests`: 122 tests, no failure. `ReadAloudReadingViewTests` and the full suite were not run locally (no-sound rule); CI runs them.
+- **Drawn through the reading view's own text, off screen on macOS:** a demo note `ObsidianMarkdownText` drew with the placement off and on, looked at by eye. Formulas stand on the baseline among words, wrapped in pieces, in a table, a heading, a list, a quote and a link. A paragraph holding only `$x$` keeps the height of a line of text. The display formula looks the same. The note is 995.5 points tall, against 1129.5. Finding the font's descent takes about 0.6 µs per text, against about 7 µs to measure a formula.
+- **Not checked in the app.** A Debug build of the Mac app builds and starts, but access to its window was declined, so nothing was looked at or clicked in it. A selection dragged across a formula, a tap on a linked formula and the highlight while reading aloud were not tried by hand; their bounds are covered by the tests above. **Not checked** on the iPad or iPhone either, where the line's rounding could differ by under a point; nothing in the hosted tests measures this.
+- **Not changed, for a decision:** display math (`$$…$$`) still has the room SwiftUI gives it, which is the formula's descent above it and the font's descent below it (`testDisplayMathKeepsItsRoom`). Removing it would make each display block about 4 points plus the formula's descent shorter. It is left alone because it is how far a formula stands from the text around it, and that has not been compared with Obsidian.
+- **Found, not caused by this and not changed:** a formula inside `==a highlight==` has a gap in the highlight behind it, with Graphite's own colors, since a placeholder does not draw `backgroundColor`. It looks the same with the placement off.
+- **Still taller than Obsidian:** Obsidian's line does not grow for `\frac{a}{b}`, since its line height of 1.5 leaves room that a formula may use. Graphite's line is as tall as the text's ascent and descent with no such room, so it grows by the formula's height beyond them.
+
 ## Bug hunt fixes: 2026-11-02
 
 The 306 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That file is the record: it says per item what was built, which test covers it and what is still to be checked.
@@ -61,15 +72,15 @@ Three of upstream's choices in `Vendor/swiftui-math` now do what TeX and MathJax
 - **Room at a fraction's sides (patch 21):** read from MathJax's `CommonMfrac` and measured from its output: 0.12 em left empty on each side, and the rule reaching 0.1 em past the wider part. `\atop` has only the 0.12 em and `\binom` none. `a+\tfrac{b}{c}+d` is 4.24 em wide as in MathJax. A fraction is also spaced as an ordinary symbol now, as measured from MathJax: `x\frac{a}{b}y` had thin spaces, and is 2.03 em wide.
 - **Line spacing, measured in both views' layouts on macOS at 17-point text, added to a 20-point line:**
 
-  | Inline formula | Reading view, before and now | Live Preview, before and now |
+  | Inline formula | Reading view, before these patches, after them, and after Textual's patch 22 | Live Preview, before and now |
   | --- | --- | --- |
-  | `\frac{a}{b}` | 23, 14 points | 7.6, 3.2 points |
-  | `\frac{x^2+1}{\sqrt{y}}` | 45, 28 points | 22.3, 11.9 points |
-  | `\sum_{i=1}^n x_i` | 48, 20 points | 24.0, 6.2 points |
-  | `\lim_{x\to 0} f` | 26, 10 points | 9.2, 1.4 points |
-  | `\dfrac{a}{b}` | 37, 37 points | 17.0, 17.0 points |
+  | `\frac{a}{b}` | 23, 14, 4 points | 7.6, 3.2 points |
+  | `\frac{x^2+1}{\sqrt{y}}` | 45, 28, 13 points | 22.3, 11.9 points |
+  | `\sum_{i=1}^n x_i` | 48, 20, 8 points | 24.0, 6.2 points |
+  | `\lim_{x\to 0} f` | 26, 10, 2 points | 9.2, 1.4 points |
+  | `\dfrac{a}{b}` | 37, 37, 18 points | 17.0, 17.0 points |
 
-  Lines are lower everywhere and none is taller. **The reading view still adds about four times what Live Preview adds for the same formula.** That comes from how the reading view sets an attachment on its baseline, it is older than these patches, and its cause was not traced.
+  Lines are lower everywhere and none is taller. The reading view's figures are a hosted view's height, in whole points, so it is within a point of Live Preview. It added about four times as much until Textual's patch 22, described below.
 - **Live Preview's room for a formula moved:** the changed widths exposed an older fault. The room followed the closing `$`, so at some widths the `$` alone moved to the next line and the formula lost its descent's room (`testTallInlineMathMakesItsLineTallEnough`, at 200 points). The room now follows the character before it.
 - **Automated tests, passing on macOS:** new, and all failing on the typesetter without the patches: `testAFractionsPartsAreOneStyleSmallerThanTheFraction`, `testLimitsStackInDisplayStyleOrAfterTheLimitsCommand`, `testAFractionHasRoomAtItsSidesAsInMathJax`, against sizes measured from MathJax. New: `testInlineFractionsAndLimitsKeepTheirLineLowInTheReadingView`, `testInlineFractionsAndLimitsKeepTheirLineLow`, `testTheRoomForAFormulaIsBeforeItsClosingDollar`, `testAFormulaIsDrawnInItsRoom` (reads the pixels the editor's layout fragment draws). The filtered classes that ran are listed in the PR; the full package suite was not run locally (no-sound rule); CI runs it.
 - **Compared with MathJax 3.2.2:** a sheet of 44 formulas drawn through `Math` before and after the patches beside MathJax's own output, in display and inline math, on light and dark pages. **Vault scan on these patches:** 316,950 formulas, 54 not typeset, the same count as before, with no crash, wrapped at two widths and turned into outlines in a Debug build.

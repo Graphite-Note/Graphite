@@ -5,7 +5,7 @@ import SwiftUI
 // `AttachmentView` draws attachment bodies at the positions reported by SwiftUI's `Text.Layout`.
 //
 // The `Text` pipeline reserves space for attachments using placeholders; the overlay places the
-// real SwiftUI views on top of those placeholders, each framed to its run's `typographicBounds`.
+// real SwiftUI views where those placeholders say, each framed to its run's `contentBounds`.
 //
 // Selection integration:
 // On macOS, when text selection is enabled, object-style attachments are dimmed when they fall
@@ -63,7 +63,7 @@ struct AttachmentView: View {
         placements.append(
           Placement(
             attachment: attachment,
-            frame: run.typographicBounds.rect,
+            frame: run.contentBounds,
             opacity: opacity(for: attachment, lineIndex: lineIndex, runIndex: runIndex),
             lineIndex: lineIndex,
             runIndex: runIndex
