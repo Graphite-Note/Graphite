@@ -6,7 +6,7 @@
  *              in Live Preview.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -180,7 +180,9 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
         // The wide case needs a window at least as wide: on a phone only the narrow one runs.
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
-        let widths: [CGFloat] = scene.coordinateSpace.bounds.width >= 700 ? [700, 170] : [170]
+        let widths: [CGFloat] = scene.effectiveGeometry.coordinateSpace.bounds.width >= 700 ? [700, 170] : [170]
+        print("DEVICE-APPEARANCE: style \(scene.traitCollection.userInterfaceStyle.rawValue), bold text \(UIAccessibility.isBoldTextEnabled), "
+              + "text size \(scene.traitCollection.preferredContentSizeCategory.rawValue)")
         for width in widths {
             let controller = try host(AnyView(
                 MarkdownPreview(source: note, path: try VaultPath("Equations.md"), root: directory, index: index, configuration: ReadingConfiguration(),
@@ -188,6 +190,9 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
                     .frame(width: width)
                     .frame(maxWidth: .infinity, alignment: .leading)
             ))
+            // Ink is found as dark pixels on a light note (`InkImage`). In dark appearance the whole note counted as ink:
+            // on the owner's iPad (2026-11-04) every block was one run of ink reaching past its own frame.
+            try XCTUnwrap(controller.view.window).overrideUserInterfaceStyle = .light
             let paragraph = try await element(in: controller) { element in element.accessibilityLabel == "An equation with a number." }
             // The column is centered in the note, so its right edge mirrors the left one.
             let columnLeftEdge = paragraph.accessibilityFrame.minX
@@ -262,7 +267,7 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
         let controller = UIHostingController(rootView: rootView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

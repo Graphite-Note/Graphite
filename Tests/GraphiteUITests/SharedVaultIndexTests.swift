@@ -5,8 +5,8 @@
  * Description: Two windows of one process on the same vault share its index (decision 12 of
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -161,7 +161,7 @@ final class SharedVaultIndexTests: XCTestCase {
         let vault = try makeVault(notes: Self.manyNotes(count: 3))
         var window: WorkspaceModel? = try await indexedWindow(on: vault)
         let vaultIdentifier = try XCTUnwrap(window?.currentVaultIdentifier)
-        weak var weakWindow = window
+        weak let weakWindow = window
 
         window = nil
 

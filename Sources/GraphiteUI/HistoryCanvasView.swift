@@ -121,7 +121,7 @@ class HistoryCanvasView: PKCanvasView {
             evenHighlighterColor = nil
             return chosenTool
         }
-        evenHighlighterColor = highlighter.color
+        evenHighlighterColor = EvenHighlighter.inkColor(for: highlighter.color)
         return EvenHighlighter.invisibleStandIn(for: highlighter)
     }
 
@@ -129,7 +129,8 @@ class HistoryCanvasView: PKCanvasView {
     /// editor's paper and pictures; nil when PencilKit's views are the canvas's first.
     var topViewUnderInk: UIView? { nil }
 
-    /// The highlighter's color while the canvas draws with its invisible stand-in.
+    /// The color the even stroke draws in while the canvas draws with the highlighter's invisible
+    /// stand-in (`EvenHighlighter.inkColor(for:)`).
     private(set) var evenHighlighterColor: UIColor?
     /// The preference as the canvas's tool was last made, to make it again when it changes.
     private var isEvenHighlighterPreferenceOn = false
@@ -553,9 +554,9 @@ class HistoryCanvasView: PKCanvasView {
     private var evenHighlighterInk: PKInk? {
         guard zoomScale > 0, let inkingTool = tool as? PKInkingTool, inkingTool.inkType == .marker else { return nil }
         if EvenHighlighter.isInvisible(inkingTool.ink) {
-            return PKInk(.marker, color: evenHighlighterColor ?? inkingTool.color.withAlphaComponent(1))
+            return PKInk(.marker, color: evenHighlighterColor ?? EvenHighlighter.inkColor(for: inkingTool.color.withAlphaComponent(1)))
         }
-        return EvenHighlighterPreference.isOn() ? inkingTool.ink : nil
+        return EvenHighlighterPreference.isOn() ? PKInk(.marker, color: EvenHighlighter.inkColor(for: inkingTool.color)) : nil
     }
 
     /// The stroke at the width of the canvas's highlighter, in its ink, when it is a
@@ -563,7 +564,8 @@ class HistoryCanvasView: PKCanvasView {
     /// invisible stand-in, as one that arrives after the tool changed, never stays invisible.
     private func evenHighlighterStroke(_ stroke: PKStroke) -> PKStroke? {
         let isInvisible = EvenHighlighter.isInvisible(stroke.ink)
-        guard let ink = evenHighlighterInk ?? (isInvisible ? PKInk(.marker, color: evenHighlighterColor ?? stroke.ink.color.withAlphaComponent(1)) : nil),
+        let standInInk = PKInk(.marker, color: evenHighlighterColor ?? EvenHighlighter.inkColor(for: stroke.ink.color.withAlphaComponent(1)))
+        guard let ink = evenHighlighterInk ?? (isInvisible ? standInInk : nil),
               zoomScale > 0 else { return nil }
         // The tool's width is the stroke's in the drawing, at any zoom of the canvas.
         let toolWidth = (tool as? PKInkingTool).map { inkingTool in inkingTool.inkType == .marker ? inkingTool.width : nil } ?? nil
@@ -771,7 +773,7 @@ class HistoryCanvasView: PKCanvasView {
 
     /// The color ink is shown in: the highlighter's for its invisible stand-in.
     private func shownColor(of ink: PKInk) -> UIColor {
-        EvenHighlighter.isInvisible(ink) ? (evenHighlighterColor ?? ink.color.withAlphaComponent(1)) : ink.color
+        EvenHighlighter.isInvisible(ink) ? (evenHighlighterColor ?? EvenHighlighter.inkColor(for: ink.color.withAlphaComponent(1))) : ink.color
     }
 
     // MARK: Replacing the stroke just drawn without a gap

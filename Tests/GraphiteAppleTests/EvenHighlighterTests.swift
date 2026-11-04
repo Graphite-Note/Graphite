@@ -1,3 +1,14 @@
+/**
+ * File: EvenHighlighterTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: The even highlighter's stroke: one upright tip as wide as the tool, its band, and its translucent
+ *              color over text.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 #if canImport(UIKit)
 import XCTest
 import PencilKit
@@ -138,6 +149,20 @@ final class EvenHighlighterTests: XCTestCase {
         let evenStroke = try XCTUnwrap(EvenHighlighter.evenStroke(drawnWithStandIn, width: 30, ink: highlighter.ink))
         XCTAssertEqual(evenStroke.ink.color.cgColor.alpha, 0.8, accuracy: 0.001)
         XCTAssertFalse(EvenHighlighter.isInvisible(evenStroke.ink))
+    }
+
+    /// The even stroke's color keeps a fraction of the highlighter's alpha, so the band over a
+    /// PDF's text is translucent (HUNT-002), and keeps its hue.
+    func testTheEvenStrokesColorIsTheHighlightersAtAFractionOfItsAlpha() {
+        let highlighterColor = UIColor(red: 0.965, green: 0.843, blue: 0.263, alpha: 0.8)
+        let inkColor = EvenHighlighter.inkColor(for: highlighterColor)
+        XCTAssertEqual(inkColor.cgColor.alpha, 0.8 * EvenHighlighter.colorAlphaFraction, accuracy: 0.001)
+        XCTAssertLessThan(EvenHighlighter.colorAlphaFraction, 0.7, "At most about two thirds of the color over text")
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        inkColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        XCTAssertEqual(red, 0.965, accuracy: 0.001)
+        XCTAssertEqual(green, 0.843, accuracy: 0.001)
+        XCTAssertEqual(blue, 0.263, accuracy: 0.001)
     }
 
     /// The band the canvas shows while the stand-in draws reaches as far as the even stroke.

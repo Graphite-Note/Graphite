@@ -1,3 +1,14 @@
+/**
+ * File: LibraryDropReaderTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: What a drop on the library reads: an item dragged inside Graphite, files from another app with their
+ *              names, and a file the Finder drags.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 import UniformTypeIdentifiers
 import GraphiteCore
@@ -9,7 +20,7 @@ import GraphiteTestSupport
 final class LibraryDropReaderTests: XCTestCase {
     private var sourceFolder: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         sourceFolder = try TemporaryVault.make(prefix: "LibraryDropReader", for: self).root
     }
 
@@ -21,7 +32,12 @@ final class LibraryDropReaderTests: XCTestCase {
 
     private func vaultItemProvider(path: String) throws -> NSItemProvider {
         let encoded = try JSONEncoder().encode(VaultItemTransfer(path: path, fileLocation: URL(fileURLWithPath: "/tmp/" + path)))
-        return NSItemProvider(item: encoded as NSData, typeIdentifier: UTType.graphiteVaultItem.identifier)
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.graphiteVaultItem.identifier, visibility: .all) { completion in
+            completion(encoded, nil)
+            return nil
+        }
+        return provider
     }
 
     func testAnItemDraggedInsideGraphiteIsAVaultItem() async throws {

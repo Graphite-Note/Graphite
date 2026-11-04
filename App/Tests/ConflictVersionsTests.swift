@@ -1,3 +1,14 @@
+/**
+ * File: ConflictVersionsTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Versions kept by a file provider, in the running app on iPadOS, with versions from
+ *              `FakeConflictVersionStore`.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -113,7 +124,7 @@ final class ConflictVersionsTests: XCTestCase {
         let controller = UIHostingController(rootView: view)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         windows.append(window)

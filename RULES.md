@@ -86,3 +86,7 @@ Keep public APIs small. Avoid global mutable state, broad catch-and-ignore block
 Every visible control must perform a real action or accurately communicate why it is unavailable. Do not ship fake data as real user content, inert buttons, TODO-only features, or placeholder success paths. Document incomplete capabilities separately from completed behavior.
 
 When a platform constraint prevents a requested behavior, document the limitation, the standards-compatible alternative, its interoperability effect, and the remaining validation. Do not silently change the product objective to make implementation easier.
+
+## No warnings
+
+Graphite's own code builds with no warning, in every configuration and on every platform: warnings are errors in the app and test targets (`SWIFT_TREAT_WARNINGS_AS_ERRORS`, `GCC_TREAT_WARNINGS_AS_ERRORS`) and in Graphite's own package targets (`.treatAllWarnings(as: .error)`), and `scripts/check-rules.py` refuses a `#warning`. Fix a warning with the API Apple recommends; silence one only where that is the honest answer (`@preconcurrency`, `nonisolated(unsafe)`), with a comment that says why. Third-party and vendored packages keep their own settings.

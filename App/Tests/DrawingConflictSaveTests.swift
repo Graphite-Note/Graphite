@@ -7,10 +7,10 @@
  *              drawing's draft once they pause. Hosted, since saving a drawing is iOS code.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
-
+#if os(iOS)
 import XCTest
 import SwiftUI
 import PencilKit
@@ -69,7 +69,7 @@ final class DrawingConflictSaveTests: XCTestCase {
         let controller = UIHostingController(rootView: AnyView(editor))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -120,7 +120,7 @@ final class DrawingConflictSaveTests: XCTestCase {
         let controller = UIHostingController(rootView: AnyView(editor))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }
@@ -200,3 +200,4 @@ final class DrawingConflictSaveTests: XCTestCase {
         }
     }
 }
+#endif

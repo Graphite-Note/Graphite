@@ -1,3 +1,13 @@
+/**
+ * File: GoodnotesNotebookReaderTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: The Goodnotes reader on small synthetic notebooks built in the test (no sample or personal content).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 04/11/2026
+ */
 import CoreGraphics
 import Foundation
 import XCTest
@@ -516,7 +526,9 @@ final class GoodnotesNotebookReaderTests: XCTestCase {
             let reader = try GoodnotesNotebookReader(archiveBytes: archiveBytes, limits: .standard)
             for pageIndex in 0..<reader.pageCount { _ = try reader.page(at: pageIndex) }
         } catch {
-            XCTAssertNotNil(error as? GoodnotesReadingError)
+            // Both calls throw only `GoodnotesReadingError` (typed throws), so a damaged archive can end here only with a
+            // reading error: getting here without a crash is the check.
+            _ = error
         }
     }
 

@@ -1,3 +1,14 @@
+/**
+ * File: CommunityPluginSchemeHandlerVaultBoundaryTests.swift
+ * ----------------------------------------------------------
+ * Layer: Tests
+ * Description: The plugin runtime's scheme handler serves files inside the vault only: paths that climb out, symbolic
+ *              links out of the vault, folders and the vault root are refused.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 import WebKit
 import GraphiteCore
@@ -34,7 +45,7 @@ final class CommunityPluginSchemeHandlerVaultBoundaryTests: XCTestCase {
 
     private static let mebibyte = 1_048_576
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         container = FileManager.default.temporaryDirectory.appendingPathComponent("SchemeBoundary-\(UUID().uuidString)", isDirectory: true).resolvingSymlinksInPath()
         vault = container.appendingPathComponent("Vault", isDirectory: true)
         outsideFolder = container.appendingPathComponent("Outside", isDirectory: true)
@@ -46,7 +57,7 @@ final class CommunityPluginSchemeHandlerVaultBoundaryTests: XCTestCase {
         try FileManager.default.createSymbolicLink(at: vault.appendingPathComponent("FileLink.txt"), withDestinationURL: outsideFolder.appendingPathComponent("secret.txt"))
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: container)
     }
 

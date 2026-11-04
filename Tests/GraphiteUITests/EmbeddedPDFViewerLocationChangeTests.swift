@@ -5,8 +5,8 @@
  * Description: An embedded PDF follows its place in the note when that place names another PDF (HUNT-104).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 #if os(macOS)
@@ -41,7 +41,7 @@ final class EmbeddedPDFViewerLocationChangeTests: XCTestCase {
     private var directory: URL!
     private var windows: [NSWindow] = []
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "EmbeddedPDFLocationChange", for: self).root
     }
 

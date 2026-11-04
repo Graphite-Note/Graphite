@@ -1,3 +1,13 @@
+/**
+ * File: UserKeyEquivalentsTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: The keyboard shortcuts a person set in System Settings, read with their modifier marks and keys.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 @testable import GraphiteCore
 
@@ -15,6 +25,6 @@ final class UserKeyEquivalentsTests: XCTestCase {
         let combinations = UserKeyEquivalents.combinationsByMenuTitle(["\u{1B}File\u{1B}New Note": "@~n", "Close Tab": "", "Broken": "@ab"])
         XCTAssertEqual(combinations["New Note"], .some(KeyCombination([.command, .option], .character("N"))))
         XCTAssertEqual(combinations["Close Tab"], .some(nil))
-        XCTAssertNil(combinations["Broken"] as KeyCombination??)
+        XCTAssertFalse(combinations.keys.contains("Broken"))
     }
 }

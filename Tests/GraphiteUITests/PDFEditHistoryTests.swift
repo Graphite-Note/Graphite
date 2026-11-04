@@ -11,7 +11,7 @@ import GraphiteTestSupport
 final class PDFEditHistoryTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFEditHistory", for: self).root
     }
 

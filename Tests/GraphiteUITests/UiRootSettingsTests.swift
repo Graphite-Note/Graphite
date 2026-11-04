@@ -1,3 +1,13 @@
+/**
+ * File: UiRootSettingsTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: The image pane: Graphite's SVG drawings, an SVG changed in another app, a missing image, decoding once.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 import XCTest
 import SwiftUI
 import ImageIO
@@ -11,7 +21,7 @@ final class UiRootSettingsTests: XCTestCase {
     /// XCTest makes a new instance for each test, so each test has its own directory.
     private var temporaryDirectory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         temporaryDirectory = try TemporaryVault.make(prefix: "UiRootSettings", for: self).root
     }
 

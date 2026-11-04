@@ -1,3 +1,13 @@
+/**
+ * File: WorkspaceMentionsLimitTests.swift
+ * ---------------------------------------
+ * Layer: Tests
+ * Description: The Backlinks panel lists at most 200 notes in each of its two lists of mentions.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
+ */
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -9,7 +19,7 @@ import GraphiteTestSupport
 final class WorkspaceMentionsLimitTests: XCTestCase {
     private var vault: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         vault = try TemporaryVault.make(prefix: "WorkspaceMentionsLimitTests", for: self).root
     }
 

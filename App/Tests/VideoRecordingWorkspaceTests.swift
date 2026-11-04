@@ -1,3 +1,14 @@
+/**
+ * File: VideoRecordingWorkspaceTests.swift
+ * ----------------------------------------
+ * Layer: Tests
+ * Description: A video recording in the running app, with frames and sound from `SyntheticCaptureSource` in place
+ *              of the simulator's missing camera.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -197,7 +208,7 @@ final class VideoRecordingWorkspaceTests: XCTestCase {
         }))
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

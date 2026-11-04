@@ -7,7 +7,7 @@
  *              for every color even at the mini size.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 
@@ -83,22 +83,11 @@ struct PencilColorButtons: View {
     // MARK: Counted by the bar
 
     /// Whether the bar shows the highlighter's colors rather than black and the favorite colors.
-    static func editsHighlighterColors(_ toolbox: PencilToolbox) -> Bool { toolbox.presetInUse.ink == .highlighter }
+    static func editsHighlighterColors(_ toolbox: PencilToolbox) -> Bool { PencilToolRowLayout.editsHighlighterColors(toolbox) }
 
-    /// How many swatches the bar shows for the ink in use: black and the favorite colors, or the highlighter's colors.
-    static func swatchCount(_ toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor]) -> Int {
-        editsHighlighterColors(toolbox) ? highlighterColors.count : 1 + favorites.count
-    }
-
-    /// Whether the plus that adds the color in use shows: only while an ink's color, as Other Color chose it, is not
-    /// in the list the bar shows (black is always on a pen's bar).
+    /// Whether the plus that adds the color in use shows (`PencilToolRowLayout.showsAddColor`).
     static func showsAddColor(_ toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor]) -> Bool {
-        let colorInUse = toolbox.presetInUse.colorHex
-        let editsHighlighterColors = editsHighlighterColors(toolbox)
-        let isBlackOnAPensBar = !editsHighlighterColors
-            && TextColorMarkup.canonicalHex(colorInUse) == TextColorMarkup.canonicalHex(PencilInk.pen.defaultColorHex)
-        return toolbox.toolInUse == .ink && !isBlackOnAPensBar
-            && !FavoriteColorEditing.contains(hex: colorInUse, in: editsHighlighterColors ? highlighterColors : favorites)
+        PencilToolRowLayout.showsAddColor(toolbox, favorites: favorites, highlighterColors: highlighterColors)
     }
 
     // MARK: Editing

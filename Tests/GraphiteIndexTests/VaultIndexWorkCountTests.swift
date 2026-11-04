@@ -5,8 +5,8 @@
  * Description: What a scan and a lookup cost, counted in rows written, reads made and questions asked.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -41,7 +41,7 @@ final class VaultIndexWorkCountTests: XCTestCase {
     }
 
     private func rowsWrittenSoFar() throws -> Int {
-        try index.databasePool.writeWithoutTransaction { database in database.totalChangesCount }
+        index.databasePool.writeWithoutTransaction { database in database.totalChangesCount }
     }
 
     private func indexedPaths() async throws -> [String] {

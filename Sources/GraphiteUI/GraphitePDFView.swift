@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.34
+ * Version: 0.36
  * Date: 04/11/2026
  */
 
@@ -273,6 +273,7 @@ struct GraphitePDFView: UIViewRepresentable {
             return keptView
         }
         let view = GraphitePDFDisplayView()
+        view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.autoScales = true
@@ -360,8 +361,15 @@ final class GraphitePDFDisplayView: PDFView {
         return PDFPagePlace(pageIndex: pageIndex, fractionFromTop: Double(place.fractionFromTop))
     }
 
+    /// The shown document's change count (`PDFSession.changeVersion`).
+    var contentChangeCount: () -> Int = { 0 }
+    /// Draws pictures and other annotations at the screen's resolution, as on the Mac (HUNT-320);
+    /// tests stop it to measure what PDFKit draws by itself.
+    lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { annotationLayerResolution.stop() } else { annotationLayerResolution.start() }
         // The tool picker needs a first responder in a window.
         annotationCoordinator?.windowDidChange()
     }
@@ -700,8 +708,9 @@ final class PDFPageCanvasView: HistoryCanvasView {
     }
 
     /// The size of the drawing's space: the page overlay's size, in the page's points,
-    /// whatever the scale the canvas draws at.
+    /// whatever the scale the canvas draws at and whatever part of the page it covers.
     var drawingSize: CGSize {
+        if let overlaySize = overlayView?.bounds.size, overlaySize.width > 0, overlaySize.height > 0 { return overlaySize }
         guard zoomScale > 0 else { return bounds.size }
         return CGSize(width: bounds.width / zoomScale, height: bounds.height / zoomScale)
     }
@@ -712,107 +721,9 @@ final class PDFPageCanvasView: HistoryCanvasView {
 
     var writingGuides: DrawingPaper { overlayView?.writingGuides ?? .plain }
 
-    fileprivate func placeIn(_ overlayView: PDFPageOverlayView) {
+    /// Called by the overlay that holds the canvas (`PDFPageOverlayView`).
+    func placeIn(_ overlayView: PDFPageOverlayView) {
         self.overlayView = overlayView
-    }
-}
-
-/// What PDFKit places over a page: the page's canvas, and the writing guides under it.
-///
-/// PDFKit zooms a page by scaling the view that draws it, overlays included, so a canvas
-/// the size of the page drew its ink at the screen's resolution and PDFKit magnified it:
-/// zoomed in to write on a slide, the ink was soft and showed the edges of PencilKit's
-/// tiles. PencilKit draws its tiles at its own zoom, so the canvas is made
-/// `renderingScale` times the page's size, zoomed by as much, and scaled back down to the
-/// page: its ink is drawn at the resolution it is seen at, and its drawing stays in the
-/// page's points. The writing guides stay at the page's size; they are only a guide.
-final class PDFPageOverlayView: UIView {
-    let canvas: PDFPageCanvasView
-    private let guideView = DrawingPaperView()
-    /// Graphite's text boxes of the page, over the ink (`PDFPageTextBoxesView`).
-    let textBoxesView = PDFPageTextBoxesView(frame: .zero)
-    /// How many times the page's size the canvas draws at (`renderingScale(forZoom:pageSize:screenScale:)`).
-    private(set) var renderingScale: CGFloat = 1
-
-    /// The most pixels a canvas is drawn with. PencilKit keeps tiles for the whole canvas, so
-    /// this bounds what one page can take: 144 MB, reached by an A4 page at about 4.2 times its
-    /// size on a 2x screen and by an A3 page at about 3. Only the pages on screen are drawn
-    /// large (`PDFAnnotationCoordinator.updateRenderingScale`).
-    static let maximumCanvasPixelCount: CGFloat = 36_000_000
-    /// The least a canvas is reduced: a zoomed-out page needs no sharper ink than this, and a
-    /// smaller canvas takes less memory than the page's own size.
-    static let minimumRenderingScale: CGFloat = 0.5
-    /// A change of zoom smaller than this, as a fraction, is not worth drawing the page again.
-    static let smallestScaleChange: CGFloat = 0.01
-
-    /// The scale to draw ink at for a PDF view's zoom: the zoom itself, so a pixel of the ink's
-    /// tiles is a pixel of the screen and settled ink is as sharp as a line can be, within the
-    /// memory a page may take. It does not depend on the tool in hand: a tool's width is its
-    /// width in the drawing at any zoom of the canvas (`Docs/solid/invariants.md`, INK-22).
-    static func renderingScale(forZoom zoom: CGFloat, pageSize: CGSize, screenScale: CGFloat) -> CGFloat {
-        let pagePixelCount = pageSize.width * pageSize.height * screenScale * screenScale
-        guard zoom.isFinite, zoom > 0, pagePixelCount > 0 else { return 1 }
-        let largestScale = max((maximumCanvasPixelCount / pagePixelCount).squareRoot(), 1)
-        return min(max(zoom, minimumRenderingScale), largestScale)
-    }
-
-    init(canvas: PDFPageCanvasView) {
-        self.canvas = canvas
-        super.init(frame: canvas.frame)
-        backgroundColor = .clear
-        isOpaque = false
-        addSubview(guideView)
-        addSubview(canvas)
-        addSubview(textBoxesView)
-        canvas.placeIn(self)
-    }
-
-    required init?(coder: NSCoder) { nil }
-
-    /// Writing guides under the ink, which the page's file never gets.
-    var writingGuides: DrawingPaper {
-        get { guideView.paper }
-        set { guideView.paper = newValue }
-    }
-
-    /// Whether the guides show: only while writing, like the canvas over them.
-    var showsWritingGuides = true {
-        didSet { guideView.alpha = showsWritingGuides ? 1 : 0 }
-    }
-
-    /// The scale the canvas is to draw at.
-    func setRenderingScale(_ scale: CGFloat) {
-        guard abs(scale - renderingScale) / renderingScale >= Self.smallestScaleChange else { return }
-        renderingScale = scale
-        setNeedsLayout()
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        // The guides and the text boxes start at the page's top-left corner, in its points.
-        guideView.frame = bounds
-        guideView.drawingRegion = bounds
-        textBoxesView.frame = bounds
-        let scale = renderingScale
-        let canvasBounds = CGRect(x: 0, y: 0, width: bounds.width * scale, height: bounds.height * scale)
-        if canvas.bounds.size != canvasBounds.size || canvas.zoomScale != scale {
-            canvas.transform = .identity
-            canvas.bounds = canvasBounds
-            canvas.minimumZoomScale = min(scale, canvas.zoomScale)
-            canvas.maximumZoomScale = max(scale, canvas.zoomScale)
-            canvas.zoomScale = scale
-            canvas.minimumZoomScale = scale
-            canvas.maximumZoomScale = scale
-            canvas.contentOffset = .zero
-            canvas.transform = CGAffineTransform(scaleX: 1 / scale, y: 1 / scale)
-        }
-        canvas.center = CGPoint(x: bounds.midX, y: bounds.midY)
-    }
-
-    /// Touches outside the canvas are the page's: PDFKit's scrolling and selection.
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let touchedView = super.hitTest(point, with: event)
-        return touchedView === self ? nil : touchedView
     }
 }
 
@@ -873,8 +784,12 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var zoomObserver: NSObjectProtocol?
     /// Draws the canvases at the zoom once it has settled, not at every step of a pinch.
     private var renderingScaleUpdate: DispatchWorkItem?
-    private static let renderingScaleAfterMemoryWarning: CGFloat = 2
-    private var isHoldingRenderingScaleForMemory = false
+    /// The pixels a page's canvas may take after a memory warning: a quarter of the usual, so
+    /// the canvas covers less of the page around what is on screen, still at the zoom.
+    private static let canvasPixelBudgetAfterMemoryWarning = PDFCanvasShownRegion.maximumCanvasPixelCount / 4
+    private var isHoldingCanvasMemory = false
+    /// Follows the pages' scrolling, so a canvas covering part of its page moves with it.
+    private var pagesScrollObservation: NSKeyValueObservation?
     private var scaleFactorAtMemoryWarning: CGFloat = 0
     private var memoryWarningObserver: NSObjectProtocol?
     /// For tests, which cannot send touches.
@@ -920,6 +835,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     func resume() {
         isParked = false
         hasAppliedInput = false
+        // Undo and redo reach the canvases shown again, whichever view of the session was attached meanwhile.
+        session.inkCanvasProvider = self
         if let pdfView { healthMonitor = PDFPaneHealthMonitor(coordinator: self, pdfView: pdfView) }
     }
     /// Watches that the PDF keeps taking touches (`PDFPaneHealthMonitor`).
@@ -991,8 +908,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
+        session.registerUnrecordedInkRecorder(for: self) { [weak self] in self?.recordUnrecordedInkBeforeHistoryStep() }
         zoomObserver = NotificationCenter.default.addObserver(forName: .PDFViewScaleChanged, object: view, queue: nil) { [weak self] _ in
             MainActor.assumeIsolated { self?.scheduleRenderingScaleUpdate() }
+        }
+        pagesScrollObservation = view.pagesScrollView?.observe(\.contentOffset) { [weak self] _, _ in
+            // Reported on the main thread that scrolls; the canvases move on the main actor.
+            Task { @MainActor [weak self] in self?.followVisibleAreaOfCanvases() }
         }
         observeMemoryWarnings()
     }
@@ -1024,7 +946,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// again at the new scale once the zoom has stayed for a moment.
     private func scheduleRenderingScaleUpdate() {
         renderingScaleUpdate?.cancel()
-        if let pdfView, abs(pdfView.scaleFactor - scaleFactorAtMemoryWarning) > 0.001 { isHoldingRenderingScaleForMemory = false }
+        if let pdfView, abs(pdfView.scaleFactor - scaleFactorAtMemoryWarning) > 0.001 { isHoldingCanvasMemory = false }
         let update = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated { self?.updateRenderingScale() }
         }
@@ -1042,11 +964,14 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         }
         // Only what is on screen; a kept page stays at its own size (`willEndDisplayingOverlayView`).
         for identifier in displayedPages {
-            guard let canvas = canvasesByPage[identifier], let page = canvas.page else { continue }
-            canvas.overlayView?.setRenderingScale(renderingScale(of: page, in: pdfView))
+            guard let canvas = canvasesByPage[identifier] else { continue }
+            canvas.overlayView?.setRenderingScale(renderingScale(in: pdfView))
+            canvas.overlayView?.canvasPixelBudget = canvasPixelBudget
             // Laid out now, while no stroke is known to be under way: left to the next layout
             // pass, the canvas changed size under a stroke begun in between.
             canvas.overlayView?.layoutIfNeeded()
+            // A canvas covering part of its page takes the part now on screen.
+            canvas.overlayView?.followVisibleArea()
             // The eraser follows the zoom on screen, also past where the canvas's scale stops.
             if canvas.tool is PKEraserTool { canvas.retakeChosenTool() }
         }
@@ -1061,28 +986,44 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             }
     }
 
-    /// The scale a page's canvas draws at for the view's zoom. After a memory warning, until the
-    /// next change of zoom, it is held to the page's size at twice its points.
-    private func renderingScale(of page: PDFPage, in view: PDFView) -> CGFloat {
-        let screenScale = view.window?.screen.scale ?? view.traitCollection.displayScale
-        let scale = PDFPageOverlayView.renderingScale(forZoom: view.scaleFactor, pageSize: page.bounds(for: .cropBox).size, screenScale: max(screenScale, 1))
-        return isHoldingRenderingScaleForMemory ? min(scale, Self.renderingScaleAfterMemoryWarning) : scale
+    /// The scale a page's canvas draws at for the view's zoom: the zoom, at any zoom.
+    private func renderingScale(in view: PDFView) -> CGFloat {
+        PDFPageOverlayView.renderingScale(forZoom: view.scaleFactor)
+    }
+
+    /// The pixels a page's canvas may take. After a memory warning, until the next change of
+    /// zoom, a quarter of the usual: the canvas covers less of its page, still at the zoom.
+    private var canvasPixelBudget: CGFloat {
+        isHoldingCanvasMemory ? Self.canvasPixelBudgetAfterMemoryWarning : PDFCanvasShownRegion.maximumCanvasPixelCount
+    }
+
+    /// The pages scrolled: a canvas that covers part of its page moves with what is on screen,
+    /// not during a stroke, which waits for the lift, nor during a pinch, after which the zoom's
+    /// update lays the canvases out again.
+    private func followVisibleAreaOfCanvases() {
+        guard !isDetached, !isParked, let pdfView, !(pdfView.pagesScrollView?.isZooming ?? false) else { return }
+        let overlays = displayedPages.compactMap { identifier in canvasesByPage[identifier]?.overlayView }
+        guard overlays.contains(where: { overlay in overlay.shownRegion.size != overlay.bounds.size }) else { return }
+        if isStrokeUnderWay {
+            scheduleRenderingScaleUpdate()
+            return
+        }
+        for overlay in overlays { overlay.followVisibleArea() }
     }
 
     /// The system is short of memory: pages kept for scrolling back go, after their ink is
-    /// recorded, and the pages on screen draw smaller. Being killed would lose what was written
-    /// since the last save.
+    /// recorded, and the pages on screen take less of it. Being killed would lose what was
+    /// written since the last save.
     private func releaseMemoryOfCanvases() {
         guard !isDetached, let pdfView else { return }
         for identifier in hiddenCanvasOrder {
             if let canvas = canvasesByPage.removeValue(forKey: identifier) { release(canvas) }
         }
         hiddenCanvasOrder.removeAll()
-        isHoldingRenderingScaleForMemory = true
+        isHoldingCanvasMemory = true
         scaleFactorAtMemoryWarning = pdfView.scaleFactor
         for identifier in displayedPages {
-            guard let canvas = canvasesByPage[identifier], let page = canvas.page else { continue }
-            canvas.overlayView?.setRenderingScale(renderingScale(of: page, in: pdfView))
+            canvasesByPage[identifier]?.overlayView?.canvasPixelBudget = canvasPixelBudget
         }
     }
 
@@ -1113,6 +1054,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         if let memoryWarningObserver { NotificationCenter.default.removeObserver(memoryWarningObserver) }
         memoryWarningObserver = nil
         renderingScaleUpdate?.cancel()
+        pagesScrollObservation = nil
     }
 
     func highlightReading(_ highlights: [PDFReadAloudHighlight], followsReading: Bool, suspendFollowing: (() -> Void)?,
@@ -1441,14 +1383,18 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             // every stroke drawn since, on screen and, at the next stroke, in the file
             // (seen on the owner's iPad, 2026-10-13).
             let overlayView = PDFPageOverlayView(canvas: existing)
-            overlayView.setRenderingScale(renderingScale(of: page, in: view))
+            overlayView.visibleAreaView = view
+            overlayView.canvasPixelBudget = canvasPixelBudget
+            overlayView.setRenderingScale(renderingScale(in: view))
             return overlayView
         }
         if let replaced = canvasesByPage.removeValue(forKey: identifier) { release(replaced) }
         let canvas = makeCanvas(for: page)
         canvasesByPage[identifier] = canvas
         let overlayView = PDFPageOverlayView(canvas: canvas)
-        overlayView.setRenderingScale(renderingScale(of: page, in: view))
+        overlayView.visibleAreaView = view
+        overlayView.canvasPixelBudget = canvasPixelBudget
+        overlayView.setRenderingScale(renderingScale(in: view))
         return overlayView
     }
 
@@ -1464,7 +1410,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         if isStrokeUnderWay {
             scheduleRenderingScaleUpdate()
         } else {
-            (overlayView as? PDFPageOverlayView)?.setRenderingScale(renderingScale(of: page, in: pdfView))
+            (overlayView as? PDFPageOverlayView)?.canvasPixelBudget = canvasPixelBudget
+            (overlayView as? PDFPageOverlayView)?.setRenderingScale(renderingScale(in: pdfView))
+            (overlayView as? PDFPageOverlayView)?.followVisibleArea()
         }
         configure(canvas)
         placeReadAloudMarkers(on: canvas)

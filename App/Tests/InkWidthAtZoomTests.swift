@@ -28,14 +28,13 @@ final class InkWidthAtZoomTests: XCTestCase {
         return PencilToolSelection(kind: .ink, preset: preset, erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false)
     }
 
+    /// The memory a page may take bounds the part of the page drawn, not the scale (HUNT-320,
+    /// `PDFCanvasShownRegionTests`).
     func testAPagesDrawingScaleIsTheZoomWithinTheMemoryAPageMayTake() {
-        let fourA = CGSize(width: 595, height: 842)
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 1.36, pageSize: fourA, screenScale: 2), 1.36, accuracy: 0.001, "One pixel of ink for one of the screen")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 3.3, pageSize: fourA, screenScale: 2), 3.3, accuracy: 0.001, "Past the old cap of 3")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 0.1, pageSize: fourA, screenScale: 2), PDFPageOverlayView.minimumRenderingScale)
-        let largest = PDFPageOverlayView.renderingScale(forZoom: 50, pageSize: fourA, screenScale: 2)
-        XCTAssertEqual(fourA.width * fourA.height * 4 * largest * largest, PDFPageOverlayView.maximumCanvasPixelCount, accuracy: 1_000, "Bounded by pixels, whatever the zoom")
-        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 50, pageSize: CGSize(width: 6_000, height: 8_000), screenScale: 2), 1, "A vast page still draws at its own size")
+        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 1.36), 1.36, accuracy: 0.001, "One pixel of ink for one of the screen")
+        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 3.3), 3.3, accuracy: 0.001, "Past the old cap of 3")
+        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 0.1), PDFCanvasShownRegion.minimumRenderingScale)
+        XCTAssertEqual(PDFPageOverlayView.renderingScale(forZoom: 8), 8, accuracy: 0.001, "Past the old bound of about 4.2 on A4")
     }
 
     /// Choosing a broad tool used to lower the scale of every canvas, in Read mode too.
@@ -106,6 +105,11 @@ final class InkWidthAtZoomTests: XCTestCase {
     /// the saved file is read back. PencilKit stores a stroke at the tool's width whatever its
     /// canvas's zoom, so a tool scaled by the zoom landed up to 1.75 times too thick in this
     /// measure and 2.64 times on the simulator's screen.
+    ///
+    /// The touch moves as fast on the screen at every zoom, 240 points of the screen in 30 moves,
+    /// as a person's hand does: the speed PencilKit's pen thickens with (see `linesShownOnScreen`).
+    /// A pencil's grain varies from stroke to stroke, which `SynthesizedStrokes.renderedWidth`
+    /// averages out.
     func testTheSamePenLandsEquallyWideOnThePageAtEveryZoomAndInTheSavedFile() async throws {
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
@@ -419,6 +423,16 @@ final class InkWidthAtZoomTests: XCTestCase {
             let inkOnPage = CGRect(x: 280, y: page.bounds(for: .cropBox).maxY - 300, width: 40, height: 1)
             pdfView.go(to: inkOnPage, on: page)
             try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+            // What is measured is the scale it is said to be: the canvas takes a new zoom only once no stroke is under
+            // way. On the iPad on 2026-11-04 a real Apple Pencil touched the page while this test read it (a pen stroke
+            // of 202 points, the palette's, at 20:14:17), the canvas stayed at zoom 2 under the PDF's 3.3, and the ink
+            // measured 3.47 rows soft where 2.67 were allowed.
+            if let scale {
+                try await waitUntil("the canvas draws at \(scale)") { abs(canvas.zoomScale - scale) < 0.02 }
+            } else {
+                try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+            }
+            XCTAssertEqual(canvas.drawing.strokes.count, 1, "Only the measured line is on the page at zoom \(zoom), nothing drawn by a touch meanwhile")
             let point = canvas.convert(CGPoint(x: 300 * canvas.zoomScale, y: 300 * canvas.zoomScale), to: window)
             return try softEdgeRows(in: window, atWindowPoint: point)
         }
@@ -566,7 +580,12 @@ final class InkWidthAtZoomTests: XCTestCase {
         try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 100)
         XCTAssertNil(coordinator.editingCanvas(for: firstPage), "The kept page's canvas has gone")
         XCTAssertTrue(firstPage.annotations.contains { annotation in annotation.type == "Ink" }, "Its ink is in the PDF")
-        try await waitUntil("the shown page draws smaller") { shownCanvas.zoomScale <= 2.01 }
+        // Still at the zoom, over less of the page (HUNT-320): a quarter of the usual pixels.
+        let screenScale = window.traitCollection.displayScale
+        try await waitUntil("the shown page takes less memory") {
+            shownCanvas.bounds.width * shownCanvas.bounds.height * screenScale * screenScale <= PDFCanvasShownRegion.maximumCanvasPixelCount / 4 * 1.01
+        }
+        XCTAssertEqual(shownCanvas.zoomScale, 3, accuracy: 0.01, "The shown page still draws at the zoom")
     }
 
     /// The Pencil's first touch while reading draws (HUNT-024): the recognizer tells the page's

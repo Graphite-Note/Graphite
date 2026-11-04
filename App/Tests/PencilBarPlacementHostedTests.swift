@@ -8,7 +8,7 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 
@@ -96,6 +96,9 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         let savedPresetIndex = toolbox.toolInUse == .ink ? toolbox.presetInUseIndex : nil
         defer { if let savedPresetIndex { toolbox.usePreset(at: savedPresetIndex) } }
         toolbox.usePreset(at: 0)
+        // The bar shows the device's own presets: on the owner's iPad (2026-11-04) the upright bar folded to its compact form.
+        let savedToolbarStyle = HostedDevicePreferences.value(forKey: PencilToolbarStyle.preferenceKey)
+        print("PENCIL-BAR placement: presets \(toolbox.presets.map(\.ink.rawValue)), toolbar style \(String(describing: savedToolbarStyle))")
         var formsByOrientation: [String: PencilToolRowForm] = [:]
         for (name, size) in [("sideways", CGSize(width: 1_194, height: 834)), ("upright", CGSize(width: 834, height: 1_194))] {
             let (workspace, session) = try await pdfWorkspace(named: "BarPlacement\(name)")
@@ -207,23 +210,20 @@ final class PencilBarPlacementHostedTests: XCTestCase {
     /// screen, each its own button, and the ruler is a button on the bar. The form shown is the one `PencilToolRowLayout`
     /// chooses for the width, and the row is as wide as it says.
     func testEveryFavoriteColorAndTheRulerAreButtonsOnTheBarAtEveryWidthOfTheElevenInchIPad() async throws {
-        let toolbox = PencilToolbox.shared
-        let savedTool = toolbox.toolInUse
-        let savedPresetIndex = toolbox.presetInUseIndex
-        // Settings of their own, which hold no colors: the row shows the default favorite colors.
-        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: "PencilBarColors-\(UUID().uuidString)"))
+        // Settings of their own, which hold no colors and no toolbox: the row shows the default favorite colors and the
+        // default presets, with the pen in use, whatever this device holds (the owner's iPad has no pen preset).
+        let suiteName = "PencilBarColors-\(UUID().uuidString)"
+        let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        let toolbox = PencilToolbox(defaults: isolatedDefaults)
         try Self.setAccessibilityRuntimeEnabled(true)
         defer {
             try? Self.setAccessibilityRuntimeEnabled(false) // Left on, it slows later tests and changes nothing they check.
-            if savedTool == .ink { toolbox.usePreset(at: savedPresetIndex) } else { toolbox.use(savedTool) }
+            isolatedDefaults.removePersistentDomain(forName: suiteName)
         }
-        toolbox.usePreset(at: try XCTUnwrap(toolbox.presets.firstIndex { preset in preset.ink == .pen }))
+        XCTAssertEqual(toolbox.presetInUse.ink, .pen)
         let favorites = PaletteColor.defaultPalette
-        let contents = PencilToolRowLayout.Contents(
-            tools: PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextBoxes: true, offersReadAloudPen: true),
-            toolInUse: .preset(index: toolbox.presetInUseIndex), sizeCount: 3, offersColors: true, swatchCount: 1 + favorites.count,
-            showsAddColor: PencilColorButtons.showsAddColor(toolbox, favorites: favorites, highlighterColors: PaletteColor.defaultHighlighterPalette),
-            offersImages: true)
+        let contents = PencilToolRowLayout.contents(of: toolbox, favorites: favorites, highlighterColors: PaletteColor.defaultHighlighterPalette,
+                                                    offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         let scene = try scene
         weak var previousController: UIViewController?
         for width in [514, 834, 1_194] as [CGFloat] {
@@ -253,7 +253,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
 
             var elements: [NSObject] = []
             try await waitUntil("the row's buttons are accessible at \(Int(width)) points", pollingIntervalSeconds: 0.25) {
-                elements = self.accessibilityElements(in: controller.view)
+                elements = Self.accessibilityElements(in: controller.view)
                 return elements.contains { element in element.accessibilityLabel == "Ruler" }
             }
             let windowFrame = window.frame
@@ -274,7 +274,8 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         }
     }
 
-    private static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
+    /// Turns on the accessibility runtime, without which a hosted view has no accessibility elements to read.
+    static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
         let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW), "The simulator's accessibility library.")
         typealias Setter = @convention(c) (Int32) -> Void
         for name in ["_AXSSetAutomationEnabled", "_AXSApplicationAccessibilitySetEnabled"] {
@@ -283,7 +284,8 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         }
     }
 
-    private func accessibilityElements(in object: NSObject) -> [NSObject] {
+    /// Every accessibility element in `object`, its descendants' too.
+    static func accessibilityElements(in object: NSObject) -> [NSObject] {
         var elements: [NSObject] = object.isAccessibilityElement ? [object] : []
         let count = object.accessibilityElementCount()
         if let children = object.accessibilityElements {

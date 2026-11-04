@@ -5,8 +5,8 @@
  * Description: CommunityPluginHost telling plugins about typing in the focused note.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -108,7 +108,7 @@ final class CommunityPluginHostTypingTests: XCTestCase {
         let revisionBefore = host.lastTypingRevision
         _ = host.editorDidChange(in: session)
         XCTAssertEqual(host.lastTypingRevision, revisionBefore + 1, "A note of exactly the limit is sent.")
-        await host.typingRequest?.answer.value
+        _ = await host.typingRequest?.answer.value
 
         session.text += "x"
         _ = host.editorDidChange(in: session)
@@ -135,10 +135,10 @@ final class CommunityPluginHostTypingTests: XCTestCase {
         // The real path: the plugin hears the note as it is after each keystroke.
         session.text = longText + "xy"
         _ = host.editorDidChange(in: session)
-        await host.typingRequest?.answer.value
+        _ = await host.typingRequest?.answer.value
         session.text = longText + "xyz"
         _ = host.editorDidChange(in: session)
-        await host.typingRequest?.answer.value
+        _ = await host.typingRequest?.answer.value
         let lastHeard = try await testBed.evaluate("return window.lastHeardNote;", in: host) as? String
         XCTAssertEqual(lastHeard, longText + "xyz")
     }

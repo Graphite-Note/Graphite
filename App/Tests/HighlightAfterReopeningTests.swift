@@ -2,11 +2,12 @@
  * File: HighlightAfterReopeningTests.swift
  * ----------------------------------------
  * Layer: Tests
- * Description: A highlight drawn over a PDF's text with the bar's highlighter leaves the text readable once the
- *              PDF is saved and opened again: on Graphite's screen and in the page as PDFKit draws it.
+ * Description: A highlight drawn over a PDF's text with the bar's highlighter, as Apple Notes' draws it and as the
+ *              even highlighter does, leaves the text readable once the PDF is saved and opened again: on
+ *              Graphite's screen and in the page as PDFKit draws it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -55,7 +56,7 @@ final class HighlightAfterReopeningTests: XCTestCase {
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         windows.append(window)
@@ -125,9 +126,21 @@ final class HighlightAfterReopeningTests: XCTestCase {
         add(attachment)
     }
 
+    /// The highlighter as Apple Notes' draws it, the default (`EvenHighlighterPreference` is off unless turned on).
     func testAHighlightOverTextLeavesItReadableOnTheScreenAndInThePageAfterThePDFIsOpenedAgain() async throws {
-        // The highlighter as Apple Notes' draws it, the default (`EvenHighlighterPreference` is off unless turned on).
-        XCTAssertFalse(EvenHighlighterPreference.isOn())
+        try await checkHighlightOverText(evenHighlighter: false)
+    }
+
+    /// The even highlighter, which the owner's iPad uses: on 2026-11-04 it drew its band at nine tenths of the
+    /// color, and on the iPad's screen the black bar under it showed 0.87 as light as the band beside it.
+    func testAnEvenHighlightOverTextLeavesItReadableOnTheScreenAndInThePageAfterThePDFIsOpenedAgain() async throws {
+        try await checkHighlightOverText(evenHighlighter: true)
+    }
+
+    /// Draws the highlight with the preference as asked, whatever the device has saved, and puts the saved value back.
+    private func checkHighlightOverText(evenHighlighter: Bool) async throws {
+        let restoreEvenHighlighter = HostedDevicePreferences.set(evenHighlighter, forKey: EvenHighlighterPreference.key)
+        defer { restoreEvenHighlighter() }
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
         let location = try pdfWithBlackBar()
@@ -142,6 +155,8 @@ final class HighlightAfterReopeningTests: XCTestCase {
         let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: start, to: end, steps: 40), in: window)
         let highlight = try XCTUnwrap(drawnStroke, "The highlighter drew")
         XCTAssertEqual(highlight.ink.inkType, .marker)
+        let toolInUse = try XCTUnwrap(canvas.tool as? PKInkingTool)
+        XCTAssertEqual(EvenHighlighter.isInvisible(toolInUse.ink), evenHighlighter, "The highlighter drawn with is the one asked for")
         // The band's half height on the page, to find paper inside it beside the bar.
         let bandHalfHeight = highlight.renderBounds.height / 2
         XCTAssertGreaterThan(bandHalfHeight, Self.bar.height, "The band is wider than the bar it covers")
@@ -160,7 +175,8 @@ final class HighlightAfterReopeningTests: XCTestCase {
         let barOnScreen = try shownColor(atPagePoint: CGPoint(x: 300, y: Self.bar.midY), of: reopenedPage, in: reopenedPDFView, window: reopenedWindow)
         let bandOnScreen = try shownColor(atPagePoint: besideTheBar, of: reopenedPage, in: reopenedPDFView, window: reopenedWindow)
         let paperOnScreen = try shownColor(atPagePoint: CGPoint(x: 300, y: 300), of: reopenedPage, in: reopenedPDFView, window: reopenedWindow)
-        print("HIGHLIGHT on screen: bar under the band \(barOnScreen), band on paper \(bandOnScreen), paper \(paperOnScreen)")
+        let highlighterName = evenHighlighter ? "even" : "default"
+        print("HIGHLIGHT \(highlighterName) on screen: bar under the band \(barOnScreen), band on paper \(bandOnScreen), paper \(paperOnScreen)")
         // A solid band draws the bar under it as the band's own color, a ratio of 1.
         XCTAssertLessThan(luminance(barOnScreen) / luminance(bandOnScreen), 0.6, "On the screen the bar under the band stays much darker than the band: \(barOnScreen)")
         XCTAssertLessThan(bandOnScreen.blue, paperOnScreen.blue - 60, "The band is there, yellow on the paper: \(bandOnScreen)")
@@ -172,7 +188,7 @@ final class HighlightAfterReopeningTests: XCTestCase {
         XCTAssertTrue(savedPage.annotations.contains { annotation in annotation.type == "Ink" }, "The highlight is saved as an annotation other apps show")
         let barDrawn = try drawnColor(atPagePoint: CGPoint(x: 300, y: Self.bar.midY), of: savedPage)
         let bandDrawn = try drawnColor(atPagePoint: besideTheBar, of: savedPage)
-        print("HIGHLIGHT drawn by PDFKit: bar under the band \(barDrawn), band on paper \(bandDrawn)")
+        print("HIGHLIGHT \(highlighterName) drawn by PDFKit: bar under the band \(barDrawn), band on paper \(bandDrawn)")
         XCTAssertLessThan(max(barDrawn.red, barDrawn.green, barDrawn.blue), 90, "In the page's own drawing the bar under the band stays dark: \(barDrawn)")
         XCTAssertLessThan(luminance(barDrawn) / luminance(bandDrawn), 0.6)
         XCTAssertLessThan(bandDrawn.blue, 190, "The band is there in the page's own drawing: \(bandDrawn)")

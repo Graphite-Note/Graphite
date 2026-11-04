@@ -5,14 +5,15 @@
  * Description: A finished edit of the folder icon's picture never replaces a picture dropped meanwhile (HUNT-109).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import XCTest
 import CoreGraphics
 @testable import GraphiteUI
 
+@MainActor
 final class FolderIconMakerPictureEditTests: XCTestCase {
     private func bitmap(width: Int) throws -> CGImage {
         let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))

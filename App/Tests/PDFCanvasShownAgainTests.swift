@@ -7,7 +7,7 @@
  *              and decodes nothing (HUNT-313).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -78,7 +78,7 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         // SwiftUI makes the PDF's view at the window's first layout pass, after this returns, not inside it.
@@ -126,6 +126,10 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         XCTAssertFalse(repairs.contains { repair in repair.contains("built again") }, "The health check builds nothing again: \(repairs)")
         XCTAssertEqual(session.viewGeneration, viewGeneration, "The PDF's view is the same one")
 
+        // Letting a canvas go records its ink and compares its strokes, by design (`release`), and how many canvases a
+        // screen shows and lets go depends on its size: on the owner's iPad (2026-11-04) the count from the view's
+        // start was 2. What is measured is the first stroke's own: it compares none.
+        let comparisonsBeforeTheStroke = coordinator.everyStrokeComparisonCount
         let annotationsBefore = inkAnnotationCount(on: page)
         coordinator.canvasViewDidBeginUsingTool(canvas)
         canvas.drawing = PKDrawing(strokes: canvas.drawing.strokes + [stroke(atHeight: 700, creationSeconds: 9_000)])
@@ -133,7 +137,7 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         try await waitUntil("the first stroke is recorded") { self.inkAnnotationCount(on: page) == annotationsBefore + 1 }
         XCTAssertTrue(session.undoAvailability.canUndo, "The stroke is an undo step")
         XCTAssertEqual(coordinator.storedInkDecodeCount, decodesBefore, "The first stroke decodes nothing")
-        XCTAssertEqual(coordinator.everyStrokeComparisonCount, 0, "and compares no stored strokes")
+        XCTAssertEqual(coordinator.everyStrokeComparisonCount, comparisonsBeforeTheStroke, "and compares no stored strokes")
         XCTAssertEqual(session.viewGeneration, viewGeneration)
         attachScreenshot(of: window, named: "A page shown again, its first stroke recorded")
     }
