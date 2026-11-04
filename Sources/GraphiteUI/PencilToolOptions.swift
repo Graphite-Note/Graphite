@@ -43,7 +43,8 @@ struct PencilSizeEditor: View {
             }
             .font(.callout)
             if case .eraser = size {
-                Text("The eraser cuts no narrower than \(PencilEraserWidths.pencilKitWidthOnScreen.lowerBound.formatted()) points of the screen. Zoom in to erase finer on the page.")
+                let narrowestOnScreen = PencilEraserWidths.pencilKitWidthOnScreen.lowerBound.formatted()
+                Text("The eraser cuts no narrower than \(narrowestOnScreen) points of the screen. Zoom in to erase finer on the page.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -78,9 +79,10 @@ struct PencilSizeEditor: View {
         case .ink:
             Slider(value: Binding(get: { width }, set: { newWidth in changeWidth(to: newWidth) }), in: toolbox.presetInUse.ink.widthRange)
         case .eraser:
+            let lastStep = PencilEraserWidths.steps.count - 1
             Slider(value: Binding(get: { Double(PencilEraserWidths.stepIndex(forWidth: width)) },
-                                  set: { stepPosition in changeWidth(to: PencilEraserWidths.steps[min(max(Int(stepPosition.rounded()), 0), PencilEraserWidths.steps.count - 1)]) }),
-                   in: 0...Double(PencilEraserWidths.steps.count - 1), step: 1)
+                                  set: { position in changeWidth(to: PencilEraserWidths.steps[min(max(Int(position.rounded()), 0), lastStep)]) }),
+                   in: 0...Double(lastStep), step: 1)
         }
     }
 
