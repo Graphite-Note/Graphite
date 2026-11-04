@@ -461,10 +461,9 @@ final class InkWidthAtZoomTests: XCTestCase {
         try await assertThePixelEraserCuts(widths: [24, 64], atZooms: [1.5, 3], named: "EraserAtZoom")
     }
 
-    /// The smallest size of the bar's eraser (HUNT-319) reaches PencilKit as chosen, and PencilKit makes it
-    /// the narrowest fixed-width eraser it has, 16.4 points of the screen. On a page zoomed in it cuts
-    /// a gap of that many screen points, so the page's own width, about the one point chosen, comes at a high zoom.
-    func testTheSmallestPixelEraserReachesPencilKitUnchangedAndCutsAGapAboutItsWidth() async throws {
+    /// The smallest size of the bar's eraser (HUNT-319) is narrower than any eraser PencilKit makes,
+    /// 16.4 points of the screen: Graphite's own eraser cuts it, the one point chosen on a zoomed page too.
+    func testTheSmallestPixelEraserCutsItsOwnWidthOnAZoomedPage() async throws {
         let smallest = PencilEraserWidths.range.lowerBound
         var chosen = PencilToolbox(defaults: try XCTUnwrap(UserDefaults(suiteName: "SmallestEraser-\(UUID().uuidString)"))).selection
         chosen.kind = .eraser
@@ -472,12 +471,12 @@ final class InkWidthAtZoomTests: XCTestCase {
         chosen.eraserWidth = smallest
         let tool = try XCTUnwrap(chosen.tool as? PKEraserTool)
         XCTAssertEqual(tool.eraserType, .fixedWidthBitmap)
-        XCTAssertEqual(Double(tool.width), PencilEraserWidths.pencilKitWidthOnScreen.lowerBound, accuracy: 0.0001, "The narrowest PencilKit makes.")
+        XCTAssertEqual(Double(tool.width), PencilEraserWidths.pencilKitWidthOnScreen.lowerBound, accuracy: 0.0001, "PencilKit's tool is no narrower.")
         try await assertThePixelEraserCuts(widths: [smallest], atZooms: [2, 3], named: "SmallestEraser")
     }
 
-    /// Draws a line on a zoomed page, cuts it with the pixel eraser of each width, and checks the gap on the page
-    /// against `PencilEraserWidths.widthOnPage`: the chosen width, within PencilKit's limits on the screen.
+    /// Draws a line on a zoomed page, cuts it with the pixel eraser of each width, and checks the gap on the page:
+    /// the chosen width, cut by PencilKit's eraser within its limits on the screen and by Graphite's beyond them.
     private func assertThePixelEraserCuts(widths: [Double], atZooms zooms: [CGFloat], named name: String) async throws {
         let restoreFingers = SynthesizedStrokes.letFingersDraw()
         defer { restoreFingers() }
@@ -498,8 +497,11 @@ final class InkWidthAtZoomTests: XCTestCase {
                 XCTAssertEqual(canvas.zoomScale, zoom, accuracy: 0.02, "The canvas kept the zoom under the line")
                 let inkBounds = canvas.drawing.bounds
                 canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .eraser, preset: InkPreset(ink: .pen), erasesWholeStrokes: false, eraserWidth: eraserWidth, isRulerActive: false))
-                // The line cut in two is the erase having reached PencilKit's drawing.
-                let cutLine = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x, y: middle.y - 160), to: CGPoint(x: middle.x, y: middle.y + 160), steps: 30), in: window)
+                // The line cut in two is the erase having reached the canvas's drawing.
+                let erasesWithGraphite = !PencilEraserWidths.erasesWithPencilKit(chosen: eraserWidth, screenPointsPerPagePoint: Double(zoom))
+                XCTAssertEqual(canvas.pixelEraser.isErasing, erasesWithGraphite, "Eraser \(eraserWidth) at zoom \(zoom)")
+                let cutLine = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: CGPoint(x: middle.x, y: middle.y - 160), to: CGPoint(x: middle.x, y: middle.y + 160), steps: 30),
+                                                                in: window, toldTo: erasesWithGraphite ? canvas.pixelEraser.touchRecognizer : nil)
                 XCTAssertNotNil(cutLine, "Eraser \(eraserWidth) at zoom \(zoom) cut the line in two")
                 try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 150)
                 let picture = try XCTUnwrap(canvas.drawing.image(from: inkBounds, scale: 4).cgImage)
@@ -510,8 +512,7 @@ final class InkWidthAtZoomTests: XCTestCase {
                 let middleRow = picture.height / 2
                 let gap = Double((0..<picture.width).filter { column in bytes[(middleRow * picture.width + column) * 4 + 3] < 64 }.count) / 4
                 print("INK-WIDTH eraser \(eraserWidth) at zoom \(zoom): canvas \(canvas.zoomScale) gap \(gap)")
-                let expectedGap = PencilEraserWidths.widthOnPage(chosen: eraserWidth, screenPointsPerPagePoint: Double(zoom))
-                XCTAssertEqual(gap, expectedGap, accuracy: max(expectedGap * 0.2, 1.5), "Eraser \(eraserWidth) at zoom \(zoom)")
+                XCTAssertEqual(gap, eraserWidth, accuracy: erasesWithGraphite ? 0.3 : max(eraserWidth * 0.2, 1.5), "Eraser \(eraserWidth) at zoom \(zoom)")
             }
         }
     }

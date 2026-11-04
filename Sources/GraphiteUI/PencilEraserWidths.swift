@@ -3,10 +3,10 @@
  * ------------------------------
  * Layer: UI
  * Description: The widths the Pencil bar's pixel eraser can have: its three starting sizes, the steps between them,
- *              and what PencilKit makes of them on the screen.
+ *              and which of them PencilKit's own eraser can make on the screen.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -16,9 +16,10 @@ import Foundation
 /// the page at every zoom). A width is chosen from `steps`, fine ones close together and broad
 /// ones further apart, so one letter or one tiny stroke can be erased and a whole line too.
 ///
-/// PencilKit makes the fixed-width eraser at least `pencilKitWidthOnScreen.lowerBound` points of
-/// the screen wide, and the canvas gives it the chosen width times the zoom, so a width below
-/// that cuts `pencilKitWidthOnScreen.lowerBound / zoom` of the page: zoom in for a finer cut.
+/// PencilKit makes its fixed-width eraser `pencilKitWidthOnScreen` points of the screen wide, no
+/// narrower and no wider, and the canvas gives it the chosen width times the zoom. A width that
+/// makes on the screen what PencilKit cannot is erased by Graphite's own eraser
+/// (`PixelEraserController`), which cuts the chosen width at any zoom.
 enum PencilEraserWidths {
     /// The three sizes the bar starts with: about a thin pen line, a letter's stroke, and a word's height.
     static let defaultChoices: [Double] = [2, 6, 14]
@@ -68,11 +69,10 @@ enum PencilEraserWidths {
         return (choices, savedWidth.flatMap { width in choices.contains(width) ? width : nil } ?? choices[1])
     }
 
-    /// How much of the page the fixed-width eraser cuts for a chosen width, at a zoom of
-    /// `screenPointsPerPagePoint` points of the screen to one of the page.
-    static func widthOnPage(chosen: Double, screenPointsPerPagePoint: Double) -> Double {
-        guard screenPointsPerPagePoint > 0 else { return chosen }
-        let widthOnScreen = min(max(chosen * screenPointsPerPagePoint, pencilKitWidthOnScreen.lowerBound), pencilKitWidthOnScreen.upperBound)
-        return widthOnScreen / screenPointsPerPagePoint
+    /// Whether PencilKit's own eraser cuts a chosen width at a zoom of `screenPointsPerPagePoint`
+    /// points of the screen to one of the page; Graphite's eraser cuts the other widths.
+    static func erasesWithPencilKit(chosen: Double, screenPointsPerPagePoint: Double) -> Bool {
+        guard screenPointsPerPagePoint > 0, screenPointsPerPagePoint.isFinite else { return true }
+        return pencilKitWidthOnScreen.contains(chosen * screenPointsPerPagePoint)
     }
 }
