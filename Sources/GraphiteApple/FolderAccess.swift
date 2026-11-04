@@ -5,8 +5,8 @@
  * Description: Finds and opens vault folders, and watches a vault for changes other apps and windows make.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -162,7 +162,10 @@ public final class VaultMonitor: NSObject, NSFilePresenter, @unchecked Sendable 
         self.onItemMove = onItemMove
         let operationQueue = OperationQueue()
         operationQueue.maxConcurrentOperationCount = 1
-        operationQueue.qualityOfService = .utility
+        // A coordinated deletion, from this process or another, waits until the presenter has
+        // accommodated it on this queue, so the queue runs at the priority of saves and deletions
+        // rather than below them; its callbacks only hand the change on (HUNT-316).
+        operationQueue.qualityOfService = .userInitiated
         presentedItemOperationQueue = operationQueue
         super.init()
         NSFileCoordinator.addFilePresenter(self)

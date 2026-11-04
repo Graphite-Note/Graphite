@@ -5,8 +5,8 @@
  * Description: Builds the graph view's data, and resolves links over names held in memory.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -22,7 +22,7 @@ extension VaultIndex {
     /// Read on a reader connection of its own, so the whole-vault pass does not hold the
     /// index's writer from the saves and scans that wait for it.
     public nonisolated func linkGraph() async throws -> LinkGraph {
-        try await databasePool.read { database in
+        try await readOnAReader { database in
             let resolver = try GraphLinkResolver(database: database)
             let files = resolver.paths.compactMap { path in try? VaultPath(path) }
             let rows = try Row.fetchAll(database, sql: "SELECT source, target, isWiki FROM links UNION SELECT path, target, 1 FROM property_links")
@@ -62,7 +62,7 @@ extension VaultIndex {
     /// away: what must draw again when these notes change. A superset, since an embed is matched
     /// by what it writes and not resolved; a note wrongly in it only draws once more.
     public nonisolated func notesEmbedding(_ notes: [VaultPath], throughLevels levels: Int) async throws -> Set<VaultPath> {
-        try await databasePool.read { database in
+        try await readOnAReader { database in
             var embeddingNotes: Set<VaultPath> = []
             var notesThisLevel = notes
             for _ in 0..<levels where !notesThisLevel.isEmpty {
@@ -81,7 +81,7 @@ extension VaultIndex {
 
     /// The resolver the graph uses, for tests that compare it with `resolve`.
     func graphLinkResolver() throws -> GraphLinkResolver {
-        try databasePool.read { database in try GraphLinkResolver(database: database) }
+        try readThroughTheWriter { database in try GraphLinkResolver(database: database) }
     }
 
     static func isExternalLink(_ target: String) -> Bool {
