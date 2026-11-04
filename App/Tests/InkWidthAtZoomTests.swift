@@ -6,8 +6,8 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -348,12 +348,17 @@ final class InkWidthAtZoomTests: XCTestCase {
 
     /// The Pencil's first touch while reading draws (HUNT-024): the recognizer tells the page's
     /// canvas's own drawing recognizer of it.
+    ///
+    /// The strokes wait for the canvas to draw at the PDF's fitted zoom: it took that zoom a moment
+    /// after opening, which on a busy machine came under the third stroke, whose stand-in touches
+    /// do not hold the change back, and PencilKit dropped the stroke.
     func testThePencilsFirstTouchWhileReadingDraws() async throws {
         let (canvas, pdfView, window) = try await hostedPageCanvas(named: "FirstTouch")
         defer { window.isHidden = true; window.rootViewController = nil }
         let session = try XCTUnwrap(canvas.annotationCoordinator?.session)
         session.isWriting = false
         try await waitUntil("reading") { !canvas.isUserInteractionEnabled }
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         let recognizer = try XCTUnwrap(pdfView.annotationCoordinator?.pencilTouchWhileReadingRecognizer)
         XCTAssertNotNil(recognizer.drawingRecognizerUnderTouch)
         canvas.drawingPolicy = .pencilOnly
@@ -366,6 +371,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         let drawnEnabled = try await SynthesizedStrokes.draw(on: canvas, through: line, in: window, touchType: .pencil)
         print("INK-WIDTH first touch: told directly, interaction on: \(drawnEnabled != nil)")
         canvas.isUserInteractionEnabled = false
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
         let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: line, in: window, touchType: .pencil, toldTo: recognizer)
         print("INK-WIDTH first touch: through the recognizer: \(drawnStroke != nil) state \(recognizer.state.rawValue) interaction \(canvas.isUserInteractionEnabled) writing \(session.isWriting)")
         XCTAssertNotNil(drawnStroke, "The touch that switched to writing is a stroke")

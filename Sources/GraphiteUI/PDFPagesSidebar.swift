@@ -5,8 +5,8 @@
  * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 02/11/2026
+ * Version: 0.11
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -276,6 +276,12 @@ struct PDFCurrentPageFollower: View {
             .onAppear {
                 hasAppeared = true
                 scrollToCurrentPage(animated: false)
+            }
+            // A scroll asked for before the list has a height is lost, and the list stays at page 1:
+            // the list appearing before its first layout, as on a busy machine, is scrolled again
+            // once it has a height.
+            .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > 0 } action: { hasHeight in
+                if hasHeight { scrollToCurrentPage(animated: false) }
             }
             .task(id: session.currentPageIndex) {
                 guard hasAppeared else { return }

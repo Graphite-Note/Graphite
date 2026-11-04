@@ -5,8 +5,8 @@
  * Description: Several plugin-drawn base embeds in the app's own panes on the simulator.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -171,18 +171,21 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
     /// Waits for the two embeds of the mode just entered. A new mode's embeds are new blocks, and the old mode's stay
     /// until SwiftUI takes them down, which on a slow machine is well after the mode changed: what `earlierBlocks` names
     /// must be gone, or these waits would be answered by the embeds being replaced.
+    ///
+    /// Each embed is a web view of its own, measured once its web content process has drawn the plugin's copy. On a
+    /// loaded runner WebKit took 31 seconds to launch those processes, so the waits allow a minute.
     private func waitForEmbeds(in controller: UIViewController, host: CommunityPluginHost, replacing earlierBlocks: Set<String> = []) async throws {
-        try await waitUntil(timeoutSeconds: 30) {
+        try await waitUntil("both embeds have the plugin's copy", timeoutSeconds: 60) {
             let joined = self.copies(in: host).joined()
             return host.shownCodeBlocks.keys.allSatisfy { blockIdentifier in !earlierBlocks.contains(blockIdentifier) }
                 && joined.contains("First year week") && joined.contains("Second year week")
         }
-        try await waitUntil(timeoutSeconds: 15) {
+        try await waitUntil("both embeds' web views are shown", timeoutSeconds: 60) {
             let webViews = self.descendants(of: controller.view, matching: WKWebView.self).filter { webView in webView !== host.webView && webView.window != nil }
             return webViews.count == 2 && webViews.allSatisfy { webView in webView.bounds.height > 150 }
         }
         // Each is as tall as what the plugin drew: a heading, a button and one 124 point row, not a spinner's height.
-        try await waitUntil(timeoutSeconds: 15) {
+        try await waitUntil("both embeds are as tall as what the plugin drew", timeoutSeconds: 60) {
             let heights = host.shownCodeBlocks.values.map(\.height)
             return heights.count == 2 && heights.allSatisfy { height in height > 150 && height < 400 }
         }
