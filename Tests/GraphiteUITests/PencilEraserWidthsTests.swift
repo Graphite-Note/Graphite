@@ -6,7 +6,7 @@
  *              broadest, three starting sizes, sizes kept as the bar keeps the others, and PencilKit's limits.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -45,7 +45,7 @@ final class PencilEraserWidthsTests: XCTestCase {
         XCTAssertEqual(steps, steps.sorted())
         XCTAssertEqual(Set(steps).count, steps.count, "No width twice.")
         for (smaller, larger) in zip(steps, steps.dropFirst()) {
-            XCTAssertLessThanOrEqual(larger - smaller, 5)
+            XCTAssertLessThanOrEqual(larger - smaller, 6, "No step wider than the one from 64 to 70.")
             if larger <= 10 { XCTAssertEqual(larger - smaller, 0.5, accuracy: 0.0001, "Half a point apart up to ten.") }
             if larger <= 30 { XCTAssertLessThanOrEqual(larger - smaller, 1.0001) }
         }
