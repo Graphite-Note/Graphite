@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.38
- * Date: 02/11/2026
+ * Version: 0.39
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -395,7 +395,8 @@ private struct CorePluginsSettingsPage: View {
                     }
                 }
             } footer: {
-                Text("Turning a plugin off hides it in Graphite. It never changes your notes.")
+                Text("Turning a plugin off hides it in Graphite. It never changes your notes. These switches are kept on this device, for every vault; "
+                    + "Obsidian's own list of core plugins is not read, since the two apps have different plugins.")
                     .formFooterAlignment()
             }
         }
@@ -487,7 +488,7 @@ private struct DrawingsSettingsPage: View {
             }
             // An iPhone cannot be written on with Apple Pencil, so the Pencil's options are the iPad's.
             #if canImport(UIKit)
-            if UIDevice.current.userInterfaceIdiom == .pad {
+            if SettingsDevice.current.writesWithApplePencil {
                 Section {
                     Picker("Tools", selection: $preferences.pencilToolbarStyle) {
                         ForEach(PencilToolbarStyle.allCases) { style in Text(style.title).tag(style) }
@@ -495,7 +496,7 @@ private struct DrawingsSettingsPage: View {
                 } header: {
                     Text("Pencil Tools")
                 } footer: {
-                    Text("The floating palette is the system's: every tool of Apple Notes, and it can be moved or minimized. The fixed bar is one row above the page: your drawing tools, the eraser and the lasso, three widths, and your colors from Settings › Colors. Tap the tool in use again to make it any ink of Apple Notes, in any width and opacity, or to add another tool. In a window too narrow for the bar, the palette is used.")
+                    Text("The floating palette is the system's: every tool of Apple Notes, and it can be moved or minimized. The fixed bar is one row above the page: your drawing tools, the eraser and the lasso, three widths, and your colors from Settings › Colors. Tap the tool in use again to make it any ink of Apple Notes, in any width and opacity, or to add another tool. In a window too narrow for the bar, the palette is used. A split always uses the fixed bar, so each side keeps its tools; with the sidebar open, the floating palette can cover the sidebar's lower part: drag it aside, minimize it, or choose the fixed bar.")
                         .formFooterAlignment()
                 }
                 Section {

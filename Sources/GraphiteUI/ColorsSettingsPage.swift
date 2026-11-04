@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: Settings > Colors: the palette notes and the Pencil tools offer, and the highlighter colors.
  *
- * Authors: Félix Chevalier
- * Version: 0.4
- * Date: 02/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -121,7 +121,7 @@ struct ColorsSettingsPage: View {
             Text("Format › Color writes the hex color, as the Colors plugin for Obsidian does (`~={#e93147}text=~`), so notes look the same in both "
                 + "apps. A note written with a name, as in `~={red}text=~`, takes the color of that name here, so renaming or removing a color "
                 + "changes it.\n\nThe same colors are the Favorite Colors of the Pencil tools, for drawings and PDFs. A highlighter has its own, "
-                + "below.")
+                + "below. The palettes are kept on this device, for every vault.")
                 .formFooterAlignment()
         }
     }

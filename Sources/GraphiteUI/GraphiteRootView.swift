@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.62
- * Date: 02/11/2026
+ * Version: 0.63
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -832,16 +832,14 @@ private struct CreateDocumentSheet: View {
         #if os(macOS)
         .frame(minWidth: 380, minHeight: 180)
         #else
-        .frame(minWidth: 360, minHeight: 320)
+        // No minimum width: Slide Over is 320 points wide, and a phone's sheet takes the screen's width.
+        .frame(minHeight: 320)
         #endif
         .onAppear { isNameFocused = true }
     }
 
     /// An empty name is allowed: the file is then called "Untitled", as in Obsidian.
-    private var chosenName: String {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmedName.isEmpty ? kind.untitledName : trimmedName
-    }
+    private var chosenName: String { kind.chosenName(typed: name) }
 
     private var nameProblem: String? {
         FileNameRules.problem(with: chosenName, isNote: kind == .note)

@@ -6,8 +6,8 @@
  *              technology reads, tapped as a finger taps and scrolled to the row wanted.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 02/11/2026
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 
 #if os(iOS)
@@ -54,13 +54,16 @@ class SettingsHostedTestCase: XCTestCase {
         if !link.accessibilityActivate() { await tap(link) }
     }
 
-    func host(_ settings: some View) throws -> UIHostingController<AnyView> {
+    /// Shows the view in a window of the whole screen, or of `size` with `horizontalSizeClass`: a compact width on the
+    /// iPad simulator lays Settings out as an iPhone's, which GitHub's runs have no simulator for.
+    func host(_ settings: some View, size: CGSize? = nil, horizontalSizeClass: UIUserInterfaceSizeClass? = nil) throws -> UIHostingController<AnyView> {
         window?.isHidden = true
         window?.rootViewController = nil
         let controller = UIHostingController(rootView: AnyView(settings))
+        if let horizontalSizeClass { controller.traitOverrides.horizontalSizeClass = horizontalSizeClass }
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = scene.coordinateSpace.bounds
+        window.frame = size.map { size in CGRect(origin: .zero, size: size) } ?? scene.coordinateSpace.bounds
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window

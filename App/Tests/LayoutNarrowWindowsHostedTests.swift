@@ -3,7 +3,7 @@
  * ------------------------------------------
  * Layer: Tests
  * Description: Hosted tests of the layout in narrow windows: tools beside a split, the tool row's forms, a phone held
- *              sideways and the smallest zoom.
+ *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
  * Version: 0.3
@@ -267,6 +267,35 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         XCTAssertLessThan(firstPageTop(), 40, "The first page still starts at the top of the narrowed pane.")
     }
 
+    /// HUNT-263 as it was seen: a split in portrait, then the iPad turned to landscape and back. At each size the
+    /// first page of the narrowed PDF starts at the top of its pane, with no empty band above it.
+    func testThePDFStartsAtTheTopOfASplitPaneAfterTurningToLandscapeAndBack() async throws {
+        let directory = try makeDirectory("SplitBandTurned")
+        let (workspace, session) = try await pdfWorkspace(in: directory)
+        let (window, _) = try host(workspace, size: CGSize(width: 834, height: 1194), horizontalSizeClass: .regular)
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
+        func measure() -> CGFloat {
+            guard let pdfView = session.pdfView, pdfView.window === window, let page = session.document.page(at: 0) else { return .infinity }
+            return pdfView.bounds.width * 1_000 + pdfView.convert(page.bounds(for: .cropBox), from: page).minY
+        }
+        func firstPageTop() -> CGFloat {
+            guard let pdfView = session.pdfView, let page = session.document.page(at: 0) else { return .infinity }
+            return pdfView.convert(page.bounds(for: .cropBox), from: page).minY
+        }
+        workspace.splitRight()
+        try await waitUntil("the split narrows the pane") { (session.pdfView?.window === window) && (session.pdfView?.bounds.width ?? 1_000) < 500 }
+        try await waitUntilSettled("the narrowed PDF has laid out in portrait") { measure() }
+        XCTAssertLessThan(firstPageTop(), 40, "The first page starts at the top of the narrowed pane in portrait.")
+        for (size, orientation) in [(CGSize(width: 1194, height: 834), "landscape"), (CGSize(width: 834, height: 1194), "portrait again")] {
+            window.frame = CGRect(origin: .zero, size: size)
+            try await waitUntil("the PDF's pane follows the window to \(orientation)") { session.pdfView?.window === window }
+            try await waitUntilSettled("the PDF has laid out in \(orientation)") { measure() }
+            attachScreenshot(of: window, named: "Split PDF, \(orientation)")
+            XCTAssertLessThan(firstPageTop(), 40, "In \(orientation) the first page starts at the top of its pane, with no band above it.")
+        }
+    }
+
     /// HUNT-275: touching the other side of a split moves nothing on the side touched. A note beside a PDF, in a
     /// portrait iPad, has the same top whether or not its side has the focus.
     func testANoteBesideAPDFKeepsItsTopWhetherOrNotItsSideHasTheFocus() async throws {
@@ -469,11 +498,26 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         add(attachment)
     }
 
+    /// The symbol images shown in the scene's windows, by identity, to tell the ones a menu adds.
+    private func shownSymbolImageViews(in scene: UIWindowScene) -> [UIImageView] {
+        func symbols(in view: UIView) -> [UIImageView] {
+            guard !view.isHidden, view.alpha > 0.01 else { return [] }
+            let own = (view as? UIImageView).map { imageView in imageView.image?.isSymbolImage == true ? [imageView] : [] } ?? []
+            return own + view.subviews.flatMap(symbols)
+        }
+        return scene.windows.filter { window in !window.isHidden }.flatMap(symbols)
+    }
+
     /// HUNT-280: the icons of the bar's three-dot menu read in dark appearance. The bars take the label color, the
-    /// documents keep the accent. The picture is what proves it; the contrast is checked where the menu's icons can be found.
+    /// documents keep the accent. The menu is opened, and each icon it adds must have an effective tint (the color
+    /// UIKit draws a template symbol in) of at least 3 to 1 against the dark menu; the accent's dark blue was about 1.5.
     func testTheThreeDotMenusIconsReadInDarkAppearance() async throws {
         let directory = try makeDirectory("DarkMenu")
         let (workspace, session) = try await pdfWorkspace(in: directory)
+        // A dark blue accent, as the vault of the report had; it is the vault's, so nothing is stored on the device.
+        let previousVaultAccentHex = workspace.preferences.vaultAccentHex
+        workspace.preferences.vaultAccentHex = "#1E3A8A"
+        defer { workspace.preferences.vaultAccentHex = previousVaultAccentHex }
         let windowScene = try scene
         let size = CGSize(width: 834, height: 1194)
         let (window, _) = try host(workspace, size: size, horizontalSizeClass: .regular)
@@ -486,36 +530,40 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         }
         let bar = try XCTUnwrap(descendants(of: window, matching: UINavigationBar.self).first { bar in !bar.isHidden && showsMore(bar) })
         let accent = try XCTUnwrap(UIColor.graphiteAccent(hex: workspace.preferences.accentHex))
-        XCTAssertGreaterThan(darkContrast(of: try XCTUnwrap(bar.tintColor), against: accent), 1.1, "The bar does not take the accent, whose icons were dark blue on the dark menu.")
         // The menu's material in dark appearance, about this gray; 3 to 1 is what a graphic needs to be made out (WCAG 1.4.11).
         let platter = UIColor(white: 0.17, alpha: 1)
+        XCTAssertGreaterThan(darkContrast(of: try XCTUnwrap(bar.tintColor), against: accent), 1.1, "The bar does not take the accent, whose icons were dark blue on the dark menu.")
 
-        XCTAssertNil(SynthesizedTouches.unavailableReason)
-        var moreButtonFrame: CGRect?
+        var moreImageView: UIImageView?
         func findMore(_ view: UIView) {
-            if let imageView = view as? UIImageView, imageView.image?.description.contains("ellipsis") == true {
-                moreButtonFrame = imageView.convert(imageView.bounds, to: window)
-            }
+            if let imageView = view as? UIImageView, imageView.image?.description.contains("ellipsis") == true { moreImageView = imageView }
             view.subviews.forEach(findMore)
         }
         findMore(bar)
-        let frame = try XCTUnwrap(moreButtonFrame)
+        let more = try XCTUnwrap(moreImageView)
+        XCTAssertGreaterThanOrEqual(darkContrast(of: more.tintColor, against: platter), 3, "The bar's own ••• reads: \(more.tintColor.description)")
+
+        let symbolsBefore = Set(shownSymbolImageViews(in: windowScene).map(ObjectIdentifier.init))
+        func menuIcons() -> [UIImageView] {
+            shownSymbolImageViews(in: windowScene).filter { imageView in !symbolsBefore.contains(ObjectIdentifier(imageView)) }
+        }
+        // A finger's tap on •••, as the screen delivers it; where that does not open the menu, the button's own
+        // accessibility action, as VoiceOver opens it.
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        let frame = more.convert(more.bounds, to: window)
         let middle = CGPoint(x: frame.midX, y: frame.midY)
         await SynthesizedTouches(window: window).move(paths: [(middle, middle)], steps: 1, stepSeconds: 0.03, holdSeconds: 0.05)
-
-        // The menu's icons are image views inside UIKit's menu, whose class names say so.
-        func menuIcons() -> [UIImageView] {
-            func icons(in view: UIView, insideMenu: Bool) -> [UIImageView] {
-                let isMenu = insideMenu || String(describing: type(of: view)).contains("Menu")
-                let own = isMenu ? [view].compactMap { candidate in candidate as? UIImageView }.filter { icon in icon.image?.isSymbolImage == true } : []
-                return own + view.subviews.flatMap { child in icons(in: child, insideMenu: isMenu) }
-            }
-            return windowScene.windows.flatMap { sceneWindow in icons(in: sceneWindow, insideMenu: false) }
+        try? await waitUntil("the menu opens from a tap", timeoutSeconds: 5) { menuIcons().count >= 3 }
+        if menuIcons().count < 3 {
+            let button = sequence(first: more as UIView) { view in view.superview }.first { view in view is UIControl || view.isAccessibilityElement }
+            _ = button?.accessibilityActivate()
         }
-        try? await waitUntil("the menu opens", timeoutSeconds: 5) { menuIcons().count >= 3 }
+        try await waitUntil("the menu opens and shows its icons", timeoutSeconds: 10) { menuIcons().count >= 3 }
         attachScreenshotOfEveryWindow(in: windowScene, size: size, named: "Three-dot menu of a PDF, dark appearance")
-        // Where UIKit's menu icons cannot be found, the picture attached is the check.
-        for icon in menuIcons() {
+        let icons = menuIcons()
+        print("HUNT-280: \(icons.count) menu icons, tints \(icons.map { icon in icon.tintColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)).description })")
+        XCTAssertGreaterThanOrEqual(icons.count, 3, "The menu's icons were found, so their color is checked, not left to a picture.")
+        for icon in icons {
             XCTAssertGreaterThanOrEqual(darkContrast(of: icon.tintColor, against: platter), 3, "A menu icon reads: \(icon.image?.description ?? "")")
         }
     }

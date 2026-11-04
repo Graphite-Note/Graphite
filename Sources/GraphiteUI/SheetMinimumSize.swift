@@ -6,8 +6,8 @@
  *              on an iPhone, in Slide Over or in a narrow split, where it takes the width it is given.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -19,6 +19,16 @@ extension View {
     func sheetMinimumSize(width: CGFloat, height: CGFloat) -> some View {
         #if os(macOS)
         frame(minWidth: width, minHeight: height)
+        #else
+        self
+        #endif
+    }
+
+    /// The least and the first size of a sheet on the Mac, which opens a sheet at its ideal size. An iOS sheet takes
+    /// the room it is given: a minimum of 420 to 480 points of height was taller than a phone held sideways (HUNT-272).
+    func sheetSize(minimumWidth: CGFloat, idealWidth: CGFloat, minimumHeight: CGFloat, idealHeight: CGFloat) -> some View {
+        #if os(macOS)
+        frame(minWidth: minimumWidth, idealWidth: idealWidth, minHeight: minimumHeight, idealHeight: idealHeight)
         #else
         self
         #endif

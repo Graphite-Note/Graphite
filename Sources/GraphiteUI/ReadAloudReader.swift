@@ -5,8 +5,8 @@
  * Description: The Read Aloud reader's sheets: the player, the range, section and note pickers.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -44,7 +44,7 @@ struct ReadAloudReader: View {
             }
             .safeAreaInset(edge: .bottom) { playbackControls }
         }
-        .frame(minWidth: 320, idealWidth: 560, minHeight: 480, idealHeight: 760)
+        .sheetSize(minimumWidth: 320, idealWidth: 560, minimumHeight: 480, idealHeight: 760)
         .sheet(isPresented: $showsScanReview) {
             if let snapshot = reader.recognizedPDFPage, let identifier = reader.recognizedPageIdentifier {
                 ReadAloudScanReview(snapshot: snapshot, initialWordRange: reader.recognizedWordRange) { corrections, words in
@@ -258,7 +258,7 @@ struct ReadAloudScanReview: View {
             }
         }
         .onAppear { firstWordIndex = initialWordRange?.lowerBound; lastWordIndex = initialWordRange?.upperBound }
-        .frame(minWidth: 320, idealWidth: 560, minHeight: 420, idealHeight: 680)
+        .sheetSize(minimumWidth: 320, idealWidth: 560, minimumHeight: 420, idealHeight: 680)
     }
 }
 
@@ -309,7 +309,7 @@ struct ReadAloudSectionPicker: View {
                 }
             }
         }
-        .frame(minWidth: 320, idealWidth: 480, minHeight: 320, idealHeight: 600)
+        .sheetSize(minimumWidth: 320, idealWidth: 480, minimumHeight: 320, idealHeight: 600)
     }
 }
 
@@ -340,7 +340,7 @@ struct ReadAloudPDFSectionPicker: View {
             .navigationTitle("Read Section Pages")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
-        .frame(minWidth: 320, idealWidth: 480, minHeight: 320, idealHeight: 600)
+        .sheetSize(minimumWidth: 320, idealWidth: 480, minimumHeight: 320, idealHeight: 600)
     }
 }
 
@@ -417,6 +417,6 @@ struct ReadAloudPDFRangePicker: View {
             }
         }
         .onAppear { firstPage = min(max(1, startingPageIndex + 1), max(1, pageCount)); lastPage = max(firstPage, pageCount) }
-        .frame(minWidth: 320, minHeight: 260)
+        .sheetMinimumSize(width: 320, height: 260)
     }
 }
