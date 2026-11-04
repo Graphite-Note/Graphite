@@ -2,15 +2,15 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-03.
+Last updated: 2026-11-04.
 
 ## Bug hunt fixes: 2026-11-02
 
 The 306 items of [Bug-hunt-todo.md](Bug-hunt-todo.md) are worked through. That file is the record: it says per item what was built, which test covers it and what is still to be checked.
 
-- **State:** 229 ticked (227 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone, each now proved by a test), 78 open, HUNT-307 among them. Of the open ones, 77 carry a fix and name the check they wait for. HUNT-007 has no fix: it was not reproduced and no cause was found, and it waits for a loop on a device. Eight open items ask the owner a question.
+- **State:** 233 ticked (231 fixed and checked by a test or a simulator pass, 2 dropped because the fault was gone, each now proved by a test), 74 open. Of the open ones, 73 carry a fix and name the check they wait for: 11 a hosted test written on 2026-11-04 that GitHub runs, the rest a device, a look or Instruments, each now said as a check of about a minute. HUNT-007 has no fix: it was not reproduced and no cause was found, and it waits for a loop on a device. Eight open items ask the owner a question.
 - **Automated tests:** the full package suite passes on the merged code on the Mac. The hosted iPad suite passes on GitHub (457 tests, 41 skipped; run 41515768957).
-- **HUNT-307 (2026-11-04):** a PDF page's canvas takes touches while its stored ink is decoded; strokes drawn meanwhile are recorded after the stored strokes as one undoable edit, held back while a stroke is under way, and merged at once by a save. Covered by two hosted tests in `PDFPageInkReadingTests`, compiled here and run on GitHub.
+- **HUNT-307 (2026-11-04):** a PDF page's canvas takes touches while its stored ink is decoded; strokes drawn meanwhile are recorded after the stored strokes as one undoable edit, held back while a stroke is under way, and merged at once by a save. Covered by two hosted tests in `PDFPageInkReadingTests`, which passed on GitHub (run 41757028883, commit fec72bf4).
 - **Not run on this Mac:** the hosted iPad tests. Local runs never start the test runner, with or without other builds running, so only GitHub runs them. They run on an iPad simulator only, so what they prove about the iPhone is limited. `testAFontSizeStep…` can pass through a fallback, so it doesn't prove VoiceOver works, and the iPad half of `testALabelSits…` checks the field's position, not that the label is drawn.
 - **Not checked:** nothing here was tried with a real Pencil, iPad or iPhone, including the ink width at zoom (HUNT-004) and PDF stutter (HUNT-015, HUNT-017). Speed fixes are proved by counts of work on generated data, not by timings, and not on the owner's vault.
 
