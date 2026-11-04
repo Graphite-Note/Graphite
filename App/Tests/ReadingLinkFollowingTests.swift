@@ -1,3 +1,13 @@
+/**
+ * File: ReadingLinkFollowingTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: A tap on a link in the hosted reading view follows it, and a tap on a tag searches for it.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
 #if os(iOS)
 import XCTest
 import SwiftUI
@@ -67,6 +77,39 @@ final class ReadingLinkFollowingTests: XCTestCase {
         touches.end()
         try await waitUntil("the link opens Geneva", timeoutSeconds: 5) { workspace.markdownSession?.path.rawValue == "Geneva.md" }
         attachScreenshot(named: "After the tap")
+    }
+
+    /// HUNT-137: in a vault with no theme a #tag in the reading view is styled and a tap on it shows the sidebar's
+    /// search for the tag, as a tag in Live Preview does.
+    func testATapOnATagInTheReadingViewSearchesForItWithoutATheme() async throws {
+        if let reason = SynthesizedTouches.unavailableReason {
+            XCTFail(reason)
+            return
+        }
+        let workspace = try await makeWorkspace(notes: ["Lecture.md": "# Lecture\n\nFiled under #project/alpha for the week.\n", "Other.md": "#project/alpha\n"])
+        // The vault has no .obsidian folder, so no theme: the case that showed tags as plain text.
+        await workspace.open(try VaultPath("Lecture.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        session.viewMode = .reading
+        _ = try host(workspace)
+        let controller = try XCTUnwrap(window?.rootViewController)
+        let tag = try await element(in: controller) { element in
+            (element.accessibilityLabel ?? "").contains("#project/alpha") && element.accessibilityTraits.contains(.link)
+        }
+        let window = try XCTUnwrap(window)
+        let tagPoint = CGPoint(x: tag.accessibilityFrame.minX + 12, y: tag.accessibilityFrame.midY)
+        try await waitUntil("the text selection overlay covers the tag") {
+            window.hitTest(tagPoint, with: nil).map(Self.isTextSelectionView) ?? false
+        }
+        attachScreenshot(named: "A tag in the reading view without a theme")
+        let searchFocusRequestBefore = workspace.searchFocusRequest
+
+        let touches = SynthesizedTouches(window: window)
+        touches.begin(at: [tagPoint])
+        touches.end()
+        try await waitUntil("the tap searches for the tag", timeoutSeconds: 5) { workspace.searchQuery == "tag:#project/alpha" }
+        XCTAssertGreaterThan(workspace.searchFocusRequest, searchFocusRequestBefore, "The sidebar's search comes forward")
+        XCTAssertEqual(workspace.markdownSession?.path.rawValue, "Lecture.md", "The tap opens no note")
     }
 
     // MARK: Helpers
