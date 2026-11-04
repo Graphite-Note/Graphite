@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.34
+ * Version: 0.35
  * Date: 04/11/2026
  */
 
@@ -273,6 +273,7 @@ struct GraphitePDFView: UIViewRepresentable {
             return keptView
         }
         let view = GraphitePDFDisplayView()
+        view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
         view.displayMode = .singlePageContinuous
         view.displayDirection = .vertical
         view.autoScales = true
@@ -360,8 +361,15 @@ final class GraphitePDFDisplayView: PDFView {
         return PDFPagePlace(pageIndex: pageIndex, fractionFromTop: Double(place.fractionFromTop))
     }
 
+    /// The shown document's change count (`PDFSession.changeVersion`).
+    var contentChangeCount: () -> Int = { 0 }
+    /// Draws pictures and other annotations at the screen's resolution, as on the Mac (HUNT-320);
+    /// tests stop it to measure what PDFKit draws by itself.
+    lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+
     override func didMoveToWindow() {
         super.didMoveToWindow()
+        if window == nil { annotationLayerResolution.stop() } else { annotationLayerResolution.start() }
         // The tool picker needs a first responder in a window.
         annotationCoordinator?.windowDidChange()
     }
