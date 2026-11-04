@@ -5,8 +5,8 @@
  * Description: An open PDF: its pages, edits, saving and conflicts.
  *
  * Authors: Bahey Shalash
- * Version: 0.18
- * Date: 02/11/2026
+ * Version: 0.19
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -261,6 +261,7 @@ final class PDFSession {
     /// change runs them first.
     @ObservationIgnored private var pendingInkRecordWriters: [ObjectIdentifier: () -> Void] = [:]
     @ObservationIgnored private var backgroundInkRecordWriters: [ObjectIdentifier: () async -> Void] = [:]
+    @ObservationIgnored private var unrecordedInkRecorders: [ObjectIdentifier: () -> Void] = [:]
     /// Told when a page's text boxes change, keyed by the view drawing them
     /// (`registerTextBoxChangeObserver`).
     @ObservationIgnored private var textBoxChangeObservers: [ObjectIdentifier: () -> Void] = [:]
@@ -346,8 +347,8 @@ final class PDFSession {
     /// not to a view or a page canvas, so it survives the view being rebuilt (switching
     /// tabs) and page canvases being released far from the page shown, and never mixes
     /// with another document's steps. See `PDFEditHistory.swift`.
-    let undoManager: UndoManager = {
-        let undoManager = UndoManager()
+    let undoManager: PDFUndoManager = {
+        let undoManager = PDFUndoManager()
         undoManager.levelsOfUndo = PDFSession.maximumUndoSteps
         return undoManager
     }()
@@ -396,6 +397,7 @@ final class PDFSession {
         pageCount = loaded.document.pageCount
         structureEntriesLostByPageChanges = loaded.structureEntriesLostByPageChanges
         undoAvailability.follow(undoManager)
+        undoManager.beforeHistoryStep = { [weak self] in self?.recordUnrecordedInk() }
     }
 
     /// - Parameters:
@@ -454,6 +456,19 @@ final class PDFSession {
     func unregisterPendingInkRecordWriter(for owner: AnyObject) {
         pendingInkRecordWriters[ObjectIdentifier(owner)] = nil
         backgroundInkRecordWriters[ObjectIdentifier(owner)] = nil
+        unrecordedInkRecorders[ObjectIdentifier(owner)] = nil
+    }
+
+    /// Registers what records the ink a view's canvases show and their history has not recorded yet, run before every
+    /// step of the history (`PDFUndoManager`); `unregisterPendingInkRecordWriter` removes it with the view's writers.
+    func registerUnrecordedInkRecorder(for owner: AnyObject, _ record: @escaping () -> Void) {
+        unrecordedInkRecorders[ObjectIdentifier(owner)] = record
+    }
+
+    /// Records, as a step of its own, ink a canvas shows that the history does not know, so the next Undo takes back
+    /// what the person sees last and every step meets the drawing it recorded (HUNT-005).
+    func recordUnrecordedInk() {
+        for record in unrecordedInkRecorders.values { record() }
     }
 
     func writePendingInkRecords() {

@@ -7,7 +7,7 @@
  *              compares only what was touched.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 04/11/2026
  */
 #if canImport(UIKit)
@@ -194,6 +194,18 @@ extension PDFAnnotationCoordinator {
             return
         }
         canvasViewDrawingDidChange(canvas)
+    }
+
+    /// Before a step of the history: ink a canvas shows that its history has not recorded is recorded now, as a step of
+    /// its own, so Undo takes back what the person sees last and the step undone meets the drawing it recorded
+    /// (HUNT-005). A canvas whose stroke is still under way is left: that stroke is not in its drawing yet. A selection
+    /// being dragged shows the drawing without its strokes; it ends first and puts them back, as an ink step's undo does.
+    func recordUnrecordedInkBeforeHistoryStep() {
+        for canvas in canvasesByPage.values where !canvas.hasStrokeUnderWay
+            && (canvas.mayHoldUnrecordedInk || canvas.drawing.strokes.count != canvas.recordedDrawing.strokes.count) {
+            canvas.endInteractionsBeforeHistory()
+            recordInkIfTheCanvasChanged(canvas)
+        }
     }
 
     /// The same for what happens at every save: the comparison fingerprints every stroke of
