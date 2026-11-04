@@ -2,89 +2,14 @@
  * File: InkSelection.swift
  * ------------------------
  * Layer: UI
- * Description: The geometry of Graphite's lasso: which strokes and pictures a loop takes, and how a
- *              moved or resized selection frame carries them along.
+ * Description: Graphite's lasso on a canvas (`InkSelectionController`) and the palette's switch for
+ *              Graphite's own tools; the lasso's geometry and rules are `InkLasso`.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 04/11/2026
  */
 import Foundation
-import CoreGraphics
-import GraphiteCore
-
-/// The geometry of Graphite's lasso: which strokes and pictures a loop takes, and how a
-/// moved or resized selection frame carries them along.
-enum InkLasso {
-    /// A stroke is taken when at least this much of it lies inside the loop, so a loop
-    /// drawn around a word does not take the long line passing under it. A picture is
-    /// taken when this much of its area does.
-    static let minimumEnclosedFraction = 0.6
-    /// A loop shorter than this, in screen points, is a tap.
-    static let minimumLoopLength: CGFloat = 24
-    /// A tap takes the stroke that passes within this distance of it, in screen points.
-    static let tapReach: CGFloat = 14
-    /// How many points along each side of a picture are tested against the loop.
-    static let pictureSamplesPerSide = 6
-
-    /// Whether the point is inside the closed loop through the points, by the even-odd rule.
-    static func isPoint(_ point: CGPoint, insideLoop loop: [CGPoint]) -> Bool {
-        guard loop.count >= 3, var previous = loop.last else { return false }
-        var isInside = false
-        for current in loop {
-            if (current.y > point.y) != (previous.y > point.y),
-               point.x < (previous.x - current.x) * (point.y - current.y) / (previous.y - current.y) + current.x {
-                isInside.toggle()
-            }
-            previous = current
-        }
-        return isInside
-    }
-
-    /// The share of the points that lies inside the loop; zero for no points.
-    static func enclosedFraction(of points: [CGPoint], inLoop loop: [CGPoint]) -> Double {
-        guard !points.isEmpty else { return 0 }
-        return Double(points.filter { point in isPoint(point, insideLoop: loop) }.count) / Double(points.count)
-    }
-
-    static func length(of loop: [CGPoint]) -> CGFloat {
-        zip(loop, loop.dropFirst()).reduce(0) { total, pair in total + hypot(pair.1.x - pair.0.x, pair.1.y - pair.0.y) }
-    }
-
-    /// The smallest upright rectangle around the points; null for none.
-    static func bounds(of points: [CGPoint]) -> CGRect {
-        points.reduce(CGRect.null) { bounds, point in bounds.union(CGRect(origin: point, size: .zero)) }
-    }
-
-    /// The loop of a rectangular lasso dragged from one corner to the opposite one.
-    static func rectangleLoop(from start: CGPoint, to end: CGPoint) -> [CGPoint] {
-        [start, CGPoint(x: end.x, y: start.y), end, CGPoint(x: start.x, y: end.y)]
-    }
-
-    /// Points spread evenly over a rectangle turned about its middle, to measure how much
-    /// of a picture a loop encloses.
-    static func samplePoints(ofRectangle rectangle: CGRect, turnedBy rotationRadians: Double) -> [CGPoint] {
-        let middle = CGPoint(x: rectangle.midX, y: rectangle.midY)
-        let count = pictureSamplesPerSide
-        return (0..<count).flatMap { row in
-            (0..<count).map { column in
-                let point = CGPoint(x: rectangle.minX + rectangle.width * (CGFloat(column) + 0.5) / CGFloat(count),
-                                    y: rectangle.minY + rectangle.height * (CGFloat(row) + 0.5) / CGFloat(count))
-                return PictureRotation.point(point, turnedBy: rotationRadians, about: middle)
-            }
-        }
-    }
-
-    /// The transform that carries what `frame` surrounds to where `newFrame` surrounds it:
-    /// scaled in proportion by the change in width, and moved.
-    static func transform(from frame: CGRect, to newFrame: CGRect) -> CGAffineTransform {
-        guard frame.width > 0, frame.height > 0 else { return .identity }
-        let scale = newFrame.width / frame.width
-        return CGAffineTransform(translationX: -frame.minX, y: -frame.minY)
-            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            .concatenating(CGAffineTransform(translationX: newFrame.minX, y: newFrame.minY))
-    }
-}
 
 /// Graphite's own tools that the canvases following the floating palette take instead of
 /// drawing: its lasso, its laser pointer, the Read Aloud pen and the text tool. The palette's
@@ -337,15 +262,16 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             rectangleStart = nil
             loopPoints = [start, point]
         }
-        showLoop(isFinished: false)
+        showLoop(.beingDrawn)
     }
 
     func loopDidMove(to point: CGPoint) {
         if let rectangleStart { loopPoints = InkLasso.rectangleLoop(from: rectangleStart, to: point) } else { loopPoints.append(point) }
-        showLoop(isFinished: false)
+        showLoop(.beingDrawn)
     }
 
-    /// Takes what the loop encloses, or marks its area.
+    /// Takes what the loop encloses, closed from where the hand lifted back to where it came
+    /// down, or marks its area; either way the loop then shows closed.
     func loopDidEnd(at point: CGPoint) {
         loopDidMove(to: point)
         let loop = loopPoints
@@ -366,14 +292,12 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         loopLayer.superlayer == nil ? nil : (loopLayer, loopHaloLayer)
     }
 
-    /// A loop shorter than a tap's reach on screen, or a box thinner than that, is a slip.
+    /// A loop too short or enclosing too little on screen once closed, or a box thinner than a
+    /// tap's reach, is a slip (`InkLasso`'s rules).
     private func isLargeEnough(_ loop: [CGPoint], isRectangle: Bool) -> Bool {
         let scale = screenPointsPerCanvasPoint
-        if isRectangle {
-            let bounds = InkLasso.bounds(of: loop)
-            return min(bounds.width, bounds.height) * scale >= InkLasso.tapReach
-        }
-        return InkLasso.length(of: loop) * scale >= InkLasso.minimumLoopLength
+        return isRectangle ? InkLasso.isRectangleLoopLargeEnough(loop, screenPointsPerLoopPoint: scale)
+            : InkLasso.isFreehandLoopLargeEnough(loop, screenPointsPerLoopPoint: scale)
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
@@ -391,15 +315,24 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         }
     }
 
-    /// The loop as it is drawn, or the area it marked: a dashed line in the accent as it reads
-    /// on white over a white halo, the same width and dashes on screen at any zoom, around a
-    /// faint tint once the area is marked, or while a rectangle is dragged.
-    private func showLoop(isFinished: Bool) {
+    /// What the shown loop is: one being drawn, the area a loop marked, or the loop that took
+    /// the selection.
+    private enum LoopAppearance {
+        case beingDrawn, markedArea, aroundSelection
+    }
+
+    /// The loop as it is drawn, or once the hand lifts: a dashed line in the accent as it reads
+    /// on white over a white halo, the same width and dashes on screen at any zoom. Once lifted
+    /// it shows closed, from its last point back to its first, as it selected; around a faint
+    /// tint when it marked an area, as while a rectangle is dragged.
+    private func showLoop(_ appearance: LoopAppearance) {
         guard let firstPoint = loopPoints.first else { return }
         let path = CGMutablePath()
         path.move(to: firstPoint)
         for point in loopPoints.dropFirst() { path.addLine(to: point) }
-        if isFinished || rectangleStart != nil { path.closeSubpath() }
+        let isRectangleBeingDragged = appearance == .beingDrawn && rectangleStart != nil
+        if appearance != .beingDrawn || isRectangleBeingDragged { path.closeSubpath() }
+        let isTinted = appearance == .markedArea || isRectangleBeingDragged
         let canvasPointsPerScreenPoint = 1 / screenPointsPerCanvasPoint
         let lineColor = LassoColors.line(for: canvas.traitCollection)
         let lineWidth = canvas.traitCollection.accessibilityContrast == .high ? Self.increasedContrastLoopLineWidth : Self.loopLineWidth
@@ -407,7 +340,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         CATransaction.setDisableActions(true)
         loopLayer.path = path
         loopLayer.strokeColor = lineColor.cgColor
-        loopLayer.fillColor = isFinished || rectangleStart != nil ? lineColor.withAlphaComponent(LassoColors.areaFillOpacity).cgColor : nil
+        loopLayer.fillColor = isTinted ? lineColor.withAlphaComponent(LassoColors.areaFillOpacity).cgColor : nil
         loopLayer.lineWidth = lineWidth * canvasPointsPerScreenPoint
         loopLayer.lineDashPattern = Self.loopDashPattern.map { length in NSNumber(value: Double(length * canvasPointsPerScreenPoint)) }
         loopHaloLayer.path = path
@@ -426,34 +359,40 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         loopHaloLayer.removeFromSuperlayer()
     }
 
-    /// Selects the strokes and pictures that lie mostly inside a loop given in the canvas's
-    /// own coordinates. A loop that takes nothing marks its area, whose menu takes a picture.
+    /// Selects the strokes and pictures enough of which lies inside a loop given in the
+    /// canvas's own coordinates, closed from its last point back to its first (`InkLasso`'s
+    /// rules), and shows the loop closed around them. A loop that takes nothing marks its
+    /// area, whose menu takes a picture.
     func selectContents(enclosedBy loop: [CGPoint]) {
-        let drawingLoop = loop.map(drawingPoint(fromCanvas:))
+        let drawingLoop = InkLasso.closed(loop.map(drawingPoint(fromCanvas:)))
         let loopBounds = InkLasso.bounds(of: drawingLoop)
         guard !loopBounds.isNull else { return }
         let strokeIndices = canvas.drawing.strokes.enumerated().compactMap { strokeIndex, stroke -> Int? in
             guard stroke.renderBounds.intersects(loopBounds) else { return nil }
-            return InkLasso.enclosedFraction(of: Self.samplePoints(of: stroke), inLoop: drawingLoop) >= InkLasso.minimumEnclosedFraction ? strokeIndex : nil
+            return InkLasso.takesStroke(sampledAt: Self.samplePoints(of: stroke), inLoop: drawingLoop) ? strokeIndex : nil
         }
         let pictureIdentifiers = (content?.lassoPictures() ?? []).compactMap { picture -> String? in
             guard picture.boundingFrame.intersects(loopBounds) else { return nil }
-            let samples = InkLasso.samplePoints(ofRectangle: picture.frame, turnedBy: picture.rotationRadians)
-            return InkLasso.enclosedFraction(of: samples, inLoop: drawingLoop) >= InkLasso.minimumEnclosedFraction ? picture.identifier : nil
+            return InkLasso.takesPicture(framed: picture.frame, turnedBy: picture.rotationRadians, inLoop: drawingLoop) ? picture.identifier : nil
         }
         if strokeIndices.isEmpty, pictureIdentifiers.isEmpty {
             markArea(drawingLoop)
         } else {
             select(strokeIndices, pictures: pictureIdentifiers)
+            guard hasSelection else { return }
             lassoedLoop = drawingLoop
+            loopPoints = drawingLoop.map { point in CGPoint(x: point.x * zoomScale, y: point.y * zoomScale) }
+            showLoop(.aroundSelection)
         }
     }
 
-    /// Where a stroke runs, in the drawing's coordinates. A dot, such as the dot of an "i",
-    /// has a single point, from which PencilKit interpolates none; it is its own point then,
-    /// or the middle of its ink, so a loop around it takes it.
+    /// Where a stroke runs, in the drawing's coordinates, at evenly spaced points: 4 points
+    /// apart, closer on a short stroke (`InkLasso.strokeSampleSpacing(forPathLength:)`). A dot,
+    /// such as the dot of an "i", has a single point, from which PencilKit interpolates none;
+    /// it is its own point then, or the middle of its ink, so a loop around it takes it.
     private static func samplePoints(of stroke: PKStroke) -> [CGPoint] {
-        let interpolated = stroke.path.interpolatedPoints(by: .distance(4)).map { point in point.location.applying(stroke.transform) }
+        let spacing = InkLasso.strokeSampleSpacing(forPathLength: InkLasso.length(of: stroke.path.map(\.location)))
+        let interpolated = stroke.path.interpolatedPoints(by: .distance(spacing)).map { point in point.location.applying(stroke.transform) }
         if !interpolated.isEmpty { return interpolated }
         let controlPoints = stroke.path.map { point in point.location.applying(stroke.transform) }
         if !controlPoints.isEmpty { return controlPoints }
@@ -487,7 +426,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         selectedStrokeIndices = Array(Set(strokeIndices.filter { index in (0..<strokeCount).contains(index) })).sorted()
         let existingPictures = Set((content?.lassoPictures() ?? []).map(\.identifier))
         selectedPictureIdentifiers = pictureIdentifiers.filter(existingPictures.contains)
-        lassoedLoop = nil
+        forgetLassoedLoop()
         guard hasSelection else { return clearSelection() }
         takeSelectionFromOtherCanvases()
         showSelectionFrame()
@@ -501,7 +440,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         lassoedLoop = drawingLoop
         isShowingLassoedArea = true
         loopPoints = drawingLoop.map { point in CGPoint(x: point.x * zoomScale, y: point.y * zoomScale) }
-        showLoop(isFinished: true)
+        showLoop(.markedArea)
         let bounds = InkLasso.bounds(of: loopPoints)
         canvasMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: MenuIdentifier.area as NSString, sourcePoint: CGPoint(x: bounds.midX, y: bounds.minY)))
     }
@@ -511,6 +450,13 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         isShowingLassoedArea = false
         lassoedLoop = nil
         removeLoop()
+    }
+
+    /// The selection is no longer the loop's: it was made otherwise, moved or turned. The loop
+    /// shown closed around it goes, and a picture of the selection is of the selection itself.
+    private func forgetLassoedLoop() {
+        lassoedLoop = nil
+        if !isShowingLassoedArea { removeLoop() }
     }
 
     private func takeSelectionFromOtherCanvases() {
@@ -587,11 +533,11 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             let expectedFrame = frame(around: selectedStrokes, pictures: selectedPictures)
             if abs(scale - shownScreenScale) > 0.001 || selectionView.frame != expectedFrame { showSelectionFrame() }
         }
-        if isShowingLassoedArea, let lassoedLoop {
+        if let lassoedLoop, loopLayer.superlayer != nil {
             let shownLoop = lassoedLoop.map { point in CGPoint(x: point.x * zoomScale, y: point.y * zoomScale) }
             if abs(scale - shownScreenScale) > 0.001 || shownLoop != loopPoints {
                 loopPoints = shownLoop
-                showLoop(isFinished: true)
+                showLoop(isShowingLassoedArea ? .markedArea : .aroundSelection)
             }
         }
     }
@@ -627,6 +573,8 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     /// A drag of the selection's frame began; for tests too, which cannot send touches.
     func selectionDragDidBegin() {
         guard let selectionView, hasSelection else { return }
+        // The loop stays where it was drawn; the frame carries the selection away from it.
+        removeLoop()
         let drawing = canvas.drawing
         let pictures = selectedPictures
         dragStart = (drawing, pictures, selectionView.frame)
@@ -654,6 +602,10 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         selectionView?.dragPreview = nil
         content?.setLassoPicturesHidden([])
         if !selectedStrokeIndices.isEmpty { canvas.showWithoutRecording(dragStart.drawing) }
+        if let lassoedLoop {
+            loopPoints = lassoedLoop.map { point in CGPoint(x: point.x * zoomScale, y: point.y * zoomScale) }
+            showLoop(.aroundSelection)
+        }
     }
 
     /// Moves and resizes the selected strokes of a drawing so that the ink `frame` was
@@ -697,7 +649,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             let newFrames = Dictionary(uniqueKeysWithValues: pictures.map { picture in (picture.identifier, picture.frame.applying(transform)) })
             content?.moveLassoPictures(to: newFrames)
         }
-        lassoedLoop = nil
+        forgetLassoedLoop()
         if hasSelection { showSelectionFrame() }
     }
 
@@ -796,7 +748,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         guard !inkBounds.isNull else { return }
         let rotation = CGAffineTransform(translationX: inkBounds.midX, y: inkBounds.midY).rotated(by: -slant)
             .translatedBy(x: -inkBounds.midX, y: -inkBounds.midY)
-        lassoedLoop = nil
+        forgetLassoedLoop()
         replaceSelectedStrokes(in: canvas.drawing) { stroke in Self.stroke(stroke, ink: stroke.ink, movedBy: rotation) }
     }
 
