@@ -6,7 +6,7 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -180,6 +180,181 @@ final class InkWidthAtZoomTests: XCTestCase {
             print("INK-WIDTH drawing pencil 2.4 at zoom \(zoom): tool \((canvas.tool as? PKInkingTool)?.width ?? 0) size \(sizes.last ?? 0)")
         }
         for size in sizes { XCTAssertEqual(size, sizes[0], accuracy: 0.05) }
+    }
+
+    // MARK: Width on the screen at zoom 1, 2 and 3 (HUNT-004)
+
+    /// What one line drawn at one zoom showed on the screen, in points of the page: while the
+    /// touch was still down, once it had settled, and what PencilKit's stored stroke draws.
+    private struct LineShownOnScreen {
+        let label: String
+        let zoom: CGFloat
+        let pageRow: CGFloat
+        let widthWhileWriting: CGFloat
+        let settledWidth: CGFloat
+        let storedStrokeWidth: CGFloat
+    }
+
+    /// The ink of a horizontal line crossing a band of the window's columns, in the screen's
+    /// points: in each column the rows of ink, each counted by how much darker it is than the
+    /// paper (the column's middle value), averaged over the band. The band's picture comes too.
+    private func shownInkWidth(in window: UIWindow, around point: CGPoint, bandWidth: CGFloat, inkLevel: Double) throws -> (width: CGFloat, picture: UIImage) {
+        let area = CGRect(x: point.x - bandWidth / 2, y: point.y - 30, width: bandWidth, height: 60)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.screen.scale
+        let picture = UIGraphicsImageRenderer(bounds: area, format: format).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        let image = try XCTUnwrap(picture.cgImage)
+        var bytes = [UInt8](repeating: 0, count: image.width * image.height * 4)
+        let context = try XCTUnwrap(CGContext(data: &bytes, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                              space: XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        var inkPixelsPerColumn: [Double] = []
+        for column in 0..<image.width {
+            let levels = (0..<image.height).map { row in
+                let offset = (row * image.width + column) * 4
+                return (Double(bytes[offset]) + Double(bytes[offset + 1]) + Double(bytes[offset + 2])) / 3
+            }
+            let paper = levels.sorted()[levels.count / 2]
+            guard paper > inkLevel + 1 else { continue }
+            inkPixelsPerColumn.append(levels.reduce(0) { total, level in total + min(max((paper - level) / (paper - inkLevel), 0), 1) })
+        }
+        let averagePixels = inkPixelsPerColumn.isEmpty ? 0 : inkPixelsPerColumn.reduce(0, +) / Double(inkPixelsPerColumn.count)
+        return (CGFloat(averagePixels) / window.screen.scale, picture)
+    }
+
+    private func attach(_ picture: UIImage, named name: String) {
+        let attachment = XCTAttachment(image: picture)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// Brings a row of the page into view, well below the top of the PDF's view, and returns
+    /// the window's point of a point of the page on it.
+    private func showPageRow(_ pageRow: CGFloat, of page: PDFPage, in pdfView: PDFView, window: UIWindow) async throws -> (CGPoint) -> CGPoint {
+        let pageTop = page.bounds(for: .cropBox).maxY
+        let lineY = pageTop - pageRow
+        // PDFKit brings a rectangle in at the view's top: the line lands 200 points of the screen below it.
+        let aboveTheLine = 200 / pdfView.scaleFactor
+        pdfView.go(to: CGRect(x: 180, y: lineY - 20, width: 160, height: 20 + aboveTheLine), on: page)
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 350)
+        return { pagePoint in pdfView.convert(pdfView.convert(pagePoint, from: page), to: window) }
+    }
+
+    /// Draws a pen line 120 points of the page long at each zoom, each on its own row of the
+    /// page, through the real canvas, and measures it on the screen while the touch is down and
+    /// once it has settled. Ends at zoom 1 with every line shown, to be measured again.
+    private func linesShownOnScreen(_ ink: PencilInk, width: Double, firstRow: CGFloat,
+                                    canvas: PDFPageCanvasView, pdfView: GraphitePDFDisplayView, window: UIWindow) async throws -> [LineShownOnScreen] {
+        var preset = InkPreset(ink: ink)
+        preset.width = width
+        preset.colorHex = "#1c1c1e"
+        let inkLevel = Double(0x1c)
+        canvas.takeTool(from: PKToolPicker(), fixedTool: PencilToolSelection(kind: .ink, preset: preset, erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false))
+        let page = try XCTUnwrap(canvas.page)
+        var lines: [LineShownOnScreen] = []
+        for (zoomIndex, zoom) in ([1, 2, 3] as [CGFloat]).enumerated() {
+            let label = "\(ink) \(width) at zoom \(zoom)"
+            let pageRow = firstRow + CGFloat(zoomIndex) * 90
+            let lineY = page.bounds(for: .cropBox).maxY - pageRow
+            pdfView.scaleFactor = zoom
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
+            let windowPoint = try await showPageRow(pageRow, of: page, in: pdfView, window: window)
+            try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+            XCTAssertEqual(canvas.zoomScale, zoom, accuracy: 0.02, "The page's canvas draws at the zoom, \(label)")
+            let start = windowPoint(CGPoint(x: 200, y: lineY))
+            let end = windowPoint(CGPoint(x: 320, y: lineY))
+            let measuredPoint = windowPoint(CGPoint(x: 230, y: lineY))
+            let visibleArea = pdfView.convert(pdfView.bounds.inset(by: pdfView.safeAreaInsets), to: window)
+            XCTAssertTrue(visibleArea.contains(start) && visibleArea.contains(end), "The line is on screen, \(label)")
+            let underTheLine = try XCTUnwrap(window.hitTest(measuredPoint, with: nil))
+            XCTAssertTrue(underTheLine.isDescendant(of: pdfView), "Nothing covers the line, \(label): \(type(of: underTheLine))")
+            // The band the first half of the line has crossed when the touch is halfway.
+            let bandWidth = 30 * zoom
+            var widthWhileWriting: CGFloat = 0
+            let drawnStroke = try await SynthesizedStrokes.draw(on: canvas, through: SynthesizedStrokes.line(from: start, to: end, steps: 30), in: window) {
+                try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 60)
+                let shown = try self.shownInkWidth(in: window, around: measuredPoint, bandWidth: bandWidth, inkLevel: inkLevel)
+                widthWhileWriting = shown.width / zoom
+                self.attach(shown.picture, named: "While writing, \(label)")
+            }
+            let stroke = try XCTUnwrap(drawnStroke, "\(label) drew nothing")
+            try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 500)
+            let settled = try shownInkWidth(in: window, around: measuredPoint, bandWidth: bandWidth, inkLevel: inkLevel)
+            attach(settled.picture, named: "Settled, \(label)")
+            let storedStrokeWidth = try XCTUnwrap(SynthesizedStrokes.renderedWidth(of: stroke))
+            let line = LineShownOnScreen(label: label, zoom: zoom, pageRow: pageRow, widthWhileWriting: widthWhileWriting,
+                                         settledWidth: settled.width / zoom, storedStrokeWidth: storedStrokeWidth)
+            print("INK-WIDTH on screen \(label): while writing \(line.widthWhileWriting) settled \(line.settledWidth) stored stroke \(storedStrokeWidth) points of the page, screen scale \(window.screen.scale)")
+            lines.append(line)
+        }
+        pdfView.scaleFactor = 1
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 400)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        return lines
+    }
+
+    /// The page's canvas of a blank PDF, the PDF's view and its window, fingers drawing, for the
+    /// on-screen measures. The caller restores the finger preference and hides the window.
+    private func canvasForOnScreenWidths(named name: String) async throws -> (PDFPageCanvasView, GraphitePDFDisplayView, UIWindow) {
+        let (canvas, pdfView, window) = try await hostedPageCanvas(named: name)
+        pdfView.autoScales = false
+        return (canvas, pdfView, window)
+    }
+
+    /// The owner's complaint (HUNT-004): ink written while zoomed in is thicker on the page.
+    /// The same pen and monoline line, drawn through the real canvas at zoom 1, 2 and 3, is as
+    /// wide on the page once it has settled, measured in the screen's own pixels: as wide as
+    /// at zoom 1, as wide as its stored stroke draws, and as wide again at zoom 1 afterwards.
+    /// Before the fix pen 2.8 drew 1.60 times too wide at zoom 3 in the stored stroke.
+    func testInkWrittenAtZoomOneTwoAndThreeShowsEquallyWideOnTheScreenOnceSettledAndZoomedBackOut() async throws {
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (canvas, pdfView, window) = try await canvasForOnScreenWidths(named: "SettledWidthOnScreen")
+        defer { window.isHidden = true; window.rootViewController = nil }
+        let page = try XCTUnwrap(canvas.page)
+        for (inkIndex, inkCase) in ([(PencilInk.pen, 2.8), (PencilInk.monoline, 2)] as [(PencilInk, Double)]).enumerated() {
+            let lines = try await linesShownOnScreen(inkCase.0, width: inkCase.1, firstRow: 150 + CGFloat(inkIndex) * 300,
+                                                     canvas: canvas, pdfView: pdfView, window: window)
+            let atZoomOne = try XCTUnwrap(lines.first)
+            XCTAssertGreaterThan(atZoomOne.settledWidth, 0.5, "The line shows at zoom 1, \(atZoomOne.label)")
+            for line in lines {
+                XCTAssertEqual(line.settledWidth / atZoomOne.settledWidth, 1, accuracy: 0.15, "Settled on the screen as at zoom 1, \(line.label)")
+                XCTAssertEqual(line.settledWidth / line.storedStrokeWidth, 1, accuracy: 0.2, "On the screen as its stored stroke draws, \(line.label)")
+            }
+            // Back at zoom 1 every line shows as heavy as the one written there.
+            for line in lines {
+                let lineY = page.bounds(for: .cropBox).maxY - line.pageRow
+                let windowPoint = try await showPageRow(line.pageRow, of: page, in: pdfView, window: window)
+                let shown = try shownInkWidth(in: window, around: windowPoint(CGPoint(x: 260, y: lineY)), bandWidth: 60 * pdfView.scaleFactor, inkLevel: Double(0x1c))
+                attach(shown.picture, named: "Zoomed back out, \(line.label)")
+                let widthBackAtZoomOne = shown.width / pdfView.scaleFactor
+                print("INK-WIDTH on screen back at zoom 1, \(line.label): \(widthBackAtZoomOne) points of the page")
+                XCTAssertEqual(widthBackAtZoomOne / atZoomOne.settledWidth, 1, accuracy: 0.15, "Back at zoom 1, \(line.label)")
+            }
+        }
+    }
+
+    /// The same lines measured on the screen while the touch is still down, halfway along: the
+    /// ink PencilKit shows as it is written is as wide on the page at zoom 2 and 3 as at zoom 1,
+    /// and does not change weight when the touch lifts.
+    func testInkWrittenAtZoomOneTwoAndThreeShowsEquallyWideOnTheScreenWhileItIsWritten() async throws {
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (canvas, pdfView, window) = try await canvasForOnScreenWidths(named: "LiveWidthOnScreen")
+        defer { window.isHidden = true; window.rootViewController = nil }
+        for (inkIndex, inkCase) in ([(PencilInk.pen, 2.8), (PencilInk.monoline, 2)] as [(PencilInk, Double)]).enumerated() {
+            let lines = try await linesShownOnScreen(inkCase.0, width: inkCase.1, firstRow: 150 + CGFloat(inkIndex) * 300,
+                                                     canvas: canvas, pdfView: pdfView, window: window)
+            let atZoomOne = try XCTUnwrap(lines.first)
+            XCTAssertGreaterThan(atZoomOne.widthWhileWriting, 0.5, "The line shows while it is written at zoom 1, \(atZoomOne.label)")
+            for line in lines {
+                XCTAssertEqual(line.widthWhileWriting / atZoomOne.widthWhileWriting, 1, accuracy: 0.15, "While writing as at zoom 1, \(line.label)")
+                XCTAssertEqual(line.widthWhileWriting / line.settledWidth, 1, accuracy: 0.25, "No change of weight at the lift, \(line.label)")
+            }
+        }
     }
 
     // MARK: Sharp settled ink, and what a page may take

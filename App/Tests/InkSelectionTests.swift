@@ -6,7 +6,7 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.15
+ * Version: 0.16
  * Date: 04/11/2026
  */
 #if os(iOS)
@@ -155,6 +155,86 @@ final class InkSelectionTests: XCTestCase {
         canvas.inkSelection.selectContents(enclosedBy: loop.map { point in CGPoint(x: point.x * canvas.zoomScale, y: point.y * canvas.zoomScale) })
         XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
         XCTAssertFalse(canvas.inkSelection.isShowingLassoedArea)
+    }
+
+    /// HUNT-005 as the hunt met it: pen strokes, the lasso taking one by a loop of touches and a drag of its frame
+    /// moving it, then the highlighter, and Undo all the way back and Redo all the way forward. Each step is undone
+    /// exactly, with no "changed in a way this step does not know", through the real canvas and UIKit's touches.
+    func testUndoAndRedoWorkStepByStepAfterTheLassoAndTheHighlighter() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        UserDefaults.standard.set(false, forKey: EvenHighlighterPreference.key)
+        defer { UserDefaults.standard.removeObject(forKey: EvenHighlighterPreference.key) }
+        let restoreFingers = SynthesizedStrokes.letFingersDraw()
+        defer { restoreFingers() }
+        let (session, canvas, page) = try await openPageWithCanvas()
+        let pdfView = try XCTUnwrap(session.pdfView)
+        let window = try XCTUnwrap(canvas.window)
+        try await SynthesizedStrokes.waitForCanvasToDrawAtTheZoom(of: canvas, in: pdfView)
+        let toolPicker = PKToolPicker()
+        func choose(_ ink: PencilInk) {
+            canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .ink, preset: InkPreset(ink: ink), erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false))
+        }
+        func windowLine(atDrawingHeight height: CGFloat) -> [CGPoint] {
+            SynthesizedStrokes.line(from: canvas.convert(canvasPoint(CGPoint(x: 150, y: height), on: canvas), to: window),
+                                    to: canvas.convert(canvasPoint(CGPoint(x: 350, y: height), on: canvas), to: window))
+        }
+        var states: [[CGRect]] = [canvas.drawing.strokes.map(\.renderBounds)]
+        func recordState() { states.append(canvas.drawing.strokes.map(\.renderBounds)) }
+
+        choose(.pen)
+        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 200), in: window), "The first pen stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window), "The second pen stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+
+        // The lasso takes the first stroke, and its frame is dragged 90 points down the screen.
+        canvas.takeTool(from: toolPicker, fixedTool: PencilToolSelection(kind: .lasso, preset: InkPreset(ink: .pen), erasesWholeStrokes: true, eraserWidth: 18, isRulerActive: false))
+        XCTAssertTrue(canvas.selectsInk)
+        try await drawLoopOfTouches(around: canvas.drawing.strokes[0].renderBounds.insetBy(dx: -20, dy: -20), on: canvas, in: window)
+        XCTAssertEqual(canvas.inkSelection.selectedStrokeIndices, [0])
+        let frame = try XCTUnwrap(canvas.inkSelection.selectionFrame)
+        let frameMiddle = canvas.convert(CGPoint(x: frame.midX, y: frame.midY), to: window)
+        let boundsBeforeDrag = canvas.drawing.strokes[0].renderBounds
+        await SynthesizedTouches(window: window).drag(from: frameMiddle, to: CGPoint(x: frameMiddle.x, y: frameMiddle.y + 90))
+        try await waitUntil("the dragged stroke has moved") { canvas.drawing.strokes.count == 2 && canvas.drawing.strokes[0].renderBounds.minY > boundsBeforeDrag.minY + 20 }
+        endEvent(of: session.undoManager)
+        XCTAssertNil(session.errorMessage)
+        recordState()
+
+        // The highlighter, across the second stroke; choosing it ends the lasso.
+        choose(.highlighter)
+        XCTAssertFalse(canvas.selectsInk)
+        _ = try XCTUnwrap(try await SynthesizedStrokes.draw(on: canvas, through: windowLine(atDrawingHeight: 320), in: window), "The highlighter stroke")
+        endEvent(of: session.undoManager)
+        recordState()
+        XCTAssertEqual(canvas.drawing.strokes.last?.ink.inkType, .marker)
+        try await waitUntil("the page's annotations have every stroke") { page.annotations.filter { annotation in annotation.type == "Ink" }.count == 3 }
+
+        func assertShows(_ expected: [CGRect], _ step: String) {
+            let shown = canvas.drawing.strokes.map(\.renderBounds)
+            XCTAssertEqual(shown.count, expected.count, step)
+            for (shownBounds, expectedBounds) in zip(shown, expected) {
+                XCTAssertEqual(shownBounds.minY, expectedBounds.minY, accuracy: 0.5, step)
+                XCTAssertEqual(shownBounds.minX, expectedBounds.minX, accuracy: 0.5, step)
+            }
+        }
+        for stepIndex in stride(from: states.count - 2, through: 0, by: -1) {
+            XCTAssertTrue(session.undoAvailability.canUndo, "Undo is offered before step \(stepIndex)")
+            session.undoAvailability.undo()
+            endEvent(of: session.undoManager)
+            XCTAssertNil(session.errorMessage, "Undo back to step \(stepIndex)")
+            assertShows(states[stepIndex], "Undone to step \(stepIndex)")
+        }
+        XCTAssertEqual(page.annotations.filter { annotation in annotation.type == "Ink" }.count, 0, "Nothing is left on the page")
+        for stepIndex in 1..<states.count {
+            XCTAssertTrue(session.undoAvailability.canRedo, "Redo is offered before step \(stepIndex)")
+            session.undoAvailability.redo()
+            endEvent(of: session.undoManager)
+            XCTAssertNil(session.errorMessage, "Redo to step \(stepIndex)")
+            assertShows(states[stepIndex], "Redone to step \(stepIndex)")
+        }
     }
 
     /// A closed loop of a finger through UIKit's own event path, around a rectangle of the drawing, so it goes through

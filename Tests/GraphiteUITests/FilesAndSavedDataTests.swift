@@ -6,11 +6,12 @@
  *              temporary vault folders: renames and moves, windows on two vaults, versions, recovery.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import XCTest
+import PDFKit
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -253,6 +254,52 @@ final class FilesAndSavedDataTests: XCTestCase {
         let copyLocation = try await pdf.saveSeparateCopy(inFolder: vault.appendingPathComponent("Moved Folder"))
         XCTAssertEqual(copyLocation.deletingLastPathComponent().lastPathComponent, "Moved Folder")
         XCTAssertTrue(FileManager.default.fileExists(atPath: copyLocation.path))
+    }
+
+    /// A real rename of the PDF's folder, long enough to edit the PDF during it: 2,000 notes
+    /// link to the PDF, so the move rewrites them before the tab follows. The edit made while
+    /// the move ran used to go with the session the tab let go of.
+    func testAnEditOfAnOpenPDFMadeWhileItsFolderIsRenamedIsKeptInACopyBesideIt() async throws {
+        var files = ["Other.md": ""]
+        for number in 0..<2_000 { files["Notes/Note \(number).md"] = "[[Course/Handout.pdf]]" }
+        let vault = try makeVault(files: files)
+        let course = vault.appendingPathComponent("Course")
+        try FileManager.default.createDirectory(at: course, withIntermediateDirectories: true)
+        var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
+        let context = try XCTUnwrap(CGContext(course.appendingPathComponent("Handout.pdf") as CFURL, mediaBox: &mediaBox, nil))
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        let workspace = WorkspaceModel(processServices: processServices, clock: LiveApplicationClock())
+        try await workspace.openFolderAsVault(vault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        await workspace.open(try VaultPath("Course/Handout.pdf"))
+        let pdf = try XCTUnwrap(workspace.tabDocuments.values.compactMap(\.pdfSession).first)
+
+        await workspace.rename(try VaultPath("Course"), to: "Course 2026")
+        let question = try XCTUnwrap(workspace.pendingMove, "Graphite asks whether to update the 2,000 links")
+        // Made while the question is open: saved before anything moves.
+        try pdf.rotatePages([0], clockwise: true)
+        var hasMoveEnded = false
+        let answering = Task {
+            await workspace.resolve(question, updatesLinks: true)
+            hasMoveEnded = true
+        }
+        try await waitUntil("the edit made before the move is saved") { !pdf.hasUnsavedChanges }
+        XCTAssertFalse(hasMoveEnded, "The move is still rewriting links")
+        XCTAssertTrue(workspace.tabDocuments.values.contains { document in document.pdfSession === pdf }, "The tab still has the session")
+        // Made while the move runs.
+        try pdf.rotatePages([0], clockwise: true)
+        await answering.value
+
+        let movedFolder = vault.appendingPathComponent("Course 2026")
+        let movedHandout = try XCTUnwrap(PDFDocument(url: movedFolder.appendingPathComponent("Handout.pdf")))
+        XCTAssertEqual(movedHandout.page(at: 0)?.rotation, 90, "The edit saved before the move went with the file")
+        let pdfsBeside = try FileManager.default.contentsOfDirectory(at: movedFolder, includingPropertiesForKeys: nil).filter { location in location.pathExtension == "pdf" }
+        let rotations = pdfsBeside.compactMap { location in PDFDocument(url: location)?.page(at: 0)?.rotation }
+        XCTAssertTrue(rotations.contains(180), "The edit made during the move is kept: \(pdfsBeside.map(\.lastPathComponent)) turned \(rotations)")
+        XCTAssertTrue(workspace.errorMessage?.contains("saved separately") == true, "The message names the copy: \(workspace.errorMessage ?? "none")")
+        XCTAssertEqual(try text(of: "Notes/Note 1999.md", in: vault), "[[Course 2026/Handout.pdf]]")
     }
 
     // MARK: HUNT-100: a move that takes a while
