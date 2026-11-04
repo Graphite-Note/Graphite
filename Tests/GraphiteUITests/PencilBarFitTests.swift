@@ -6,7 +6,7 @@
  *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -39,14 +39,18 @@ final class PencilBarFitTests: XCTestCase {
         XCTAssertEqual(Layout.arrangement(forWidth: 1_194, holding: contents), .whole(.regular), "Sideways: everything, at the regular spacing.")
         XCTAssertEqual(Layout.arrangement(forWidth: 874, holding: contents), .whole(.tight), "Sideways beside the sidebar: everything, closer.")
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: contents), .whole(.tight), "Upright: everything, closer.")
-        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: contents), .compact(.tightest),
+        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: contents), .folded(.addImage),
                        "Upright beside the sidebar: every color and the ruler stay; the laser, text, Read Aloud, Shapes and Add Image go behind More.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 590, holding: contents), .folded(.occasionalTools),
+                       "Sideways in half the screen: only the laser, text and Read Aloud tools go behind More.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 540, holding: contents), .folded(.choicesAndShapes), "Then Other Color and Shapes; Add Image stays.")
         // The widths the bar is built at, which the hosted tests measure on the bar itself.
         XCTAssertEqual(try width(.whole(.regular), contents), 883)
         XCTAssertEqual(try width(.whole(.tight), contents), 761)
         XCTAssertEqual(try width(.whole(.tightest), contents), 635)
-        XCTAssertEqual(try width(.compact(.tight), contents), 605)
-        XCTAssertEqual(try width(.compact(.tightest), contents), 495)
+        XCTAssertEqual(try width(.folded(.occasionalTools), contents), 579)
+        XCTAssertEqual(try width(.folded(.choicesAndShapes), contents), 523)
+        XCTAssertEqual(try width(.folded(.addImage), contents), 495)
     }
 
     func testTheBarStaysWholeUprightWithThePlusThatAddsTheColorInUse() throws {
@@ -57,7 +61,8 @@ final class PencilBarFitTests: XCTestCase {
 
     func testTheSpacingAndTheDotsShrinkBeforeAnythingMovesIntoTheMoreControl() throws {
         let contents = pensBar()
-        XCTAssertEqual(Layout.preferredArrangements, [.whole(.regular), .whole(.tight), .whole(.tightest), .compact(.tight), .compact(.tightest)])
+        XCTAssertEqual(Layout.preferredArrangements, [.whole(.regular), .whole(.tight), .whole(.tightest),
+                                                      .folded(.occasionalTools), .folded(.choicesAndShapes), .folded(.addImage)])
         let widths = try Layout.preferredArrangements.map { arrangement in try width(arrangement, contents) }
         XCTAssertEqual(widths, widths.sorted(by: >), "Each form tried is narrower than the one before.")
         XCTAssertEqual(Layout.arrangement(forWidth: 700, holding: contents), .whole(.tightest), "Everything, mini colors, before any menu.")
@@ -67,7 +72,28 @@ final class PencilBarFitTests: XCTestCase {
         }
     }
 
-    // MARK: The compact form
+    // MARK: The folded forms
+
+    func testEachFoldStageMovesTheLeastUsedControlsFirstAndKeepsTheWritingOnesOnTheBar() throws {
+        let contents = pensBar()
+        let occasional = try XCTUnwrap(Layout.placement(of: .folded(.occasionalTools), holding: contents))
+        XCTAssertEqual(occasional.foldedTools, [.laser, .text, .readAloud])
+        XCTAssertTrue(occasional.showsToolChoices && occasional.showsOtherColor && occasional.showsShapes && occasional.showsAddImage)
+        let choices = try XCTUnwrap(Layout.placement(of: .folded(.choicesAndShapes), holding: contents))
+        XCTAssertFalse(choices.showsToolChoices || choices.showsOtherColor || choices.showsShapes)
+        XCTAssertTrue(choices.showsAddImage)
+        let addImage = try XCTUnwrap(Layout.placement(of: .folded(.addImage), holding: contents))
+        XCTAssertFalse(addImage.showsAddImage)
+        for placement in [occasional, choices, addImage] {
+            XCTAssertEqual(placement.shownTools, [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso])
+            XCTAssertTrue(placement.showsSwatches && placement.showsSizes && placement.showsRuler && placement.hasMoreControl)
+            XCTAssertEqual(placement.density, .tightest, "Folding comes after the mini colors.")
+        }
+        let whole = try XCTUnwrap(Layout.placement(of: .whole(.tight), holding: contents))
+        XCTAssertFalse(whole.hasMoreControl)
+        XCTAssertTrue(whole.foldedTools.isEmpty)
+        XCTAssertNil(Layout.placement(of: .condensed, holding: contents))
+    }
 
     func testTheCompactBarKeepsTheToolsAPersonWritesWithAndTheToolInUse() {
         let tools = Layout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: true)
