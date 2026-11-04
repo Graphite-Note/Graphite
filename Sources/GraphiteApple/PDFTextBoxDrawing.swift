@@ -1,3 +1,15 @@
+/**
+ * File: PDFTextBoxDrawing.swift
+ * -----------------------------
+ * Layer: Apple
+ * Description: What a laid-out text box on a PDF page draws, in the box's own space: its fill, its text in the fonts
+ *              Core Text chose, the text's underlines, and its border.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 import Foundation
 import CoreGraphics
 import CoreText
@@ -82,7 +94,7 @@ extension PDFTextBoxLayout {
     private static func font(of run: CTRun) -> CTFont? {
         let attributes = CTRunGetAttributes(run) as NSDictionary
         guard let value = attributes[kCTFontAttributeName as String] as AnyObject?, CFGetTypeID(value) == CTFontGetTypeID() else { return nil }
-        return unsafeBitCast(value, to: CTFont.self)
+        return unsafeDowncast(value, to: CTFont.self)
     }
 
     // MARK: Underlines and links

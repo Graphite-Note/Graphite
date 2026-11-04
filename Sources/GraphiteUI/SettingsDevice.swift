@@ -6,7 +6,7 @@
  *              nor a keyboard to speak of.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -19,7 +19,8 @@ import UIKit
 enum SettingsDevice {
     case mac, pad, phone
 
-    static var current: SettingsDevice {
+    /// On the main actor, as `UIDevice` is; Settings asks from its views.
+    @MainActor static var current: SettingsDevice {
         #if os(macOS)
         .mac
         #else

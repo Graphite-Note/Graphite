@@ -5,8 +5,8 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.73
- * Date: 02/11/2026
+ * Version: 0.74
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -524,8 +524,10 @@ final class MarkdownTextView: UITextView {
     private func insertDroppedItems(_ itemProviders: [NSItemProvider], dropRequest: InsertionRequest) {
         for provider in itemProviders {
             if provider.hasItemConformingToTypeIdentifier(UTType.graphiteVaultItem.identifier) {
+                // Read here, on the main actor: the item arrives on another thread.
+                let vaultRoot = currentVaultRoot
                 _ = provider.loadTransferable(type: VaultItemTransfer.self) { [weak self] result in
-                    guard case .success(let item) = result, let path = item.path(inVaultAt: self?.currentVaultRoot) else {
+                    guard case .success(let item) = result, let path = item.path(inVaultAt: vaultRoot) else {
                         Task { @MainActor in self?.reportUnreadableItem?() }
                         return
                     }

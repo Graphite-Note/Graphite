@@ -5,8 +5,8 @@
  * Description: Answers bases' questions about files from the index.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -32,7 +32,7 @@ extension VaultIndex {
     /// files passed the pre-filter.
     public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit) throws -> BaseRecordBatch {
         let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
-        return try databasePool.read { database in
+        return try readThroughTheWriter { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
             let paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE \(whereClause) ORDER BY path LIMIT ?", arguments: arguments + [boundedLimit + 1])
             var candidateCount = paths.count
@@ -46,7 +46,7 @@ extension VaultIndex {
 
     /// One file's record, for `this` or a file outside the query.
     public func baseRecord(at path: VaultPath) throws -> BaseFileRecord? {
-        try databasePool.read { database in try Self.records(forPaths: [path.rawValue], in: database).first }
+        try readThroughTheWriter { database in try Self.records(forPaths: [path.rawValue], in: database).first }
     }
 
     /// A provider for the evaluator. It reads the database synchronously, so use it

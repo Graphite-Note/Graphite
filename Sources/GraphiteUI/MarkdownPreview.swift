@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.48
+ * Version: 0.49
  * Date: 04/11/2026
  */
 
@@ -1967,7 +1967,8 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.tableCellStyle(ObsidianTableCellStyle(theme: theme))
                 .textual.blockQuoteStyle(ObsidianBlockQuoteStyle(theme: theme))
                 .tint(accent)
-                .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading, searchTag: tagSearch))
+                .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading,
+                                                                        searchTag: tagSearch?.search))
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
     }
@@ -2003,9 +2004,21 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
 
 }
 
+/// Opens a search for a tag the reading view's text links. Equal for the same provider: its
+/// owner makes a new closure at every update, and an environment value that compared unequal
+/// each time would draw the reading view's text again with it.
+struct ReadingTagSearch: Equatable {
+    let providerIdentity: ObjectIdentifier
+    let search: (String) -> Void
+
+    static func == (leftSearch: ReadingTagSearch, rightSearch: ReadingTagSearch) -> Bool {
+        leftSearch.providerIdentity == rightSearch.providerIdentity
+    }
+}
+
 extension EnvironmentValues {
     /// Opens a search for a tag the reading view's text links; nil where tags are not links.
-    @Entry var readingTagSearch: ((String) -> Void)? = nil
+    @Entry var readingTagSearch: ReadingTagSearch? = nil
 }
 
 extension EnvironmentValues {

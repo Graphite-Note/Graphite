@@ -4,9 +4,9 @@
  * Layer: Index
  * Description: Every note one of `propertyNames` places (`PlacedNote.propertyNames(vaultRoot:)`), for
  *
- * Authors: Félix Chevalier
- * Version: 0.3
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -19,7 +19,7 @@ extension VaultIndex {
     /// the cost follows the number of placed notes rather than the vault's size.
     public func placedNotes(propertyNames: [String] = PlacedNote.defaultPropertyNames) throws -> [PlacedNote] {
         guard !propertyNames.isEmpty else { return [] }
-        return try databasePool.read { database in
+        return try readThroughTheWriter { database in
             let condition = propertyNames.map { _ in "key = ? COLLATE NOCASE" }.joined(separator: " OR ")
             let rows = try Row.fetchAll(database, sql: "SELECT path, key, node FROM properties WHERE \(condition) ORDER BY path, position",
                                         arguments: StatementArguments(propertyNames))

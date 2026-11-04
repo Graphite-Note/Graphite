@@ -5,8 +5,8 @@
  * Description: Records a base query loaded, so the next query reads again only the files that changed.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -62,7 +62,7 @@ extension VaultIndex {
     public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit,
                             reusing previousRecords: LoadedBaseRecords) throws -> (batch: BaseRecordBatch, loadedRecords: LoadedBaseRecords) {
         let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
-        return try databasePool.read { database in
+        return try readThroughTheWriter { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
             let rows = try Row.fetchAll(database, sql: "SELECT path, size, modified, created, contentIndexed FROM files WHERE \(whereClause) ORDER BY path LIMIT ?",
                                         arguments: arguments + [boundedLimit + 1])
