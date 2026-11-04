@@ -2,7 +2,7 @@
 
 Created: 2026-11-01. Line numbers are those of commit `710283d3` (`origin/main`), frozen for the hunt; later commits move them.
 
-Status on 2026-11-04: 230 of 307 ticked (HUNT-307 added 2026-11-04), 77 open (76 of them fixed and waiting for the check they name, and HUNT-007, which was not reproduced; see each item). Full detail of each finding (evidence, second reader's reason, device checks): [Docs/solid/reviews/2026-11-01-bug-hunt.jsonl](solid/reviews/2026-11-01-bug-hunt.jsonl). Where each cause belongs in the rewrite: [Docs/solid/reviews/2026-11-01-bug-hunt.md](solid/reviews/2026-11-01-bug-hunt.md).
+Status on 2026-11-04: 229 of 307 ticked, 78 open (77 of them fixed and waiting for the check they name, and HUNT-007, which was not reproduced; see each item). Full detail of each finding (evidence, second reader's reason, device checks): [Docs/solid/reviews/2026-11-01-bug-hunt.jsonl](solid/reviews/2026-11-01-bug-hunt.jsonl). Where each cause belongs in the rewrite: [Docs/solid/reviews/2026-11-01-bug-hunt.md](solid/reviews/2026-11-01-bug-hunt.md).
 
 ## Request
 
