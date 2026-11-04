@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.33
+ * Version: 0.34
  * Date: 04/11/2026
  */
 
@@ -2024,6 +2024,7 @@ struct GraphitePDFView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> PDFView {
         let view = GraphiteMacPDFView()
+        view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high
@@ -2053,10 +2054,19 @@ struct GraphitePDFView: NSViewRepresentable {
     }
 }
 
-/// The Mac's PDF view, which comes back to a place once it has a size and tells where it is.
+/// The Mac's PDF view, which comes back to a place once it has a size and tells where it is,
+/// and draws pictures and ink at the screen's resolution (`PDFAnnotationLayerResolution`).
 final class GraphiteMacPDFView: PDFView {
     /// Where to show the PDF once laid out: PDFKit ignores a place asked for before.
     var pendingPlace: PDFPagePlace?
+    /// The shown document's change count (`PDFSession.changeVersion`).
+    var contentChangeCount: () -> Int = { 0 }
+    private lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if window == nil { annotationLayerResolution.stop() } else { annotationLayerResolution.start() }
+    }
 
     /// The page at the top edge and how far down it the edge is, measured on the page as
     /// shown. Nil before the view has shown its first place.
