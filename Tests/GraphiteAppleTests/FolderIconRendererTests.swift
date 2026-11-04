@@ -1,3 +1,13 @@
+/**
+ * File: FolderIconRendererTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: Folder icons drawn from a picture: centered in a frame, round, filling the folder's front face, turned.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import ImageIO
 import GraphiteCore
@@ -75,6 +85,6 @@ final class FolderIconRendererTests: XCTestCase {
         let icon = try XCTUnwrap(FolderIconRenderer.finderIcon(picture: square, layout: .onFolder, folderIcon: folder))
         XCTAssertEqual(icon.width, 100)
         XCTAssertEqual(try pixel(of: icon, x: 5, yFromTop: 57), [255, 0, 0, 255])
-        XCTAssertTrue(try FolderIconRenderer.finderIcon(picture: square, layout: .wholeIcon, folderIcon: folder) === square)
+        XCTAssertTrue(FolderIconRenderer.finderIcon(picture: square, layout: .wholeIcon, folderIcon: folder) === square)
     }
 }

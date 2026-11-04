@@ -12,7 +12,7 @@ final class PDFSessionPendingInkRecordTests: XCTestCase {
     private var directory: URL!
     private var location: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionPendingInkRecord", for: self).root
         location = directory.appendingPathComponent("Notebook.pdf")
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank), pageCount: 3).write(to: location)

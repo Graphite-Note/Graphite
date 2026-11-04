@@ -1,3 +1,13 @@
+/**
+ * File: ReadAloudPassagePreparationRenderAttemptTests.swift
+ * ---------------------------------------------------------
+ * Layer: Tests
+ * Description: Which voice says a passage, in which order the attempts go, and the revision that names the cached audio.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import GraphiteCore
 @testable import GraphiteVoices
@@ -53,7 +63,7 @@ private final class AcceptingFromAttemptAlignment: ReadAloudSpeechAligning, @unc
 final class ReadAloudPassagePreparationRenderAttemptTests: XCTestCase {
     private var folder: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         folder = try TemporaryVault.make(prefix: "RenderAttempts", for: self).root
     }
 

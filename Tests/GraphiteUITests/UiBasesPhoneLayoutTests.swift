@@ -1,8 +1,19 @@
+/**
+ * File: UiBasesPhoneLayoutTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: How the table, list, Kanban and map views fit a phone.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 @testable import GraphiteUI
 
 /// How the table, list, Kanban and map views fit a phone. An iPhone 17 Pro is 402 points
 /// wide; a base inside a note there is about 336.
+@MainActor
 final class UiBasesPhoneLayoutTests: XCTestCase {
     // MARK: Table
 

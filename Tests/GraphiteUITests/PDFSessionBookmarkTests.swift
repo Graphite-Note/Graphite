@@ -1,3 +1,14 @@
+/**
+ * File: PDFSessionBookmarkTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: A bookmark is a top-level outline item labelled "Page " plus the page's label (or its number), with
+ *              its destination at the top-left corner of the page as it is shown.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
+ */
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -11,7 +22,7 @@ import GraphiteTestSupport
 final class PDFSessionBookmarkTests: XCTestCase {
     private var directory: URL!
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         directory = try TemporaryVault.make(prefix: "PDFSessionBookmark", for: self).root
     }
 

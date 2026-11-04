@@ -1,3 +1,14 @@
+/**
+ * File: ClassDiagramCorpusTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: Mermaid's class diagram documentation examples, all read and laid out, so that none crashes and each
+ *              that is not drawn says why.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 @testable import MermaidDiagrams
 @testable import MermaidDiagramsBenchmark
@@ -20,7 +31,7 @@ final class ClassDiagramCorpusTests: XCTestCase {
                 let boxes = layout.classes.map(\.frame).reduce(CGRect.null) { bounds, frame in bounds.union(frame) }
                 XCTAssertTrue(CGRect(origin: .zero, size: layout.size).contains(boxes))
                 drawnCount += 1
-            } catch let error as ClassDiagramLayoutError {
+            } catch {
                 refusals.append(error)
             }
         }

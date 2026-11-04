@@ -1,3 +1,13 @@
+/**
+ * File: ObsidianMarkdownTextLinkActionTests.swift
+ * -----------------------------------------------
+ * Layer: Tests
+ * Description: The links of rendered Markdown that name files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 04/11/2026
+ */
 import XCTest
 import SwiftUI
 import GraphiteCore
@@ -13,7 +23,7 @@ final class ObsidianMarkdownTextLinkActionTests: XCTestCase {
     private var outsideFolder: URL!
     private var navigations: [(target: String, isWiki: Bool)] = []
 
-    override func setUpWithError() throws {
+    override func setUp() async throws {
         container = FileManager.default.temporaryDirectory.appendingPathComponent("ReadingLinks-\(UUID().uuidString)", isDirectory: true).resolvingSymlinksInPath()
         vault = container.appendingPathComponent("Vault", isDirectory: true)
         outsideFolder = container.appendingPathComponent("Vault-Neighbour", isDirectory: true)
@@ -25,7 +35,7 @@ final class ObsidianMarkdownTextLinkActionTests: XCTestCase {
         navigations = []
     }
 
-    override func tearDownWithError() throws {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: container)
     }
 
