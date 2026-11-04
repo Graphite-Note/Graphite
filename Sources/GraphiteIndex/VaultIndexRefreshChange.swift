@@ -6,8 +6,8 @@
  *              the backlinks show, so a view that shows none of it does not read the vault again.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -43,7 +43,7 @@ extension VaultIndex {
 
     /// Everything the vault-wide views read of these files, as text to compare.
     private func facts(of paths: [VaultPath]) throws -> (structure: [String], names: [String]) {
-        try databasePool.read { database in
+        try readThroughTheWriter { database in
             // A removed folder takes its files with it, which no listed path shows.
             let fileCount = try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0
             var structure = ["files:\(fileCount)"]

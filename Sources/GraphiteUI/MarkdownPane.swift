@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.65
- * Date: 01/11/2026
+ * Version: 0.66
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -87,7 +87,7 @@ struct MarkdownPane: View {
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
                 .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
-                .environment(\.readingTagSearch, searchTag)
+                .environment(\.readingTagSearch, tagSearch)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // The pane stays when the tab shows another note; its reading view does not.
@@ -422,12 +422,12 @@ struct MarkdownPane: View {
             // Read when a callout or table is drawn, never in a view's body, so typing does not draw them again.
             noteText: { [session] in session.text },
             toggleTask: { [session] location in session.toggleTask(at: location) },
-            searchTag: searchTag, noteSnapshots: noteSnapshots)
+            tagSearch: tagSearch, noteSnapshots: noteSnapshots)
     }
 
     /// Shows the notes with a tag in the sidebar's search, which a tag in the note opens.
-    private var searchTag: (String) -> Void {
-        { [workspace] tag in
+    private var tagSearch: ReadingTagSearch {
+        ReadingTagSearch(providerIdentity: ObjectIdentifier(workspace)) { [workspace] tag in
             workspace.searchForTag(tag)
             workspace.searchFocusRequest += 1
         }

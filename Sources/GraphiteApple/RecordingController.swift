@@ -5,7 +5,7 @@
  * Description: Records audio and video lectures into a recovery folder and saves them into the vault.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
+ * Version: 0.7
  * Date: 04/11/2026
  */
 
@@ -109,7 +109,9 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
         #if os(iOS)
         // AVAudioSession posts these on its own threads. The handlers are nonisolated and hop
         // to the main actor; a main-actor selector would trap on entry off the main thread.
-        NotificationCenter.default.addObserver(self, selector: #selector(handleInterruption), name: AVAudioSession.interruptionNotification, object: nil)
+        for name in AudioSessionInterruption.notificationNames {
+            NotificationCenter.default.addObserver(self, selector: #selector(handleInterruption), name: name, object: nil)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(handleRouteChange), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleMediaServicesReset), name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
         #endif
@@ -678,8 +680,7 @@ public final class RecordingController: NSObject, AVAudioRecorderDelegate {
 
     #if os(iOS)
     @objc private nonisolated func handleInterruption(_ notification: Notification) {
-        guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              AVAudioSession.InterruptionType(rawValue: rawType) == .began else { return }
+        guard AudioSessionInterruption(notification) == .began else { return }
         Task { @MainActor [weak self] in self?.interruptRecording(message: "Recording was interrupted. Resume when you are ready.") }
     }
     @objc private nonisolated func handleRouteChange(_ notification: Notification) {

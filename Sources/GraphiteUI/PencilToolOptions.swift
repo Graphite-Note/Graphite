@@ -1,3 +1,14 @@
+/**
+ * File: PencilToolOptions.swift
+ * -----------------------------
+ * Layer: UI
+ * Description: The Pencil bar's popovers for the tool in use: the width of one of its sizes, and the ink's options.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -26,11 +37,18 @@ struct PencilSizeEditor: View {
                 Text(PencilWidthText.millimeters(width))
                     .monospacedDigit()
                     .frame(minWidth: 64, alignment: .leading)
-                Slider(value: Binding(get: { width }, set: { newWidth in changeWidth(to: newWidth) }), in: widthRange)
+                widthSlider
                     .accessibilityLabel(title)
                     .accessibilityValue(PencilWidthText.millimeters(width))
             }
             .font(.callout)
+            if case .eraser = size {
+                let narrowestOnScreen = PencilEraserWidths.pencilKitWidthOnScreen.lowerBound.formatted()
+                Text("The eraser cuts no narrower than \(narrowestOnScreen) points of the screen. Zoom in to erase finer on the page.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(16)
         .frame(width: 320)
@@ -53,10 +71,18 @@ struct PencilSizeEditor: View {
         }
     }
 
-    private var widthRange: ClosedRange<Double> {
+    /// An ink's width moves smoothly. The eraser's moves from step to step (`PencilEraserWidths.steps`):
+    /// the fine widths are many and close together, so one letter can be erased, and the slider
+    /// is as easy to set to a half point as to a broad one.
+    @ViewBuilder private var widthSlider: some View {
         switch size {
-        case .ink: toolbox.presetInUse.ink.widthRange
-        case .eraser: PencilToolbox.eraserWidthRange
+        case .ink:
+            Slider(value: Binding(get: { width }, set: { newWidth in changeWidth(to: newWidth) }), in: toolbox.presetInUse.ink.widthRange)
+        case .eraser:
+            let lastStep = PencilEraserWidths.steps.count - 1
+            Slider(value: Binding(get: { Double(PencilEraserWidths.stepIndex(forWidth: width)) },
+                                  set: { position in changeWidth(to: PencilEraserWidths.steps[min(max(Int(position.rounded()), 0), lastStep)]) }),
+                   in: 0...Double(lastStep), step: 1)
         }
     }
 

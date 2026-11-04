@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: Settings > PostgreSQL Mirror: the server, a connection test, Copy Now and what the last copy did.
  *
- * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.3
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -65,9 +65,11 @@ struct PostgreSQLMirrorSettingsPage: View {
             Section {
                 field("Schema", prompt: PostgreSQLMirrorConfiguration.defaultSchemaName, text: $draft.schemaName)
             } footer: {
-                (Text("Graphite creates the schema if it is missing and keeps its tables there: notes, links, and the views notes_with_properties ")
-                    + Text("(one column per property) and, with PostGIS, links_on_map. ")
-                    + Text("Notes are copied a few seconds after they change; nothing is ever copied back into the vault."))
+                Text("""
+                    Graphite creates the schema if it is missing and keeps its tables there: notes, links, and the views notes_with_properties \
+                    (one column per property) and, with PostGIS, links_on_map. \
+                    Notes are copied a few seconds after they change; nothing is ever copied back into the vault.
+                    """)
                     .formFooterAlignment()
             }
             Section {
@@ -116,8 +118,10 @@ struct PostgreSQLMirrorSettingsPage: View {
             if let postGISVersion = server.postGISVersion {
                 Text("Connected to PostgreSQL \(server.version) with PostGIS \(postGISVersion).")
             } else {
-                Text("Connected to PostgreSQL \(server.version). ")
-                    + Text("PostGIS is not installed in this database: notes get a latitude and a longitude, without a geometry for map apps.")
+                Text("""
+                    Connected to PostgreSQL \(server.version). \
+                    PostGIS is not installed in this database: notes get a latitude and a longitude, without a geometry for map apps.
+                    """)
             }
         case .failed(let message):
             Text(message).foregroundStyle(.red)
@@ -140,8 +144,10 @@ struct PostgreSQLMirrorSettingsPage: View {
                 Text(Self.changes(in: report) + " · " + finishedAt.formatted(.relative(presentation: .named)))
                     .font(.caption).foregroundStyle(.secondary)
                 if !report.hasGeometry {
-                    (Text("Without PostGIS, notes have a latitude and a longitude but no geometry. ")
-                        + Text("Install it in the database (CREATE EXTENSION postgis) and the next copy adds one."))
+                    Text("""
+                        Without PostGIS, notes have a latitude and a longitude but no geometry. \
+                        Install it in the database (CREATE EXTENSION postgis) and the next copy adds one.
+                        """)
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }

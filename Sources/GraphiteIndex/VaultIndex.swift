@@ -5,8 +5,8 @@
  * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 02/11/2026
+ * Version: 0.10
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -265,7 +265,7 @@ public actor VaultIndex {
     /// Whether a scan of the whole vault ended since the index was made or emptied, on this launch
     /// or an earlier one: the index is complete but for what changed since.
     public nonisolated func hasFinishedAScan() async throws -> Bool {
-        try await databasePool.read { database in try Self.hasFinishedScanFact(in: database) }
+        try await readOnAReader { database in try Self.hasFinishedScanFact(in: database) }
     }
 
     private static func hasFinishedScanFact(in database: Database) throws -> Bool {
@@ -469,13 +469,13 @@ public actor VaultIndex {
     /// The files a link can mean from `source`, the one it means first (`getFirstLinkpathDest`
     /// in Obsidian is this list's first): `WikiLinkResolver.closestFirst`.
     public nonisolated func resolve(_ target: String, from source: VaultPath, isWiki: Bool = true) async throws -> [VaultPath] {
-        try await databasePool.read { database in try Self.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }
+        try await readOnAReader { database in try Self.resolvedPaths(target, from: source, isWiki: isWiki, in: database) }
     }
 
     /// The file each of these wikilinks means from `source`, in one read, as `resolve` chooses
     /// it; a link no file answers has no entry.
     public nonisolated func resolve(wikilinks targets: [String], from source: VaultPath) async throws -> [String: VaultPath] {
-        try await databasePool.read { database in
+        try await readOnAReader { database in
             var resolved: [String: VaultPath] = [:]
             for target in targets {
                 resolved[target] = try Self.resolvedPaths(target, from: source, isWiki: true, in: database).first
@@ -539,23 +539,23 @@ public actor VaultIndex {
 
     /// Number of indexed files in the vault.
     public nonisolated func fileCount() async throws -> Int {
-        try await databasePool.read { database in try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0 }
+        try await readOnAReader { database in try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0 }
     }
 
     /// Number of indexed files with this file name anywhere in the vault.
     public nonisolated func fileCount(named fileName: String) async throws -> Int {
-        try await databasePool.read { database in
+        try await readOnAReader { database in
             try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE folded_name = ?", arguments: [Self.foldedKey(fileName)]) ?? 0
         }
     }
 
     public nonisolated func outgoingLinks(from source: VaultPath) async throws -> [String] {
-        try await databasePool.read { database in try String.fetchAll(database,
+        try await readOnAReader { database in try String.fetchAll(database,
             sql: "SELECT DISTINCT target FROM links WHERE source = ? ORDER BY target LIMIT 200", arguments: [source.rawValue]) }
     }
 
     public nonisolated func backlinks(to destination: VaultPath) async throws -> [VaultPath] {
-        try await databasePool.read { database in try Self.backlinkSources(to: destination, includesPropertyLinks: false, in: database) }
+        try await readOnAReader { database in try Self.backlinkSources(to: destination, includesPropertyLinks: false, in: database) }
     }
 
     /// Every folded link target (`links.folded_target`, `property_links.folded_target`)
@@ -784,7 +784,7 @@ public actor VaultIndex {
     /// What a scan of one folder reports: what it changed, with the counts of the whole vault,
     /// which are what a window says.
     private func partialReport(of state: ScanState) throws -> IndexingReport {
-        let (fileCount, pendingFileCount) = try databasePool.read { database in
+        let (fileCount, pendingFileCount) = try readThroughTheWriter { database in
             (try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files") ?? 0,
              try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE contentIndexed != ? AND path LIKE '%.md'",
                  arguments: [IndexedContentState.indexed.rawValue]) ?? 0)
@@ -798,7 +798,7 @@ public actor VaultIndex {
     /// actor, so `refresh` cannot add a row between the read and the deletion. Reading the paths
     /// is all an unchanged vault costs here: nothing is written.
     private func pruneFilesNotSeen(_ seenPaths: Set<String>, inside folder: VaultPath?) throws -> Int {
-        let indexedPaths = try databasePool.read { database in
+        let indexedPaths = try readThroughTheWriter { database in
             guard let folder else { return try String.fetchAll(database, sql: "SELECT path FROM files") }
             // '0' follows '/' in code-unit order, so this range is exactly the paths inside the folder.
             return try String.fetchAll(database, sql: "SELECT path FROM files WHERE path > ? AND path < ?", arguments: [folder.rawValue + "/",
@@ -826,7 +826,7 @@ public actor VaultIndex {
 
     /// Written once: a later scan that finds the vault unchanged writes nothing at all.
     private func recordFinishedScan() throws {
-        guard try !databasePool.read({ database in try Self.hasFinishedScanFact(in: database) }) else { return }
+        guard try !readThroughTheWriter({ database in try Self.hasFinishedScanFact(in: database) }) else { return }
         try databasePool.write { database in
             try database.execute(sql: "INSERT OR IGNORE INTO index_facts (name, value) VALUES (?, 1)", arguments: [Self.finishedScanFact])
         }
@@ -899,7 +899,7 @@ public actor VaultIndex {
     /// asynchronous read per file cost more than the lookup itself.
     private func storedContentStates(of files: [ScannedFile]) throws -> [IndexedContentState?] {
         guard !files.isEmpty else { return [] }
-        return try databasePool.read { database in
+        return try readThroughTheWriter { database in
             let lookup = try database.cachedStatement(sql: "SELECT contentIndexed FROM files WHERE path = ? AND size = ? AND modified = ?")
             return try files.map { file in
                 try Int.fetchOne(lookup, arguments: [file.path.rawValue, file.size, file.modified.timeIntervalSince1970]).flatMap(IndexedContentState.init(rawValue:))

@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.15
- * Date: 01/11/2026
+ * Version: 0.16
+ * Date: 04/11/2026
  */
 
 import SwiftUI
@@ -255,7 +255,7 @@ struct LibraryView: View {
             Picker("Show", selection: Binding(get: { library.filter }, set: { filter in library.filter = filter })) {
                 ForEach(LibraryFilter.allCases) { filter in Label(filter.title, systemImage: filter.systemImage).tag(filter) }
             }
-            Picker("Sort By", selection: Binding(get: { vault.sortOrder }, set: actions.setSortOrder)) {
+            Picker("Sort By", selection: Binding(get: { vault.sortOrder }, set: { sortOrder in actions.setSortOrder(sortOrder) })) {
                 ForEach(FileSortOrder.allCases) { sortOrder in Text(sortOrder.title).tag(sortOrder) }
             }
             .pickerStyle(.menu)
@@ -408,7 +408,7 @@ struct LibraryPresentationSwitch: View {
     let choose: (LibraryPresentation) -> Void
 
     var body: some View {
-        Picker("Show Files As", selection: Binding(get: { presentation }, set: choose)) {
+        Picker("Show Files As", selection: Binding(get: { presentation }, set: { chosenPresentation in choose(chosenPresentation) })) {
             ForEach(LibraryPresentation.allCases) { presentation in
                 Label(presentation.title, systemImage: presentation.systemImage).tag(presentation)
             }

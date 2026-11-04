@@ -1,3 +1,15 @@
+/**
+ * File: ReadAloudSpeech.swift
+ * ---------------------------
+ * Layer: Apple
+ * Description: The system voice that reads a note aloud, and the session that walks its passages, reports the word
+ *              heard and stops at an interruption or a lost output.
+ *
+ * Authors: Bahey Shalash, felixchvl
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 import AVFoundation
 import Foundation
 #if os(iOS)
@@ -191,7 +203,9 @@ public final class AppleReadAloudSpeech: NSObject, ReadAloudSpeaking, AVSpeechSy
         self.rendersToDroppedBuffers = rendersToDroppedBuffers
         super.init()
         #if os(iOS)
-        NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted), name: AVAudioSession.interruptionNotification, object: nil)
+        for name in AudioSessionInterruption.notificationNames {
+            NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted), name: name, object: nil)
+        }
         NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted), name: AVAudioSession.routeChangeNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(audioInterrupted), name: AVAudioSession.mediaServicesWereResetNotification, object: nil)
         #endif
@@ -448,12 +462,10 @@ public final class AppleReadAloudSpeech: NSObject, ReadAloudSpeaking, AVSpeechSy
 
     #if os(iOS)
     @objc nonisolated private func audioInterrupted(_ notification: Notification) {
-        if notification.name == AVAudioSession.interruptionNotification {
-            guard let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
-            if type == .ended {
-                let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-                let shouldResume = AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)
+        let interruption = AudioSessionInterruption(notification)
+        if AudioSessionInterruption.notificationNames.contains(notification.name) {
+            guard let interruption else { return }
+            if case .ended(let shouldResume) = interruption {
                 Task { @MainActor [weak self] in
                     // The system deactivated the session during the interruption.
                     self?.ownsActiveAudioSession = false
@@ -467,7 +479,7 @@ public final class AppleReadAloudSpeech: NSObject, ReadAloudSpeaking, AVSpeechSy
             guard let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
                   AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable else { return }
         }
-        let isInterruption = notification.name == AVAudioSession.interruptionNotification
+        let isInterruption = interruption == .began
         Task { @MainActor [weak self] in
             guard let self else { return }
             // The system deactivates the session when an interruption begins, and often sends

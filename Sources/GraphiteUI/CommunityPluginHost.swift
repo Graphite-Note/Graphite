@@ -6,8 +6,8 @@
  *              Graphite.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.36
- * Date: 02/11/2026
+ * Version: 0.37
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -358,7 +358,7 @@ final class CommunityPluginHost {
     private(set) var isTurnedOnForVault = false
 
     func setTurnedOnForVault(_ isTurnedOn: Bool) async {
-        guard let vaultIdentifier, let workspace else { return }
+        guard let vaultIdentifier, workspace != nil else { return }
         consentDefaults.set(isTurnedOn, forKey: Self.consentKey(for: vaultIdentifier))
         isTurnedOnForVault = isTurnedOn
         if isTurnedOn {

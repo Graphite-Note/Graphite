@@ -1,3 +1,15 @@
+/**
+ * File: NeuralReadAloudSpeech.swift
+ * ---------------------------------
+ * Layer: Apple
+ * Description: Read Aloud's speech in both modes: the system voice in Quick mode, and passages a downloaded voice
+ *              rendered ahead in High Quality mode, paused by a lost output or an interruption.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 04/11/2026
+ */
+
 import Foundation
 import AVFoundation
 import Observation
@@ -49,10 +61,12 @@ public final class NeuralReadAloudSpeech: ReadAloudSpeaking {
         }
         player.engineConfigurationDidChange = { [weak self] in self?.audioOutputDidChange(.engineConfigurationChanged) }
         #if os(iOS)
-        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] notification in
-            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-            MainActor.assumeIsolated { self?.audioInterrupted(rawType: rawType, rawOptions: rawOptions) }
+        for name in AudioSessionInterruption.notificationNames {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                guard let interruption = AudioSessionInterruption(notification) else { return }
+                // Delivered on the main queue, which the observer was added with.
+                MainActor.assumeIsolated { self?.audioInterrupted(interruption) }
+            }
         }
         NotificationCenter.default.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] notification in
             let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
@@ -301,18 +315,16 @@ public final class NeuralReadAloudSpeech: ReadAloudSpeaking {
         }
     }
 
-    private func audioInterrupted(rawType: UInt?, rawOptions: UInt) {
-        guard !routesToQuick, let rawType, let type = AVAudioSession.InterruptionType(rawValue: rawType) else { return }
-        switch type {
+    private func audioInterrupted(_ interruption: AudioSessionInterruption) {
+        guard !routesToQuick else { return }
+        switch interruption {
         case .began:
             guard activeRequest != nil else { return }
             stop()
             eventHandler?(.interrupted)
-        case .ended:
+        case .ended(let shouldResume):
             ownsActiveAudioSession = false
-            eventHandler?(.interruptionEnded(shouldResume: AVAudioSession.InterruptionOptions(rawValue: rawOptions).contains(.shouldResume)))
-        @unknown default:
-            break
+            eventHandler?(.interruptionEnded(shouldResume: shouldResume))
         }
     }
     #endif

@@ -5,8 +5,8 @@
  * Description: Reads what a drop on the library carries from its item providers.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 02/11/2026
+ * Version: 0.8
+ * Date: 04/11/2026
  */
 
 import Foundation
@@ -123,9 +123,8 @@ enum LibraryDropReader {
 
     private static func fileAddress(of provider: NSItemProvider) async -> URL? {
         await withCheckedContinuation { continuation in
-            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            _ = provider.loadObject(ofClass: URL.self) { location, _ in
                 // An address that cannot be read imports nothing.
-                let location = (item as? URL) ?? (item as? Data).flatMap { data in URL(dataRepresentation: data, relativeTo: nil) }
                 continuation.resume(returning: location?.isFileURL == true ? location : nil)
             }
         }

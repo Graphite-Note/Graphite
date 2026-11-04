@@ -5,8 +5,8 @@
  * Description: The Pencil bar's state, presets, undo steps and where the document controls go.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 01/11/2026
+ * Version: 0.11
+ * Date: 04/11/2026
  */
 
 import XCTest
@@ -172,7 +172,7 @@ final class PencilToolboxTests: XCTestCase {
         XCTAssertEqual(relaunched.presetInUse.opacity, 0.4)
         XCTAssertEqual(relaunched.presetInUse.widthChoices, [PencilInk.crayon.widthChoices[0], PencilInk.crayon.widthChoices[1], 44])
         XCTAssertFalse(relaunched.erasesWholeStrokes)
-        XCTAssertEqual(relaunched.eraserWidthChoices, [12, 36, 64])
+        XCTAssertEqual(relaunched.eraserWidthChoices, [12, 6, 14])
         XCTAssertEqual(relaunched.eraserWidth, 12)
         XCTAssertFalse(relaunched.isRulerActive, "The ruler is put away with the app.")
 
@@ -296,17 +296,17 @@ final class PencilToolboxTests: XCTestCase {
         let toolbox = PencilToolbox(defaults: defaults)
         XCTAssertEqual(toolbox.eraserWidthChoices, PencilToolbox.defaultEraserWidthChoices)
         toolbox.changeEraserWidthChoice(at: 2, to: 80)
-        XCTAssertEqual(toolbox.eraserWidthChoices, [18, 36, 80])
+        XCTAssertEqual(toolbox.eraserWidthChoices, [2, 6, 80])
         XCTAssertEqual(toolbox.eraserWidth, 80, "The eraser erases with the size just changed.")
-        toolbox.chooseEraserWidth(18)
-        XCTAssertEqual(toolbox.eraserWidth, 18)
-        toolbox.chooseEraserWidth(64)
-        XCTAssertEqual(toolbox.eraserWidth, 18, "A size the eraser no longer has.")
-        toolbox.changeEraserWidthChoice(at: 0, to: 1)
+        toolbox.chooseEraserWidth(2)
+        XCTAssertEqual(toolbox.eraserWidth, 2)
+        toolbox.chooseEraserWidth(14)
+        XCTAssertEqual(toolbox.eraserWidth, 2, "A size the eraser no longer has.")
+        toolbox.changeEraserWidthChoice(at: 0, to: 0.2)
         XCTAssertEqual(toolbox.eraserWidthChoices[0], PencilToolbox.eraserWidthRange.lowerBound)
         toolbox.changeEraserWidthChoice(at: 5, to: 20)
         toolbox.changeEraserWidthChoice(at: 1, to: .infinity)
-        XCTAssertEqual(toolbox.eraserWidthChoices, [PencilToolbox.eraserWidthRange.lowerBound, 36, 80])
+        XCTAssertEqual(toolbox.eraserWidthChoices, [PencilToolbox.eraserWidthRange.lowerBound, 6, 80])
         XCTAssertEqual(PencilToolbox(defaults: defaults).eraserWidthChoices, toolbox.eraserWidthChoices, "Kept between launches.")
     }
 
