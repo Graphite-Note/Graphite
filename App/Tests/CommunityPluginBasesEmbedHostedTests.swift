@@ -161,8 +161,15 @@ final class CommunityPluginBasesEmbedHostedTests: XCTestCase {
         window.rootViewController = controller
         window.makeKeyAndVisible()
         self.window = window
-        try await letTheScreenSettle()
-        let table = try XCTUnwrap(descendants(of: controller.view, matching: UICollectionView.self).first)
+        // The form's table is made in the window's first layout, which a busy main thread holds
+        // back past any fixed time: the wait is for the table with the plugin's section in it.
+        func shownTable() -> UICollectionView? {
+            descendants(of: controller.view, matching: UICollectionView.self).first { table in
+                table.window != nil && table.numberOfSections > 0 && table.numberOfItems(inSection: table.numberOfSections - 1) > 0
+            }
+        }
+        try await waitUntil("the view editor's form is shown", timeoutSeconds: 30) { shownTable() != nil }
+        let table = try XCTUnwrap(shownTable())
         table.scrollToItem(at: IndexPath(item: 0, section: table.numberOfSections - 1), at: .top, animated: false)
         try await letTheScreenSettle()
         attachPicture(of: controller, named: "the view editor with the plugin's options")
