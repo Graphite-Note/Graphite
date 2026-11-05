@@ -7,8 +7,8 @@
  *              and gives the canvas the erased drawing when the touch lifts.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -253,6 +253,15 @@ final class PixelEraserController: NSObject, UIGestureRecognizerDelegate {
 /// the coalesced points UIKit gathered between frames and the points it predicts, then the lift.
 /// It recognizes at the first move, so a second finger landing before then, for a pinch, takes
 /// the touch instead; a touch that lifts without moving erases a spot where it landed.
+///
+/// It takes touches of more than one type, so the Pencil landing while a finger erases reaches it:
+/// that finger, when fingers draw, is most often the hand holding the Pencil, which landed before
+/// the Pencil was active and so is not known as a hand (`CanvasToolTouches.isHandResting`). The
+/// Pencil then takes the eraser, and what the finger swept is left as it was, as palm rejection
+/// takes back a hand's stroke. Until 2026-11-05 it took one type only, UIKit's default: while the
+/// hand lay on the page the eraser held its touch, its circle stayed where the hand lay, and UIKit
+/// kept every Pencil touch from it, so the Pencil erased nothing until the hand lifted or the
+/// canvas left the screen (HUNT-326).
 final class PixelEraserTouchRecognizer: UIGestureRecognizer {
     var touchDidBegin: (CGPoint) -> Void = { _ in }
     var touchDidMove: (_ points: [CGPoint], _ predictedPoints: [CGPoint]) -> Void = { _, _ in }
@@ -260,10 +269,22 @@ final class PixelEraserTouchRecognizer: UIGestureRecognizer {
     private weak var trackedTouch: UITouch?
     private var isTouchUnderWay = false
 
+    override init(target: Any?, action: Selector?) {
+        super.init(target: target, action: action)
+        requiresExclusiveTouchType = false
+    }
+
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard trackedTouch == nil, !isTouchUnderWay, let touch = touches.first else {
-            if state == .possible, isTouchUnderWay {
-                // A second touch before the first moved: a pinch or a scroll, not erasing.
+        let pencilTouch = touches.first { touch in touch.type == .pencil }
+        if isTouchUnderWay, let trackedTouch, trackedTouch.type != .pencil, let pencilTouch {
+            // The Pencil lands while a finger erases: the finger's touch is taken back, and the Pencil erases.
+            finishTouch(wasCancelled: true)
+            track(pencilTouch)
+            return
+        }
+        guard trackedTouch == nil, !isTouchUnderWay, let touch = pencilTouch ?? touches.first else {
+            if state == .possible, isTouchUnderWay, let trackedTouch, touches.contains(where: { touch in touch.type == trackedTouch.type }) {
+                // A second touch of the same kind before the first moved: a pinch or a scroll, not erasing.
                 finishTouch(wasCancelled: true)
                 state = .failed
                 return
@@ -271,6 +292,10 @@ final class PixelEraserTouchRecognizer: UIGestureRecognizer {
             for touch in touches where touch !== trackedTouch { ignore(touch, for: event) }
             return
         }
+        track(touch)
+    }
+
+    private func track(_ touch: UITouch) {
         trackedTouch = touch
         isTouchUnderWay = true
         touchDidBegin(touch.location(in: view))
