@@ -95,11 +95,10 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         return window.rootViewController.flatMap { root in controllers(in: root).lazy.compactMap { $0 as? UISplitViewController }.first }
     }
 
-    /// How the window's split view shows its sidebar, and every bar row on screen, for what a device run prints.
+    /// How the window's split view shows its sidebar, for what a device run prints.
     private func layoutDescription(in window: UIWindow) -> String {
-        let rows = PencilToolRowForm.rowsOnScreen.values.map { row in "\(row.form) at \(row.frameInWindow)" }
-        guard let split = splitViewController(in: window) else { return "no split view; rows on screen \(rows)" }
-        return "split behavior \(split.splitBehavior.rawValue) (preferred \(split.preferredSplitBehavior.rawValue)), display mode \(split.displayMode.rawValue); rows on screen \(rows)"
+        guard let split = splitViewController(in: window) else { return "no split view" }
+        return "split behavior \(split.splitBehavior.rawValue) (preferred \(split.preferredSplitBehavior.rawValue)), display mode \(split.displayMode.rawValue)"
     }
 
     /// Waits until the bar's row stops moving: the same frame for fifteen looks in a row.

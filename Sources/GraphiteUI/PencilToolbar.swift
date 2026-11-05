@@ -452,19 +452,18 @@ enum PencilToolRowForm: Equatable {
     /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
     /// where it is, in its window's coordinates.
     @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
-    /// For tests: every row on screen, by an identity of its own. A row that leaves the screen takes itself out, and
-    /// out of `lastShown`: on the owner's iPad (2026-11-05) a folded row stayed in `lastShown` while the screen showed
-    /// the whole row (HUNT-317).
-    @MainActor static var rowsOnScreen: [UUID: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)] = [:]
 }
 
 /// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`): a reader behind the row
 /// reports its frame when the row appears and whenever the frame changes, and takes it back when the row goes. A change
-/// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another (HUNT-317).
+/// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another, and on the owner's
+/// iPad (2026-11-05) a folded row that had left the screen stayed in `lastShown` while the screen showed the whole row
+/// (HUNT-317).
 private struct PencilToolRowLayoutReport: ViewModifier {
     let form: PencilToolRowForm
     let arrangement: PencilToolRowLayout.Arrangement
-    @State private var identity = UUID()
+    /// The frame this row reported last, nil while it is not on screen.
+    @State private var reportedFrame: CGRect?
 
     func body(content: Content) -> some View {
         content.background {
@@ -480,12 +479,13 @@ private struct PencilToolRowLayoutReport: ViewModifier {
 
     private func report(_ frame: CGRect) {
         PencilToolRowForm.lastShown = (form, arrangement, frame)
-        PencilToolRowForm.rowsOnScreen[identity] = (form, arrangement, frame)
+        reportedFrame = frame
     }
 
     private func withdraw() {
-        guard let report = PencilToolRowForm.rowsOnScreen.removeValue(forKey: identity) else { return }
-        if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == report.frameInWindow, lastShown.arrangement == report.arrangement {
+        guard let reportedFrame else { return }
+        self.reportedFrame = nil
+        if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == reportedFrame, lastShown.arrangement == arrangement {
             PencilToolRowForm.lastShown = nil
         }
     }
