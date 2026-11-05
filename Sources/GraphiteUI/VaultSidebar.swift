@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.46
- * Date: 04/11/2026
+ * Version: 0.47
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -67,6 +67,11 @@ struct VaultSidebar: View {
     /// Whether the window is as narrow as a phone. The sidebar's own column is narrow on an
     /// iPad too, so the library's place is decided by the window's width, not the column's.
     var isWindowCompact = false
+    /// Whether the document is the column in front: always beside the list on an iPad, the screen shown on a phone. On a
+    /// phone the list's selection is what slides the document in, so the list marks the open file only while the
+    /// document is in front: a rename that changes the selection, or a search asked for from the note, then leaves the
+    /// list in front (HUNT-183).
+    var isDocumentColumnInFront = true
     @State private var isRootDropTargeted = false
     /// The query the results shown answer; the list says it is searching while the field holds another.
     @State private var searchedQuery = ""
@@ -447,7 +452,7 @@ struct VaultSidebar: View {
 
     /// The file list as it usually is: picking a file opens it.
     private var openingList: some View {
-        List(selection: Binding(get: { workspace.selection }, set: { newSelection in
+        List(selection: Binding(get: { isDocumentColumnInFront ? workspace.selection : nil }, set: { newSelection in
             // The file already open shows at once. Another one shows when it is loaded and
             // becomes the selection (`GraphiteRootView`), so a phone does not slide in the
             // note it had before and swap it for the new one after the slide.
