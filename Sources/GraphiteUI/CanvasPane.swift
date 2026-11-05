@@ -6,8 +6,8 @@
  *              More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 01/11/2026
+ * Version: 0.17
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -97,7 +97,8 @@ struct CanvasPane: View {
                 workspace.viewedImageNote = nil
                 workspace.viewedImage = path
             }, editDrawing: nil),
-            pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn)
+            pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn,
+            pluginsTurnOnOffer: workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
     }
 
     /// How Markdown on cards reads: as in reading view, without the properties, which an

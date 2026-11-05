@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math and embeds.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.35
- * Date: 04/11/2026
+ * Version: 0.36
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -91,6 +91,8 @@ struct LivePreviewEnvironment {
     /// Draws community plugins' code blocks, as Obsidian's Live Preview does; nil without
     /// the plugin runtime, which leaves such blocks as code.
     var pluginCodeBlocks: CommunityPluginHost? = nil
+    /// Set while plugins are off, so a base of a type a plugin may draw offers to turn them on.
+    var pluginsTurnOnOffer: CommunityPluginsTurnOnOffer? = nil
     /// The code block languages plugins draw now.
     var pluginCodeBlockLanguages: Set<String> = []
     /// The note being edited, which plugins draw its blocks for.

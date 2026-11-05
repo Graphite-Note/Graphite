@@ -6,8 +6,8 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.48
- * Date: 04/11/2026
+ * Version: 0.49
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -690,6 +690,7 @@ struct TabDocumentView: View {
                                      modelCache: document.baseModelCache,
                                      viewRequestApplied: { document.baseViewRequest = nil })
                     .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
+                    .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
                 }
             case .media:
                 // One player per file: its playback, size and duration are not carried over

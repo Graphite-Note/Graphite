@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.16
- * Date: 02/11/2026
+ * Version: 0.17
+ * Date: 05/11/2026
  */
 
 #if canImport(UIKit)
@@ -603,6 +603,7 @@ final class LivePreviewRenderedBlocks {
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
             .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
+            .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
             .environment(\.noteTypography, environment.typography)
             .environment(\.noteTheme, environment.theme)
             .environment(\.codeColorTheme, environment.codeColorTheme)
@@ -766,7 +767,9 @@ struct LivePreviewWidgetSignature: Equatable {
         let declaredPropertyTypes = environment.declaredPropertyTypes.sorted { leftEntry, rightEntry in leftEntry.key < rightEntry.key }
             .map { entry in "\(entry.key)=\(entry.value.rawValue)" }.joined(separator: ",")
         appearance = [String(environment.textSize), String(describing: environment.typography), environment.theme?.tokens.fingerprint ?? "", String(environment.colorsEnabled), palette, accentHex,
-                      String(environment.updateProperties != nil), declaredPropertyTypes, notePath].joined(separator: "|")
+                      String(environment.updateProperties != nil), declaredPropertyTypes, notePath,
+                      // Plugins turned on or off: a base shown meanwhile draws a plugin's view, or offers to turn them on.
+                      String(environment.pluginCodeBlocks != nil)].joined(separator: "|")
         index = [String(environment.indexVersion), String(environment.baseContext?.isIndexComplete ?? false)].joined(separator: "|")
     }
 
