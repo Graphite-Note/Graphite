@@ -5,8 +5,8 @@
  * Description: The index's prefilter for bases never drops a row the evaluator would keep.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -65,8 +65,7 @@ final class BaseRecordPrefilterSupersetTests: XCTestCase {
         let filters = [definition.filters].compactMap { filter in filter }
         let prefilter = BaseRecordPrefilter.extract(from: filters, definition: definition, environment: environment, thisRecord: nil, provider: provider)
         let prefilteredBatch = try await index.baseRecords(matching: prefilter)
-        let allBatch = try await index.baseRecords(matching: BaseRecordPrefilter(), limit: VaultIndex.maximumBaseRecordLimit)
-        XCTAssertFalse(allBatch.isTruncated)
+        let allBatch = try await index.baseRecords(matching: BaseRecordPrefilter())
         let (prefilteredRows, allRows) = await Task.detached {
             let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: nil, provider: provider)
             return (engine.run(viewIndex: 0, records: prefilteredBatch.records).rows, engine.run(viewIndex: 0, records: allBatch.records).rows)

@@ -5,7 +5,7 @@
  * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
+ * Version: 0.20
  * Date: 05/11/2026
  */
 
@@ -413,10 +413,6 @@ struct BaseContainerView: View {
         }
         if !isIndexComplete {
             messages.append(BannerMessage(text: "The vault is still being indexed, so results may be incomplete.", systemImage: "hourglass", isError: false))
-        }
-        if model.isTruncated {
-            messages.append(BannerMessage(text: "Only the first \(model.loadedRecordCount.formatted()) of \(model.candidateCount.formatted()) files that could match were checked. Add a folder, tag or property filter to narrow this base.",
-                                          systemImage: "exclamationmark.triangle", isError: false))
         }
         for issue in model.definition?.issues ?? [] {
             messages.append(BannerMessage(text: issue, systemImage: "exclamationmark.triangle", isError: false))

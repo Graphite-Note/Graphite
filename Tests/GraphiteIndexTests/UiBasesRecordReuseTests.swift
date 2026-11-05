@@ -1,3 +1,14 @@
+/**
+ * File: UiBasesRecordReuseTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: A base query reuses the records of files that did not change since the last one.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 05/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
@@ -45,16 +56,20 @@ final class UiBasesRecordReuseTests: XCTestCase {
         XCTAssertEqual(afterChanges.batch.records.first?.propertyEntry(named: "rating")?.node, .scalar(text: "5", isPlain: true))
     }
 
-    func testReuseKeepsTheLimitAndTheCandidateCount() async throws {
-        for noteNumber in 0..<5 { try write("---\nstatus: open\n---\n", to: "Note \(noteNumber).md") }
+    func testReuseLoadsEveryFileAndReadsAgainWhenTheBaseKeepsOtherContents() async throws {
+        for noteNumber in 0..<5 { try write("---\nstatus: open\nrating: \(noteNumber)\n---\n#tagged", to: "Note \(noteNumber).md") }
         _ = try await index.reconcile(root: vault)
-        let fullLoad = try await index.baseRecords(matching: everyFile, limit: 3)
-        let first = try await index.baseRecords(matching: everyFile, limit: 3, reusing: LoadedBaseRecords())
-        let second = try await index.baseRecords(matching: everyFile, limit: 3, reusing: first.loadedRecords)
-        for batch in [first.batch, second.batch] {
-            XCTAssertEqual(batch.records, fullLoad.records)
-            XCTAssertEqual(batch.candidateCount, 5)
-        }
+        let fullLoad = try await index.baseRecords(matching: everyFile)
+        let first = try await index.baseRecords(matching: everyFile, reusing: LoadedBaseRecords())
+        let second = try await index.baseRecords(matching: everyFile, reusing: first.loadedRecords)
+        for batch in [first.batch, second.batch] { XCTAssertEqual(batch.records, fullLoad.records) }
+        XCTAssertEqual(fullLoad.records.count, 5)
         XCTAssertEqual(second.loadedRecords.rereadRecordCount, 0)
+        let statusOnly = BaseRecordContents(baseSourceText: "filters: status == \"open\"\n", viewTypes: [.table])
+        let compact = try await index.baseRecords(matching: everyFile, contents: statusOnly, reusing: second.loadedRecords)
+        XCTAssertEqual(compact.loadedRecords.rereadRecordCount, 5, "Records holding other contents are read again.")
+        XCTAssertEqual(compact.batch.records, fullLoad.records.map(statusOnly.compacted))
+        XCTAssertEqual(compact.batch.records.first?.properties.map(\.key), ["status"])
+        XCTAssertEqual(compact.batch.records.first?.tags, [])
     }
 }

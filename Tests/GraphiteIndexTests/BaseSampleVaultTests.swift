@@ -1,10 +1,21 @@
+/**
+ * File: BaseSampleVaultTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: Runs every base of the sample vault through a real index, as the app does.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 05/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
 import GraphiteFixtures
 
 /// Runs every base in `Tests/BaseSampleVault` through a real index, the way the app does:
-/// pre-filter in SQL, load bounded records, evaluate off the main actor.
+/// pre-filter in SQL, load every candidate record, evaluate off the main actor.
 final class BaseSampleVaultTests: XCTestCase {
     private var vault: URL!
     private var cacheDirectory: URL!
@@ -67,7 +78,6 @@ final class BaseSampleVaultTests: XCTestCase {
         let prefilter = BaseRecordPrefilter.extract(from: [definition.filters, view.filters].compactMap { filter in filter }, definition: definition,
                                                     environment: environment, thisRecord: thisRecord)
         let batch = try await index.baseRecords(matching: prefilter)
-        XCTAssertFalse(batch.isTruncated)
         let provider = index.baseRecordProvider
         return await Task.detached {
             BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: provider).run(viewIndex: viewIndex, records: batch.records)

@@ -1,3 +1,14 @@
+/**
+ * File: BaseIndexTests.swift
+ * --------------------------
+ * Layer: Tests
+ * Description: Base records from the index: loading, the SQL pre-filter and lookups.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 05/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 @testable import GraphiteIndex
@@ -132,20 +143,14 @@ final class BaseIndexTests: XCTestCase {
         XCTAssertTrue(escaped.isEmpty, "LIKE wildcards in folder names are escaped.")
     }
 
-    func testQueriesAreBoundedAndReportTruncation() async throws {
+    func testQueriesLoadEveryCandidateInPathOrder() async throws {
         let files = try (0..<30).map { number in
             IndexedFile(path: try VaultPath(String(format: "Bulk/Note %02d.md", number)), size: 10, modified: .now, markdown: "---\nrank: \(number)\n---\n")
         }
         try await index.update(files, generation: "bulk")
-        let batch = try await index.baseRecords(matching: BaseRecordPrefilter(), limit: 10)
-        XCTAssertEqual(batch.records.count, 10)
-        XCTAssertEqual(batch.candidateCount, 30)
-        XCTAssertTrue(batch.isTruncated)
-        XCTAssertEqual(batch.records.first?.path.rawValue, "Bulk/Note 00.md", "Truncation is deterministic, in path order.")
-        let complete = try await index.baseRecords(matching: BaseRecordPrefilter(), limit: 30)
-        XCTAssertFalse(complete.isTruncated)
-        let clamped = try await index.baseRecords(matching: BaseRecordPrefilter(), limit: 0)
-        XCTAssertEqual(clamped.records.count, 1, "Limits are clamped to at least one record.")
+        let batch = try await index.baseRecords(matching: BaseRecordPrefilter())
+        XCTAssertEqual(batch.records.map(\.path.rawValue), files.map(\.path.rawValue))
+        XCTAssertEqual(batch.records.first?.propertyEntry(named: "rank")?.node, .scalar(text: "0", isPlain: true))
     }
 
     /// A base evaluated end to end over index records, with `this` as the embedding note.
