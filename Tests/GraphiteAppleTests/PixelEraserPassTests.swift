@@ -7,7 +7,7 @@
  *              full page.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 import XCTest
@@ -232,9 +232,8 @@ final class PixelEraserPassTests: XCTestCase {
         XCTAssertNil(erased.strokes[2].mask)
     }
 
-    /// On a page of 2,000 strokes a move of the eraser, with the ink it hides, costs under 4 ms: the
-    /// strokes are found by their bounds, and only those the touch reaches are cut.
-    func testAMoveOnAPageOfTwoThousandStrokesTakesUnderFourMilliseconds() throws {
+    /// A page of 2,000 strokes, as the canvas has drawn it, which gives each stroke its bounds.
+    private func pageOfTwoThousandStrokes() -> PKDrawing {
         var strokes: [PKStroke] = []
         for strokeIndex in 0..<2_000 {
             let row = CGFloat(strokeIndex / 20), column = CGFloat(strokeIndex % 20)
@@ -242,30 +241,71 @@ final class PixelEraserPassTests: XCTestCase {
             strokes.append(line(from: start, to: CGPoint(x: start.x + 24, y: start.y + 3), pointCount: 30, size: 2.4, ink: .pen))
         }
         let page = PKDrawing(strokes: strokes)
-        // The canvas has drawn the page, which gives each stroke its bounds.
         _ = page.strokes.map(\.renderBounds)
-        let beginning = Date()
-        var touch = PixelEraserTouch(drawing: page, width: 2, shownBounds: CGRect(x: -100, y: -100, width: 800, height: 1_000))
-        let beginningMilliseconds = Date().timeIntervalSince(beginning) * 1_000
-        var moveMilliseconds: [Double] = []
-        // Two seconds of scribbling across the page at 120 moves a second, two coalesced points each.
-        for moveIndex in 0..<240 {
-            let position = CGFloat(moveIndex)
-            let points = [CGPoint(x: 40 + position * 2, y: 300 + 120 * sin(position / 9)), CGPoint(x: 41 + position * 2, y: 300 + 120 * sin((position + 0.5) / 9))]
-            let predicted = [CGPoint(x: 43 + position * 2, y: 300 + 120 * sin((position + 1.5) / 9))]
-            let moveStart = Date()
-            touch.move(through: points, predicted: predicted)
-            moveMilliseconds.append(Date().timeIntervalSince(moveStart) * 1_000)
-        }
-        let liftStart = Date()
-        let erased = try XCTUnwrap(touch.erasedDrawing())
-        let liftMilliseconds = Date().timeIntervalSince(liftStart) * 1_000
-        let sortedMoves = moveMilliseconds.sorted()
-        print("FINE-ERASER 2000 strokes: begin \(beginningMilliseconds) ms, move median \(sortedMoves[sortedMoves.count / 2]) ms, "
-              + "slowest \(sortedMoves.last ?? 0) ms, lift \(liftMilliseconds) ms, \(touch.pass.cutStrokeIndices.count) strokes cut, \(erased.strokes.count) after")
-        XCTAssertLessThan(sortedMoves.last ?? .infinity, 4, "The slowest move")
-        XCTAssertGreaterThan(touch.pass.cutStrokeIndices.count, 20)
+        return page
     }
+
+    /// Two seconds of scribbling across the page at 120 moves a second, or half a second across one
+    /// word, each move with two coalesced points and one predicted.
+    private func touchMoves(acrossTheWholePage: Bool) -> [(points: [CGPoint], predicted: [CGPoint])] {
+        (0..<(acrossTheWholePage ? 240 : 60)).map { moveIndex in
+            let position = CGFloat(moveIndex)
+            let place = { (step: CGFloat) -> CGPoint in
+                acrossTheWholePage ? CGPoint(x: 40 + step * 2, y: 300 + 120 * sin(step / 9))
+                    : CGPoint(x: 100 + step * 1.5, y: 252 + 6 * sin(step / 2))
+            }
+            return ([place(position), place(position + 0.5)], [place(position + 1.5)])
+        }
+    }
+
+    private struct EraseTiming {
+        let slowestMoveMilliseconds: Double
+        let medianMoveMilliseconds: Double
+        let liftMilliseconds: Double
+        let cutStrokeCount: Int
+        let erasedDrawing: PKDrawing
+    }
+
+    private func timeErase(on page: PKDrawing, acrossTheWholePage: Bool, pieceSecondsPerMove: Double) throws -> EraseTiming {
+        var touch = PixelEraserTouch(drawing: page, width: 2, shownBounds: CGRect(x: -100, y: -100, width: 800, height: 1_000),
+                                     pieceSecondsPerMove: pieceSecondsPerMove)
+        var moveMilliseconds: [Double] = []
+        for move in touchMoves(acrossTheWholePage: acrossTheWholePage) {
+            let moveStart = DispatchTime.now().uptimeNanoseconds
+            touch.move(through: move.points, predicted: move.predicted)
+            moveMilliseconds.append(Double(DispatchTime.now().uptimeNanoseconds - moveStart) / 1_000_000)
+        }
+        let liftStart = DispatchTime.now().uptimeNanoseconds
+        let erasedDrawing = try XCTUnwrap(touch.erasedDrawing())
+        let liftMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - liftStart) / 1_000_000
+        let sortedMoves = moveMilliseconds.sorted()
+        return EraseTiming(slowestMoveMilliseconds: sortedMoves.last ?? 0, medianMoveMilliseconds: sortedMoves[sortedMoves.count / 2],
+                           liftMilliseconds: liftMilliseconds, cutStrokeCount: touch.pass.cutStrokeIndices.count, erasedDrawing: erasedDrawing)
+    }
+
+    /// On a page of 2,000 strokes a move of the eraser, with the ink it hides, costs under 4 ms: the
+    /// strokes are found by their bounds, and only those the touch reaches are cut. The pieces of the
+    /// strokes the touch has left are made during the moves, so the lift takes under 8 ms, across one
+    /// word as after scribbling over the whole page, and leaves the same drawing as making them all at the lift.
+    func testAMoveTakesUnderFourMillisecondsAndTheLiftUnderEightOnAPageOfTwoThousandStrokes() throws {
+        let page = pageOfTwoThousandStrokes()
+        for acrossTheWholePage in [false, true] {
+            let name = acrossTheWholePage ? "a scribble across the page" : "an erase across one word"
+            let allAtTheLift = try timeErase(on: page, acrossTheWholePage: acrossTheWholePage, pieceSecondsPerMove: 0)
+            let duringTheMoves = try timeErase(on: page, acrossTheWholePage: acrossTheWholePage, pieceSecondsPerMove: PixelEraserTouch.defaultPieceSecondsPerMove)
+            print("FINE-ERASER 2000 strokes, \(name): \(duringTheMoves.cutStrokeCount) strokes cut; "
+                  + "pieces at the lift: lift \(allAtTheLift.liftMilliseconds) ms, slowest move \(allAtTheLift.slowestMoveMilliseconds) ms; "
+                  + "pieces during the moves: lift \(duringTheMoves.liftMilliseconds) ms, move median \(duringTheMoves.medianMoveMilliseconds) ms, "
+                  + "slowest \(duringTheMoves.slowestMoveMilliseconds) ms")
+            XCTAssertLessThan(duringTheMoves.slowestMoveMilliseconds, 4, "The slowest move, \(name)")
+            XCTAssertLessThan(duringTheMoves.liftMilliseconds, 8, "The lift, \(name)")
+            XCTAssertGreaterThan(duringTheMoves.cutStrokeCount, acrossTheWholePage ? 100 : 2)
+            let expectedStrokes = allAtTheLift.erasedDrawing.strokes, madeStrokes = duringTheMoves.erasedDrawing.strokes
+            XCTAssertEqual(madeStrokes.count, expectedStrokes.count, "The same pieces, \(name)")
+            XCTAssertEqual(madeStrokes.map { stroke in stroke.mask?.bounds ?? .null }, expectedStrokes.map { stroke in stroke.mask?.bounds ?? .null })
+        }
+    }
+
 }
 
 /// The drawing a canvas shows, for the history to change.

@@ -7,7 +7,7 @@
  *              and gives the canvas the erased drawing when the touch lifts.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 #if canImport(UIKit)
@@ -24,7 +24,7 @@ import GraphiteApple
 /// It takes the touches PencilKit's eraser would take: the Pencil, and a finger when fingers draw,
 /// but not a hand resting on the page. While the touch moves, PencilKit's views are masked to
 /// what still shows, so the ink leaves from under the tip in the frame the touch reaches it. At the
-/// lift the canvas is given the erased drawing once (`HistoryCanvasView.showErasedDrawing`), which
+/// lift the canvas is given the erased drawing once (`showErasedDrawing`), which
 /// its owner records as one step of the history and saves like any change of the drawing. A
 /// circle as wide as the eraser shows where it is while it erases, and fainter while the Pencil hovers.
 @MainActor
@@ -42,6 +42,8 @@ final class PixelEraserController: NSObject, UIGestureRecognizerDelegate {
 
     /// The eraser's width in the drawing's points, while this controller erases; nil while it does not.
     private(set) var width: CGFloat?
+    /// The width chosen for Graphite's eraser, in the drawing's points; nil while PencilKit's tool is chosen.
+    var chosenWidth: CGFloat?
     private var touch: PixelEraserTouch?
     /// Whether something gave the canvas another drawing while the touch moved.
     private var drawingWasReplaced = false
@@ -57,9 +59,30 @@ final class PixelEraserController: NSObject, UIGestureRecognizerDelegate {
         cursorLayer.isHidden = true
     }
 
+    /// The pixel eraser's width as chosen, in the drawing's points: PencilKit makes a tool of the
+    /// bar's width no narrower than it can draw, so the bar's own is read.
+    static func chosenWidth(of eraser: PKEraserTool, barTool: PencilToolSelection?) -> CGFloat {
+        barTool.flatMap { barTool in barTool.kind == .eraser && !barTool.erasesWholeStrokes ? CGFloat(barTool.eraserWidth) : nil } ?? eraser.width
+    }
+
+    /// The width Graphite's eraser erases with for a chosen tool, in the drawing's points: the pixel
+    /// eraser's when PencilKit's cannot make it on the screen, nil for any other tool or width.
+    static func widthBeyondPencilKit(of chosenTool: PKTool, barTool: PencilToolSelection?, screenPointsPerDrawingPoint: CGFloat) -> CGFloat? {
+        guard let eraser = chosenTool as? PKEraserTool, eraser.eraserType != .vector else { return nil }
+        let width = chosenWidth(of: eraser, barTool: barTool)
+        return PencilEraserWidths.erasesWithPencilKit(chosen: Double(width), screenPointsPerPagePoint: Double(screenPointsPerDrawingPoint)) ? nil : width
+    }
+
+    /// Erases with the chosen width unless another of Graphite's tools, such as the lasso, has the
+    /// canvas; says whether it erases.
+    func erases(whileAnotherToolIsInUse anotherToolIsInUse: Bool) -> Bool {
+        erase(withWidth: anotherToolIsInUse ? nil : chosenWidth)
+        return isErasing
+    }
+
     /// Erases with a width in the drawing's points, or stops erasing with nil. A touch under way
     /// when it stops, as when the zoom brings the width within PencilKit's reach, keeps what it erased.
-    func erase(withWidth newWidth: CGFloat?) {
+    private func erase(withWidth newWidth: CGFloat?) {
         guard newWidth != width else { return }
         if newWidth == nil, touch != nil { endTouch(wasCancelled: false) }
         width = newWidth
@@ -130,7 +153,15 @@ final class PixelEraserController: NSObject, UIGestureRecognizerDelegate {
             unmaskInkLayers()
             return
         }
-        canvas.showErasedDrawing(erasedDrawing) { [weak self] in self?.unmaskInkLayers() }
+        showErasedDrawing(erasedDrawing)
+    }
+
+    /// Gives the canvas the drawing the touch left, as one change its owner records; the canvas as it
+    /// was, with the swept ink hidden, stays over it until PencilKit has drawn the new drawing.
+    private func showErasedDrawing(_ erasedDrawing: PKDrawing) {
+        canvas.coverUntilRendered()
+        unmaskInkLayers()
+        canvas.setDrawingMadeByCanvas(erasedDrawing)
     }
 
     // MARK: Hiding the ink swept

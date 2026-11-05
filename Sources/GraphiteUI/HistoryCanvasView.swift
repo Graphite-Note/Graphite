@@ -5,7 +5,7 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.28
+ * Version: 0.29
  * Date: 04/11/2026
  */
 #if canImport(UIKit)
@@ -113,7 +113,7 @@ class HistoryCanvasView: PKCanvasView {
     /// live stroke follows the Pencil's tilt, and changed at the lift into the even one.
     func toolForDrawing(_ chosenTool: PKTool) -> PKTool {
         if let eraser = chosenTool as? PKEraserTool, eraser.eraserType != .vector, zoomScale > 0 {
-            return PKEraserTool(eraser.eraserType, width: chosenWidth(of: eraser) * screenPointsPerDrawingPoint)
+            return PKEraserTool(eraser.eraserType, width: PixelEraserController.chosenWidth(of: eraser, barTool: fixedTool) * screenPointsPerDrawingPoint)
         }
         isEvenHighlighterPreferenceOn = EvenHighlighterPreference.isOn()
         guard isEvenHighlighterPreferenceOn, let highlighter = chosenTool as? PKInkingTool, highlighter.inkType == .marker,
@@ -170,37 +170,17 @@ class HistoryCanvasView: PKCanvasView {
     /// pixel eraser at a width PencilKit's cannot make on the screen.
     private func drawWith(_ chosenTool: PKTool) {
         tool = toolForDrawing(chosenTool)
-        let pixelEraserWidth = (chosenTool as? PKEraserTool).flatMap { eraser in eraser.eraserType == .vector ? nil : chosenWidth(of: eraser) }
-        graphiteEraserWidth = pixelEraserWidth.flatMap { width in
-            PencilEraserWidths.erasesWithPencilKit(chosen: Double(width), screenPointsPerPagePoint: Double(screenPointsPerDrawingPoint)) ? nil : width
-        }
-    }
-
-    /// The pixel eraser's width as chosen, in the drawing's points: PencilKit makes a tool of the
-    /// bar's width no narrower than it can draw, so the bar's own is read.
-    private func chosenWidth(of eraser: PKEraserTool) -> CGFloat {
-        fixedTool.flatMap { barTool in barTool.kind == .eraser && !barTool.erasesWholeStrokes ? CGFloat(barTool.eraserWidth) : nil } ?? eraser.width
-    }
-
-    /// The width Graphite's pixel eraser erases with, in the drawing's points; nil while PencilKit's tool is used.
-    private var graphiteEraserWidth: CGFloat? {
-        didSet { if graphiteEraserWidth != oldValue { applyDrawingEnabled() } }
+        let graphiteEraserWidth = PixelEraserController.widthBeyondPencilKit(of: chosenTool, barTool: fixedTool,
+                                                                             screenPointsPerDrawingPoint: screenPointsPerDrawingPoint)
+        if graphiteEraserWidth != nil || hasPixelEraser { pixelEraser.chosenWidth = graphiteEraserWidth; applyDrawingEnabled() }
     }
 
     private var hasPixelEraser = false
-    /// Graphite's pixel eraser on this canvas (`PixelEraserController`).
+    /// Graphite's pixel eraser on this canvas, for the widths PencilKit's cannot make (`PixelEraserController`).
     private(set) lazy var pixelEraser: PixelEraserController = {
         hasPixelEraser = true
         return PixelEraserController(canvas: self)
     }()
-
-    /// Gives the canvas the drawing Graphite's pixel eraser left, as one change its owner records;
-    /// the canvas as it was, with the swept ink hidden, stays over it until PencilKit has drawn it.
-    func showErasedDrawing(_ erasedDrawing: PKDrawing, afterCovering removeSweptInkPreview: () -> Void) {
-        coverUntilRendered()
-        removeSweptInkPreview()
-        setDrawingMadeByCanvas(erasedDrawing)
-    }
 
     /// How large a point of the drawing is on screen, through the canvas's zoom and whatever
     /// scales the canvas itself, as a PDF view scales its pages.
@@ -244,7 +224,7 @@ class HistoryCanvasView: PKCanvasView {
             placesTextBoxes = newFixedTool.kind == .text
             // The lasso, the laser, the Read Aloud pen and the text tool are Graphite's own;
             // PencilKit's tool stays what it was and draws nothing.
-            if newFixedTool.kind.drawsInk { drawWith(newFixedTool.tool) } else { graphiteEraserWidth = nil }
+            if newFixedTool.kind.drawsInk { drawWith(newFixedTool.tool) } else if hasPixelEraser { pixelEraser.chosenWidth = nil }
             isRulerActive = newFixedTool.isRulerActive
         } else if !followsToolPicker {
             fixedTool = nil
@@ -361,8 +341,7 @@ class HistoryCanvasView: PKCanvasView {
 
     private func applyDrawingEnabled() {
         let usesGraphiteTool = isDrawingSuspended || selectsInk || pointsWithLaser || pointsToRead || placesTextBoxes
-        let erasesWithGraphite = !usesGraphiteTool && graphiteEraserWidth != nil
-        if erasesWithGraphite || hasPixelEraser { pixelEraser.erase(withWidth: erasesWithGraphite ? graphiteEraserWidth : nil) }
+        let erasesWithGraphite = hasPixelEraser && pixelEraser.erases(whileAnotherToolIsInUse: usesGraphiteTool)
         isDrawingEnabled = !usesGraphiteTool && !erasesWithGraphite
     }
 
@@ -798,7 +777,7 @@ class HistoryCanvasView: PKCanvasView {
     /// meanwhile: laid over the canvas still showing, it would darken every translucent
     /// stroke. A mask does not change what touches reach the canvas, so the next stroke
     /// begins as always.
-    private func coverUntilRendered() {
+    func coverUntilRendered() {
         guard window != nil, renderCover == nil, let superview, let canvasAsItWas = snapshotView(afterScreenUpdates: false) else { return }
         canvasAsItWas.isUserInteractionEnabled = false
         canvasAsItWas.bounds = CGRect(origin: .zero, size: bounds.size)

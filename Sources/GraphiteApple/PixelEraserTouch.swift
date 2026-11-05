@@ -6,7 +6,7 @@
  *              and the erased drawing it leaves when it lifts.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 import CoreGraphics
@@ -17,8 +17,10 @@ import PencilKit
 /// While the touch moves, the canvas goes on drawing the drawing as it was, and hides its ink
 /// outside `shownArea`: everything but what the touch swept, and what UIKit predicts it sweeps
 /// next, so the ink goes from under the tip in the frame it is reached. Giving PencilKit a new
-/// drawing at every move would make it draw the page anew each time. When the touch lifts, the
-/// canvas is given `erasedDrawing` once, which the canvas's owner records as one step of the
+/// drawing at every move would make it draw the page anew each time. Each move also makes the
+/// pieces of the strokes the touch has left, within `pieceSecondsPerMove`, so the lift has only
+/// the strokes still under the tip to finish. When the touch lifts, the canvas is given
+/// `erasedDrawing` once, which the canvas's owner records as one step of the
 /// history, as it records a stroke of PencilKit's own eraser.
 public struct PixelEraserTouch {
     public private(set) var pass: PixelEraserPass
@@ -27,8 +29,14 @@ public struct PixelEraserTouch {
     /// The area including what UIKit predicts the touch sweeps next.
     public private(set) var shownArea: CGPath
 
+    /// How long a move may spend making the pieces of strokes cut earlier: a frame at 120 a
+    /// second lasts 8.3 milliseconds, and the move's own cut and the canvas's mask take about one.
+    public let pieceSecondsPerMove: Double
+    public static let defaultPieceSecondsPerMove = 0.0015
+
     /// `shownBounds`: the part of the drawing the canvas can show, in the drawing's points.
-    public init(drawing: PKDrawing, width: CGFloat, shownBounds: CGRect) {
+    public init(drawing: PKDrawing, width: CGFloat, shownBounds: CGRect, pieceSecondsPerMove: Double = PixelEraserTouch.defaultPieceSecondsPerMove) {
+        self.pieceSecondsPerMove = pieceSecondsPerMove
         pass = PixelEraserPass(drawing: drawing, width: width)
         keptArea = CGPath(rect: shownBounds, transform: nil)
         shownArea = keptArea
@@ -39,6 +47,7 @@ public struct PixelEraserTouch {
     @discardableResult
     public mutating func move(through points: [CGPoint], predicted predictedPoints: [CGPoint]) -> CGPath {
         if let sweptArea = pass.sweep(through: points) { keptArea = keptArea.subtracting(sweptArea) }
+        pass.finishPieces(forAtMost: pieceSecondsPerMove)
         shownArea = keptArea
         if !predictedPoints.isEmpty, let lastPoint = pass.sweptPoints.last {
             // Begun at the last point, as the next part of the touch would be.

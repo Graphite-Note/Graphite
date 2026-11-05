@@ -6,10 +6,11 @@
  *              where it passes, as PencilKit's fixed-width eraser cuts them, at any width.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 import CoreGraphics
+import Foundation
 import PencilKit
 #if canImport(UIKit)
 import UIKit
@@ -130,6 +131,14 @@ public struct PixelEraserPass {
     public private(set) var cutStrokeIndices = Set<Int>()
     private var erasedStrokeIndices = Set<Int>()
     private var sweep: PixelEraserSweep
+    /// The segments between the touch's points so far.
+    private var sweptSegments: [(start: CGPoint, end: CGPoint)] = []
+    /// The strokes each cut stroke becomes, made while the touch moves on (`finishPieces`).
+    private var piecesByStroke: [Int: [PKStroke]] = [:]
+    /// The cut strokes whose pieces are still to be made, oldest cut first.
+    private var strokesAwaitingPieces: [Int] = []
+    /// The strokes the last move cut: the touch is still on them, so their pieces wait.
+    private var strokesCutByLastMove = Set<Int>()
 
     public init(drawing: PKDrawing, width: CGFloat) {
         originalStrokes = drawing.strokes
@@ -158,12 +167,37 @@ public struct PixelEraserPass {
         let lastPointBefore = sweep.points.last
         let pointCountBefore = sweep.points.count
         guard let sweptArea = sweep.extend(through: points) else { return nil }
-        let sweptSegments = PixelEraserSweep.segments(through: (lastPointBefore.map { lastPoint in [lastPoint] } ?? []) + sweep.points[pointCountBefore...])
+        let newSegments = PixelEraserSweep.segments(through: (lastPointBefore.map { lastPoint in [lastPoint] } ?? []) + sweep.points[pointCountBefore...])
+        sweptSegments += newSegments
         let sweptBounds = sweptArea.boundingBoxOfPath
+        strokesCutByLastMove = []
         for strokeIndex in originalStrokes.indices where strokeBounds[strokeIndex].intersects(sweptBounds) && !erasedStrokeIndices.contains(strokeIndex) {
-            cutStroke(at: strokeIndex, by: sweptArea, sweptAlong: sweptSegments)
+            cutStroke(at: strokeIndex, by: sweptArea, sweptAlong: newSegments)
         }
         return sweptArea
+    }
+
+    /// Makes the pieces of the strokes cut earlier in the touch, for at most `seconds`, so that
+    /// the lift has little left to make: a stroke the touch has left is cut no more until it
+    /// comes back, when its pieces are made again. Returns how many strokes still wait.
+    @discardableResult
+    public mutating func finishPieces(forAtMost seconds: Double) -> Int {
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(max(seconds, 0) * 1_000_000_000)
+        var waitingStrokes: [Int] = []
+        for (position, strokeIndex) in strokesAwaitingPieces.enumerated() {
+            guard DispatchTime.now().uptimeNanoseconds < deadline else {
+                waitingStrokes += strokesAwaitingPieces[position...]
+                break
+            }
+            guard !strokesCutByLastMove.contains(strokeIndex) else {
+                waitingStrokes.append(strokeIndex)
+                continue
+            }
+            piecesByStroke[strokeIndex] = erasedStrokeIndices.contains(strokeIndex)
+                ? [] : pieces(ofStrokeAt: strokeIndex, sweptAlong: sweptSegments)
+        }
+        strokesAwaitingPieces = waitingStrokes
+        return waitingStrokes.count
     }
 
     /// The drawing as the touch leaves it: a stroke cut through is one stroke for each piece left,
@@ -171,14 +205,13 @@ public struct PixelEraserPass {
     public func erasedDrawing() -> PKDrawing {
         var erasedStrokes: [PKStroke] = []
         erasedStrokes.reserveCapacity(originalStrokes.count + cutStrokeIndices.count)
-        let sweptSegments = PixelEraserSweep.segments(through: sweep.points)
         for strokeIndex in originalStrokes.indices {
             guard cutStrokeIndices.contains(strokeIndex) else {
                 erasedStrokes.append(originalStrokes[strokeIndex])
                 continue
             }
             if erasedStrokeIndices.contains(strokeIndex) { continue }
-            erasedStrokes += pieces(ofStrokeAt: strokeIndex, sweptAlong: sweptSegments)
+            erasedStrokes += piecesByStroke[strokeIndex] ?? pieces(ofStrokeAt: strokeIndex, sweptAlong: sweptSegments)
         }
         return PKDrawing(strokes: erasedStrokes)
     }
@@ -193,6 +226,10 @@ public struct PixelEraserPass {
         let visibleArea = visibleAreasByStroke[strokeIndex] ?? Self.visibleAreaInStrokeSpace(of: stroke, inkBounds: strokeBounds[strokeIndex])
         let remainingArea = visibleArea.subtracting(sweptAreaInStroke)
         cutStrokeIndices.insert(strokeIndex)
+        strokesCutByLastMove.insert(strokeIndex)
+        // Pieces made before this cut are made again once the touch has left the stroke.
+        piecesByStroke[strokeIndex] = nil
+        if !strokesAwaitingPieces.contains(strokeIndex) { strokesAwaitingPieces.append(strokeIndex) }
         let remainingBounds = remainingArea.boundingBoxOfPath
         guard !remainingArea.isEmpty, !remainingBounds.isNull, remainingBounds.width > 0, remainingBounds.height > 0 else {
             erasedStrokeIndices.insert(strokeIndex)
@@ -298,7 +335,8 @@ public struct PixelEraserPass {
     private func pieces(ofStrokeAt strokeIndex: Int, sweptAlong sweptSegments: [(start: CGPoint, end: CGPoint)]) -> [PKStroke] {
         let stroke = originalStrokes[strokeIndex]
         let samples = inkSamplesByStroke[strokeIndex] ?? Self.inkSamples(of: stroke)
-        guard let visibleArea = visibleAreasByStroke[strokeIndex], !samples.isEmpty, var drawingToStroke = Self.invertible(stroke.transform) else { return [stroke] }
+        guard let visibleArea = visibleAreasByStroke[strokeIndex], !samples.isEmpty,
+              var drawingToStroke = Self.invertible(stroke.transform) else { return [stroke] }
         let originalArea = stroke.mask.map { _ in Self.visibleAreaInStrokeSpace(of: stroke, inkBounds: strokeBounds[strokeIndex]) }
         let strokeReach = strokeBounds[strokeIndex].insetBy(dx: -width, dy: -width)
         let nearSegments = sweptSegments.filter { segment in
