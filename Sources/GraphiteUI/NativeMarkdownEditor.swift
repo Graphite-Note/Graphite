@@ -5,8 +5,8 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.74
- * Date: 04/11/2026
+ * Version: 0.75
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -294,11 +294,6 @@ final class MarkdownTextView: UITextView {
     var contentColumnWidth: CGFloat {
         bounds.width - textContainerInset.left - textContainerInset.right - 2 * textContainer.lineFragmentPadding
     }
-
-    /// The left edge of the pane inside its margins, where a base starts.
-    var paneContentMinX: CGFloat { Self.minimumHorizontalInset + textContainer.lineFragmentPadding }
-    /// The pane's width inside its margins, which a base takes.
-    var paneContentWidth: CGFloat { max(0, bounds.width - 2 * paneContentMinX) }
 
     // MARK: Keyboard
 
@@ -962,11 +957,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private var delayedPlacementTries = 0
         /// Set while blocks are placed again on a viewport laid out for them in the same pass.
         private var isPlacingOnViewportLaidOutNow = false
-        /// The text column's and the pane's widths when rendered blocks were last placed, and
-        /// the placement waiting for a new width to settle. A wider pane leaves the readable
-        /// column as it is, but widens the bases.
+        /// The text column's width when rendered blocks were last placed, and the placement
+        /// waiting for a new width to settle.
         private var placedColumnWidth: CGFloat = 0
-        private var placedPaneWidth: CGFloat = 0
         private var placementAfterWidthChange: DispatchWorkItem?
         /// The line at the top of the view, and the column's width, before the width began to change.
         private var topLineBeforeWidthChange: (location: Int, columnWidth: CGFloat)?
@@ -1705,13 +1698,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// width stops changing, the viewport is laid out again and everything placed on it.
         func placeWidgetsAfterWidthChange(in textView: MarkdownTextView) {
             let width = textView.contentColumnWidth
-            let paneWidth = textView.paneContentWidth
-            guard abs(width - placedColumnWidth) > 0.5 || abs(paneWidth - placedPaneWidth) > 0.5 else {
+            guard abs(width - placedColumnWidth) > 0.5 else {
                 if placementAfterWidthChange == nil { topLineBeforeWidthChange = nil }
                 return
             }
             placedColumnWidth = width
-            placedPaneWidth = paneWidth
             placementAfterWidthChange?.cancel()
             let placement = DispatchWorkItem { [weak self, weak textView] in
                 guard let self, let textView else { return }
@@ -1948,8 +1939,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // Mid-edit, the blocks describe the text before it; the views stay until it settles.
             guard !textState.cachesDescribeOldText else { return }
             let column = RenderedBlockColumn(minX: textView.textContainerInset.left + textView.textContainer.lineFragmentPadding,
-                                             textContainerTop: textView.textContainerInset.top, width: textView.contentColumnWidth,
-                                             paneMinX: textView.paneContentMinX, paneWidth: textView.paneContentWidth)
+                                             textContainerTop: textView.textContainerInset.top, width: textView.contentColumnWidth)
             // TextKit can have no viewport range until it lays out the viewport again, as after
             // a restyle; that layout places the views. Removing them meanwhile rebuilt them all,
             // each reported its height again and restyled, and the rebuilding could go on
@@ -2797,11 +2787,6 @@ final class MarkdownMacTextView: NSTextView {
     static let minimumHorizontalInset: CGFloat = 32
     /// The iPad editor's column, so a note wraps alike on both.
     static let graphiteReadableColumnWidth: CGFloat = 740
-
-    /// The left edge of the pane inside its margins, where a base starts.
-    var paneContentMinX: CGFloat { Self.minimumHorizontalInset + (textContainer?.lineFragmentPadding ?? 0) }
-    /// The pane's width inside its margins, which a base takes.
-    var paneContentWidth: CGFloat { max(0, frame.width - 2 * paneContentMinX) }
 
     private func updateReadableInset() {
         let horizontalInset = readableColumnWidth.map { width in max(Self.minimumHorizontalInset, (frame.width - width) / 2) } ?? Self.minimumHorizontalInset
@@ -3866,9 +3851,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             // Mid-edit, the blocks describe the text before it; the views stay until it settles.
             guard !textState.cachesDescribeOldText, !textView.hasMarkedText() else { return }
             let columnMinX = textView.textContainerOrigin.x + textContainer.lineFragmentPadding
-            let paneMinX = (textView as? MarkdownMacTextView)?.paneContentMinX ?? columnMinX
-            let column = RenderedBlockColumn(minX: columnMinX, textContainerTop: textView.textContainerOrigin.y, width: textView.renderedBlockColumnWidth,
-                                             paneMinX: paneMinX, paneWidth: textView.renderedBlockPaneWidth)
+            let column = RenderedBlockColumn(minX: columnMinX, textContainerTop: textView.textContainerOrigin.y, width: textView.renderedBlockColumnWidth)
             // A paragraph a restyle changed waits for TextKit's next layout of the viewport,
             // which places it then.
             guard let placement = renderedBlocks.placeViews(of: concealedEntries(in: textView), in: textView, textLayoutManager: textLayoutManager,

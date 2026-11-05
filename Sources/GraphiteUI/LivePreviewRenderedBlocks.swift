@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.18
+ * Version: 0.19
  * Date: 05/11/2026
  */
 
@@ -106,50 +106,17 @@ enum PropertiesSourceVisibility: Equatable {
     case afterEditSource(isShown: Bool)
 }
 
-/// Where a text view's column is, which rendered blocks' views take.
+/// Where a text view's column is: the one frame every rendered block's view takes, the
+/// properties, tables, bases, embeds and image rows alike, so each lies between the text's
+/// own left and right edges. With Readable Line Length on that is the readable column, and
+/// a block wider than it scrolls inside it, as in Obsidian; with it off, the pane inside
+/// its margins (HUNT-324).
 struct RenderedBlockColumn: Equatable {
     /// The column's left edge in the text view, past the text container's padding.
     let minX: CGFloat
     /// The text container's top in the text view, which layout fragments are measured from.
     let textContainerTop: CGFloat
     let width: CGFloat
-    /// The left edge of the pane inside its margins, where a base starts.
-    let paneMinX: CGFloat
-    /// The pane's width inside its margins, which a base takes.
-    let paneWidth: CGFloat
-
-    var widths: RenderedBlockWidths { RenderedBlockWidths(column: width, pane: paneWidth) }
-
-    /// The left edge of a block's view: the pane's for a base wider than the column.
-    func minX(of block: LivePreviewBlock) -> CGFloat {
-        widths.width(of: block) > width ? paneMinX : minX
-    }
-}
-
-/// The widths rendered blocks take. Text, tables and images keep to the readable column; a
-/// base takes the whole pane inside its margins, because a gallery or table held to the
-/// column left four fifths of a wide window empty beside it.
-struct RenderedBlockWidths: Equatable {
-    /// The readable column's width.
-    let column: CGFloat
-    /// The pane's width inside its margins.
-    let pane: CGFloat
-
-    func width(of block: LivePreviewBlock) -> CGFloat {
-        block.spansPaneWidth ? max(column, pane) : column
-    }
-}
-
-extension LivePreviewBlock {
-    /// Whether the block is a base, as a `base` code block or an embedded `.base` file,
-    /// which takes the pane's width rather than the readable column's.
-    var spansPaneWidth: Bool {
-        switch kind {
-        case .baseDefinition: true
-        case .embed(let embed): (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased() == "base"
-        case .frontmatter, .table, .mathBlock, .horizontalRule, .callout, .pluginCodeBlock, .mermaidDiagram, .imageLine: false
-        }
-    }
 }
 
 /// What a placement pass found in the viewport.
@@ -237,10 +204,10 @@ final class LivePreviewRenderedBlocks {
     /// The concealed blocks as the styler takes them, each with the height its lines
     /// reserve. Those in `restyledRange`, the lines being styled, record that height as
     /// the one kept in the text; nil when the styling leaves the blocks alone.
-    func concealedBlocks(for concealedEntries: [LivePreviewBlockEntry], widths: RenderedBlockWidths, configuration: EditorConfiguration,
+    func concealedBlocks(for concealedEntries: [LivePreviewBlockEntry], columnWidth: CGFloat, configuration: EditorConfiguration,
                          restyledRange: NSRange?) -> [ConcealedBlock] {
         concealedEntries.map { entry in
-            let height = reservedHeight(of: entry, columnWidth: widths.width(of: entry.block), configuration: configuration)
+            let height = reservedHeight(of: entry, columnWidth: columnWidth, configuration: configuration)
             if let restyledRange, NSIntersectionRange(entry.range, restyledRange).length > 0 || NSLocationInRange(restyledRange.location, entry.range) {
                 heightsKeptInText[entry.key] = height
             }
@@ -441,12 +408,11 @@ final class LivePreviewRenderedBlocks {
                 placement.keysAwaitingLayout.insert(entry.key)
                 return true
             }
-            let blockWidth = column.widths.width(of: entry.block)
-            let reservedHeight = reservedHeight(of: entry, columnWidth: blockWidth, configuration: configuration)
+            let reservedHeight = reservedHeight(of: entry, columnWidth: column.width, configuration: configuration)
             if let keptHeight = heightsKeptInText[entry.key], abs(keptHeight - reservedHeight) > 1 { placement.entriesToRestyle.append(entry) }
             // The view takes the height its lines reserve now, so it covers them exactly.
-            let frame = CGRect(x: column.minX(of: entry.block), y: fragment.layoutFragmentFrame.minY + column.textContainerTop,
-                               width: blockWidth, height: heightsKeptInText[entry.key] ?? reservedHeight)
+            let frame = CGRect(x: column.minX, y: fragment.layoutFragmentFrame.minY + column.textContainerTop,
+                               width: column.width, height: heightsKeptInText[entry.key] ?? reservedHeight)
             let placedView = host(for: entry, makeRootView: makeRootView).placedView
             if placedView.frame != frame {
                 placedView.frame = frame

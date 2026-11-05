@@ -5,8 +5,8 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 05/11/2026
  */
 
 #if canImport(UIKit)
@@ -27,10 +27,8 @@ protocol MarkdownStyledTextView: AnyObject, Sendable {
     var styledSelection: NSRange { get set }
     /// Whether an input method is composing text, which styling would disturb.
     var isComposingText: Bool { get }
-    /// The width of the text column, which rendered blocks' views take.
+    /// The width of the text column, which every rendered block's view takes.
     var renderedBlockColumnWidth: CGFloat { get }
-    /// The pane's width inside its margins, which a base's view takes.
-    var renderedBlockPaneWidth: CGFloat { get }
     var typingAttributes: [NSAttributedString.Key: Any] { get set }
 }
 
@@ -43,7 +41,6 @@ extension UITextView: MarkdownStyledTextView {
     }
     var isComposingText: Bool { markedTextRange != nil }
     var renderedBlockColumnWidth: CGFloat { (self as? MarkdownTextView)?.contentColumnWidth ?? bounds.width }
-    var renderedBlockPaneWidth: CGFloat { (self as? MarkdownTextView)?.paneContentWidth ?? renderedBlockColumnWidth }
 }
 #else
 extension NSTextView: MarkdownStyledTextView {
@@ -59,7 +56,6 @@ extension NSTextView: MarkdownStyledTextView {
         guard let textContainer else { return 0 }
         return textContainer.size.width - 2 * textContainer.lineFragmentPadding
     }
-    var renderedBlockPaneWidth: CGFloat { (self as? MarkdownMacTextView)?.paneContentWidth ?? renderedBlockColumnWidth }
 }
 #endif
 
@@ -423,7 +419,7 @@ final class MarkdownEditorStyling {
     ///   as the ones the text reserves; nil when the styling leaves the blocks alone.
     private func concealedBlocks(in textView: any MarkdownStyledTextView, restyledRange: NSRange?) -> [ConcealedBlock] {
         renderedBlocks.concealedBlocks(for: concealedEntries(in: textView),
-                                       widths: RenderedBlockWidths(column: textView.renderedBlockColumnWidth, pane: textView.renderedBlockPaneWidth),
+                                       columnWidth: textView.renderedBlockColumnWidth,
                                        configuration: configuration,
                                        restyledRange: restyledRange)
     }

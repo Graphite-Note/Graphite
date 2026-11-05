@@ -5,7 +5,7 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.67
+ * Version: 0.68
  * Date: 05/11/2026
  */
 
@@ -477,7 +477,11 @@ struct MarkdownPane: View {
                 #if canImport(UIKit)
                 drawButton
                 #else
-                Menu("Format", systemImage: "textformat") { formatMenuItems }
+                Menu("Format", systemImage: "textformat") {
+                    formatMenuItems
+                    Divider()
+                    lineWidthPicker
+                }
                 Menu("Insert", systemImage: "paperclip") { insertMenuItems }
                 #endif
             }
@@ -503,6 +507,12 @@ struct MarkdownPane: View {
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
         ToolbarOverflowMenu { moreMenuItems }
         #endif
+    }
+
+    /// "Line Width: Narrow / Wide", Readable Line Length as Settings changes it (HUNT-324): in
+    /// the Format menu while the note is written, and in More while it is read, with no Format menu.
+    private var lineWidthPicker: some View {
+        NoteLineWidthPicker { [workspace] changes in workspace.lineWidthBinding(changes: changes) }
     }
 
     /// The Format and Insert menus are the context menu's items, the Mac menu bar's too
@@ -568,18 +578,28 @@ struct MarkdownPane: View {
         if workspace.isRecordingInAnyWindow { Text("Finish recording to read aloud.") }
     }
 
-    @ViewBuilder private var moreMenuItems: some View {
-        if workspace.readAloud != nil { readAloudMenu }
+    /// The note's view, and its line width while it is read, when there is no Format menu.
+    @ViewBuilder private var viewChoices: some View {
         Picker("View", selection: $session.viewMode) {
             Label("Reading View", systemImage: "book").tag(NoteViewMode.reading)
             Label("Live Preview", systemImage: "eye").tag(NoteViewMode.livePreview)
             Label("Source Mode", systemImage: "chevron.left.forwardslash.chevron.right").tag(NoteViewMode.source)
         }
         .pickerStyle(.inline)
+        if !isEditing { lineWidthPicker }
+    }
+
+    @ViewBuilder private var moreMenuItems: some View {
+        if workspace.readAloud != nil { readAloudMenu }
+        viewChoices
         #if canImport(UIKit)
         if isEditing {
             Section {
-                Menu("Format", systemImage: "textformat") { formatMenuItems }
+                Menu("Format", systemImage: "textformat") {
+                    formatMenuItems
+                    Divider()
+                    lineWidthPicker
+                }
                 Menu("Insert", systemImage: "paperclip") { insertMenuItems }
                 if isCompactWidth { drawButton }
             }

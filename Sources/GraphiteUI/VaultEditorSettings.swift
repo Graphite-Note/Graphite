@@ -2,11 +2,12 @@
  * File: VaultEditorSettings.swift
  * -------------------------------
  * Layer: UI
- * Description: The editor options Obsidian keeps in the vault's app.json, read from the vault when it sets them and from this device otherwise.
+ * Description: The editor options Obsidian keeps in the vault's app.json, read from the vault when it sets them and from this device otherwise,
+ *              and the note's line width switch.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -78,5 +79,44 @@ extension WorkspaceModel {
                 changes.update(self) { settings in settings.usesLivePreview = mode == .livePreview }
             }
         })
+    }
+}
+
+/// A note's two line widths: Obsidian's "Readable line length" on and off. Narrow holds the
+/// title, the properties, the text and every block to the readable column; wide gives them
+/// all the editor's width inside its margins (HUNT-324).
+enum NoteLineWidth: Hashable, CaseIterable {
+    case narrow
+    case wide
+
+    var title: String {
+        switch self {
+        case .narrow: "Narrow"
+        case .wide: "Wide"
+        }
+    }
+}
+
+extension WorkspaceModel {
+    /// The note's line width, kept where Settings › Editor › Readable Line Length keeps it:
+    /// the vault's `app.json` when a vault is open, so Obsidian shows the same choice.
+    func lineWidthBinding(changes: VaultSettingsChanges) -> Binding<NoteLineWidth> {
+        let usesReadableLineLength = binding(vaultOption: \.usesReadableLineLength, deviceOption: \.usesReadableLineLength, changes: changes)
+        return Binding(get: { usesReadableLineLength.wrappedValue ? .narrow : .wide },
+                       set: { lineWidth in usesReadableLineLength.wrappedValue = lineWidth == .narrow })
+    }
+}
+
+/// "Line Width: Narrow / Wide", in the note's Format (Aa) menu while it is written and in its
+/// More menu while it is read: the same switch as Readable Line Length in Settings.
+struct NoteLineWidthPicker: View {
+    /// The switch over the changes this picker keeps: `WorkspaceModel.lineWidthBinding(changes:)`.
+    let lineWidth: @MainActor (VaultSettingsChanges) -> Binding<NoteLineWidth>
+    @State private var vaultSettingsChanges = VaultSettingsChanges()
+
+    var body: some View {
+        Picker("Line Width", systemImage: "arrow.left.and.right.text.vertical", selection: lineWidth(vaultSettingsChanges)) {
+            ForEach(NoteLineWidth.allCases, id: \.self) { lineWidth in Text(lineWidth.title).tag(lineWidth) }
+        }
     }
 }
