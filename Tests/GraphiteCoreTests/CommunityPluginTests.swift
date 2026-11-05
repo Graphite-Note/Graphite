@@ -5,8 +5,8 @@
  * Description: Plugin lists, manifests, inventory and the vault bridge's answers.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -117,6 +117,24 @@ final class CommunityPluginTests: XCTestCase {
         let package = try await VaultStore(root: vault).communityPluginPackage(for: sample)
         XCTAssertTrue(package.mainScript.hasPrefix("var obsidian"))
         XCTAssertEqual(package.styles, "")
+    }
+
+    func testPluginFoldersMacOSMarksHiddenAreListedAsObsidianListsThem() async throws {
+        // HUNT-322: in the owner's iCloud vault everything inside `.obsidian` has the hidden
+        // mark (`UF_HIDDEN`), and Graphite listed no plugin at all.
+        try write(sampleManifest, to: ".obsidian/plugins/sample/manifest.json")
+        try write("module.exports = {};", to: ".obsidian/plugins/sample/main.js")
+        try write(sampleManifest, to: ".obsidian/plugins/.cache/manifest.json")
+        for relativePath in [".obsidian/plugins", ".obsidian/plugins/sample", ".obsidian/plugins/sample/manifest.json", ".obsidian/plugins/sample/main.js"] {
+            var location = vault.appendingPathComponent(relativePath)
+            var values = URLResourceValues()
+            values.isHidden = true
+            try location.setResourceValues(values)
+            XCTAssertEqual(try location.resourceValues(forKeys: [.isHiddenKey]).isHidden, true, "The fixture carries the mark.")
+        }
+        let listed = try await VaultStore(root: vault).installedCommunityPlugins()
+        XCTAssertEqual(listed.plugins.map(\.id), ["sample"], "A folder whose name starts with a dot stays out, as in Obsidian; the mark does not matter.")
+        XCTAssertTrue(listed.unreadableFolders.isEmpty)
     }
 
     // MARK: The vault bridge

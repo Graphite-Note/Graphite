@@ -6,7 +6,7 @@
  *              WebKit: drawn when plugins are on, waited for while they start, and offered while they are off.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 05/11/2026
  */
 
@@ -152,6 +152,26 @@ final class CommunityPluginBasesViewChoiceTests: XCTestCase {
         let compatibility = CommunityPluginCompatibility.assess(manifest: manifest, hasMainScript: true)
         XCTAssertTrue(compatibility.canLoad, "Obsidian 1.10.0 is older than the API Graphite provides, compared by number, not as text.")
         XCTAssertTrue(compatibility.blockers.isEmpty)
+    }
+
+    func testAVaultWhoseConfigurationFolderMacOSMarksHiddenRunsItsPluginsView() async throws {
+        // HUNT-322, the owner's vault in iCloud Drive: everything inside `.obsidian` carries
+        // macOS's hidden mark. Graphite listed no plugin there, so none ran and the base said
+        // the type is unsupported, with plugins turned on.
+        let vault = try testBed.makeVault(plugins: [("timetable", Self.timetablePlugin)], files: Self.files)
+        let configuration = vault.appendingPathComponent(".obsidian")
+        let inside = try XCTUnwrap(FileManager.default.enumerator(at: configuration, includingPropertiesForKeys: nil)).compactMap { item in item as? URL }
+        for item in inside {
+            var location = item
+            var values = URLResourceValues()
+            values.isHidden = true
+            try location.setResourceValues(values)
+        }
+        let workspace = try await testBed.openWorkspace(at: vault, expectedPluginCount: 1)
+        let plugins = workspace.communityPlugins
+        await plugins.setTurnedOnForVault(true)
+        try await waitUntil("the plugin's view type is known", timeoutSeconds: 20) { plugins.pluginBasesViews[Self.viewType] != nil }
+        XCTAssertEqual(CommunityPluginBasesViewChoice.choose(viewType: Self.viewType, host: plugins.hostWhilePluginsAreOn, turnOnOffer: nil), .drawnByPlugin)
     }
 
     // MARK: Drawn through the real views and WebKit

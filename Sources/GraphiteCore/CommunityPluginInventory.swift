@@ -6,8 +6,8 @@
  *              for.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -161,17 +161,17 @@ public extension VaultStore {
         guard try fileExists(pluginsFolder) else { return CommunityPluginInventory(plugins: [], unreadableFolders: []) }
         var plugins: [InstalledCommunityPlugin] = []
         var unreadableFolders: [UnreadableCommunityPlugin] = []
-        for entry in try listedChildren(of: pluginsFolder) where entry.isDirectory {
+        for folder in try VaultFolderReader.foldersAsObsidianListsThem(in: pluginsFolder, root: root) {
             do {
-                let manifestSnapshot = try read(entry.path.appending("manifest.json"), maximumBytes: CommunityPluginManifest.maximumManifestBytes)
+                let manifestSnapshot = try read(folder.appending("manifest.json"), maximumBytes: CommunityPluginManifest.maximumManifestBytes)
                 let manifest = try CommunityPluginManifest(manifestData: manifestSnapshot.data)
-                let mainScriptPath = try entry.path.appending("main.js")
+                let mainScriptPath = try folder.appending("main.js")
                 let hasMainScript = try fileExists(mainScriptPath)
                 if hasMainScript { try Self.checkPluginScriptSize(at: mainScriptPath.url(in: root)) }
-                plugins.append(InstalledCommunityPlugin(folder: entry.path, manifest: manifest,
+                plugins.append(InstalledCommunityPlugin(folder: folder, manifest: manifest,
                                                         compatibility: .assess(manifest: manifest, hasMainScript: hasMainScript)))
             } catch {
-                unreadableFolders.append(UnreadableCommunityPlugin(folder: entry.path, reason: error.localizedDescription))
+                unreadableFolders.append(UnreadableCommunityPlugin(folder: folder, reason: error.localizedDescription))
             }
         }
         plugins.sort { firstPlugin, secondPlugin in firstPlugin.manifest.name.localizedStandardCompare(secondPlugin.manifest.name) == .orderedAscending }

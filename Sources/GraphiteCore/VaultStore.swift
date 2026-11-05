@@ -5,8 +5,8 @@
  * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 02/11/2026
+ * Version: 0.9
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -540,5 +540,21 @@ enum VaultFolderReader {
                               modified: values.contentModificationDate ?? .distantPast, created: values.creationDate)
         }
         return sortOrder.sorted(entries)
+    }
+
+    /// The folders in `directory` as Obsidian lists a configuration folder (`.obsidian/plugins`):
+    /// every one whose name does not start with a dot, sorted by name. Not as `children` lists
+    /// a folder, which also leaves out items macOS marks hidden (`UF_HIDDEN`): in a vault iCloud
+    /// Drive syncs everything inside `.obsidian` can carry that mark, and then no plugin was
+    /// listed (HUNT-322). Symbolic links stay out.
+    static func foldersAsObsidianListsThem(in directory: VaultPath, root: URL) throws -> [VaultPath] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey]
+        let names = try FileManager.default.contentsOfDirectory(atPath: directory.url(in: root).path)
+        return names.filter { name in !name.hasPrefix(".") }.compactMap { name -> VaultPath? in
+            guard let path = try? directory.appending(name), // A name no vault path can hold is left out.
+                  let values = try? root.appendingPathComponent(path.rawValue).resourceValues(forKeys: keys), // Gone since the listing: left out.
+                  values.isDirectory == true, values.isSymbolicLink != true else { return nil }
+            return path
+        }.sorted { firstPath, secondPath in firstPath.rawValue < secondPath.rawValue }
     }
 }
