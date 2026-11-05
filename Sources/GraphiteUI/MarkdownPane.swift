@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.66
- * Date: 04/11/2026
+ * Version: 0.67
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -87,6 +87,7 @@ struct MarkdownPane: View {
                 .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
                                                                         viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
                 .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
+                .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
                 .environment(\.readingTagSearch, tagSearch)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
@@ -416,6 +417,7 @@ struct MarkdownPane: View {
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
             pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,
+            pluginsTurnOnOffer: workspace.communityPlugins.turnOnOfferWhilePluginsAreOff,
             pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
             notePath: notePath,
             usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,

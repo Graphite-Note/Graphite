@@ -5,8 +5,8 @@
  * Description: The cards of a canvas: text, notes, images, PDFs and bases.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -213,6 +213,7 @@ struct CanvasMarkdownContent: View {
         }
         .environment(\.baseEmbedContext, environment.baseContext)
         .environment(\.communityPluginCodeBlocks, environment.pluginHost)
+        .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
         .environment(\.readingImageActions, environment.imageActions)
         .task(id: BuildTaskKey(source: source, drawingVersion: configuration.drawingVersion, renderingHash: configuration.hashValueForReload,
                                indexVersion: build?.hasMissingEmbeds == false ? -1 : configuration.indexVersion)) {
@@ -321,6 +322,7 @@ private struct CanvasFileCardContent: View {
                 ScrollView {
                     BaseFileEmbedView(path: vaultPath, viewName: fragment, context: environment.baseContext, openWithoutContext: environment.open).padding(12)
                         .environment(\.communityPluginCodeBlocks, environment.pluginHost)
+                        .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
                 }
                 .scrollDisabled(!isScrollable)
             default:

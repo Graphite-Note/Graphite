@@ -5,8 +5,8 @@
  * Description: The board of a canvas: its grid, groups, connections, cards in view and selection.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -67,6 +67,8 @@ struct CanvasCardEnvironment {
     let imageActions: ReadingImageActions?
     /// The vault's plugins, which may draw a base's views in a card.
     var pluginHost: CommunityPluginHost? = nil
+    /// Set while plugins are off, so a base in a card offers to turn them on.
+    var pluginsTurnOnOffer: CommunityPluginsTurnOnOffer? = nil
 }
 
 /// The board of a canvas: the grid, groups and connections drawn as one picture, the

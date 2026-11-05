@@ -5,8 +5,8 @@
  * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
  *
  * Authors: Bahey Shalash
- * Version: 0.18
- * Date: 01/11/2026
+ * Version: 0.19
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -190,6 +190,8 @@ struct BaseContainerView: View {
     @Environment(\.accent) private var accent
     /// The vault's plugins, while they are on: they may show views of their own types.
     @Environment(\.communityPluginCodeBlocks) private var pluginHost
+    /// Set while plugins are off, so a view of a type one may draw offers to turn them on.
+    @Environment(\.communityPluginsTurnOnOffer) private var pluginsTurnOnOffer
     let contentVersion: Int
     let contentChange: BaseContentChange?
     let isIndexComplete: Bool
@@ -434,20 +436,8 @@ struct BaseContainerView: View {
             } actions: {
                 Button("Try Again") { Task { await model.reload() } }
             }
-        } else if let view = model.selectedView, case .unsupported(let typeName) = view.type, let pluginHost, pluginHost.pluginBasesViews[typeName] != nil {
-            // A view type a community plugin registered (TaskNotes' calendars and boards): live in
-            // the base's own tab, a copy in a note, where several can show at once.
-            let result = model.result?.view.id == view.id ? model.result : nil
-            if isEmbedded {
-                CommunityPluginBasesEmbedContent(host: pluginHost, viewType: typeName, view: view, source: model.source,
-                    embeddingNote: model.contextPath, result: result)
-            } else {
-                CommunityPluginBasesViewContent(host: pluginHost, viewType: typeName, view: view, source: model.source, result: result)
-            }
-        } else if let view = model.selectedView, case .unsupported(let typeName) = view.type, pluginHost?.viewTypeMayStillArrive(typeName) == true {
-            CommunityPluginBasesWaiting(text: "Waiting for community plugins…")
         } else if let view = model.selectedView, case .unsupported(let typeName) = view.type {
-            unsupportedViewContent(typeName: typeName)
+            pluginTypeContent(view: view, typeName: typeName)
         } else if let result = model.result, result.view.id == model.selectedView?.id {
             if result.rows.isEmpty && result.view.type != .map {
                 ContentUnavailableView {
@@ -463,6 +453,29 @@ struct BaseContainerView: View {
             // text would shrink around it and grow again by its rows seconds later.
             ProgressView().controlSize(.large)
                 .preference(key: LivePreviewEmbedLoadingKey.self, value: true)
+        }
+    }
+
+    /// A view of a type Graphite does not draw: a community plugin's (TaskNotes' calendars and
+    /// boards) is live in the base's own tab and a copy in a note, where several can show at once.
+    @ViewBuilder private func pluginTypeContent(view: BaseView, typeName: String) -> some View {
+        switch CommunityPluginBasesViewChoice.choose(viewType: typeName, host: pluginHost, turnOnOffer: pluginsTurnOnOffer) {
+        case .drawnByPlugin:
+            if let pluginHost {
+                let result = model.result?.view.id == view.id ? model.result : nil
+                if isEmbedded {
+                    CommunityPluginBasesEmbedContent(host: pluginHost, viewType: typeName, view: view, source: model.source,
+                        embeddingNote: model.contextPath, result: result)
+                } else {
+                    CommunityPluginBasesViewContent(host: pluginHost, viewType: typeName, view: view, source: model.source, result: result)
+                }
+            }
+        case .waitingForPlugins:
+            CommunityPluginBasesWaiting(text: "Waiting for community plugins…")
+        case .pluginsAreOff:
+            if let pluginsTurnOnOffer { CommunityPluginsOffForBaseView(viewType: typeName, offer: pluginsTurnOnOffer) }
+        case .unsupported:
+            unsupportedViewContent(typeName: typeName)
         }
     }
 
