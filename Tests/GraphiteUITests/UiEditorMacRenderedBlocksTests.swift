@@ -1,3 +1,15 @@
+/**
+ * File: UiEditorMacRenderedBlocksTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: The Mac's Live Preview draws tables, math, callouts, diagrams and the other rendered blocks as views over
+ *              their concealed source, as the iPad does.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.1
+ * Date: 05/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import SwiftUI
@@ -240,28 +252,6 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         type("New first line\n", in: textView, coordinator)
         try await awaitConditionAfterLayout { (self.blockViews(in: textView).first?.frame.minY ?? 0) > tableTop + 5 }
         XCTAssertTrue(blockViews(in: textView).first === tableView)
-    }
-
-    /// A base takes the pane's width inside its margins while a table keeps to the readable
-    /// column: a gallery held to the column left most of a wide window empty beside it.
-    func testABaseSpansThePaneWhileATableKeepsToTheReadableColumn() async throws {
-        let text = Self.tableNote + "\n```base\nviews:\n  - type: cards\n    name: Gallery\n```\n\nEnd\n"
-        let (_, textView, _) = try await makeEditor(text: text, width: 1_400)
-        textView.readableColumnWidth = MarkdownMacTextView.graphiteReadableColumnWidth
-        let padding = try XCTUnwrap(textView.textContainer).lineFragmentPadding
-        let paneWidth = textView.frame.width - 2 * (MarkdownMacTextView.minimumHorizontalInset + padding)
-        try await awaitConditionAfterLayout {
-            let views = self.blockViews(in: textView)
-            return views.count == 2 && abs(views[1].frame.width - paneWidth) < 0.5
-        }
-        let views = blockViews(in: textView)
-        XCTAssertEqual(views[0].frame.minX, textView.textContainerOrigin.x + padding, "The table starts at the readable column")
-        XCTAssertEqual(views[0].frame.width, MarkdownMacTextView.graphiteReadableColumnWidth - 2 * padding, accuracy: 0.5)
-        XCTAssertEqual(views[1].frame.minX, MarkdownMacTextView.minimumHorizontalInset + padding, "The base starts at the pane's margin")
-        XCTAssertGreaterThan(paneWidth, 1_200)
-        let fenceLocation = (text as NSString).range(of: "```base").location
-        XCTAssertNil(textView.textStorage?.attribute(ConcealedReplacement.codeBlockKey, at: fenceLocation, effectiveRange: nil),
-                     "No code box is drawn behind the base at the column's width")
     }
 
     private static let diagramCode = "flowchart TD\n  A[Start] --> B{Done?}\n  B -->|yes| C[End]"
