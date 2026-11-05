@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.65
- * Date: 04/11/2026
+ * Version: 0.66
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -109,7 +109,8 @@ struct GraphiteRootView: View {
             // made anew for each update made the iPad's sidebar update again without end, and
             // the app never drew its first frame. The Mac's sidebar has no Settings button.
             VaultSidebar(workspace: workspace, creation: $creation, showsSettings: $showsSettings, showsVaultManager: $workspace.isVaultManagerPresented,
-                         showDocument: showDocumentColumn, isWindowCompact: isCompactWidth)
+                         showDocument: showDocumentColumn, isWindowCompact: isCompactWidth,
+                         isDocumentColumnInFront: !isCompactWidth || preferredCompactColumn == .detail)
                 .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 480)
                 // The library is the file browser in Library mode: no button opens a sidebar beside it.
                 .toolbar(removing: isLibraryWindow ? .sidebarToggle : nil)

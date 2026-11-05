@@ -5,7 +5,7 @@
  * Description: The Pencil bar's popovers for the tool in use: the width of one of its sizes, and the ink's options.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 04/11/2026
  */
 
@@ -42,13 +42,6 @@ struct PencilSizeEditor: View {
                     .accessibilityValue(PencilWidthText.millimeters(width))
             }
             .font(.callout)
-            if case .eraser = size {
-                let narrowestOnScreen = PencilEraserWidths.pencilKitWidthOnScreen.lowerBound.formatted()
-                Text("The eraser cuts no narrower than \(narrowestOnScreen) points of the screen. Zoom in to erase finer on the page.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(16)
         .frame(width: 320)
