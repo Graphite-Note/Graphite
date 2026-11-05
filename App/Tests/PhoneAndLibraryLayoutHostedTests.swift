@@ -7,7 +7,7 @@
  *              swatch of the Pencil bar in dark appearance with the size of its buttons.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 05/11/2026
  */
 
@@ -104,12 +104,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         // Any search asked for shows the file list, as the back button does. The list's selection slid the note back
         // over it while the note was open (HUNT-183): it now marks the open file only while the note is in front.
         workspace.searchFocusRequest += 1
-        do {
-            try await waitUntil("the file list comes to the front") { !self.isNoteEditorShown() }
-        } catch {
-            describePhoneStack(in: controller, "after the search request")
-            throw error
-        }
+        try await waitUntil("the file list comes to the front") { !self.isNoteEditorShown() }
         describePhoneStack(in: controller, "the file list in front")
         attachScreenshot(named: "Phone's file list before the rename")
 
@@ -164,10 +159,6 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
             .map { bar in (bar: bar, height: bar.convert(bar.bounds, to: window).intersection(window.bounds).height) }
     }
 
-    private func visibleNavigationBarHeight() -> CGFloat {
-        visibleNavigationBars().map(\.height).max() ?? 0
-    }
-
     func testLibraryModeHasNoBandAboveItsRowAndKeepsBackAndForwardThere() async throws {
         let workspace = try await libraryWorkspace()
         let bounds = try libraryWindowBounds()
@@ -176,26 +167,28 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
             object.accessibilityLabel == "Back" && object.accessibilityTraits.contains(.button)
         }
         _ = try await element(in: controller, "Forward, beside it") { object in object.accessibilityLabel == "Forward" && object.accessibilityTraits.contains(.button) }
-        do {
-            try await waitUntil("no navigation bar over the library") { self.visibleNavigationBarHeight() < 4 }
-        } catch {
-            for shown in visibleNavigationBars() {
-                print("PhoneAndLibraryLayoutHostedTests band: a navigation bar \(shown.height) high at \(shown.bar.convert(shown.bar.bounds, to: window)), titled \(shown.bar.topItem?.title ?? "nothing")")
-            }
-            attachScreenshot(named: "Library mode with a navigation bar over it")
-            throw error
-        }
-        attachScreenshot(named: "Library mode on an iPad")
         let window = try XCTUnwrap(window)
         // The window's top row is the tab strip; the library's own row, its title with Back, Forward and the rest, is
-        // the next one. HUNT-211 was a band of 70 points above the tab strip, holding only those buttons.
+        // the next one. HUNT-211 was a band of 70 points above the tab strip, holding only those buttons. A navigation
+        // bar may hold the tab strip itself (the owner's iPad, 2026-11-05, kept one there): only a bar above the strip
+        // is a band.
         let tabStripButton = try await element(in: controller, "the tab strip's Show All Tabs") { object in
             object.accessibilityLabel == "Show All Tabs" && object.accessibilityTraits.contains(.button)
         }
+        let tabStrip = window.convert(tabStripButton.accessibilityFrame, from: window.screen.coordinateSpace)
+        func bandsAboveTheTabStrip() -> [(bar: UINavigationBar, height: CGFloat)] {
+            visibleNavigationBars().filter { shown in
+                shown.height >= 4 && shown.bar.convert(shown.bar.bounds, to: window).maxY <= tabStrip.minY + 1
+            }
+        }
+        try await waitUntil("no navigation bar band above the library's tab strip") { bandsAboveTheTabStrip().isEmpty }
+        for shown in visibleNavigationBars() {
+            print("PhoneAndLibraryLayoutHostedTests band: a navigation bar \(shown.height) high at \(shown.bar.convert(shown.bar.bounds, to: window)), titled \(shown.bar.topItem?.title ?? "nothing")")
+        }
+        attachScreenshot(named: "Library mode on an iPad")
         let title = try await element(in: controller, "the library's title") { object in
             object.accessibilityLabel == "Lectures" && object.accessibilityTraits.contains(.header)
         }
-        let tabStrip = window.convert(tabStripButton.accessibilityFrame, from: window.screen.coordinateSpace)
         let backFrame = window.convert(back.accessibilityFrame, from: window.screen.coordinateSpace)
         let titleFrame = window.convert(title.accessibilityFrame, from: window.screen.coordinateSpace)
         print("PhoneAndLibraryLayoutHostedTests band: tab strip \(tabStrip), Back \(backFrame), title \(titleFrame), safe area top \(window.safeAreaInsets.top)")
@@ -296,19 +289,54 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
     }
 
+    /// The density a form of the bar sets its buttons at.
+    private func density(of arrangement: PencilToolRowLayout.Arrangement) -> PencilToolRowLayout.Density {
+        if case .whole(let density) = arrangement { return density }
+        return .tightest
+    }
+
+    /// The black swatch's ring reads on the dark bar at every density the bar takes, the 16-point dots of the closest
+    /// one too, and each color and size is as wide as the density's pitch: 36 points for a size on the regular bar, a
+    /// color 32 (HUNT-284, HUNT-282). The owner's iPad (2026-11-05) measured 2.65 to 1 with the ring at 40 %, sampled
+    /// inside a 22-point dot by radii set for 20, and a color 32 points wide where the test still asked for 36.
     func testTheBlackSwatchShowsOnTheDarkBar() async throws {
         let toolbox = PencilToolbox(defaults: try XCTUnwrap(UserDefaults(suiteName: "DarkSwatch-\(UUID().uuidString)")))
-        let width: CGFloat = 1_100
-        let row = PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true)
-            .frame(width: width, height: PencilToolbarMetrics.height)
-            .background(Color(uiColor: .systemBackground))
-        let controller = try host(row, size: CGSize(width: width, height: 120))
-        let window = try XCTUnwrap(window)
-        window.overrideUserInterfaceStyle = .dark
-        let swatch = try await element(in: controller, "the black swatch") { object in object.accessibilityLabel == "black" }
-        let frame = swatch.accessibilityFrame
-        attachScreenshot(named: "Pencil bar in dark appearance")
+        let contents = PencilToolRowLayout.contents(of: toolbox, favorites: PaletteColor.defaultPalette, highlighterColors: PaletteColor.defaultHighlighterPalette,
+                                                    offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+        let closerWidths = [PencilToolRowLayout.Density.tight, .tightest].compactMap { density in
+            PencilToolRowLayout.width(of: .whole(density), holding: contents).map { width in CGFloat(width.rounded(.up)) + 1 }
+        }
+        var densitiesChecked: Set<Double> = []
+        for width in [1_100] + closerWidths {
+            PencilToolRowForm.lastShown = nil
+            let row = PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true)
+                .frame(width: width, height: PencilToolbarMetrics.height)
+                .background(Color(uiColor: .systemBackground))
+            let controller = try host(row, size: CGSize(width: width, height: 120))
+            let window = try XCTUnwrap(window)
+            window.overrideUserInterfaceStyle = .dark
+            try await waitUntil("the row shows at \(Int(width)) points") { PencilToolRowForm.lastShown != nil }
+            let swatch = try await element(in: controller, "the black swatch") { object in object.accessibilityLabel == "black" }
+            let shownDensity = density(of: try XCTUnwrap(PencilToolRowForm.lastShown).arrangement)
+            let frame = swatch.accessibilityFrame
+            attachScreenshot(named: "Pencil bar in dark appearance, \(Int(width)) points")
+            let contrast = try ringContrast(around: CGPoint(x: frame.midX, y: frame.midY), dotDiameter: shownDensity.swatchDiameter,
+                                            barPoint: CGPoint(x: frame.midX, y: frame.minY + 2), in: window)
+            print("PhoneAndLibraryLayoutHostedTests swatch at \(Int(width)) points: \(shownDensity.swatchDiameter)-point dots, button \(frame.size), ring contrast \(contrast)")
+            XCTAssertGreaterThanOrEqual(contrast, 3, "\(Int(width)) points: the black swatch's ring reads on the dark bar (3 to 1, WCAG 1.4.11).")
+            XCTAssertGreaterThanOrEqual(frame.width, shownDensity.swatchPitch - 0.5, "\(Int(width)) points: the swatch's button is its density's pitch wide.")
+            XCTAssertGreaterThanOrEqual(frame.height, 43.5, "And as tall as the bar.")
+            for widthName in ["Fine", "Medium", "Broad"] {
+                let widthButton = try await element(in: controller, "the \(widthName) width") { object in object.accessibilityLabel == widthName }
+                XCTAssertGreaterThanOrEqual(widthButton.accessibilityFrame.width, shownDensity.sizePitch - 0.5, "\(widthName) is its density's pitch wide.")
+            }
+            densitiesChecked.insert(shownDensity.swatchDiameter)
+        }
+        XCTAssertTrue(densitiesChecked.contains(22), "The regular bar was checked.")
+    }
 
+    /// The contrast of the brightest point of the ring at the edge of a dot `dotDiameter` wide against the bar.
+    private func ringContrast(around center: CGPoint, dotDiameter: Double, barPoint: CGPoint, in window: UIWindow) throws -> Double {
         let picture = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
         let image = try XCTUnwrap(picture.cgImage)
         let scale = CGFloat(image.width) / window.bounds.width
@@ -322,27 +350,17 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
             let offset = (row * image.width + column) * 4
             return luminance(red: pixels[offset], green: pixels[offset + 1], blue: pixels[offset + 2])
         }
-        // The bar beside the swatch, and the swatch's edge: its 20-point disc and the ring on it, not the 28-point
-        // ring that marks the color in use.
-        let center = CGPoint(x: frame.midX, y: frame.midY)
-        let bar = pixelLuminance(at: CGPoint(x: center.x, y: frame.minY + 2))
+        let bar = pixelLuminance(at: barPoint)
+        // The 1-point ring on the dot's edge, not the 2-point ring that marks the color in use outside it.
+        let dotRadius = dotDiameter / 2
         var brightestEdge = 0.0
         for step in 0..<72 {
             let angle = Double(step) * .pi / 36
-            for radius in stride(from: 8.6, through: 9.8, by: 0.3) {
+            for radius in stride(from: dotRadius - 0.9, through: dotRadius - 0.1, by: 0.2) {
                 brightestEdge = max(brightestEdge, pixelLuminance(at: CGPoint(x: center.x + radius * cos(angle), y: center.y + radius * sin(angle))))
             }
         }
-        let contrast = (max(brightestEdge, bar) + 0.05) / (min(brightestEdge, bar) + 0.05)
-        XCTAssertGreaterThanOrEqual(contrast, 3, "The black swatch's ring reads on the dark bar (3 to 1, WCAG 1.4.11); without it the disc was about 1.1 to 1.")
-
-        // HUNT-282: the colors and the widths are 36 points wide and as tall as the 44-point bar; they were 30 and 28.
-        XCTAssertGreaterThanOrEqual(frame.width, 35.5, "The swatch's button is 36 points wide.")
-        XCTAssertGreaterThanOrEqual(frame.height, 43.5, "And as tall as the bar.")
-        for widthName in ["Fine", "Medium", "Broad"] {
-            let widthButton = try await element(in: controller, "the \(widthName) width") { object in object.accessibilityLabel == widthName }
-            XCTAssertGreaterThanOrEqual(widthButton.accessibilityFrame.width, 35.5, "\(widthName) is 36 points wide.")
-        }
+        return (max(brightestEdge, bar) + 0.05) / (min(brightestEdge, bar) + 0.05)
     }
 }
 #endif

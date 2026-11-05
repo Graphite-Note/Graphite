@@ -6,7 +6,7 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.47
+ * Version: 0.48
  * Date: 05/11/2026
  */
 
@@ -202,7 +202,8 @@ struct VaultSidebar: View {
         .searchable(text: $workspace.searchQuery, placement: .sidebar, prompt: "Search")
         #endif
         .searchFocused($isSearchFocused)
-        .onChange(of: workspace.searchFocusRequest) { isSearchFocused = true }
+        .modifier(SearchFocusOnceTheListIsInFront(searchFocusRequest: workspace.searchFocusRequest, isWindowCompact: isWindowCompact,
+                                                   isDocumentColumnInFront: isDocumentColumnInFront, isSearchFocused: $isSearchFocused))
         .searchSuggestions { searchSuggestions }
         .task(id: workspace.searchQuery) {
             // An empty field shows the file tree. Results of the last query are cleared rather
@@ -997,5 +998,29 @@ extension SearchMatch {
         #else
         return AttributedString(excerpt)
         #endif
+    }
+}
+
+/// Focuses the sidebar's search field when a search is asked for. On a phone showing the document, the field is focused
+/// once the list is in front: focused while the list was out of the window, the field's presentation failed ("not in
+/// the window hierarchy" on the owner's iPad, 2026-11-05) and the stack went back to the note (HUNT-183).
+private struct SearchFocusOnceTheListIsInFront: ViewModifier {
+    let searchFocusRequest: Int
+    let isWindowCompact: Bool
+    let isDocumentColumnInFront: Bool
+    var isSearchFocused: FocusState<Bool>.Binding
+    /// A search asked for while the document was in front, waiting for the list.
+    @State private var focusesSearchWhenInFront = false
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: searchFocusRequest) {
+                if isWindowCompact && isDocumentColumnInFront { focusesSearchWhenInFront = true } else { isSearchFocused.wrappedValue = true }
+            }
+            .onChange(of: isDocumentColumnInFront) { _, isDocumentInFront in
+                guard !isDocumentInFront, focusesSearchWhenInFront else { return }
+                focusesSearchWhenInFront = false
+                isSearchFocused.wrappedValue = true
+            }
     }
 }

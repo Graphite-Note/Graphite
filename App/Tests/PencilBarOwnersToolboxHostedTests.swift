@@ -8,8 +8,8 @@
  *              them (HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -79,7 +79,8 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
                 let label = "\(toolName) in use, \(place.name) (\(Int(place.width)) points)"
                 let visibleLabels = try await labelsWhollyOnScreen(in: controller.view, window: window, waitingFor: label)
                 let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
-                print("Owner's toolbox, \(label): \(shownRow.arrangement); on the bar: \(visibleLabels.joined(separator: ", "))")
+                let pickerWidths = Self.segmentedControls(in: controller.view).map { picker in picker.bounds.width }
+                print("Owner's toolbox, \(label): \(shownRow.arrangement); the tool's choices \(pickerWidths) points wide; on the bar: \(visibleLabels.joined(separator: ", "))")
                 let screenshot = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                     window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                 })
@@ -103,6 +104,12 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
         let kind: PencilToolKind = toolIndex == toolbox.presets.count ? .eraser : .lasso
         toolbox.use(kind)
         return kind.title
+    }
+
+    /// The system's segmented pickers of the tool's choices (the eraser's Strokes or Pixels, the lasso's type), whose
+    /// widths the Mac's `PencilBarOwnersToolboxTests` derives from their labels in the bold font.
+    private static func segmentedControls(in view: UIView) -> [UISegmentedControl] {
+        ((view as? UISegmentedControl).map { picker in [picker] } ?? []) + view.subviews.flatMap(segmentedControls)
     }
 
     /// The bar as a PDF shows it: the row alone, its side's tab bar holding Undo, Redo and Write, or the bar with them at

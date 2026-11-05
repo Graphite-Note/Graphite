@@ -5,8 +5,8 @@
  * Description: Turning the iPad keeps the view the window showed: the sidebar beside the documents, or hidden (HUNT-311).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 import XCTest

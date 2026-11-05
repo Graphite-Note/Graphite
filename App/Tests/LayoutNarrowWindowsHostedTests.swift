@@ -6,8 +6,8 @@
  *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -215,30 +215,49 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         defer { window.isHidden = true; window.rootViewController = nil }
         try await waitUntil { !self.descendants(of: controller.view, matching: MarkdownTextView.self).isEmpty }
 
+        /// The navigation bar over the note: a sidebar beside it, as an iPad's window this wide shows it on the
+        /// owner's iPad, keeps its own bar, which is not over the note.
         func visibleNavigationBarHeight() -> CGFloat {
-            descendants(of: window, matching: UINavigationBar.self)
-                .filter { bar in !bar.isHidden && bar.alpha > 0.01 }
-                .map { bar in bar.convert(bar.bounds, to: window).intersection(window.bounds).height }
+            let noteFrames = descendants(of: window, matching: MarkdownTextView.self).filter { editor in editor.window === window }
+                .map { editor in editor.convert(editor.bounds, to: window) }
+            return descendants(of: window, matching: UINavigationBar.self)
+                .filter { bar in !bar.isHidden && bar.alpha > 0.01 && bar.window === window }
+                .map { bar in bar.convert(bar.bounds, to: window).intersection(window.bounds) }
+                .filter { barFrame in noteFrames.contains { noteFrame in min(barFrame.maxX, noteFrame.maxX) - max(barFrame.minX, noteFrame.minX) > 40 } }
+                .map(\.height)
                 .max() ?? 0
         }
+        func describeNavigationBars(_ moment: String) {
+            let bars = descendants(of: window, matching: UINavigationBar.self).filter { bar in bar.window === window }
+                .map { bar in "\(bar.convert(bar.bounds, to: window)) hidden \(bar.isHidden) alpha \(bar.alpha)" }
+            let notes = descendants(of: window, matching: MarkdownTextView.self).map { editor in editor.convert(editor.bounds, to: window) }
+            print("KEYBOARD \(moment): navigation bars \(bars), note at \(notes), bar over the note \(visibleNavigationBarHeight())")
+        }
         try await waitUntil("the navigation bar shows without the keyboard") { visibleNavigationBarHeight() > 20 }
+        describeNavigationBars("without the keyboard")
         attachScreenshot(of: window, named: "Phone held sideways, no keyboard")
 
         // A device has a software keyboard, which a simulator with a hardware keyboard never shows: one still leaving
         // the text view of an earlier test sends its hide after the show posted here, and the bar comes back as it
-        // should. The owner's iPad timed out here on 2026-11-04. The show is posted once the keyboard is quiet.
+        // should. The owner's iPad timed out here on 2026-11-04 and 2026-11-05. The show is posted once the keyboard is
+        // quiet, and again whenever the device's keyboard answered after it.
         let keyboardNotifications = KeyboardNotificationCounter()
         defer { keyboardNotifications.stop() }
         for shownWindow in try scene.windows { shownWindow.endEditing(true) }
         try await waitUntilSettled("the device's keyboard is quiet", quietMilliseconds: 1_000) { CGFloat(keyboardNotifications.count) }
         let notificationsBeforeTheShow = keyboardNotifications.count
-        NotificationCenter.default.post(name: UIResponder.keyboardWillShowNotification, object: nil)
-        do {
-            try await waitUntil("the navigation bar gives way while the keyboard is up") { visibleNavigationBarHeight() < 4 }
-        } catch {
-            print("KEYBOARD notifications after the posted show: \(keyboardNotifications.count - notificationsBeforeTheShow - 1) from the device")
-            throw error
+        var countAfterTheLastShow = 0
+        var postedShows = 0
+        try await waitUntil("the navigation bar gives way while the keyboard is up") {
+            if visibleNavigationBarHeight() < 4 { return true }
+            if postedShows == 0 || keyboardNotifications.count != countAfterTheLastShow {
+                NotificationCenter.default.post(name: UIResponder.keyboardWillShowNotification, object: nil)
+                postedShows += 1
+                countAfterTheLastShow = keyboardNotifications.count
+            }
+            return false
         }
+        describeNavigationBars("keyboard up, \(postedShows) shows posted, \(keyboardNotifications.count - notificationsBeforeTheShow - postedShows) notifications from the device")
         attachScreenshot(of: window, named: "Phone held sideways, keyboard up")
 
         NotificationCenter.default.post(name: UIResponder.keyboardWillHideNotification, object: nil)

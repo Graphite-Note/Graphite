@@ -7,8 +7,8 @@
  *              the palette Add Image and Graphite's tools are buttons of the PDF's toolbar (HUNT-309).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -162,9 +162,26 @@ final class PencilModesHostedTests: XCTestCase {
         let inkSelection = PaletteInkSelection.of(scene)
         inkSelection.tool = .none
         let selectInk = try XCTUnwrap(elements.first { element in element.accessibilityLabel == "Select Ink" })
-        XCTAssertTrue(selectInk.accessibilityActivate())
+        let howActivated = activate(selectInk, in: window)
+        print("PENCIL-MODES Select Ink, a \(type(of: selectInk)) at \(selectInk.accessibilityFrame), activated by \(howActivated)")
         try await waitUntil("the lasso is taken up") { inkSelection.tool == .lasso }
         inkSelection.tool = .none
+    }
+
+    /// Activates a toolbar button as VoiceOver does: its own activation, else the control under its activation point,
+    /// as VoiceOver's double tap reaches it. On the owner's iPad (2026-11-05) the toolbar's button answered false to its
+    /// activation, which VoiceOver then follows with a tap. Returns how it was activated.
+    private func activate(_ element: NSObject, in window: UIWindow) -> String {
+        if element.accessibilityActivate() { return "its accessibility activation" }
+        let point = window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace)
+        var view = window.hitTest(point, with: nil)
+        while let candidate = view, !(candidate is UIControl) { view = candidate.superview }
+        guard let control = view as? UIControl else { return "nothing: no control under \(point)" }
+        var events: UIControl.Event = []
+        control.enumerateEventHandlers { _, _, event, _ in events.insert(event) }
+        let event: UIControl.Event = events.contains(.primaryActionTriggered) ? .primaryActionTriggered : .touchUpInside
+        control.sendActions(for: event)
+        return "the \(type(of: control)) under its activation point, event \(event.rawValue)"
     }
 
     private static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {

@@ -8,11 +8,13 @@
  *              (HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 import XCTest
+import CoreText
+import Foundation
 @testable import GraphiteUI
 import GraphiteTestSupport
 
@@ -36,9 +38,28 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     """
 
     /// The widths of the system's segmented pickers beside the eraser (Strokes, Pixels) and the lasso (Freehand,
-    /// Rectangle) on the whole bar, rounded up; only the bar measures them, and the hosted test measures the bar.
-    static let eraserChoicesWidth = 150.0
-    static let lassoChoicesWidth = 180.0
+    /// Rectangle) on the whole bar, measured from their labels as Bold Text draws them (the owner's iPad has it on):
+    /// before, 150 and 180 points were assumed. The hosted test prints the pickers' widths on the device.
+    nonisolated static let eraserChoicesWidth = segmentedPickerWidth(titles: ["Strokes", "Pixels"])
+    nonisolated static let lassoChoicesWidth = segmentedPickerWidth(titles: LassoShape.allCases.map(\.title))
+
+    /// A segmented picker's width: UIKit's segments share the width equally, each as wide as the widest label in the
+    /// picker's 13-point font, bold as Bold Text makes it, with 12 points of room on each side, rounded up.
+    nonisolated static func segmentedPickerWidth(titles: [String]) -> Double {
+        let baseFont = CTFontCreateUIFontForLanguage(.system, 13, nil) ?? CTFontCreateWithName("Helvetica" as CFString, 13, nil)
+        let boldFont = CTFontCreateCopyWithSymbolicTraits(baseFont, 13, nil, .traitBold, .traitBold) ?? baseFont
+        let widestLabel = titles.map { title in
+            let attributed = NSAttributedString(string: title, attributes: [NSAttributedString.Key(kCTFontAttributeName as String): boldFont])
+            return Double(CTLineGetTypographicBounds(CTLineCreateWithAttributedString(attributed), nil, nil, nil))
+        }.max() ?? 0
+        return (Double(titles.count) * (widestLabel + 2 * 12)).rounded(.up)
+    }
+
+    func testThePickerWidthsAreMeasuredWithBoldText() {
+        print("Measured pickers with Bold Text: eraser \(Self.eraserChoicesWidth), lasso \(Self.lassoChoicesWidth) points")
+        XCTAssertGreaterThan(Self.lassoChoicesWidth, Self.eraserChoicesWidth, "Rectangle is the longest label.")
+        XCTAssertGreaterThan(Self.eraserChoicesWidth, 100, "Two segments of bold labels with their room.")
+    }
 
     /// The side's width on the 11-inch iPad with the tab bar holding Undo, Redo and Write: sideways, sideways beside
     /// the sidebar, upright.

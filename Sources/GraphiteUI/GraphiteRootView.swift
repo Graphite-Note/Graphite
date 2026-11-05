@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.66
+ * Version: 0.67
  * Date: 05/11/2026
  */
 
@@ -132,6 +132,14 @@ struct GraphiteRootView: View {
             if hasMeasuredWindowShape, !isCompactWidth, isTallerThanWide != isWindowTallerThanWide {
                 columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isWindowTallerThanWide)
             }
+            #if os(iOS)
+            // The window's first shape decides the sidebar as an explicit choice: hidden upright, beside the documents
+            // sideways. Left automatic, iPadOS 27 put it beside an upright PDF on the owner's 11-inch iPad, the page
+            // 514 points wide, and the Pencil bar folded its colors into a scrolling strip (HUNT-317).
+            if !hasMeasuredWindowShape, !isCompactWidth {
+                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isTallerThanWide)
+            }
+            #endif
             hasMeasuredWindowShape = true
             isWindowTallerThanWide = isTallerThanWide
         }

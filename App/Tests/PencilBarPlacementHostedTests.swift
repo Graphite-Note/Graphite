@@ -8,8 +8,8 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -119,6 +119,12 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             attachScreenshot(of: window, named: "Fixed Pencil bar over a PDF, 11-inch iPad \(name)")
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
             let pdfFrame = pdfView.convert(pdfView.bounds, to: window)
+            // On the owner's iPad (2026-11-05) the upright PDF was 514 points wide, from 320 to 834: the sidebar stood
+            // beside it, left automatic, and the bar folded to scrolling colors. The window's first shape now hides it upright.
+            print("PENCIL-BAR placement \(name): window \(window.bounds.size), PDF \(pdfFrame), row \(shownRow.frameInWindow), \(shownRow.arrangement)")
+            if size.height > size.width {
+                XCTAssertEqual(pdfFrame.width, window.bounds.width, accuracy: 1, "A fresh window upright shows the PDF without the sidebar beside it.")
+            }
             XCTAssertEqual(shownRow.frameInWindow.midX, pdfFrame.midX, accuracy: 24, "\(name): the tools are centered over the PDF, not at the right edge.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, pdfFrame.minX - 1, "\(name): the bar is inside the PDF's side.")
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, pdfFrame.maxX + 1, "\(name): the bar is inside the PDF's side.")
