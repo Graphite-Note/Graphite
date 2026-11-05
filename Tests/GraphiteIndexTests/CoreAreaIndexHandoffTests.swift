@@ -5,8 +5,8 @@
  * Description: Regressions for changes other groups handed to the index files: the base pre-filter
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -37,8 +37,8 @@ final class CoreAreaIndexHandoffTests: XCTestCase {
     }
 
     /// The paths a base's filters keep, once over the pre-filtered records and once over
-    /// every record, and whether the pre-filtered batch was truncated.
-    private func filteredPaths(_ baseSource: String, this thisPath: String? = nil) async throws -> (prefiltered: [String], all: [String], isTruncated: Bool) {
+    /// every record, and how many records the pre-filter loaded.
+    private func filteredPaths(_ baseSource: String, this thisPath: String? = nil) async throws -> (prefiltered: [String], all: [String], loadedRecordCount: Int) {
         let definition = try BaseDefinition.parse(baseSource)
         let environment = BaseEvaluationEnvironment()
         var thisRecord: BaseFileRecord?
@@ -47,14 +47,13 @@ final class CoreAreaIndexHandoffTests: XCTestCase {
         let filters = [definition.filters].compactMap { filter in filter }
         let prefilter = BaseRecordPrefilter.extract(from: filters, definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
         let prefilteredBatch = try await index.baseRecords(matching: prefilter)
-        let allBatch = try await index.baseRecords(matching: BaseRecordPrefilter(), limit: VaultIndex.maximumBaseRecordLimit)
-        XCTAssertFalse(allBatch.isTruncated)
+        let allBatch = try await index.baseRecords(matching: BaseRecordPrefilter())
         let evaluatedThisRecord = thisRecord
         let (prefilteredRows, allRows) = await Task.detached {
             let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: evaluatedThisRecord, provider: provider)
             return (engine.run(viewIndex: 0, records: prefilteredBatch.records).rows, engine.run(viewIndex: 0, records: allBatch.records).rows)
         }.value
-        return (prefilteredRows.map(\.path.rawValue).sorted(), allRows.map(\.path.rawValue).sorted(), prefilteredBatch.isTruncated)
+        return (prefilteredRows.map(\.path.rawValue).sorted(), allRows.map(\.path.rawValue).sorted(), prefilteredBatch.records.count)
     }
 
     // MARK: Base pre-filter (F19, F408, P66)
@@ -104,7 +103,7 @@ final class CoreAreaIndexHandoffTests: XCTestCase {
         files.append(IndexedFile(path: try VaultPath("Reading.md"), size: 1, modified: .now, markdown: "reading"))
         try await index.update(files, generation: "test")
         let outcome = try await filteredPaths("filters:\n  and:\n    - status == \"reading\"\nviews:\n  - type: table\n    name: Table\n")
-        XCTAssertFalse(outcome.isTruncated, "Only notes whose status can equal the text are loaded.")
+        XCTAssertLessThan(outcome.loadedRecordCount, files.count, "Only notes whose status can equal the text are loaded.")
         XCTAssertEqual(outcome.prefiltered, outcome.all)
         XCTAssertGreaterThanOrEqual(outcome.all.count, 3_000)
     }

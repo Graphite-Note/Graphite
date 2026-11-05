@@ -5,8 +5,8 @@
  * Description: Bases' definitions and query engine, and the in-memory record provider.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -200,7 +200,7 @@ final class CoreBasesDefinitionQueryEngineTests: XCTestCase {
                        "status == \"\"", "status != \"reading\"", "status == 3", "file.name == \"reading\""] {
             XCTAssertEqual(prefilter([filter]).propertyTextRequirements, [], filter)
         }
-        let alternatives = BaseRecordPrefilter.extract(from: [.or([.expression("status == \"reading\"")])], definition: BaseDefinition(), environment: environment, thisRecord: nil)
+        let alternatives = BaseRecordPrefilter.extract(from: [.or([.expression("status == \"reading\""), .expression("file.hasTag(\"next\")")])], definition: BaseDefinition(), environment: environment, thisRecord: nil)
         XCTAssertEqual(alternatives.propertyTextRequirements, [])
     }
 

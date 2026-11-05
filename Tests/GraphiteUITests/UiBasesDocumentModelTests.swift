@@ -5,8 +5,8 @@
  * Description: An open base: results, link cells, property editing and views.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -60,7 +60,7 @@ final class UiBasesDocumentModelTests: XCTestCase {
         let model = try await loadedModel(basePath: "Broken.base")
         XCTAssertTrue(rowNames(model).isEmpty)
         XCTAssertFalse(model.result?.problems.isEmpty ?? true)
-        XCTAssertEqual(model.loadedRecordCount, 0)
+        XCTAssertTrue(model.availablePropertyKeys.isEmpty)
     }
 
     func testMissingPreferredViewReportsWhyTheFirstViewIsShown() async throws {

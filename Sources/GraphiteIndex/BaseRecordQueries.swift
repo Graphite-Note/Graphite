@@ -5,8 +5,8 @@
  * Description: Answers bases' questions about files from the index.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -14,33 +14,35 @@ import GRDB
 import GraphiteCore
 import Synchronization
 
-/// Base queries over the index: bounded record loading with SQL pre-filtering, and a
-/// synchronous lookup provider for the evaluator.
+/// Base queries over the index: record loading with SQL pre-filtering, and a synchronous
+/// lookup provider for the evaluator.
 extension VaultIndex {
-    /// Records a base loads when its filters give the index nothing to narrow by.
-    public static let defaultBaseRecordLimit = 5_000
-    /// Upper bound for any caller-provided limit, to keep memory bounded.
-    public static let maximumBaseRecordLimit = 20_000
-    /// Paths per `IN (…)` statement when loading related rows.
+    /// Paths per `IN (…)` statement when loading related rows: records load in pages of
+    /// this many files.
     private static let relatedRowChunkSize = 500
     /// Files a written link target may name before a `hasLink` requirement stops
     /// narrowing the query, which keeps the statement's argument list small.
     private static let maximumPrefilterLinkDestinations = 32
 
-    /// Files that can match a base, with their properties, tags and links. Loads at most
-    /// `limit` records in path order; `BaseRecordBatch.isTruncated` reports when more
-    /// files passed the pre-filter.
-    public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit) throws -> BaseRecordBatch {
-        let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
-        return try readThroughTheWriter { database in
+    /// Every file that can match a base, in path order, with what `contents` keeps of its
+    /// properties, tags and links. There is no cap: the pre-filter narrows the files, and
+    /// the evaluator checks every one loaded.
+    public func baseRecords(matching prefilter: BaseRecordPrefilter, contents: BaseRecordContents = .everything) throws -> BaseRecordBatch {
+        try readThroughTheWriter { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
-            let paths = try String.fetchAll(database, sql: "SELECT path FROM files WHERE \(whereClause) ORDER BY path LIMIT ?", arguments: arguments + [boundedLimit + 1])
-            var candidateCount = paths.count
-            if paths.count > boundedLimit {
-                candidateCount = try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE \(whereClause)", arguments: arguments) ?? paths.count
-            }
-            let records = try Self.records(forPaths: Array(paths.prefix(boundedLimit)), in: database)
-            return BaseRecordBatch(records: records, candidateCount: candidateCount)
+            let fileRows = try Row.fetchAll(database, sql: "SELECT path, size, modified, created FROM files WHERE \(whereClause) ORDER BY path", arguments: arguments)
+                .map(IndexedFileRow.init)
+            return BaseRecordBatch(records: try Self.records(for: fileRows, contents: contents, in: database))
+        }
+    }
+
+    /// The property names of files that can match a base, at most `limit`, for the view
+    /// editor's list of columns.
+    public func basePropertyKeys(matching prefilter: BaseRecordPrefilter, limit: Int) throws -> [String] {
+        try readThroughTheWriter { database in
+            let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
+            return try String.fetchAll(database, sql: "SELECT DISTINCT key FROM properties WHERE path IN (SELECT path FROM files WHERE \(whereClause)) LIMIT ?",
+                                       arguments: arguments + [max(limit, 0)])
         }
     }
 
@@ -77,45 +79,87 @@ extension VaultIndex {
         "length(CAST(\(column) AS BLOB)) <> length(\(column))"
     }
 
+    private static func storedTextIsASCII(_ column: String) -> String {
+        "length(CAST(\(column) AS BLOB)) = length(\(column))"
+    }
+
     static func sqlCondition(for prefilter: BaseRecordPrefilter, in database: Database) throws -> (String, StatementArguments) {
-        var clauses: [String] = []
-        var arguments = StatementArguments()
-        for requirement in prefilter.requirements {
-            switch requirement {
-            case .inAnyFolder(let folders):
-                guard !folders.isEmpty, isSafeForCaseInsensitiveSQL(folders) else { continue }
-                clauses.append("(" + folders.map { _ in "path LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + " OR \(storedTextIsNotASCII("path")))")
-                arguments += StatementArguments(folders.map { folder in likePattern(escaping: folder) + "/%" })
-            case .hasAnyTag(let tags):
-                guard !tags.isEmpty, isSafeForCaseInsensitiveSQL(tags) else { continue }
-                let tagConditions = tags.map { _ in "tag = ? COLLATE NOCASE OR tag LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
-                clauses.append("path IN (SELECT path FROM tags WHERE \(tagConditions) OR \(storedTextIsNotASCII("tag")))")
-                for tag in tags { arguments += [tag, likePattern(escaping: tag) + "/%"] }
-            case .hasAnyExtension(let fileExtensions):
-                // A file without an extension has `file.ext == ""`, which no `%.` pattern matches.
-                guard !fileExtensions.isEmpty, !fileExtensions.contains(where: \.isEmpty), isSafeForCaseInsensitiveSQL(fileExtensions) else { continue }
-                clauses.append("(" + fileExtensions.map { _ in "path LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + ")")
-                arguments += StatementArguments(fileExtensions.map { fileExtension in "%." + likePattern(escaping: fileExtension) })
-            case .hasAnyProperty(let keys):
-                guard !keys.isEmpty, isSafeForCaseInsensitiveSQL(keys) else { continue }
-                clauses.append("path IN (SELECT path FROM properties WHERE " + keys.map { _ in "key = ? COLLATE NOCASE" }.joined(separator: " OR ")
-                               + " OR \(storedTextIsNotASCII("key")))")
-                arguments += StatementArguments(keys)
-            case .linksTo(let destination):
-                guard let (linkClause, linkArguments) = try linkCondition(for: destination, in: database) else { continue }
-                clauses.append(linkClause)
-                arguments += linkArguments
+        guard let superset = try BasePrefilterSQL.bounds(of: prefilter.condition, in: database).superset else { return ("1", StatementArguments()) }
+        return (superset.text, superset.arguments)
+    }
+
+    /// SQL for every file that may meet `requirement`, or nil when the index cannot narrow it.
+    static func supersetCondition(for requirement: BasePrefilterRequirement, in database: Database) throws -> BasePrefilterSQL.Fragment? {
+        switch requirement {
+        case .inAnyFolder(let folders):
+            guard !folders.isEmpty, isSafeForCaseInsensitiveSQL(folders) else { return nil }
+            return .init(text: "(" + folders.map { _ in "path LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + " OR \(storedTextIsNotASCII("path")))",
+                         arguments: StatementArguments(folders.map { folder in likePattern(escaping: folder) + "/%" }))
+        case .hasAnyTag(let tags):
+            guard !tags.isEmpty, isSafeForCaseInsensitiveSQL(tags) else { return nil }
+            let tagConditions = tags.map { _ in "tag = ? COLLATE NOCASE OR tag LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
+            return .init(text: "path IN (SELECT path FROM tags WHERE \(tagConditions) OR \(storedTextIsNotASCII("tag")))",
+                         arguments: StatementArguments(tags.flatMap { tag in [tag, likePattern(escaping: tag) + "/%"] }))
+        case .hasAnyExtension(let fileExtensions):
+            // A file without an extension has `file.ext == ""`, which no `%.` pattern matches.
+            guard !fileExtensions.isEmpty, !fileExtensions.contains(where: \.isEmpty), isSafeForCaseInsensitiveSQL(fileExtensions) else { return nil }
+            return .init(text: "(" + fileExtensions.map { _ in "path LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + ")",
+                         arguments: StatementArguments(fileExtensions.map { fileExtension in "%." + likePattern(escaping: fileExtension) }))
+        case .hasAnyProperty(let keys):
+            guard !keys.isEmpty, isSafeForCaseInsensitiveSQL(keys) else { return nil }
+            return .init(text: "path IN (SELECT path FROM properties WHERE " + keys.map { _ in "key = ? COLLATE NOCASE" }.joined(separator: " OR ")
+                         + " OR \(storedTextIsNotASCII("key")))", arguments: StatementArguments(keys))
+        case .linksTo(let destination):
+            return try linkCondition(for: destination, in: database).map { linkClause, linkArguments in .init(text: linkClause, arguments: linkArguments) }
+        case .inExactFolder(let folder):
+            guard isSafeForCaseInsensitiveSQL([folder]) else { return nil }
+            if folder == "/" { return .init(text: "(instr(path, '/') = 0 OR \(storedTextIsNotASCII("path")))", arguments: []) }
+            let folderPattern = likePattern(escaping: folder) + "/%"
+            return .init(text: "((path LIKE ? ESCAPE '\\' AND path NOT LIKE ? ESCAPE '\\') OR \(storedTextIsNotASCII("path")))",
+                         arguments: [folderPattern, folderPattern + "/%"])
+        case .hasAnyFileName(let names), .hasAnyBasename(let names):
+            guard !names.isEmpty, isSafeForCaseInsensitiveSQL(names) else { return nil }
+            var patterns: [String] = []
+            for name in names {
+                let escapedName = likePattern(escaping: name)
+                patterns += [escapedName, "%/" + escapedName]
+                // A basename is the file name without its last extension.
+                if case .hasAnyBasename = requirement { patterns += [escapedName + ".%", "%/" + escapedName + ".%"] }
             }
+            return .init(text: "(" + patterns.map { _ in "path LIKE ? ESCAPE '\\'" }.joined(separator: " OR ") + " OR \(storedTextIsNotASCII("path")))",
+                         arguments: StatementArguments(patterns))
         }
-        for requirement in prefilter.propertyTextRequirements {
-            guard isSafeForCaseInsensitiveSQL([requirement.key, requirement.text]) else { continue }
-            // The stored node is the value's JSON. A value with `%` or non-ASCII text can
-            // still equal the requirement once the evaluator decodes or normalizes it.
-            clauses.append("path IN (SELECT path FROM properties WHERE (key = ? COLLATE NOCASE OR \(storedTextIsNotASCII("key")))"
-                           + " AND (node LIKE ? ESCAPE '\\' OR instr(node, '%') > 0 OR \(storedTextIsNotASCII("node"))))")
-            arguments += [requirement.key, "%" + likePattern(escaping: requirement.text) + "%"]
+    }
+
+    /// SQL for every file whose property may equal the requirement's text.
+    static func supersetCondition(for requirement: BasePropertyTextRequirement) -> BasePrefilterSQL.Fragment? {
+        guard isSafeForCaseInsensitiveSQL([requirement.key, requirement.text]) else { return nil }
+        // The stored node is the value's JSON. A value with `%` or non-ASCII text can
+        // still equal the requirement once the evaluator decodes or normalizes it.
+        return .init(text: "path IN (SELECT path FROM properties WHERE (key = ? COLLATE NOCASE OR \(storedTextIsNotASCII("key")))"
+                     + " AND (node LIKE ? ESCAPE '\\' OR instr(node, '%') > 0 OR \(storedTextIsNotASCII("node"))))",
+                     arguments: [requirement.key, "%" + likePattern(escaping: requirement.text) + "%"])
+    }
+
+    /// SQL for files that certainly meet `requirement` as the evaluator reads it exactly,
+    /// or nil when the index cannot tell. Only text in ASCII is compared, byte for byte or
+    /// ignoring ASCII case as the evaluator does, so no Unicode equivalence can differ.
+    static func subsetCondition(for requirement: BasePrefilterRequirement) -> BasePrefilterSQL.Fragment? {
+        switch requirement {
+        case .inAnyFolder(let folders):
+            // `file.inFolder` compares the file's folder exactly, with its subfolders.
+            guard !folders.isEmpty, isSafeForCaseInsensitiveSQL(folders) else { return nil }
+            return .init(text: "((" + folders.map { _ in "substr(path, 1, ?) = ?" }.joined(separator: " OR ") + ") AND \(storedTextIsASCII("path")))",
+                         arguments: StatementArguments(folders.flatMap { folder -> [any DatabaseValueConvertible] in [folder.utf8.count + 1, folder + "/"] }))
+        case .hasAnyTag(let tags):
+            // `file.hasTag` ignores case, and takes nested tags.
+            guard !tags.isEmpty, isSafeForCaseInsensitiveSQL(tags) else { return nil }
+            let tagConditions = tags.map { _ in "tag = ? COLLATE NOCASE OR tag LIKE ? ESCAPE '\\'" }.joined(separator: " OR ")
+            return .init(text: "path IN (SELECT path FROM tags WHERE (\(tagConditions)) AND \(storedTextIsASCII("tag")))",
+                         arguments: StatementArguments(tags.flatMap { tag in [tag, likePattern(escaping: tag) + "/%"] }))
+        case .hasAnyExtension, .hasAnyProperty, .linksTo, .inExactFolder, .hasAnyFileName, .hasAnyBasename:
+            return nil
         }
-        return (clauses.isEmpty ? "1" : clauses.joined(separator: " AND "), arguments)
     }
 
     /// Files with a link that may reach `destination`, or nil when the index cannot narrow
@@ -197,50 +241,91 @@ extension VaultIndex {
         return forms.map(foldedKey)
     }
 
-    private static func placeholders(count: Int) -> String {
+    static func placeholders(count: Int) -> String {
         Array(repeating: "?", count: count).joined(separator: ",")
     }
 
     // MARK: Records
 
-    static func records(forPaths paths: [String], in database: Database) throws -> [BaseFileRecord] {
-        guard !paths.isEmpty else { return [] }
+    /// A `files` row as a record needs it.
+    struct IndexedFileRow {
+        let path: String
+        let size: Int
+        let modifiedInterval: Double
+        let createdInterval: Double?
+
+        init(path: String, size: Int, modifiedInterval: Double, createdInterval: Double?) {
+            self.path = path
+            self.size = size
+            self.modifiedInterval = modifiedInterval
+            self.createdInterval = createdInterval
+        }
+
+        /// A row selected with at least `path, size, modified, created`.
+        init(_ row: Row) {
+            self.init(path: row["path"], size: row["size"], modifiedInterval: row["modified"], createdInterval: row["created"])
+        }
+    }
+
+    static func records(forPaths paths: [String], contents: BaseRecordContents = .everything, in database: Database) throws -> [BaseFileRecord] {
+        var fileRows: [IndexedFileRow] = []
+        fileRows.reserveCapacity(paths.count)
+        for chunk in chunked(paths) {
+            for row in try Row.fetchAll(database, sql: "SELECT path, size, modified, created FROM files WHERE path IN (\(placeholders(count: chunk.count)))",
+                                        arguments: StatementArguments(chunk)) {
+                fileRows.append(IndexedFileRow(row))
+            }
+        }
+        // `IN` returns rows in the index's order; the records keep the order asked for.
+        let positions = Dictionary(paths.enumerated().map { position, path in (path, position) }, uniquingKeysWith: { first, _ in first })
+        fileRows.sort { leftRow, rightRow in positions[leftRow.path, default: 0] < positions[rightRow.path, default: 0] }
+        return try records(for: fileRows, contents: contents, in: database)
+    }
+
+    private static func chunked(_ paths: [String]) -> [ArraySlice<String>] {
+        stride(from: 0, to: paths.count, by: relatedRowChunkSize).map { chunkStart in paths[chunkStart..<min(chunkStart + relatedRowChunkSize, paths.count)] }
+    }
+
+    /// Records for these rows, in their order, read a page of files at a time, with what
+    /// `contents` keeps: a property it leaves out is not decoded, and tags or links it
+    /// leaves out are not read.
+    static func records(for fileRows: [IndexedFileRow], contents: BaseRecordContents, in database: Database) throws -> [BaseFileRecord] {
+        guard !fileRows.isEmpty else { return [] }
         let decoder = JSONDecoder()
-        var fileRows: [String: Row] = [:]
         var propertiesByPath: [String: [BaseFrontmatterEntry]] = [:]
         var tagsByPath: [String: [String]] = [:]
         var linksByPath: [String: [BaseRecordLink]] = [:]
-        var chunkStart = 0
-        while chunkStart < paths.count {
-            let chunk = Array(paths[chunkStart..<min(chunkStart + relatedRowChunkSize, paths.count)])
-            chunkStart += relatedRowChunkSize
-            let placeholders = Array(repeating: "?", count: chunk.count).joined(separator: ",")
+        for chunk in chunked(fileRows.map(\.path)) {
+            let chunkPlaceholders = placeholders(count: chunk.count)
             let chunkArguments = StatementArguments(chunk)
-            for row in try Row.fetchAll(database, sql: "SELECT path, size, modified, created FROM files WHERE path IN (\(placeholders))", arguments: chunkArguments) {
-                fileRows[row["path"]] = row
-            }
-            for row in try Row.fetchAll(database, sql: "SELECT path, key, node FROM properties WHERE path IN (\(placeholders)) ORDER BY path, position", arguments: chunkArguments) {
+            let propertyRows = try Row.fetchCursor(database, sql: "SELECT path, key, node FROM properties WHERE path IN (\(chunkPlaceholders)) ORDER BY path, position",
+                                                   arguments: chunkArguments)
+            while let row = try propertyRows.next() {
+                let key: String = row["key"]
+                guard contents.keepsProperty(named: key) else { continue }
                 let encodedNode: String = row["node"]
                 // A row that does not decode is a stale cache entry; the property is skipped
                 // rather than failing the whole base.
                 guard let node = decodedScalarNode(encodedNode) ?? (try? decoder.decode(BaseFrontmatterNode.self, from: Data(encodedNode.utf8))) else { continue }
-                propertiesByPath[row["path"], default: []].append(BaseFrontmatterEntry(key: row["key"], node: node))
+                propertiesByPath[row["path"], default: []].append(BaseFrontmatterEntry(key: key, node: node))
             }
-            for row in try Row.fetchAll(database, sql: "SELECT path, tag FROM tags WHERE path IN (\(placeholders))", arguments: chunkArguments) {
-                tagsByPath[row["path"], default: []].append(row["tag"])
+            if contents.keepsTags {
+                for row in try Row.fetchAll(database, sql: "SELECT path, tag FROM tags WHERE path IN (\(chunkPlaceholders))", arguments: chunkArguments) {
+                    tagsByPath[row["path"], default: []].append(row["tag"])
+                }
             }
-            for row in try Row.fetchAll(database, sql: "SELECT source, target, isWiki, isEmbed FROM links WHERE source IN (\(placeholders))", arguments: chunkArguments) {
-                linksByPath[row["source"], default: []].append(BaseRecordLink(target: row["target"], isEmbed: row["isEmbed"], isWiki: row["isWiki"]))
+            if contents.keepsLinks {
+                for row in try Row.fetchAll(database, sql: "SELECT source, target, isWiki, isEmbed FROM links WHERE source IN (\(chunkPlaceholders))", arguments: chunkArguments) {
+                    linksByPath[row["source"], default: []].append(BaseRecordLink(target: row["target"], isEmbed: row["isEmbed"], isWiki: row["isWiki"]))
+                }
             }
         }
-        return try paths.compactMap { pathText in
-            guard let fileRow = fileRows[pathText] else { return nil }
-            let modifiedDate = Date(timeIntervalSince1970: fileRow["modified"])
-            let createdInterval: Double? = fileRow["created"]
-            return BaseFileRecord(path: try VaultPath(pathText), size: max(fileRow["size"] as Int, 0),
-                                  createdDate: createdInterval.map(Date.init(timeIntervalSince1970:)) ?? modifiedDate,
-                                  modifiedDate: modifiedDate, properties: propertiesByPath[pathText] ?? [],
-                                  tags: Array(Set(tagsByPath[pathText] ?? [])).sorted(), links: linksByPath[pathText] ?? [])
+        return try fileRows.map { fileRow in
+            let modifiedDate = Date(timeIntervalSince1970: fileRow.modifiedInterval)
+            return BaseFileRecord(path: try VaultPath(fileRow.path), size: max(fileRow.size, 0),
+                                  createdDate: fileRow.createdInterval.map(Date.init(timeIntervalSince1970:)) ?? modifiedDate,
+                                  modifiedDate: modifiedDate, properties: propertiesByPath[fileRow.path] ?? [],
+                                  tags: Array(Set(tagsByPath[fileRow.path] ?? [])).sorted(), links: linksByPath[fileRow.path] ?? [])
         }
     }
 }

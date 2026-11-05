@@ -6,8 +6,8 @@
  *              them.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -278,7 +278,7 @@ final class CommunityPluginBasesEmbedTests: XCTestCase {
             "Tasks/First.md": "---\nstatus: open\n---\nBody\n",
             "Elsewhere/Masters.md": "---\ntopic: study\n---\n![[Plan.base]]\n",
             "Elsewhere/Other.md": "Nothing here\n",
-            "Plan.base": "filters: file.inFolder(\"Tasks\")\nviews:\n  - type: table\n    name: Table\n",
+            "Plan.base": "filters: file.inFolder(\"Tasks\")\nviews:\n  - type: table\n    name: Table\n    order: [file.name, status]\n",
         ] {
             let location = vault.appendingPathComponent(relativePath)
             try FileManager.default.createDirectory(at: location.deletingLastPathComponent(), withIntermediateDirectories: true)

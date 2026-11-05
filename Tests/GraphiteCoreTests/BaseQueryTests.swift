@@ -1,3 +1,14 @@
+/**
+ * File: BaseQueryTests.swift
+ * --------------------------
+ * Layer: Tests
+ * Description: Reading base definitions and running their views over records in memory.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 05/11/2026
+ */
+
 import XCTest
 @testable import GraphiteCore
 
@@ -531,11 +542,12 @@ final class BaseQueryTests: XCTestCase {
                                                     environment: BaseTestRecords.environment(), thisRecord: thisRecord)
         XCTAssertEqual(prefilter.requirements, [
             .inAnyFolder(["Courses"]), .hasAnyTag(["lecture", "exam"]), .hasAnyProperty(["status"]), .hasAnyExtension(["md"]),
-            .linksTo(.path(try VaultPath("Courses/Index.md"))), .hasAnyProperty(["course"]), .hasAnyProperty(["topic"]),
+            .linksTo(.path(try VaultPath("Courses/Index.md"))), .hasAnyTag(["never-required"]), .hasAnyProperty(["course"]), .hasAnyProperty(["topic"]),
         ])
         let unfiltered = BaseRecordPrefilter.extract(from: [.or([.expression("file.inFolder(\"A\")"), .expression("file.inFolder(\"B\")")])],
                                                      definition: definition, environment: BaseTestRecords.environment(), thisRecord: nil)
-        XCTAssertTrue(unfiltered.requirements.isEmpty, "Alternatives cannot narrow the query.")
+        XCTAssertTrue(unfiltered.requirements.isEmpty, "Alternatives are not requirements of every file.")
+        XCTAssertEqual(unfiltered.condition, .anyOf([.requirement(.inAnyFolder(["A"]), isExact: true), .requirement(.inAnyFolder(["B"]), isExact: true)]))
     }
 
     func testKeepingSomeRowsKeepsTheirGroupsAndCountsTheRowsLeftOut() throws {

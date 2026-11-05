@@ -6,8 +6,8 @@
  *              reads a linked file's fields over thousands of rows is not one database read per row.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 02/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -23,7 +23,7 @@ final class BaseRecordReadAhead: Sendable {
     /// Records of one read: the statements of `VaultIndex.records(forPaths:in:)` take this many in one go.
     static let maximumRecordsPerRead = 500
     /// A run that read this many keeps asking one by one, to keep memory bounded.
-    static let maximumRememberedRecords = VaultIndex.maximumBaseRecordLimit
+    static let maximumRememberedRecords = 20_000
 
     private struct State {
         var filesAskedAbout = 0

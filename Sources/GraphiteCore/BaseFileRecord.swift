@@ -5,8 +5,8 @@
  * Description: What a base knows of a file, and the provider that answers from records held in memory.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -227,15 +227,11 @@ public struct BaseFileRecord: Hashable, Sendable, Identifiable {
     }
 }
 
-/// A bounded set of records loaded for one base query.
+/// Every file that can match one base query, as the index loaded it.
 public struct BaseRecordBatch: Sendable {
     public let records: [BaseFileRecord]
-    /// Files that passed the index's cheap pre-filter, which may exceed `records`.
-    public let candidateCount: Int
-    public var isTruncated: Bool { candidateCount > records.count }
-    public init(records: [BaseFileRecord], candidateCount: Int) {
+    public init(records: [BaseFileRecord]) {
         self.records = records
-        self.candidateCount = candidateCount
     }
 }
 

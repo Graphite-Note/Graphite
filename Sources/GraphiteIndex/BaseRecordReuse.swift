@@ -5,8 +5,8 @@
  * Description: Records a base query loaded, so the next query reads again only the files that changed.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -33,6 +33,8 @@ public struct LoadedBaseRecords: Sendable {
     }
 
     fileprivate var recordsByPath: [String: RevisionedRecord]
+    /// What the records hold; a query that keeps something else reads them again.
+    public let contents: BaseRecordContents
     /// Records the query that produced this read from the database rather than reused.
     let rereadRecordCount: Int
     /// Records held for the next query.
@@ -47,43 +49,43 @@ public struct LoadedBaseRecords: Sendable {
     public init() {
         recordsByPath = [:]
         rereadRecordCount = 0
+        contents = .everything
     }
 
-    fileprivate init(recordsByPath: [String: RevisionedRecord], rereadRecordCount: Int) {
+    fileprivate init(recordsByPath: [String: RevisionedRecord], rereadRecordCount: Int, contents: BaseRecordContents) {
         self.recordsByPath = recordsByPath
         self.rereadRecordCount = rereadRecordCount
+        self.contents = contents
     }
 }
 
 extension VaultIndex {
-    /// The same batch as `baseRecords(matching:limit:)`, reusing the records in
+    /// The same batch as `baseRecords(matching:contents:)`, reusing the records in
     /// `previousRecords` whose files have not changed in the index since.
     /// - Returns: The batch, and the loaded records to pass to the next query.
-    public func baseRecords(matching prefilter: BaseRecordPrefilter, limit: Int = VaultIndex.defaultBaseRecordLimit,
+    public func baseRecords(matching prefilter: BaseRecordPrefilter, contents: BaseRecordContents = .everything,
                             reusing previousRecords: LoadedBaseRecords) throws -> (batch: BaseRecordBatch, loadedRecords: LoadedBaseRecords) {
-        let boundedLimit = min(max(limit, 1), Self.maximumBaseRecordLimit)
+        let reusableRecords = previousRecords.contents == contents ? previousRecords.recordsByPath : [:]
         return try readThroughTheWriter { database in
             let (whereClause, arguments) = try Self.sqlCondition(for: prefilter, in: database)
-            let rows = try Row.fetchAll(database, sql: "SELECT path, size, modified, created, contentIndexed FROM files WHERE \(whereClause) ORDER BY path LIMIT ?",
-                                        arguments: arguments + [boundedLimit + 1])
-            var candidateCount = rows.count
-            if rows.count > boundedLimit {
-                candidateCount = try Int.fetchOne(database, sql: "SELECT COUNT(*) FROM files WHERE \(whereClause)", arguments: arguments) ?? rows.count
-            }
+            let rows = try Row.fetchAll(database, sql: "SELECT path, size, modified, created, contentIndexed FROM files WHERE \(whereClause) ORDER BY path",
+                                        arguments: arguments)
             var orderedPaths: [String] = []
+            orderedPaths.reserveCapacity(rows.count)
             var revisionsByPath: [String: LoadedBaseRecords.RowRevision] = [:]
-            var changedPaths: [String] = []
-            for row in rows.prefix(boundedLimit) {
-                let pathText: String = row["path"]
-                let revision = LoadedBaseRecords.RowRevision(size: row["size"], modifiedInterval: row["modified"], createdInterval: row["created"],
+            revisionsByPath.reserveCapacity(rows.count)
+            var changedRows: [IndexedFileRow] = []
+            for row in rows {
+                let fileRow = IndexedFileRow(row)
+                let revision = LoadedBaseRecords.RowRevision(size: fileRow.size, modifiedInterval: fileRow.modifiedInterval, createdInterval: fileRow.createdInterval,
                                                              isContentIndexed: row["contentIndexed"])
-                orderedPaths.append(pathText)
-                revisionsByPath[pathText] = revision
-                if previousRecords.recordsByPath[pathText]?.revision != revision { changedPaths.append(pathText) }
+                orderedPaths.append(fileRow.path)
+                revisionsByPath[fileRow.path] = revision
+                if reusableRecords[fileRow.path]?.revision != revision { changedRows.append(fileRow) }
             }
             var recordsByPath: [String: LoadedBaseRecords.RevisionedRecord] = [:]
             recordsByPath.reserveCapacity(orderedPaths.count)
-            for record in try Self.records(forPaths: changedPaths, in: database) {
+            for record in try Self.records(for: changedRows, contents: contents, in: database) {
                 guard let revision = revisionsByPath[record.path.rawValue] else { continue }
                 recordsByPath[record.path.rawValue] = LoadedBaseRecords.RevisionedRecord(revision: revision, record: record)
             }
@@ -92,13 +94,13 @@ extension VaultIndex {
             for pathText in orderedPaths {
                 if let reread = recordsByPath[pathText] {
                     records.append(reread.record)
-                } else if let reused = previousRecords.recordsByPath[pathText], reused.revision == revisionsByPath[pathText] {
+                } else if let reused = reusableRecords[pathText], reused.revision == revisionsByPath[pathText] {
                     recordsByPath[pathText] = reused
                     records.append(reused.record)
                 }
             }
-            return (BaseRecordBatch(records: records, candidateCount: candidateCount),
-                    LoadedBaseRecords(recordsByPath: recordsByPath, rereadRecordCount: changedPaths.count))
+            return (BaseRecordBatch(records: records),
+                    LoadedBaseRecords(recordsByPath: recordsByPath, rereadRecordCount: changedRows.count, contents: contents))
         }
     }
 }

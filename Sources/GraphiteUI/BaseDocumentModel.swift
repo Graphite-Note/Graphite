@@ -6,8 +6,8 @@
  *              editing it.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -53,8 +53,6 @@ final class BaseDocumentModel {
     private(set) var loadErrorMessage: String?
     private(set) var viewSelectionErrorMessage: String?
     private(set) var result: BaseQueryResult?
-    private(set) var candidateCount = 0
-    private(set) var loadedRecordCount = 0
     private(set) var isLoading = false
     /// A run following a change in the vault, while the rows stay on screen: the toolbar stays still.
     private var isRefreshingBehindRows = false
@@ -135,7 +133,6 @@ final class BaseDocumentModel {
 
     var views: [BaseView] { definition?.views ?? [] }
     var selectedView: BaseView? { views.indices.contains(selectedViewIndex) ? views[selectedViewIndex] : nil }
-    var isTruncated: Bool { candidateCount > loadedRecordCount }
     var effectiveSort: [BaseSortKey] { sortOverride ?? selectedView?.sort ?? [] }
     var vaultRoot: URL { store.root }
 
@@ -172,7 +169,7 @@ final class BaseDocumentModel {
                 guard let lastThisRecord, Self.hasSameContent(record, lastThisRecord) else { return false }
             }
             if let loadedRecord = loadedRecords.record(at: path) {
-                guard Self.hasSameContent(record, loadedRecord) else { return false }
+                guard Self.hasSameContent(loadedRecords.contents.compacted(record), loadedRecord) else { return false }
             } else {
                 // Not among the files this view went through: does it now pass the filters?
                 let thisRecord = lastThisRecord ?? BaseFileRecord(path: contextPath, size: 0, createdDate: .now, modifiedDate: .now)
@@ -294,6 +291,7 @@ final class BaseDocumentModel {
         let index = index
         let provider = index.baseRecordProvider
         let previouslyLoadedRecords = loadedRecords
+        let sourceText = parsedSourceText
         // Detached: record lookups through the provider read SQLite synchronously. A
         // detached task does not inherit cancellation, so it is cancelled explicitly.
         let queryTask = Task.detached(priority: .userInitiated) { () throws -> QueryOutcome in
@@ -304,25 +302,30 @@ final class BaseDocumentModel {
             if definition.hasUnreadableFilters || view.hasUnreadableFilters {
                 let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
                 return QueryOutcome(result: engine.run(viewIndex: viewIndex, records: [], sortOverride: sortOverride),
-                                    candidateCount: 0, loadedRecordCount: 0, availablePropertyKeys: [], loadedRecords: LoadedBaseRecords(),
+                                    availablePropertyKeys: [], loadedRecords: LoadedBaseRecords(),
                                         thisRecord: thisRecord)
             }
+            let recordContents = sourceText.map { sourceText in
+                // A header's sort is not in the text; its property is kept too.
+                let sortedNames = (sortOverride ?? []).map { sortKey in
+                    if case .note(let name) = sortKey.property { return name }
+                    return ""
+                }
+                return BaseRecordContents(baseSourceText: ([sourceText] + sortedNames).joined(separator: "\n"), viewTypes: definition.views.map(\.type))
+            } ?? .everything
             let filters = [definition.filters, view.filters].compactMap { filter in filter }
             let prefilter = BaseRecordPrefilter.extract(from: filters, definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
-            let (batch, loadedRecords) = try await index.baseRecords(matching: prefilter, reusing: previouslyLoadedRecords)
+            // Every file that can match is loaded, a page at a time, as compact records.
+            let (batch, loadedRecords) = try await index.baseRecords(matching: prefilter, contents: recordContents, reusing: previouslyLoadedRecords)
             try Task.checkCancellation()
             let engine = BaseQueryEngine(definition: definition, environment: environment, thisRecord: thisRecord, provider: provider)
-            var propertyKeys: Set<String> = []
-            for record in batch.records where propertyKeys.count < Self.maximumAvailablePropertyKeys {
-                propertyKeys.formUnion(record.properties.map(\.key))
-            }
+            let propertyKeys = try await index.basePropertyKeys(matching: prefilter, limit: Self.maximumAvailablePropertyKeys)
             let sortedKeys = propertyKeys.sorted { leftKey, rightKey in leftKey.localizedStandardCompare(rightKey) == .orderedAscending }
             let queryResult = engine.run(viewIndex: viewIndex, records: batch.records, sortOverride: sortOverride)
             // The evaluator cannot throw, so a lookup the database failed read as a missing
             // record or link; the rows computed from it are not shown.
             try provider.throwIfLookupFailed()
-            return QueryOutcome(result: queryResult, candidateCount: batch.candidateCount,
-                                loadedRecordCount: batch.records.count, availablePropertyKeys: sortedKeys, loadedRecords: loadedRecords, thisRecord: thisRecord)
+            return QueryOutcome(result: queryResult, availablePropertyKeys: sortedKeys, loadedRecords: loadedRecords, thisRecord: thisRecord)
         }
         runningQuery = queryTask
         do {
@@ -336,8 +339,6 @@ final class BaseDocumentModel {
             lastThisRecord = outcome.thisRecord
             // Publishing an identical result would lay out every visible row again.
             if !(result.map { shownResult in Self.hasSameContent(shownResult, outcome.result) } ?? false) { result = outcome.result }
-            candidateCount = outcome.candidateCount
-            loadedRecordCount = outcome.loadedRecordCount
             availablePropertyKeys = outcome.availablePropertyKeys
             actionErrorMessage = nil
         } catch is CancellationError {
@@ -353,8 +354,6 @@ final class BaseDocumentModel {
 
     private struct QueryOutcome: Sendable {
         let result: BaseQueryResult
-        let candidateCount: Int
-        let loadedRecordCount: Int
         let availablePropertyKeys: [String]
         let loadedRecords: LoadedBaseRecords
         let thisRecord: BaseFileRecord
