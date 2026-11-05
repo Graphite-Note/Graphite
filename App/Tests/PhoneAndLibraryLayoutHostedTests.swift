@@ -7,8 +7,8 @@
  *              swatch of the Pencil bar in dark appearance with the size of its buttons.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -68,11 +68,23 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         }
     }
 
+    /// What a device run prints of the phone's stack: whether the split view is one stack, and where the note is.
+    private func describePhoneStack(in controller: UIViewController, _ moment: String) {
+        func splitViews(in parent: UIViewController) -> [UISplitViewController] {
+            ((parent as? UISplitViewController).map { [$0] } ?? []) + parent.children.flatMap(splitViews)
+        }
+        let collapsed = splitViews(in: controller).map { split in split.isCollapsed ? "collapsed" : "not collapsed" }
+        let editorFrames = window.map { window in
+            descendants(of: window, matching: MarkdownTextView.self).filter { editor in editor.window === window }.map { editor in editor.convert(editor.bounds, to: window) }
+        } ?? []
+        print("PhoneAndLibraryLayoutHostedTests rename, \(moment): split view \(collapsed), note's editor at \(editorFrames), window \(window?.bounds ?? .null)")
+    }
+
     func testRenamingTheOpenFileLeavesAPhonesFileListInFrontAndOpeningAFileStillShowsIt() async throws {
         let workspace = device.makeWorkspace()
         try await workspace.openFolderAsVault(try makeVault(files: ["Old.md": "# Old\n\nText.\n", "Other.md": "Other.\n"]))
         await workspace.open(try VaultPath("Old.md"))
-        _ = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 402, height: 874), horizontalSizeClass: .compact)
+        let controller = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 402, height: 874), horizontalSizeClass: .compact)
         try await waitUntil("the open note is in front") { self.isNoteEditorShown() }
         // The split view collapses to one stack and shows the note during the window's first layout passes; a request
         // for the file list made in the same moment, as before, was taken while that was under way and nothing moved.
@@ -88,9 +100,17 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
             return unchangedPolls >= 15
         }
 
-        // Any search asked for shows the file list, as the back button does.
+        describePhoneStack(in: controller, "the note in front")
+        // Any search asked for shows the file list, as the back button does. The list's selection slid the note back
+        // over it while the note was open (HUNT-183): it now marks the open file only while the note is in front.
         workspace.searchFocusRequest += 1
-        try await waitUntil("the file list comes to the front") { !self.isNoteEditorShown() }
+        do {
+            try await waitUntil("the file list comes to the front") { !self.isNoteEditorShown() }
+        } catch {
+            describePhoneStack(in: controller, "after the search request")
+            throw error
+        }
+        describePhoneStack(in: controller, "the file list in front")
         attachScreenshot(named: "Phone's file list before the rename")
 
         // A rename plans its link updates from the index, as in the workspace's own tests of it.
@@ -104,6 +124,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
             return ContinuousClock.now >= quietUntil
         }
         attachScreenshot(named: "Phone's file list after the rename")
+        describePhoneStack(in: controller, "two seconds after the rename, the note came back: \(documentCameBack)")
         XCTAssertFalse(documentCameBack, "A rename does not slide the document over the list the person is working in.")
 
         await workspace.open(try VaultPath("Other.md"))
@@ -112,36 +133,59 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
 
     // MARK: HUNT-211, HUNT-204: Library mode on the iPad
 
-    /// A vault in Library mode with forty notes at its root and a folder of thirty, enough for both to scroll. The
+    /// A vault in Library mode with forty notes at its root and a folder of sixty, enough for both to scroll in an iPad's
+    /// window held either way. The
     /// vault is a folder with a name as a person gives one, "Lectures": the temporary folder's name, which ends in a
     /// UUID, is too long to share the library's row with its controls, which then take a second row of their own.
     private func libraryWorkspace() async throws -> WorkspaceModel {
         var files: [String: String] = [:]
         for noteNumber in 1...40 { files[String(format: "Lectures/Note %02d.md", noteNumber)] = "# Note \(noteNumber)\n" }
-        for weekNumber in 1...30 { files[String(format: "Lectures/Course/Week %02d.md", weekNumber)] = "# Week \(weekNumber)\n" }
+        for weekNumber in 1...60 { files[String(format: "Lectures/Course/Week %02d.md", weekNumber)] = "# Week \(weekNumber)\n" }
         let workspace = device.makeWorkspace()
         workspace.preferences.library.presentation = .library
         try await workspace.openFolderAsVault(try makeVault(files: files).appendingPathComponent("Lectures"))
         return workspace
     }
 
-    private func visibleNavigationBarHeight() -> CGFloat {
-        guard let window else { return 0 }
+    /// The scene's own bounds, which the library's window takes: a landscape window of 1194 points on an iPad held
+    /// upright (834 wide) ran past the screen, and its navigation bar was laid out for a window that is not there. The
+    /// window keeps the regular width an iPad's full screen has either way.
+    private func libraryWindowBounds() throws -> CGRect {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
+        let bounds = scene.effectiveGeometry.coordinateSpace.bounds
+        print("PhoneAndLibraryLayoutHostedTests library window: the scene's bounds \(bounds)")
+        return bounds
+    }
+
+    private func visibleNavigationBars() -> [(bar: UINavigationBar, height: CGFloat)] {
+        guard let window else { return [] }
         return descendants(of: window, matching: UINavigationBar.self)
             .filter { bar in !bar.isHidden && bar.alpha > 0.01 && bar.window === window }
-            .map { bar in bar.convert(bar.bounds, to: window).intersection(window.bounds).height }
-            .max() ?? 0
+            .map { bar in (bar: bar, height: bar.convert(bar.bounds, to: window).intersection(window.bounds).height) }
+    }
+
+    private func visibleNavigationBarHeight() -> CGFloat {
+        visibleNavigationBars().map(\.height).max() ?? 0
     }
 
     func testLibraryModeHasNoBandAboveItsRowAndKeepsBackAndForwardThere() async throws {
         let workspace = try await libraryWorkspace()
-        let controller = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 1194, height: 834), horizontalSizeClass: .regular)
+        let bounds = try libraryWindowBounds()
+        let controller = try host(GraphiteRootView(workspace: workspace), size: bounds.size, horizontalSizeClass: .regular)
         let back = try await element(in: controller, "Back, in the library's own row") { object in
             object.accessibilityLabel == "Back" && object.accessibilityTraits.contains(.button)
         }
         _ = try await element(in: controller, "Forward, beside it") { object in object.accessibilityLabel == "Forward" && object.accessibilityTraits.contains(.button) }
-        try await waitUntil("no navigation bar over the library") { self.visibleNavigationBarHeight() < 4 }
-        attachScreenshot(named: "Library mode on an iPad in landscape")
+        do {
+            try await waitUntil("no navigation bar over the library") { self.visibleNavigationBarHeight() < 4 }
+        } catch {
+            for shown in visibleNavigationBars() {
+                print("PhoneAndLibraryLayoutHostedTests band: a navigation bar \(shown.height) high at \(shown.bar.convert(shown.bar.bounds, to: window)), titled \(shown.bar.topItem?.title ?? "nothing")")
+            }
+            attachScreenshot(named: "Library mode with a navigation bar over it")
+            throw error
+        }
+        attachScreenshot(named: "Library mode on an iPad")
         let window = try XCTUnwrap(window)
         // The window's top row is the tab strip; the library's own row, its title with Back, Forward and the rest, is
         // the next one. HUNT-211 was a band of 70 points above the tab strip, holding only those buttons.
@@ -154,6 +198,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         let tabStrip = window.convert(tabStripButton.accessibilityFrame, from: window.screen.coordinateSpace)
         let backFrame = window.convert(back.accessibilityFrame, from: window.screen.coordinateSpace)
         let titleFrame = window.convert(title.accessibilityFrame, from: window.screen.coordinateSpace)
+        print("PhoneAndLibraryLayoutHostedTests band: tab strip \(tabStrip), Back \(backFrame), title \(titleFrame), safe area top \(window.safeAreaInsets.top)")
         XCTAssertLessThan(tabStrip.minY, window.safeAreaInsets.top + 44, "The tab strip is the top row, with no band above it.")
         XCTAssertGreaterThanOrEqual(backFrame.minY, tabStrip.maxY - 1, "Back is below the tab strip, in the library's row")
         XCTAssertLessThan(backFrame.minY - tabStrip.maxY, 44, "Back is in the row right under the tab strip, not under a band.")
@@ -170,29 +215,36 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
 
     func testAFolderOpenedInTheLibraryStartsAtItsTopWhateverTheVaultsScroll() async throws {
         let workspace = try await libraryWorkspace()
-        let controller = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 1194, height: 834), horizontalSizeClass: .regular)
-        func folderTile() async throws -> NSObject {
-            try await element(in: controller, "the Course folder's tile") { object in
-                (object.accessibilityLabel ?? "").hasPrefix("Course") && object.accessibilityTraits.contains(.button)
-            }
+        // The library itself, with a model the test holds: the window's own is private to its root view. A tile's
+        // accessibility activation, and on GitHub's simulator and the owner's iPad a synthesized touch too, did not reach
+        // the SwiftUI button, so the folder never opened and the scroll this test is about was never measured.
+        let library = LibraryModel()
+        let libraryView = LibraryView(library: library, vault: workspace.libraryVault,
+                                      actions: workspace.libraryActions(openFile: { _ in }, requestCreation: { _, _ in }),
+                                      entries: workspace.libraryEntryPresentation { _, _ in })
+        let controller = try host(libraryView, size: try libraryWindowBounds().size, horizontalSizeClass: .regular)
+        let folder = try VaultPath("Course")
+        let tile = try await element(in: controller, "the Course folder's tile") { object in
+            (object.accessibilityLabel ?? "").hasPrefix("Course") && object.accessibilityTraits.contains(.button)
         }
-        _ = try await folderTile()
         try await waitUntil("the vault's grid scrolls") { self.libraryGrid() != nil }
         let rootGrid = try XCTUnwrap(libraryGrid())
         // The vault's root scrolled a little, as in the report.
         rootGrid.setContentOffset(CGPoint(x: rootGrid.contentOffset.x, y: rootGrid.contentOffset.y + 120), animated: false)
-        // The tile is followed where a finger can reach it: scrolled 120 points, its middle was under the library's
-        // row, where the touch landed on the header and opened nothing (GitHub's iPad, 2026-11-04).
-        let scrolledTile = try await folderTile()
-        if !scrolledTile.accessibilityActivate() {
-            let window = try XCTUnwrap(window)
-            let gridArea = rootGrid.convert(rootGrid.bounds, to: window).inset(by: UIEdgeInsets(top: rootGrid.adjustedContentInset.top, left: 0, bottom: 0, right: 0))
-            let reachable = window.convert(scrolledTile.accessibilityFrame, from: window.screen.coordinateSpace).intersection(gridArea)
-            XCTAssertFalse(reachable.isNull || reachable.height < 20, "Part of the tile is on the screen: \(reachable)")
-            let touches = SynthesizedTouches(window: window)
-            touches.begin(at: [CGPoint(x: reachable.midX, y: reachable.midY)])
-            touches.end()
+        print("PhoneAndLibraryLayoutHostedTests folder: the vault's grid scrolled to \(rootGrid.contentOffset.y) of \(rootGrid.contentSize.height)")
+
+        // The tile's action opens the folder; where the activation does not reach it, the test opens it as that action does.
+        let activated = tile.accessibilityActivate()
+        var openedByTheTile = false
+        if activated {
+            let givenUpAt = ContinuousClock.now + .seconds(3)
+            try await waitUntil("the tile's action, or three seconds") {
+                openedByTheTile = library.folder == folder
+                return openedByTheTile || ContinuousClock.now >= givenUpAt
+            }
         }
+        print("PhoneAndLibraryLayoutHostedTests folder: the tile's activation answered \(activated), the folder opened by it: \(openedByTheTile)")
+        if !openedByTheTile { await library.show(folder) }
 
         _ = try await element(in: controller, "the folder is shown") { object in (object.accessibilityLabel ?? "").hasPrefix("Back to ") }
         let firstWeek = try await element(in: controller, "the folder's first tile") { object in (object.accessibilityLabel ?? "").hasPrefix("Week 01") }
@@ -203,8 +255,9 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         }
         let grid = try XCTUnwrap(folderGrid)
         attachScreenshot(named: "Library folder opened after scrolling the vault")
-        XCTAssertLessThanOrEqual(grid.contentOffset.y, -grid.adjustedContentInset.top + 1, "The folder starts at its top.")
         let gridTop = grid.convert(grid.bounds, to: nil).minY + grid.adjustedContentInset.top
+        print("PhoneAndLibraryLayoutHostedTests folder: the folder's grid at \(grid.contentOffset.y), inset \(grid.adjustedContentInset.top); first tile at \(firstWeek.accessibilityFrame.minY), grid top \(gridTop)")
+        XCTAssertLessThanOrEqual(grid.contentOffset.y, -grid.adjustedContentInset.top + 1, "The folder starts at its top.")
         XCTAssertGreaterThanOrEqual(firstWeek.accessibilityFrame.minY, gridTop - 1, "The first row of icons is not under the header.")
     }
 
