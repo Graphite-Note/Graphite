@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.17
+ * Version: 0.18
  * Date: 05/11/2026
  */
 
@@ -147,7 +147,7 @@ extension LivePreviewBlock {
         switch kind {
         case .baseDefinition: true
         case .embed(let embed): (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased() == "base"
-        case .frontmatter, .table, .mathBlock, .horizontalRule, .callout, .pluginCodeBlock, .mermaidDiagram: false
+        case .frontmatter, .table, .mathBlock, .horizontalRule, .callout, .pluginCodeBlock, .mermaidDiagram, .imageLine: false
         }
     }
 }
@@ -779,7 +779,7 @@ struct LivePreviewWidgetSignature: Equatable {
     /// paused.
     static func readsIndex(_ block: LivePreviewBlock) -> Bool {
         switch block.kind {
-        case .embed, .baseDefinition: true
+        case .embed, .baseDefinition, .imageLine: true
         case .callout: block.markdown.contains("![") || block.markdown.contains("base")
         case .frontmatter, .table, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram: false
         }
@@ -839,6 +839,14 @@ struct DetachedWidgetPool<Host> {
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) || DocumentKind.audioFileExtensions.contains(fileExtension) { return nil }
             return 12
+        // Each picture is decoded for the width it is shown at: a 200-point photo at three
+        // pixels a point, four by three, takes about 1.1 MB; one without a width, a line's.
+        case .imageLine(let pieces):
+            return pieces.reduce(0.15) { estimate, piece in
+                guard case .image(let embed) = piece else { return estimate + 0.05 }
+                guard let width = embed.displayWidth else { return estimate + 12 }
+                return estimate + min(12, max(0.1, 4 * (3 * width) * (3 * width * 3 / 4) / 1_000_000))
+            }
         }
     }
 
@@ -910,6 +918,8 @@ enum LivePreviewBlockHeightEstimate {
             if fileExtension == "base" { return EmbeddedBaseView.defaultHeight }
             if DocumentKind(fileExtension: fileExtension) == .image { return 280 }
             return 60
+        case .imageLine(let pieces):
+            return LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: columnWidth)
         }
     }
 }

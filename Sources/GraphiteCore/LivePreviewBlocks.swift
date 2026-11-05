@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.14
- * Date: 02/11/2026
+ * Version: 0.15
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -19,6 +19,9 @@ public struct LivePreviewBlock: Equatable, Sendable {
         case table
         case mathBlock
         case embed(EmbedReference)
+        /// A paragraph line that shows images among its text, or several images side by side,
+        /// as `![[a.jpg|200]] ![[b.jpg|200]]`: its pieces in order.
+        case imageLine([ImageLinePiece])
         case baseDefinition(String)
         case horizontalRule
         /// A `> [!type]` callout with its quoted body.
@@ -183,6 +186,8 @@ public enum LivePreviewBlockScanner {
                 if !embed.isRemoteImage {
                     blocks.append(LivePreviewBlock(kind: .embed(embed), range: lines[lineIndex].range, markdown: content))
                 }
+            } else if let pieces = imageLinePieces(ofParagraphLine: content) {
+                blocks.append(LivePreviewBlock(kind: .imageLine(pieces), range: lines[lineIndex].range, markdown: content))
             } else if MarkdownHeadingSyntax.level(of: content) == nil,
                       let opening = mathLines.opening(at: lineIndex), let closingLineIndex = opening.closingLineIndex {
                 // A formula opened after other text (`- $$` in a list item, `Energy is $$`)
@@ -199,6 +204,20 @@ public enum LivePreviewBlockScanner {
             lineIndex += 1
         }
         return blocks
+    }
+
+    /// The pieces of a paragraph line that embeds images among its text. A heading, a list
+    /// item, a quote, a table row or indented code keeps its own drawing, its images inline.
+    private static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
+        guard line.contains("!["), MarkdownHeadingSyntax.level(of: line) == nil, !MarkdownListSyntax.isListItem(line) else { return nil }
+        var indentationColumns = 0
+        for character in line {
+            guard character == " " || character == "\t" else { break }
+            indentationColumns += character == "\t" ? 4 - indentationColumns % 4 : 1
+        }
+        guard indentationColumns < 4, let first = line.first(where: { character in character != " " && character != "\t" }),
+              first != ">", first != "|" else { return nil }
+        return EmbedLocator.imageLinePieces(onLine: line)
     }
 
     /// `text` with its `%%` comments written over by spaces, line breaks kept, so every offset

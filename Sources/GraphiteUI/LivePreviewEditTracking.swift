@@ -5,8 +5,8 @@
  * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.15
- * Date: 02/11/2026
+ * Version: 0.16
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -234,6 +234,7 @@ struct LivePreviewBlockKey: Hashable {
         case .table: "table"
         case .mathBlock: "math"
         case .embed: "embed"
+        case .imageLine: "image-line"
         case .baseDefinition: "base"
         case .horizontalRule: "rule"
         case .callout: "callout"

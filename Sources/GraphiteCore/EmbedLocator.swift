@@ -2,11 +2,12 @@
  * File: EmbedLocator.swift
  * ------------------------
  * Layer: Core
- * Description: Finds the embeds in note source, and the one that is all of a line or of a list item.
+ * Description: Finds the embeds in note source, the one that is all of a line or of a list item, and
+ *              the pictures of a line that shows images among its text.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 05/11/2026
  */
 
 import Foundation
@@ -37,6 +38,37 @@ public enum EmbedLocator {
               let embedInItem = embed(at: source.range(of: "!").location + 1, in: source) else { return nil }
         let path = embedInItem.target.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? embedInItem.target
         return DocumentKind(fileExtension: (path as NSString).pathExtension) == .image ? nil : embedInItem
+    }
+
+    /// The pieces of `line` when it embeds at least one image of the vault and is not that
+    /// image alone: its text between the images, trimmed, and the images in order, as in
+    /// `![[a.jpg|200]] ![[b.jpg|200]]` or `See ![alt|120](a.png) here`. Obsidian draws such
+    /// a line as its text with the pictures side by side at their sizes. A web image, a
+    /// note or any other file embedded in the line stays text, and so does an embed in code.
+    /// Nil when the line embeds no image.
+    static func imageLinePieces(onLine line: String) -> [ImageLinePiece]? {
+        guard line.contains("![") else { return nil }
+        let source = line as NSString
+        let wholeLine = NSRange(location: 0, length: source.length)
+        let codeRanges = MarkdownCodeRanges.rangeSet(in: source)
+        let embedRanges = (wikiEmbedPattern.matches(in: line, range: wholeLine) + markdownEmbedPattern.matches(in: line, range: wholeLine))
+            .map(\.range).filter { range in !codeRanges.intersects(range) }.sorted { leftRange, rightRange in leftRange.location < rightRange.location }
+        var pieces: [ImageLinePiece] = []
+        var textStart = 0
+        func appendText(upTo end: Int) {
+            let text = source.substring(with: NSRange(location: textStart, length: end - textStart)).trimmingCharacters(in: .whitespaces)
+            if !text.isEmpty { pieces.append(.text(text)) }
+        }
+        for embedRange in embedRanges where embedRange.location >= textStart {
+            guard let embed = embed(at: embedRange.location + 1, in: source), embed.range == embedRange, !embed.isRemoteImage,
+                  DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension) == .image else { continue }
+            appendText(upTo: embedRange.location)
+            pieces.append(.image(embed))
+            textStart = NSMaxRange(embedRange)
+        }
+        guard textStart > 0 else { return nil }
+        appendText(upTo: source.length)
+        return pieces
     }
 
     /// The embed whose source text contains `location` (or ends exactly there).
@@ -76,6 +108,14 @@ public enum EmbedLocator {
         }
         return trimmedText.split(whereSeparator: \.isWhitespace).first.map(String.init) ?? ""
     }
+}
+
+/// A piece of a line that shows images among its text (`EmbedLocator.imageLinePieces(onLine:)`).
+public enum ImageLinePiece: Equatable, Sendable {
+    /// Text between pictures, drawn as Markdown.
+    case text(String)
+    /// An image of the vault, its range counted in the line.
+    case image(EmbedReference)
 }
 
 /// The constant patterns of `EmbedLocator`; `StaticPatternTests` compiles every case.

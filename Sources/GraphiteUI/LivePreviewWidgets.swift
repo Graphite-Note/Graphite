@@ -2,10 +2,11 @@
  * File: LivePreviewWidgets.swift
  * ------------------------------
  * Layer: UI
- * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math and embeds.
+ * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math, embeds and
+ *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.36
+ * Version: 0.37
  * Date: 05/11/2026
  */
 
@@ -236,6 +237,8 @@ struct LivePreviewWidgetView: View {
                 .onTapGesture(perform: revealSource)
         case .embed(let embed):
             LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
+        case .imageLine(let pieces):
+            LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource)
         case .baseDefinition(let yaml):
             // No tap-to-reveal here: taps belong to the base's rows; "Edit Source" in its menu reveals it.
             BaseCodeBlockView(yaml: yaml, context: environment.baseContext)
@@ -603,7 +606,7 @@ enum LivePreviewText {
 }
 
 /// An embed resolved against the vault: an image or drawing, video, audio, PDF, or a link.
-private struct LivePreviewEmbedView: View {
+struct LivePreviewEmbedView: View {
     let embed: EmbedReference
     let environment: LivePreviewEnvironment
     var allowsNoteEmbeds = true
