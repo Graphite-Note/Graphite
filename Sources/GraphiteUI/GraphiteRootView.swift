@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.67
+ * Version: 0.68
  * Date: 05/11/2026
  */
 
@@ -56,6 +56,9 @@ struct GraphiteRootView: View {
     @State private var isWindowTallerThanWide = false
     /// Whether the window's shape was measured once, after which a turn of the iPad keeps the sidebar as it was.
     @State private var hasMeasuredWindowShape = false
+    /// The sidebar as the window showed it sideways, put back when an iPad turned upright turns sideways again; nil
+    /// until the window has been sideways.
+    @State private var sidewaysColumnVisibility: NavigationSplitViewVisibility?
     /// True until the remembered vault has opened or failed to, so the welcome screen does
     /// not flash up before the vault appears.
     @State private var isRestoringVault = true
@@ -118,6 +121,10 @@ struct GraphiteRootView: View {
         } detail: {
             detailColumn
                 .tint(workspace.preferences.accentColor)
+                #if os(iOS)
+                // Upright the sidebar shows over the documents, which keep the window's width (HUNT-317).
+                .background { SidebarOverDocumentUpright(isWindowTallerThanWide: isWindowTallerThanWide && !isCompactWidth) }
+                #endif
                 .overlay {
                     // Both exist only while the Read Aloud core plugin is on.
                     if usesFloatingPlayer, let reader = workspace.readAloud, let navigator = workspace.readAloudNavigator,
@@ -127,22 +134,7 @@ struct GraphiteRootView: View {
                     }
                 }
         }
-        .onGeometryChange(for: Bool.self) { geometry in geometry.size.height > geometry.size.width } action: { isTallerThanWide in
-            // Turning the iPad keeps the view it showed: the sidebar beside the documents, or not (HUNT-311).
-            if hasMeasuredWindowShape, !isCompactWidth, isTallerThanWide != isWindowTallerThanWide {
-                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isWindowTallerThanWide)
-            }
-            #if os(iOS)
-            // The window's first shape decides the sidebar as an explicit choice: hidden upright, beside the documents
-            // sideways. Left automatic, iPadOS 27 put it beside an upright PDF on the owner's 11-inch iPad, the page
-            // 514 points wide, and the Pencil bar folded its colors into a scrolling strip (HUNT-317).
-            if !hasMeasuredWindowShape, !isCompactWidth {
-                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isTallerThanWide)
-            }
-            #endif
-            hasMeasuredWindowShape = true
-            isWindowTallerThanWide = isTallerThanWide
-        }
+        .onGeometryChange(for: Bool?.self, of: Self.windowShape) { measuredShape in windowShapeMeasured(measuredShape) }
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
         // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
         .tint(Color.primary)
@@ -291,10 +283,7 @@ struct GraphiteRootView: View {
         .onChange(of: workspace.fileRevealRequest) { _, request in if request != nil { showSidebar() } }
         // A file opened from the list, a link or a search shows on a phone at once.
         // A rename, a move or a deletion that changes the selection leaves the file list in front.
-        .onChange(of: workspace.selection) { _, selection in
-            let followsFileManagement = workspace.takeSelectionChangeFromFileManagement()
-            if selection != nil, !followsFileManagement { showDocumentColumn() }
-        }
+        .onChange(of: workspace.selection) { _, selection in selectionChanged(to: selection) }
         // So does the graph, opened from the file list's button or the palette.
         .onChange(of: workspace.activeCoreView) { _, coreView in if coreView != nil { showDocumentColumn() } }
         #if canImport(UIKit)
@@ -732,8 +721,71 @@ struct GraphiteRootView: View {
         visibility == .detailOnly || (visibility == .automatic && automaticHidesSidebar)
     }
 
+    /// The sidebar after the iPad turned: upright it is put away, as Notes and Files put theirs away, so the documents
+    /// keep the window's width; sideways it is shown as it was the last time the window was sideways, or beside the
+    /// documents when the sidebar was shown upright or the window was never sideways. Returns the visibility to show and
+    /// the one to keep for the next turn sideways.
+    static func sidebarVisibility(afterTurningUpright isUpright: Bool, from visibility: NavigationSplitViewVisibility,
+                                  keptSideways: NavigationSplitViewVisibility?) -> (shown: NavigationSplitViewVisibility, keptSideways: NavigationSplitViewVisibility?) {
+        if isUpright {
+            return (.detailOnly, sidebarVisibility(keptAcrossTurnOf: visibility, wasTallerThanWide: false))
+        }
+        let isShownUpright = !isSidebarHidden(visibility, automaticHidesSidebar: true)
+        return (isShownUpright ? .all : keptSideways ?? .all, keptSideways)
+    }
+
     private var isSidebarBesideDocuments: Bool {
-        !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
+        #if os(iOS)
+        // Upright an iPad's sidebar shows over the documents (`SidebarOverDocumentUpright`), never beside them.
+        if isWindowTallerThanWide { return false }
+        #endif
+        return !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
+    }
+
+    /// Whether the window is taller than wide; nil for a layout pass before the window has its size, which measures
+    /// nothing: taken as a shape, an empty size read as wider than tall and showed an upright window's sidebar beside
+    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317).
+    nonisolated private static func windowShape(of geometry: GeometryProxy) -> Bool? {
+        geometry.size.width > 0 && geometry.size.height > 0 ? geometry.size.height > geometry.size.width : nil
+    }
+
+    private func windowShapeMeasured(_ measuredShape: Bool?) {
+        guard let isTallerThanWide = measuredShape else { return }
+        #if os(iOS)
+        if !isCompactWidth {
+            if !hasMeasuredWindowShape {
+                // The window's first shape decides the sidebar as an explicit choice: hidden upright, beside the
+                // documents sideways.
+                columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isTallerThanWide)
+            } else if isTallerThanWide != isWindowTallerThanWide, !focusMode.isActive {
+                // Focus keeps the documents alone in either shape.
+                let turned = Self.sidebarVisibility(afterTurningUpright: isTallerThanWide, from: columnVisibility, keptSideways: sidewaysColumnVisibility)
+                columnVisibility = turned.shown
+                sidewaysColumnVisibility = turned.keptSideways
+            }
+        }
+        #else
+        // Resizing the window keeps the view it showed: the sidebar beside the documents, or not (HUNT-311).
+        if hasMeasuredWindowShape, isTallerThanWide != isWindowTallerThanWide {
+            columnVisibility = Self.sidebarVisibility(keptAcrossTurnOf: columnVisibility, wasTallerThanWide: isWindowTallerThanWide)
+        }
+        #endif
+        hasMeasuredWindowShape = true
+        isWindowTallerThanWide = isTallerThanWide
+    }
+
+    /// A file opened from the list, a link or a search shows on a phone at once; a rename, a move or a deletion that
+    /// changes the selection leaves the file list in front.
+    private func selectionChanged(to selection: VaultPath?) {
+        let followsFileManagement = workspace.takeSelectionChangeFromFileManagement()
+        if selection != nil, !followsFileManagement { showDocumentColumn() }
+        #if os(iOS)
+        // A file chosen from the sidebar shown over the documents upright puts the sidebar away, as in Notes and Files.
+        if selection != nil, !followsFileManagement, !isCompactWidth, isWindowTallerThanWide,
+           !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: true) {
+            columnVisibility = .detailOnly
+        }
+        #endif
     }
 
     /// In automatic mode an iPad shows only the detail column while the window is taller

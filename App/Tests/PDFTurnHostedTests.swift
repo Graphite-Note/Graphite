@@ -2,12 +2,13 @@
  * File: PDFTurnHostedTests.swift
  * ------------------------------
  * Layer: Tests
- * Description: Hosted test of a PDF written on while the 11-inch iPad turns from sideways to upright: the sidebar stays
- *              as it was, the page stays fitted, and the Pencil bar stays a centered row over the page (HUNT-311).
+ * Description: Hosted test of a PDF written on while the 11-inch iPad turns from sideways to upright and back: upright
+ *              the sidebar is put away and the page keeps the window's width, sideways the sidebar is as it was, the page
+ *              stays fitted, and the Pencil bar stays a centered row over the page (HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 05/11/2026
  */
 
 #if os(iOS)
@@ -89,13 +90,24 @@ final class PDFTurnHostedTests: XCTestCase {
         try await waitUntilSettled("the upright layout has settled") { pdfView.convert(pdfView.bounds, to: window) }
         attachScreenshot(of: window, named: "Upright, after the turn")
         let uprightFrame = pdfView.convert(pdfView.bounds, to: window)
-        XCTAssertEqual(uprightFrame.width < window.bounds.width - 200, isSidebarBesideSideways,
-                       "The sidebar is as it was before the turn (beside the documents sideways: \(isSidebarBesideSideways))")
+        func controllers(in parent: UIViewController) -> [UIViewController] { [parent] + parent.children.flatMap(controllers) }
+        let split = try XCTUnwrap(controllers(in: controller).lazy.compactMap { $0 as? UISplitViewController }.first)
+        print("PDF-TURN sideways PDF \(sidewaysFrame), upright PDF \(uprightFrame), split behavior \(split.splitBehavior.rawValue) "
+              + "(preferred \(split.preferredSplitBehavior.rawValue)), display mode \(split.displayMode.rawValue), row \(String(describing: PencilToolRowForm.lastShown))")
+        // On the owner's iPad (2026-11-05) the sidebar beside the documents sideways stayed beside them upright, the page
+        // 514 of 834 points wide and the bar folded. Upright it is put away, as Notes and Files put theirs away.
+        XCTAssertEqual(uprightFrame.width, window.bounds.width, accuracy: 1, "Upright the page keeps the window's width (sideways the sidebar was beside it: \(isSidebarBesideSideways))")
         XCTAssertEqual(pdfView.scaleFactor, pdfView.scaleFactorForSizeToFit, accuracy: 0.01, "The page still fits its width")
         XCTAssertTrue(session.pdfView === pdfView, "The same view, turned")
         let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
         XCTAssertEqual(shownRow.frameInWindow.midX, uprightFrame.midX, accuracy: 24, "The bar is centered over the page upright too")
         XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, uprightFrame.maxX + 1)
+        XCTAssertEqual(shownRow.form, .full, "Upright every tool, size and color is on the bar (\(shownRow.arrangement))")
+
+        window.frame = CGRect(origin: .zero, size: CGSize(width: 1_194, height: 834))
+        try await waitUntilSettled("the sideways layout has settled again") { pdfView.convert(pdfView.bounds, to: window) }
+        attachScreenshot(of: window, named: "Sideways again")
+        XCTAssertEqual(pdfView.convert(pdfView.bounds, to: window), sidewaysFrame, "Sideways again the sidebar is as it was")
     }
 }
 #endif

@@ -2,10 +2,11 @@
  * File: SidebarAcrossTurnTests.swift
  * ----------------------------------
  * Layer: Tests
- * Description: Turning the iPad keeps the view the window showed: the sidebar beside the documents, or hidden (HUNT-311).
+ * Description: Turning the iPad keeps the view the window showed sideways, and upright puts the sidebar away so the
+ *              documents keep the window's width (HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 05/11/2026
  */
 
@@ -37,5 +38,20 @@ final class SidebarAcrossTurnTests: XCTestCase {
         XCTAssertEqual(GraphiteRootView.sidebarVisibility(toggling: keptUpright, automaticHidesSidebar: true), .detailOnly)
         let keptSideways = GraphiteRootView.sidebarVisibility(keptAcrossTurnOf: .automatic, wasTallerThanWide: true)
         XCTAssertEqual(GraphiteRootView.sidebarVisibility(toggling: keptSideways, automaticHidesSidebar: false), .all)
+    }
+
+    /// HUNT-317: upright the sidebar is put away, as Notes and Files put theirs away, and sideways it comes back as it was.
+    func testTurningUprightPutsTheSidebarAwayAndSidewaysBringsItBackAsItWas() {
+        let upright = GraphiteRootView.sidebarVisibility(afterTurningUpright: true, from: .automatic, keptSideways: nil)
+        XCTAssertEqual(upright.shown, .detailOnly, "Upright the documents keep the window's width")
+        XCTAssertEqual(upright.keptSideways, .all, "Sideways the automatic sidebar was beside the documents")
+        XCTAssertEqual(GraphiteRootView.sidebarVisibility(afterTurningUpright: false, from: .detailOnly, keptSideways: upright.keptSideways).shown, .all)
+        let hiddenSideways = GraphiteRootView.sidebarVisibility(afterTurningUpright: true, from: .detailOnly, keptSideways: nil)
+        XCTAssertEqual(GraphiteRootView.sidebarVisibility(afterTurningUpright: false, from: .detailOnly, keptSideways: hiddenSideways.keptSideways).shown,
+                       .detailOnly, "A sidebar hidden sideways stays hidden after a turn upright and back")
+        XCTAssertEqual(GraphiteRootView.sidebarVisibility(afterTurningUpright: false, from: .all, keptSideways: .detailOnly).shown, .all,
+                       "A sidebar shown over the documents upright is beside them sideways")
+        XCTAssertEqual(GraphiteRootView.sidebarVisibility(afterTurningUpright: false, from: .detailOnly, keptSideways: nil).shown, .all,
+                       "A window opened upright shows its sidebar beside the documents once sideways")
     }
 }

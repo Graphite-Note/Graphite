@@ -7,8 +7,8 @@
  *              the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.13
- * Date: 04/11/2026
+ * Version: 0.14
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -452,13 +452,36 @@ enum PencilToolRowForm: Equatable {
     /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
     /// where it is, in its window's coordinates.
     @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
+    /// For tests: every row on screen, by an identity of its own. A row that leaves the screen takes itself out and
+    /// takes itself out of `lastShown`: on the owner's iPad (2026-11-05) a folded row laid out for the first, empty
+    /// size stayed in `lastShown` while the screen showed the whole row (HUNT-317).
+    @MainActor static var rowsOnScreen: [UUID: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)] = [:]
+}
+
+/// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`).
+private struct PencilToolRowLayoutReport: ViewModifier {
+    let form: PencilToolRowForm
+    let arrangement: PencilToolRowLayout.Arrangement
+    @State private var identity = UUID()
+
+    func body(content: Content) -> some View {
+        content
+            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .global) } action: { frame in
+                PencilToolRowForm.lastShown = (form, arrangement, frame)
+                PencilToolRowForm.rowsOnScreen[identity] = (form, arrangement, frame)
+            }
+            .onDisappear {
+                guard let report = PencilToolRowForm.rowsOnScreen.removeValue(forKey: identity) else { return }
+                if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == report.frameInWindow, lastShown.arrangement == report.arrangement {
+                    PencilToolRowForm.lastShown = PencilToolRowForm.rowsOnScreen.values.first
+                }
+            }
+    }
 }
 
 private extension View {
     func reportingLayout(_ form: PencilToolRowForm, _ arrangement: PencilToolRowLayout.Arrangement) -> some View {
-        onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .global) } action: { frame in
-            PencilToolRowForm.lastShown = (form, arrangement, frame)
-        }
+        modifier(PencilToolRowLayoutReport(form: form, arrangement: arrangement))
     }
 }
 

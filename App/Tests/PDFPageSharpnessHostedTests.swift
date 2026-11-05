@@ -7,7 +7,7 @@
  *              zoomed in, and prints what it measured.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 05/11/2026
  */
 #if os(iOS)
@@ -16,6 +16,7 @@ import SwiftUI
 import PDFKit
 import PencilKit
 import ImageIO
+import IOSurface
 import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
@@ -90,12 +91,131 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             let after = try await settledEdgeWidths(along: row, of: page, in: pdfView, window: window, zoom: fit * zoomOfFit)
             let afterScales = Self.annotationLayers(in: pdfView).map { layer in format(layer.contentsScale) }
             print("PDF-SHARP picture at \(format(zoomOfFit))x fit (zoom \(format(pdfView.scaleFactor)), \(format(after.screenPixelsPerPoint)) px/pt): PDFKit's layers \(pdfKitScales) px/pt, edge \(format(before.onScreen)) px; Graphite's layers \(afterScales) px/pt, edge \(format(after.onScreen)) px; PDFPage.draw \(format(after.reference)) px")
-            XCTAssertLessThanOrEqual(after.onScreen, after.reference + 0.75, "The picture at \(zoomOfFit)x fit is as sharp as PDFKit draws the page")
             let pictureLayers = Self.annotationLayers(in: pdfView).filter(PDFAnnotationLayerResolution.showsAPicture)
+            try await reportWhatTheScreenShows(of: pictureLayers, along: row, of: page, in: pdfView, window: window, label: "\(format(zoomOfFit))x fit")
+            XCTAssertLessThanOrEqual(after.onScreen, after.reference + 0.75, "The picture at \(zoomOfFit)x fit is as sharp as PDFKit draws the page")
             XCTAssertFalse(pictureLayers.isEmpty, "The picture's layer is known as a picture's")
             XCTAssertTrue(pictureLayers.allSatisfy { layer in !layer.drawsAsynchronously }, "Core Graphics draws the picture, as PDFPage.draw does")
             try await reportTheRecordedDrawing(of: pictureLayers, along: row, of: page, in: pdfView, window: window, zoom: fit * zoomOfFit)
         }
+    }
+
+    /// Prints, for the picture's layer and each layer above it up to the PDF view, what Core Animation is given to show,
+    /// and every layer with contents under the row's middle; the edge on screen now and a while later, and in the layer's
+    /// own pixels; then the edge after a few changes to the layer, each put back: what a device run needs to tell where
+    /// the picture loses its sharpness (HUNT-320).
+    private func reportWhatTheScreenShows(of pictureLayers: [CALayer], along row: CGRect, of page: PDFPage, in pdfView: PDFView, window: UIWindow, label: String) async throws {
+        guard let layer = pictureLayers.first else { return }
+        let shownRow = shownPart(of: row, on: page, in: pdfView)
+        func report(_ moment: String) throws {
+            let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
+            print("PDF-SHARP layers at \(label), \(moment): screen edge \(format(onScreen)) px, own pixels edge \(format(try Self.edgeWidthInOwnPixels(of: layer)))")
+            var ancestor: CALayer? = layer
+            while let shown = ancestor {
+                print("PDF-SHARP   " + Self.describe(shown, in: window))
+                if shown === pdfView.layer { break }
+                ancestor = shown.superlayer
+            }
+            let middle = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
+            for covering in Self.layersWithContents(under: middle, in: window.layer).prefix(24) { print("PDF-SHARP   under the row: " + Self.describe(covering, in: window)) }
+        }
+        try report("at once")
+        try await Task.sleep(for: .milliseconds(500))
+        try report("0.5 s later")
+        try await Task.sleep(for: .milliseconds(1_000))
+        try report("1.5 s later")
+        let scale = layer.contentsScale
+        let experiments: [(String, (CALayer) -> Void)] = [
+            ("contents emptied and drawn again now", { layer in layer.contents = nil; layer.setNeedsDisplay(); layer.displayIfNeeded() }),
+            ("drawn at a whole \(format(scale.rounded(.up))) px/pt", { layer in layer.contentsScale = scale.rounded(.up); layer.setNeedsDisplay(); layer.displayIfNeeded() }),
+            ("trilinear filters", { layer in layer.minificationFilter = .trilinear; layer.magnificationFilter = .trilinear }),
+        ]
+        for (name, change) in experiments {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            change(layer)
+            CATransaction.commit()
+            try await Task.sleep(for: .milliseconds(400))
+            let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
+            print("PDF-SHARP experiment at \(label), \(name): screen edge \(format(onScreen)) px, own pixels edge \(format(try Self.edgeWidthInOwnPixels(of: layer))); " + Self.describe(layer, in: window))
+            layer.minificationFilter = .linear
+            layer.magnificationFilter = .linear
+            layer.contentsScale = scale
+            layer.setNeedsDisplay()
+            layer.displayIfNeeded()
+        }
+        // Each layer drawn after the picture's under the row's middle, hidden a moment: what covers the picture.
+        let middle = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
+        let underTheRow = Self.layersWithContents(under: middle, in: window.layer)
+        if let pictureIndex = underTheRow.firstIndex(where: { candidate in candidate === layer }) {
+            for covering in underTheRow[(pictureIndex + 1)...].prefix(8) {
+                covering.isHidden = true
+                try await Task.sleep(for: .milliseconds(300))
+                let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
+                covering.isHidden = false
+                print("PDF-SHARP experiment at \(label), hiding \(type(of: covering)) (\(Self.contentsDescription(covering.contents))): screen edge \(format(onScreen)) px")
+            }
+        }
+        layer.setNeedsDisplay()
+        try await Task.sleep(for: .milliseconds(400))
+    }
+
+    /// One line about a layer: its class, size, place on screen, resolution, contents, and what Core Animation does to it.
+    private static func describe(_ layer: CALayer, in window: UIWindow) -> String {
+        let frame = layer.convert(layer.bounds, to: window.layer)
+        let transform = layer.transform, sublayerTransform = layer.sublayerTransform
+        return "\(type(of: layer)) bounds \(Self.rounded(layer.bounds.size)) on screen \(Self.rounded(frame.size)) at \(Self.rounded(frame.origin)), "
+            + "scale \(String(format: "%.2f", Double(layer.contentsScale))), contents \(contentsDescription(layer.contents)), "
+            + "rasterize \(layer.shouldRasterize) \(String(format: "%.2f", Double(layer.rasterizationScale))), filters \(layer.magnificationFilter.rawValue)/\(layer.minificationFilter.rawValue), "
+            + "transform \(String(format: "%.3f", Double(transform.m11))) sublayers \(String(format: "%.3f", Double(sublayerTransform.m11))), "
+            + "hidden \(layer.isHidden) opacity \(layer.opacity), async \(layer.drawsAsynchronously), format \(layer.contentsFormat.rawValue), "
+            + "rect \(layer.contentsRect), gravity \(layer.contentsGravity.rawValue), filters \(layer.filters?.count ?? 0), mask \(layer.mask != nil), delegate \(layer.delegate.map { String(describing: type(of: $0)) } ?? "none")"
+    }
+
+    private static func rounded(_ size: CGSize) -> String { "\(Int(size.width.rounded()))x\(Int(size.height.rounded()))" }
+    private static func rounded(_ point: CGPoint) -> String { "(\(Int(point.x.rounded())), \(Int(point.y.rounded())))" }
+
+    /// What a layer's contents are and how many pixels they hold.
+    private static func contentsDescription(_ contents: Any?) -> String {
+        guard let contents else { return "none" }
+        let object = contents as CFTypeRef
+        if CFGetTypeID(object) == CGImage.typeID {
+            let image = unsafeDowncast(contents as AnyObject, to: CGImage.self)
+            return "CGImage \(image.width)x\(image.height)"
+        }
+        if CFGetTypeID(object) == IOSurfaceGetTypeID() {
+            let surface = unsafeDowncast(contents as AnyObject, to: IOSurface.self)
+            return "IOSurface \(surface.width)x\(surface.height)"
+        }
+        return "\(type(of: contents)) " + String(String(describing: contents).prefix(140))
+    }
+
+    /// Every layer shown with contents or a background of its own whose frame holds the point, frontmost last.
+    private static func layersWithContents(under point: CGPoint, in windowLayer: CALayer) -> [CALayer] {
+        var found: [CALayer] = []
+        func look(at layer: CALayer) {
+            guard !layer.isHidden, layer.opacity > 0 else { return }
+            let showsSomething = layer.contents != nil || (layer.backgroundColor?.alpha ?? 0) > 0
+            if showsSomething, layer.convert(layer.bounds, to: windowLayer).contains(point) { found.append(layer) }
+            for sublayer in layer.sublayers ?? [] { look(at: sublayer) }
+        }
+        look(at: windowLayer)
+        return found
+    }
+
+    /// The edge along the layer's middle row in its own pixels, as Core Animation holds them (`render(in:)`).
+    private static func edgeWidthInOwnPixels(of layer: CALayer) throws -> CGFloat {
+        let scale = layer.contentsScale
+        let width = max(1, Int((layer.bounds.width * scale).rounded(.up))), height = 3
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                              space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.translateBy(x: 0, y: CGFloat(height) / 2)
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: -layer.bounds.minX, y: -layer.bounds.midY)
+        layer.render(in: context)
+        return averageEdgeWidth(try greenLevels(ofMiddleRowOf: try XCTUnwrap(context.makeImage())))
     }
 
     /// Prints how long Core Graphics takes to draw the picture's layers, and what the screen shows

@@ -8,7 +8,7 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 05/11/2026
  */
 
@@ -89,6 +89,31 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         return window
     }
 
+    /// The split view SwiftUI shows the window's columns in.
+    private func splitViewController(in window: UIWindow) -> UISplitViewController? {
+        func controllers(in parent: UIViewController) -> [UIViewController] { [parent] + parent.children.flatMap(controllers) }
+        return window.rootViewController.flatMap { root in controllers(in: root).lazy.compactMap { $0 as? UISplitViewController }.first }
+    }
+
+    /// How the window's split view shows its sidebar, and every bar row on screen, for what a device run prints.
+    private func layoutDescription(in window: UIWindow) -> String {
+        let rows = PencilToolRowForm.rowsOnScreen.values.map { row in "\(row.form) at \(row.frameInWindow)" }
+        guard let split = splitViewController(in: window) else { return "no split view; rows on screen \(rows)" }
+        return "split behavior \(split.splitBehavior.rawValue) (preferred \(split.preferredSplitBehavior.rawValue)), display mode \(split.displayMode.rawValue); rows on screen \(rows)"
+    }
+
+    /// Waits until the bar's row stops moving: the same frame for fifteen looks in a row.
+    private func waitForTheBarToSettle(_ description: String) async throws {
+        var lastRowFrame = CGRect.null
+        var unchangedPolls = 0
+        try await waitUntil(description) {
+            guard let frame = PencilToolRowForm.lastShown?.frameInWindow else { return false }
+            unchangedPolls = frame == lastRowFrame ? unchangedPolls + 1 : 0
+            lastRowFrame = frame
+            return unchangedPolls >= 15
+        }
+    }
+
     /// Where the bar's row stands over the PDF, sideways and upright: centered on the PDF's side, not at the end of
     /// the tab bar, and in a form that keeps every tool and the sizes on the bar.
     func testTheBarIsCenteredOverThePDFWithEveryToolUprightAndSideways() async throws {
@@ -108,20 +133,14 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             try await waitUntil("the PDF shows \(name)") { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
             try await waitUntil("the bar shows \(name)") { PencilToolRowForm.lastShown != nil }
             let pdfView = try XCTUnwrap(session.pdfView)
-            var lastRowFrame = CGRect.null
-            var unchangedPolls = 0
-            try await waitUntil("the bar has settled \(name)") {
-                guard let frame = PencilToolRowForm.lastShown?.frameInWindow else { return false }
-                unchangedPolls = frame == lastRowFrame ? unchangedPolls + 1 : 0
-                lastRowFrame = frame
-                return unchangedPolls >= 15
-            }
+            try await waitForTheBarToSettle("the bar has settled \(name)")
             attachScreenshot(of: window, named: "Fixed Pencil bar over a PDF, 11-inch iPad \(name)")
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
             let pdfFrame = pdfView.convert(pdfView.bounds, to: window)
             // On the owner's iPad (2026-11-05) the upright PDF was 514 points wide, from 320 to 834: the sidebar stood
             // beside it, left automatic, and the bar folded to scrolling colors. The window's first shape now hides it upright.
-            print("PENCIL-BAR placement \(name): window \(window.bounds.size), PDF \(pdfFrame), row \(shownRow.frameInWindow), \(shownRow.arrangement)")
+            print("PENCIL-BAR placement \(name): window \(window.bounds.size), PDF \(pdfFrame), row \(shownRow.frameInWindow), \(shownRow.arrangement), "
+                  + layoutDescription(in: window))
             if size.height > size.width {
                 XCTAssertEqual(pdfFrame.width, window.bounds.width, accuracy: 1, "A fresh window upright shows the PDF without the sidebar beside it.")
             }
@@ -130,6 +149,22 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.maxX, pdfFrame.maxX + 1, "\(name): the bar is inside the PDF's side.")
             XCTAssertEqual(shownRow.form, .full, "\(name): every tool, its sizes and every color are on the bar, nothing behind a menu (\(shownRow.arrangement)).")
             formsByOrientation[name] = shownRow.form
+            if size.height > size.width {
+                // Upright the sidebar shows over the PDF, as Notes' and Files' do, so the PDF and its bar keep the
+                // window's width with the sidebar shown too.
+                workspace.searchResultsRevealRequest += 1
+                try await waitUntil("the sidebar shows upright") {
+                    self.splitViewController(in: window).map { split in split.displayMode != .secondaryOnly } ?? false
+                }
+                try await waitForTheBarToSettle("the bar has settled upright with the sidebar shown")
+                attachScreenshot(of: window, named: "Fixed Pencil bar over a PDF, 11-inch iPad upright, the sidebar shown")
+                let rowWithSidebar = try XCTUnwrap(PencilToolRowForm.lastShown)
+                let pdfFrameWithSidebar = pdfView.convert(pdfView.bounds, to: window)
+                print("PENCIL-BAR placement upright, the sidebar shown: PDF \(pdfFrameWithSidebar), row \(rowWithSidebar.frameInWindow), "
+                      + "\(rowWithSidebar.arrangement), \(layoutDescription(in: window))")
+                XCTAssertEqual(pdfFrameWithSidebar.width, window.bounds.width, accuracy: 1, "Upright the sidebar shows over the PDF, not beside it.")
+                XCTAssertEqual(rowWithSidebar.form, .full, "Upright with the sidebar shown, every tool and color stays on the bar (\(rowWithSidebar.arrangement)).")
+            }
         }
         XCTAssertEqual(formsByOrientation.count, 2)
     }
