@@ -6,8 +6,8 @@
  *              draws larger to stay sharp, and in a drawing, whose canvas the person zooms.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 04/11/2026
+ * Version: 0.9
+ * Date: 05/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -509,9 +509,14 @@ final class InkWidthAtZoomTests: XCTestCase {
                 let context = try XCTUnwrap(CGContext(data: &bytes, width: picture.width, height: picture.height, bitsPerComponent: 8, bytesPerRow: picture.width * 4,
                                                       space: XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
                 context.draw(picture, in: CGRect(x: 0, y: 0, width: picture.width, height: picture.height))
+                // The gap is the clear run between the line's first and last ink: the drawing's bounds
+                // reach about a point past each end of the line, which is not cut.
                 let middleRow = picture.height / 2
-                let gap = Double((0..<picture.width).filter { column in bytes[(middleRow * picture.width + column) * 4 + 3] < 64 }.count) / 4
-                print("INK-WIDTH eraser \(eraserWidth) at zoom \(zoom): canvas \(canvas.zoomScale) gap \(gap)")
+                let opacities = (0..<picture.width).map { column in bytes[(middleRow * picture.width + column) * 4 + 3] }
+                let firstInk = try XCTUnwrap(opacities.firstIndex { opacity in opacity >= 128 }), lastInk = try XCTUnwrap(opacities.lastIndex { opacity in opacity >= 128 })
+                let gap = Double(opacities[firstInk...lastInk].filter { opacity in opacity < 128 }.count) / 4
+                let clearPastTheEnds = Double(firstInk + (opacities.count - 1 - lastInk)) / 4
+                print("INK-WIDTH eraser \(eraserWidth) at zoom \(zoom): canvas \(canvas.zoomScale) gap \(gap), clear past the line's ends \(clearPastTheEnds)")
                 XCTAssertEqual(gap, eraserWidth, accuracy: erasesWithGraphite ? 0.3 : max(eraserWidth * 0.2, 1.5), "Eraser \(eraserWidth) at zoom \(zoom)")
             }
         }

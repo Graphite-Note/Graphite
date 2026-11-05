@@ -6,11 +6,12 @@
  *              boxes) at the screen's resolution, within a memory bound, on the Mac and the iPad.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 import PDFKit
 import SwiftUI
+import GraphiteApple
 #if canImport(UIKit)
 import UIKit
 #else
@@ -39,6 +40,13 @@ import AppKit
 /// its tiles again. All the layers together hold at most `maximumPixelCount` pixels: when
 /// zoomed in so far that they would hold more, every one is drawn at the same fraction of its
 /// screen's resolution, never below PDFKit's own one pixel per point (invariant P-17).
+///
+/// On the iPad PDFKit makes these layers draw asynchronously: Core Animation records the drawing
+/// and renders it itself. A placed picture is drawn by Core Graphics instead, as `PDFPage.draw`
+/// draws it: on the owner's iPad the recorded drawing showed a 4,000-pixel picture at twice fit
+/// (7.91 pixels per point) softer than PDFKit's own one pixel per point, edges 18.9 pixels
+/// against 1.3 for `PDFPage.draw`, while the same layer at 10 pixels per point was sharp; the
+/// simulator showed every zoom sharp both ways. `PDFPageSharpnessHostedTests` measures both.
 ///
 /// The layers are found by PDFKit's class name, which is not public: should PDFKit rename the
 /// class, annotations are drawn as PDFKit draws them, and the tests above fail.
@@ -220,6 +228,9 @@ final class PDFAnnotationLayerResolution: NSObject {
         CATransaction.setDisableActions(true)
         for (layer, target) in layersToDraw {
             layer.contentsScale = target
+            #if canImport(UIKit)
+            if Self.showsAPicture(layer) { layer.drawsAsynchronously = false }
+            #endif
             layer.setNeedsDisplay()
         }
         CATransaction.commit()
@@ -241,6 +252,15 @@ final class PDFAnnotationLayerResolution: NSObject {
     }
 
     #if canImport(UIKit)
+    private static let annotationSelector = NSSelectorFromString("annotation")
+
+    /// Whether the layer draws a picture placed on the page: a stamp, whose appearance is an image.
+    static func showsAPicture(_ layer: CALayer) -> Bool {
+        guard layer.responds(to: annotationSelector),
+              let annotation = layer.perform(annotationSelector)?.takeUnretainedValue() as? PDFAnnotation else { return false }
+        return annotation.type == PDFPicture.annotationTypeName
+    }
+
     /// How many of the screen's pixels one point of the layer covers, through every transform
     /// above it: the zoom of PDFKit's scroll view and of the page's view, whatever space
     /// PDFKit lays its pages out in.

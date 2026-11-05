@@ -6,7 +6,7 @@
  *              zoomed far in over part of the page, each taken by loops through the lasso's recognizer.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 05/11/2026
  */
 #if os(iOS)
@@ -68,7 +68,9 @@ final class LassoAtZoomHostedTests: XCTestCase {
             try await show(middle, at: zoom, on: page, canvas: canvas, in: pdfView)
             if zoom == deepZoom {
                 XCTAssertNotEqual(overlay.shownRegion.size, pageSize, "Zoomed far in, the canvas covers part of the page")
-                XCTAssertGreaterThan(canvas.contentOffset.x + canvas.contentOffset.y, 0, "and is scrolled within the page's drawing to it")
+                // Scrolled within the page's drawing to its part, which may begin at the page's corner.
+                XCTAssertEqual(canvas.contentOffset.x, overlay.shownRegion.minX * canvas.zoomScale, accuracy: 0.5, "and is scrolled within the page's drawing to it, across")
+                XCTAssertEqual(canvas.contentOffset.y, overlay.shownRegion.minY * canvas.zoomScale, accuracy: 0.5, "and down")
             }
             let written = wave(around: middle)
             let windowPoints = Self.densified(written.map { pagePoint in windowPoint(ofPage: pagePoint, on: canvas, in: window) }, spacing: 4)
