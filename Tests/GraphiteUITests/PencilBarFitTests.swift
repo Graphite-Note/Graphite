@@ -6,8 +6,8 @@
  *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 05/11/2026
  */
 
 import XCTest
@@ -117,7 +117,7 @@ final class PencilBarFitTests: XCTestCase {
     func testTheEraserAndItsKindStayOnTheWholeBarUpright() {
         var eraserBar = pensBar()
         eraserBar.toolInUse = .eraser
-        eraserBar.toolChoicesWidth = 150
+        eraserBar.toolChoicesWidth = PencilBarOwnersToolboxTests.eraserChoicesWidth
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: eraserBar), .whole(.tightest))
     }
 

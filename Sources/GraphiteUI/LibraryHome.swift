@@ -6,8 +6,8 @@
  *              and what the library's top row offers of the window.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 05/11/2026
  */
 
 import SwiftUI
@@ -51,8 +51,8 @@ struct LibraryModeSidebarVisibility: ViewModifier {
             switch presentation {
             case .library: columnVisibility = .detailOnly
             // Switching to List opens the file tree it switched to; a launch in List keeps
-            // the window's own choice.
-            case .list: columnVisibility = previousPresentation == .library ? .all : .automatic
+            // the window's own choice, which its first shape made (`GraphiteRootView`).
+            case .list: if previousPresentation == .library { columnVisibility = .all }
             }
         }
     }
