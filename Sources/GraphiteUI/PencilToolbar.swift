@@ -452,30 +452,42 @@ enum PencilToolRowForm: Equatable {
     /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
     /// where it is, in its window's coordinates.
     @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
-    /// For tests: every row on screen, by an identity of its own. A row that leaves the screen takes itself out and
-    /// takes itself out of `lastShown`: on the owner's iPad (2026-11-05) a folded row laid out for the first, empty
-    /// size stayed in `lastShown` while the screen showed the whole row (HUNT-317).
+    /// For tests: every row on screen, by an identity of its own. A row that leaves the screen takes itself out, and
+    /// out of `lastShown`: on the owner's iPad (2026-11-05) a folded row stayed in `lastShown` while the screen showed
+    /// the whole row (HUNT-317).
     @MainActor static var rowsOnScreen: [UUID: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)] = [:]
 }
 
-/// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`).
+/// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`): a reader behind the row
+/// reports its frame when the row appears and whenever the frame changes, and takes it back when the row goes. A change
+/// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another (HUNT-317).
 private struct PencilToolRowLayoutReport: ViewModifier {
     let form: PencilToolRowForm
     let arrangement: PencilToolRowLayout.Arrangement
     @State private var identity = UUID()
 
     func body(content: Content) -> some View {
-        content
-            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .global) } action: { frame in
-                PencilToolRowForm.lastShown = (form, arrangement, frame)
-                PencilToolRowForm.rowsOnScreen[identity] = (form, arrangement, frame)
+        content.background {
+            GeometryReader { geometry in
+                let frame = geometry.frame(in: .global)
+                Color.clear
+                    .onAppear { report(frame) }
+                    .onChange(of: frame) { _, changedFrame in report(changedFrame) }
+                    .onDisappear { withdraw() }
             }
-            .onDisappear {
-                guard let report = PencilToolRowForm.rowsOnScreen.removeValue(forKey: identity) else { return }
-                if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == report.frameInWindow, lastShown.arrangement == report.arrangement {
-                    PencilToolRowForm.lastShown = PencilToolRowForm.rowsOnScreen.values.first
-                }
-            }
+        }
+    }
+
+    private func report(_ frame: CGRect) {
+        PencilToolRowForm.lastShown = (form, arrangement, frame)
+        PencilToolRowForm.rowsOnScreen[identity] = (form, arrangement, frame)
+    }
+
+    private func withdraw() {
+        guard let report = PencilToolRowForm.rowsOnScreen.removeValue(forKey: identity) else { return }
+        if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == report.frameInWindow, lastShown.arrangement == report.arrangement {
+            PencilToolRowForm.lastShown = nil
+        }
     }
 }
 

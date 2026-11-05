@@ -100,64 +100,19 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
         }
     }
 
-    /// Prints, for the picture's layer and each layer above it up to the PDF view, what Core Animation is given to show,
-    /// and every layer with contents under the row's middle; the edge on screen now and a while later, and in the layer's
-    /// own pixels; then the edge after a few changes to the layer, each put back: what a device run needs to tell where
-    /// the picture loses its sharpness (HUNT-320).
+    /// Prints what Core Animation is given to show for the picture, and the edge in the layer's own pixels and on
+    /// screen, below the window's bars. On the owner's iPad (2026-11-05) the layer held 2,848 by 2,144 sharp pixels at
+    /// 7.91 px/pt at twice fit (edge 0.82 in its own pixels) while the screen measured 16.07: the row measured lay at
+    /// 109 points, under the 130-point glass of the navigation and tab bars, which blurs what is under it; hiding any
+    /// layer under the row, drawing it again, at a whole scale or with other filters changed nothing (HUNT-320).
     private func reportWhatTheScreenShows(of pictureLayers: [CALayer], along row: CGRect, of page: PDFPage, in pdfView: PDFView, window: UIWindow, label: String) async throws {
         guard let layer = pictureLayers.first else { return }
         let shownRow = shownPart(of: row, on: page, in: pdfView)
-        func report(_ moment: String) throws {
-            let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
-            print("PDF-SHARP layers at \(label), \(moment): screen edge \(format(onScreen)) px, own pixels edge \(format(try Self.edgeWidthInOwnPixels(of: layer)))")
-            var ancestor: CALayer? = layer
-            while let shown = ancestor {
-                print("PDF-SHARP   " + Self.describe(shown, in: window))
-                if shown === pdfView.layer { break }
-                ancestor = shown.superlayer
-            }
-            let middle = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
-            for covering in Self.layersWithContents(under: middle, in: window.layer).prefix(24) { print("PDF-SHARP   under the row: " + Self.describe(covering, in: window)) }
-        }
-        try report("at once")
-        try await Task.sleep(for: .milliseconds(500))
-        try report("0.5 s later")
-        try await Task.sleep(for: .milliseconds(1_000))
-        try report("1.5 s later")
-        let scale = layer.contentsScale
-        let experiments: [(String, (CALayer) -> Void)] = [
-            ("contents emptied and drawn again now", { layer in layer.contents = nil; layer.setNeedsDisplay(); layer.displayIfNeeded() }),
-            ("drawn at a whole \(format(scale.rounded(.up))) px/pt", { layer in layer.contentsScale = scale.rounded(.up); layer.setNeedsDisplay(); layer.displayIfNeeded() }),
-            ("trilinear filters", { layer in layer.minificationFilter = .trilinear; layer.magnificationFilter = .trilinear }),
-        ]
-        for (name, change) in experiments {
-            CATransaction.begin()
-            CATransaction.setDisableActions(true)
-            change(layer)
-            CATransaction.commit()
-            try await Task.sleep(for: .milliseconds(400))
-            let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
-            print("PDF-SHARP experiment at \(label), \(name): screen edge \(format(onScreen)) px, own pixels edge \(format(try Self.edgeWidthInOwnPixels(of: layer))); " + Self.describe(layer, in: window))
-            layer.minificationFilter = .linear
-            layer.magnificationFilter = .linear
-            layer.contentsScale = scale
-            layer.setNeedsDisplay()
-            layer.displayIfNeeded()
-        }
-        // Each layer drawn after the picture's under the row's middle, hidden a moment: what covers the picture.
-        let middle = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
-        let underTheRow = Self.layersWithContents(under: middle, in: window.layer)
-        if let pictureIndex = underTheRow.firstIndex(where: { candidate in candidate === layer }) {
-            for covering in underTheRow[(pictureIndex + 1)...].prefix(8) {
-                covering.isHidden = true
-                try await Task.sleep(for: .milliseconds(300))
-                let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
-                covering.isHidden = false
-                print("PDF-SHARP experiment at \(label), hiding \(type(of: covering)) (\(Self.contentsDescription(covering.contents))): screen edge \(format(onScreen)) px")
-            }
-        }
-        layer.setNeedsDisplay()
-        try await Task.sleep(for: .milliseconds(400))
+        let onScreen = try edgeWidthOnScreen(along: shownRow, of: page, in: pdfView, window: window)
+        let ownPixels = try Self.edgeWidthInOwnPixels(of: layer)
+        let rowInWindow = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
+        print("PDF-SHARP layers at \(label): screen edge \(format(onScreen)) px, own pixels edge \(format(ownPixels)) px, row at \(format(rowInWindow.y)) pt below the bars' \(format(pdfView.safeAreaInsets.top)); " + Self.describe(layer, in: window))
+        XCTAssertLessThanOrEqual(ownPixels, 1.5, "The picture's layer holds sharp pixels at \(label)")
     }
 
     /// One line about a layer: its class, size, place on screen, resolution, contents, and what Core Animation does to it.
@@ -188,19 +143,6 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             return "IOSurface \(surface.width)x\(surface.height)"
         }
         return "\(type(of: contents)) " + String(String(describing: contents).prefix(140))
-    }
-
-    /// Every layer shown with contents or a background of its own whose frame holds the point, frontmost last.
-    private static func layersWithContents(under point: CGPoint, in windowLayer: CALayer) -> [CALayer] {
-        var found: [CALayer] = []
-        func look(at layer: CALayer) {
-            guard !layer.isHidden, layer.opacity > 0 else { return }
-            let showsSomething = layer.contents != nil || (layer.backgroundColor?.alpha ?? 0) > 0
-            if showsSomething, layer.convert(layer.bounds, to: windowLayer).contains(point) { found.append(layer) }
-            for sublayer in layer.sublayers ?? [] { look(at: sublayer) }
-        }
-        look(at: windowLayer)
-        return found
     }
 
     /// The edge along the layer's middle row in its own pixels, as Core Animation holds them (`render(in:)`).
@@ -450,7 +392,10 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
     /// the row stops changing (PDFKit has drawn its tiles and layers for the zoom), and measures.
     private func settledEdgeWidths(along row: CGRect, of page: PDFPage, in pdfView: PDFView, window: UIWindow, zoom: CGFloat) async throws -> EdgeWidths {
         pdfView.scaleFactor = min(max(zoom, pdfView.minScaleFactor), pdfView.maxScaleFactor)
-        pdfView.go(to: CGRect(x: row.midX - 1, y: row.midY - 1, width: 2, height: 2), on: page)
+        // The row in the middle of the view, well below the bars over its top: there the bars' glass blurred the
+        // picture measured at twice fit (HUNT-320).
+        let halfShownHeight = pdfView.bounds.height * 0.45 / max(pdfView.scaleFactor, 0.01)
+        pdfView.go(to: CGRect(x: row.midX - 1, y: row.midY - halfShownHeight, width: 2, height: 2 * halfShownHeight), on: page)
         var lastOnScreen: CGFloat = -1
         var measured: EdgeWidths?
         try await waitUntil("the row shows the same twice", pollingIntervalSeconds: 0.3) {
@@ -459,6 +404,9 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             defer { lastOnScreen = onScreen }
             guard abs(onScreen - lastOnScreen) < 0.01 else { return false }
             let screenPixelsPerPoint = pdfView.scaleFactor * window.traitCollection.displayScale
+            let rowInWindow = pdfView.convert(pdfView.convert(CGPoint(x: shownRow.midX, y: shownRow.midY), from: page), to: window)
+            XCTAssertGreaterThan(rowInWindow.y, pdfView.convert(CGPoint(x: 0, y: pdfView.safeAreaInsets.top), to: window).y,
+                                 "The row measured is below the bars over the page's top")
             measured = EdgeWidths(screenPixelsPerPoint: screenPixelsPerPoint, onScreen: onScreen,
                                   reference: try self.referenceEdgeWidth(along: shownRow, of: page, screenPixelsPerPoint: screenPixelsPerPoint))
             return true
