@@ -7,8 +7,8 @@
  *              zoomed in, and prints what it measured.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 05/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -60,6 +60,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             let measured = try await settledEdgeWidths(along: row, of: page, in: pdfView, window: window, zoom: fit * zoomOfFit)
             print("PDF-SHARP text at \(format(zoomOfFit))x fit (zoom \(format(pdfView.scaleFactor)), \(format(measured.screenPixelsPerPoint)) px/pt): screen \(format(measured.onScreen)) px, PDFPage.draw \(format(measured.reference)) px")
             XCTAssertLessThanOrEqual(measured.onScreen, measured.reference + 0.75, "The page's text at \(zoomOfFit)x fit is as sharp as PDFKit draws it")
+            print("PDF-SHARP text at zoom \(format(pdfView.scaleFactor)): PDFKit's tiles drawn at \(Self.tileScales(in: pdfView)) px/pt; the page's corner \(Self.pageCornerInScreenPixels(of: page, in: pdfView, window: window)) screen pixels from the window's")
         }
     }
 
@@ -90,7 +91,31 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             let afterScales = Self.annotationLayers(in: pdfView).map { layer in format(layer.contentsScale) }
             print("PDF-SHARP picture at \(format(zoomOfFit))x fit (zoom \(format(pdfView.scaleFactor)), \(format(after.screenPixelsPerPoint)) px/pt): PDFKit's layers \(pdfKitScales) px/pt, edge \(format(before.onScreen)) px; Graphite's layers \(afterScales) px/pt, edge \(format(after.onScreen)) px; PDFPage.draw \(format(after.reference)) px")
             XCTAssertLessThanOrEqual(after.onScreen, after.reference + 0.75, "The picture at \(zoomOfFit)x fit is as sharp as PDFKit draws the page")
+            let pictureLayers = Self.annotationLayers(in: pdfView).filter(PDFAnnotationLayerResolution.showsAPicture)
+            XCTAssertFalse(pictureLayers.isEmpty, "The picture's layer is known as a picture's")
+            XCTAssertTrue(pictureLayers.allSatisfy { layer in !layer.drawsAsynchronously }, "Core Graphics draws the picture, as PDFPage.draw does")
+            try await reportTheRecordedDrawing(of: pictureLayers, along: row, of: page, in: pdfView, window: window, zoom: fit * zoomOfFit)
         }
+    }
+
+    /// Prints how long Core Graphics takes to draw the picture's layers, and what the screen shows
+    /// when Core Animation renders their recorded drawing instead, as PDFKit sets them up, which
+    /// left the picture soft at twice fit on the owner's iPad; then draws them as Graphite does.
+    private func reportTheRecordedDrawing(of pictureLayers: [CALayer], along row: CGRect, of page: PDFPage, in pdfView: PDFView, window: UIWindow, zoom: CGFloat) async throws {
+        // Core Graphics's drawing of each layer, timed into a bitmap of the layer's own pixels.
+        var drawingTime = Duration.zero
+        for layer in pictureLayers {
+            let width = Int((layer.bounds.width * layer.contentsScale).rounded(.up)), height = Int((layer.bounds.height * layer.contentsScale).rounded(.up))
+            let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                                  space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.scaleBy(x: layer.contentsScale, y: layer.contentsScale)
+            drawingTime += ContinuousClock().measure { layer.draw(in: context) }
+        }
+        for layer in pictureLayers { layer.drawsAsynchronously = true; layer.setNeedsDisplay() }
+        let recorded = try await settledEdgeWidths(along: row, of: page, in: pdfView, window: window, zoom: zoom)
+        for layer in pictureLayers { layer.drawsAsynchronously = false; layer.setNeedsDisplay() }
+        let milliseconds = Double(drawingTime.components.seconds) * 1_000 + Double(drawingTime.components.attoseconds) / 1e15
+        print("PDF-SHARP picture at zoom \(format(pdfView.scaleFactor)): Core Graphics drew it in \(format(CGFloat(milliseconds))) ms; recorded and rendered by Core Animation, edge \(format(recorded.onScreen)) px")
     }
 
     /// The page's annotations taken off and put back, with Graphite's resolution stopped, so
@@ -381,6 +406,27 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
             lastSide = side
         }
         return edgeCount == 0 ? .infinity : CGFloat(betweenCount) / CGFloat(edgeCount)
+    }
+
+    /// The pixels per point of PDFKit's tiles of the page's own drawing, each value once.
+    private static func tileScales(in pdfView: PDFView) -> [String] {
+        var scales: Set<String> = []
+        func look(under layer: CALayer) {
+            for sublayer in layer.sublayers ?? [] {
+                if String(describing: type(of: sublayer)) == "PDFPageLayerTile" { scales.insert(String(format: "%.2f", Double(sublayer.contentsScale))) } else { look(under: sublayer) }
+            }
+        }
+        if let documentLayer = pdfView.documentView?.layer { look(under: documentLayer) }
+        return scales.sorted()
+    }
+
+    /// Where the page's top-left corner falls on the screen, in its pixels: a fraction is a tile
+    /// placed between pixels, which Core Animation then samples between them.
+    private static func pageCornerInScreenPixels(of page: PDFPage, in pdfView: PDFView, window: UIWindow) -> String {
+        let box = page.bounds(for: .cropBox)
+        let corner = pdfView.convert(pdfView.convert(CGPoint(x: box.minX, y: box.maxY), from: page), to: window)
+        let screenScale = window.traitCollection.displayScale
+        return String(format: "(%.2f, %.2f)", Double(corner.x * screenScale), Double(corner.y * screenScale))
     }
 
     /// PDFKit's layer for each annotation of the pages it has views for (`PDFAnnotationLayerResolution`).
