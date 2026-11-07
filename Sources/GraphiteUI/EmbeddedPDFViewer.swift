@@ -5,8 +5,8 @@
  * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
  *
  * Authors: Bahey Shalash
- * Version: 0.15
- * Date: 02/11/2026
+ * Version: 0.16
+ * Date: 07/11/2026
  */
 
 import SwiftUI
@@ -49,6 +49,9 @@ struct EmbeddedPDFViewer: View {
     @State private var loadingError: String?
     @State private var isVisible = false
     @State private var loadGeneration = 0
+    /// Where the viewer was when its file was read again, as when a sync replaced the PDF
+    /// with one annotated on another device; the new version opens there, not at its start.
+    @State private var placeKeptThroughReload: PDFPagePlace?
     @State private var isAnnotating = false
     /// Other embeds of the PDF are saved, and a stale copy refreshed, before annotating starts.
     @State private var isPreparingToAnnotate = false
@@ -475,6 +478,7 @@ struct EmbeddedPDFViewer: View {
     }
 
     private func reload() {
+        placeKeptThroughReload = session?.placeToRemember()
         if let session { sessions.remove(session) }
         stopAnnotating()
         session = nil
@@ -529,8 +533,12 @@ struct EmbeddedPDFViewer: View {
         do {
             let openedSession = try await sessions.openSession(at: location)
             guard !Task.isCancelled, isVisible, session == nil else { return }
-            let initialPage = startPageNumber.map { pageNumber in min(max(0, pageNumber - 1), max(0, openedSession.pageCount - 1)) } ?? 0
+            let keptPlace = Self.place(keptThroughReload: placeKeptThroughReload, pageCount: openedSession.pageCount)
+            placeKeptThroughReload = nil
+            let initialPage = keptPlace?.pageIndex
+                ?? startPageNumber.map { pageNumber in min(max(0, pageNumber - 1), max(0, openedSession.pageCount - 1)) } ?? 0
             openedSession.currentPageIndex = initialPage
+            openedSession.keptPlace = keptPlace
             sessions.add(openedSession)
             session = openedSession
             pageText = "\(initialPage + 1)"
@@ -553,9 +561,17 @@ struct EmbeddedPDFViewer: View {
         }
     }
 
+    /// The place a reload keeps, while the new version still has its page; a version with
+    /// fewer pages opens at the start page instead.
+    static func place(keptThroughReload keptPlace: PDFPagePlace?, pageCount: Int) -> PDFPagePlace? {
+        guard let keptPlace, keptPlace.pageIndex >= 0, keptPlace.pageIndex < pageCount else { return nil }
+        return keptPlace
+    }
+
     /// The place in the note now names another PDF: the one shown is saved and released at once, and the
     /// new one loads, as when the embed is first shown.
     private func showAnotherPDF() {
+        placeKeptThroughReload = nil
         stopAnnotating()
         conflictNotice = nil
         loadingError = nil
