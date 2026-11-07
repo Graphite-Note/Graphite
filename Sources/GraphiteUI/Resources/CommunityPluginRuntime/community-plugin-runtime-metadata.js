@@ -6,8 +6,8 @@
  *              plugin that needs it.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 07/11/2026
  */
 
 // Obsidian's `MetadataCache` for plugins: the headings, links, embeds, tags, sections,
@@ -16,7 +16,7 @@
 // A note is read when something asks for it (a plugin's `getFileCache`, a base's rows, the
 // note being opened) and again when it changes; the whole vault is read, behind everything a
 // person waits for, only once a plugin asks for what needs all of it. Only the metadata is
-// kept, never the text. Notes a file provider has not downloaded are not read.
+// kept, never the text (its strings are copied out of it). Notes a file provider has not downloaded are not read.
 (function installRuntimeMetadata(globalScope) {
     'use strict';
 
@@ -49,6 +49,35 @@
             if (text.charCodeAt(offset) === 10) offsets.push(offset + 1);
         }
         return offsets;
+    }
+
+    /// A string of its own with the same characters. JavaScriptCore cuts a substring
+    /// (`slice`, a match, a YAML value) as a view into the string it came from, so one
+    /// heading kept in the metadata keeps its note's whole text alive: measured on 1,363
+    /// notes (76 MB), the cache held 171 MB that way and 59 MB with its strings copied.
+    /// Only a JSON round trip copies reliably there (`(' ' + text).slice(1)`, `repeat` and
+    /// `toWellFormed` still share), and it is the fastest of those that do.
+    function copyOfString(text) {
+        return text.length === 0 ? text : JSON.parse(JSON.stringify(text));
+    }
+
+    /// Gives every string in the metadata (and in its frontmatter) its own storage, in
+    /// place, so the note's text can go once it is parsed. Frontmatter can share objects
+    /// (YAML aliases), so each object is visited once.
+    function copyStringsOutOfNoteText(metadata) {
+        const visitedObjects = new Set();
+        const visit = (container) => {
+            if (container === null || typeof container !== 'object' || visitedObjects.has(container)) return;
+            visitedObjects.add(container);
+            const keys = Array.isArray(container) ? container.keys() : Object.keys(container);
+            for (const key of keys) {
+                const entry = container[key];
+                if (typeof entry === 'string') container[key] = copyOfString(entry);
+                else visit(entry);
+            }
+        };
+        visit(metadata);
+        return metadata;
     }
 
     class NoteParser {
@@ -106,7 +135,7 @@
                 if (metadata[key] && metadata[key].length === 0) delete metadata[key];
             }
             if (metadata.blocks && Object.keys(metadata.blocks).length === 0) delete metadata.blocks;
-            return metadata;
+            return copyStringsOutOfNoteText(metadata);
         }
 
         parseBody(startLine, metadata) {

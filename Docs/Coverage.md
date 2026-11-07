@@ -2,7 +2,15 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-05.
+Last updated: 2026-11-07.
+
+## The plugins' metadata no longer keeps every note's text: 2026-11-07
+
+The plugins' page used 1.29 GB on the owner's Mac (six plugins, 1,363 notes of 76 MB). Every string the metadata cache keeps (headings, links, tags, frontmatter values) was a substring that JavaScriptCore keeps as a view into the note's whole text, so the cache, and Dataview and Omnisearch through the values they keep from it, held the vault's text. `NoteParser.parse` now copies them (`copyStringsOutOfNoteText` in `community-plugin-runtime-metadata.js`).
+
+- **Measured** in a Debug copy of the Mac app on a generated vault of the same shape (`Docs/Community-plugins.md`, How it was verified): all six plugins 1,176 MB before, 577 MB after; the metadata alone 221 MB before, 94 MB after; Dataview 525 MB before, 232 MB after; Omnisearch about 600 MB either way, its own text and index.
+- **Automated test:** `Tests/CommunityPluginRuntimeTests/tests/metadata-cache-memory.test.js` fails before the change (18 MB of text kept for 16 notes of a megabyte) and passes after it, and checks that copies keep characters, lone surrogates and YAML aliases. The Node runtime suite passes (175 tests: 149 pass, 26 skipped for unbuilt real plugins).
+- **Not established:** the owner's own vault, an iPad or iPhone.
 
 ## A highlight runs unbroken behind a formula: 2026-11-02
 
