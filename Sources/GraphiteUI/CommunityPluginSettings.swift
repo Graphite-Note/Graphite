@@ -5,8 +5,8 @@
  * Description: Settings > Community Plugins: turning plugins on for the vault, installing, browsing and removing them.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 07/11/2026
  */
 
 import SwiftUI
@@ -117,6 +117,8 @@ struct CommunityPluginsSettingsPage: View {
             }
         } header: {
             Text("Installed Plugins")
+        } footer: {
+            Text("These switches choose the plugins Graphite runs. Obsidian keeps its own choice, so a plugin can be on in one app and off in the other.")
         }
     }
 

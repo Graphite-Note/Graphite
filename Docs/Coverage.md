@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-07.
 
+## Graphite runs its own choice of community plugins: 2026-11-07
+
+Graphite keeps which community plugins it runs in `.graphite/community-plugins.json`, apart from Obsidian's `.obsidian/community-plugins.json`, which it reads only while it has no list of its own and never writes (`CommunityPluginList`, `Docs/Separate-plugin-list-todo.md`, issue #143). The owner asked for it to run Course Timetable for Bases in Graphite without Omnisearch, which Obsidian keeps.
+
+- **Automated tests:** three Core tests in `CommunityPluginTests` (Graphite follows Obsidian's list until its first switch, which starts from it; Obsidian's file left byte for byte; Obsidian's later changes stay Obsidian's; an unreadable Graphite list is reported, not read as empty). The `CommunityPlugin` Swift tests pass (192).
+- **In the Mac app** (a Debug copy, test vault): the switches wrote only Graphite's list and Course Timetable for Bases ran with Omnisearch off in Graphite and on in Obsidian's file.
+- **Not established:** on the iPad; with the owner's vault.
+
 ## The plugins' metadata no longer keeps every note's text: 2026-11-07
 
 The plugins' page used 1.29 GB on the owner's Mac (six plugins, 1,363 notes of 76 MB). Every string the metadata cache keeps (headings, links, tags, frontmatter values) was a substring that JavaScriptCore keeps as a view into the note's whole text, so the cache, and Dataview and Omnisearch through the values they keep from it, held the vault's text. `NoteParser.parse` now copies them (`copyStringsOutOfNoteText` in `community-plugin-runtime-metadata.js`).

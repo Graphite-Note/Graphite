@@ -6,8 +6,8 @@
  *              Graphite.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.37
- * Date: 04/11/2026
+ * Version: 0.38
+ * Date: 07/11/2026
  */
 
 import Foundation
@@ -170,7 +170,8 @@ private final class SingleResumption {
 /// be undone; their interface appears on the plugin panel.
 ///
 /// Plugins run only after the person turns community plugins on for the vault (Obsidian's
-/// restricted mode), and only those enabled in `.obsidian/community-plugins.json`.
+/// restricted mode), and only those enabled in Graphite's list (`.graphite/community-plugins.json`, or
+/// Obsidian's `.obsidian/community-plugins.json` until Graphite has one).
 /// What plugins did, in the unified log (subsystem `com.graphite.study`, category
 /// `CommunityPlugins`): each load's outcome, each failure after loading and each feature
 /// Graphite lacks. Messages can name notes, so they are public only in Debug builds.
@@ -420,7 +421,7 @@ final class CommunityPluginHost {
         isTurnedOnForVault = false
     }
 
-    /// Reads `.obsidian/plugins` and `community-plugins.json` again: the folders and manifests,
+    /// Reads `.obsidian/plugins` and the enabled list again: the folders and manifests,
     /// which takes moments however large the plugins are.
     /// - Parameter readsPluginCode: Also finds the modules each plugin's code asks for, which
     ///   only Settings › Community Plugins shows, and only for code that changed.
@@ -743,7 +744,7 @@ final class CommunityPluginHost {
         }
     }
 
-    /// Turns a plugin on or off in `community-plugins.json`, and loads or unloads it.
+    /// Turns a plugin on or off in Graphite's list (never Obsidian's), and loads or unloads it.
     func setEnabled(_ plugin: InstalledCommunityPlugin, _ isEnabled: Bool) async {
         guard let store = workspace?.store, let workspace else { return }
         let pluginIdentifier = plugin.id
