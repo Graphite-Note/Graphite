@@ -49,6 +49,27 @@ struct NoteLinksInspector: View {
         let occurrence: Int
     }
 
+    /// Reads the note's links, tags, footnotes and outline away from the main thread, a
+    /// moment after typing pauses. The outline too: a long note's took 25 to 38 ms on the
+    /// main thread at every switch to it, while the inspector was hidden as well.
+    private func readNoteParts() async {
+        do {
+            try await Task.sleep(for: .milliseconds(250))
+            let text = session.text
+            let path = session.path
+            let semantics = try await Task.detached { try MarkdownSemantics.parse(text) }.value
+            // A detached task goes on after this one is cancelled, and its result is for the note it was started on.
+            guard !Task.isCancelled, session.path == path else { return }
+            let body = semantics.body
+            let (listedFootnotes, headings) = await Task.detached { (Footnotes.listed(in: text), Self.outlineHeadings(in: body)) }.value
+            guard !Task.isCancelled, session.path == path else { return }
+            outgoing = Self.outgoingLinks(in: semantics.links); tags = semantics.tags
+            footnotes = listedFootnotes
+            outline = headings
+        } catch is CancellationError {
+        } catch { workspace.errorMessage = error.localizedDescription }
+    }
+
     /// The outline of a note's body, each heading numbered among those that read the same,
     /// so a jump reaches that heading rather than the first of them.
     nonisolated static func outlineHeadings(in body: String) -> [OutlineHeading] {
@@ -123,22 +144,7 @@ struct NoteLinksInspector: View {
         .onAppear { selectAvailablePanel() }
         // Settings can turn off the shown panel's plugin while the sidebar stays open.
         .onChange(of: availablePanels) { selectAvailablePanel() }
-        .task(id: session.text) {
-            do {
-                try await Task.sleep(for: .milliseconds(250))
-                let text = session.text
-                let path = session.path
-                let semantics = try await Task.detached { try MarkdownSemantics.parse(text) }.value
-                // A detached task goes on after this one is cancelled, and its result is for the note it was started on.
-                guard !Task.isCancelled, session.path == path else { return }
-                let listedFootnotes = await Task.detached { Footnotes.listed(in: text) }.value
-                guard !Task.isCancelled, session.path == path else { return }
-                outgoing = Self.outgoingLinks(in: semantics.links); tags = semantics.tags
-                footnotes = listedFootnotes
-                outline = Self.outlineHeadings(in: semantics.body)
-            } catch is CancellationError {
-            } catch { workspace.errorMessage = error.localizedDescription }
-        }
+        .task(id: session.text) { await readNoteParts() }
         // Mentions are in other notes: they change when the index takes in new contents of
         // another note, or this note's name or aliases change, not as this note is typed.
         .task(id: "\(selectedPanel)-\(workspace.indexChangeLog.newestVersionAffectingBacklinks(of: session.path))-\(session.path.rawValue)") {

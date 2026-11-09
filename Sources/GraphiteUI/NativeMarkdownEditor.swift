@@ -22,6 +22,22 @@ final class UndoActionToken {}
 /// A TextKit 2 text view that keeps a readable column centered on wide screens and
 /// hosts Live Preview's rendered blocks.
 final class MarkdownTextView: UITextView {
+    /// Makes the toolbar above the keyboard. It is built the first time the keyboard asks for
+    /// it: making its buttons took about 38 ms, at every note opened or switched to, also for
+    /// notes only read.
+    var makeKeyboardToolbar: (() -> UIView)? {
+        didSet { builtKeyboardToolbar = nil }
+    }
+    private var builtKeyboardToolbar: UIView?
+
+    override var inputAccessoryView: UIView? {
+        get {
+            if builtKeyboardToolbar == nil { builtKeyboardToolbar = makeKeyboardToolbar?() }
+            return builtKeyboardToolbar ?? super.inputAccessoryView
+        }
+        set { super.inputAccessoryView = newValue }
+    }
+
     var readAloudRange: NSRange? { didSet { if readAloudRange != oldValue { setNeedsLayout() } } }
     var followsReading = false {
         didSet {
@@ -1417,9 +1433,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             if buttons.scanDocument { toolbarActions.scanDocument = { [weak self] in self?.actions.scanDocument?() } }
             if buttons.newNotebook { toolbarActions.newNotebook = { [weak self] in self?.actions.newNotebook?() } }
             if buttons.draw { toolbarActions.draw = { [weak self] in self?.actions.draw?() } }
-            textView.inputAccessoryView = EditorKeyboardToolbar(actions: toolbarActions) { [weak self, weak textView] command in
-                guard let self, let textView else { return }
-                self.run(command, in: textView)
+            textView.makeKeyboardToolbar = { [weak self, weak textView] in
+                EditorKeyboardToolbar(actions: toolbarActions) { command in
+                    guard let self, let textView else { return }
+                    self.run(command, in: textView)
+                }
             }
             if textView.isFirstResponder { textView.reloadInputViews() }
         }
