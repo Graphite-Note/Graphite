@@ -258,9 +258,9 @@ final class WorkspaceModel {
     @ObservationIgnored var conflictCheckedPaths: Set<VaultPath> = []
     @ObservationIgnored var conflictCheckTask: Task<Void, Never>?
     var drawingEditorRequest: DrawingEditorRequest?
-    /// The note the image shown full screen came from, so the viewer can offer to draw on it.
+    /// The note the zoomed image came from, so the zoom can offer to draw on it.
     @ObservationIgnored var viewedImageNote: VaultPath?
-    /// An image shown full screen, where it can be zoomed, over the open note.
+    /// An image zoomed in over the window (`ImageZoomOverlay`), with the open note behind it.
     var viewedImage: VaultPath?
     /// A heading to show in the focused tab's note (from `[[Note#Heading]]` or the outline).
     var headingScrollRequest: HeadingScrollRequest? {
@@ -1218,9 +1218,11 @@ final class WorkspaceModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    /// Imports an outside file into the note's attachment folder and embeds it.
-    func importAttachment(from source: URL, into session: MarkdownSession) async {
+    /// Imports an outside file into the note's attachment folder and embeds it at `range`
+    /// (the cursor when nil).
+    func importAttachment(from source: URL, into session: MarkdownSession, at range: NSRange? = nil) async {
         guard let store, let root = folderAccess?.root else { return }
+        let textWhenChosen = session.text
         let hasAccess = source.startAccessingSecurityScopedResource()
         defer { if hasAccess { source.stopAccessingSecurityScopedResource() } }
         do {
@@ -1231,7 +1233,7 @@ final class WorkspaceModel {
             let destination = try path.url(in: root)
             let writer = store.writer
             _ = try await Task.detached { try writer.copy(from: source, to: destination, expecting: .absent) }.value
-            insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: nil, chosenIn: session.text)
+            insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
             await showInListings(path)
         } catch { errorMessage = error.localizedDescription }

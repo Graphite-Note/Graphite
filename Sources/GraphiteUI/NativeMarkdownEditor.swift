@@ -517,7 +517,12 @@ final class MarkdownTextView: UITextView {
     }
 
     private func insertDroppedItems(_ itemProviders: [NSItemProvider], dropRequest: InsertionRequest) {
-        for provider in itemProviders {
+        // What no file can be made of, such as a selection of text or a web link dragged from
+        // Safari, is text: the text view inserts it itself. A text file from Files has a name
+        // and becomes an attachment.
+        let textProviders = itemProviders.filter(Self.isTextOnly)
+        if !textProviders.isEmpty { super.paste(itemProviders: textProviders) }
+        for provider in itemProviders where !Self.isTextOnly(provider) {
             if provider.hasItemConformingToTypeIdentifier(UTType.graphiteVaultItem.identifier) {
                 // Read here, on the main actor: the item arrives on another thread.
                 let vaultRoot = currentVaultRoot
@@ -548,19 +553,28 @@ final class MarkdownTextView: UITextView {
                     }
                     Task { @MainActor in self?.insertAttachment?(data, suggestedStem ?? WorkspaceModel.pastedImageStem(), "jpg", dropRequest) }
                 }
-            } else if let typeIdentifier = provider.registeredTypeIdentifiers.first(where: { identifier in UTType(identifier)?.conforms(to: .data) == true }) {
-                // Any other file, such as a PDF or a recording, keeps its own format.
+            } else if let typeIdentifier = LibraryDropReader.importableType(of: provider)?.identifier {
+                // Any other file, such as a PDF, a recording or a Word document, keeps its own format.
                 provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] location, _ in
                     guard let location, let data = try? Data(contentsOf: location, options: .mappedIfSafe) else {
                         Task { @MainActor in self?.reportUnreadableItem?() }
                         return
                     }
-                    let fileExtension = location.pathExtension.isEmpty ? (UTType(typeIdentifier)?.preferredFilenameExtension ?? "bin") : location.pathExtension
+                    let suggestedExtension = provider.suggestedName.map { name in (name as NSString).pathExtension } ?? ""
+                    let fileExtension = !location.pathExtension.isEmpty ? location.pathExtension
+                        : !suggestedExtension.isEmpty ? suggestedExtension : (UTType(typeIdentifier)?.preferredFilenameExtension ?? "bin")
                     let stem = suggestedStem ?? location.deletingPathExtension().lastPathComponent
                     Task { @MainActor in self?.insertAttachment?(data, stem, fileExtension, dropRequest) }
                 }
             }
         }
+    }
+
+    /// Whether a dropped item is only text or a link: no vault item, no image, nothing a file
+    /// can be made of.
+    private static func isTextOnly(_ provider: NSItemProvider) -> Bool {
+        !provider.hasItemConformingToTypeIdentifier(UTType.graphiteVaultItem.identifier) && !provider.canLoadObject(ofClass: UIImage.self)
+            && LibraryDropReader.importableType(of: provider) == nil
     }
 
     override func toggleBoldface(_ sender: Any?) { runCommand?(.bold) }
@@ -706,9 +720,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         textView.currentVaultRoot = session.vaultRoot
         coordinator.updateInsertionHandlers(of: textView)
         textView.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
-        // Files, images, and items from the sidebar can be dropped into the note.
+        // Anything another app drags (Photos, Files, Messages, Mail, a school's app) can be
+        // dropped into the note: files of any kind, pictures, items from the sidebar, and text
+        // and links, which `insertDroppedItems` hands back to the text view.
         textView.pasteConfiguration = UIPasteConfiguration(acceptableTypeIdentifiers: [
-            UTType.graphiteVaultItem.identifier, UTType.image.identifier, UTType.pdf.identifier, UTType.audio.identifier, UTType.movie.identifier,
+            UTType.item.identifier, UTType.content.identifier, UTType.data.identifier,
         ])
         session.completion.performEdits = { [weak coordinator, weak textView] edits in
             guard let coordinator, let textView else { return }
@@ -2939,22 +2955,51 @@ final class MarkdownMacTextView: NSTextView {
     }
 
     override var acceptableDragTypes: [NSPasteboard.PasteboardType] {
-        super.acceptableDragTypes + MacPastedAttachment.pasteboardTypes
+        super.acceptableDragTypes + MacPastedAttachment.pasteboardTypes + MacDroppedFiles.promisedFileTypes
+    }
+
+    /// Whether a drag carries something saved as an attachment or linked, rather than text.
+    private func offersAttachments(_ draggingInfo: NSDraggingInfo) -> Bool {
+        canInsertAttachments && (MacPastedAttachment.isOffered(on: draggingInfo.draggingPasteboard)
+            || (insertAttachment != nil && MacDroppedFiles.hasPromisedFiles(on: draggingInfo.draggingPasteboard)))
     }
 
     override func draggingEntered(_ draggingInfo: NSDraggingInfo) -> NSDragOperation {
         let operation = super.draggingEntered(draggingInfo)
-        return canInsertAttachments && MacPastedAttachment.isOffered(on: draggingInfo.draggingPasteboard) ? .copy : operation
+        return offersAttachments(draggingInfo) ? .copy : operation
     }
 
     override func draggingUpdated(_ draggingInfo: NSDraggingInfo) -> NSDragOperation {
         let operation = super.draggingUpdated(draggingInfo)
-        return canInsertAttachments && MacPastedAttachment.isOffered(on: draggingInfo.draggingPasteboard) ? .copy : operation
+        return offersAttachments(draggingInfo) ? .copy : operation
     }
 
     override func performDragOperation(_ draggingInfo: NSDraggingInfo) -> Bool {
         let dropLocation = characterIndexForInsertion(at: convert(draggingInfo.draggingLocation, from: nil))
-        if canInsertAttachments, insertAttachments(from: draggingInfo.draggingPasteboard, at: NSRange(location: dropLocation, length: 0)) { return true }
+        let dropRange = NSRange(location: dropLocation, length: 0)
+        let pasteboard = draggingInfo.draggingPasteboard
+        // Photos and Mail promise their files rather than give their addresses; a picture
+        // they also put on the pasteboard would lose its name and format.
+        if insertAttachment != nil, MacDroppedFiles.hasPromisedFiles(on: pasteboard), !MacDroppedFiles.hasFileAddresses(on: pasteboard),
+           pasteboard.availableType(from: [MacPastedAttachment.vaultItemType]) == nil {
+            Task { [weak self] in
+                let files = await MacDroppedFiles.read(from: pasteboard)
+                for file in files {
+                    // Read away from the main thread: a promised film can be large.
+                    let location = file.location
+                    let reading = Task.detached(priority: .userInitiated) { try? Data(contentsOf: location) } // Unreadable: reported below.
+                    guard let data = await reading.value else {
+                        self?.reportUnreadableItem?()
+                        continue
+                    }
+                    let fileExtension = location.pathExtension.isEmpty ? "bin" : location.pathExtension
+                    self?.insertAttachment?(data, location.deletingPathExtension().lastPathComponent, fileExtension, dropRange)
+                }
+                DroppedFileBatch(files: files).discard()
+            }
+            return true
+        }
+        if canInsertAttachments, insertAttachments(from: pasteboard, at: dropRange) { return true }
         return super.performDragOperation(draggingInfo)
     }
 

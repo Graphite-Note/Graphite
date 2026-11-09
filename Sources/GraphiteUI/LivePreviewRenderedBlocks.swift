@@ -568,6 +568,12 @@ final class LivePreviewRenderedBlocks {
                                            currentLocation: currentLocation)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
+            // Pictures inside a table or a sentence zoom when tapped, as in the reading view.
+            .environment(\.readingImageActions, environment.viewImage.map { viewImage in
+                let providerIdentity = environment.embeddedPDFSessions.map(ObjectIdentifier.init) ?? ObjectIdentifier(LivePreviewWidgetView.self)
+                return ReadingImageActions(providerIdentity: providerIdentity, viewImage: viewImage, editDrawing: environment.editDrawing,
+                                           drawOnImage: environment.drawOnImage)
+            })
             .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
             .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
             .environment(\.noteTypography, environment.typography)

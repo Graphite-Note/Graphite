@@ -230,11 +230,6 @@ struct GraphiteRootView: View {
                 .tint(workspace.preferences.accentColor)
         }
         #if canImport(UIKit)
-        .fullScreenCover(item: $workspace.viewedImage) { path in
-            if let root = workspace.folderAccess?.root, let location = try? path.url(in: root) {
-                ImageViewer(location: location, title: path.name, drawOnImage: drawOnViewedImage(path))
-            }
-        }
         .fullScreenCover(item: $workspace.drawingEditorRequest) { request in
             DrawingEditor(request: request, noteDestination: workspace.lassoNoteDestination(for: request), clock: workspace.clock) { content, format in
                 try await workspace.saveDrawing(content, format: format, for: request)
@@ -257,13 +252,9 @@ struct GraphiteRootView: View {
         .onChange(of: workspace.currentVaultIdentifier) { _, vaultIdentifier in
             if let vaultIdentifier { Task { await reopenDrawingDraft(forVault: vaultIdentifier) } }
         }
-        #else
-        // Tapping an image or choosing View Full Screen shows it in Quick Look, which zooms.
-        .quickLookPreview(Binding(get: {
-            guard let root = workspace.folderAccess?.root else { return nil }
-            return workspace.viewedImage.flatMap { path in try? path.url(in: root) }
-        }, set: { location in if location == nil { workspace.viewedImage = nil } }))
         #endif
+        // A picture zoomed in over the window, as Obsidian zooms: the note stays behind it.
+        .overlay { imageZoom }
         .messageAlert($workspace.errorMessage)
         .task {
             if restoresLastVault { await openVaultOfWindow() }
@@ -820,16 +811,32 @@ struct GraphiteRootView: View {
         }
     }
 
-    #if canImport(UIKit)
-    /// Closes the full-screen viewer and opens the drawing editor over its image; nil where
-    /// the image did not come from a note, is not a picture to draw on, or drawings are off.
+    /// The picture zoomed in over the window, while one is.
+    @ViewBuilder private var imageZoom: some View {
+        if let path = workspace.viewedImage, let root = workspace.folderAccess?.root,
+           let location = try? path.url(in: root) { // An invalid path zooms into nothing.
+            ImageZoomOverlay(location: location, title: path.name, drawOnImage: drawOnViewedImage(path)) {
+                withAnimation(GraphiteMotion.animation(.easeOut(duration: 0.15))) { workspace.viewedImage = nil }
+            }
+            .transition(.opacity)
+        }
+    }
+
+    /// Closes the zoom and opens the drawing editor over its image; nil where the image did
+    /// not come from a note, is not a picture to draw on, drawings are off, or on the Mac.
     private func drawOnViewedImage(_ path: VaultPath) -> (() -> Void)? {
+        #if canImport(UIKit)
         guard workspace.preferences.isEnabled(.drawings), DrawableImages.canDrawOn(path), let notePath = workspace.viewedImageNote else { return nil }
         return {
             workspace.viewedImage = nil
             Task { await workspace.beginDrawingOnImage(at: path, fromNote: notePath) }
         }
+        #else
+        return nil
+        #endif
     }
+
+    #if canImport(UIKit)
 
     /// Reopens a drawing whose editor was open when the system ended the app, with its
     /// unsaved strokes, as if the app had never left.

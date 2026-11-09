@@ -148,6 +148,7 @@ enum GraphiteOpenLink {
     private static let targetKey = "target"
     private static let footnoteKey = "footnote"
     private static let tagKey = "tag"
+    private static let zoomedImageKey = "zoom"
     /// Present on a Markdown link's target, which is relative to the note that contains it
     /// and percent-encoded, unlike a Wikilink target.
     private static let markdownLinkKey = "markdown"
@@ -216,6 +217,23 @@ enum GraphiteOpenLink {
     static func tagName(of location: URL) -> String? {
         guard location.scheme == scheme else { return nil }
         return URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { item in item.name == tagKey })?.value
+    }
+
+    /// The link an image of the vault inside text carries, `graphite://open?zoom=<vault path>`,
+    /// so a tap or click on it zooms into it: text draws such an image itself, and only its
+    /// links take taps.
+    static func zoomedImageLink(path: VaultPath) -> URL? {
+        var components = URLComponents()
+        components.scheme = scheme; components.host = host
+        components.queryItems = [URLQueryItem(name: zoomedImageKey, value: path.rawValue)]
+        return components.url
+    }
+
+    /// The image of a link made by `zoomedImageLink(path:)`.
+    static func zoomedImagePath(of location: URL) -> VaultPath? {
+        guard location.scheme == scheme, let queryItems = URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems,
+              let rawPath = queryItems.first(where: { item in item.name == zoomedImageKey })?.value else { return nil }
+        return try? VaultPath(rawPath) // A link no vault path can hold zooms into nothing.
     }
 
     /// The target for a Markdown link's destination as written, such as `../Syllabus.md`,
@@ -1806,9 +1824,15 @@ struct ObsidianMarkdownText: View {
     /// - Parameter scrollToHeading: Scrolls this view to a heading of its own note; nil
     ///   leaves `#Heading` links to `navigate`.
     /// - Parameter searchTag: Opens a search for a `#tag` the text links; nil where tags are not links.
+    /// - Parameter zoomImage: Zooms into an image inside the text, which its link
+    ///   (`GraphiteOpenLink.zoomedImageLink(path:)`) asks for; nil leaves the tap alone.
     static func linkAction(root: URL, navigate: @escaping (String, Bool) -> Void, scrollToHeading: ((String) -> Void)?,
-                           searchTag: ((String) -> Void)? = nil) -> OpenURLAction {
+                           searchTag: ((String) -> Void)? = nil, zoomImage: ((VaultPath) -> Void)? = nil) -> OpenURLAction {
         OpenURLAction { location in
+            if let path = GraphiteOpenLink.zoomedImagePath(of: location) {
+                zoomImage?(path)
+                return .handled
+            }
             if let tag = GraphiteOpenLink.tagName(of: location) {
                 searchTag?(tag)
                 return .handled
@@ -1904,6 +1928,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     @Environment(\.readingHighlightFill) private var readingHighlightFill
     @Environment(\.readingIsPrinted) private var isPrinted
     @Environment(\.readingTagSearch) private var tagSearch
+    @Environment(\.readingImageActions) private var imageActions
 
     /// The same text, read at the same word. The closures are left out: their owners make
     /// new ones at every update, which do the same.
@@ -1957,7 +1982,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.blockQuoteStyle(ObsidianBlockQuoteStyle(theme: theme))
                 .tint(accent)
                 .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading,
-                                                                        searchTag: tagSearch?.search))
+                                                                        searchTag: tagSearch?.search, zoomImage: imageActions?.viewImage))
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
     }
@@ -2124,8 +2149,27 @@ struct ObsidianMarkdownParser: MarkupParser {
         replaceTaskMarkers(in: &attributed)
         Self.replaceLineBreakMarkers(in: &attributed)
         Self.restoreEscapedCharacters(in: &attributed)
+        if let baseURL { Self.linkImagesToTheirZoom(in: &attributed, root: baseURL) }
         if let sourceTokens { _ = ReadingSourceAlignment.apply(sourceTokens, to: &attributed) }
         return attributed
+    }
+
+    /// Gives each image of the vault inside text that is not already a link's text a link that
+    /// zooms into it (`GraphiteOpenLink.zoomedImageLink(path:)`). Textual draws such an image
+    /// in the text, which takes every tap and follows only links. The Markdown cannot say it:
+    /// an image written inside a link (`[![a](b.png)](c)`) loses its image when parsed.
+    static func linkImagesToTheirZoom(in text: inout AttributedString, root: URL) {
+        let rootPaths = Set([root.standardizedFileURL.path, root.standardizedFileURL.resolvingSymlinksInPath().path]).map { path in path + "/" }
+        var zoomLinks: [(Range<AttributedString.Index>, URL)] = []
+        for run in text.runs where run.link == nil {
+            guard let imageURL = run.imageURL, imageURL.isFileURL else { continue }
+            let imagePath = imageURL.standardizedFileURL.path
+            guard let rootPath = rootPaths.first(where: { rootPath in imagePath.hasPrefix(rootPath) }),
+                  let path = try? VaultPath(String(imagePath.dropFirst(rootPath.count))), // Not a vault path: no zoom.
+                  let zoomLink = GraphiteOpenLink.zoomedImageLink(path: path) else { continue }
+            zoomLinks.append((run.range, zoomLink))
+        }
+        for (range, zoomLink) in zoomLinks { text[range].link = zoomLink }
     }
 
     /// Links in the theme's colors by kind, as Obsidian draws internal, unresolved and external
@@ -2898,7 +2942,16 @@ private struct VaultImageLoader: AttachmentLoader {
             throw GraphiteError.outsideVault
         }
         let thumbnail = try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline)
-        return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location))
+        return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
+                                    path: vaultPath(of: fileLocation))
+    }
+
+    /// The picture's path in the vault, which its zoom names.
+    private func vaultPath(of fileLocation: URL) -> VaultPath? {
+        let rootPath = root.standardizedFileURL.resolvingSymlinksInPath().path + "/"
+        let picturePath = fileLocation.standardizedFileURL.resolvingSymlinksInPath().path
+        guard picturePath.hasPrefix(rootPath) else { return nil }
+        return try? VaultPath(String(picturePath.dropFirst(rootPath.count))) // Not a vault path: the picture has no zoom.
     }
 
     /// The image the cache made last, drawn at once while `attachment(for:text:environment:)`
@@ -2906,7 +2959,8 @@ private struct VaultImageLoader: AttachmentLoader {
     func readyAttachment(for location: URL, text: String, environment: ColorEnvironmentValues) -> VaultImageAttachment? {
         guard location.isFileURL,
               let thumbnail = ReadingImageCache.shared.lastThumbnail(for: URL(fileURLWithPath: location.path), kind: .inline) else { return nil }
-        return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location))
+        return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
+                                    path: vaultPath(of: URL(fileURLWithPath: location.path)))
     }
 }
 
@@ -2917,8 +2971,20 @@ private struct VaultImageAttachment: Attachment {
     let description: String
     /// Obsidian's `|width` or `|widthxheight` sizing.
     let displaySize: EmbedDisplaySize?
+    /// The picture's path in the vault; nil outside it.
+    let path: VaultPath?
     @MainActor var body: some View {
         Image(image, scale: 1, label: Text(description)).resizable().scaledToFit()
+            // Where it is drawn, for a table's cell editor in Live Preview, whose tap target
+            // covers the table and leaves a tap on a picture to its zoom.
+            .background {
+                if let path {
+                    GeometryReader { geometry in
+                        let frameInBlock = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
+                        Color.clear.preference(key: ZoomablePictureFrame.Key.self, value: [ZoomablePictureFrame(path: path, frame: frameInBlock)])
+                    }
+                }
+            }
     }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
         let width = Double(image.width), height = Double(image.height)

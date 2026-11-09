@@ -138,7 +138,8 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         outlineView.target = self
         outlineView.action = #selector(rowClicked(_:))
         outlineView.setAccessibilityLabel("Files")
-        outlineView.registerForDraggedTypes([Self.vaultItemType])
+        // Its own items, and files from the Finder, Photos and Mail.
+        outlineView.registerForDraggedTypes([Self.vaultItemType] + MacDroppedFiles.pasteboardTypes)
         outlineView.setDraggingSourceOperationMask([.move], forLocal: true)
         outlineView.setDraggingSourceOperationMask([], forLocal: false)
         self.outlineView = outlineView
@@ -427,6 +428,12 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     /// elsewhere, to the vault's root. The folder that would receive the drop is highlighted.
     func outlineView(_ outlineView: NSOutlineView, validateDrop info: any NSDraggingInfo, proposedItem item: Any?, proposedChildIndex index: Int) -> NSDragOperation {
         let destination = dropDestination(for: item as? FileTreeNode)
+        // Files from other apps are copied in, never moved out of their app.
+        if draggedItems(in: info).isEmpty {
+            guard MacDroppedFiles.isOffered(on: info.draggingPasteboard) else { return [] }
+            outlineView.setDropItem(destination, dropChildIndex: NSOutlineViewDropOnItemIndex)
+            return .copy
+        }
         let paths = draggedItems(in: info).compactMap { item in item.path(inVaultAt: workspace.folderAccess?.root) }
         let hasItemOfAnotherVault = draggedItems(in: info).contains { item in item.isFromAnotherVault(than: workspace.folderAccess?.root) }
         guard hasItemOfAnotherVault || paths.contains(where: { path in Self.canMove(path, into: destination?.path ?? .root) }) else { return [] }
@@ -436,7 +443,11 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     func outlineView(_ outlineView: NSOutlineView, acceptDrop info: any NSDraggingInfo, item: Any?, childIndex index: Int) -> Bool {
         let folder = dropDestination(for: item as? FileTreeNode)?.path ?? .root
-        return workspace.takeDroppedItems(draggedItems(in: info), into: folder) { path in Self.canMove(path, into: folder) }
+        let items = draggedItems(in: info)
+        guard items.isEmpty else { return workspace.takeDroppedItems(items, into: folder) { path in Self.canMove(path, into: folder) } }
+        return MacDroppedFiles.takeFiles(on: info.draggingPasteboard) { [workspace] batch in
+            await workspace.importFiles(from: batch.locations, into: folder, stagedCopies: batch)
+        }
     }
 
     private func dropDestination(for node: FileTreeNode?) -> FileTreeNode? {

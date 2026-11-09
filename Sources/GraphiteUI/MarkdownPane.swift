@@ -91,6 +91,10 @@ struct MarkdownPane: View {
                 .environment(\.readingTagSearch, tagSearch)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
+                // Photos, files and sidebar items dropped on the note are added at its end.
+                .onDrop(of: LibraryDropReader.acceptedTypes, isTargeted: nil) { [workspace, session] providers in
+                    workspace.receiveDrop(providers, intoNote: session)
+                }
                 // The pane stays when the tab shows another note; its reading view does not.
                 .id(ObjectIdentifier(session))
             } else {
@@ -436,11 +440,11 @@ struct MarkdownPane: View {
     }
 
     /// Opens a drawing in the editor, where the platform and preferences allow it.
-    /// Shows an image full screen, remembering its note so the viewer can offer to draw on it.
+    /// Zooms into an image over the window, remembering its note so the zoom can offer to draw on it.
     private var viewImage: (VaultPath) -> Void {
         { [workspace, session] path in
             workspace.viewedImageNote = session.path
-            workspace.viewedImage = path
+            withAnimation(GraphiteMotion.animation(.easeOut(duration: 0.15))) { workspace.viewedImage = path }
         }
     }
 

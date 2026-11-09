@@ -422,10 +422,9 @@ struct VaultSidebar: View {
         .modifier(SidebarListStyle(isCompactWidth: isCompactWidth))
         // Denser than the system's sidebar, as Obsidian's file explorer, with room for a finger.
         .environment(\.defaultMinListRowHeight, FileTreeMetrics.rowHeight(for: horizontalSizeClass))
-        // Dropping on the list outside any folder or file moves the item to the vault's root.
-        .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            moveDroppedItems(items, into: .root)
-        } isTargeted: { isTargeted in isRootDropTargeted = isTargeted }
+        // Dropping on the list outside any folder or file moves the item to the vault's root;
+        // a file from another app (Files, Photos, Safari, Mail) is copied there.
+        .modifier(LibraryDropDestination(folder: .root, actions: LibraryDropActions(receive: workspace.receiveDrop), isTargeted: $isRootDropTargeted))
         .overlay {
             if isRootDropTargeted {
                 RoundedRectangle(cornerRadius: 10).strokeBorder(accent, lineWidth: 2).padding(4).allowsHitTesting(false)
@@ -489,10 +488,6 @@ struct VaultSidebar: View {
             } else {
                 FileTreeRows(workspace: workspace) { kind, directory in creation = CreationRequest(kind: kind, directory: directory) }
             }
-    }
-
-    private func moveDroppedItems(_ items: [VaultItemTransfer], into folder: VaultPath) -> Bool {
-        workspace.takeDroppedItems(items, into: folder)
     }
 
     @ViewBuilder private var searchResults: some View {
@@ -751,15 +746,16 @@ private struct VaultEntryRow: View, Equatable {
         .accessibilityValue(isExpanded.wrappedValue ? "Expanded" : "Collapsed")
         .accessibilityHint("Folder")
         .contextMenu { VaultEntryMenu(entry: entry, workspace: workspace, requestCreation: requestCreation) }
-        .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            workspace.takeDroppedItems(items, into: entry.path) { path in path != entry.path }
-        } isTargeted: { isTargeted in
+        // Items of the tree move into the folder; files from other apps are copied into it.
+        .modifier(LibraryDropDestination(folder: entry.path, actions: LibraryDropActions(receive: workspace.receiveDrop), isTargeted: Binding {
+            isDropTargeted
+        } set: { isTargeted in
             if isTargeted {
                 contents.dropTargetFolder = entry.path
             } else if isDropTargeted {
                 contents.dropTargetFolder = nil
             }
-        }
+        }))
         .task(id: "\(isExpanded.wrappedValue)-\(workspace.directoryVersion)-\(workspace.folderListingVersions[entry.path] ?? 0)-\(workspace.vaultSettings.fileSortOrder.rawValue)") {
             guard isExpanded.wrappedValue, let store = workspace.store else { return }
             do {
@@ -795,10 +791,7 @@ private struct VaultEntryRow: View, Equatable {
         .contextMenu { VaultEntryMenu(entry: entry, workspace: workspace, requestCreation: requestCreation) }
         // A drop on a file lands in the file's folder, as in Obsidian. Without this the
         // list's own destination would take it and move the item to the vault's root.
-        .dropDestination(for: VaultItemTransfer.self) { items, _ in
-            let folder = entry.path.parent
-            return workspace.takeDroppedItems(items, into: folder) { path in path.parent != folder }
-        }
+        .modifier(LibraryDropDestination(folder: entry.path.parent, actions: LibraryDropActions(receive: workspace.receiveDrop), isTargeted: .constant(false)))
     }
 
     /// The extension after the name, muted so the name reads first: always for files other

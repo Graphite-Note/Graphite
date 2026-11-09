@@ -160,6 +160,30 @@ final class UiFileTreeNativeMacTests: XCTestCase {
         try await waitUntil { FileManager.default.fileExists(atPath: vault.appendingPathComponent("Week 1.md").path) }
     }
 
+    /// A file dragged from the Finder is copied into the folder it lands in, never moved
+    /// out of its own folder; a drag of a web address is refused.
+    func testAFileFromTheFinderIsCopiedIntoTheFolderItLandsIn() async throws {
+        let workspace = try makeWorkspace(files: ["Course/Week 1.md", "Inbox.md"])
+        let vault = try XCTUnwrap(workspace.folderAccess?.root)
+        await workspace.refreshDirectory()
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 2 }
+        let controller = try XCTUnwrap((outlineView as? FileTreeOutlineView)?.controller)
+        let course = try XCTUnwrap(outlineView.item(atRow: 0))
+        let outsideFolder = try TemporaryVault.make(prefix: "FinderFiles", for: self).root
+        let photo = outsideFolder.appendingPathComponent("Board.png")
+        try Data("png".utf8).write(to: photo)
+
+        let finderDrag = FakeDraggingInfo(fileLocations: [photo])
+        XCTAssertEqual(controller.outlineView(outlineView, validateDrop: finderDrag, proposedItem: course, proposedChildIndex: NSOutlineViewDropOnItemIndex), .copy)
+        XCTAssertTrue(controller.outlineView(outlineView, acceptDrop: finderDrag, item: course, childIndex: NSOutlineViewDropOnItemIndex))
+        try await waitUntil { FileManager.default.fileExists(atPath: vault.appendingPathComponent("Course/Board.png").path) }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path), "The Finder's file is copied, never moved.")
+
+        let webDrag = FakeDraggingInfo(webAddress: try XCTUnwrap(URL(string: "https://example.com")))
+        XCTAssertEqual(controller.outlineView(outlineView, validateDrop: webDrag, proposedItem: course, proposedChildIndex: NSOutlineViewDropOnItemIndex), [])
+    }
+
     /// A row's menu is the sidebar's: the iPad's rows show it as their context menu.
     func testARowsMenuIsTheSidebarsMenuForThatFile() async throws {
         let workspace = try makeWorkspace(files: ["Course/Week 1.md", "Inbox.md"])
@@ -222,7 +246,7 @@ final class UiFileTreeNativeMacTests: XCTestCase {
     }
 }
 
-/// A drag carrying vault items, as the tree's own rows write them.
+/// A drag carrying vault items, as the tree's own rows write them, or files or an address from another app.
 @MainActor
 private final class FakeDraggingInfo: NSObject, @MainActor NSDraggingInfo {
     let draggingPasteboard: NSPasteboard
@@ -235,6 +259,20 @@ private final class FakeDraggingInfo: NSObject, @MainActor NSDraggingInfo {
             item.setData(try JSONEncoder().encode(VaultItemTransfer(path: path)), forType: FileTreeController.vaultItemType)
             return item
         })
+    }
+
+    /// A drag of files from the Finder, which carries their addresses.
+    init(fileLocations: [URL]) {
+        draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("FileTreeDrop-\(UUID().uuidString)"))
+        draggingPasteboard.clearContents()
+        draggingPasteboard.writeObjects(fileLocations.map { location in location as NSURL })
+    }
+
+    /// A drag of a web address, from Safari's address bar.
+    init(webAddress: URL) {
+        draggingPasteboard = NSPasteboard(name: NSPasteboard.Name("FileTreeDrop-\(UUID().uuidString)"))
+        draggingPasteboard.clearContents()
+        draggingPasteboard.writeObjects([webAddress as NSURL])
     }
 
     var draggingDestinationWindow: NSWindow? { nil }

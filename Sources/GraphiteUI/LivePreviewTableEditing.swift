@@ -74,6 +74,9 @@ final class LivePreviewTableEditor {
     /// The table's cells as last laid out, and where the table is in the block's view.
     @ObservationIgnored var layout: StructuredText.TableLayout?
     @ObservationIgnored var tableOriginInBlock: CGPoint = .zero
+    /// Where the vault's pictures in the table's cells are, in the block's coordinates: a tap
+    /// on one zooms into it rather than editing its cell.
+    @ObservationIgnored var pictureFrames: [ZoomablePictureFrame] = []
     /// Where the edited cell was last drawn, for a cell the table has not laid out yet (a
     /// row just added), so the editor and its keyboard stay.
     @ObservationIgnored var lastEditingFrame: CGRect?
@@ -349,9 +352,11 @@ struct LivePreviewTableEditingOverlay: ViewModifier {
 
     func body(content: Content) -> some View {
         if let editor, editor.canEdit {
-            content.textual.interactiveTableOverlay { layout in
-                LivePreviewTableEditingLayer(layout: layout, editor: editor)
-            }
+            content
+                .onPreferenceChange(ZoomablePictureFrame.Key.self) { frames in editor.pictureFrames = frames }
+                .textual.interactiveTableOverlay { layout in
+                    LivePreviewTableEditingLayer(layout: layout, editor: editor)
+                }
         } else {
             content
         }
@@ -365,12 +370,13 @@ private struct LivePreviewTableEditingLayer: View {
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
     @Environment(\.accent) private var accent
+    @Environment(\.readingImageActions) private var imageActions
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { location in editor.beginEditing(at: location) }
+                .onTapGesture(coordinateSpace: .local) { location in tapped(at: location) }
             if let cell = editor.editingCell, let frame = editor.frame(of: cell, in: layout) {
                 cellField(for: cell, frame: frame)
             }
@@ -383,6 +389,16 @@ private struct LivePreviewTableEditingLayer: View {
         .onChange(of: layout, initial: true) { _, newLayout in editor.layout = newLayout }
         // Text selection's overlay would otherwise take the taps.
         .textual.excludedFromTextInteraction()
+    }
+
+    /// A tap on a picture zooms into it; anywhere else in a cell edits the cell.
+    private func tapped(at location: CGPoint) {
+        let pointInBlock = CGPoint(x: location.x + editor.tableOriginInBlock.x, y: location.y + editor.tableOriginInBlock.y)
+        if let viewImage = imageActions?.viewImage, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock) }) {
+            viewImage(picture.path)
+            return
+        }
+        editor.beginEditing(at: location)
     }
 
     private func cellField(for cell: TableCellPosition, frame: CGRect) -> some View {
@@ -404,5 +420,18 @@ private struct LivePreviewTableEditingLayer: View {
             .offset(x: frame.minX, y: frame.minY)
             .onAppear { editor.lastEditingFrame = frame }
             .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }
+    }
+}
+
+/// Where a picture of the vault is drawn inside a rendered block, which the block's own tap
+/// targets (a table's cell editor) need to leave the picture's tap to its zoom.
+struct ZoomablePictureFrame: Equatable {
+    let path: VaultPath
+    /// In the block's coordinate space (`LivePreviewTableEditor.blockCoordinateSpaceName`).
+    let frame: CGRect
+
+    struct Key: PreferenceKey {
+        static let defaultValue: [ZoomablePictureFrame] = []
+        static func reduce(value: inout [ZoomablePictureFrame], nextValue: () -> [ZoomablePictureFrame]) { value += nextValue() }
     }
 }

@@ -3,7 +3,7 @@
  * ----------------------------------
  * Layer: UI
  * Description: Moves another app or window made, followed by this window's tabs; edits made during a move;
- *              and what a drop of dragged items on a folder does.
+ *              and what a drop of dragged items on a folder or on a note in the reading view does.
  *
  * Authors: Bahey Shalash
  * Version: 0.3
@@ -26,6 +26,29 @@ extension WorkspaceModel {
         Task {
             for path in paths { await move(path, into: folder) }
             if !foreignLocations.isEmpty { await importFiles(from: foreignLocations, into: folder) }
+        }
+        return true
+    }
+
+    /// Takes a drop on a note shown in the reading view, which has no cursor: each item goes at
+    /// the end of the note, in the order dropped. A vault item is linked (embedded when it is a
+    /// picture or media) and a file from another app is saved as an attachment and embedded,
+    /// as a drop on the editor does. False when nothing in the drop can be used.
+    func receiveDrop(_ providers: [NSItemProvider], intoNote session: MarkdownSession) -> Bool {
+        guard LibraryDropReader.canRead(providers) else { return false }
+        Task {
+            let sources = await LibraryDropReader.read(providers, vaultRoot: folderAccess?.root)
+            for source in sources {
+                let endOfNote = NSRange(location: (session.text as NSString).length, length: 0)
+                switch source {
+                case .vaultItem(let rawPath):
+                    guard let path = try? VaultPath(rawPath) else { continue } // A dragged name no vault path can hold links nothing.
+                    await insertLink(to: path, into: session, at: endOfNote)
+                case .file(let file):
+                    await importAttachment(from: file.location, into: session, at: endOfNote)
+                    DroppedFileBatch(files: [file]).discard()
+                }
+            }
         }
         return true
     }

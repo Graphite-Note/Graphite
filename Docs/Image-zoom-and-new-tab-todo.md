@@ -2,7 +2,7 @@
 
 Created: 2026-10-22.
 
-Status: not started. Issues: [#76](https://github.com/Graphite-Note/Graphite/issues/76) (section 1), [#77](https://github.com/Graphite-Note/Graphite/issues/77) (section 2).
+Status: section 1 built 2026-11-09 (see its items); section 2 not started. Issues: [#76](https://github.com/Graphite-Note/Graphite/issues/76) (section 1), [#77](https://github.com/Graphite-Note/Graphite/issues/77) (section 2).
 
 ## Request
 
@@ -21,9 +21,9 @@ So every image shown in a note offers two things, wherever it sits (its own line
 
 ## 1. Zoom into an image in place
 
-- [ ] A zoom control on every rendered image, block and inline alike, including images in table cells: a magnifier button that appears on pointer hover (Mac, iPad trackpad) and Pencil hover, and a long-press / context-menu "Zoom In" item on touch.
-- [ ] Zoom happens in the same window over the note, as in the owner's reference screenshot of 2026-10-24 (Obsidian's image zoom): a "Zoom" magnifier button with its tooltip at the image's top-right corner, then the image fitted to the whole window over a black backdrop with the app dimmed behind it, the file name centered at the top and a close button at the top-right. Not a separate full-screen cover or Quick Look window. Pinch, double-tap and scroll-wheel/trackpad zoom, drag to pan, Escape, a tap outside or the close button returns to the note at the same scroll position.
-- [ ] The zoomed image is decoded at a resolution fit for the zoom level (the table cell thumbnail is too small to enlarge), with the existing `ImageFileService.displayImage(at:maximumPixelDimension:)` bound so huge images don't spike memory.
+- [ ] A zoom control on every rendered image, block and inline alike, including images in table cells: a magnifier button that appears on pointer hover (Mac, iPad trackpad) and Pencil hover, and a long-press / context-menu "Zoom In" item on touch. Built 2026-11-09 for a picture on its own line (`EmbeddedImageView`: a tap, the magnifier while hovered, "Zoom In" in its menu). A picture inside text or a table zooms on a tap or click (the parser gives its run a `graphite://open?zoom=` link, and Live Preview's table cell editor leaves a tap on a picture to it), with no magnifier or menu item. The magnifier was not seen (hover cannot be driven in the background).
+- [x] Zoom happens in the same window over the note, as in the owner's reference screenshot of 2026-10-24 (Obsidian's image zoom): a "Zoom" magnifier button with its tooltip at the image's top-right corner, then the image fitted to the whole window over a black backdrop with the app dimmed behind it, the file name centered at the top and a close button at the top-right. Not a separate full-screen cover or Quick Look window. Pinch, double-tap and scroll-wheel/trackpad zoom, drag to pan, Escape, a tap outside or the close button returns to the note at the same scroll position. Done 2026-11-09: `ImageZoomOverlay` over the root view replaces the iPad's full-screen cover and the Mac's Quick Look window. Seen in a Debug copy of the Mac app (a block picture and a table picture in Live Preview; Escape and the close button close it, the note keeps its place) and the iPad simulator (a picture in a sentence and in a table in the reading view; a tap on the fitted picture closes it). Pinch, double-tap and trackpad zoom use the existing `ZoomingImageScrollView` and the new `MagnifyingImageScrollView` (`ImageZoomOverlayMacTests`); not tried by hand.
+- [x] The zoomed image is decoded at a resolution fit for the zoom level (the table cell thumbnail is too small to enlarge), with the existing `ImageFileService.displayImage(at:maximumPixelDimension:)` bound so huge images don't spike memory. Done 2026-11-09: the zoom decodes the file itself, up to 4,096 pixels on its longer side (`ImageZoomOverlay.maximumPixelDimension`).
 - [ ] Works in Reading view and Live Preview, in tables, callouts, embedded notes and canvas cards; Draw on Image stays reachable from the zoomed view where it is today.
 - [ ] Tests: hosted tests that an image in a table cell and an inline image expose the zoom action and present the zoomed view; a check that the note's scroll position survives zooming in and out.
 - [ ] Checked on the iPad (finger, Pencil hover, trackpad) and on the Mac (pointer, trackpad pinch, Escape).

@@ -74,6 +74,45 @@ final class LibraryDropReaderTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: original.path))
     }
 
+    /// Photos offers a photo as HEIC and as JPEG; Obsidian shows no HEIC, so the JPEG is taken,
+    /// whichever the app lists first. A HEIC file alone (from Files) stays HEIC.
+    func testAPhotoOfferedAsHEICAndJPEGIsTakenAsJPEG() throws {
+        let photo = NSItemProvider()
+        for type in [UTType.heic, .jpeg] {
+            photo.registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .all) { completion in
+                completion(Data("photo".utf8), nil)
+                return nil
+            }
+        }
+        XCTAssertEqual(LibraryDropReader.importableType(of: photo), .jpeg)
+        let heicFile = NSItemProvider()
+        heicFile.registerDataRepresentation(forTypeIdentifier: UTType.heic.identifier, visibility: .all) { completion in
+            completion(Data("photo".utf8), nil)
+            return nil
+        }
+        XCTAssertEqual(LibraryDropReader.importableType(of: heicFile), .heic)
+    }
+
+    /// An app's own file type that declares no conformance (a campus or messaging app's
+    /// document) is a file when the app names it, and arrives under that name.
+    func testAFileOfAnAppsOwnTypeArrivesUnderItsName() async throws {
+        let folder: URL = sourceFolder
+        let provider = NSItemProvider()
+        provider.registerFileRepresentation(forTypeIdentifier: "com.example.campus.timetable", fileOptions: [], visibility: .all) { completion in
+            let location = folder.appendingPathComponent("timetable-\(UUID().uuidString)")
+            try? Data("hello".utf8).write(to: location)
+            completion(location, false, nil)
+            return nil
+        }
+        provider.suggestedName = "Timetable.campus"
+        XCTAssertTrue(LibraryDropReader.canRead([provider]))
+        let sources = await LibraryDropReader.read([provider])
+        guard sources.count == 1, case .file(let dropped) = sources[0] else { return XCTFail("One file arrives, not \(sources).") }
+        XCTAssertEqual(dropped.location.lastPathComponent, "Timetable.campus")
+        XCTAssertEqual(try String(contentsOf: dropped.location, encoding: .utf8), "hello")
+        DroppedFileBatch(files: [dropped]).discard()
+    }
+
     func testAWebAddressCreatesNothing() async throws {
         let provider = NSItemProvider(object: URL(string: "https://example.com/page")! as NSURL)
         XCTAssertFalse(LibraryDropReader.canRead([provider]))
