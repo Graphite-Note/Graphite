@@ -55,6 +55,27 @@ final class PDFPaneHealthTests: XCTestCase {
         XCTAssertTrue(log.entries.last?.hasSuffix("gesture 20") == true)
     }
 
+    /// The page's scrolling left "ended" with no touch, as on the owner's iPad on 2026-11-10:
+    /// reset at the second check in a row, and the view built again when that did not help.
+    func testScrollingLeftFinishedIsResetAndThenTheViewIsBuiltAgain() {
+        var watch = FinishedGestureWatch()
+        XCTAssertEqual(watch.check(isLeftFinished: true), .leave, "Once may be the instant before UIKit's reset.")
+        XCTAssertEqual(watch.check(isLeftFinished: true), .resetRecognizers)
+        XCTAssertEqual(watch.check(isLeftFinished: true), .leave)
+        XCTAssertEqual(watch.check(isLeftFinished: true), .buildViewAgain)
+    }
+
+    func testScrollingThatComesBackStartsTheWatchAgain() {
+        var watch = FinishedGestureWatch()
+        XCTAssertEqual(watch.check(isLeftFinished: true), .leave)
+        XCTAssertEqual(watch.check(isLeftFinished: false), .leave)
+        XCTAssertEqual(watch.check(isLeftFinished: true), .leave, "Not in a row.")
+        XCTAssertEqual(watch.check(isLeftFinished: true), .resetRecognizers)
+        XCTAssertEqual(watch.check(isLeftFinished: false), .leave, "The reset helped.")
+        XCTAssertEqual(watch.check(isLeftFinished: true), .leave)
+        XCTAssertEqual(watch.check(isLeftFinished: true), .resetRecognizers, "A later time is reset first again, not built again at once.")
+    }
+
     func testThreeUnansweredScrollsInARowMeanThePDFStopped() {
         var count = UnansweredGestureCount()
         XCTAssertFalse(count.add(gesture(), at: 10))
