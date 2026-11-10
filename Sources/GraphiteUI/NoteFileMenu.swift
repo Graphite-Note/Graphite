@@ -25,15 +25,15 @@ struct NoteFileMenu: View {
     let delete: () -> Void
 
     var body: some View {
-        Menu("File", systemImage: "doc") {
+        Menu("File", menuSymbol: "doc") {
             FileLocationMenuItems(path: path, openingLink: openingLink, vaultRoot: vaultRoot)
             NotePDFExportButton()
             if let showFileRecovery {
-                Button("File Recovery…", systemImage: "clock.arrow.circlepath", action: showFileRecovery)
+                Button("File Recovery…", menuSymbol: "clock.arrow.circlepath", action: showFileRecovery)
             }
             Divider()
-            Button("Move to…", systemImage: VaultEntryAction.moveTo.systemImage, action: move)
-            Button("Delete", systemImage: VaultEntryAction.delete.systemImage, role: .destructive, action: delete)
+            Button("Move to…", menuSymbol: VaultEntryAction.moveTo.systemImage, action: move)
+            Button("Delete", menuSymbol: VaultEntryAction.delete.systemImage, role: .destructive, action: delete)
         }
     }
 }

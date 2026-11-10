@@ -23,14 +23,14 @@ struct EditorMenuEntriesView: View {
             switch entry.content {
             case .action(let isEnabled, let perform):
                 Button(action: perform) {
-                    if let systemImage = entry.systemImage { Label(entry.title, systemImage: systemImage) } else { Text(entry.title) }
+                    if let systemImage = entry.systemImage { MenuItemLabel(title: entry.title, systemImage: systemImage) } else { Text(entry.title) }
                 }
                 .disabled(!isEnabled)
             case .submenu(let submenuEntries):
                 Menu {
                     EditorMenuEntriesView(entries: submenuEntries)
                 } label: {
-                    if let systemImage = entry.systemImage { Label(entry.title, systemImage: systemImage) } else { Text(entry.title) }
+                    if let systemImage = entry.systemImage { MenuItemLabel(title: entry.title, systemImage: systemImage) } else { Text(entry.title) }
                 }
             case .group(let groupEntries):
                 if entryIndex > 0 { Divider() }

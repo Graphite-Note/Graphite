@@ -22,9 +22,9 @@ struct WorkspaceMoreMenuItems: View {
     var body: some View {
         if let actions {
             Section {
-                Button("Quick Switcher…", systemImage: "magnifyingglass") { actions.showQuickSwitcher() }
-                Button("Command Palette…", systemImage: "command") { actions.showCommandPalette() }
-                Button("Focus", systemImage: "arrow.up.left.and.arrow.down.right") { actions.toggleFocusMode() }
+                Button("Quick Switcher…", menuSymbol: "magnifyingglass") { actions.showQuickSwitcher() }
+                Button("Command Palette…", menuSymbol: "command") { actions.showCommandPalette() }
+                Button("Focus", menuSymbol: "arrow.up.left.and.arrow.down.right") { actions.toggleFocusMode() }
                     .help("Hide sidebars and tabs")
             }
         }

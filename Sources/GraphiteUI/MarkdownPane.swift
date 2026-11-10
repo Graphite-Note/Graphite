@@ -547,7 +547,7 @@ struct MarkdownPane: View {
     #endif
 
     @ViewBuilder private var readAloudMenu: some View {
-        Menu("Read Aloud", systemImage: "speaker.wave.2") {
+        Menu("Read Aloud", menuSymbol: "speaker.wave.2") {
             Button("Read Document") { startReading() }
             Button("Choose Section…") { noteState.showsReadingSections = true }
             if isEditing {
@@ -585,9 +585,9 @@ struct MarkdownPane: View {
     /// The note's view, and its line width while it is read, when there is no Format menu.
     @ViewBuilder private var viewChoices: some View {
         Picker("View", selection: $session.viewMode) {
-            Label("Reading View", systemImage: "book").tag(NoteViewMode.reading)
-            Label("Live Preview", systemImage: "eye").tag(NoteViewMode.livePreview)
-            Label("Source Mode", systemImage: "chevron.left.forwardslash.chevron.right").tag(NoteViewMode.source)
+            MenuItemLabel(title: "Reading View", systemImage: "book").tag(NoteViewMode.reading)
+            MenuItemLabel(title: "Live Preview", systemImage: "eye").tag(NoteViewMode.livePreview)
+            MenuItemLabel(title: "Source Mode", systemImage: "chevron.left.forwardslash.chevron.right").tag(NoteViewMode.source)
         }
         .pickerStyle(.inline)
         if !isEditing { lineWidthPicker }
@@ -615,12 +615,12 @@ struct MarkdownPane: View {
                 if let renameDocument { Button("Rename…", systemImage: "pencil") { renameDocument.rename() } }
             }
         }
-        Button("Fold All", systemImage: "rectangle.compress.vertical") { session.foldAll() }
-        Button("Unfold All", systemImage: "rectangle.expand.vertical") { session.unfoldAll() }
+        Button("Fold All", menuSymbol: "rectangle.compress.vertical") { session.foldAll() }
+        Button("Unfold All", menuSymbol: "rectangle.expand.vertical") { session.unfoldAll() }
             .disabled(session.foldedKeys.isEmpty)
-        Button("Save Now", systemImage: "square.and.arrow.down") { Task { try? await session.save() } }
+        Button("Save Now", menuSymbol: "square.and.arrow.down") { Task { try? await session.save() } }
         if preferences.isEnabled(.graph) {
-            Button("Local Graph", systemImage: "point.3.filled.connected.trianglepath.dotted") {
+            Button("Local Graph", menuSymbol: "point.3.filled.connected.trianglepath.dotted") {
                 NoteLinksInspector.choose(.graph, deviceDefaults: workspace.deviceDefaults)
                 showsLinksInspector = true
             }
@@ -632,7 +632,7 @@ struct MarkdownPane: View {
                      move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
-            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), systemImage: isBookmarked ? "bookmark.slash" : "bookmark") {
+            Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), menuSymbol: isBookmarked ? "bookmark.slash" : "bookmark") {
                 Task { await workspace.toggleBookmark(session.path) }
             }
         }
