@@ -25,6 +25,19 @@ struct UnansweredGestureCount {
         var drawsWithFinger: Bool
         /// Seconds since Apple Pencil was last seen on the screen when the gesture ended.
         var secondsSincePencil: TimeInterval
+        /// Whether it began on the frame around a picture, a text box or selected ink, which
+        /// takes the drag itself and changes the page only once the finger lifts.
+        var beganOnSelectionFrame = false
+        /// Whether it began at the top or bottom edge of the screen, where the system's own
+        /// gestures begin and the touch is held back from the page.
+        var beganAtSystemGestureEdge = false
+    }
+
+    /// Whether a touch at a height of the window is in the strip at its top or bottom edge that
+    /// the system keeps for its own gestures (Home, the Dock, Notification Centre): the window's
+    /// safe area insets there.
+    static func isAtSystemGestureEdge(locationY: CGFloat, windowHeight: CGFloat, topInset: CGFloat, bottomInset: CGFloat) -> Bool {
+        (topInset > 0 && locationY < topInset) || (bottomInset > 0 && locationY > windowHeight - bottomInset)
     }
 
     private(set) var unansweredTimes: [TimeInterval] = []
@@ -62,6 +75,10 @@ struct UnansweredGestureCount {
     mutating func add(_ gesture: Gesture, at time: TimeInterval) -> Bool {
         // With finger drawing one finger draws, and may rightly change nothing (an eraser
         // over blank paper); only two fingers, which scroll and zoom, count then.
+        // A drag of a selection frame and a swipe from the screen's edge are answered by
+        // something other than the pages; on the owner's iPad they made up most of the times
+        // the PDF was taken to have stopped (records of 2026-10-25 to 2026-11-08).
+        guard !gesture.beganOnSelectionFrame, !gesture.beganAtSystemGestureEdge else { return false }
         guard !(gesture.drawsWithFinger && gesture.fingerCount < 2),
               gesture.largestMovement >= Self.answerableMovementPoints, gesture.couldMove,
               gesture.secondsSincePencil >= Self.pencilQuietSeconds else { return false }
@@ -151,6 +168,8 @@ final class PDFPaneHealthMonitor {
         /// Whether the touch reached the PDF view or a view inside it.
         let reachedPDF: Bool
         let couldScrollVertically: Bool
+        let beganOnSelectionFrame: Bool
+        let beganAtSystemGestureEdge: Bool
         var largestMovement: CGFloat = 0
         var wasPinch = false
         var wasAnswered = false
@@ -219,7 +238,9 @@ final class PDFPaneHealthMonitor {
                                     changeVersion: coordinator.session.changeVersion, selectedText: pdfView.currentSelection?.string,
                                     touchCount: fingerTouches.count, startLocations: locations,
                                     locationInWindow: fingerTouches[0].location(in: nil), reachedPDF: reachedPDF,
-                                    couldScrollVertically: couldScrollVertically)
+                                    couldScrollVertically: couldScrollVertically,
+                                    beganOnSelectionFrame: touchedViews.contains(where: \.isInSelectionFrameForHealth),
+                                    beganAtSystemGestureEdge: fingerTouches.contains(where: window.isAtSystemGestureEdgeForHealth))
     }
 
     private func gestureMoved(_ touches: [UITouch]) {
@@ -265,7 +286,9 @@ final class PDFPaneHealthMonitor {
         let gesture = UnansweredGestureCount.Gesture(fingerCount: start.touchCount, largestMovement: start.largestMovement,
                                                      wasAnswered: start.wasAnswered, couldMove: start.couldScrollVertically || start.wasPinch,
                                                      drawsWithFinger: coordinator.drawsWithFinger,
-                                                     secondsSincePencil: now - observer.lastPencilTouchTime)
+                                                     secondsSincePencil: now - observer.lastPencilTouchTime,
+                                                     beganOnSelectionFrame: start.beganOnSelectionFrame,
+                                                     beganAtSystemGestureEdge: start.beganAtSystemGestureEdge)
         if !start.wasAnswered, gesture.largestMovement >= UnansweredGestureCount.answerableMovementPoints {
             Self.log.notice("A finger gesture on the PDF changed nothing; the touch reached the PDF: \(start.reachedPDF)")
         }
@@ -451,6 +474,26 @@ final class PDFPaneHealthMonitor {
 
     private static func selectionFrames(in view: UIView) -> [SelectionFrameView] {
         ((view as? SelectionFrameView).map { [$0] } ?? []) + view.subviews.flatMap { subview in selectionFrames(in: subview) }
+    }
+}
+
+extension UIView {
+    /// Whether the view is a selection frame or inside one, as its corner and rotate handles are.
+    var isInSelectionFrameForHealth: Bool {
+        var ancestor: UIView? = self
+        while let current = ancestor {
+            if current is SelectionFrameView { return true }
+            ancestor = current.superview
+        }
+        return false
+    }
+}
+
+extension UIWindow {
+    /// Whether a touch is in the strip the system keeps for its own gestures (`UnansweredGestureCount.isAtSystemGestureEdge`).
+    func isAtSystemGestureEdgeForHealth(_ touch: UITouch) -> Bool {
+        UnansweredGestureCount.isAtSystemGestureEdge(locationY: touch.location(in: self).y, windowHeight: bounds.height,
+                                                     topInset: safeAreaInsets.top, bottomInset: safeAreaInsets.bottom)
     }
 }
 

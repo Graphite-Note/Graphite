@@ -16,6 +16,16 @@ import GraphiteCore
 @MainActor
 final class MacEditorFoldButtons {
     private var buttons: [String: (chevron: NSButton, ellipsis: NSButton)] = [:]
+    /// What each chevron shows now, so a scroll step that changes neither leaves the button alone.
+    private var shownStates: [String: ShownState] = [:]
+    private static let foldedChevron = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: nil)
+    private static let unfoldedChevron = NSImage(systemSymbolName: "chevron.down", accessibilityDescription: nil)
+
+    /// The fold and the header line a chevron was last set for.
+    private struct ShownState: Equatable {
+        let isFolded: Bool
+        let header: String
+    }
     /// Folds or unfolds the section with this key; set by the coordinator.
     var toggle: (String) -> Void = { _ in }
     private static let chevronSize: CGFloat = 18
@@ -47,6 +57,7 @@ final class MacEditorFoldButtons {
             pair.chevron.removeFromSuperview()
             pair.ellipsis.removeFromSuperview()
             buttons[key] = nil
+            shownStates[key] = nil
         }
     }
 
@@ -61,11 +72,16 @@ final class MacEditorFoldButtons {
         pair.chevron.frame = CGRect(x: max(2, fragmentOrigin.x + textStartX - Self.chevronSize - 4),
                                     y: fragmentOrigin.y + firstLineBounds.minY + (firstLineBounds.height - Self.chevronSize) / 2,
                                     width: Self.chevronSize, height: Self.chevronSize)
-        pair.chevron.image = NSImage(systemSymbolName: isFolded ? "chevron.right" : "chevron.down", accessibilityDescription: nil)
-        pair.chevron.alphaValue = isFolded ? 1 : 0.4
-        let headerText = header.trimmingCharacters(in: .whitespaces).drop { character in character == "#" }.trimmingCharacters(in: .whitespaces)
-        pair.chevron.setAccessibilityLabel(isFolded ? "Unfold \(headerText)" : "Fold \(headerText)")
-        pair.ellipsis.isHidden = !isFolded
+        // Set when the fold or the header changes, not on every step of a scroll: a new image redraws the button.
+        let shownState = ShownState(isFolded: isFolded, header: header)
+        if shownStates[region.key] != shownState {
+            shownStates[region.key] = shownState
+            pair.chevron.image = isFolded ? Self.foldedChevron : Self.unfoldedChevron
+            pair.chevron.alphaValue = isFolded ? 1 : 0.4
+            let headerText = header.trimmingCharacters(in: .whitespaces).drop { character in character == "#" }.trimmingCharacters(in: .whitespaces)
+            pair.chevron.setAccessibilityLabel(isFolded ? "Unfold \(headerText)" : "Fold \(headerText)")
+            pair.ellipsis.isHidden = !isFolded
+        }
         guard isFolded else { return }
         let lastLineBounds = lastLine.typographicBounds
         pair.ellipsis.frame = CGRect(x: fragmentOrigin.x + lastLineBounds.maxX + 6,
@@ -79,6 +95,7 @@ final class MacEditorFoldButtons {
             pair.ellipsis.removeFromSuperview()
         }
         buttons.removeAll()
+        shownStates.removeAll()
     }
 
     private func makeButtons(for key: String, in textView: NSTextView) -> (chevron: NSButton, ellipsis: NSButton) {

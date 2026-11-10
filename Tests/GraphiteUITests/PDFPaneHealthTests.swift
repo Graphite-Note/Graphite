@@ -9,6 +9,35 @@ final class PDFPaneHealthTests: XCTestCase {
                                        drawsWithFinger: drawsWithFinger, secondsSincePencil: secondsSincePencil)
     }
 
+    /// On the owner's iPad, six of ten times the PDF was taken to have stopped a picture's or a
+    /// selection's frame was being dragged: the frame changes the page only once the finger has
+    /// lifted, after the gesture is judged, so three moves in a row built the PDF's view again.
+    func testDragsOfASelectionFrameNeverCount() {
+        var count = UnansweredGestureCount()
+        for time in 0..<10 {
+            var dragOfAFrame = gesture()
+            dragOfAFrame.beganOnSelectionFrame = true
+            XCTAssertFalse(count.add(dragOfAFrame, at: TimeInterval(time)))
+        }
+        XCTAssertTrue(count.unansweredTimes.isEmpty)
+    }
+
+    /// A swipe up from the Home indicator is the system's; the page rightly does not move.
+    func testSwipesFromTheScreensEdgeNeverCount() {
+        var count = UnansweredGestureCount()
+        for time in 0..<10 {
+            var swipeFromTheEdge = gesture()
+            swipeFromTheEdge.beganAtSystemGestureEdge = true
+            XCTAssertFalse(count.add(swipeFromTheEdge, at: TimeInterval(time)))
+        }
+        XCTAssertTrue(count.unansweredTimes.isEmpty)
+        // The touch of the record of 2026-11-03: 822 points down a window 834 high.
+        XCTAssertTrue(UnansweredGestureCount.isAtSystemGestureEdge(locationY: 822, windowHeight: 834, topInset: 24, bottomInset: 20))
+        XCTAssertTrue(UnansweredGestureCount.isAtSystemGestureEdge(locationY: 10, windowHeight: 834, topInset: 24, bottomInset: 20))
+        XCTAssertFalse(UnansweredGestureCount.isAtSystemGestureEdge(locationY: 400, windowHeight: 834, topInset: 24, bottomInset: 20))
+        XCTAssertFalse(UnansweredGestureCount.isAtSystemGestureEdge(locationY: 830, windowHeight: 834, topInset: 0, bottomInset: 0), "A window with no strip kept for the system.")
+    }
+
     func testThreeUnansweredScrollsInARowMeanThePDFStopped() {
         var count = UnansweredGestureCount()
         XCTAssertFalse(count.add(gesture(), at: 10))

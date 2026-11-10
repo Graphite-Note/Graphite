@@ -845,6 +845,10 @@ extension RenderedBlock {
 @MainActor
 final class ReadingPosition {
     var verticalOffset: CGFloat = 0
+    /// How far the view is scrolled now. `verticalOffset` is the checkpoint to come back to and
+    /// is not recorded while a place is being restored, so it cannot say whether the view is
+    /// at its top.
+    var shownVerticalOffset: CGFloat = 0
     /// Where the blocks shown start in the note.
     var blockLocations: [ReadingBlockLocation] = [] {
         didSet { if blockLocations != oldValue { blockFrames = blockFrames.filter { identifier, _ in blockLocations.contains { location in location.blockIdentifier == identifier } } } }
@@ -855,13 +859,20 @@ final class ReadingPosition {
     /// Each block's frame in the reading view's coordinates, as last laid out, for the
     /// blocks the lazy stack holds.
     private var blockFrames: [String: CGRect] = [:]
+    /// The order the frames were last reported in. A block on screen reports at every scroll
+    /// step; one the lazy stack let go without a word keeps an old frame and an old number.
+    private var blockReportNumbers: [String: Int] = [:]
+    private var lastReportNumber = 0
 
     func record(_ frame: CGRect, ofBlock identifier: String) {
         blockFrames[identifier] = frame
+        lastReportNumber += 1
+        blockReportNumbers[identifier] = lastReportNumber
     }
 
     func forget(_ identifier: String) {
         blockFrames[identifier] = nil
+        blockReportNumbers[identifier] = nil
     }
 
     /// The note's character at the top of the reading view: the first line of the block
@@ -878,10 +889,14 @@ final class ReadingPosition {
     var hasLaidOutBlocks: Bool { !blockFrames.isEmpty }
 
     private func blockLocationAtTop() -> Int? {
-        guard verticalOffset > 1 else { return nil }
+        guard max(verticalOffset, shownVerticalOffset) > 1 else { return nil }
         let shownBlocks = blockLocations.compactMap { location in blockFrames[location.blockIdentifier].map { frame in (location, frame) } }
             .filter { _, frame in frame.maxY > visibleTop + 1 }
-        guard let (location, frame) = shownBlocks.min(by: { first, second in first.1.minY < second.1.minY }) else { return nil }
+        // One block lies across the top edge. A block let go after a jump can keep a frame
+        // across it too, from where the view was then: the one that reported last is on screen.
+        let acrossTheTop = shownBlocks.filter { _, frame in frame.minY <= visibleTop + 1 }
+            .max { first, second in (blockReportNumbers[first.0.blockIdentifier] ?? 0) < (blockReportNumbers[second.0.blockIdentifier] ?? 0) }
+        guard let (location, frame) = acrossTheTop ?? shownBlocks.min(by: { first, second in first.1.minY < second.1.minY }) else { return nil }
         let hiddenHeight = visibleTop - frame.minY
         guard hiddenHeight > 0, !location.lineNoteOffsets.isEmpty, frame.height > 0 else { return location.noteOffset }
         let lineIndex = min(Int(Double(hiddenHeight / frame.height) * Double(location.lineNoteOffsets.count)), location.lineNoteOffsets.count - 1)
@@ -1026,6 +1041,7 @@ struct MarkdownPreview: View {
             } action: { _, viewport in
                 readingFollow.viewport = viewport
                 savedPosition?.visibleTop = viewport.topInset
+                savedPosition?.shownVerticalOffset = viewport.verticalOffset
                 // Until a saved position is restored, the view's first offsets must not
                 // replace it. With nothing saved, they are kept aside, and recorded once the
                 // view knows it has nothing to restore. An offset recorded straight away, such
@@ -1047,6 +1063,7 @@ struct MarkdownPreview: View {
                 // including when edits have shortened the document since it was read.
                 if phase == .interacting {
                     pendingRestorationOffset = nil
+                    readingFollow.handScrollCount += 1
                     suspendReadingFollow?()
                     linkPreviews?.close()
                 }
@@ -1151,21 +1168,46 @@ struct MarkdownPreview: View {
 
     /// Brings a heading or footnote to the top. The lazy stack finds only its rows before it
     /// has built them, and a heading below the screen is not built yet, so the row holding
-    /// the target is shown first. The stack revises its estimated heights as distant rows
-    /// appear, which moves the row after each scroll, so the row is shown again until it is
-    /// built and stays put, a bounded number of times; then the target inside it.
+    /// the target is shown first (`bringRowToTop`); then the target inside it.
     private func scroll(toTarget target: String, scrollProxy: ScrollViewProxy) async {
-        guard let rowIdentifier = HeadingScrollRequest.readingRowIdentifier(holding: target, in: blocks) else { return }
+        guard let rowIdentifier = HeadingScrollRequest.readingRowIdentifier(holding: target, in: blocks),
+              await bringRowToTop(rowIdentifier, scrollProxy: scrollProxy) else { return }
+        scrollProxy.scrollTo(target, anchor: .top)
+    }
+
+    /// How many times a row is shown again while the lazy stack settles.
+    private static let rowScrollAttemptLimit = 10
+
+    /// The anchor that puts the point a fraction down a row at the top of the view. A scroll to
+    /// an anchor lines up the row's point at that fraction of its height with the view's point
+    /// at the same fraction of its own, so the fraction asked for is not the anchor: for the
+    /// row's top to be `fractionDown` of its height above the view's top, the anchor is
+    /// `-fractionDown * rowHeight / (viewHeight - rowHeight)`. Nil for a row as tall as the view,
+    /// which no anchor moves, or before the heights are known.
+    static func anchor(showingAtTop fractionDown: Double, ofRowWithHeight rowHeight: CGFloat, inViewWithHeight viewHeight: CGFloat) -> UnitPoint? {
+        guard rowHeight > 0, viewHeight > 0, abs(viewHeight - rowHeight) > 1 else { return nil }
+        return UnitPoint(x: 0, y: -fractionDown * rowHeight / (viewHeight - rowHeight))
+    }
+
+    /// Shows a row at the top and keeps it there. The stack places a row it has not built by
+    /// its estimate of the rows before it, and revises the estimate as distant rows appear,
+    /// which moves the row after each scroll, so the row is shown again until it is built and
+    /// stays put, a bounded number of times. False when the view went away or the person
+    /// scrolled by hand meanwhile, which wins.
+    private func bringRowToTop(_ rowIdentifier: String, scrollProxy: ScrollViewProxy) async -> Bool {
+        let handScrollCount = readingFollow.handScrollCount
         scrollProxy.scrollTo(rowIdentifier, anchor: .top)
         var previousFrame: CGRect?
-        for _ in 0..<6 {
-            do { try await headingScrollClock.sleep(for: Self.headingScrollSettlingDelay) } catch { return } // The view went away.
+        for _ in 0..<Self.rowScrollAttemptLimit {
+            do { try await headingScrollClock.sleep(for: Self.headingScrollSettlingDelay) } catch { return false }
+            guard readingFollow.handScrollCount == handScrollCount else { return false }
             let frame = savedPosition?.frame(ofBlock: rowIdentifier)
-            if let frame, frame == previousFrame { break }
+            // Built, at the top, and where it was a moment ago.
+            if let frame, frame == previousFrame, abs(frame.minY - (savedPosition?.visibleTop ?? 0)) < 1 { break }
             previousFrame = frame
             scrollProxy.scrollTo(rowIdentifier, anchor: .top)
         }
-        scrollProxy.scrollTo(target, anchor: .top)
+        return true
     }
 
     /// Brings the note's character to the top: its block first, then as far down the block
@@ -1175,11 +1217,15 @@ struct MarkdownPreview: View {
         // A reading view is made anew for each switch and starts at the top. Asking for the
         // top edge would hold the view there, and SwiftUI applied it again over later scrolls.
         guard noteLocation > 0, let (identifier, fractionDown) = savedPosition?.block(containing: noteLocation) else { return }
-        scrollProxy.scrollTo(identifier, anchor: .top)
-        guard fractionDown > 0 else { return }
-        try? await Task.sleep(for: .milliseconds(50))
-        guard let savedPosition, let frame = savedPosition.frame(ofBlock: identifier) else { return }
-        scrollPosition.scrollTo(y: savedPosition.verticalOffset + (frame.minY - savedPosition.visibleTop) + fractionDown * frame.height)
+        // One scroll to a row far down a long note ended somewhere else: the note was at another
+        // place after every switch from writing.
+        guard await bringRowToTop(identifier, scrollProxy: scrollProxy), fractionDown > 0 else { return }
+        let viewHeight = readingFollow.viewport.height
+        guard let frame = savedPosition?.frame(ofBlock: identifier),
+              let anchor = Self.anchor(showingAtTop: fractionDown, ofRowWithHeight: frame.height, inViewWithHeight: viewHeight) else { return }
+        // Asked of the row itself, not as an offset: the offset the view last reported can be
+        // one from before the scroll to the row, and sent the view to another part of the note.
+        scrollProxy.scrollTo(identifier, anchor: anchor)
     }
 
     /// The word read moved: its text shows it, and the view follows it when it follows reading.
@@ -1296,6 +1342,8 @@ fileprivate final class ReadingFollowState {
     var viewport = ReadingViewport(verticalOffset: 0, maximumVerticalOffset: 0, topInset: 0)
     var scrollProxy: ScrollViewProxy?
     var followTask: Task<Void, Never>?
+    /// How many times the person began scrolling by hand, so a scroll still settling gives way.
+    var handScrollCount = 0
 }
 
 /// The word read aloud for one text of the reading view. Only the text whose cell it is

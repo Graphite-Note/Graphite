@@ -162,6 +162,37 @@ final class MacEditorParityTests: XCTestCase {
         XCTAssertEqual(editor.textView.subviews.filter { subview in subview is NSButton }.count, 4, "A chevron and an ellipsis for each.")
     }
 
+    /// Scrolling places the chevrons at every step; a new image each time redrew every one of them.
+    func testPlacingTheChevronsAgainLeavesTheirImagesAloneUntilTheFoldChanges() async throws {
+        let editor = try await foldingEditor()
+        editor.textView.layoutSubtreeIfNeeded()
+        editor.textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        editor.coordinator.positionFoldButtons(in: editor.textView)
+        func chevronImages() -> [NSImage] {
+            editor.textView.subviews.compactMap { subview in (subview as? NSButton)?.image }
+        }
+        let imagesAfterFirstPlacement = chevronImages()
+        XCTAssertEqual(imagesAfterFirstPlacement.count, 2)
+        editor.coordinator.positionFoldButtons(in: editor.textView)
+        let imagesAfterSecondPlacement = chevronImages()
+        XCTAssertEqual(imagesAfterSecondPlacement.count, 2)
+        for (firstImage, secondImage) in zip(imagesAfterFirstPlacement, imagesAfterSecondPlacement) {
+            XCTAssertTrue(firstImage === secondImage, "The same image, so the button does not draw again.")
+        }
+        editor.session.foldAll()
+        editor.coordinator.applyFolds(in: editor.textView)
+        turnRunLoop()
+        editor.textView.layoutSubtreeIfNeeded()
+        editor.textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        editor.coordinator.positionFoldButtons(in: editor.textView)
+        XCTAssertFalse(editor.session.foldedKeys.isEmpty)
+        let imagesAfterFolding = chevronImages()
+        XCTAssertFalse(imagesAfterFolding.isEmpty)
+        for foldedImage in imagesAfterFolding {
+            XCTAssertFalse(imagesAfterFirstPlacement.contains { unfoldedImage in unfoldedImage === foldedImage }, "A folded line shows the other chevron.")
+        }
+    }
+
     func testCursorStaysOutOfAFoldedSection() async throws {
         let editor = try await foldingEditor()
         editor.session.foldAll()
