@@ -38,6 +38,23 @@ final class PDFPaneHealthTests: XCTestCase {
         XCTAssertFalse(UnansweredGestureCount.isAtSystemGestureEdge(locationY: 830, windowHeight: 834, topInset: 0, bottomInset: 0), "A window with no strip kept for the system.")
     }
 
+    /// The link opened from the Mac while a PDF on the iPad takes no touches.
+    func testTheCaptureLinkIsToldFromLinksToNotes() throws {
+        XCTAssertTrue(PDFTouchCaptureLink.matches(try XCTUnwrap(URL(string: "graphite://capture-pdf-touches"))))
+        XCTAssertTrue(PDFTouchCaptureLink.matches(try XCTUnwrap(URL(string: "GRAPHITE://Capture-PDF-Touches"))))
+        XCTAssertFalse(PDFTouchCaptureLink.matches(try XCTUnwrap(URL(string: "graphite://open?file=capture-pdf-touches"))))
+        XCTAssertFalse(PDFTouchCaptureLink.matches(try XCTUnwrap(URL(string: "obsidian://capture-pdf-touches"))))
+    }
+
+    @MainActor
+    func testTheGestureLogKeepsTheLastTwelve() {
+        let log = PDFGestureLog()
+        for number in 1...20 { log.note("gesture \(number)") }
+        XCTAssertEqual(log.entries.count, PDFGestureLog.limit)
+        XCTAssertTrue(log.entries.first?.hasSuffix("gesture 9") == true)
+        XCTAssertTrue(log.entries.last?.hasSuffix("gesture 20") == true)
+    }
+
     func testThreeUnansweredScrollsInARowMeanThePDFStopped() {
         var count = UnansweredGestureCount()
         XCTAssertFalse(count.add(gesture(), at: 10))

@@ -93,6 +93,34 @@ struct UnansweredGestureCount {
     }
 }
 
+/// The link that has every PDF on screen write down what its touches reach and the state of
+/// what decides whether it answers them (`PDFTouchStateCaptured-*.json`), for a PDF that takes
+/// no touches while the monitor sees nothing wrong: `graphite://capture-pdf-touches`, opened
+/// from the Mac while the iPad shows the PDF (`xcrun devicectl device process launch
+/// --payload-url`), so the person need not touch anything.
+enum PDFTouchCaptureLink {
+    static let action = "capture-pdf-touches"
+
+    static func matches(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == "graphite" && url.host()?.lowercased() == action
+    }
+}
+
+/// The last gestures a PDF's health monitor followed or left alone, and why, for a capture.
+@MainActor
+final class PDFGestureLog {
+    static let limit = 12
+    private(set) var entries: [String] = []
+    private var notedCount = 0
+
+    /// Entries are numbered from the monitor's first, so a capture shows how many came before.
+    func note(_ text: String) {
+        notedCount += 1
+        entries.append("\(notedCount). \(text)")
+        if entries.count > Self.limit { entries.removeFirst(entries.count - Self.limit) }
+    }
+}
+
 #if canImport(UIKit)
 import UIKit
 import UIKit.UIGestureRecognizerSubclass
@@ -135,6 +163,7 @@ final class PDFPaneHealthMonitor {
     private weak var pdfView: GraphitePDFDisplayView?
     private weak var observedWindow: UIWindow?
     private let observer = PDFTouchSequenceObserver()
+    let gestureLog = PDFGestureLog()
     private var timer: Timer?
     private var unansweredInPDF = UnansweredGestureCount()
     private var unansweredOverPDF = UnansweredGestureCount()
@@ -181,6 +210,7 @@ final class PDFPaneHealthMonitor {
         observer.sequenceBegan = { [weak self] touches in self?.gestureBegan(touches) }
         observer.sequenceMoved = { [weak self] touches in self?.gestureMoved(touches) }
         observer.sequenceEnded = { [weak self] in self?.gestureEnded() }
+        PDFTouchCapture.monitors.add(self)
     }
 
     /// Follows the window the PDF view is in now, or none.
@@ -219,16 +249,19 @@ final class PDFPaneHealthMonitor {
         // A finger on a PDF embedded in a note may scroll the note instead, rightly; a sheet
         // or popover over the PDF takes the touches meant for it.
         guard let pdfView, let coordinator, !coordinator.isEmbedded, let window = pdfView.window, !hasRequestedRebuild,
-              window.rootViewController?.presentedViewController == nil else { return }
+              window.rootViewController?.presentedViewController == nil else {
+            return gestureLog.note("Not followed: embedded, being built again, or under a sheet")
+        }
         let fingerTouches = touches.filter { touch in touch.type == .direct }
-        guard !fingerTouches.isEmpty, fingerTouches.count == touches.count else { return }
+        guard !fingerTouches.isEmpty, fingerTouches.count == touches.count else { return gestureLog.note("Not followed: not fingers alone") }
         let locations = fingerTouches.map { touch in touch.location(in: pdfView) }
         guard locations.allSatisfy({ location in pdfView.bounds.contains(location) }) else { return }
         let touchedViews = fingerTouches.compactMap(\.view)
         let reachedPDF = !touchedViews.isEmpty && touchedViews.allSatisfy { view in view.isDescendant(of: pdfView) }
         // Another scroll view or a control over the PDF answers the gesture itself.
         if !reachedPDF, touchedViews.contains(where: { view in view is UIControl || view.enclosingScrollViewForHealth.map { scrollView in !scrollView.isDescendant(of: pdfView) } ?? false }) {
-            return
+            let touchedNames = touchedViews.map { view in String(describing: type(of: view)) }
+            return gestureLog.note("Not followed: it began on \(touchedNames), a control or another scroll view over the PDF")
         }
         let scrollView = mainScrollView
         let couldScrollVertically = scrollView.map { scrollView in
@@ -289,9 +322,10 @@ final class PDFPaneHealthMonitor {
                                                      secondsSincePencil: now - observer.lastPencilTouchTime,
                                                      beganOnSelectionFrame: start.beganOnSelectionFrame,
                                                      beganAtSystemGestureEdge: start.beganAtSystemGestureEdge)
-        if !start.wasAnswered, gesture.largestMovement >= UnansweredGestureCount.answerableMovementPoints {
-            Self.log.notice("A finger gesture on the PDF changed nothing; the touch reached the PDF: \(start.reachedPDF)")
-        }
+        let pagesNow = mainScrollView?.contentOffset ?? start.contentOffset
+        gestureLog.note(PDFTouchEvidence.summary(of: gesture, reachedPDF: start.reachedPDF,
+                                                 pagesMovedPoints: hypot(pagesNow.x - start.contentOffset.x, pagesNow.y - start.contentOffset.y),
+                                                 zoomBefore: start.scaleFactor, zoomAfter: pdfView?.scaleFactor ?? 0))
         if start.reachedPDF {
             if start.wasAnswered, let movedGesture = movedGestureToCheck(start, gesture: gesture) {
                 // Answered by moving the pages: whether the move lasts is known a moment later.
@@ -306,7 +340,7 @@ final class PDFPaneHealthMonitor {
         } else {
             guard unansweredOverPDF.add(gesture, at: now), now - lastCoveredRecordTime >= Self.coveredRecordIntervalSeconds else { return }
             lastCoveredRecordTime = now
-            var fields = describe(touchAt: start.locationInWindow)
+            var fields = PDFTouchEvidence.describe(touchAt: start.locationInWindow, pdfView: pdfView, coordinator: coordinator)
             fields["action"] = "None: the touches reached a view over the PDF, which may be one the person meant to use."
             DiagnosticRecords.write(kind: "PDFTouchesReachedAnotherView", fields: fields)
         }
@@ -362,7 +396,7 @@ final class PDFPaneHealthMonitor {
     private func paneStoppedTakingTouches(lastTouchInWindow: CGPoint,
                                           cause: String = "Finger gestures on the PDF changed nothing: no scroll, no zoom, no edit, no text selected.") {
         guard let coordinator, !hasRequestedRebuild else { return }
-        var fields = describe(touchAt: lastTouchInWindow)
+        var fields = PDFTouchEvidence.describe(touchAt: lastTouchInWindow, pdfView: pdfView, coordinator: coordinator)
         fields["cause"] = cause
         fields["action"] = "The PDF's ink was recorded and its view built again, as switching tabs does."
         DiagnosticRecords.write(kind: "PDFStoppedTakingTouches", fields: fields)
@@ -381,7 +415,7 @@ final class PDFPaneHealthMonitor {
         var repairs = coordinator.repairCanvases()
         let now = ProcessInfo.processInfo.systemUptime
         var seenStuck = Set<ObjectIdentifier>()
-        for recognizer in recognizersThePDFWaitsFor() where recognizer.isUnderWayWithoutTouches {
+        for recognizer in PDFTouchEvidence.recognizers(in: pdfView) where recognizer.isUnderWayWithoutTouches {
             let identifier = ObjectIdentifier(recognizer)
             seenStuck.insert(identifier)
             let since = gesturesWithoutTouchesSince[identifier] ?? now
@@ -396,28 +430,36 @@ final class PDFPaneHealthMonitor {
         gesturesWithoutTouchesSince = gesturesWithoutTouchesSince.filter { entry in seenStuck.contains(entry.key) }
         guard !repairs.isEmpty else { return }
         Self.log.error("Repaired the PDF: \(repairs.joined(separator: "; "), privacy: .public)")
-        var fields = describe(touchAt: pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: nil))
+        let middleInWindow = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: nil)
+        var fields = PDFTouchEvidence.describe(touchAt: middleInWindow, pdfView: pdfView, coordinator: coordinator)
         fields["repairs"] = repairs
         DiagnosticRecords.write(kind: "PDFRepaired", fields: fields)
     }
 
-    /// The PDF view's recognizers, its scroll views', and the page canvases', which a page's
-    /// scrolling, zooming and drawing go through.
-    private func recognizersThePDFWaitsFor() -> [UIGestureRecognizer] {
-        guard let pdfView else { return [] }
-        return Self.recognizers(in: pdfView)
-    }
-
-    private static func recognizers(in view: UIView) -> [UIGestureRecognizer] {
-        (view.gestureRecognizers ?? []) + view.subviews.flatMap { subview in recognizers(in: subview) }
-    }
-
     // MARK: Evidence
 
+    /// Writes down what a touch at the middle of the PDF reaches and everything that decides
+    /// whether the PDF answers it, with the last gestures followed, when asked from outside.
+    func captureTouchState() {
+        guard let pdfView, pdfView.window != nil else { return }
+        let middleInWindow = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: nil)
+        var fields = PDFTouchEvidence.describe(touchAt: middleInWindow, pdfView: pdfView, coordinator: coordinator)
+        fields["recentGestures"] = gestureLog.entries
+        fields["monitor"] = "follows this window \(observedWindow === pdfView.window), view being built again \(hasRequestedRebuild)"
+        fields["action"] = "None: captured on request."
+        DiagnosticRecords.write(kind: "PDFTouchStateCaptured", fields: fields)
+    }
+}
+
+/// What a touch on a PDF reaches and the state of everything that decides whether the PDF
+/// answers it, written into the health monitor's records.
+@MainActor
+enum PDFTouchEvidence {
     /// What a touch at a point of the window reaches, and the state of everything that
     /// decides whether the PDF answers it.
-    func describe(touchAt pointInWindow: CGPoint) -> [String: Any] {
+    static func describe(touchAt pointInWindow: CGPoint, pdfView: GraphitePDFDisplayView?, coordinator: PDFAnnotationCoordinator?) -> [String: Any] {
         guard let pdfView, let window = pdfView.window else { return ["pdfView": "not in a window"] }
+        let mainScrollView = pdfView.documentView?.enclosingScrollViewForHealth
         var fields: [String: Any] = [:]
         let touchedView = window.hitTest(pointInWindow, with: nil)
         fields["touchPoint"] = "\(Int(pointInWindow.x)), \(Int(pointInWindow.y))"
@@ -436,7 +478,7 @@ final class PDFPaneHealthMonitor {
                 "zoomScale": Double(scrollView.zoomScale)
             ] as [String: Any]
         }
-        fields["recognizers"] = recognizersThePDFWaitsFor().map(Self.describe)
+        fields["recognizers"] = recognizers(in: pdfView).map(Self.describe)
         fields["windowRecognizers"] = (window.gestureRecognizers ?? []).map(Self.describe)
         fields["pencil"] = PencilActivity.diagnosticDescription
         fields["canvases"] = coordinator?.canvasDiagnostics() ?? []
@@ -474,6 +516,36 @@ final class PDFPaneHealthMonitor {
 
     private static func selectionFrames(in view: UIView) -> [SelectionFrameView] {
         ((view as? SelectionFrameView).map { [$0] } ?? []) + view.subviews.flatMap { subview in selectionFrames(in: subview) }
+    }
+
+    /// The PDF view's recognizers, its scroll views', and the page canvases', which a page's
+    /// scrolling, zooming and drawing go through.
+    static func recognizers(in view: UIView) -> [UIGestureRecognizer] {
+        (view.gestureRecognizers ?? []) + view.subviews.flatMap { subview in recognizers(in: subview) }
+    }
+
+    /// A followed gesture in a line: what it was, and how far the pages and the zoom went for it.
+    static func summary(of gesture: UnansweredGestureCount.Gesture, reachedPDF: Bool, pagesMovedPoints: CGFloat,
+                        zoomBefore: CGFloat, zoomAfter: CGFloat) -> String {
+        "Followed: \(gesture.fingerCount) finger(s) moved \(Int(gesture.largestMovement)) pt, the pages \(Int(pagesMovedPoints)) pt, "
+            + "zoom \(zoomBefore) to \(zoomAfter); answered \(gesture.wasAnswered), could move \(gesture.couldMove), reached the PDF \(reachedPDF), "
+            + "finger draws \(gesture.drawsWithFinger), \(Int(min(gesture.secondsSincePencil, 9_999))) s since the Pencil, "
+            + "on a selection frame \(gesture.beganOnSelectionFrame), at a screen edge \(gesture.beganAtSystemGestureEdge)"
+    }
+}
+
+/// Has the PDFs on screen capture their touch state (`PDFTouchCaptureLink`).
+@MainActor
+enum PDFTouchCapture {
+    /// The monitors alive, held weakly.
+    static let monitors = NSHashTable<PDFPaneHealthMonitor>.weakObjects()
+
+    /// True when the link asked for a capture, which every PDF in a window then writes.
+    static func handle(_ url: URL) -> Bool {
+        guard PDFTouchCaptureLink.matches(url) else { return false }
+        for monitor in monitors.allObjects { monitor.captureTouchState() }
+        DiagnosticContext.note("The PDFs' touch state was captured on request")
+        return true
     }
 }
 

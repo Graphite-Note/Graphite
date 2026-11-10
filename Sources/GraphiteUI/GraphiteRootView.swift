@@ -282,6 +282,10 @@ struct GraphiteRootView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in isKeyboardShown = false }
         #endif
         .onOpenURL { url in
+            #if canImport(UIKit)
+            // A request to write down what the PDFs' touches reach, not a link to a note.
+            if PDFTouchCapture.handle(url) { return }
+            #endif
             if isVaultRestored { Task { await workspace.handle(url) } } else { pendingLinks.append(url) }
         }
         // The scene keeps the window's tabs, for its own restoration after a relaunch.
