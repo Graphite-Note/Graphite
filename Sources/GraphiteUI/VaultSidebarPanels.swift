@@ -118,7 +118,7 @@ enum SidebarPanelSettingKey {
 /// never load its first rows, and would load once per row after that.
 @MainActor @Observable
 final class VaultOverviewModel {
-    var tagCounts: [TagCount] = []
+    var tagCounts: [TagCount] = [] { didSet { if tagCounts != oldValue { tagTreeCache = nil } } }
     var hasLoadedTags = false
     var properties: [PropertySummary] = []
     var hasLoadedProperties = false
@@ -130,6 +130,17 @@ final class VaultOverviewModel {
     var newBookmarkTitle = ""
     var isCreatingBookmarkGroup = false
     private var loadedVaultIdentifier: UUID?
+    /// The nested tags last built, kept until the counts or the order change: building them sorts
+    /// every level by name, and the Tags view asks at each of its updates.
+    @ObservationIgnored private var tagTreeCache: (order: VaultListSortOrder, nodes: [TagTreeNode])?
+
+    /// `tagCounts` nested, each level in `order`.
+    func tagTree(sortedBy order: VaultListSortOrder) -> [TagTreeNode] {
+        if let tagTreeCache, tagTreeCache.order == order { return tagTreeCache.nodes }
+        let nodes = TagTree.nodes(from: tagCounts.map { count in (count.tag, count.fileCount) }, sortedBy: order)
+        tagTreeCache = (order, nodes)
+        return nodes
+    }
 
     func load(_ panel: SidebarPanel, workspace: WorkspaceModel, showsNestedTags: Bool) async {
         // Another vault's lists must not show while this one's load.
@@ -172,98 +183,6 @@ extension View {
             if let renamedProperty = overview.renamedProperty {
                 Text("“\(renamedProperty.key)” is renamed in \(renamedProperty.fileCount == 1 ? "the note" : "all \(renamedProperty.fileCount) notes") that use it.")
             }
-        }
-    }
-}
-
-// MARK: Tags
-
-/// Obsidian's Tags view: every tag in the vault with the notes using it. Tapping a tag
-/// searches for it, nested tags included.
-struct VaultTagsList: View {
-    @Bindable var workspace: WorkspaceModel
-    let overview: VaultOverviewModel
-    @AppStorage(SidebarPanelSettingKey.tagSortOrder) private var sortOrder = VaultListSortOrder.frequencyDescending
-    @AppStorage(SidebarPanelSettingKey.showsNestedTags) private var showsNestedTags = true
-    @State private var expandedTags: Set<String> = []
-
-    /// Opens the graph filtered to a tag's notes, nested tags included; nil while the graph is off.
-    private var showInGraph: ((String) -> Void)? {
-        guard workspace.preferences.isEnabled(.graph) else { return nil }
-        return { [workspace] tag in workspace.showGraph(filteredBy: "tag:#" + tag) }
-    }
-
-    var body: some View {
-        Section {
-            if showsNestedTags {
-                ForEach(TagTree.nodes(from: overview.tagCounts.map { count in (count.tag, count.fileCount) }, sortedBy: sortOrder)) { node in
-                    TagTreeRow(node: node, expandedTags: $expandedTags, search: workspace.searchForTag, showInGraph: showInGraph)
-                }
-            } else {
-                ForEach(sortOrder.sorted(overview.tagCounts, name: \.tag, count: \.fileCount), id: \.tag) { count in
-                    TagRowLabel(title: count.tag, fileCount: count.fileCount, showInGraph: showInGraph.map { show in { show(count.tag) } }) {
-                        workspace.searchForTag(count.tag)
-                    }
-                }
-            }
-            if !overview.hasLoadedTags {
-                ProgressView().frame(maxWidth: .infinity)
-            } else if overview.tagCounts.isEmpty && workspace.isIndexUsable {
-                Text("No tags in this vault yet. Write #tag in a note, or add it to the note's tags property.").foregroundStyle(.secondary)
-            }
-        } footer: {
-            if !workspace.isIndexUsable { Text("Still reading the vault; more tags may appear.") }
-        }
-    }
-}
-
-private struct TagTreeRow: View {
-    let node: TagTreeNode
-    @Binding var expandedTags: Set<String>
-    let search: (String) -> Void
-    let showInGraph: ((String) -> Void)?
-
-    private var isExpanded: Binding<Bool> {
-        Binding(get: { expandedTags.contains(node.id) }, set: { expands in
-            if expands { expandedTags.insert(node.id) } else { expandedTags.remove(node.id) }
-        })
-    }
-
-    var body: some View {
-        let showNodeInGraph = showInGraph.map { show in { show(node.tag) } }
-        if node.children.isEmpty {
-            TagRowLabel(title: node.name, fileCount: node.fileCount, showInGraph: showNodeInGraph) { search(node.tag) }
-        } else {
-            DisclosureGroup(isExpanded: isExpanded) {
-                ForEach(node.children) { child in TagTreeRow(node: child, expandedTags: $expandedTags, search: search, showInGraph: showInGraph) }
-            } label: {
-                TagRowLabel(title: node.name, fileCount: node.fileCount, showInGraph: showNodeInGraph) { search(node.tag) }
-            }
-        }
-    }
-}
-
-private struct TagRowLabel: View {
-    let title: String
-    let fileCount: Int
-    /// Opens the graph filtered to the tag; nil while the graph is off.
-    let showInGraph: (() -> Void)?
-    let search: () -> Void
-
-    var body: some View {
-        Button(action: search) {
-            HStack {
-                Label(title, systemImage: "number").lineLimit(1)
-                Spacer(minLength: 8)
-                Text(fileCount, format: .number).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityHint("Searches for notes with this tag")
-        .contextMenu {
-            Button("Search for Tag", systemImage: "magnifyingglass", action: search)
-            if let showInGraph { Button("Show in Graph", systemImage: "point.3.connected.trianglepath.dotted", action: showInGraph) }
         }
     }
 }

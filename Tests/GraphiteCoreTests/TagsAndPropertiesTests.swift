@@ -27,6 +27,26 @@ final class TagsAndPropertiesTests: XCTestCase {
         XCTAssertEqual(nodes.first?.children.first?.children.map(\.tag), ["Project/alpha/notes"])
     }
 
+    func testVisibleRowsShowNestedTagsOnlyUnderExpandedTagsOneLevelDeeper() {
+        let nodes = TagTree.nodes(from: [("course", 5), ("Course/math", 3), ("course/math/linear", 1), ("course/physics", 4), ("exam", 2)],
+                                  sortedBy: .nameAscending)
+        let collapsed = TagTree.visibleRows(of: nodes, expandedTags: [])
+        XCTAssertEqual(collapsed.map(\.tag), ["course", "exam"])
+        XCTAssertEqual(collapsed.map(\.hasNestedTags), [true, false])
+
+        let courseOpen = TagTree.visibleRows(of: nodes, expandedTags: ["course"])
+        XCTAssertEqual(courseOpen.map(\.name), ["course", "math", "physics", "exam"])
+        XCTAssertEqual(courseOpen.map(\.depth), [0, 1, 1, 0])
+
+        // Kept by the lowercased tag; an expanded tag under a collapsed one stays hidden.
+        let mathOpenOnly = TagTree.visibleRows(of: nodes, expandedTags: ["course/math"])
+        XCTAssertEqual(mathOpenOnly.map(\.tag), ["course", "exam"])
+        let both = TagTree.visibleRows(of: nodes, expandedTags: ["course", "course/math"])
+        XCTAssertEqual(both.map(\.tag), ["course", "Course/math", "course/math/linear", "course/physics", "exam"])
+        XCTAssertEqual(both.map(\.depth), [0, 1, 2, 1, 0])
+        XCTAssertEqual(both[1].fileCount, 3)
+    }
+
     func testSortOrdersBreakTiesByName() {
         let items = [("b", 2), ("a", 2), ("c", 5), ("Item 10", 1), ("Item 9", 1)]
         XCTAssertEqual(VaultListSortOrder.nameAscending.sorted(items, name: \.0, count: \.1).map(\.0), ["a", "b", "c", "Item 9", "Item 10"])

@@ -33,6 +33,22 @@ public struct TagTreeNode: Identifiable, Equatable, Sendable {
     public var id: String { tag.lowercased() }
 }
 
+/// One row of the nested Tags view: a tag, how deep it is nested, and whether tags are nested
+/// under it.
+public struct TagTreeVisibleRow: Identifiable, Equatable, Sendable {
+    /// The whole tag, such as `course/math`.
+    public let tag: String
+    /// The part after the last slash, such as `math`.
+    public let name: String
+    /// Notes with this tag or a tag nested under it.
+    public let fileCount: Int
+    /// 0 for a tag at the top, 1 for one nested in it, and so on.
+    public let depth: Int
+    public let hasNestedTags: Bool
+    /// The `id` of the tag's `TagTreeNode`, which the expanded tags are kept by.
+    public var id: String { tag.lowercased() }
+}
+
 public enum TagTree {
     /// Nests `course/math` under `course`, as Obsidian's Tags view does with nested tags
     /// shown. `counts` should hold every level, each counting the notes with that tag or
@@ -62,6 +78,25 @@ public enum TagTree {
             return order.sorted(children, name: \.name, count: \.fileCount)
         }
         return nodes(under: "")
+    }
+
+    /// The rows of the nested Tags view, top to bottom: each top tag, and under an expanded tag
+    /// the tags nested in it, one level deeper. The view draws them as one flat list with an
+    /// indent per level: SwiftUI's outline list on the Mac looks up each row of a disclosure
+    /// group by walking the rows before it, which froze the main thread for about 4 s when the
+    /// Tags view of a vault with 3,000 tags appeared (measured 2026-11-10).
+    /// - Parameter expandedTags: The `id`s of the tags whose nested tags are shown.
+    public static func visibleRows(of nodes: [TagTreeNode], expandedTags: Set<String>) -> [TagTreeVisibleRow] {
+        var rows: [TagTreeVisibleRow] = []
+        func appendRows(of levelNodes: [TagTreeNode], depth: Int) {
+            for node in levelNodes {
+                rows.append(TagTreeVisibleRow(tag: node.tag, name: node.name, fileCount: node.fileCount, depth: depth,
+                                              hasNestedTags: !node.children.isEmpty))
+                if !node.children.isEmpty, expandedTags.contains(node.id) { appendRows(of: node.children, depth: depth + 1) }
+            }
+        }
+        appendRows(of: nodes, depth: 0)
+        return rows
     }
 
     /// `course` for `course/math`; nil for a tag at the top.
