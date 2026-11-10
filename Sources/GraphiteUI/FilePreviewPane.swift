@@ -160,72 +160,26 @@ extension ImagePane {
             if image == nil && message != nil { Spacer() }
         }
         #else
-        ScrollView([.horizontal, .vertical]) {
-            VStack(spacing: 20) {
-                if let image {
-                    Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 1100)
-                } else if message == nil {
-                    ProgressView().padding(80)
-                }
-                if let message { Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center) }
-                if image == nil && message != nil {
-                    Button("Preview") { previewLocation = location }.buttonStyle(.borderedProminent)
-                }
+        // Pinch and double-click zoom, as in Preview.
+        VStack(spacing: 20) {
+            if let image, let picture = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                MagnifyingImageView(image: picture)
+            } else if message == nil {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                Spacer()
             }
-            .padding(32)
-            .frame(maxWidth: .infinity)
+            if let message { Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.horizontal, 32) }
+            if image == nil && message != nil {
+                Button("Preview") { previewLocation = location }.buttonStyle(.borderedProminent)
+                Spacer()
+            }
         }
         #endif
     }
 }
 
 #if canImport(UIKit)
-/// An image from a note shown full screen, to zoom into, as in Photos.
-struct ImageViewer: View {
-    let location: URL
-    let title: String
-    /// Opens the drawing editor over this image; nil for drawings and outside notes.
-    var drawOnImage: (() -> Void)? = nil
-    @Environment(\.dismiss) private var dismiss
-    @State private var image: UIImage?
-    @State private var message: String?
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if let image {
-                    ZoomableImageView(image: image)
-                } else if let message {
-                    ContentUnavailableView("Can't Show This Image", systemImage: "photo", description: Text(message))
-                } else {
-                    ProgressView()
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color.black)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if let drawOnImage {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button("Draw on Image", systemImage: "pencil.tip.crop.circle.badge.plus", action: drawOnImage)
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
-            }
-        }
-        .preferredColorScheme(.dark)
-        .task {
-            do {
-                let decodedImage = try await ImageFileService().displayImage(at: location, maximumPixelDimension: 4096)
-                image = UIImage(decodedImage: decodedImage)
-            } catch {
-                message = error.localizedDescription
-            }
-        }
-    }
-}
-
 /// An image that fits the view and zooms with a pinch, or to double size with a double tap.
 struct ZoomableImageView: UIViewRepresentable {
     let image: UIImage
@@ -246,6 +200,9 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     private let imageView = UIImageView()
     private var fittedBoundsSize: CGSize = .zero
     private static let margin: CGFloat = 24
+    /// Runs on a single tap while the image is fitted, not zoomed in; nil does nothing. The
+    /// zoom over a note closes with it, as Obsidian's does.
+    var singleTapWhileFitted: (() -> Void)?
 
     var image: UIImage? {
         get { imageView.image }
@@ -274,6 +231,14 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
         let doubleTap = UITapGestureRecognizer(target: self, action: #selector(toggleZoom(_:)))
         doubleTap.numberOfTapsRequired = 2
         addGestureRecognizer(doubleTap)
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(singleTapped))
+        singleTap.require(toFail: doubleTap)
+        addGestureRecognizer(singleTap)
+    }
+
+    @objc private func singleTapped() {
+        guard zoomScale <= minimumZoomScale + 0.001 else { return }
+        singleTapWhileFitted?()
     }
 
     required init?(coder: NSCoder) { nil }
@@ -348,11 +313,13 @@ struct EmbeddedImageView: View {
     let displayWidth: CGFloat?
     /// Opens the drawing editor; nil for an image that is not an editable drawing.
     let edit: (() -> Void)?
-    /// Shows the image full screen.
+    /// Zooms into the image over the window.
     let view: (() -> Void)?
     /// Opens the drawing editor over the image; nil for drawings and where drawings are off.
     let drawOnImage: (() -> Void)?
     @State private var decodedImages = DecodedImageCache()
+    /// Whether the pointer or Apple Pencil rests over the image, which shows its Zoom button.
+    @State private var isHovered = false
     @Environment(\.colorScheme) private var colorScheme
 
     /// A drawing is saved as it looks on white paper, and a drawing without paper of its
@@ -394,14 +361,17 @@ struct EmbeddedImageView: View {
                     .buttonStyle(.plain)
                     .padding(10)
                     .accessibilityLabel("Edit Drawing")
+                } else if let view, isHovered {
+                    zoomButton(view)
                 }
             }
             .contentShape(Rectangle())
+            .onHover { isPointerOver in isHovered = isPointerOver }
             .onTapGesture { (edit ?? view)?() }
             .contextMenu {
                 if let edit { Button("Edit Drawing", systemImage: "pencil.tip.crop.circle", action: edit) }
                 if let drawOnImage { Button("Draw on Image", systemImage: "pencil.tip.crop.circle.badge.plus", action: drawOnImage) }
-                if let view { Button("View Full Screen", systemImage: "arrow.up.left.and.arrow.down.right", action: view) }
+                if let view { Button("Zoom In", systemImage: "plus.magnifyingglass", action: view) }
                 #if canImport(UIKit)
                 Button("Copy Image", systemImage: "doc.on.doc") { copyImage() }
                 #endif
@@ -411,6 +381,20 @@ struct EmbeddedImageView: View {
             .accessibilityActions {
                 if let drawOnImage { Button("Draw on Image", action: drawOnImage) }
             }
+    }
+
+    /// Obsidian's image zoom: a magnifier at the corner while the pointer is on the image.
+    private func zoomButton(_ zoom: @escaping () -> Void) -> some View {
+        Button(action: zoom) {
+            Image(systemName: "plus.magnifyingglass")
+                .font(.body.weight(.semibold))
+                .frame(width: 32, height: 32)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .help("Zoom in")
+        .padding(8)
+        .accessibilityLabel("Zoom In")
     }
 
     #if canImport(UIKit)

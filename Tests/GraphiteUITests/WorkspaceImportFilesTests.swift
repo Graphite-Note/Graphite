@@ -10,6 +10,7 @@
  */
 
 import XCTest
+import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteIndex
 import GraphiteApple
@@ -58,6 +59,48 @@ final class WorkspaceImportFilesTests: XCTestCase {
         XCTAssertNil(workspace.errorMessage)
         XCTAssertEqual(try String(contentsOf: vault.appendingPathComponent("Notes.md"), encoding: .utf8), "existing")
         XCTAssertEqual(try String(contentsOf: vault.appendingPathComponent("Notes 1.md"), encoding: .utf8), "from text")
+    }
+
+    // MARK: Drops on a note in the reading view
+
+    /// The reading view has no cursor: a file from another app is saved as an attachment and
+    /// embedded at the end of the note, and an item of the vault is linked there, in the
+    /// order dropped. The source file stays where it was.
+    func testFilesDroppedOnANoteInTheReadingViewAreEmbeddedAtItsEnd() async throws {
+        let (workspace, vault) = try await makeWorkspace(files: ["Note.md": "First line\n", "Course/Slides.pdf": "pdf"])
+        await workspace.open(try VaultPath("Note.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        let photo = try outsideFile(named: "Board.png", contents: "png")
+        let providers = [NSItemProvider(object: photo as NSURL), try vaultItemProvider(path: "Course/Slides.pdf")]
+
+        XCTAssertTrue(workspace.receiveDrop(providers, intoNote: session))
+        try await waitUntil("both items are in the note") { session.text.contains("Board.png") && session.text.contains("Slides.pdf") }
+
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertTrue(session.text.hasPrefix("First line\n"), session.text)
+        let photoEmbed = try XCTUnwrap(session.text.range(of: "![[Board.png]]"), session.text)
+        let slidesLink = try XCTUnwrap(session.text.range(of: "Slides.pdf"), session.text)
+        XCTAssertLessThan(photoEmbed.lowerBound, slidesLink.lowerBound, "In the order dropped.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Board.png").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path), "The source is copied, never moved.")
+    }
+
+    func testADropOfAWebAddressOnANoteIsRefused() async throws {
+        let (workspace, _) = try await makeWorkspace(files: ["Note.md": "Text\n"])
+        await workspace.open(try VaultPath("Note.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        XCTAssertFalse(workspace.receiveDrop([NSItemProvider(object: URL(string: "https://example.com")! as NSURL)], intoNote: session))
+        XCTAssertEqual(session.text, "Text\n")
+    }
+
+    private func vaultItemProvider(path: String) throws -> NSItemProvider {
+        let encoded = try JSONEncoder().encode(VaultItemTransfer(path: path))
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.graphiteVaultItem.identifier, visibility: .all) { completion in
+            completion(encoded, nil)
+            return nil
+        }
+        return provider
     }
 
     // MARK: Notebooks dragged in from another app

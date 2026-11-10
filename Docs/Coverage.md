@@ -2,7 +2,15 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-07.
+Last updated: 2026-11-09.
+
+## Zooming into pictures, and drops from any app: 2026-11-09
+
+A picture in a note zooms in over the window, as Obsidian's image zoom does (`ImageZoomOverlay`, `Docs/Image-zoom-and-new-tab-todo.md` section 1, issue #76), instead of a full-screen viewer on the iPad and Quick Look on the Mac: a picture on its own line on a tap or from its magnifier, a picture in a sentence or a table cell on a tap or click, in the reading view and in Live Preview. Photos and files of any type from any app can be dropped on a note (editor and reading view) and on the file tree, on the iPad, the iPhone and the Mac (`Docs/Drag-and-drop-todo.md`, issues #144 and #145).
+
+- **Automated tests, passing on macOS:** `UiReadingViewTests.testAnImageInsideTextIsALinkThatZoomsIntoIt` (a table picture's run carries the zoom link, following it zooms and opens no file, a web picture gets none; it caught a first version that wrapped the Markdown in a link, which Foundation's parser turns into text), `ImageZoomOverlayMacTests` (2: the fit and magnification range, a click closes only while fitted), `LibraryDropReaderTests` (HEIC and JPEG offered together take the JPEG; an app's own file type arrives under its name), `WorkspaceImportFilesTests` (a photo and a vault item dropped on a note in the reading view are embedded at its end in order; a web address is refused), `UiFileTreeNativeMacTests.testAFileFromTheFinderIsCopiedIntoTheFolderItLandsIn`.
+- **Seen:** in a Debug copy of the Mac app, a picture on its own line and one in a Live Preview table zoom, Escape and the close button close the zoom and the note keeps its place (a click on a table picture opened the cell editor before the fix); in the iPad simulator, a picture in a sentence and one in a table in the reading view zoom, and a tap on the fitted picture closes it.
+- **Not established:** pinch and trackpad zoom by hand, the magnifier on hover and Apple Pencil hover, callouts and embedded notes; every drop from a real drag (Photos, Files, Messages, the Finder, Mail) on any device: drags between apps could not be driven here.
 
 ## Graphite runs its own choice of community plugins: 2026-11-07
 

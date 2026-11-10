@@ -100,14 +100,30 @@ enum LibraryDropReader {
         provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
     }
 
+    /// Picture types Obsidian shows everywhere, taken before another representation of the
+    /// same picture: Photos offers a photo as HEIC and as JPEG, and Obsidian shows no HEIC.
+    private static let widelyShownPictureTypes: [UTType] = [.png, .jpeg, .gif, .webP]
+
     /// The type to import a file by: data or a folder that is not an address, and not text unless
-    /// the provider names a file (a dragged selection of text has no name).
+    /// the provider names a file (a dragged selection of text has no name); failing that, any
+    /// other type of an item its app names.
     static func importableType(of provider: NSItemProvider) -> UTType? {
-        provider.registeredContentTypes.first { type in
-            guard !type.conforms(to: .url) else { return false }
+        if provider.registeredContentTypes.contains(where: { type in type.conforms(to: .image) }),
+           let pictureType = widelyShownPictureTypes.first(where: { type in provider.registeredContentTypes.contains(type) }) {
+            return pictureType
+        }
+        let types = provider.registeredContentTypes.filter { type in !type.conforms(to: .url) && type != .graphiteVaultItem }
+        if let type = types.first(where: { type in
             if type.conforms(to: .text) { return provider.suggestedName != nil }
             return type.conforms(to: .data) || type.conforms(to: .directory) || type.conforms(to: .package)
+        }) {
+            return type
         }
+        // An app's own file type that declares no conformance (a campus or messaging app's
+        // document, or a dynamic type the system made up for it) is still a file when the app
+        // names it.
+        guard provider.suggestedName != nil else { return nil }
+        return types.first { type in !type.conforms(to: .text) }
     }
 
     // MARK: Loading

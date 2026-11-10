@@ -11,10 +11,7 @@ public enum DroppedFileStaging {
     /// `unnamedFileStem`; a name without an extension gets `fileExtension`, and a hidden name (the
     /// system's temporary name for an item with none) counts as none.
     public static func stage(_ file: URL, namedAfter suggestedName: String? = nil, fileExtension: String? = nil) throws -> (copy: URL, folder: URL) {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("GraphiteDroppedFiles", isDirectory: true)
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let folder = try makeStagingFolder()
         let name = fileName(suggestedName: suggestedName, fileName: file.lastPathComponent, fileExtension: fileExtension ?? file.pathExtension)
         let copy = folder.appendingPathComponent(name)
         do {
@@ -24,6 +21,16 @@ public enum DroppedFileStaging {
             throw error
         }
         return (copy, folder)
+    }
+
+    /// A new empty folder for staged files, removed with `discard` once they are imported.
+    /// Files promised by another app (Photos and Mail on the Mac) are written into one.
+    public static func makeStagingFolder() throws -> URL {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GraphiteDroppedFiles", isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder
     }
 
     /// The name a staged copy gets; see `stage`.

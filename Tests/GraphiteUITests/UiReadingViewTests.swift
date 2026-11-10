@@ -150,6 +150,34 @@ final class UiReadingViewTests: XCTestCase {
         XCTAssertFalse(String(attributed.characters).contains("final.png"))
     }
 
+    // MARK: Zooming into an image inside text
+
+    /// An image of the vault inside text (a sentence, a table cell) is drawn by the text, where
+    /// only links take a tap or a click, so it carries a link that zooms into it, as Obsidian
+    /// zooms; following that link zooms and navigates nowhere. An image that is already a
+    /// link's text keeps its own link, and a web image gets none.
+    func testAnImageInsideTextIsALinkThatZoomsIntoIt() async throws {
+        try Data([0x89, 0x50, 0x4E, 0x47]).write(to: vault.appendingPathComponent("Scan 2) final.png"))
+        let build = try await build("| Figure |\n| --- |\n| ![[Scan 2) final.png]] |\n", note: "Note.md")
+        let text = markdownTexts(build.blocks).joined(separator: "\n")
+        let attributed = try ObsidianMarkdownParser(baseURL: vault, textSize: 17).attributedString(for: text)
+        let imageRuns = attributed.runs.filter { run in run.imageURL != nil }
+        XCTAssertEqual(imageRuns.count, 1, text)
+        let zoomLink = try XCTUnwrap(imageRuns.first?.link, text)
+        XCTAssertEqual(GraphiteOpenLink.zoomedImagePath(of: zoomLink), try VaultPath("Scan 2) final.png"))
+
+        var zoomedPaths: [VaultPath] = []
+        var navigatedTargets: [String] = []
+        let action = ObsidianMarkdownText.linkAction(root: vault, navigate: { target, _ in navigatedTargets.append(target) }, scrollToHeading: nil,
+                                                     zoomImage: { path in zoomedPaths.append(path) })
+        action(zoomLink)
+        XCTAssertEqual(zoomedPaths, [try VaultPath("Scan 2) final.png")])
+        XCTAssertEqual(navigatedTargets, [], "A zoom opens no file.")
+
+        let web = try ObsidianMarkdownParser(baseURL: vault, textSize: 17).attributedString(for: "A ![chart](https://example.com/chart.png) here")
+        XCTAssertEqual(web.runs.compactMap(\.link), [], "An image from the web is not the vault's to zoom.")
+    }
+
     // MARK: Task markers (F189)
 
     func testLongTaskListIsRenderedInLinearTime() throws {

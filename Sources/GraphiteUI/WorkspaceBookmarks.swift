@@ -28,8 +28,12 @@ extension WorkspaceModel {
         catch { errorMessage = error.localizedDescription }
     }
 
+    /// Whether a file or folder is bookmarked. Only the bookmarks are asked: a path is a file
+    /// or a folder, never both, so the file system need not say which. Every library tile and
+    /// file row asks at each drawing; asking whether the path was a folder resolved it on disk
+    /// one component at a time, which made switching to the library take up to two seconds.
     func isBookmarked(_ path: VaultPath) -> Bool {
-        (isDirectory(path) ? bookmarks.folderBookmark(for: path) : bookmarks.fileBookmark(for: path)) != nil
+        bookmarks.fileBookmark(for: path) != nil || bookmarks.folderBookmark(for: path) != nil
     }
 
     /// Bookmarks a file or folder, or removes its bookmark, as Obsidian's "Bookmark" does.
