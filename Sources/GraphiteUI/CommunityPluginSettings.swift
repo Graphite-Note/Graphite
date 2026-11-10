@@ -5,8 +5,8 @@
  * Description: Settings > Community Plugins: turning plugins on for the vault, installing, browsing and removing them.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
- * Date: 07/11/2026
+ * Version: 0.9
+ * Date: 10/11/2026
  */
 
 import SwiftUI
@@ -161,14 +161,7 @@ private struct InstalledCommunityPluginRow: View {
             if let status = statusText {
                 Label(status, systemImage: statusSymbol).font(.caption).foregroundStyle(statusColor)
             }
-            if !desktopModules.isEmpty {
-                Text("Parts that use " + desktopModules.joined(separator: ", ") + " work only in Obsidian's desktop app.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            if !limitations.isEmpty {
-                Text("Not available in Graphite: " + limitations.joined(separator: "; ") + ".")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
+            whatGraphiteLacks
             ForEach(host.runtimeProblems[plugin.id] ?? [], id: \.self) { problem in
                 Text(problem).font(.caption).foregroundStyle(.orange)
             }
@@ -183,6 +176,22 @@ private struct InstalledCommunityPluginRow: View {
             .font(.callout)
         }
         .padding(.vertical, 4)
+    }
+
+    /// What Graphite does itself instead, and what of the plugin cannot work in Graphite.
+    @ViewBuilder private var whatGraphiteLacks: some View {
+        if let graphiteDoesIt = CommunityPluginList.pluginsGraphiteDoesItself[plugin.id] {
+            Text(graphiteDoesIt + " Off in Graphite unless switched on here; Obsidian keeps its own choice.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if !desktopModules.isEmpty {
+            Text("Parts that use " + desktopModules.joined(separator: ", ") + " work only in Obsidian's desktop app.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        if !limitations.isEmpty {
+            Text("Not available in Graphite: " + limitations.joined(separator: "; ") + ".")
+                .font(.caption).foregroundStyle(.secondary)
+        }
     }
 
     private var state: CommunityPluginLoadState { host.loadStates[plugin.id] ?? .notStarted }

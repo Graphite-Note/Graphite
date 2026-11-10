@@ -2,7 +2,15 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-09.
+Last updated: 2026-11-10.
+
+## Graphite leaves out by default the plugins whose work it does itself: 2026-11-10
+
+While Graphite has no plugin list of its own, it runs Obsidian's without Omnisearch (Graphite's search), Maps (Graphite's map views), Colors (the Colors core plugin) and LaTeX Suite (editor extensions only, which Graphite's editor does not run); each can be switched on in Graphite, and Settings says what does its work (`CommunityPluginList.pluginsGraphiteDoesItself`, `Docs/Separate-plugin-list-todo.md` section 2, issue #148).
+
+- **Measured** in a Debug copy of the Mac app on a vault shaped like the owner's, with all six on in Obsidian: the plugins' page 577 MB before, 248 MB after; 67 MB with only Course Timetable for Bases on in Graphite.
+- **Automated test:** `CommunityPluginTests.testPluginsGraphiteDoesItselfStayOffInGraphiteUntilSwitchedOnThere`; the `CommunityPlugin` Swift tests pass (193).
+- **Not established:** on the iPad; with the owner's vault.
 
 ## Zooming into pictures, and drops from any app: 2026-11-09
 

@@ -5,8 +5,8 @@
  * Description: Plugin lists, manifests, inventory and the vault bridge's answers.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.10
- * Date: 07/11/2026
+ * Version: 0.11
+ * Date: 10/11/2026
  */
 
 import XCTest
@@ -87,17 +87,37 @@ final class CommunityPluginTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".obsidian/community-plugins.json").path))
         XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".graphite/community-plugins.json").path), "No file for a change that changes nothing.")
 
-        let obsidianList = "[\n  \"omnisearch\",\n  \"course-timetable-bases\"\n]"
+        let obsidianList = "[\n  \"dataview\",\n  \"course-timetable-bases\"\n]"
         try write(obsidianList, to: ".obsidian/community-plugins.json")
         let followed = try await store.communityPluginList()
-        XCTAssertEqual(followed.enabledIdentifiers, ["omnisearch", "course-timetable-bases"], "Without its own list, Graphite runs Obsidian's.")
+        XCTAssertEqual(followed.enabledIdentifiers, ["dataview", "course-timetable-bases"], "Without its own list, Graphite runs Obsidian's.")
         try await store.updateCommunityPluginList { list in list.setEnabled("course-timetable-bases", true) }
         XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".graphite/community-plugins.json").path), "Turning on a plugin already on changes nothing.")
 
-        let updated = try await store.updateCommunityPluginList { list in list.setEnabled("omnisearch", false) }
+        let updated = try await store.updateCommunityPluginList { list in list.setEnabled("dataview", false) }
         XCTAssertEqual(updated.enabledIdentifiers, ["course-timetable-bases"])
         XCTAssertEqual(try read(".graphite/community-plugins.json"), "[\n  \"course-timetable-bases\"\n]", "The first switch starts Graphite's list from Obsidian's.")
         XCTAssertEqual(try read(".obsidian/community-plugins.json"), obsidianList, "Obsidian's list is left byte for byte.")
+    }
+
+    func testPluginsGraphiteDoesItselfStayOffInGraphiteUntilSwitchedOnThere() async throws {
+        let store = VaultStore(root: vault)
+        let obsidianList = "[\n  \"omnisearch\",\n  \"maps\",\n  \"obsidian-latex-suite\",\n  \"colors\",\n  \"dataview\",\n  \"course-timetable-bases\"\n]"
+        try write(obsidianList, to: ".obsidian/community-plugins.json")
+        let followed = try await store.communityPluginList()
+        XCTAssertEqual(followed.enabledIdentifiers, ["dataview", "course-timetable-bases"],
+                       "Search, map views, colored text and Obsidian's editor extensions are Graphite's own, so it does not run those plugins.")
+
+        try await store.updateCommunityPluginList { list in list.setEnabled("omnisearch", false) }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent(".graphite/community-plugins.json").path),
+                       "Switching off a plugin Graphite does not run changes nothing.")
+
+        let updated = try await store.updateCommunityPluginList { list in list.setEnabled("omnisearch", true) }
+        XCTAssertEqual(updated.enabledIdentifiers, ["dataview", "course-timetable-bases", "omnisearch"], "Switched on in Graphite, it runs.")
+        XCTAssertEqual(try read(".graphite/community-plugins.json"), "[\n  \"dataview\",\n  \"course-timetable-bases\",\n  \"omnisearch\"\n]")
+        XCTAssertEqual(try read(".obsidian/community-plugins.json"), obsidianList, "Obsidian's list is left byte for byte.")
+        let readAgain = try await store.communityPluginList()
+        XCTAssertTrue(readAgain.isEnabled("omnisearch"), "Graphite's own list is taken as written.")
     }
 
     func testObsidiansLaterChangesDoNotReachGraphitesList() async throws {
