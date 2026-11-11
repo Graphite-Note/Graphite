@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.15
- * Date: 05/11/2026
+ * Version: 0.16
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -111,6 +111,9 @@ public enum LivePreviewBlockScanner {
         while lineIndex < lines.count {
             let content = lines[lineIndex].content
             let trimmedContent = content.trimmingCharacters(in: .whitespaces)
+            // Whether the line comes after a list item's text, where an item indented four
+            // columns or more is a nested item and not indented code.
+            let followsListItem = listItems.innermostContentColumn > 0
             if let (fence, info, _) = listItems.fenceOpening(of: content) {
                 let language = info.lowercased()
                 var closingIndex = lineIndex + 1
@@ -186,7 +189,7 @@ public enum LivePreviewBlockScanner {
                 if !embed.isRemoteImage {
                     blocks.append(LivePreviewBlock(kind: .embed(embed), range: lines[lineIndex].range, markdown: content))
                 }
-            } else if let pieces = imageLinePieces(ofParagraphLine: content) {
+            } else if let pieces = imageLinePieces(ofParagraphLine: content) ?? imageLinePieces(ofListItem: content, followsListItem: followsListItem) {
                 blocks.append(LivePreviewBlock(kind: .imageLine(pieces), range: lines[lineIndex].range, markdown: content))
             } else if MarkdownHeadingSyntax.level(of: content) == nil,
                       let opening = mathLines.opening(at: lineIndex), let closingLineIndex = opening.closingLineIndex {
@@ -207,7 +210,8 @@ public enum LivePreviewBlockScanner {
     }
 
     /// The pieces of a paragraph line that embeds images among its text. A heading, a list
-    /// item, a quote, a table row or indented code keeps its own drawing, its images inline.
+    /// item (`imageLinePieces(ofListItem:followsListItem:)`), a quote, a table row or indented
+    /// code keeps its own drawing, its images inline.
     private static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
         guard line.contains("!["), MarkdownHeadingSyntax.level(of: line) == nil, !MarkdownListSyntax.isListItem(line) else { return nil }
         var indentationColumns = 0
@@ -218,6 +222,22 @@ public enum LivePreviewBlockScanner {
         guard indentationColumns < 4, let first = line.first(where: { character in character != " " && character != "\t" }),
               first != ">", first != "|" else { return nil }
         return EmbedLocator.imageLinePieces(onLine: line)
+    }
+
+    /// The pieces of a list item whose text embeds images, as `- ![[a.jpg|200]] ![[b.jpg|200]]`:
+    /// its marker, then its text and images as a paragraph line's. Obsidian draws the bullet or
+    /// number with the pictures beside it. A task keeps its text, so its checkbox can still be
+    /// ticked there, and so does an item in a quote, which a callout draws.
+    private static func imageLinePieces(ofListItem line: String, followsListItem: Bool) -> [ImageLinePiece]? {
+        guard line.contains("!["), let listLine = MarkdownListSyntax.listLine(line), listLine.isListItem,
+              listLine.quotePrefix.isEmpty, listLine.taskStatus == nil else { return nil }
+        let indentationColumns = listLine.indentation.reduce(0) { columns, character in character == "\t" ? columns + 4 - columns % 4 : columns + 1 }
+        guard indentationColumns < 4 || followsListItem else { return nil }
+        // The marker written over by spaces, so the embeds keep their places in the line.
+        let markerLength = listLine.prefixLength
+        let itemText = String(repeating: " ", count: markerLength) + (line as NSString).substring(from: markerLength)
+        guard let pieces = EmbedLocator.imageLinePieces(onLine: itemText) else { return nil }
+        return [.listMarker(ImageLineListMarker(indentation: listLine.indentation, marker: listLine.marker, spacing: listLine.spacing))] + pieces
     }
 
     /// `text` with its `%%` comments written over by spaces, line breaks kept, so every offset

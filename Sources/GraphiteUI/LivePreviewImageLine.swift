@@ -2,12 +2,13 @@
  * File: LivePreviewImageLine.swift
  * --------------------------------
  * Layer: UI
- * Description: Live Preview's drawing of a line that shows images among its text: the pictures side by side
- *              at their sizes, wrapping at the column's width, with the text between them.
+ * Description: Live Preview's drawing of a line or list item that shows images among its text: the pictures
+ *              side by side at their sizes, wrapping at the column's width, with the text between them and the
+ *              item's bullet or number before them.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -18,15 +19,36 @@ import GraphiteCore
 /// while they fit, then on the next row. Each picture is an ordinary Live Preview embed,
 /// so it is looked up and decoded when the line comes into view, for the width it is
 /// shown at, through the shared image cache; a tap on the text shows the source.
+///
+/// A list item (`- ![[a.jpg|200]] ![[b.jpg|200]]`) has its bullet or number before the
+/// pictures, as wide as the editor draws its marker and indentation, so it lines up with the
+/// list's other items; the rows the pictures wrap onto start under the first picture.
 struct LivePreviewImageLineView: View {
     let pieces: [ImageLinePiece]
     let environment: LivePreviewEnvironment
     let revealSource: () -> Void
 
     var body: some View {
+        if case .listMarker(let marker)? = pieces.first {
+            HStack(alignment: .imageLineFirstRowBottom, spacing: 0) {
+                ImageLineListMarkerView(marker: marker, environment: environment)
+                    .alignmentGuide(.imageLineFirstRowBottom) { dimensions in dimensions[.bottom] }
+                    .contentShape(Rectangle())
+                    .onTapGesture(perform: revealSource)
+                flow(of: Array(pieces.dropFirst()))
+            }
+        } else {
+            flow(of: pieces)
+        }
+    }
+
+    private func flow(of pieces: [ImageLinePiece]) -> some View {
         ImageLineFlowLayout {
             ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
                 switch piece {
+                // Only ever the first piece, drawn before the flow.
+                case .listMarker:
+                    EmptyView()
                 case .text(let text):
                     RenderedMarkdownBlock(markdown: text, environment: environment)
                         .contentShape(Rectangle())
@@ -44,8 +66,12 @@ struct LivePreviewImageLineView: View {
     /// four by three where no height is given, and its text as a line of text, in rows as
     /// `ImageLineFlowLayout` places them.
     nonisolated static func estimatedHeight(of pieces: [ImageLinePiece], columnWidth: CGFloat) -> CGFloat {
-        let sizes = pieces.map { piece -> CGSize in
+        let markerWidth: CGFloat = pieces.contains { piece in if case .listMarker = piece { true } else { false } } ? estimatedMarkerWidth : 0
+        let columnWidth = max(columnWidth - markerWidth, 1)
+        let sizes = pieces.compactMap { piece -> CGSize? in
             switch piece {
+            case .listMarker:
+                return nil
             case .text(let text):
                 return CGSize(width: min(columnWidth, CGFloat(text.count) * estimatedCharacterWidth), height: estimatedTextHeight)
             case .image(let embed):
@@ -58,6 +84,66 @@ struct LivePreviewImageLineView: View {
 
     nonisolated private static let estimatedCharacterWidth: CGFloat = 8
     nonisolated private static let estimatedTextHeight: CGFloat = 24
+    /// A bullet and its space, about three characters.
+    nonisolated private static let estimatedMarkerWidth: CGFloat = 24
+}
+
+extension VerticalAlignment {
+    private enum ImageLineFirstRowBottom: AlignmentID {
+        static func defaultValue(in dimensions: ViewDimensions) -> CGFloat { dimensions[.bottom] }
+    }
+
+    /// The bottom of an image line's first row, which a list item's marker stands on, as text
+    /// stands on the bottom of the pictures beside it.
+    static let imageLineFirstRowBottom = VerticalAlignment(ImageLineFirstRowBottom.self)
+}
+
+/// A list item's bullet or number, drawn where the editor draws it on the item's other lines:
+/// after the item's indentation, followed by the space before its text, all as wide as that
+/// text is in the note's font. A bullet is a dot centered on the lowercase letters, as the
+/// editor draws one (`ConcealedReplacementLayoutFragment`); a number is shown as written.
+struct ImageLineListMarkerView: View {
+    let marker: ImageLineListMarker
+    let environment: LivePreviewEnvironment
+
+    var body: some View {
+        let font = environment.typography.textFont(ofSize: environment.textSize)
+        let widths = Self.widths(of: marker, in: font)
+        let color = environment.theme?.listMarkerColor.map { color in Color(color) } ?? .secondary
+        ZStack(alignment: .leading) {
+            Text(marker.isBullet ? "-" : marker.marker)
+                .font(environment.typography.textSwiftUIFont(size: environment.textSize))
+                .foregroundStyle(marker.isBullet ? AnyShapeStyle(.clear) : AnyShapeStyle(color))
+                .fixedSize()
+                .overlay {
+                    if marker.isBullet {
+                        let diameter = max(5, font.pointSize * 0.3)
+                        GeometryReader { proxy in
+                            Circle().fill(color).frame(width: diameter, height: diameter)
+                                .position(x: proxy.size.width / 2, y: font.ascender - font.xHeight / 2 + Self.lineTopPadding(of: font, height: proxy.size.height))
+                        }
+                    }
+                }
+                .padding(.leading, widths.indentation)
+        }
+        .frame(width: widths.total, alignment: .leading)
+        .accessibilityHidden(true)
+    }
+
+    /// Where the bullet's line starts in the text's frame: SwiftUI centers the font's line in it.
+    private static func lineTopPadding(of font: PlatformFont, height: CGFloat) -> CGFloat {
+        max(0, (height - (font.ascender - font.descender)) / 2)
+    }
+
+    /// The indentation's width and the whole marker's, the indentation, marker and spacing as
+    /// they are written, measured in the note's font as the editor lays them out. A tab is as
+    /// wide as four spaces, where the editor's tab stops put the item's first tab.
+    static func widths(of marker: ImageLineListMarker, in font: PlatformFont) -> (indentation: CGFloat, total: CGFloat) {
+        func width(_ text: String) -> CGFloat {
+            NSAttributedString(string: text.replacingOccurrences(of: "\t", with: "    "), attributes: [.font: font]).size().width
+        }
+        return (width(marker.indentation), width(marker.indentation + marker.marker + marker.spacing))
+    }
 }
 
 /// How `ImageLineFlowLayout` offers a piece its width.
@@ -92,6 +178,13 @@ struct ImageLineFlowLayout: Layout {
         for (subview, frame) in zip(subviews, placed.frames) {
             subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
         }
+    }
+
+    /// The bottom of the first row, for `imageLineFirstRowBottom`; the other guides are the
+    /// layout's own edges.
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGFloat? {
+        guard guide == .imageLineFirstRowBottom, let firstFrame = rows(of: subviews, availableWidth: bounds.width).frames.first else { return nil }
+        return bounds.minY + firstFrame.maxY
     }
 
     private func rows(of subviews: Subviews, availableWidth proposedWidth: CGFloat?) -> Rows {

@@ -6,8 +6,8 @@
  *              and heights shared between editors.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 11/11/2026
  */
 
 import XCTest
@@ -94,8 +94,8 @@ final class UiEditorRenderedBlockReuseTests: XCTestCase {
                        LivePreviewWidgetSignature(environment: nil, accentHex: "#0ea5e9", notePath: "Other.md"))
     }
 
-    /// Bases and embeds read the index, and so does a callout that contains either; tables,
-    /// math, properties, rules, and callouts of text do not, so a save leaves them alone.
+    /// Bases and embeds read the index, and so does a callout that contains either or a table with
+    /// pictures; tables of text, math, properties, rules, and callouts of text do not, so a save leaves them alone.
     func testOnlyBasesEmbedsAndCalloutsHoldingThemReadTheIndex() {
         let readingKinds = blocks.map { block in LivePreviewWidgetSignature.readsIndex(block) }
         XCTAssertEqual(blocks.count, 8)
@@ -103,6 +103,10 @@ final class UiEditorRenderedBlockReuseTests: XCTestCase {
         let calloutsHoldingEmbeds = LivePreviewBlockScanner.blocks(in: "> [!note] Figure\n> ![[Diagram.png]]\n\n> [!tip] Query\n> ```base\n> views: []\n> ```\n")
         XCTAssertEqual(calloutsHoldingEmbeds.map(\.kind), [.callout, .callout])
         XCTAssertEqual(calloutsHoldingEmbeds.map { block in LivePreviewWidgetSignature.readsIndex(block) }, [true, true])
+        // A table of pictures looks them up again once the index has read them (issue #102).
+        let tableOfPictures = LivePreviewBlockScanner.blocks(in: "| Before | After |\n| --- | --- |\n| ![[Raw.png\\|100]] | ![](Done.png) |\n")
+        XCTAssertEqual(tableOfPictures.map(\.kind), [.table])
+        XCTAssertEqual(tableOfPictures.map { block in LivePreviewWidgetSignature.readsIndex(block) }, [true])
     }
 
     /// A diagram's view reads no index, so a save leaves it alone; it is kept off screen while the cursor is in its fence,

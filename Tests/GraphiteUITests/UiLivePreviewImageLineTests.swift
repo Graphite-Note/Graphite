@@ -3,11 +3,12 @@
  * ---------------------------------------
  * Layer: Tests
  * Description: A line of image embeds, or of images among text, is drawn in Live Preview as pictures side by
- *              side at their sizes, and shows its source while the cursor is on it (HUNT-323).
+ *              side at their sizes, and shows its source while the cursor is on it (HUNT-323); a list item's
+ *              pictures stand beside its bullet, wrapping under the first (issue #102).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 11/11/2026
  */
 
 import XCTest
@@ -94,12 +95,31 @@ final class UiLivePreviewImageLineTests: XCTestCase {
     }
 
     private func isRed(_ image: CGImage, x pixelColumn: Int, y pixelRow: Int) throws -> Bool {
+        let pixel = try pixelBytes(of: image, x: pixelColumn, y: pixelRow)
+        return pixel[0] > 200 && pixel[1] < 60 && pixel[2] < 60 && pixel[3] > 200
+    }
+
+    /// The red, green, blue and alpha bytes of one pixel, counted from the top-left corner.
+    private func pixelBytes(of image: CGImage, x pixelColumn: Int, y pixelRow: Int) throws -> [UInt8] {
         let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try XCTUnwrap(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
                                               space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         context.draw(image, in: CGRect(x: -pixelColumn, y: pixelRow - image.height + 1, width: image.width, height: image.height))
         let pixelBytes = try XCTUnwrap(context.data).bindMemory(to: UInt8.self, capacity: 4)
-        return pixelBytes[0] > 200 && pixelBytes[1] < 60 && pixelBytes[2] < 60 && pixelBytes[3] > 200
+        return (0..<4).map { componentIndex in pixelBytes[componentIndex] }
+    }
+
+    /// The rows, top first, in which something is drawn left of `column`.
+    private func drawnRows(of image: CGImage, leftOf column: Int) throws -> [Int] {
+        try (0..<image.height).filter { pixelRow in
+            try (0..<column).contains { pixelColumn in try pixelBytes(of: image, x: pixelColumn, y: pixelRow)[3] > 100 }
+        }
+    }
+
+    /// The width the editor gives the marker `- ` of a top-level bullet item in the test's text size.
+    private func bulletMarkerWidth() -> Int {
+        let marker = ImageLineListMarker(indentation: "", marker: "-", spacing: " ")
+        return Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: 17)).total.rounded(.up))
     }
 
     // MARK: The owner's line
@@ -207,10 +227,89 @@ final class UiLivePreviewImageLineTests: XCTestCase {
         XCTAssertEqual(LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: 200), 9 * 150 + 8 * 4 + 8, "One to a row in a narrow column.")
     }
 
+    // MARK: List items
+
+    /// The owner's photos in a bulleted list, as Obsidian draws them: the bullet, then the pictures beside it.
+    func testABulletItemDrawsItsBulletOnTheRowsBottomAndItsPicturesBesideIt() async throws {
+        try writeRedImage(named: "First.png")
+        try writeRedImage(named: "Second.png")
+        let line = "- ![[First.png|200]] ![[Second.png|200]]"
+        try await rememberPictures(of: try imageLinePieces(line))
+        let markerWidth = bulletMarkerWidth()
+        XCTAssertGreaterThan(markerWidth, 8, "A bullet and a space take some room.")
+
+        let rendered = try firstFrame(of: line, width: 700)
+        // Each picture is 200 by 100 points; the row has 4 points of padding above and below.
+        XCTAssertEqual(rendered.height, 100 + 2 * 4)
+        XCTAssertTrue(try isRed(rendered, x: markerWidth + 2, y: 4 + 50), "The first picture starts after the marker.")
+        XCTAssertTrue(try isRed(rendered, x: markerWidth + 197, y: 4 + 50))
+        XCTAssertTrue(try isRed(rendered, x: markerWidth + 204 + 2, y: 4 + 50), "The second picture is beside the first.")
+        let bulletRows = try drawnRows(of: rendered, leftOf: markerWidth - 1)
+        XCTAssertFalse(bulletRows.isEmpty, "The bullet is drawn.")
+        XCTAssertGreaterThan(bulletRows.min() ?? 0, 4 + 100 - 24, "The bullet stands on the row's bottom, as text does: \(bulletRows)")
+        XCTAssertLessThanOrEqual(bulletRows.max() ?? 0, 4 + 100)
+    }
+
+    func testANumberedItemsPicturesWrapUnderTheFirstPictureNotUnderTheNumber() async throws {
+        try writeRedImage(named: "First.png")
+        try writeRedImage(named: "Second.png")
+        let line = "1. ![[First.png|200]] ![[Second.png|200]]"
+        try await rememberPictures(of: try imageLinePieces(line))
+        let marker = ImageLineListMarker(indentation: "", marker: "1.", spacing: " ")
+        let markerWidth = Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: 17)).total.rounded(.up))
+
+        // Room for one picture beside the number: the second wraps onto a row of its own.
+        let rendered = try firstFrame(of: line, width: CGFloat(markerWidth + 300))
+        XCTAssertEqual(rendered.height, 2 * 100 + 4 + 2 * 4)
+        for row in 0..<2 {
+            let middleY = 4 + row * 104 + 50
+            XCTAssertTrue(try isRed(rendered, x: markerWidth + 2, y: middleY), "Picture \(row + 1) starts after the number.")
+            XCTAssertFalse(try isRed(rendered, x: markerWidth - 3, y: middleY), "Nothing red under the number in row \(row + 1).")
+        }
+        let numberRows = try drawnRows(of: rendered, leftOf: markerWidth - 1)
+        XCTAssertFalse(numberRows.isEmpty, "The number is drawn.")
+        XCTAssertTrue(numberRows.allSatisfy { pixelRow in pixelRow < 4 + 100 + 1 }, "The number is on the first row only: \(numberRows)")
+    }
+
+    func testTheHeightEstimateOfAListItemLeavesRoomForItsMarker() throws {
+        let pieces = try imageLinePieces("- " + Self.photoRow)
+        // 700 points less the marker take three 200-point pictures a row, as without it; 620 less the marker take two.
+        XCTAssertEqual(LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: 700), 3 * 150 + 2 * 4 + 8)
+        XCTAssertEqual(LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: 620), 5 * 150 + 4 * 4 + 8)
+    }
+
+    // MARK: Tables and callouts
+
+    /// A table or callout is drawn by the reading view's renderer, which draws a picture inside text. A Markdown
+    /// image there (`![Done|100](Photos/Done.png)`) is looked up in the vault as a Wikilink embed is: its path was
+    /// read as a web address, and nothing was drawn.
+    func testATablesWikiAndMarkdownImagesBecomePicturesOfTheVaultWithTheirSizes() async throws {
+        let table = "| Before | After |\n| --- | --- |\n| ![[Raw.png\\|100]] | ![Done\\|120](Photos/Done.png) `![](Code.png)` |\n"
+        var looked: [String] = []
+        let resolvingEverything = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+            resolve: { target, isWiki in looked.append("\(target)|\(isWiki)"); return try? VaultPath(target) },
+            open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        let preparation = await LivePreviewText.preparedResolvingEmbeds(table, environment: resolvingEverything)
+        XCTAssertEqual(looked.sorted(), ["Photos/Done.png|false", "Raw.png|true"], "The embed in code is not looked up.")
+        XCTAssertFalse(preparation.hasUnresolvedEmbeds)
+        let rawImage = PreviewImageFragment.url(for: vault.appendingPathComponent("Raw.png"), displaySize: EmbedDisplaySize(width: 100, height: nil), version: 0)
+        let doneImage = PreviewImageFragment.url(for: vault.appendingPathComponent("Photos/Done.png"), displaySize: EmbedDisplaySize(width: 120, height: nil), version: 0)
+        XCTAssertTrue(preparation.markdown.contains("![Raw](\(GraphiteOpenLink.markdownDestination(rawImage)))"), preparation.markdown)
+        XCTAssertTrue(preparation.markdown.contains("![Done](\(GraphiteOpenLink.markdownDestination(doneImage)))"), preparation.markdown)
+        XCTAssertTrue(preparation.markdown.contains("`![](Code.png)`"), "Code keeps its text.")
+
+        let resolvingNothing = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+            resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        let unresolved = await LivePreviewText.preparedResolvingEmbeds("> [!tip]\n> ![Done|120](Photos/Done.png)\n", environment: resolvingNothing)
+        XCTAssertTrue(unresolved.hasUnresolvedEmbeds, "A Markdown image not found yet is looked up again when the index changes.")
+        XCTAssertTrue(LivePreviewText.hasWikiEmbed("![Done](Photos/Done.png)"))
+        XCTAssertFalse(LivePreviewText.hasWikiEmbed("A [link](Note.md) and [[a Wikilink]]"))
+    }
+
     // MARK: Lines that keep their drawing
 
     func testLinesWhoseImagesStayInlineAreNotLinesOfImages() {
-        for line in ["- ![[a.png|100]] ![[b.png|100]]", "# Title ![[a.png|100]]", "> ![[a.png|100]] ![[b.png|100]]",
+        for line in ["- [ ] ![[a.png|100]] ![[b.png|100]]", "# Title ![[a.png|100]]", "> ![[a.png|100]] ![[b.png|100]]",
                      "    ![[a.png|100]] ![[b.png|100]]", "`![[a.png|100]]` and `![[b.png]]`", "![](https://example.com/a.png) ![](https://example.com/b.png)",
                      "![[Other note]] ![[Second note]]", "Plain text with [[a link]]"] {
             let blocks = LivePreviewBlockScanner.blocks(in: line as NSString)

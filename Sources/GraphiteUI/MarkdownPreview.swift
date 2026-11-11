@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.50
- * Date: 05/11/2026
+ * Version: 0.51
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -658,8 +658,9 @@ actor ReadingViewBuilder {
         var keepsLines = true
         // A link whose place in the text could not be found has an empty range; replacing
         // it would insert a second copy instead of replacing the one written.
-        for link in semantics.links.reversed() where link.length > 0 {
-            let linkRange = NSRange(location: link.location - paddingLength, length: link.length)
+        for link in semantics.links.reversed() {
+            guard let linkRange = link.length > 0 ? NSRange(location: link.location - paddingLength, length: link.length)
+                : Self.writtenImageRange(of: link, at: link.location - paddingLength, in: markdown) else { continue }
             if !link.isWiki, !link.isEmbed {
                 if NSMaxRange(linkRange) <= earliestReplacedLocation, let destinationRange = ReadingBlockText.notePathDestinationRange(of: link,
                     in: projected, linkRange: linkRange) {
@@ -704,6 +705,15 @@ actor ReadingViewBuilder {
             earliestReplacedLocation = linkRange.location
         }
         return readingText(projected as String, configuration: configuration, taskLocation: keepsLines ? taskLocation : nil)
+    }
+
+    /// Where a Markdown image whose range the parser could not give is written, found from where it
+    /// starts: in a table cell, `![Photo\|200](a.png)` escapes its pipe, and the parser's columns after
+    /// the escape are one short, so the photo stayed its alt text. Nil for anything else.
+    private static func writtenImageRange(of link: NoteLink, at location: Int, in markdown: String) -> NSRange? {
+        guard link.isEmbed, !link.isWiki, let written = EmbedLocator.embed(at: location + 1, in: markdown as NSString),
+              !written.isWiki, written.range.location == location, written.target == link.target else { return nil }
+        return written.range
     }
 
     private func readingText(_ markdown: String, configuration: ReadingConfiguration, taskLocation: TaskLocation? = nil) -> String {
@@ -1956,6 +1966,7 @@ private struct WordEnvironmentText: View {
 /// word read aloud reaches it only while the word is inside it.
 private struct ObsidianMarkdownTextContent: View, Equatable {
     let markdown: String
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -2017,7 +2028,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))
                 .textual.thematicBreakStyle(ObsidianThematicBreakStyle(theme: theme))
@@ -2854,6 +2865,7 @@ struct CalloutView<Body: View>: View {
     let sourceTokens: [ReadAloudSourceToken]?
     let automaticallyExpandsForReading: Bool
     @ViewBuilder let content: () -> Body
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -2916,7 +2928,7 @@ struct CalloutView<Body: View>: View {
                         .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
                         .foregroundStyle(appearance.titleColor)
                         .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root))
+                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
                         .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
                         .allowsHitTesting(Self.containsLink(title))
                     if folding != .notFoldable {
@@ -2988,17 +3000,30 @@ struct CalloutAppearance {
 
 // MARK: Attachments and media
 
-private struct VaultImageLoader: AttachmentLoader {
+/// Draws a vault image inside text. One given a width (`![[photo.jpg|250]]`) is decoded for that
+/// width at the screen's scale, not for the inline limit: a row of ten 250-point camera photos
+/// held ten 1,800-pixel pictures, about 10 MB each, where 750 pixels show them as sharply.
+struct VaultImageLoader: AttachmentLoader {
     let root: URL
+    /// Pixels a point where the text is shown; a scale below 1 is a view not on a screen yet.
+    let displayScale: CGFloat
+
     func attachment(for location: URL, text: String, environment: ColorEnvironmentValues) async throws -> VaultImageAttachment {
         let fileLocation = URL(fileURLWithPath: location.path)
         let normalizedRoot = root.resolvingSymlinksInPath().path + "/"
         guard location.isFileURL, fileLocation.resolvingSymlinksInPath().path.hasPrefix(normalizedRoot) else {
             throw GraphiteError.outsideVault
         }
-        let thumbnail = try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline)
+        let thumbnail = try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline, displayPixelWidth: displayPixelWidth(for: location))
         return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
                                     path: vaultPath(of: fileLocation))
+    }
+
+    /// The widest the image is shown, in pixels, when the embed gives it a width; nil otherwise,
+    /// as an image without one is laid out at its pixel size.
+    func displayPixelWidth(for location: URL) -> Int? {
+        guard let displaySize = PreviewImageFragment.displaySize(in: location) else { return nil }
+        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize, displayScale: displayScale)
     }
 
     /// The picture's path in the vault, which its zoom names.
@@ -3010,16 +3035,19 @@ private struct VaultImageLoader: AttachmentLoader {
     }
 
     /// The image the cache made last, drawn at once while `attachment(for:text:environment:)`
-    /// checks it is current; a note exported to PDF loads its images into the cache first.
+    /// checks it is current; a note exported to PDF loads its images into the cache first, for
+    /// no width, which is used when none was made for the image's width.
     func readyAttachment(for location: URL, text: String, environment: ColorEnvironmentValues) -> VaultImageAttachment? {
+        let fileLocation = URL(fileURLWithPath: location.path)
         guard location.isFileURL,
-              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: URL(fileURLWithPath: location.path), kind: .inline) else { return nil }
+              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: fileLocation, kind: .inline, displayPixelWidth: displayPixelWidth(for: location))
+                ?? ReadingImageCache.shared.lastThumbnail(for: fileLocation, kind: .inline) else { return nil }
         return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
-                                    path: vaultPath(of: URL(fileURLWithPath: location.path)))
+                                    path: vaultPath(of: fileLocation))
     }
 }
 
-private struct VaultImageAttachment: Attachment {
+struct VaultImageAttachment: Attachment {
     /// Pixels decoded when the image was loaded, off the main thread, so drawing the text
     /// does not decode the image again.
     let image: CGImage

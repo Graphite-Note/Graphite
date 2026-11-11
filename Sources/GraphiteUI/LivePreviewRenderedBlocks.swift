@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.20
+ * Version: 0.21
  * Date: 11/11/2026
  */
 
@@ -821,7 +821,10 @@ struct LivePreviewWidgetSignature: Equatable {
         switch block.kind {
         case .embed, .baseDefinition, .imageLine: true
         case .callout: block.markdown.contains("![") || block.markdown.contains("base")
-        case .frontmatter, .table, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram: false
+        // A picture in a cell that the index has not read yet is looked up again once it has:
+        // a table of photos opened while the vault was indexing kept them as text.
+        case .table: block.markdown.contains("![")
+        case .frontmatter, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram: false
         }
     }
 }

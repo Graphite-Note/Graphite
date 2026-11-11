@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.37
- * Date: 05/11/2026
+ * Version: 0.38
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -533,11 +533,14 @@ struct RenderedMarkdownBlock: View {
 enum LivePreviewText {
     private static let wikiEmbedPattern = LivePreviewTextPattern.wikiEmbedPattern.compiled()
 
-    /// Whether `markdown` may embed a vault file that `preparedResolvingEmbeds` looks up.
-    static func hasWikiEmbed(_ markdown: String) -> Bool { markdown.contains("![[") }
+    /// Whether `markdown` may embed a vault file that `preparedResolvingEmbeds` looks up:
+    /// `![[photo.png]]`, or `![](photo.png)`, which needs `](`.
+    static func hasWikiEmbed(_ markdown: String) -> Bool { markdown.contains("![[") || (markdown.contains("![") && markdown.contains("](")) }
 
-    /// Also turns `![[image.png|300]]` into an image the renderer can show.
-    /// `hasUnresolvedEmbeds` tells whether an embed was not found in the vault.
+    /// Also turns `![[image.png|300]]` and `![300](Photos/image.png)` into an image the renderer
+    /// can show, as the reading view does: a Markdown image's path was otherwise read as a web
+    /// address, and nothing was drawn. `hasUnresolvedEmbeds` tells whether an embed was not
+    /// found in the vault.
     @MainActor
     static func preparedResolvingEmbeds(_ markdown: String, environment: LivePreviewEnvironment,
         place: RenderedBlockPlace? = nil) async -> (markdown: String, hasUnresolvedEmbeds: Bool) {
@@ -547,25 +550,34 @@ enum LivePreviewText {
         }
         guard hasWikiEmbed(markdown) else { return (prepared(markdown), false) }
         var hasUnresolvedEmbeds = false
-        let source = markdown as NSString
         let output = NSMutableString(string: markdown)
+        // Last first, so the ranges before each replacement stay where they were.
+        for embed in embeds(in: markdown).reversed() {
+            guard let path = await environment.resolve(embed.target, embed.isWiki) else {
+                hasUnresolvedEmbeds = true
+                continue
+            }
+            guard DocumentKind(path: path) == .image, let location = try? path.url(in: environment.root) else { continue }
+            let imageLocation = PreviewImageFragment.url(for: location, displaySize: embed.displaySize, version: environment.drawingVersion)
+            output.replaceCharacters(in: embed.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
+        }
+        return (prepared(output as String), hasUnresolvedEmbeds)
+    }
+
+    /// The Wikilink and Markdown embeds of `markdown` outside code, in order.
+    private static func embeds(in markdown: String) -> [EmbedReference] {
+        let source = markdown as NSString
         let codeRanges = MarkdownCodeRanges.rangeSet(in: source)
-        for match in wikiEmbedPattern.matches(in: markdown, range: NSRange(location: 0, length: source.length)).reversed()
-        where !codeRanges.intersects(match.range) {
+        let wikiEmbeds = wikiEmbedPattern.matches(in: markdown, range: NSRange(location: 0, length: source.length)).compactMap { match -> EmbedReference? in
+            guard !codeRanges.intersects(match.range) else { return nil }
             var target = source.substring(with: match.range(at: 1))
             let label = match.range(at: 2).location == NSNotFound ? nil : source.substring(with: match.range(at: 2))
             // `![[image.png\|300]]` in a table, as Obsidian requires there: the backslash
             // escapes the pipe and is no part of the name, as for links below.
             if label != nil, target.hasSuffix("\\") { target.removeLast() }
-            guard let path = await environment.resolve(target, true) else {
-                hasUnresolvedEmbeds = true
-                continue
-            }
-            guard DocumentKind(path: path) == .image, let location = try? path.url(in: environment.root) else { continue }
-            let imageLocation = PreviewImageFragment.url(for: location, displaySize: label.flatMap(EmbedDisplaySize.parse(label:)), version: environment.drawingVersion)
-            output.replaceCharacters(in: match.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
+            return EmbedReference(target: target, isWiki: true, displaySize: label.flatMap(EmbedDisplaySize.parse(label:)), range: match.range)
         }
-        return (prepared(output as String), hasUnresolvedEmbeds)
+        return (wikiEmbeds + EmbedLocator.markdownEmbeds(in: markdown)).sorted { leftEmbed, rightEmbed in leftEmbed.range.location < rightEmbed.range.location }
     }
 
     private static let wikilinkPattern = LivePreviewTextPattern.wikilinkPattern.compiled()
