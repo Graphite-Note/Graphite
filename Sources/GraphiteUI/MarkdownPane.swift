@@ -84,8 +84,7 @@ struct MarkdownPane: View {
                                 readingWord: ReadingWordSource { [readAloud = workspace.readAloud, path = session.path] in readAloud?.highlight(in: path) },
                                 followsReading: workspace.readAloud?.shouldFollow(session.path) ?? false,
                                 suspendReadingFollow: { workspace.readAloud?.suspendFollowing(in: session.path.rawValue) })
-                .environment(\.readingImageActions, ReadingImageActions(providerIdentity: ObjectIdentifier(workspace),
-                                                                        viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing))
+                .environment(\.readingImageActions, readingImageActions)
                 .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
                 .environment(\.readingTagSearch, tagSearch)
@@ -415,7 +414,8 @@ struct MarkdownPane: View {
             updateProperties: preferences.isEnabled(.properties) ? { [session] properties in session.replaceProperties(properties) } : nil,
             declaredPropertyTypes: session.declaredPropertyTypes,
             baseContext: workspace.baseEmbedContext(for: notePath),
-            viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, indexVersion: workspace.indexVersion,
+            viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, pictureTabOpening: workspace.pictureTabOpening,
+            indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
             embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
@@ -437,6 +437,12 @@ struct MarkdownPane: View {
             workspace.searchForTag(tag)
             workspace.searchFocusRequest += 1
         }
+    }
+
+    /// What the reading view's pictures do: zoom, edit a drawing, draw on a picture, open in a tab.
+    private var readingImageActions: ReadingImageActions {
+        ReadingImageActions(providerIdentity: ObjectIdentifier(workspace), viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing,
+                            tabOpening: workspace.pictureTabOpening)
     }
 
     /// Opens a drawing in the editor, where the platform and preferences allow it.

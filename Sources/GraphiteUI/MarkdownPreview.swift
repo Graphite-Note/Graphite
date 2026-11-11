@@ -972,6 +972,9 @@ struct MarkdownPreview: View {
     /// The window's link cards, while Page Preview is on.
     @Environment(\.linkPreviews) private var linkPreviews
     @State private var readingLinkPreviews = ReadingLinkPreviews()
+    /// The picture inside the text the pointer rests on, whose buttons show over it.
+    @State private var pictureHover = ReadingPictureHover()
+    @Environment(\.readingImageActions) private var imageActions
     /// The readable column: Graphite's, or the vault theme's line width at this text size.
     private var readableColumnWidth: CGFloat { theme?.readableColumnWidth(forTextSize: configuration.textSize) ?? ReadingConfiguration.readableColumnWidth }
     @State private var hasRestoredPosition = false
@@ -1032,7 +1035,9 @@ struct MarkdownPreview: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollPosition($scrollPosition)
-            .textual.linkHoverAction(linkPreviews.map(linkHoverAction(for:)))
+            .textual.linkHoverAction(ReadingPictureHover.linkHoverAction(pictures: imageActions == nil ? nil : pictureHover,
+                                                                       previews: linkPreviews.map { model in (readingLinkPreviews, model) }, sourceNote: path))
+            .overlay { if let imageActions { ReadingPictureHoverLayer(hover: pictureHover, actions: imageActions) } }
             .coordinateSpace(.named(ReadingCoordinateSpace.name))
             .onScrollGeometryChange(for: ReadingViewport.self) { geometry in
                 ReadingViewport(verticalOffset: max(0, geometry.contentOffset.y + geometry.contentInsets.top),
@@ -1066,6 +1071,7 @@ struct MarkdownPreview: View {
                     readingFollow.handScrollCount += 1
                     suspendReadingFollow?()
                     linkPreviews?.close()
+                    pictureHover.hide()
                 }
             }
             .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
@@ -1151,18 +1157,6 @@ struct MarkdownPreview: View {
                 blocksCache?.lastBuild = cachedBuild
             } catch is CancellationError {
             } catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    /// What the note's text does with the pointer on its links: shows `model`'s cards.
-    private func linkHoverAction(for model: LinkPreviewModel) -> TextLinkHoverAction {
-        TextLinkHoverAction { [readingLinkPreviews, path, weak model] hover in
-            guard let model else { return }
-            switch hover {
-            case .entered(let location, let frame): readingLinkPreviews.pointerEntered(location, frame: frame, sourceNote: path, model: model)
-            case .exited: readingLinkPreviews.pointerLeft(model: model)
-            case .pressed(let location, let frame): readingLinkPreviews.press(location, frame: frame, sourceNote: path, model: model)
-            }
         }
     }
 
@@ -1977,6 +1971,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     @Environment(\.readingIsPrinted) private var isPrinted
     @Environment(\.readingTagSearch) private var tagSearch
     @Environment(\.readingImageActions) private var imageActions
+    @Environment(\.renderedBlockMenuContext) private var renderedBlockMenu
 
     /// The same text, read at the same word. The closures are left out: their owners make
     /// new ones at every update, which do the same.
@@ -2031,8 +2026,20 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .tint(accent)
                 .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading,
                                                                         searchTag: tagSearch?.search, zoomImage: imageActions?.viewImage))
+                .textual.linkInteractions(pictureLinkInteractions)
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
+    }
+
+    /// The menu and ⌘-click of the pictures in the text. On the iPad a rendered block of Live
+    /// Preview has its own menu, which offers them; a second menu on the same long press would
+    /// compete with it. On the Mac the text's menu is the one a secondary click on text shows.
+    private var pictureLinkInteractions: TextLinkInteractions? {
+        #if canImport(UIKit)
+        imageActions?.textLinkInteractions(offersMenu: renderedBlockMenu == nil)
+        #else
+        imageActions?.textLinkInteractions()
+        #endif
     }
 
     /// Links in the accent, and inline code in the monospace font. SF Mono keeps Textual's
@@ -3022,17 +3029,7 @@ private struct VaultImageAttachment: Attachment {
     /// The picture's path in the vault; nil outside it.
     let path: VaultPath?
     @MainActor var body: some View {
-        Image(image, scale: 1, label: Text(description)).resizable().scaledToFit()
-            // Where it is drawn, for a table's cell editor in Live Preview, whose tap target
-            // covers the table and leaves a tap on a picture to its zoom.
-            .background {
-                if let path {
-                    GeometryReader { geometry in
-                        let frameInBlock = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
-                        Color.clear.preference(key: ZoomablePictureFrame.Key.self, value: [ZoomablePictureFrame(path: path, frame: frameInBlock)])
-                    }
-                }
-            }
+        InlinePictureView(image: image, description: description, path: path)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
         let width = Double(image.width), height = Double(image.height)
@@ -3429,26 +3426,47 @@ struct EmbeddedAudioPlayer: View {
 }
 
 
-/// What reading view can do with an image. Closures cannot be compared, so two values are
-/// equal when the same workspace provides them with the same abilities; views that read
-/// them then do not update each time the note is drawn again.
-struct ReadingImageActions: Equatable {
-    let providerIdentity: ObjectIdentifier
-    /// Shows an image from a note full screen, where it can be zoomed.
-    let viewImage: (VaultPath) -> Void
-    /// Opens a Graphite drawing in the drawing editor; nil where drawings cannot be edited.
-    let editDrawing: ((VaultPath) -> Void)?
-    /// Opens the drawing editor over an image; nil where drawings are off.
-    var drawOnImage: ((VaultPath) -> Void)? = nil
-
-    static func == (leftActions: ReadingImageActions, rightActions: ReadingImageActions) -> Bool {
-        leftActions.providerIdentity == rightActions.providerIdentity && (leftActions.editDrawing == nil) == (rightActions.editDrawing == nil)
-            && (leftActions.drawOnImage == nil) == (rightActions.drawOnImage == nil)
+/// What Textual's selectable text does with the pictures it draws, each of which links to its
+/// zoom: kept here, with the reading view's other uses of Textual (`check-imports`).
+extension ReadingImageActions {
+    /// What the links of a text do for its pictures, each of which links to its zoom
+    /// (`GraphiteOpenLink.zoomedImageLink(path:)`): their menu, and ⌘-click to a new tab.
+    /// Other links keep the text's own menu and are followed as they are.
+    /// - Parameter offersMenu: False where the view around the text has its own menu that
+    ///   offers the commands, as a rendered block in Live Preview on the iPad does.
+    @MainActor func textLinkInteractions(offersMenu: Bool = true) -> TextLinkInteractions {
+        TextLinkInteractions(menuItems: { location in
+            guard offersMenu, let path = GraphiteOpenLink.zoomedImagePath(of: location) else { return [] }
+            return offeredCommands.map { command in
+                TextLinkMenuItem(title: title(of: command), systemImage: command.systemImage) { perform(command, on: path) }
+            }
+        }, openWithModifiers: { location, modifiers in
+            guard let path = GraphiteOpenLink.zoomedImagePath(of: location) else { return false }
+            return open(path, clickedWith: modifiers)
+        })
     }
 }
 
-extension EnvironmentValues {
-    @Entry var readingImageActions: ReadingImageActions? = nil
+extension ReadingPictureHover {
+    /// What the reading view's text tells of the pointer on its links: the picture buttons
+    /// of `self` and the preview cards of `previews`, each where it is set. Nil when neither
+    /// is: the texts then do not follow the pointer.
+    static func linkHoverAction(pictures: ReadingPictureHover?, previews: (ReadingLinkPreviews, LinkPreviewModel)?, sourceNote: VaultPath) -> TextLinkHoverAction? {
+        guard pictures != nil || previews != nil else { return nil }
+        let linkPreviews = previews?.0
+        return TextLinkHoverAction { [weak pictures, weak previewModel = previews?.1] hover in
+            switch hover {
+            case .entered(let location, let frame):
+                pictures?.pointerEntered(location, frame: frame)
+                if let linkPreviews, let previewModel { linkPreviews.pointerEntered(location, frame: frame, sourceNote: sourceNote, model: previewModel) }
+            case .exited:
+                pictures?.pointerLeftLink()
+                if let linkPreviews, let previewModel { linkPreviews.pointerLeft(model: previewModel) }
+            case .pressed(let location, let frame):
+                if let linkPreviews, let previewModel { linkPreviews.press(location, frame: frame, sourceNote: sourceNote, model: previewModel) }
+            }
+        }
+    }
 }
 
 /// An image or drawing on its own line in reading view.
@@ -3474,7 +3492,8 @@ private struct ReadingImageBlock: View {
                                   displayWidth: displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: thumbnail.aspectRatio)) },
                                   edit: thumbnail.isEditableDrawing ? imageActions?.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: imageActions.map { imageActions in { imageActions.viewImage(path) } },
-                                  drawOnImage: DrawableImages.canDrawOn(path) ? imageActions?.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil)
+                                  drawOnImage: DrawableImages.canDrawOn(path) ? imageActions?.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
+                                  path: path, tabOpening: imageActions?.tabOpening)
             } else if didFail {
                 Label("“\(path.name)” can't be shown.", systemImage: "photo").font(.callout).foregroundStyle(.secondary)
             } else {

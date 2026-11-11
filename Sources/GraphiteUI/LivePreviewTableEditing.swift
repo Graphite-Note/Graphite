@@ -387,6 +387,8 @@ private struct LivePreviewTableEditingLayer: View {
     @Environment(\.readingImageActions) private var imageActions
     @State private var isPointerOverTable = false
     @State private var isPointerOverStrip = false
+    /// The picture the pointer rests on, whose magnifier and "Open in New Tab" show over it.
+    @State private var hoveredPicture: ZoomablePictureFrame?
 
     private var showsAddStrips: Bool { isPointerOverTable || isPointerOverStrip || editor.editingCell != nil }
 
@@ -395,10 +397,17 @@ private struct LivePreviewTableEditingLayer: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in tapped(at: location) }
-                // The pointer, or an Apple Pencil held over the iPad's screen, shows the strips.
-                .onHover { isOver in isPointerOverTable = isOver }
+                #if os(macOS)
+                // ⌘-click on a picture opens it in a new tab, as for a link; the gesture waits for ⌘.
+                // SwiftUI gives the iPad no modifier keys on a tap; the table's menu has the command.
+                .highPriorityGesture(SpatialTapGesture(coordinateSpace: .local).modifiers(.command).onEnded { tap in commandClicked(at: tap.location) },
+                                     including: imageActions?.tabOpening == nil ? .none : .all)
+                #endif
             if let cell = editor.editingCell, let frame = editor.frame(of: cell, in: layout) {
                 cellField(for: cell, frame: frame)
+            }
+            if let hoveredPicture, let imageActions, editor.editingCell == nil {
+                pictureButtons(for: hoveredPicture, actions: imageActions)
             }
             if showsAddStrips {
                 LivePreviewTableAddStrips(geometry: TableAddStripsGeometry(tableBounds: layout.bounds, blockBounds: editor.tablePlacement.blockBoundsInTable),
@@ -413,14 +422,52 @@ private struct LivePreviewTableEditingLayer: View {
             editor.tablePlacement = placement
         }
         .onChange(of: layout, initial: true) { _, newLayout in editor.layout = newLayout }
+        // The pointer, or an Apple Pencil held over the iPad's screen, shows the strips, and over a
+        // picture its buttons; on the whole layer, so moving onto the buttons stays over the table.
+        .onContinuousHover(coordinateSpace: .local) { phase in pointerMoved(phase) }
         // Text selection's overlay would otherwise take the taps.
         .textual.excludedFromTextInteraction()
     }
 
+    private func pointerMoved(_ phase: HoverPhase) {
+        switch phase {
+        case .active(let location):
+            if !isPointerOverTable { isPointerOverTable = true }
+            let picture = imageActions == nil ? nil : editor.pictureFrames.last { picture in picture.frame.contains(pointInBlock(location)) }
+            if picture != hoveredPicture { hoveredPicture = picture }
+        case .ended:
+            isPointerOverTable = false
+            hoveredPicture = nil
+        }
+    }
+
+    private func pointInBlock(_ location: CGPoint) -> CGPoint {
+        CGPoint(x: location.x + editor.tableOriginInBlock.x, y: location.y + editor.tableOriginInBlock.y)
+    }
+
+    /// The magnifier and "Open in New Tab" at the picture's top-right corner, in the layer's coordinates.
+    private func pictureButtons(for picture: ZoomablePictureFrame, actions: ReadingImageActions) -> some View {
+        let frame = picture.frame.offsetBy(dx: -editor.tableOriginInBlock.x, dy: -editor.tableOriginInBlock.y)
+        return PictureHoverButtons(zoom: { actions.perform(.zoomIn, on: picture.path) },
+                                   openInNewTab: actions.tabOpening == nil ? nil : { actions.perform(.openInNewTab, on: picture.path) })
+            .frame(width: frame.width, alignment: .topTrailing)
+            .offset(x: frame.minX, y: frame.minY)
+    }
+
+    #if os(macOS)
+    /// ⌘-click on a picture opens it in a tab; anywhere else it edits the cell, as a click does.
+    private func commandClicked(at location: CGPoint) {
+        if let imageActions, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock(location)) }),
+           imageActions.open(picture.path, clickedWith: .command) {
+            return
+        }
+        tapped(at: location)
+    }
+    #endif
+
     /// A tap on a picture zooms into it; anywhere else in a cell edits the cell.
     private func tapped(at location: CGPoint) {
-        let pointInBlock = CGPoint(x: location.x + editor.tableOriginInBlock.x, y: location.y + editor.tableOriginInBlock.y)
-        if let viewImage = imageActions?.viewImage, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock) }) {
+        if let viewImage = imageActions?.viewImage, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock(location)) }) {
             viewImage(picture.path)
             return
         }

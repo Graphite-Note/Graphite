@@ -81,6 +81,8 @@ struct LivePreviewEnvironment {
     var editDrawing: ((VaultPath) -> Void)? = nil
     /// Opens the drawing editor over an image; nil when drawings are turned off.
     var drawOnImage: ((VaultPath) -> Void)? = nil
+    /// Opens a picture in a tab of its own; nil where there are no tabs.
+    var pictureTabOpening: PictureTabOpening? = nil
     /// Changes when the index takes in new files, so embeds not found yet look again.
     var indexVersion = 0
     /// The widest, in points, the note's column shows an embedded image; nil when the
@@ -175,6 +177,7 @@ struct LivePreviewWidgetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // The block's menu gives points in this space, the hosting view's own.
+        .modifier(RenderedBlockPictureMenu())
         .coordinateSpace(.named(LivePreviewTableEditor.blockCoordinateSpaceName))
         .modifier(LivePreviewNoteReadingModifier(block: block, environment: environment, currentLocation: currentLocation, noteReading: $noteReading))
         .environment(\.readingActiveSourceRange, readingRange)
@@ -657,7 +660,8 @@ struct LivePreviewEmbedView: View {
                                   displayWidth: embed.displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: aspectRatio)) },
                                   edit: isEditableDrawing ? environment.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: environment.viewImage.map { viewImage in { viewImage(path) } } ?? revealSource,
-                                  drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil)
+                                  drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
+                                  path: path, tabOpening: environment.pictureTabOpening)
             case .video(let location):
                 EmbeddedMediaPlayer(location: location)
             case .audio(let location, let name):

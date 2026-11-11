@@ -96,7 +96,7 @@ struct CanvasPane: View {
             imageActions: ReadingImageActions(providerIdentity: ObjectIdentifier(workspace), viewImage: { [workspace] path in
                 workspace.viewedImageNote = nil
                 workspace.viewedImage = path
-            }, editDrawing: nil),
+            }, editDrawing: nil, tabOpening: workspace.pictureTabOpening),
             pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginsTurnOnOffer: workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
     }

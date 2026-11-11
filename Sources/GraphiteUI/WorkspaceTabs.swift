@@ -173,6 +173,14 @@ extension WorkspaceModel {
         layout.isSplit && layout.groups.last?.id == layout.focusedGroupID ? "Open to the Left" : "Open to the Right"
     }
 
+    /// Opens a note's pictures in tabs of their own, as a link to the picture's file opens.
+    var pictureTabOpening: PictureTabOpening {
+        PictureTabOpening(open: { [weak self] path, placement in
+            guard let self else { return }
+            Task { await self.open(path, placement: placement) }
+        }, otherSideTitle: openOnOtherSideTitle)
+    }
+
     func document(for tabID: UUID) -> TabDocument {
         if let document = tabDocuments[tabID] { return document }
         let document = TabDocument()

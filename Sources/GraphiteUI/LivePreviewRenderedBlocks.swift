@@ -630,7 +630,7 @@ final class LivePreviewRenderedBlocks {
             .environment(\.readingImageActions, environment.viewImage.map { viewImage in
                 let providerIdentity = environment.embeddedPDFSessions.map(ObjectIdentifier.init) ?? ObjectIdentifier(LivePreviewWidgetView.self)
                 return ReadingImageActions(providerIdentity: providerIdentity, viewImage: viewImage, editDrawing: environment.editDrawing,
-                                           drawOnImage: environment.drawOnImage)
+                                           drawOnImage: environment.drawOnImage, tabOpening: environment.pictureTabOpening)
             })
             .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
             .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
@@ -668,6 +668,13 @@ struct RenderedBlockMenuItem {
 @MainActor
 final class RenderedBlockMenuContext {
     var itemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
+    /// The commands of a picture at the point, before the view's own (`RenderedBlockPictureMenu`).
+    var pictureItemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
+
+    /// Everything the view adds to its menu at `point`.
+    func items(at point: CGPoint) -> [RenderedBlockMenuItem] {
+        (pictureItemsAtPoint?(point) ?? []) + (itemsAtPoint?(point) ?? [])
+    }
 }
 
 extension EnvironmentValues {
@@ -710,9 +717,9 @@ final class RenderedBlockEditSourceMenu: NSObject {
         let menu = NSMenu()
         // Items say themselves whether they can be chosen (a header row cannot be deleted).
         menu.autoenablesItems = false
-        if let point, let itemsAtPoint = context.itemsAtPoint {
+        if let point {
             let topDownPoint = isFlipped ? point : CGPoint(x: point.x, y: height - point.y)
-            let items = itemsAtPoint(topDownPoint)
+            let items = context.items(at: topDownPoint)
             for item in items { menu.addItem(menuItem(for: item)) }
             if !items.isEmpty { menu.addItem(.separator()) }
         }
@@ -760,7 +767,7 @@ extension RenderedBlockEditSourceMenu: UIContextMenuInteractionDelegate {
     }
 
     func makeMenu(at point: CGPoint? = nil) -> UIMenu {
-        let viewItems = point.flatMap { point in context.itemsAtPoint?(point) } ?? []
+        let viewItems = point.map { point in context.items(at: point) } ?? []
         let editSource = UIAction(title: Self.title, image: UIImage(systemName: Self.symbolName)) { [weak self] _ in self?.revealSource() }
         guard !viewItems.isEmpty else { return UIMenu(children: [editSource]) }
         return UIMenu(children: [UIMenu(options: .displayInline, children: viewItems.map(Self.menuElement(for:))), editSource])
