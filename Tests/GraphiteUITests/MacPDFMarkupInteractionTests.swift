@@ -6,7 +6,7 @@
  *              menus of selected text and of a mark, and Delete removing a selected mark, each one undo step.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 11/11/2026
  */
 
@@ -194,6 +194,32 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
         XCTAssertEqual(marks(on: fixture.page), [], "Edit › Undo and ⌘Z undo the PDF's own steps.")
         fixture.view.redo(nil)
         XCTAssertEqual(marks(on: fixture.page).map(\.kind), [.highlight])
+    }
+
+    func testAMarkAnotherApplicationMadeIsRecolouredAndItsOwnColourComesBackOnUndo() async throws {
+        let fixture = try await makeFixture()
+        let wordBounds = try XCTUnwrap(fixture.page.selection(for: (Self.pageText as NSString).range(of: "bandwidth"))).bounds(for: fixture.page)
+        let foreignMark = PDFAnnotation(bounds: wordBounds, forType: .highlight, withProperties: nil)
+        foreignMark.quadrilateralPoints = [NSPoint(x: 0, y: wordBounds.height), NSPoint(x: wordBounds.width, y: wordBounds.height),
+                                           NSPoint(x: 0, y: 0), NSPoint(x: wordBounds.width, y: 0)].map { point in NSValue(point: point) }
+        let orange = NSColor(deviceRed: 1, green: 0.5, blue: 0, alpha: 1)
+        foreignMark.color = orange
+        foreignMark.contents = "Their note"
+        fixture.page.addAnnotation(foreignMark)
+
+        let menu = try XCTUnwrap(fixture.interaction.menu(for: try mouseEvent(.rightMouseDown, on: "bandwidth", in: fixture), defaultMenu: NSMenu()))
+        XCTAssertEqual(menu.items.last?.title, "Remove Highlight")
+        let greenIndex = try XCTUnwrap(menu.items.firstIndex { item in item.title == "Green" })
+        step(in: fixture.session) { menu.performActionForItem(at: greenIndex) }
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.green])
+
+        fixture.session.undoAvailability.undo()
+        let restored = try XCTUnwrap(fixture.page.annotations.first { annotation in annotation.type == "Highlight" })
+        let components = try XCTUnwrap(restored.color.usingColorSpace(.deviceRGB))
+        XCTAssertEqual(components.redComponent, 1, accuracy: 0.01, "Undo gives the other application's mark its own colour, not the nearest of Graphite's.")
+        XCTAssertEqual(components.greenComponent, 0.5, accuracy: 0.01)
+        XCTAssertEqual(components.blueComponent, 0, accuracy: 0.01)
+        XCTAssertEqual(restored.contents, "Their note")
     }
 
     func testAClickBesideTheMarksGoesOnToPDFKit() async throws {

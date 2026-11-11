@@ -6,7 +6,7 @@
  *              tools, and the pane's part that adds the row and serves the menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 11/11/2026
  */
 
@@ -76,7 +76,7 @@ struct PDFMarkupToolbarRow: View {
                     Label {
                         Text(choice.title)
                     } icon: {
-                        if let image = MacPDFMarkupInteraction.image(for: choice) { Image(nsImage: image) }
+                        styleIcon(choice)
                     }
                     .tag(choice)
                 }
@@ -98,6 +98,15 @@ struct PDFMarkupToolbarRow: View {
         .help("Highlight: \(style.title)")
         .accessibilityLabel("Highlight, \(style.title)")
         .accessibilityAddTraits(toolbar.tool == .highlight ? .isSelected : [])
+    }
+
+    /// A highlight's swatch, or the symbol of an underline or strikethrough. The symbol is
+    /// named so the menu tints it as its text: made as an image, it stayed black on a dark menu.
+    @ViewBuilder private func styleIcon(_ style: PDFMarkupStyle) -> some View {
+        switch style {
+        case .highlight(let color): Image(nsImage: MacPDFMarkupInteraction.swatch(color.platformColor))
+        case .underline, .strikeOut: Image(systemName: style.symbolName)
+        }
     }
 
     /// Choosing a mark also chooses the highlighter, as in Preview.
