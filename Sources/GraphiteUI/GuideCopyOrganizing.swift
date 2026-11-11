@@ -5,8 +5,8 @@
  * Description: The Guide's words for organizing a vault: folders, links, search, the command palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -25,9 +25,13 @@ enum GuideOrganizingCopy {
             GuideStep(forPlatform(touch: "Type in **Search** in the sidebar. With a keyboard, ⇧⌘F goes straight there.",
                                   mac: "Type in **Search** at the top right of the window, or press ⇧⌘F.")),
             GuideStep("Narrow the search with operators. The search field suggests them as you type:",
-                      example: "path:VLSI\ntag:#exam\nsection:Coefficients\ntask-todo:\n[course:VLSI 3]"),
+                      example: "path:VLSI\nfolder:bati\ntag:#exam\nsection:Coefficients\ntask-todo:\n[course:VLSI 3]"),
+            GuideStep("**folder:** finds folders by part of their name and lists them above the notes; with other words, " +
+                      "it keeps the notes inside those folders. Choose a folder to see it in the file list."),
             GuideStep("Choose a result to open that note."),
-            GuideStep("**Bookmark This Search** keeps a search you use often in the **Bookmarks** panel of the sidebar.")
+            GuideStep("**Bookmark This Search** keeps a search you use often in the **Bookmarks** panel of the sidebar."),
+            GuideStep("To find a file or folder by name, type part of it in **Filter** at the top of the Files panel (⌥⌘J): " +
+                      "the list keeps what matches, with the folders above it open. Clear the field to see the whole list again.")
         ],
         tips: [forPlatform(touch: "To search inside the open note, use **Find in note** on the bar above the keyboard.",
                            mac: "To search inside the open note, run **Search current file** in the Command Palette.")])

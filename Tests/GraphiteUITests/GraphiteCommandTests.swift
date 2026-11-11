@@ -6,7 +6,7 @@
  *              shortcuts, where each is listened for, and on which platform it exists.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.4
+ * Version: 0.5
  * Date: 11/11/2026
  */
 import XCTest
@@ -39,7 +39,7 @@ final class GraphiteCommandTests: XCTestCase {
         func symbols(_ command: GraphiteCommand) -> [String] { table.combinations(for: command.identifier).map(\.symbols) }
         let expected: [GraphiteCommand: String] = [
             .newNote: "⌘N", .newTab: "⌘T", .quickSwitcher: "⌘O", .closeTab: "⌘W", .reopenClosedTab: "⇧⌘T", .save: "⌘S", .openSettings: "⌘,",
-            .searchAllFiles: "⇧⌘F", .toggleReadingView: "⌘E", .goBack: "⌘[", .goForward: "⌘]", .nextTab: "⌃⇥",
+            .searchAllFiles: "⇧⌘F", .filterFiles: "⌥⌘J", .toggleReadingView: "⌘E", .goBack: "⌘[", .goForward: "⌘]", .nextTab: "⌃⇥",
             .previousTab: "⌃⇧⇥", .goToTab1: "⌘1", .goToTab8: "⌘8", .goToLastTab: "⌘9", .increaseFontSize: "⌘+", .decreaseFontSize: "⌘-",
             .resetFontSize: "⌘0", .toggleBold: "⌘B", .toggleItalics: "⌘I", .toggleChecklist: "⌘L", .insertLink: "⌘K", .toggleHighlight: "⇧⌘H",
             .toggleStrikethrough: "⇧⌘X", .toggleCode: "⌃⌘C", .toggleComment: "⌘/", .findInNote: "⌘F", .findAndReplaceInNote: "⌥⌘F",

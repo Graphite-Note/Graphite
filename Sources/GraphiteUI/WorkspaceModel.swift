@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.84
- * Date: 04/11/2026
+ * Version: 0.85
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -987,8 +987,10 @@ final class WorkspaceModel {
         }
         do {
             let page = try await index.search(query, sortOrder: sortOrder)
+            // Folders `folder:` found lead, as results of their own.
+            let folders = try await index.folderResults(for: query)
             guard !Task.isCancelled, query == searchQuery, sortOrder == preferences.searchSortOrder else { return }
-            searchResults = page.results
+            searchResults = folders + page.results
             searchContinuation = page.continuation
         } catch is CancellationError {
             // The query changed while this search ran; the next search shows its results.

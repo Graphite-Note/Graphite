@@ -5,8 +5,8 @@
  * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 04/11/2026
+ * Version: 0.11
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -138,7 +138,7 @@ public actor VaultIndex {
         configuration.prepareDatabase { database in
             let cacheKilobytes = database.configuration.readonly ? Self.readerCacheKilobytes : Self.writerCacheKilobytes
             try database.execute(sql: "PRAGMA cache_size = -\(cacheKilobytes)")
-            database.add(function: RegularExpressionFunction.function)
+            SearchSQLFunctions.add(to: database)
         }
         databasePool = try DatabasePool(path: databaseURL.path, configuration: configuration)
         var migrator = DatabaseMigrator()

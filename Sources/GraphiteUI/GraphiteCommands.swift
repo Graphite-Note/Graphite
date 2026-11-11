@@ -5,7 +5,7 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.14
+ * Version: 0.15
  * Date: 11/11/2026
  */
 
@@ -148,6 +148,9 @@ public struct GraphiteCommands: Commands {
         #endif
         Button("Search in All Files") { workspace?.searchFocusRequest += 1 }
             .keyboardShortcut(shortcut(.searchAllFiles))
+            .disabled(workspace == nil)
+        Button("Filter Files") { workspace?.requestFileTreeFilter() }
+            .keyboardShortcut(shortcut(.filterFiles))
             .disabled(workspace == nil)
         if workspace?.preferences.isEnabled(.templates) == true {
             Button("Insert Template…") { actions?.window.showTemplatePicker() }

@@ -6,7 +6,7 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.7
+ * Version: 0.8
  * Date: 11/11/2026
  */
 import Foundation
@@ -54,6 +54,7 @@ enum GraphiteCommand: String, CaseIterable {
     case closeTab = "workspace:close", reopenClosedTab = "workspace:undo-close-pane", save = "editor:save-file"
     case renameFile = "workspace:edit-file-title", moveFile = "file-explorer:move-file", duplicateFile = "file-explorer:duplicate-file"
     case deleteFile = "app:delete-file", revealFile = "file-explorer:reveal-active-file", collapseFolders = "graphite:collapse-all-folders"
+    case filterFiles = "graphite:filter-file-tree"
     case copyURL = "workspace:copy-url", reviewOtherVersions = "graphite:review-other-versions"
     case exportToPDF = "workspace:export-pdf", printNote = "graphite:print-file"
     case browseSnapshots = "file-recovery:open", openLocalHistory = "graphite:open-local-history"
@@ -175,6 +176,10 @@ extension GraphiteCommand {
         case .deleteFile: return Descriptor(title: "Delete current file", group: .file)
         case .revealFile: return Descriptor(title: "Files: Reveal current file in navigation", group: .file)
         case .collapseFolders: return Descriptor(title: "Files: Collapse all folders", group: .file)
+        // Xcode's Filter in Navigator; Obsidian has no such command, and neither it nor Graphite uses ⌥⌘J.
+        case .filterFiles:
+            return Descriptor(title: "Files: Filter files and folders by name", group: .file, defaultCombinations: command("J", [.command, .option]),
+                              binding: .menuBar, macMenuTitles: ["Filter Files"])
         case .copyURL: return Descriptor(title: "Copy Graphite URL", group: .file)
         case .exportToPDF: return Descriptor(title: "Export to PDF", group: .file, binding: .menuBar, macMenuTitles: ["Export as PDF…"])
         case .printNote:

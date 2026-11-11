@@ -102,14 +102,14 @@ final class WorkspaceCommandIdentifiersTests: XCTestCase {
 
     /// The identifiers as the palette lists them with the default core plugins and no vault open.
     static let identifiersWithNoVaultOpen = withoutWhatThisDeviceCannotEdit([
-        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders",
+        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
         "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "file-recovery-all", "workspace-focus",
         "graph-open", "map-open", "bookmarks-show", "daily-today", "daily-previous", "daily-next", "record", "record-video",
     ])
 
     /// The same with `Folder/Note.md` open in the only tab: the file, tab, note and editing commands join the list.
     static let identifiersWithANoteOpen = withoutWhatThisDeviceCannotEdit([
-        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders",
+        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
         "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "move-tab", "file-recovery-all", "file-recovery-note",
         "copy-url", "workspace-focus", "graph-open", "graph-local", "map-open", "map-local", "bookmarks-show", "bookmarks-file",
         "daily-today", "daily-previous", "daily-next", "rename", "move", "copy", "delete", "reveal",

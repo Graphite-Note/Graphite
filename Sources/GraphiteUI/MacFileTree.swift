@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: The Mac's file tree on AppKit's outline view, with its dragging and dropping.
  *
- * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.3
+ * Date: 11/11/2026
  */
 
 #if os(macOS)
@@ -51,6 +51,10 @@ struct MacFileTree: NSViewRepresentable {
             conflictedPaths: workspace.conflictedPaths,
             showsFileExtensions: workspace.preferences.showsFileExtensions,
             typography: typography))
+        // After the tree's state, so clearing the filter shows the tree as it now is.
+        let filter = workspace.fileTreeContents.filter
+        controller.filterExpansionChanged = { folder, expands in filter.setExpanded(folder, expands) }
+        controller.showFilter(FilteredFileTree.Filter(isFiltering: filter.isFiltering, result: filter.result, expandedFolders: filter.expandedFolders))
         if let fileToReveal {
             controller.reveal(fileToReveal)
             DispatchQueue.main.async { self.fileToReveal = nil }
@@ -94,8 +98,18 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     let workspace: WorkspaceModel
     var requestCreation: (CreationKind, VaultPath) -> Void = { _, _ in }
+    /// The person opened or closed a folder while filtering, which the filter records (`FileTreeFilter`).
+    var filterExpansionChanged: (VaultPath, Bool) -> Void = { _, _ in }
     private(set) var outlineView: FileTreeOutlineView?
+    /// What the outline shows; while filtering, the tree's rows as they were before it.
     private var state = State()
+    /// The rows shown while the Files panel's filter narrows the tree, in place of the tree's own.
+    private var filteredTree: FilteredFileTree?
+    private var shownFilter = FilteredFileTree.Filter()
+    /// The workspace's latest state while filtering, applied to the tree once the filter is cleared.
+    private var stateWhileFiltering: State?
+    /// A folder revealed (`revealFolder`), which stays selected until another file opens.
+    private var revealedFolder: VaultPath?
     private var rootNodes: [FileTreeNode] = []
     /// Every node listed, by path, so a listing reuses the nodes already made.
     private var nodesByPath: [VaultPath: FileTreeNode] = [:]
@@ -156,7 +170,13 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Following the workspace
 
     func update(_ newState: State) {
+        if filteredTree != nil {
+            if newState.selection != (stateWhileFiltering ?? state).selection { revealedFolder = nil }
+            stateWhileFiltering = newState
+            return selectOpenFile()
+        }
         guard newState != state, let outlineView else { return }
+        if newState.selection != state.selection { revealedFolder = nil }
         let previousState = state
         state = newState
         isApplyingState = true
@@ -289,8 +309,11 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     private func selectOpenFile() {
         guard let outlineView else { return }
-        let row = state.selection.flatMap { path in nodesByPath[path] }.map { node in outlineView.row(forItem: node) } ?? -1
+        let selection = (stateWhileFiltering ?? state).selection
+        let row = selection.flatMap(shownNode(for:)).map { node in outlineView.row(forItem: node) } ?? -1
         guard row != outlineView.selectedRow else { return }
+        // A folder revealed stays selected until another file opens.
+        if let revealedFolder, let revealedNode = shownNode(for: revealedFolder), outlineView.row(forItem: revealedNode) == outlineView.selectedRow { return }
         // A folder the person picked stays selected while the open file's row is hidden.
         if row < 0, let selectedNode = outlineView.item(atRow: outlineView.selectedRow) as? FileTreeNode, selectedNode.entry.isDirectory { return }
         let wasApplyingState = isApplyingState
@@ -313,10 +336,17 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     }
 
     private func revealPendingFile() {
-        guard let path = pendingReveal, let outlineView, let node = nodesByPath[path] else { return }
+        guard let path = pendingReveal, let outlineView, let node = shownNode(for: path) else { return }
         let row = outlineView.row(forItem: node)
         guard row >= 0 else { return }
         pendingReveal = nil
+        if node.entry.isDirectory, path == workspace.fileTreeContents.revealedFolder {
+            revealedFolder = path
+            let wasApplyingState = isApplyingState
+            isApplyingState = true
+            outlineView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            isApplyingState = wasApplyingState
+        }
         guard let scrollView = outlineView.enclosingScrollView else { return }
         let clipView = scrollView.contentView
         let rowFrame = outlineView.rect(ofRow: row)
@@ -325,17 +355,54 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         scrollView.reflectScrolledClipView(clipView)
     }
 
+    // MARK: Filtering
+
+    /// Shows the filter's rows in place of the tree's while it filters, and the tree again, as it now is, once cleared.
+    func showFilter(_ filter: FilteredFileTree.Filter) {
+        guard filter != shownFilter, let outlineView else { return }
+        let previousFilter = shownFilter
+        shownFilter = filter
+        guard filter.isFiltering else { return showTreeAgain() }
+        isApplyingState = true
+        defer { isApplyingState = false }
+        let isNewResult = filteredTree == nil || filter.result != previousFilter.result
+        if isNewResult { filteredTree = FilteredFileTree(result: filter.result) }
+        filteredTree?.show(filter.expandedFolders, in: outlineView, reloading: isNewResult, previouslyExpanded: previousFilter.expandedFolders)
+        selectOpenFile()
+    }
+
+    /// The tree's own rows back, with its expanded folders, then whatever changed while filtering.
+    private func showTreeAgain() {
+        guard let outlineView, filteredTree != nil else { return }
+        filteredTree = nil
+        isApplyingState = true
+        outlineView.reloadData()
+        expandFolders(state.expandedFolders)
+        isApplyingState = false
+        if let latestState = stateWhileFiltering {
+            stateWhileFiltering = nil
+            update(latestState)
+        }
+        selectOpenFile()
+        revealPendingFile()
+    }
+
+    /// The node of a row shown: the filter's while it filters, the tree's otherwise.
+    private func shownNode(for path: VaultPath) -> FileTreeNode? {
+        filteredTree.map { tree in tree.nodesByPath[path] } ?? nodesByPath[path]
+    }
+
     // MARK: Data source
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let node = item as? FileTreeNode else { return rootNodes.count }
-        return node.children?.count ?? 0
+        guard let node = item as? FileTreeNode else { return filteredTree?.rootNodes.count ?? rootNodes.count }
+        return (filteredTree?.children(of: node) ?? node.children)?.count ?? 0
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FileTreeNode else { return rootNodes[index] }
+        guard let node = item as? FileTreeNode else { return filteredTree?.rootNodes[index] ?? rootNodes[index] }
         // A folder not listed yet has no children to ask for.
-        guard let children = node.children, children.indices.contains(index) else { return node }
+        guard let children = filteredTree?.children(of: node) ?? node.children, children.indices.contains(index) else { return node }
         return children[index]
     }
 
@@ -350,9 +417,12 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         if !node.entry.isDirectory { workspace.checkConflictVersionsOfRowShown(node.path) }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? FileTreeCellView ?? FileTreeCellView()
         cell.identifier = Self.cellIdentifier
-        cell.configure(title: node.entry.isDirectory ? node.path.name : node.path.stem, extensionSuffix: extensionSuffix(of: node.entry),
-                       hasConflictVersions: state.conflictedPaths.contains(node.path),
-                       font: NoteTypography.font(state.typography.interfaceFamily, size: NSFont.systemFontSize, weight: .regular))
+        let drawnState = stateWhileFiltering ?? state
+        let title = node.entry.isDirectory ? node.path.name : node.path.stem, suffix = extensionSuffix(of: node.entry)
+        let highlightedRange = filteredTree?.result.flatMap { result in Self.filterHighlightRange(of: result.text, inTitle: title, extensionSuffix: suffix) }
+        cell.configure(title: title, extensionSuffix: suffix, highlightedRange: highlightedRange,
+                       hasConflictVersions: drawnState.conflictedPaths.contains(node.path),
+                       font: NoteTypography.font(drawnState.typography.interfaceFamily, size: NSFont.systemFontSize, weight: .regular))
         cell.setAccessibilityLabel(workspace.preferences.displayName(for: node.path))
         return cell
     }
@@ -363,7 +433,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         guard !entry.isDirectory else { return nil }
         let fileExtension = (entry.path.name as NSString).pathExtension
         guard !fileExtension.isEmpty else { return nil }
-        if entry.kind == .markdown && !state.showsFileExtensions { return nil }
+        if entry.kind == .markdown && !(stateWhileFiltering ?? state).showsFileExtensions { return nil }
         return "." + fileExtension
     }
 
@@ -381,6 +451,11 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     func outlineViewItemDidExpand(_ notification: Notification) {
         guard let node = notification.userInfo?["NSObject"] as? FileTreeNode else { return }
+        // While filtering, a folder shows what the vault's names hold: nothing is listed.
+        if filteredTree != nil {
+            if !isApplyingState { filterExpansionChanged(node.path, true) }
+            return
+        }
         if node.children == nil { list(node) }
         guard !isApplyingState else { return }
         state.expandedFolders.insert(node.path)
@@ -389,6 +464,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     func outlineViewItemDidCollapse(_ notification: Notification) {
         guard !isApplyingState, let node = notification.userInfo?["NSObject"] as? FileTreeNode else { return }
+        if filteredTree != nil { return filterExpansionChanged(node.path, false) }
         state.expandedFolders.remove(node.path)
         workspace.expandedFolders.remove(node.path)
     }

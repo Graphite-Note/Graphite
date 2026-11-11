@@ -5,8 +5,8 @@
  * Description: The Mac file tree's outline view and its rows.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 11/11/2026
  */
 
 #if os(macOS)
@@ -41,6 +41,8 @@ final class FileTreeCellView: NSTableCellView {
     private let conflictMarker = NSImageView()
     private var title = ""
     private var extensionSuffix: String?
+    /// The part of the title and extension the file tree's filter matched, marked.
+    private var highlightedRange: NSRange?
     private var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
 
     override init(frame frameRect: NSRect) {
@@ -62,10 +64,11 @@ final class FileTreeCellView: NSTableCellView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
-    func configure(title: String, extensionSuffix: String?, hasConflictVersions: Bool, font: NSFont) {
-        let changed = title != self.title || extensionSuffix != self.extensionSuffix || font != self.font
+    func configure(title: String, extensionSuffix: String?, highlightedRange: NSRange? = nil, hasConflictVersions: Bool, font: NSFont) {
+        let changed = title != self.title || extensionSuffix != self.extensionSuffix || highlightedRange != self.highlightedRange || font != self.font
         self.title = title
         self.extensionSuffix = extensionSuffix
+        self.highlightedRange = highlightedRange
         self.font = font
         if changed { updateTitle() }
         if conflictMarker.isHidden == hasConflictVersions {
@@ -91,6 +94,10 @@ final class FileTreeCellView: NSTableCellView {
             attributedTitle.append(NSAttributedString(string: extensionSuffix, attributes: [
                 .font: font, .foregroundColor: isEmphasized ? NSColor.alternateSelectedControlTextColor.withAlphaComponent(0.75) : NSColor.secondaryLabelColor,
             ]))
+        }
+        if let highlightedRange, NSMaxRange(highlightedRange) <= attributedTitle.length {
+            let highlight = NSColor.controlAccentColor.withAlphaComponent(isEmphasized ? 0.45 : 0.28)
+            attributedTitle.addAttribute(.backgroundColor, value: highlight, range: highlightedRange)
         }
         titleField.attributedStringValue = attributedTitle
         needsLayout = true

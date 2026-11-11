@@ -5,8 +5,8 @@
  * Description: Places in the note that matched, in order. Empty when only the name matched.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 04/11/2026
+ * Version: 0.9
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -20,9 +20,16 @@ public struct SearchResult: Identifiable, Sendable {
     public let matches: [SearchMatch]
     /// Lines that matched, including those beyond `matches`.
     public let matchCount: Int
+    /// A file, or a folder that `folder:` found (`VaultIndex.folderResults`), listed above the files.
+    public var kind = SearchResultKind.file
     public var id: VaultPath { path }
     /// The first match's text, or nothing.
     public var excerpt: String { matches.first?.excerpt ?? "" }
+}
+
+/// What a search result is.
+public enum SearchResultKind: Sendable {
+    case file, folder
 }
 
 /// Obsidian's search sort orders.
@@ -305,7 +312,7 @@ struct SearchSQLCondition {
 /// word index cannot find are looked for as text (`SearchTextTokens.literalFragments`).
 enum SearchSQLCompiler {
     enum Target {
-        case note, fileName, filePath, content, tags
+        case note, fileName, filePath, folderNames, content, tags
     }
 
     static let regularExpressionFunctionName = "graphite_regexp"
@@ -326,6 +333,7 @@ enum SearchSQLCompiler {
             switch scope {
             case .file: return condition(for: operand, target: .fileName)
             case .path: return condition(for: operand, target: .filePath)
+            case .folder: return condition(for: operand, target: .folderNames)
             case .content: return condition(for: operand, target: .content)
             case .tag: return condition(for: operand, target: .tags)
             case .ignoreCase: return condition(for: operand, target: target)
@@ -369,6 +377,8 @@ enum SearchSQLCompiler {
                 return SearchSQLCondition(sql: "\(function)(?, files.basename)", arguments: [pattern], isExact: true)
             case .filePath:
                 return SearchSQLCondition(sql: "\(function)(?, files.path)", arguments: [pattern], isExact: true)
+            case .folderNames:
+                return FolderNameFunction.condition(for: term)
             case .tags:
                 return SearchSQLCondition(sql: "files.path IN (SELECT path FROM tags WHERE \(function)(?, tag))", arguments: [pattern], isExact: true)
             }
@@ -413,6 +423,8 @@ enum SearchSQLCompiler {
             // the names as written would ignore it for ASCII letters only.
             let column = target == .fileName ? "files.folded_name" : "files.folded_path"
             return SearchSQLCondition(sql: "\(column) LIKE ? ESCAPE '\\'", arguments: ["%" + VaultIndex.escapedForLike(VaultIndex.foldedKey(term.text)) + "%"], isExact: true)
+        case .folderNames:
+            return FolderNameFunction.condition(for: term)
         case .tags:
             let tag = term.text.hasPrefix("#") ? String(term.text.dropFirst()) : term.text
             guard isASCII else { return .everything }
@@ -456,13 +468,13 @@ enum RegularExpressionFunction {
         }
     }
 
-    private static let cache = RegularExpressionCache()
+    static let cache = RegularExpressionCache()
 }
 
 /// Compiled patterns shared by every database connection.
 /// `NSCache` is thread-safe and `NSRegularExpression` is immutable, so the cache can be
 /// used from SQLite's threads without further locking.
-private final class RegularExpressionCache: @unchecked Sendable {
+final class RegularExpressionCache: @unchecked Sendable {
     private let compiled = NSCache<NSString, NSRegularExpression>()
 
     init() { compiled.countLimit = 64 }

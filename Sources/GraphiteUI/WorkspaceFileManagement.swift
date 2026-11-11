@@ -5,8 +5,8 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.25
- * Date: 02/11/2026
+ * Version: 0.26
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -485,6 +485,9 @@ extension WorkspaceModel {
         deviceDefaults.set(SidebarPanel.files.rawValue, forKey: SidebarPanelSettingKey.panel)
         searchQuery = ""
         communityPlugins.shownSidebarViewIdentifier = nil
+        // The file shows in the tree as it is, not among a filter's matches.
+        fileTreeContents.filter.clear()
+        fileTreeContents.revealedFolder = nil
         var folder = path.parent
         while !folder.rawValue.isEmpty {
             expandedFolders.insert(folder)

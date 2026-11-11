@@ -5,8 +5,8 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.16
- * Date: 01/11/2026
+ * Version: 0.17
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -56,6 +56,7 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "settings", command: .openSettings, systemImage: "gearshape", run: window.showSettings),
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
             PaletteCommand(id: "collapse-folders", command: .collapseFolders, systemImage: "arrow.down.right.and.arrow.up.left") { workspace.collapseAllFolders() },
+            PaletteCommand(id: "filter-files", command: .filterFiles, systemImage: "line.3.horizontal.decrease.circle") { workspace.requestFileTreeFilter() },
         ]
         // The Mac cannot write in a notebook, so it does not offer to make one (`CreationKind.canBeEditedOnThisDevice`).
         if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }

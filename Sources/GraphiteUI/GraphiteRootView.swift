@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.68
- * Date: 05/11/2026
+ * Version: 0.69
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -270,7 +270,8 @@ struct GraphiteRootView: View {
         }
         // A search asked for from anywhere (⇧⌘F, a tag, a link) shows where it happens.
         .onChange(of: workspace.searchFocusRequest) { showSidebar() }
-        .onChange(of: workspace.searchResultsRevealRequest) { showSidebar() }
+        // Results asked for from outside the sidebar, and the Files panel's filter (⌥⌘J), show in the sidebar.
+        .onChange(of: [workspace.searchResultsRevealRequest, workspace.fileTreeContents.filter.focusRequest]) { showSidebar() }
         // A plugin's sidebar view asked to be shown.
         .onChange(of: workspace.communityPlugins.sidebarViewRequest) { _, request in if request != nil { showSidebar() } }
         // "Reveal current file", from the palette, a tab's menu or the file list's menu.
