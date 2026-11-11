@@ -880,9 +880,12 @@ final class PicturesAndPaperTests: XCTestCase {
             let pdfView = try XCTUnwrap(shownPDFView())
             return (row.convert(row.bounds, to: nil), pdfView.convert(pdfView.bounds, to: nil))
         }
-        func assertARowOfItsOwn(_ row: CGRect, over page: CGRect, _ place: String) {
+        /// `centering` is how far the tools' middle may be from the PDF's: beside a split the side's bar also holds its
+        /// Undo, Redo and Write at one end, and the tools take the rest of the row, every one of them shown rather than
+        /// folded to stay centered (2026-11-11).
+        func assertARowOfItsOwn(_ row: CGRect, over page: CGRect, _ place: String, centering: CGFloat = 24) {
             XCTAssertEqual(row.height, PencilToolbarMetrics.height, accuracy: 0.5, "\(place): the bar's full height, not the tab bar's")
-            XCTAssertEqual(row.midX, page.midX, accuracy: 24, "\(place): the tools are centered over the PDF, not at the end of the tab bar")
+            XCTAssertEqual(row.midX, page.midX, accuracy: centering, "\(place): the tools are over the middle of the PDF, not at the end of the tab bar")
             XCTAssertGreaterThanOrEqual(row.minX, page.minX - 1, "\(place): inside the PDF's side")
             XCTAssertLessThanOrEqual(row.maxX, page.maxX + 1, "\(place): inside the PDF's side")
             XCTAssertLessThan(page.minY - row.maxY, 1, "\(place): nothing but the bar's divider lies between the tools and the page")
@@ -902,7 +905,7 @@ final class PicturesAndPaperTests: XCTestCase {
             return pdfView.convert(pdfView.bounds, to: nil).width < wholeWindow.page.width * 0.75
         }
         let besideASplit = try await settledRowAndPage("the tools' row has settled beside a split")
-        assertARowOfItsOwn(besideASplit.row, over: besideASplit.page, "Beside a split")
+        assertARowOfItsOwn(besideASplit.row, over: besideASplit.page, "Beside a split", centering: besideASplit.page.width / 4)
         attachScreenshot(of: controller, named: "Tools in a row of their own beside a split")
     }
 

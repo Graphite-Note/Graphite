@@ -236,6 +236,36 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         XCTAssertLessThan(blockViews(in: textView).count, 10, "The blocks scrolled away gave up their place on screen")
     }
 
+    /// Left still, the note makes the views of the blocks just below the screen and keeps them, so
+    /// the scroll that shows them takes them from the kept views instead of building each within
+    /// a frame; no view made ahead stays beside the column, and blocks far below get none.
+    func testTheBlocksJustBelowTheScreenHaveViewsReadyOnceTheNoteIsStill() async throws {
+        let paragraph = (0..<6).map { lineIndex in "Paragraph line \(lineIndex)." }.joined(separator: "\n")
+        let text = (0..<40).map { blockIndex in "\(paragraph)\n\n$$x_{\(blockIndex)} = \(blockIndex)$$\n" }.joined(separator: "\n")
+        let (coordinator, textView, scrollView) = try await makeEditor(text: text, height: 500)
+        defer { withExtendedLifetime(coordinator) {} }
+        try await awaitConditionAfterLayout { !self.blockViews(in: textView).isEmpty }
+        let renderedBlocks = coordinator.styling.renderedBlocks
+        let entries = coordinator.styling.textState.blockEntries
+        var keptEntries: [LivePreviewBlockEntry] = []
+        try await awaitConditionAfterLayout {
+            keptEntries = entries.filter { entry in renderedBlocks.hasKeptView(forBlockWithKey: entry.key) }
+            return keptEntries.count >= 2 && !renderedBlocks.hasViewsMadeAhead
+        }
+        let lastEntry = try XCTUnwrap(entries.last)
+        XCTAssertFalse(renderedBlocks.hasKeptView(forBlockWithKey: lastEntry.key), "A block far below gets no view ahead of time")
+        XCTAssertTrue(blockViews(in: textView).allSatisfy { view in view.frame.minX >= 0 }, "No view made ahead stays beside the column")
+
+        // A screen down: a block whose view was made ahead shows with that view, taken from the kept ones.
+        let firstKept = try XCTUnwrap(keptEntries.first)
+        textView.scrollRangeToVisible(NSRange(location: firstKept.range.location, length: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        // The window is never shown, so the viewport is laid out here as a shown window's display lays it out.
+        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        try await awaitConditionAfterLayout { !renderedBlocks.hasKeptView(forBlockWithKey: firstKept.key) }
+        XCTAssertTrue(blockViews(in: textView).contains { view in view.frame.intersects(textView.visibleRect) && view.frame.minX >= 0 })
+    }
+
     /// Typing in a paragraph moves the blocks after it; their views stay, not built again.
     func testTypingElsewhereKeepsTheBlocksViews() async throws {
         let (coordinator, textView, _) = try await makeEditor(text: Self.tableNote)

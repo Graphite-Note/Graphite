@@ -989,6 +989,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private var delayedPlacementTries = 0
         /// Set while blocks are placed again on a viewport laid out for them in the same pass.
         private var isPlacingOnViewportLaidOutNow = false
+        /// Makes the views of the blocks just below the screen once the note is still.
+        private lazy var lookahead = RenderedBlockLookahead(renderedBlocks: renderedBlocks)
         /// The text column's width when rendered blocks were last placed, and the placement
         /// waiting for a new width to settle.
         private var placedColumnWidth: CGFloat = 0
@@ -1944,6 +1946,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // passes; a budget spent earlier would otherwise leave a block unplaced.
             unsettledPlacementPasses = 0
             delayedPlacementTries = 0
+            lookahead.stop()
         }
 
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
@@ -2018,8 +2021,28 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             } else if !placement.isMissingBlock && !placement.didMoveView {
                 unsettledPlacementPasses = 0
                 delayedPlacementTries = 0
+                makeViewsAheadOnceStill(in: textView)
             }
             keepPinnedHeadingAtTop(in: textView)
+        }
+
+        private func makeViewsAheadOnceStill(in textView: MarkdownTextView) {
+            let viewportStart = textView.textLayoutManager.flatMap(RenderedBlockLookahead.viewportCharacters(of:))?.location
+            lookahead.makeViewsOnceStill(viewportStart: viewportStart) { [weak self, weak textView] in self?.makeNextViewAhead(in: textView) ?? false }
+        }
+
+        /// Makes the next view below the screen (`RenderedBlockLookahead`); false when there is
+        /// none to make, or the note is scrolled, edited or hidden.
+        private func makeNextViewAhead(in textView: MarkdownTextView?) -> Bool {
+            guard let textView, isLivePreview, let environment, textView.window != nil, !textView.isTracking, !textView.isDecelerating,
+                  textView.markedTextRange == nil, !textState.cachesDescribeOldText, !textState.hasUnstyledEdit,
+                  let viewport = textView.textLayoutManager.flatMap(RenderedBlockLookahead.viewportCharacters(of:)) else { return false }
+            let column = RenderedBlockColumn(minX: textView.textContainerInset.left + textView.textContainer.lineFragmentPadding,
+                                             textContainerTop: textView.textContainerInset.top, width: textView.contentColumnWidth)
+            return renderedBlocks.makeNextViewAhead(below: viewport, in: concealedEntries(in: textView), textView: textView, column: column,
+                                                    configuration: configuration) { entry in
+                widgetRootView(for: entry, environment: environment, textView: textView)
+            }
         }
 
         func scrollViewDidScroll(_ scrollView: UIScrollView) {
@@ -2030,6 +2053,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
 
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            lookahead.stop()
             pinnedHeading = nil
             topLineBeforeWidthChange = nil
             suspendReadingFollow?()
@@ -2293,6 +2317,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
 
         func removeAllWidgets() {
+            lookahead.stop()
             renderedBlocks.removeAllViews()
         }
 
@@ -3631,6 +3656,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
 
         func textDidChange(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
+            lookahead.stop()
             linkPreviews.closeCard()
             settleTextChange(in: textView)
             publish(textView)
@@ -3924,10 +3950,33 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             renderedBlocks.detachViews(except: placement.keysInUse, entries: textState.blockEntries)
             // A height measured at a new width, or by another editor, is reserved in the text first.
             styling.restyleLater(placement.entriesToRestyle, in: textView)
+            if !placement.isMissingBlock && !placement.didMoveView && placement.entriesToRestyle.isEmpty {
+                lookahead.makeViewsOnceStill(viewportStart: RenderedBlockLookahead.viewportCharacters(of: textLayoutManager)?.location) {
+                    [weak self, weak textView] in self?.makeNextViewAhead(in: textView) ?? false
+                }
+            }
         }
 
         func removeAllBlockViews() {
+            lookahead.stop()
             renderedBlocks.removeAllViews()
+        }
+
+        /// Makes the views of the blocks just below the screen once the note is still.
+        private lazy var lookahead = RenderedBlockLookahead(renderedBlocks: renderedBlocks)
+
+        /// Makes the next view below the screen (`RenderedBlockLookahead`); false when there is
+        /// none to make, or the note is being edited or hidden.
+        private func makeNextViewAhead(in textView: NSTextView?) -> Bool {
+            guard let textView, let environment, rendersBlocks, textView.window != nil, !textView.hasMarkedText(), !textState.cachesDescribeOldText,
+                  !textState.hasUnstyledEdit, let textContainer = textView.textContainer, textView.renderedBlockColumnWidth > 0,
+                  let viewport = textView.textLayoutManager.flatMap(RenderedBlockLookahead.viewportCharacters(of:)) else { return false }
+            let column = RenderedBlockColumn(minX: textView.textContainerOrigin.x + textContainer.lineFragmentPadding,
+                                             textContainerTop: textView.textContainerOrigin.y, width: textView.renderedBlockColumnWidth)
+            return renderedBlocks.makeNextViewAhead(below: viewport, in: concealedEntries(in: textView), textView: textView, column: column,
+                                                    configuration: configuration) { entry in
+                blockRootView(for: entry, environment: environment, textView: textView)
+            }
         }
 
         /// Places the blocks after a change, on the next turn of the run loop; TextKit's

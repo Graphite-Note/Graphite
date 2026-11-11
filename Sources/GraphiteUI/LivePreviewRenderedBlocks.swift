@@ -177,6 +177,10 @@ final class LivePreviewRenderedBlocks {
     private var keysAwaitingRootView: Set<LivePreviewBlockKey> = []
     /// Blocks whose view was just built and has not yet settled on its height.
     private var keysOfNewViews: Set<LivePreviewBlockKey> = []
+    /// Blocks below the screen whose view was just made ahead (`makeNextViewAhead`), with the
+    /// memory it is estimated to take: it stays in the text view, out of sight, until it has
+    /// laid out once, then joins the views kept off screen (`keepViewsMadeAhead`).
+    private var viewsMadeAhead: [LivePreviewBlockKey: Double] = [:]
 
     init(detachedViewsBudgetMegabytes: Int) {
         detachedHosts = DetachedWidgetPool(budgetMegabytes: detachedViewsBudgetMegabytes)
@@ -402,6 +406,8 @@ final class LivePreviewRenderedBlocks {
             let entry = concealedEntries[index]
             guard !placement.keysInUse.contains(entry.key) else { return true }
             placement.keysInUse.insert(entry.key)
+            // A view made ahead that the block scrolled to in the meantime is simply shown.
+            viewsMadeAhead[entry.key] = nil
             // A paragraph a restyle changed has a new fragment, without a frame until
             // TextKit lays out the viewport again.
             guard fragment.state == .layoutAvailable else {
@@ -493,7 +499,10 @@ final class LivePreviewRenderedBlocks {
         // Looked up by key: searching every block for each view leaving the screen was slow
         // for a note of many blocks.
         // The view editing its block stays while that edit gives the block a new key.
-        let leavingKeys = hosts.keys.filter { key in !keysInUse.contains(key) && key != blockEditedInItsView?.key }
+        // A view made ahead stays until it has laid out once (`keepViewsMadeAhead`).
+        let leavingKeys = hosts.keys.filter { key in
+            !keysInUse.contains(key) && key != blockEditedInItsView?.key && viewsMadeAhead[key] == nil
+        }
         guard !leavingKeys.isEmpty else { return }
         var entriesByKey: [LivePreviewBlockKey: LivePreviewBlockEntry] = [:]
         for entry in entries where entriesByKey[entry.key] == nil { entriesByKey[entry.key] = entry }
@@ -515,9 +524,58 @@ final class LivePreviewRenderedBlocks {
         for host in hosts.values { host.removeFromTextView() }
         blockEditedInItsView = nil
         keysAwaitingRootView.removeAll()
+        viewsMadeAhead.removeAll()
         hosts.removeAll()
         detachedHosts.removeAll()
     }
+
+    // MARK: Views made ahead
+
+    /// Makes the view of the next block below the screen that has none (`RenderedBlockLookahead`
+    /// says which and when), before it scrolls in, so the scroll that shows it does not build it
+    /// within a frame. The view goes into the text view left of the column, where nothing shows,
+    /// and lays out there; it reports its height as any new view does, so the block reserves it
+    /// before it is seen. False when no block near enough needs one.
+    func makeNextViewAhead(below viewport: NSRange, in concealedEntries: [LivePreviewBlockEntry], textView: RenderedBlockTextView,
+                           column: RenderedBlockColumn, configuration: EditorConfiguration,
+                           makeRootView: (LivePreviewBlockEntry) -> RenderedBlockRoot) -> Bool {
+        let candidates = RenderedBlockLookahead.blocksWorthMakingAhead(below: viewport, in: concealedEntries)
+        guard let (entry, estimatedMegabytes) = candidates.lazy.compactMap({ entry -> (LivePreviewBlockEntry, Double)? in
+            guard entry.block.kind != .frontmatter, self.hosts[entry.key] == nil, self.detachedHosts.host(for: entry.key) == nil,
+                  let megabytes = DetachedWidgetPool<RenderedBlockHost>.estimatedMegabytes(of: entry.block) else { return nil }
+            return (entry, megabytes)
+        }).first else { return false }
+        let host = RenderedBlockHost.makeRenderedBlockHost(root: makeRootView(entry))
+        keysOfNewViews.insert(entry.key)
+        hosts[entry.key] = host
+        viewsMadeAhead[entry.key] = estimatedMegabytes
+        host.placedView.frame = CGRect(x: column.minX - column.width - 1_000, y: column.textContainerTop, width: column.width,
+                                       height: reservedHeight(of: entry, columnWidth: column.width, configuration: configuration))
+        textView.addSubview(host.placedView)
+        #if canImport(UIKit)
+        host.placedView.layoutIfNeeded()
+        #else
+        host.placedView.layoutSubtreeIfNeeded()
+        #endif
+        return true
+    }
+
+    /// The views made ahead, which have laid out, leave the text view for the views kept off
+    /// screen, from which a block's view is taken when it scrolls in.
+    func keepViewsMadeAhead() {
+        for (key, estimatedMegabytes) in viewsMadeAhead {
+            guard let host = hosts.removeValue(forKey: key) else { continue }
+            host.removeFromTextView()
+            detachedHosts.keep(host, for: key, estimatedMegabytes: estimatedMegabytes)
+        }
+        viewsMadeAhead.removeAll()
+    }
+
+    /// Whether a view made ahead is still waiting to join the kept views.
+    var hasViewsMadeAhead: Bool { !viewsMadeAhead.isEmpty }
+
+    /// Whether the block's view is kept off screen, ready to show again.
+    func hasKeptView(forBlockWithKey key: LivePreviewBlockKey) -> Bool { detachedHosts.host(for: key) != nil }
 
     /// Lets go of the views kept off screen, as when the system runs low on memory.
     func dropDetachedViews() {

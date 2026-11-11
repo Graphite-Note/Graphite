@@ -37,8 +37,10 @@ struct SidebarOverDocumentUpright: UIViewControllerRepresentable {
     }
 
     /// An empty controller inside the documents' column, which sets the behavior of the split view around it whenever
-    /// the window's shape changes or the column is laid out, so an update of the split view that set it back is undone
-    /// before the frame is drawn.
+    /// the window's shape changes, the column is laid out, or anything sets the behavior back. Showing the sidebar makes
+    /// SwiftUI set the split view's behavior back to automatic, which put it beside an upright PDF; undoing that only at
+    /// the column's next layout lost the race now and then (the hosted test failed on some runs and passed on others,
+    /// 2026-11-11), so the behavior is also watched and set again at once.
     final class SplitBehaviorController: UIViewController {
         var showsSidebarOverDocuments = false {
             didSet { if showsSidebarOverDocuments != oldValue { applySplitBehavior() } }
@@ -55,6 +57,19 @@ struct SidebarOverDocumentUpright: UIViewControllerRepresentable {
             applySplitBehavior()
         }
 
+        /// Watches the split view's preferred behavior, which SwiftUI sets on its own updates.
+        private var splitBehaviorObservation: NSKeyValueObservation?
+        private weak var observedSplitViewController: UISplitViewController?
+
+        private func watchSplitBehavior(of splitViewController: UISplitViewController) {
+            guard observedSplitViewController !== splitViewController else { return }
+            observedSplitViewController = splitViewController
+            // The split view's behavior is set on the main thread; it is set again there at once.
+            splitBehaviorObservation = splitViewController.observe(\.preferredSplitBehavior) { [weak self] _, _ in
+                Task { @MainActor in self?.applySplitBehavior() }
+            }
+        }
+
         override func viewWillLayoutSubviews() {
             super.viewWillLayoutSubviews()
             applySplitBehavior()
@@ -68,6 +83,7 @@ struct SidebarOverDocumentUpright: UIViewControllerRepresentable {
         /// stack and has no behavior to set.
         private func applySplitBehavior() {
             guard let splitViewController, !splitViewController.isCollapsed else { return }
+            watchSplitBehavior(of: splitViewController)
             let current = splitViewController.preferredSplitBehavior
             if showsSidebarOverDocuments {
                 guard current != .overlay else { return }

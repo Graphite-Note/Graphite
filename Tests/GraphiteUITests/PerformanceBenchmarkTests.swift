@@ -168,6 +168,51 @@ final class PerformanceBenchmarkTests: XCTestCase {
         }
     }
 
+    /// Reading a long note: a step of 80 % of the window at a time, with a pause of 0.8 s after
+    /// each, as a person reads a screen and then scrolls on. The first time down, so every block's
+    /// view is new; the pauses are not measured, only the steps.
+    func testReadingALongNoteAScreenAtATime() async throws {
+        let noteText = Self.longLectureNote(sectionCount: 40)
+        for run in 1...Self.runCount {
+            let vault = try makeTemporaryDirectory(named: "ReadingBenchmark")
+            let notePath = try VaultPath("Lecture.md")
+            try Data(noteText.utf8).write(to: vault.appendingPathComponent(notePath.rawValue))
+            let workspace = WorkspaceModel()
+            workspace.folderAccess = FolderAccess(root: vault)
+            workspace.store = VaultStore(root: vault)
+            let index = try VaultIndex(databaseURL: vault.appendingPathComponent("index.sqlite"))
+            workspace.index = index
+            _ = try await index.reconcile(root: vault)
+            await workspace.open(notePath, placement: .currentTab)
+            let tab = try XCTUnwrap(workspace.layout.tabID(showing: notePath))
+            let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
+            session.viewMode = .livePreview
+            let window = try host(NavigationStack {
+                WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
+            })
+            let editor = try await waitForValue(timeout: .seconds(20)) { () -> BenchmarkTextView? in
+                self.layOut(window)
+                guard let editor = self.descendants(of: self.contentView(of: window), matching: BenchmarkTextView.self).first,
+                      self.text(of: editor) == session.text, self.visibleBounds(of: editor).width > 0,
+                      !self.blockViews(in: editor).isEmpty else { return nil }
+                return editor
+            }
+            let reading = BenchmarkMeasurement(scenario: "note-reading-down", run: run)
+            for _ in 0..<24 {
+                // A person reading the screen; the editor's own waits run meanwhile.
+                let pauseEnd = ContinuousClock.now + .milliseconds(800)
+                _ = try await waitForValue(timeout: .seconds(5)) { ContinuousClock.now >= pauseEnd ? true : nil }
+                let viewportHeight = visibleBounds(of: editor).height
+                let currentOffset = scrollOffset(of: editor)
+                let nextOffset = min(max(0, documentHeight(of: editor) - viewportHeight), currentOffset + viewportHeight * 0.8)
+                if abs(nextOffset - currentOffset) < 1 { break }
+                await reading.measureFrame { self.scroll(editor, to: nextOffset) }
+            }
+            reading.finish()
+            close(window)
+        }
+    }
+
     // MARK: Switching tabs
 
     /// Switching between open tabs, from the request to the tab's document laid out and shown
