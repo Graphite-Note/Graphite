@@ -1,10 +1,21 @@
+/**
+ * File: GraphiteCommand.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Every Graphite command a keyboard shortcut can run, with its title, group, default shortcut and
+ *              where its shortcut is listened for.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.7
+ * Date: 11/11/2026
+ */
 import Foundation
 import GraphiteCore
 
 /// The groups of the Keyboard Shortcuts page; community plugins' commands are grouped by
 /// plugin after these.
 enum ShortcutCommandGroup: CaseIterable {
-    case file, view, go, editor, canvas
+    case file, view, go, editor, canvas, pdf
 
     var title: String {
         switch self {
@@ -13,6 +24,7 @@ enum ShortcutCommandGroup: CaseIterable {
         case .go: "Go"
         case .editor: "Editor"
         case .canvas: "Canvas"
+        case .pdf: "PDF"
         }
     }
 }
@@ -80,6 +92,9 @@ enum GraphiteCommand: String, CaseIterable {
     // Canvas
     case canvasSelectAll = "graphite:canvas-select-all", canvasDeleteSelection = "graphite:canvas-delete-selection"
     case canvasDuplicateSelection = "graphite:canvas-duplicate-selection"
+    // PDF, the Mac's markup row and its Annotate commands
+    case toggleMarkupToolbar = "graphite:pdf-toggle-markup-toolbar", highlightPDFText = "graphite:pdf-highlight-text"
+    case underlinePDFText = "graphite:pdf-underline-text", strikethroughPDFText = "graphite:pdf-strikethrough-text"
 
     var identifier: String { rawValue }
 
@@ -98,10 +113,15 @@ enum GraphiteCommand: String, CaseIterable {
     /// Whether the command exists on `platform`: Settings' ⌘, belongs to the Mac's app menu,
     /// and the Mac follows links with a click and has no Pencil drawings.
     func isAvailable(on platform: ShortcutPlatform) -> Bool {
-        platform == .iPadOS || !Self.iPadOnlyCommands.contains(self)
+        switch platform {
+        case .iPadOS: !Self.macOnlyCommands.contains(self)
+        case .macOS: !Self.iPadOnlyCommands.contains(self)
+        }
     }
 
     private static let iPadOnlyCommands: Set<GraphiteCommand> = [.openSettings, .followLink, .openLinkInNewTab, .openLinkOnOtherSide, .insertDrawing]
+    /// The iPad marks a PDF's text from its selection menu and has no markup row.
+    private static let macOnlyCommands: Set<GraphiteCommand> = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText]
 
     /// The commands a platform offers.
     static func available(on platform: ShortcutPlatform) -> [GraphiteCommand] {
@@ -295,6 +315,18 @@ extension GraphiteCommand {
             return Descriptor(title: "Delete selection", group: .canvas, defaultCombinations: named(.backspace, []), binding: .canvas, corePlugin: .canvas)
         case .canvasDuplicateSelection:
             return Descriptor(title: "Duplicate selection", group: .canvas, defaultCombinations: command("D"), binding: .canvas, corePlugin: .canvas)
+        // Preview's shortcuts, except ⌃⌘S for Strikethrough, which is the Mac's Show Sidebar.
+        case .toggleMarkupToolbar:
+            return Descriptor(title: "PDF: Show or hide the markup toolbar", group: .pdf, defaultCombinations: command("A", [.command, .shift]),
+                              binding: .menuBar, macMenuTitles: ["Show Markup Toolbar", "Hide Markup Toolbar"])
+        case .highlightPDFText:
+            return Descriptor(title: "PDF: Highlight selected text", group: .pdf, defaultCombinations: command("H", [.command, .control]),
+                              binding: .menuBar, macMenuTitles: ["Highlight Text"])
+        case .underlinePDFText:
+            return Descriptor(title: "PDF: Underline selected text", group: .pdf, defaultCombinations: command("U", [.command, .control]),
+                              binding: .menuBar, macMenuTitles: ["Underline Text"])
+        case .strikethroughPDFText:
+            return Descriptor(title: "PDF: Strike through selected text", group: .pdf, binding: .menuBar, macMenuTitles: ["Strikethrough Text"])
         }
     }
 

@@ -5,8 +5,8 @@
  * Description: Text markup (highlight, underline, strike-out) as standard PDF annotations.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 11/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -198,7 +198,7 @@ public struct PDFMarkup: Sendable, Equatable {
 
     /// The page-space rectangle of each quadrilateral of a markup annotation, or its
     /// bounds when it has none.
-    static func lineRectangles(of annotation: PDFAnnotation) -> [CGRect] {
+    public static func lineRectangles(of annotation: PDFAnnotation) -> [CGRect] {
         let origin = annotation.bounds.origin
         let corners = (annotation.quadrilateralPoints ?? []).map { value in
             let corner = PDFMarkup.point(from: value)

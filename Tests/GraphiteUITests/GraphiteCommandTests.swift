@@ -1,3 +1,14 @@
+/**
+ * File: GraphiteCommandTests.swift
+ * --------------------------------
+ * Layer: Tests
+ * Description: The one list of commands that the menu bar, the editor and the palette read: identifiers, default
+ *              shortcuts, where each is listened for, and on which platform it exists.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.4
+ * Date: 11/11/2026
+ */
 import XCTest
 import SwiftUI
 import GraphiteCore
@@ -82,6 +93,22 @@ final class GraphiteCommandTests: XCTestCase {
             XCTAssertNil(system.shortcut(matching: wholeGraph))
             XCTAssertNil(system.shortcut(matching: localGraph))
         }
+    }
+
+    func testThePDFMarkupCommandsAreTheMacsWithPreviewsShortcutsExceptStrikethrough() {
+        let markupCommands: [GraphiteCommand] = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText]
+        for command in markupCommands {
+            XCTAssertTrue(command.isAvailable(on: .macOS), command.identifier)
+            XCTAssertFalse(command.isAvailable(on: .iPadOS), "\(command.identifier): the iPad marks text from its selection menu.")
+            XCTAssertEqual(command.group, .pdf)
+        }
+        let table = KeyboardShortcutTable(commands: GraphiteCommand.available(on: .macOS).map(\.defaults), file: HotkeyFile())
+        func symbols(_ command: GraphiteCommand) -> [String] { table.combinations(for: command.identifier).map(\.symbols) }
+        XCTAssertEqual(symbols(.toggleMarkupToolbar), ["⇧⌘A"])
+        XCTAssertEqual(symbols(.highlightPDFText), ["⌃⌘H"])
+        XCTAssertEqual(symbols(.underlinePDFText), ["⌃⌘U"])
+        XCTAssertEqual(symbols(.strikethroughPDFText), [], "⌃⌘S is the Mac's Show Sidebar.")
+        XCTAssertEqual(GraphiteCommand.toggleMarkupToolbar.macMenuTitles, ["Show Markup Toolbar", "Hide Markup Toolbar"])
     }
 
     func testMenuShortcutsAreSwiftUIsKeyEquivalents() {

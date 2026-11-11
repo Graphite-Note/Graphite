@@ -1,3 +1,13 @@
+/**
+ * File: KeyboardShortcutsPageContentTests.swift
+ * ---------------------------------------------
+ * Layer: Tests
+ * Description: What Settings › Keyboard Shortcuts lists: groups, search, clashes and the system's notes.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 11/11/2026
+ */
 import XCTest
 import GraphiteCore
 @testable import GraphiteUI
@@ -23,7 +33,9 @@ final class KeyboardShortcutsPageContentTests: XCTestCase {
 
     func testListsGraphitesGroupsThenEachPluginByName() {
         let titles = content().sections(matching: "").map(\.title)
-        XCTAssertEqual(titles, ["File", "View", "Go", "Editor", "Canvas", "QuickAdd"])
+        XCTAssertEqual(titles, ["File", "View", "Go", "Editor", "Canvas", "PDF", "QuickAdd"])
+        XCTAssertEqual(content(platform: .iPadOS).sections(matching: "").map(\.title), ["File", "View", "Go", "Editor", "Canvas", "QuickAdd"],
+                       "The iPad has no PDF markup commands.")
     }
 
     func testFindsCommandsByTitleBySymbolsAndBySpokenShortcut() {

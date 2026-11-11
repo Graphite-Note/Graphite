@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.30
- * Date: 04/11/2026
+ * Version: 0.31
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -25,6 +25,8 @@ enum PDFAnnotationPreferenceKey {
     /// Lines or dots shown on PDF pages while writing, and their spacing; never saved.
     static let writingGuidePattern = "GraphitePDFWritingGuidePattern"
     static let writingGuideSpacing = "GraphitePDFWritingGuideSpacing"
+    /// The mark the Mac's highlight button makes (`PDFMarkupStyle`).
+    static let markupStyle = "GraphitePDFMarkupStyle"
 
     /// Light gray, so the guides stay behind the page's own content.
     static func writingGuides(pattern: DrawingPaperPattern, spacing: DrawingPaperSpacing) -> DrawingPaper {
@@ -107,6 +109,10 @@ private struct PDFPaneContent: View {
     /// A phone, or an iPad window as narrow as one: a lean navigation bar, and the bottom
     /// bar gives way to the palette while writing.
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
+    #endif
+    #if os(macOS)
+    @State private var markupToolbar = PDFMarkupToolbar()
+    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     #endif
 
     init(session: PDFSession, isFocused: Bool, focus: @escaping () -> Void, linkActions: PDFLinkActions?,
@@ -228,6 +234,9 @@ private struct PDFPaneContent: View {
                     .id(session.viewGeneration)
             }
         }
+        #if os(macOS)
+        .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, isFocused: isFocused))
+        #endif
         #if canImport(UIKit)
         // The iPad's bars above the page. The Mac has none: an inset with no content takes
         // all the height on macOS 27 and left the page 0 points tall, a blank PDF.
@@ -365,7 +374,8 @@ private struct PDFPaneContent: View {
                                   fixedTool: usesFixedToolbar ? toolbox.selection : nil,
                                   writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing))
         #else
-        return PDFAnnotationInput(isEnabled: isAnnotating, drawsWithFinger: drawsWithFinger, showsToolPicker: false)
+        return PDFAnnotationInput(isEnabled: isAnnotating, drawsWithFinger: drawsWithFinger, showsToolPicker: false,
+                                  markupTool: markupToolbar.tool, markupStyle: markupStyle)
         #endif
     }
 
@@ -457,6 +467,7 @@ private struct PDFPaneContent: View {
                 #endif
             }
             #if !os(iOS)
+            PDFMarkupToolbarButton(toolbar: markupToolbar, isProtected: session.isProtected)
             Menu("More", systemImage: "ellipsis") { moreMenuItems }
             #endif
         }.tint(.primary) }

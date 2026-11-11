@@ -2,7 +2,15 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-10.
+Last updated: 2026-11-11.
+
+## Marking up PDFs on the Mac: highlight, underline, strikethrough: 2026-11-11
+
+`Docs/Mac-PDF-markup-todo.md` section 1 (issue #150). The Mac's PDF pane has a markup button in its toolbar that shows a markup row under the toolbar, as Preview's does, with Text Selection and a Highlight button whose arrow chooses a highlight colour, underline or strikethrough. With Highlight chosen, a text selection is marked when the mouse is let go. Right-clicking selected text offers the marks and the page links before PDFKit's items; right-clicking a mark offers its colours and Remove; clicking a mark selects it and Delete removes it. View › Show Markup Toolbar (⇧⌘A) and Tools › Annotate (Highlight Text ⌃⌘H, Underline Text ⌃⌘U, Strikethrough Text) act on the focused PDF. Edit › Undo and Redo, ⌘Z and ⇧⌘Z now undo the PDF's steps on the Mac; before, only the toolbar's Undo did.
+
+- **Automated tests, passing on macOS (`swift test --filter`):** `MacPDFMarkupInteractionTests` (8: the highlighter marks a selection as one undo step, text selection leaves it, a protected PDF takes no marks, the right-click menus of selected text and of a mark and their actions, a click on a mark selects exactly its text and gives the PDF the keyboard, Delete removes it and undo puts it back, Edit › Undo and Redo reach the PDF's history), `PDFMarkupToolbarTests` (5), `PDFMarkupStyleTests` (4), `GraphiteCommandTests` (one new: the commands are the Mac's, with Preview's shortcuts except ⌃⌘S, the Mac's Show Sidebar), `KeyboardShortcutsPageContentTests` (the PDF group on the Mac only), `PDFEditHistoryTests` unchanged and passing. The iPad's selection and mark menus now mark, recolour and remove through the same `PDFSelectionMarking`; the app builds for the iPad simulator, and the iPad's menus were not tried after the change.
+- **Checked by hand on 2026-11-11** in a separate Debug copy of the Mac app with a generated one-page lecture PDF: the row and its button, highlighting by dragging with Highlight chosen, the right-click menu on selected text (Underline applied from it), View › Hide Markup Toolbar while the row shows, ⌃⌘H, clicking a mark then Delete, ⌘Z and ⇧⌘Z, and the marks kept after quitting and opening again. The saved file holds standard `/Highlight` and `/Underline` annotations with `/QuadPoints`, and Quick Look draws them. Not checked: the marks in Preview itself and on the iPad.
+- **Known limits:** PDFKit enables every menu action it does not know, so Edit › Undo and Redo stay enabled while the PDF has the keyboard, doing nothing when there is no step, and their titles do not name the step. The menu bar's items follow the focused window, so they are dimmed while Graphite is in the background.
 
 ## Graphite leaves out by default the plugins whose work it does itself: 2026-11-10
 

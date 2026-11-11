@@ -6,8 +6,8 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.36
- * Date: 04/11/2026
+ * Version: 0.37
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -51,6 +51,10 @@ struct PDFAnnotationInput: Equatable {
     var fixedTool: PencilToolSelection?
     /// Lines or dots shown under the ink while writing, never saved into the PDF.
     var writingGuides: DrawingPaper = .plain
+    /// The Mac's markup row: its tool, and the mark its highlight button makes. The iPad
+    /// marks text from its selection menu.
+    var markupTool = PDFMarkupTool.textSelection
+    var markupStyle = PDFMarkupStyle.default
 
     /// Whether the view keeps first responder for its document: Undo shortcuts reach the
     /// document's history, and a lasso selection does not bring up typing suggestions.
@@ -1822,11 +1826,11 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         guard let selection = pdfView?.currentSelection, let selectedText = selection.string, !selectedText.isEmpty else { return nil }
         let copy = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in UIPasteboard.general.string = selectedText }
         let highlightActions = PDFMarkupColor.highlightColors.map { color in
-            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in self?.addMarkup(.highlight, color: color) }
+            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in self?.markSelection(as: .highlight(color)) }
         }
         let highlight = UIMenu(title: PDFMarkupKind.highlight.title, image: UIImage(systemName: "highlighter"), children: highlightActions)
-        let underline = UIAction(title: PDFMarkupKind.underline.title, image: UIImage(systemName: "underline")) { [weak self] _ in self?.addMarkup(.underline, color: .red) }
-        let strikeOut = UIAction(title: PDFMarkupKind.strikeOut.title, image: UIImage(systemName: "strikethrough")) { [weak self] _ in self?.addMarkup(.strikeOut, color: .red) }
+        let underline = UIAction(title: PDFMarkupKind.underline.title, image: UIImage(systemName: "underline")) { [weak self] _ in self?.markSelection(as: .underline) }
+        let strikeOut = UIAction(title: PDFMarkupKind.strikeOut.title, image: UIImage(systemName: "strikethrough")) { [weak self] _ in self?.markSelection(as: .strikeOut) }
         var children: [UIMenuElement] = [copy, highlight, underline, strikeOut]
         if let linkActions, let page = selection.pages.first, session.document.index(for: page) != NSNotFound {
             children.append(UIMenu(options: .displayInline, children: linkActions.menuElements(pageIndex: session.document.index(for: page), text: selectedText)))
@@ -1834,14 +1838,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         return UIMenu(children: children)
     }
 
-    private func addMarkup(_ kind: PDFMarkupKind, color: PDFMarkupColor) {
-        guard let selection = pdfView?.currentSelection else { return }
-        do {
-            try session.addMarkup(kind, color: color, for: selection)
-            pdfView?.clearSelection()
-        } catch {
-            session.errorMessage = error.localizedDescription
-        }
+    private func markSelection(as style: PDFMarkupStyle) {
+        guard let pdfView else { return }
+        PDFSelectionMarking.markSelection(of: pdfView, in: session, as: style)
     }
 
     private static func swatch(for color: PDFMarkupColor) -> UIImage? {
@@ -1932,16 +1931,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
         if configuration.identifier as? NSString == Self.selectionMenuIdentifier { return selectionMenu() }
         guard let (annotation, page) = tappedMarkup, let kind = PDFMarkupKind(annotationType: annotation.type) else { return nil }
-        let colors = kind == .highlight ? PDFMarkupColor.highlightColors : [PDFMarkupColor.red] + PDFMarkupColor.highlightColors
-        let colorActions = colors.map { color in
+        let colorActions = PDFSelectionMarking.colors(for: kind).map { color in
             UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in
                 guard let self else { return }
-                do { try self.session.recolorMarkup(annotation, on: page, to: color) } catch { self.session.errorMessage = error.localizedDescription }
+                PDFSelectionMarking.recolor(annotation, on: page, to: color, in: self.session)
             }
         }
         let remove = UIAction(title: "Remove \(kind.title)", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
             guard let self else { return }
-            do { try self.session.removeMarkup(annotation, on: page) } catch { self.session.errorMessage = error.localizedDescription }
+            PDFSelectionMarking.remove(annotation, on: page, in: self.session)
         }
         return UIMenu(children: [UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: colorActions), remove])
     }
@@ -2019,6 +2017,7 @@ struct GraphitePDFView: NSViewRepresentable {
     final class Coordinator {
         var pageObserver: PDFViewPageObserver?
         weak var session: PDFSession?
+        var markupInteraction: MacPDFMarkupInteraction?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -2026,6 +2025,7 @@ struct GraphitePDFView: NSViewRepresentable {
     func makeNSView(context: Context) -> PDFView {
         let view = GraphiteMacPDFView()
         view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
+        view.documentUndoManager = session.undoManager
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high
@@ -2038,12 +2038,20 @@ struct GraphitePDFView: NSViewRepresentable {
         session.livePlace = { [weak view] in view?.pagePlace }
         context.coordinator.session = session
         context.coordinator.pageObserver = PDFViewPageObserver(session: session, view: view)
+        let markupInteraction = MacPDFMarkupInteraction(session: session, view: view)
+        context.coordinator.markupInteraction = markupInteraction
+        view.markupInteraction = markupInteraction
         session.pdfView = view
         return view
     }
 
     func updateNSView(_ view: PDFView, context: Context) {
         context.coordinator.pageObserver?.highlightReading(readingHighlights, followsReading: followsReading, suspendFollowing: suspendReadingFollow)
+        if let markupInteraction = context.coordinator.markupInteraction {
+            markupInteraction.input = input
+            markupInteraction.linkActions = linkActions
+            if markupInteraction.toolbar !== context.environment.pdfMarkupToolbar { markupInteraction.toolbar = context.environment.pdfMarkupToolbar }
+        }
     }
 
     static func dismantleNSView(_ view: PDFView, coordinator: Coordinator) {
@@ -2052,6 +2060,7 @@ struct GraphitePDFView: NSViewRepresentable {
             session.keptPlace = place
         }
         coordinator.pageObserver?.stop()
+        coordinator.markupInteraction?.stopObservingSelection()
     }
 }
 
@@ -2063,6 +2072,57 @@ final class GraphiteMacPDFView: PDFView {
     /// The shown document's change count (`PDFSession.changeVersion`).
     var contentChangeCount: () -> Int = { 0 }
     private lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+    /// Text markup by pointer and keyboard; owned by the view's coordinator.
+    weak var markupInteraction: MacPDFMarkupInteraction?
+    /// The PDF's own history (`PDFSession.undoManager`), which Edit › Undo and Redo, ⌘Z and
+    /// ⇧⌘Z reach while the PDF is the first responder.
+    weak var documentUndoManager: UndoManager?
+
+    override var undoManager: UndoManager? { documentUndoManager ?? super.undoManager }
+
+    // The window answers Undo and Redo with its own history, which never holds the PDF's
+    // steps, so they stayed dimmed and only the toolbar undid. PDFKit's own menu validation
+    // enables any action it does not know, so the items stay enabled and do nothing while
+    // the history has no step to take.
+    @objc func undo(_ sender: Any?) {
+        guard let documentUndoManager, documentUndoManager.canUndo else { return }
+        documentUndoManager.undo()
+    }
+
+    @objc func redo(_ sender: Any?) {
+        guard let documentUndoManager, documentUndoManager.canRedo else { return }
+        documentUndoManager.redo()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if markupInteraction?.handleMouseDown(event) == true {
+            // PDFKit, which the click does not reach, would have taken the keyboard: Delete
+            // removes the mark only while the PDF has it.
+            window?.makeFirstResponder(self)
+            return
+        }
+        super.mouseDown(with: event)
+        // PDFKit may follow a drag in its own loop until the button is let go, which then
+        // sends no mouse-up to the view.
+        if NSEvent.pressedMouseButtons & Self.primaryMouseButtonMask == 0 { markupInteraction?.mouseUpFinished() }
+    }
+
+    private static let primaryMouseButtonMask = 1
+
+    override func mouseUp(with event: NSEvent) {
+        super.mouseUp(with: event)
+        markupInteraction?.mouseUpFinished()
+    }
+
+    override func keyDown(with event: NSEvent) {
+        if markupInteraction?.handleKeyDown(event) == true { return }
+        super.keyDown(with: event)
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let defaultMenu = super.menu(for: event)
+        return markupInteraction.map { interaction in interaction.menu(for: event, defaultMenu: defaultMenu) } ?? defaultMenu
+    }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()

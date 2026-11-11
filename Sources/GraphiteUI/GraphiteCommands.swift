@@ -5,8 +5,8 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.13
- * Date: 01/11/2026
+ * Version: 0.14
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -35,6 +35,10 @@ public struct GraphiteCommands: Commands {
     @FocusedValue(\.workspaceMenuActions) private var actions
     /// Export to PDF and Print for the focused window's note in front (`NotePDFExportPresentation`).
     @FocusedValue(\.notePDFExport) private var notePDFExport
+    #if os(macOS)
+    /// The markup row of the focused window's PDF in front (`PDFMarkupMenuActions`).
+    @FocusedValue(\.pdfMarkupMenuActions) private var pdfMarkupActions
+    #endif
     /// The shortcuts of the Mac's one workspace, which the menus keep while the Settings
     /// window, which has no workspace actions, is in front.
     private let keyboardShortcutsOutsideFocus: VaultKeyboardShortcuts?
@@ -91,6 +95,10 @@ public struct GraphiteCommands: Commands {
         }
         CommandMenu("Insert") {
             editorMenu(\.insert)
+        }
+        // As in Preview.
+        CommandMenu("Tools") {
+            PDFAnnotateMenu(actions: pdfMarkupActions, shortcut: shortcut)
         }
         #endif
         CommandMenu("Go") {
@@ -213,6 +221,9 @@ public struct GraphiteCommands: Commands {
         }
         .keyboardShortcut(shortcut(.toggleSourceMode))
         .disabled(note == nil || note?.viewMode == .reading)
+        #if os(macOS)
+        PDFMarkupToolbarMenuItem(actions: pdfMarkupActions, shortcut: shortcut(.toggleMarkupToolbar))
+        #endif
         Divider()
         // ⌃⌘S is iPadOS's own Show Sidebar; giving it to this item too made the menu bar report a conflict.
         Button("Show or Hide Files") { actions?.window.toggleSidebar() }
