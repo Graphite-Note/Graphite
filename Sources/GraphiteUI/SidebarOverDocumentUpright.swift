@@ -3,7 +3,8 @@
  * --------------------------------------
  * Layer: UI
  * Description: How an iPad window's split view shows its sidebar: over the documents while the window is taller than
- *              wide, as Notes and Files show theirs, and beside them while it is wider than tall.
+ *              wide, as Notes and Files show theirs, and beside them while it is wider than tall; and how a phone's
+ *              file list is brought back to the front when asked for.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -74,6 +75,53 @@ struct SidebarOverDocumentUpright: UIViewControllerRepresentable {
                 splitViewController.preferredSplitBehavior = .overlay
             } else if let behaviorBesideDocuments, current != behaviorBesideDocuments {
                 splitViewController.preferredSplitBehavior = behaviorBesideDocuments
+            }
+        }
+    }
+}
+
+/// Brings a phone's file list to the front when asked: a search, a tag or "Reveal current file" asked for while a note
+/// is in front. On a phone the split view is collapsed into one navigation stack, the note pushed over the file list.
+/// Setting the split view's compact column to the sidebar is taken by SwiftUI but moved nothing on iOS 27, and neither did
+/// the split view's own `show(.primary)` (HUNT-183: the note stayed in front, its back button the only way to the list),
+/// so the stack is taken back to its first screen, as the back button takes it.
+struct CompactFileListReveal: UIViewControllerRepresentable {
+    let request: Int
+
+    func makeUIViewController(context: Context) -> RevealController {
+        let controller = RevealController()
+        controller.handledRequest = request
+        return controller
+    }
+
+    func updateUIViewController(_ controller: RevealController, context: Context) {
+        guard request != controller.handledRequest else { return }
+        controller.handledRequest = request
+        controller.showFileList()
+    }
+
+    /// An empty controller inside the documents' column, which reaches the stack around it.
+    final class RevealController: UIViewController {
+        var handledRequest = 0
+
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+            view.isAccessibilityElement = false
+        }
+
+        /// The navigation stack that a collapsed split view holds, around this controller, goes back to its first
+        /// screen, on the next turn of the main queue, after SwiftUI's update that asked for it.
+        func showFileList() {
+            DispatchQueue.main.async { [weak self] in
+                var ancestor = self?.parent
+                while let controller = ancestor {
+                    if let stack = controller as? UINavigationController, let split = stack.parent as? UISplitViewController, split.isCollapsed {
+                        if stack.viewControllers.count > 1 { stack.popToRootViewController(animated: true) }
+                        return
+                    }
+                    ancestor = controller.parent
+                }
             }
         }
     }

@@ -47,7 +47,7 @@ Sources/GraphiteUI/PalmRejection.swift              PencilActivity.state        
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.pencilTouch          # weak: the current Pencil touch
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.hoveringRecognizers  # hover recognizers by number
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.lastHoverRecognizerNumber # hover recognizer counter
-Sources/GraphiteUI/PencilToolbar.swift              PencilToolRowForm.lastShown         # last shown row form, for animation continuity
+Sources/GraphiteUI/PencilToolbar.swift              PencilToolRowForm.shownRows         # the Pencil rows on screen, for hosted tests (lastShown reads it)
 Sources/GraphiteUI/ReadAloudNowPlaying.swift        ReadAloudNowPlaying.queueCommands   # set by whichever navigator was built last (DIP-ARCH-02)
 Sources/GraphiteUI/TableCellTextField.swift         TableCellTextField.focusedField     # weak: the focused table cell
 Sources/GraphiteUI/GraphiteMacScenes.swift          GraphiteApplicationDelegate.openWindows # weak: every window's saves for quitting (platform edge; BUG-SHELL-03, decision 12)

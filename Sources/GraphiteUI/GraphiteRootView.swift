@@ -47,6 +47,8 @@ struct GraphiteRootView: View {
     /// On a phone the split view is one stack: the document comes first, as in Obsidian
     /// mobile, and the file list is a step back.
     @State private var preferredCompactColumn = NavigationSplitViewColumn.detail
+    /// Counts the requests to bring a phone's file list to the front (`CompactFileListReveal`).
+    @State private var compactFileListRequest = 0
     /// Whether the software keyboard, or the note's keyboard toolbar alone with a hardware
     /// keyboard, is on screen.
     @State private var isKeyboardShown = false
@@ -124,6 +126,7 @@ struct GraphiteRootView: View {
                 #if os(iOS)
                 // Upright the sidebar shows over the documents, which keep the window's width (HUNT-317).
                 .background { SidebarOverDocumentUpright(isWindowTallerThanWide: isWindowTallerThanWide && !isCompactWidth) }
+                .background { CompactFileListReveal(request: compactFileListRequest) }
                 #endif
                 .overlay {
                     // Both exist only while the Read Aloud core plugin is on.
@@ -590,7 +593,7 @@ struct GraphiteRootView: View {
                       toggleLinksInspector: { showsInspector.toggle() },
                       toggleSidebar: {
                           if isCompactWidth {
-                              preferredCompactColumn = preferredCompactColumn == .sidebar ? .detail : .sidebar
+                              if preferredCompactColumn == .sidebar { preferredCompactColumn = .detail } else { showSidebar() }
                           } else {
                               columnVisibility = Self.sidebarVisibility(toggling: columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
                           }
@@ -794,8 +797,14 @@ struct GraphiteRootView: View {
     }
 
     private func showSidebar() {
+        if isCompactWidth {
+            preferredCompactColumn = .sidebar
+            #if os(iOS)
+            compactFileListRequest += 1
+            #endif
+            return
+        }
         focusMode.leave(columnVisibility: &columnVisibility, showsInspector: &showsInspector)
-        if isCompactWidth { preferredCompactColumn = .sidebar }
         columnVisibility = Self.sidebarVisibility(revealing: columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
     }
 

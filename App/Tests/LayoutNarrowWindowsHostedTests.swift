@@ -482,12 +482,14 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         return (symbolNames, titles, buttons)
     }
 
-    /// HUNT-146: a portrait iPad with the sidebar open, the documents about 430 points wide: pages and find are on the
-    /// bar beside the title and More, adding pages is in More, and nothing covers the title.
+    /// HUNT-146: the sidebar open beside a PDF about 430 points wide: pages and find are on the bar beside the title
+    /// and More, adding pages is in More, and nothing covers the title. Reported on a portrait iPad; since HUNT-317 an
+    /// upright window shows its sidebar over the documents, so the documents are this narrow beside the sidebar in a
+    /// window wider than tall, as Stage Manager or Split View gives one.
     func testAPDFsBarKeepsPagesAndFindWithTheSidebarOpenInPortrait() async throws {
         let directory = try makeDirectory("PortraitSidebar")
         let (workspace, session) = try await pdfWorkspace(in: directory)
-        let (window, _) = try host(workspace, size: CGSize(width: 750, height: 1000), horizontalSizeClass: .regular)
+        let (window, _) = try host(workspace, size: CGSize(width: 750, height: 600), horizontalSizeClass: .regular)
         defer { window.isHidden = true; window.rootViewController = nil }
         try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
         workspace.searchResultsRevealRequest += 1

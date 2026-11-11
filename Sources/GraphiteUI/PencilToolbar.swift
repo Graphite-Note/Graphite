@@ -449,21 +449,38 @@ struct PencilToolRow: View {
 enum PencilToolRowForm: Equatable {
     case full, compact, condensed
 
-    /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
-    /// where it is, in its window's coordinates.
-    @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
+    /// A row on screen: its form, its arrangement, and where it is, in its window's coordinates.
+    struct ShownRow {
+        let form: PencilToolRowForm
+        let arrangement: PencilToolRowLayout.Arrangement
+        let frameInWindow: CGRect
+        /// Which row reported it, so a row that goes withdraws only its own report.
+        fileprivate let reporter: UUID
+    }
+
+    /// For tests, which cannot see SwiftUI's views: the row last shown of those still on screen. Setting it to nil
+    /// forgets every report, so a test can wait for the next row to show.
+    @MainActor static var lastShown: ShownRow? {
+        get { shownRows.last }
+        set { shownRows = newValue.map { row in [row] } ?? [] }
+    }
+
+    /// The rows on screen, the latest report last.
+    @MainActor fileprivate static var shownRows: [ShownRow] = []
 }
 
 /// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`): a reader behind the row
 /// reports its frame when the row appears and whenever the frame changes, and takes it back when the row goes. A change
 /// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another, and on the owner's
 /// iPad (2026-11-05) a folded row that had left the screen stayed in `lastShown` while the screen showed the whole row
-/// (HUNT-317).
+/// (HUNT-317). A row that goes withdraws only its own report, and the latest report of a row still shown takes its
+/// place: SwiftUI shows a new row before the one it replaces disappears, and a window of 507 points (2026-11-11) showed
+/// two at once, so the row that went took the report of the row left on screen with it.
 private struct PencilToolRowLayoutReport: ViewModifier {
     let form: PencilToolRowForm
     let arrangement: PencilToolRowLayout.Arrangement
-    /// The frame this row reported last, nil while it is not on screen.
-    @State private var reportedFrame: CGRect?
+    /// Which row this is, to tell its report from another's.
+    @State private var reporterIdentifier = UUID()
 
     func body(content: Content) -> some View {
         content.background {
@@ -478,16 +495,12 @@ private struct PencilToolRowLayoutReport: ViewModifier {
     }
 
     private func report(_ frame: CGRect) {
-        PencilToolRowForm.lastShown = (form, arrangement, frame)
-        reportedFrame = frame
+        PencilToolRowForm.shownRows.removeAll { row in row.reporter == reporterIdentifier }
+        PencilToolRowForm.shownRows.append(PencilToolRowForm.ShownRow(form: form, arrangement: arrangement, frameInWindow: frame, reporter: reporterIdentifier))
     }
 
     private func withdraw() {
-        guard let reportedFrame else { return }
-        self.reportedFrame = nil
-        if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == reportedFrame, lastShown.arrangement == arrangement {
-            PencilToolRowForm.lastShown = nil
-        }
+        PencilToolRowForm.shownRows.removeAll { row in row.reporter == reporterIdentifier }
     }
 }
 
