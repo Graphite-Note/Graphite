@@ -5,12 +5,13 @@
  * Description: The open note and the notes it links to, or that link to it, on a map in the right
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 11/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
+import GraphiteApple
 
 /// The open note and the notes it links to, or that link to it, on a map in the right
 /// sidebar, as the local graph shows them as a graph.
@@ -18,9 +19,11 @@ struct LocalMapPanel: View {
     let session: MarkdownSession
     @Bindable var workspace: WorkspaceModel
     @Environment(\.accent) private var accent
+    @Environment(\.deviceLocation) private var deviceLocation
     @State private var placedNotes: [PlacedNote]?
     @State private var vaultGraph: LinkGraph?
     @State private var fitRequest = 0
+    @State private var locationControl = MapUserLocationControl()
 
     /// The open note's place and its linked notes' places.
     private var localNotes: [PlacedNote]? {
@@ -51,7 +54,9 @@ struct LocalMapPanel: View {
                                                              ? "This note and the notes it links to have no coordinates property." : "Still reading the vault."))
                 } else {
                     NotesMapView(notes: localNotes, title: { path in path.stem }, highlightedPath: session.path,
-                                 accent: accent, open: { path in Task { await workspace.open(path) } }, fitRequest: fitRequest)
+                                 accent: accent, open: { path in Task { await workspace.open(path) } }, fitRequest: fitRequest,
+                                 locationControl: locationControl, deviceLocation: deviceLocation)
+                    .mapLocationRefusalNotice(of: locationControl)
                 }
             } else {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,9 +74,11 @@ struct VaultMapScreen: View {
     @Bindable var workspace: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accent) private var accent
+    @Environment(\.deviceLocation) private var deviceLocation
     @State private var searchText = ""
     @State private var placedNotes: [PlacedNote]?
     @State private var fitRequest = 0
+    @State private var locationControl = MapUserLocationControl()
 
     private var shownNotes: [PlacedNote]? {
         guard let placedNotes else { return nil }
@@ -96,7 +103,8 @@ struct VaultMapScreen: View {
                                          dismiss()
                                          Task { await workspace.open(path) }
                                      },
-                                     fitRequest: fitRequest)
+                                     fitRequest: fitRequest, locationControl: locationControl, deviceLocation: deviceLocation)
+                        .mapLocationRefusalNotice(of: locationControl)
                         .overlay(alignment: .bottomLeading) {
                             Text(shownNotes.count == 1 ? "1 note" : "\(shownNotes.count.formatted()) notes")
                                 .font(.caption).foregroundStyle(.secondary)

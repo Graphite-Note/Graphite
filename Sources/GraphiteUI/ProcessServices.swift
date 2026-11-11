@@ -5,13 +5,14 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 11/11/2026
  */
 
 import Foundation
 import GraphiteCore
 import GraphiteIndex
+import GraphiteApple
 
 /// What every window of the app shares, built once per process (decision 12 of
 /// `Docs/solid/rewrite-foundations.md`): the preferences, the vault list, what the device
@@ -57,6 +58,9 @@ public final class ProcessServices {
     let settingsPageMemory = SettingsPageMemory()
     /// Obsidian's list of community themes once loaded, for the Theme page.
     let themeDirectoryCache = ThemeDirectoryCache()
+    /// Where the device is, for the maps' location control, shared by every window. It makes no
+    /// location manager until a map asks: access is asked only at the first use of the control.
+    let deviceLocation: any DeviceLocation = LiveDeviceLocation()
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the

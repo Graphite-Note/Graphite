@@ -154,6 +154,8 @@ public struct GraphiteWindowScene: View {
     public var body: some View {
         if let workspace {
             GraphiteRootView(workspace: workspace, launchMode: launchMode, windowContent: $windowContent)
+                // The maps' location control (`MapUserLocationControl`): the map screen, the sidebar's map and bases.
+                .environment(\.deviceLocation, processServices.deviceLocation)
                 // A file or tab dragged to the edge of the screen opened this window.
                 .onContinueUserActivity(GraphiteWindowContent.activityType) { activity in
                     guard let content = GraphiteWindowContent(activity: activity), let vaultIdentifier = content.vaultIdentifier else { return }

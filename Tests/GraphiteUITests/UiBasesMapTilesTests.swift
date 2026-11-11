@@ -78,7 +78,7 @@ final class UiBasesMapTilesTests: XCTestCase {
             tileTemplates: templates, annotations: annotations,
             cameraTarget: .region(MKCoordinateRegion(center: annotations[0].coordinate, latitudinalMeters: 5_000, longitudinalMeters: 5_000)),
             cameraConfiguration: 1, cameraLayout: 1, cameraDistances: 100...1_000_000,
-            selectedPath: .constant(nil), pinImage: { _, _ in nil }))
+            selectedPath: .constant(nil), pinImage: { _, _ in nil }, locationControl: MapUserLocationControl(), deviceLocation: nil))
 
         let tileOverlays = mapView.overlays.compactMap { overlay in overlay as? BaseMapTileOverlay }
         XCTAssertEqual(tileOverlays.map(\.tileTemplate), templates, "Each template is a layer, bottom to top.")

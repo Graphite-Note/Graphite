@@ -71,6 +71,8 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
             "CFBundleShortVersionString", "CFBundleVersion", "CFBundleURLTypes",
             "ITSAppUsesNonExemptEncryption", "LSApplicationCategoryType", "LSSupportsOpeningDocumentsInPlace",
             "NSCameraUsageDescription", "NSLocalNetworkUsageDescription", "NSMicrophoneUsageDescription", "NSPhotoLibraryAddUsageDescription",
+            // The maps' location control (Docs/Map-view-todo.md section 1): iOS reads the first, the Mac the second.
+            "NSLocationWhenInUseUsageDescription", "NSLocationUsageDescription",
             "NSUserActivityTypes",
             "UIApplicationSceneManifest", "UIApplicationSceneManifest~ipad", "UIBackgroundModes", "UIFileSharingEnabled", "UILaunchScreen",
             "UISupportedInterfaceOrientations", "UISupportsDocumentBrowser", "UTExportedTypeDeclarations",

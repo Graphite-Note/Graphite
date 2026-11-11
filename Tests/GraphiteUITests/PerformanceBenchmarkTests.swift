@@ -849,11 +849,13 @@ private final class MapBenchmarkModel {
 private struct MapBenchmarkContainer: View {
     let model: MapBenchmarkModel
     let notes: [PlacedNote]
+    @State private var locationControl = MapUserLocationControl()
 
     var body: some View {
         VStack(spacing: 0) {
             Text("\(model.unrelatedCounter) updates")
-            NotesMapView(notes: notes, title: { path in path.stem }, highlightedPath: notes.first?.path, accent: .blue, open: { _ in }, fitRequest: 0)
+            NotesMapView(notes: notes, title: { path in path.stem }, highlightedPath: notes.first?.path, accent: .blue, open: { _ in }, fitRequest: 0,
+                         locationControl: locationControl, deviceLocation: nil)
         }
     }
 }

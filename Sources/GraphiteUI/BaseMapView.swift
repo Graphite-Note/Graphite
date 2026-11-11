@@ -5,13 +5,14 @@
  * Description: The Maps plugin's map view of a base, drawn with MapKit: a marker per file with coordinates.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 01/11/2026
+ * Version: 0.7
+ * Date: 11/11/2026
  */
 
 import SwiftUI
 import MapKit
 import GraphiteCore
+import GraphiteApple
 
 /// The Maps plugin's `map` view, drawn with MapKit: one marker per file with
 /// coordinates, colored and iconned from the configured properties. A background of
@@ -26,6 +27,12 @@ struct BaseMapView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.displayScale) private var displayScale
     let actions: BaseViewActions
+    /// The vault's placed notes, which a map with no markers and no center opens on.
+    let vaultPlaces: () async -> [BaseCoordinate]
+    @Environment(\.deviceLocation) private var deviceLocation
+    @State private var locationControl = MapUserLocationControl()
+    /// What a map with no markers and no configured center opens on, once read.
+    @State private var opening: BaseMapOpening?
     @State private var position: MapCameraPosition = .automatic
     @State private var selectedPath: VaultPath?
     @State private var positionedCamera: CameraConfiguration?
@@ -54,13 +61,15 @@ struct BaseMapView: View {
     private struct CameraInputs: Hashable {
         let configuration: CameraConfiguration
         let markerLayoutSignature: Int
+        let opening: BaseMapOpening?
         let width: Int
         let height: Int
     }
 
-    init(result: BaseQueryResult, actions: BaseViewActions) {
+    init(result: BaseQueryResult, actions: BaseViewActions, vaultPlaces: @escaping () async -> [BaseCoordinate]) {
         self.result = result
         self.actions = actions
+        self.vaultPlaces = vaultPlaces
         markers = result.groups.flatMap(\.rows).compactMap { row in
             row.presentation.coordinate.map { coordinate in
                 Marker(row: row, coordinate: CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude),
@@ -94,6 +103,25 @@ struct BaseMapView: View {
             }
             .overlay(alignment: .topLeading) { notices.padding(10) }
         }
+        .task(id: needsOpening) { await readOpening() }
+    }
+
+    /// A map with nothing of its own to place its camera reads where to open.
+    private var needsOpening: Bool { markers.isEmpty && result.mapCenter == nil }
+
+    /// The person's last known position when they let Graphite use it before (this asks nothing
+    /// and starts no location updates), else the vault's placed notes.
+    private func readOpening() async {
+        guard needsOpening else {
+            opening = nil
+            return
+        }
+        if let position = deviceLocation?.lastKnownPosition {
+            opening = .person(position)
+            return
+        }
+        let places = await vaultPlaces()
+        opening = places.isEmpty ? .nothingKnown : .vaultPlaces(places)
     }
 
     private func appleMap(size: CGSize) -> some View {
@@ -106,20 +134,41 @@ struct BaseMapView: View {
                 }
                 .annotationTitles(.hidden)
             }
+            if locationControl.showsPerson { UserAnnotation() }
         }
         .mapControls {
+            if deviceLocation != nil { MapUserLocationButton() }
             MapCompass()
             MapScaleView()
         }
-        .task(id: CameraInputs(configuration: cameraConfiguration, markerLayoutSignature: markerLayoutSignature,
+        // MapKit's location button follows the person; its first use asks for access.
+        .onChange(of: position.followsUserLocation) { _, followsPerson in
+            if followsPerson { locationButtonWasUsed() }
+        }
+        .task(id: CameraInputs(configuration: cameraConfiguration, markerLayoutSignature: markerLayoutSignature, opening: opening,
                                width: Int(size.width), height: Int(size.height))) {
             positionCamera(size: size)
+        }
+    }
+
+    /// Asks for access the first time; granted, the map follows the person, refused, the camera
+    /// goes back to where it was and the notice says how to turn access on.
+    private func locationButtonWasUsed() {
+        guard let deviceLocation else { return }
+        let control = locationControl
+        Task {
+            switch await control.controlWasUsed(with: deviceLocation) {
+            case .alreadyAllowed: break
+            case .justAllowed: position = .userLocation(fallback: position.fallbackPosition ?? .automatic)
+            case .refused: position = position.fallbackPosition ?? .automatic
+            }
         }
     }
 
     private func tiledMap(_ tileTemplates: [BaseMapTileTemplate], size: CGSize) -> some View {
         var layoutHasher = Hasher()
         layoutHasher.combine(markerLayoutSignature)
+        layoutHasher.combine(opening)
         layoutHasher.combine(Int(size.width))
         layoutHasher.combine(Int(size.height))
         return BaseTiledMapView(
@@ -132,7 +181,8 @@ struct BaseMapView: View {
             cameraLayout: layoutHasher.finalize(),
             cameraDistances: cameraDistances(for: size),
             selectedPath: $selectedPath,
-            pinImage: { path, isSelected in pinImage(for: path, isSelected: isSelected) })
+            pinImage: { path, isSelected in pinImage(for: path, isSelected: isSelected) },
+            locationControl: locationControl, deviceLocation: deviceLocation)
         .overlay(alignment: .bottomTrailing) { tileSourceLabel(tileTemplates).padding(10) }
     }
 
@@ -170,26 +220,18 @@ struct BaseMapView: View {
     private func positionCamera(size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         let configuration = cameraConfiguration
-        if positionedCamera == configuration, position.positionedByUser { return }
+        if positionedCamera == configuration, position.positionedByUser || position.followsUserLocation { return }
         positionedCamera = configuration
         switch cameraTarget(size: size) {
         case .region(let region): position = .region(region)
-        case .fittingMarkers: position = .automatic
+        // With no markers, `.automatic` is MapKit's own opening region.
+        case .fittingMarkers, .mapKitOpening: position = .automatic
         }
     }
 
-    /// The configured center at the configured zoom, the markers' middle at the configured
-    /// zoom, or, like the plugin without a center and zoom, every marker in sight.
     private func cameraTarget(size: CGSize) -> BaseMapCameraTarget {
-        if let center = result.mapCenter {
-            return .region(Self.region(center: CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude),
-                                       zoom: options.defaultZoom ?? BaseMapOptions.defaultZoom, size: size))
-        } else if let zoom = options.defaultZoom, !markers.isEmpty {
-            return .region(Self.region(center: Self.centerCoordinate(of: markers.map(\.coordinate)), zoom: zoom, size: size))
-        } else if markers.isEmpty {
-            return .region(Self.region(center: CLLocationCoordinate2D(latitude: 0, longitude: 0), zoom: BaseMapOptions.defaultZoom, size: size))
-        }
-        return .fittingMarkers
+        BaseMapCameraTarget.forView(center: result.mapCenter, defaultZoom: options.defaultZoom, markerCoordinates: markers.map(\.coordinate),
+                                    opening: opening, size: size)
     }
 
     /// The average position of `coordinates`. Longitudes wrap at ±180°, so markers on both
@@ -306,6 +348,9 @@ struct BaseMapView: View {
     @ViewBuilder private var notices: some View {
         let missingCount = result.displayedCount - markers.count
         VStack(alignment: .leading, spacing: 6) {
+            if let refusal = locationControl.refusal {
+                MapLocationRefusalNotice(refusal: refusal) { locationControl.dismissRefusal() }
+            }
             if options.coordinatesProperty == nil {
                 noticeLabel("Choose a coordinates property for this map in the base file.", systemImage: "mappin.slash")
             } else if missingCount > 0 {

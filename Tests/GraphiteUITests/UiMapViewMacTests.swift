@@ -41,6 +41,22 @@ final class UiMapViewMacTests: XCTestCase {
         try await waitUntil { Self.notePaths(on: mapView) == ["Lausanne.md", "Paris.md"] }
     }
 
+    /// MapKit's own location control is on the Mac's maps too, and showing the map asks nothing of
+    /// the device's location; without a location to ask (`deviceLocation` unset) there is no control.
+    func testTheMapsOfferMapKitsLocationControlAndAskNothingUntilItIsUsed() async throws {
+        let workspace = try await makeWorkspace()
+        let location = AnsweringDeviceLocation(access: .notAsked, answer: .granted, position: nil)
+        let mapView = try await show(VaultMapScreen(workspace: workspace).environment(\.deviceLocation, location))
+        try await waitUntil { Self.notePaths(on: mapView).count == 3 }
+        XCTAssertTrue(mapView.showsUserTrackingButton, "The map offers MapKit's location control.")
+        XCTAssertFalse(mapView.showsUserLocation, "The person is not shown before the control is used.")
+        XCTAssertFalse(location.wasAskedAnything, "Nothing is asked before the control is used.")
+
+        let mapWithoutLocation = try await show(VaultMapScreen(workspace: workspace))
+        try await waitUntil { Self.notePaths(on: mapWithoutLocation).count == 3 }
+        XCTAssertFalse(mapWithoutLocation.showsUserTrackingButton)
+    }
+
     // MARK: Helpers
 
     private static func notePaths(on mapView: MKMapView) -> [String] {

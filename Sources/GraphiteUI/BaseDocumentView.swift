@@ -508,7 +508,7 @@ struct BaseContainerView: View {
         case .list:
             BaseListView(result: result, actions: actions)
         case .map:
-            BaseMapView(result: result, actions: actions)
+            BaseMapView(result: result, actions: actions, vaultPlaces: { [model] in await model.vaultPlaceCoordinates() })
         case .kanban:
             let model = model
             BaseKanbanView(result: result, actions: actions, moves: BaseKanbanMoves(
