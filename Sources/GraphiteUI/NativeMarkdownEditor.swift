@@ -5,8 +5,8 @@
  * Description: The note editors of the iPad (UITextView) and the Mac (NSTextView) with their coordinators.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.75
- * Date: 05/11/2026
+ * Version: 0.76
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -1693,6 +1693,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         func textViewDidBeginEditing(_ textView: UITextView) {
             // The cursor is kept in sight from now on, not a heading jumped to.
             pinnedHeading = nil
+            session.blockViews.releaseTableCellCommands()
             actions.beginEditing?()
             isEditing = true
             session.isTyping = true
@@ -2100,7 +2101,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 guard let entry = self.blockEntries.first(where: { candidate in candidate.key == key }) else { return }
                 self.renderedBlocks.beginEditingInView(blockWithKey: key, at: entry.range.location, owner: editor)
             }, setDraftCommit: { [weak self] editor, commit in
-                self?.session.draftCommitsOfViews[editor] = commit
+                self?.session.blockViews.draftCommits[editor] = commit
+            }, offerCellCommands: { [weak self] target in
+                self?.session.blockViews.takeTableCellCommands(target)
             }), currentLocation: { [weak self] in
                 self?.blockEntries.first { candidate in candidate.key == key }?.range.location
             })
@@ -3553,6 +3556,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             // showed the callout or table there as source until a click in the note.
             textView.didBecomeFirstResponder = { [weak self, weak textView] in
                 guard let self, let textView else { return }
+                self.session.blockViews.releaseTableCellCommands()
                 self.actions.beginEditing?()
                 self.followKeyboardFocus(true, in: textView)
             }
@@ -4019,7 +4023,9 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 guard let entry = self.textState.blockEntries.first(where: { candidate in candidate.key == key }) else { return }
                 self.renderedBlocks.beginEditingInView(blockWithKey: key, at: entry.range.location, owner: editor)
             }, setDraftCommit: { [weak self] editor, commit in
-                self?.session.draftCommitsOfViews[editor] = commit
+                self?.session.blockViews.draftCommits[editor] = commit
+            }, offerCellCommands: { [weak self] target in
+                self?.session.blockViews.takeTableCellCommands(target)
             }), currentLocation: { [weak self] in
                 self?.textState.blockEntries.first { candidate in candidate.key == key }?.range.location
             })

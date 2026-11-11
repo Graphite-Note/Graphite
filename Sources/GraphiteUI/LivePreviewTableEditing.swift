@@ -2,11 +2,11 @@
  * File: LivePreviewTableEditing.swift
  * -----------------------------------
  * Layer: UI
- * Description: Editing a rendered table's cells in place.
+ * Description: Editing a rendered table's cells in place, its cell commands and its "+" strips.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 02/11/2026
+ * Version: 0.6
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -24,6 +24,8 @@ struct RenderedBlockSourceEditing {
     let setIsEditingInView: (_ isEditing: Bool, _ editor: ObjectIdentifier) -> Void
     /// What writes the editor's draft into the note before a save; nil once it holds none.
     var setDraftCommit: (_ editor: ObjectIdentifier, _ commit: (() -> Void)?) -> Void = { _, _ in }
+    /// Gives the note's command palette and Edit menu the table's cell commands, as a cell begins editing.
+    var offerCellCommands: (_ target: TableCellCommandTarget) -> Void = { _ in }
 }
 
 /// A cell of a rendered table: row 0 is the header, then the body rows.
@@ -54,6 +56,9 @@ final class LivePreviewTableEditor {
     private static let commitDelay: Duration = .milliseconds(400)
 
     private(set) var editingCell: TableCellPosition?
+    /// The cell the command palette's and the Edit menu's table commands act on: the edited
+    /// cell, or the one last edited once its editor closed, as when the palette took the keyboard.
+    private(set) var commandCell: TableCellPosition?
     /// Asks the cell editor to take the keyboard: it changes when editing begins.
     private(set) var focusRequest = 0
     /// The edited cell's text, as `MarkdownTableEditing.editableText(ofCellSource:)` shows it.
@@ -71,9 +76,11 @@ final class LivePreviewTableEditor {
     /// written, which can differ from the draft (spaces at its ends).
     @ObservationIgnored private var cellTextAsWritten: String?
     @ObservationIgnored private var commitTask: Task<Void, Never>?
-    /// The table's cells as last laid out, and where the table is in the block's view.
+    /// The table's cells as last laid out, and where the table is in the block's view, which
+    /// the "+" strips stay inside.
     @ObservationIgnored var layout: StructuredText.TableLayout?
-    @ObservationIgnored var tableOriginInBlock: CGPoint = .zero
+    @ObservationIgnored var tablePlacement = TablePlacementInBlock()
+    var tableOriginInBlock: CGPoint { tablePlacement.origin }
     /// Where the vault's pictures in the table's cells are, in the block's coordinates: a tap
     /// on one zooms into it rather than editing its cell.
     @ObservationIgnored var pictureFrames: [ZoomablePictureFrame] = []
@@ -147,8 +154,10 @@ final class LivePreviewTableEditor {
         committedDraft = text
         cellTextAsWritten = text
         editingCell = cell
+        commandCell = cell
         draftText = text
         focusRequest += 1
+        sourceEditing?.offerCellCommands(TableCellCommandTarget(editor: self))
     }
 
     /// The cell editor lost the keyboard, as after a tap in the note's text: the editor closes.
@@ -261,53 +270,57 @@ final class LivePreviewTableEditor {
 
     // MARK: Rows and columns
 
-    /// The block menu's commands for the cell at `point`, in the block view's coordinates;
-    /// for the edited cell when the point is not on one.
+    /// The cell menu's commands (`TableCellCommand`) for the cell at `point`, in the block
+    /// view's coordinates; for the edited cell when the point is not on one.
     func menuItems(at point: CGPoint) -> [RenderedBlockMenuItem] {
-        guard let table, sourceEditing != nil else { return [] }
+        guard let table, sourceEditing != nil, let cell = menuCell(at: point) else { return [] }
+        return TableCellCommand.menuItems(at: cell, in: table) { [weak self] command in self?.perform(command, at: cell) }
+    }
+
+    private func menuCell(at point: CGPoint) -> TableCellPosition? {
         let pointInTable = CGPoint(x: point.x - tableOriginInBlock.x, y: point.y - tableOriginInBlock.y)
         let tableBounds = layout?.bounds ?? .null
         let pointedCell = tableBounds.insetBy(dx: -4, dy: -4).contains(pointInTable) ? layout.flatMap { layout in Self.cell(at: pointInTable, in: layout) } : nil
-        guard let cell = pointedCell ?? editingCell else { return [] }
-        let isHeader = cell.row == 0
-        let bodyRowIndex = cell.row - 1
-        let column = cell.column
-        let rowItems = [
-            RenderedBlockMenuItem(title: "Add Row Above", symbolName: "arrow.up.to.line", isEnabled: !isHeader,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowIndex, in: source) } }),
-            RenderedBlockMenuItem(title: "Add Row Below", symbolName: "arrow.down.to.line",
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowIndex + 1, in: source) } }),
-            RenderedBlockMenuItem(title: "Move Row Up", symbolName: "arrow.up", isEnabled: bodyRowIndex > 0,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.movingRow(atBodyIndex: bodyRowIndex, by: -1, in: source) } }),
-            RenderedBlockMenuItem(title: "Move Row Down", symbolName: "arrow.down", isEnabled: !isHeader && bodyRowIndex < table.bodyRowCount - 1,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.movingRow(atBodyIndex: bodyRowIndex, by: 1, in: source) } }),
-            RenderedBlockMenuItem(title: "Delete Row", symbolName: "trash", isEnabled: !isHeader,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.removingRow(atBodyIndex: bodyRowIndex, in: source) } }),
-        ]
-        let alignmentItems: [RenderedBlockMenuItem] = [
-            ("Left", "text.alignleft", MarkdownTable.ColumnAlignment.left), ("Center", "text.aligncenter", .center),
-            ("Right", "text.alignright", .right), ("None", "text.justify.leading", MarkdownTable.ColumnAlignment.none),
-        ].map { title, symbolName, alignment in
-            RenderedBlockMenuItem(title: title, symbolName: symbolName, isEnabled: column < table.alignments.count && table.alignments[column] != alignment,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.settingAlignment(alignment, ofColumn: column, in: source) } })
+        return pointedCell ?? editingCell
+    }
+
+    /// Whether the command palette's and the Edit menu's `command` applies to the cell they act on.
+    func isAvailable(_ command: TableCellCommand) -> Bool {
+        guard let table, sourceEditing != nil, let commandCell else { return false }
+        return command.isAvailable(at: commandCell, in: table)
+    }
+
+    /// Runs `command` from the command palette or the Edit menu on the cell they act on.
+    func perform(_ command: TableCellCommand) {
+        guard let commandCell else { return }
+        perform(command, at: commandCell)
+    }
+
+    private func perform(_ command: TableCellCommand, at cell: TableCellPosition) {
+        guard let table, command.isAvailable(at: cell, in: table) else { return }
+        changeTable(command.edit(at: cell, in: table))
+    }
+
+    /// The "+" strip along the right edge: an empty last column, in one edit, with the editor
+    /// in its header. The editor opens first, so the view is kept across the edit's new key.
+    func addColumnAtTheEnd() {
+        guard let table, !draftMovesOtherCells else { return commitDraft() }
+        startEditing(TableCellPosition(row: 0, column: table.columnCount), text: "")
+        replaceSource { source in
+            guard let columnCount = MarkdownTable.parse(source)?.columnCount else { return nil }
+            return MarkdownTableEditing.insertingColumn(at: columnCount, in: source)
         }
-        let columnItems = [
-            RenderedBlockMenuItem(title: "Add Column Before", symbolName: "arrow.left.to.line",
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.insertingColumn(at: column, in: source) } }),
-            RenderedBlockMenuItem(title: "Add Column After", symbolName: "arrow.right.to.line",
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.insertingColumn(at: column + 1, in: source) } }),
-            RenderedBlockMenuItem(title: "Move Column Left", symbolName: "arrow.left", isEnabled: column > 0,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.movingColumn(at: column, by: -1, in: source) } }),
-            RenderedBlockMenuItem(title: "Move Column Right", symbolName: "arrow.right", isEnabled: column < table.columnCount - 1,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.movingColumn(at: column, by: 1, in: source) } }),
-            RenderedBlockMenuItem(title: "Align", symbolName: "text.alignleft", children: alignmentItems),
-            RenderedBlockMenuItem(title: "Delete Column", symbolName: "trash", isEnabled: table.columnCount > 1,
-                                  action: { [weak self] in self?.changeTable { source in MarkdownTableEditing.removingColumn(at: column, in: source) } }),
-        ]
-        return [
-            RenderedBlockMenuItem(title: "Row", symbolName: "tablecells", children: rowItems),
-            RenderedBlockMenuItem(title: "Column", symbolName: "tablecells", children: columnItems),
-        ]
+    }
+
+    /// The "+" strip along the bottom edge: an empty last row, in one edit, with the editor in
+    /// its first cell.
+    func addRowAtTheEnd() {
+        guard let table, !draftMovesOtherCells else { return commitDraft() }
+        startEditing(TableCellPosition(row: table.rows.count, column: 0), text: "")
+        replaceSource { source in
+            guard let bodyRowCount = MarkdownTable.parse(source)?.bodyRowCount else { return nil }
+            return MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowCount, in: source)
+        }
     }
 
     /// A change of rows or columns closes the cell editor first, writing its draft: the cells
@@ -363,7 +376,8 @@ struct LivePreviewTableEditingOverlay: ViewModifier {
     }
 }
 
-/// A tap target over the whole table, and the edited cell's text field over that cell.
+/// A tap target over the whole table, the edited cell's text field over that cell, and the
+/// "+" strips that add a column and a row while the pointer is over the table or a cell is edited.
 private struct LivePreviewTableEditingLayer: View {
     let layout: StructuredText.TableLayout
     @Bindable var editor: LivePreviewTableEditor
@@ -371,20 +385,32 @@ private struct LivePreviewTableEditingLayer: View {
     @Environment(\.noteTheme) private var theme
     @Environment(\.accent) private var accent
     @Environment(\.readingImageActions) private var imageActions
+    @State private var isPointerOverTable = false
+    @State private var isPointerOverStrip = false
+
+    private var showsAddStrips: Bool { isPointerOverTable || isPointerOverStrip || editor.editingCell != nil }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(coordinateSpace: .local) { location in tapped(at: location) }
+                // The pointer, or an Apple Pencil held over the iPad's screen, shows the strips.
+                .onHover { isOver in isPointerOverTable = isOver }
             if let cell = editor.editingCell, let frame = editor.frame(of: cell, in: layout) {
                 cellField(for: cell, frame: frame)
             }
+            if showsAddStrips {
+                LivePreviewTableAddStrips(geometry: TableAddStripsGeometry(tableBounds: layout.bounds, blockBounds: editor.tablePlacement.blockBoundsInTable),
+                                          editor: editor, isPointerOverStrip: $isPointerOverStrip)
+            }
         }
-        .onGeometryChange(for: CGPoint.self) { geometry in
-            geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName)).origin
-        } action: { origin in
-            editor.tableOriginInBlock = origin
+        .onGeometryChange(for: TablePlacementInBlock.self) { geometry in
+            let frame = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
+            let blockSize = geometry.bounds(of: .named(LivePreviewTableEditor.blockCoordinateSpaceName))?.size ?? frame.size
+            return TablePlacementInBlock(origin: frame.origin, blockSize: blockSize)
+        } action: { placement in
+            editor.tablePlacement = placement
         }
         .onChange(of: layout, initial: true) { _, newLayout in editor.layout = newLayout }
         // Text selection's overlay would otherwise take the taps.

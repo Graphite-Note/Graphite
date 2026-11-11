@@ -5,8 +5,8 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.18
- * Date: 02/11/2026
+ * Version: 0.19
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -455,14 +455,13 @@ final class MarkdownSession {
     /// captures the text. Without an editor, the same work is applied to the model.
     @ObservationIgnored var applyPendingInsertionsBeforeSaving: (() -> Void)?
 
-    /// Writes what rendered blocks' views hold back into the text, by the view that holds it:
-    /// a table cell's draft waits for typing to pause, and a save right after the last key
-    /// (quitting, closing the tab, leaving the app) must not go without those characters.
-    @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
+    /// What the note's rendered blocks' views hold for it: the table cells' drafts a save writes
+    /// first, and the table cell whose commands the palette and the Edit menu offer.
+    let blockViews = RenderedBlockViewsOfNote()
 
     /// What a save must take in first: the views' drafts, then the insertions waiting.
     func bringWaitingTextIntoNote() {
-        for commit in draftCommitsOfViews.values { commit() }
+        for commit in blockViews.draftCommits.values { commit() }
         flushPendingInsertions()
     }
 

@@ -5,7 +5,7 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.15
+ * Version: 0.16
  * Date: 11/11/2026
  */
 
@@ -84,7 +84,7 @@ public struct GraphiteCommands: Commands {
                 .keyboardShortcut(shortcut(.openSettings))
         }
         #endif
-        CommandGroup(after: .textEditing) { findAndSearchItems }
+        CommandGroup(after: .textEditing) { textEditingItems }
         CommandGroup(before: .sidebar) {
             viewCommands
         }
@@ -134,6 +134,12 @@ public struct GraphiteCommands: Commands {
         Button("Save") { actions?.save() }
             .keyboardShortcut(shortcut(.save))
             .disabled(workspace == nil)
+    }
+
+    /// The Edit menu's own items: finding and searching, then the Table submenu of the table cell being edited.
+    @ViewBuilder private var textEditingItems: some View {
+        findAndSearchItems
+        TableCellCommandsMenu(target: workspace?.markdownSession?.blockViews.tableCellCommandTarget, shortcut: shortcut)
     }
 
     @ViewBuilder private var findAndSearchItems: some View {

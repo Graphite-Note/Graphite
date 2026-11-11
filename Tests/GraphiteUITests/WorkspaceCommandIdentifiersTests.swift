@@ -98,6 +98,33 @@ final class WorkspaceCommandIdentifiersTests: XCTestCase {
         XCTAssertEqual(recorder.shownSidebar, 1, "Only the bookmarks command asks the window to show the sidebar.")
     }
 
+    // MARK: A table's cell commands
+
+    /// While a Live Preview table's cell is edited, or until the note's text takes the keyboard
+    /// after it, the palette lists the cell's commands that apply, after the editing commands' place.
+    func testTheTableCommandsOfTheCellBeingEditedJoinTheListUntilTheNotesTextTakesTheKeyboard() async throws {
+        let workspace = try await openedWorkspace()
+        let session = try XCTUnwrap(workspace.markdownSession)
+        var tableSource = "| A | B |\n| - | - |\n| 2 | x |\n| 1 | y |\n"
+        let editor = LivePreviewTableEditor()
+        editor.update(source: tableSource, textSize: 16, sourceEditing: RenderedBlockSourceEditing(replaceSource: { _, transform in
+            tableSource = transform(tableSource) ?? tableSource
+        }, setIsEditingInView: { _, _ in }, offerCellCommands: { target in session.blockViews.takeTableCellCommands(target) }))
+        editor.beginEditing(TableCellPosition(row: 1, column: 0))
+
+        let identifiers = WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).map(\.id)
+        let tableIdentifiers = identifiers.filter { identifier in identifier.contains(":table-") }
+        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveRowUp && command != .moveColumnLeft }
+            .map(\.graphiteCommand.identifier), "The first body row's first cell can move neither up nor left.")
+        XCTAssertEqual(Array(identifiers.filter { identifier in !identifier.contains(":table-") }), Self.identifiersWithANoteOpen)
+        editor.focusDidLeave()
+        try command("graphite:table-sort-ascending", in: workspace, window: makeWindowActions()).run()
+        XCTAssertEqual(tableSource, "| A | B |\n| - | - |\n| 1 | y |\n| 2 | x |\n")
+
+        session.blockViews.releaseTableCellCommands()
+        XCTAssertFalse(WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).contains { command in command.id.contains(":table-") })
+    }
+
     // MARK: Golden lists
 
     /// The identifiers as the palette lists them with the default core plugins and no vault open.

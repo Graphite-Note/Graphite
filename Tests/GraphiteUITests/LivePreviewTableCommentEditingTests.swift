@@ -71,14 +71,14 @@ final class LivePreviewTableCommentEditingTests: XCTestCase {
     func testTheMenusCommandsReachTheColumnDrawn() throws {
         let table = try EditedTable(note: "| a %% x | y %% | b |\n| - | - |\n| 1 | 2 |\n")
         table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
-        try table.menuCommand("Column", "Delete Column")()
+        try table.menuCommand("Column", "Delete column")()
         XCTAssertEqual(table.note, "| a %% x | y %% |\n| - |\n| 1 |\n")
     }
 
     func testTheMenusRowCommandsKeepARowsComment() throws {
         let table = try EditedTable(note: "| a |\n| - |\n| 1 %%why%% |\n| 2 |\n")
         table.editor.beginEditing(TableCellPosition(row: 1, column: 0))
-        try table.menuCommand("Row", "Move Row Down")()
+        try table.menuCommand("Row", "Move row down")()
         XCTAssertEqual(table.note, "| a |\n| - |\n| 2 |\n| 1 %%why%% |\n")
     }
 
@@ -136,7 +136,7 @@ final class LivePreviewTableCommentEditingTests: XCTestCase {
         let table = try EditedTable(note: "| h | i | j |\n| - | - | - |\n| 5%% | c | d |\n")
         table.editor.beginEditing(TableCellPosition(row: 1, column: 1))
         table.editor.draftText = "c%%"
-        try table.menuCommand("Column", "Delete Column")()
+        try table.menuCommand("Column", "Delete column")()
         XCTAssertEqual(table.note, "| h | i | j |\n| - | - | - |\n| 5%% | c%% | d |\n")
     }
 

@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.19
- * Date: 05/11/2026
+ * Version: 0.20
+ * Date: 11/11/2026
  */
 
 #if canImport(UIKit)
@@ -655,6 +655,8 @@ struct RenderedBlockMenuItem {
     let title: String
     var symbolName: String? = nil
     var isEnabled = true
+    /// Shown with a checkmark, as a table column's alignment is.
+    var isChosen = false
     /// Shown as a submenu when not empty.
     var children: [RenderedBlockMenuItem] = []
     var action: (() -> Void)? = nil
@@ -728,6 +730,7 @@ final class RenderedBlockEditSourceMenu: NSObject {
             nativeItem.representedObject = target
         }
         nativeItem.isEnabled = item.isEnabled
+        nativeItem.state = item.isChosen ? .on : .off
         if let symbolName = item.symbolName { nativeItem.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) }
         if !item.children.isEmpty {
             let submenu = NSMenu(title: item.title)
@@ -767,7 +770,7 @@ extension RenderedBlockEditSourceMenu: UIContextMenuInteractionDelegate {
         let image = item.symbolName.flatMap { symbolName in UIImage(systemName: symbolName) }
         if !item.children.isEmpty { return UIMenu(title: item.title, image: image, children: item.children.map(menuElement(for:))) }
         let action = item.action
-        return UIAction(title: item.title, image: image, attributes: item.isEnabled ? [] : .disabled) { _ in action?() }
+        return UIAction(title: item.title, image: image, attributes: item.isEnabled ? [] : .disabled, state: item.isChosen ? .on : .off) { _ in action?() }
     }
 }
 #endif

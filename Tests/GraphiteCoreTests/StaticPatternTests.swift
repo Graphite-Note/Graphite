@@ -42,6 +42,7 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(MarkdownSemanticsPattern.self)
         assertEveryCaseCompiles(MarkdownStyleScannerPattern.self)
         assertEveryCaseCompiles(MarkdownTableEditingPattern.self)
+        assertEveryCaseCompiles(MarkdownTableSortPattern.self)
         assertEveryCaseCompiles(MentionsPattern.self)
         assertEveryCaseCompiles(NoteLinkScannerPattern.self)
         assertEveryCaseCompiles(NotePreviewDocumentPattern.self)

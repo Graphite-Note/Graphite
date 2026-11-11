@@ -5,7 +5,7 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.17
+ * Version: 0.18
  * Date: 11/11/2026
  */
 
@@ -240,6 +240,17 @@ enum WorkspaceCommandList {
         return commands
     }
 
+    /// The commands of the table cell being edited, or last edited (`TableCellCommandTarget`),
+    /// that apply to it; none while no table's cell has been edited since the note's text had the keyboard.
+    private static func tableCellCommands(session: MarkdownSession) -> [PaletteCommand] {
+        guard let target = session.blockViews.tableCellCommandTarget else { return [] }
+        return TableCellCommand.allCases.filter(target.isAvailable).map { command in
+            PaletteCommand(id: command.graphiteCommand.identifier, command: command.graphiteCommand, systemImage: command.symbolName) {
+                target.perform(command)
+            }
+        }
+    }
+
     private static func noteCommands(session: MarkdownSession, workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
         let editingMode = workspace.defaultEditingMode
         var commands = [
@@ -270,7 +281,7 @@ enum WorkspaceCommandList {
                 session.apply(MarkdownEditing.settingHeading(level: level, in: text(), selection: session.selection))
             }
         }
-        commands += [
+        commands += tableCellCommands(session: session) + [
             PaletteCommand(id: "task", command: .insertTask, systemImage: "checklist") { session.insertBlock("- [ ] ") },
             PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) },
             PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) },

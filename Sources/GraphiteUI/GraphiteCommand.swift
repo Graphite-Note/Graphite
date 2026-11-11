@@ -6,7 +6,7 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.8
+ * Version: 0.9
  * Date: 11/11/2026
  */
 import Foundation
@@ -90,6 +90,17 @@ enum GraphiteCommand: String, CaseIterable {
     case insertTask = "graphite:insert-task", insertTable = "editor:insert-table", insertMathBlock = "editor:insert-mathblock"
     case insertCallout = "editor:insert-callout", insertTemplate = "insert-template", insertNotebook = "graphite:insert-notebook"
     case insertDrawing = "graphite:insert-drawing"
+    // Tables: the commands of a Live Preview table's cell (`TableCellCommand`), with Obsidian's
+    // identifiers for its table commands; sorting is Graphite's own.
+    case tableAddRowAbove = "editor:table-row-before", tableAddRowBelow = "editor:table-row-after"
+    case tableMoveRowUp = "editor:table-row-up", tableMoveRowDown = "editor:table-row-down"
+    case tableDuplicateRow = "editor:table-row-copy", tableDeleteRow = "editor:table-row-delete"
+    case tableAddColumnToTheLeft = "editor:table-col-before", tableAddColumnToTheRight = "editor:table-col-after"
+    case tableMoveColumnLeft = "editor:table-col-left", tableMoveColumnRight = "editor:table-col-right"
+    case tableAlignLeft = "editor:table-col-align-left", tableAlignCenter = "editor:table-col-align-center"
+    case tableAlignRight = "editor:table-col-align-right"
+    case tableDuplicateColumn = "editor:table-col-copy", tableDeleteColumn = "editor:table-col-delete"
+    case tableSortAscending = "graphite:table-sort-ascending", tableSortDescending = "graphite:table-sort-descending"
     // Canvas
     case canvasSelectAll = "graphite:canvas-select-all", canvasDeleteSelection = "graphite:canvas-delete-selection"
     case canvasDuplicateSelection = "graphite:canvas-duplicate-selection"
@@ -315,6 +326,9 @@ extension GraphiteCommand {
                               binding: .menuBar, corePlugin: .templates, macMenuTitles: ["Insert Template…"])
         case .insertNotebook: return Descriptor(title: "Notebooks: Insert new notebook", group: .editor)
         case .insertDrawing: return Descriptor(title: "Pencil drawings: Insert drawing", group: .editor, corePlugin: .drawings)
+        case .tableAddRowAbove, .tableAddRowBelow, .tableMoveRowUp, .tableMoveRowDown, .tableDuplicateRow, .tableDeleteRow, .tableAddColumnToTheLeft,
+             .tableAddColumnToTheRight, .tableMoveColumnLeft, .tableMoveColumnRight, .tableAlignLeft, .tableAlignCenter, .tableAlignRight,
+             .tableDuplicateColumn, .tableDeleteColumn, .tableSortAscending, .tableSortDescending: return tableCommandDescriptor
         case .canvasSelectAll: return Descriptor(title: "Select all", group: .canvas, defaultCombinations: command("A"), binding: .canvas, corePlugin: .canvas)
         case .canvasDeleteSelection:
             return Descriptor(title: "Delete selection", group: .canvas, defaultCombinations: named(.backspace, []), binding: .canvas, corePlugin: .canvas)
@@ -339,6 +353,18 @@ extension GraphiteCommand {
     var tabNumber: Int? {
         let tabCommands: [GraphiteCommand] = [.goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8]
         return tabCommands.firstIndex(of: self).map { index in index + 1 }
+    }
+
+    /// A table command is an item of the Edit menu's Table submenu, there while a table's cell
+    /// is edited, with the cell menu's title and no default shortcut.
+    private var tableCommandDescriptor: GraphiteCommandDescriptor {
+        let title = tableCellCommand?.title ?? identifier
+        return GraphiteCommandDescriptor(title: title, group: .editor, binding: .menuBar, macMenuTitles: [title])
+    }
+
+    /// For the table commands, the cell command it runs.
+    var tableCellCommand: TableCellCommand? {
+        TableCellCommand.allCases.first { tableCommand in tableCommand.graphiteCommand == self }
     }
 
     /// For the heading commands, the heading's level.
