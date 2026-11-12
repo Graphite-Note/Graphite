@@ -1,0 +1,10 @@
+{
+  "items": [
+    {"type": "file", "ctime": 1793000000000, "path": "Start here.md"},
+    {"type": "group", "ctime": 1793000000001, "title": "Course", "items": [
+      {"type": "file", "ctime": 1793000000002, "path": "Lectures/Long lecture.md"},
+      {"type": "file", "ctime": 1793000000003, "path": "PDFs/Lecture slides.pdf"}
+    ]},
+    {"type": "search", "ctime": 1793000000004, "query": "tag:#daily"}
+  ]
+}

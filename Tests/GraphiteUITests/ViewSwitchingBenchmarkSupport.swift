@@ -102,10 +102,11 @@ struct MainThreadQuietWatch {
     }
 
     let window: Window
+    /// How many quiet polls in a row end a measurement: 100, half a second without work after the window shows what was
+    /// asked, for the switching benchmarks; the release pass, which measures hundreds of steps, waits less.
+    var quietStepsToStop = 100
     private static let step = 0.005
     private static let busyStep = Duration.milliseconds(12)
-    /// Half a second without work, after the window shows what was asked.
-    private static let quietStepsToStop = 100
 
     /// Makes `change`, then waits until `isShown` is true and the main thread has been quiet since.
     func measure(_ change: () -> Void, until isShown: () -> Bool = { true }) async throws -> Measurement {
@@ -131,7 +132,7 @@ struct MainThreadQuietWatch {
                 processorAtLastBusy = ProcessResourceUsage.mainThreadProcessorSeconds()
             }
             quietSteps = stepLength > Self.busyStep || !showsIt ? 0 : quietSteps + 1
-            return quietSteps >= Self.quietStepsToStop
+            return quietSteps >= quietStepsToStop
         }
         return Measurement(busy: start.duration(to: lastBusyEnd), shown: start.duration(to: shownAt ?? .now),
                            mainThreadProcessor: .seconds(processorAtLastBusy - processorStart), longestStep: longestStep)

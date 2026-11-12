@@ -21,6 +21,10 @@ public enum FixtureFolders {
     /// typed text flows onto a second page.
     public static let syntheticNotebooks = repositoryRoot.appendingPathComponent("Tests/SyntheticNotebooks", isDirectory: true)
 
+    /// The vault with a note or a file for every feature, which the release pass opens in every view
+    /// (`Tests/ReleaseVault/README.md` lists what each note shows; Docs/Release-test-vault-todo.md).
+    public static let releaseVault = repositoryRoot.appendingPathComponent("Tests/ReleaseVault", isDirectory: true)
+
     /// The Mac and iPad application's property lists.
     public static let applicationFolder = repositoryRoot.appendingPathComponent("App", isDirectory: true)
 
