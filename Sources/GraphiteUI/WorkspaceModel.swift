@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.86
+ * Version: 0.87
  * Date: 12/11/2026
  */
 
@@ -884,6 +884,7 @@ final class WorkspaceModel {
     }
 
     func windowDidClose() {
+        markdownEditorRetention.stopKeepingEditors()
         monitor?.stop(); monitor = nil
         externalChangeTask?.cancel()
         stopIndexing()

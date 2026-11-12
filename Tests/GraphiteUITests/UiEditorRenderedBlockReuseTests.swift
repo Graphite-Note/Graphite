@@ -6,8 +6,8 @@
  *              and heights shared between editors.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
- * Date: 11/11/2026
+ * Version: 0.3
+ * Date: 12/11/2026
  */
 
 import XCTest
@@ -199,6 +199,110 @@ final class UiEditorRenderedBlockReuseTests: XCTestCase {
         XCTAssertNil(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: 1), columnWidth: .infinity, textSize: 17))
         XCTAssertNil(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: 1), columnWidth: -40, textSize: 17))
         XCTAssertNil(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: 1), columnWidth: 0, textSize: 17))
+    }
+
+    /// A note opening is styled before its text view has a width. Its blocks reserved estimates
+    /// then, which a restyle corrected a moment later, after a scroll could have begun: the text
+    /// above the screen changed height, and the note jumped once scrolled back to its top (Mac
+    /// benchmark, 2026-11-12: 3 jumps over 50 points in each run after the first, up to 479).
+    func testANoteOpenedAgainReservesTheHeightsMeasuredBeforeItsViewHasAWidth() throws {
+        // A formula of its own, so heights other tests measured do not answer for it.
+        let source = "$$\nx_{\(UUID().uuidString.prefix(8))}\n$$\n" as NSString
+        let block = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: source).first)
+        let entry = LivePreviewBlockEntry(block: block, range: block.range, key: LivePreviewBlockKey.keys(for: [block])[0])
+        let configuration = EditorConfiguration()
+        let estimate = LivePreviewBlockHeightEstimate.height(of: block, columnWidth: 730)
+        XCTAssertEqual(LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 1).reservedHeight(of: entry, columnWidth: -74, configuration: configuration),
+                       estimate)
+
+        let measuringEditor = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 1)
+        _ = measuringEditor.recordMeasuredHeight(41.5, forBlockWithKey: entry.key, isFrontmatter: false, columnWidth: 730, configuration: configuration)
+
+        let reopenedEditor = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 1)
+        XCTAssertEqual(reopenedEditor.reservedHeight(of: entry, columnWidth: -74, configuration: configuration), 41.5)
+        XCTAssertEqual(reopenedEditor.reservedHeight(of: entry, columnWidth: 730, configuration: configuration), 41.5)
+        var largerText = configuration
+        largerText.textSize = 24
+        XCTAssertEqual(reopenedEditor.reservedHeight(of: entry, columnWidth: -74, configuration: largerText), estimate)
+    }
+
+    func testTheLatestHeightAtAnyWidthFollowsTheLastMeasurementAndLeavesWithIt() throws {
+        var cache = MeasuredBlockHeightCache(capacity: 4)
+        let settings = MeasuredBlockHeightCache.Settings(blockKey: key(ofBlockAt: 1), textSize: 17)
+        XCTAssertNil(cache.latestHeight(for: settings))
+        cache.record(212, for: try XCTUnwrap(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: 1), columnWidth: 684, textSize: 17)))
+        cache.record(260, for: try XCTUnwrap(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: 1), columnWidth: 400, textSize: 17)))
+        XCTAssertEqual(cache.latestHeight(for: settings), 260)
+        XCTAssertNil(cache.latestHeight(for: MeasuredBlockHeightCache.Settings(blockKey: key(ofBlockAt: 1), textSize: 20)))
+        XCTAssertNil(cache.latestHeight(for: MeasuredBlockHeightCache.Settings(blockKey: key(ofBlockAt: 2), textSize: 17)))
+        // Heights of other blocks push this block's out of the cache, and its latest height with them.
+        for blockIndex in 2...6 {
+            cache.record(10, for: try XCTUnwrap(MeasuredBlockHeightCache.Key(blockKey: key(ofBlockAt: blockIndex), columnWidth: 684, textSize: 17)))
+        }
+        XCTAssertNil(cache.latestHeight(for: settings))
+    }
+
+    /// The first time a note's blocks are shown, each table, formula and callout reserved the
+    /// same estimate from its lines, and its view's first reports restyled it three times as it
+    /// scrolled in (a table 176, then 8, 135 and 155 points). Once one table was measured, the
+    /// next is estimated from it and waits for its view's height to settle.
+    func testATableNotYetShownIsEstimatedFromTheTablesMeasuredAndWaitsForItsViewToSettle() throws {
+        // A width no other test uses: what blocks of a kind measured is shared by every editor.
+        let columnWidth: CGFloat = 613
+        let configuration = EditorConfiguration()
+        func table(_ name: String) throws -> LivePreviewBlockEntry {
+            let source = "| \(name) | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |\n" as NSString
+            let block = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: source).first)
+            return LivePreviewBlockEntry(block: block, range: block.range, key: LivePreviewBlockKey.keys(for: [block])[0])
+        }
+        let first = try table("first-\(UUID().uuidString.prefix(8))"), second = try table("second-\(UUID().uuidString.prefix(8))")
+        let formulaBlock = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "$$\nx_{\(UUID().uuidString.prefix(8))}\n$$\n" as NSString).first)
+        let formula = LivePreviewBlockEntry(block: formulaBlock, range: formulaBlock.range, key: LivePreviewBlockKey.keys(for: [formulaBlock])[0])
+        let sourceEstimate = LivePreviewBlockHeightEstimate.height(of: first.block, columnWidth: columnWidth)
+        let renderedBlocks = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 1)
+        XCTAssertEqual(renderedBlocks.reservedHeight(of: first, columnWidth: columnWidth, configuration: configuration), sourceEstimate)
+        XCTAssertEqual(renderedBlocks.reservedHeight(of: second, columnWidth: columnWidth, configuration: configuration), sourceEstimate)
+        XCTAssertFalse(renderedBlocks.knowsHeightBeforeItsView(ofBlockWithKey: second.key, columnWidth: columnWidth, configuration: configuration))
+
+        // The first table's view reports as SwiftUI lays it out; its first few points say nothing.
+        for height: CGFloat in [8, 134.8, 154.8] {
+            _ = renderedBlocks.recordMeasuredHeight(height, forBlockWithKey: first.key, isFrontmatter: false, columnWidth: columnWidth, configuration: configuration)
+        }
+        XCTAssertEqual(renderedBlocks.reservedHeight(of: second, columnWidth: columnWidth, configuration: configuration), 155)
+        XCTAssertTrue(renderedBlocks.knowsHeightBeforeItsView(ofBlockWithKey: second.key, columnWidth: columnWidth, configuration: configuration))
+        // Another editor, as another note opened, estimates its tables the same way.
+        let otherEditor = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 1)
+        XCTAssertEqual(otherEditor.reservedHeight(of: second, columnWidth: columnWidth, configuration: configuration), 155)
+        // A formula learns nothing from tables, nor a table at another width.
+        XCTAssertEqual(renderedBlocks.reservedHeight(of: formula, columnWidth: columnWidth, configuration: configuration),
+                       LivePreviewBlockHeightEstimate.height(of: formula.block, columnWidth: columnWidth))
+        XCTAssertEqual(otherEditor.reservedHeight(of: second, columnWidth: columnWidth + 40, configuration: configuration),
+                       LivePreviewBlockHeightEstimate.height(of: second.block, columnWidth: columnWidth + 40))
+    }
+
+    func testWhatAKindMeasuredIsTheSumOfItsLatestHeightsOverTheirEstimatesWithinBounds() throws {
+        var learning = BlockEstimateLearning()
+        let key = BlockEstimateLearning.Key(kind: .callout, columnWidth: 700, textSize: 17)
+        XCTAssertNil(learning.scale(for: key))
+        learning.record(10, estimate: 86, forBlockWithKey: self.key(ofBlockAt: 1), under: key)
+        XCTAssertNil(learning.scale(for: key), "A view's first few points are not its height.")
+        learning.record(56, estimate: 86, forBlockWithKey: self.key(ofBlockAt: 1), under: key)
+        learning.record(78, estimate: 86, forBlockWithKey: self.key(ofBlockAt: 1), under: key)
+        learning.record(96, estimate: 116, forBlockWithKey: self.key(ofBlockAt: 2), under: key)
+        XCTAssertEqual(try XCTUnwrap(learning.scale(for: key)), (78 + 96) / (86 + 116), accuracy: 0.0001)
+        XCTAssertNil(learning.scale(for: BlockEstimateLearning.Key(kind: .table, columnWidth: 700, textSize: 17)))
+        XCTAssertNil(learning.scale(for: BlockEstimateLearning.Key(kind: .callout, columnWidth: 700, textSize: 20)))
+
+        var tall = BlockEstimateLearning()
+        tall.record(900, estimate: 86, forBlockWithKey: self.key(ofBlockAt: 1), under: key)
+        XCTAssertEqual(tall.scale(for: key), 2, "A correction stays within half and twice the estimate.")
+        // Only the latest blocks count.
+        var many = BlockEstimateLearning()
+        let keys = LivePreviewBlockKey.keys(for: Array(repeating: blocks[5], count: BlockEstimateLearning.blocksPerKind + 1))
+        many.record(172, estimate: 86, forBlockWithKey: keys[0], under: key)
+        for blockKey in keys.dropFirst() { many.record(86, estimate: 86, forBlockWithKey: blockKey, under: key) }
+        XCTAssertEqual(many.scale(for: key), 1)
+        XCTAssertNil(BlockEstimateLearning.Kind(blocks[0].kind), "The properties are one block a note.")
     }
 
     func testTheCacheStaysWithinItsCapacityDroppingTheOldestHeights() throws {

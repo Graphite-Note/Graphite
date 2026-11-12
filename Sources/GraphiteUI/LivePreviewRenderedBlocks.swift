@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.22
+ * Version: 0.23
  * Date: 12/11/2026
  */
 
@@ -150,8 +150,19 @@ final class LivePreviewRenderedBlocks {
     private var reportedPropertiesHeight: CGFloat?
     /// Estimates, kept with the width they were made for: counting a table's lines for
     /// each placement pass would cost every scroll. A note styled before its text view has
-    /// a width estimates again once it has one.
-    private var estimatedHeights: [LivePreviewBlockKey: (columnWidth: CGFloat, height: CGFloat)] = [:]
+    /// a width estimates again once it has one, and a block estimates again once the blocks
+    /// of its kind measured have changed their correction (`BlockEstimateLearning`).
+    private var estimatedHeights: [LivePreviewBlockKey: BlockEstimate] = [:]
+
+    private struct BlockEstimate {
+        let columnWidth: CGFloat
+        let height: CGFloat
+        /// The estimate from the block's source alone, which its view's height is compared with.
+        let sourceEstimate: CGFloat
+        let learningKey: BlockEstimateLearning.Key?
+        /// The correction the blocks of its kind measured gave, when there was one.
+        let scale: CGFloat?
+    }
     /// The heights the concealed blocks reserve in the text now, which their views are given.
     private var heightsKeptInText: [LivePreviewBlockKey: CGFloat] = [:]
     /// Blocks whose measured height changed while the text could not be styled.
@@ -224,7 +235,8 @@ final class LivePreviewRenderedBlocks {
     /// The height a block's lines reserve: the one its view last reported in this editor,
     /// else one measured at this width by any editor, else, for the properties, the height
     /// their view last had (each edit gives them a new key, and their height rarely
-    /// changes), else an estimate. The view corrects the last two when it reports.
+    /// changes), else the one last measured at another width, else an estimate. The view
+    /// corrects the last three when it reports.
     func reservedHeight(of entry: LivePreviewBlockEntry, columnWidth: CGFloat, configuration: EditorConfiguration) -> CGFloat {
         adoptBlockEditedInItsView(entry)
         if let reportedHeight = reportedHeights[entry.key] { return reportedHeight }
@@ -233,10 +245,28 @@ final class LivePreviewRenderedBlocks {
             return measuredHeight
         }
         if entry.block.kind == .frontmatter, let reportedPropertiesHeight { return reportedPropertiesHeight }
-        if let estimate = estimatedHeights[entry.key], estimate.columnWidth == columnWidth { return estimate.height }
-        let estimatedHeight = LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth)
-        estimatedHeights[entry.key] = (columnWidth, estimatedHeight)
-        return estimatedHeight
+        // A note opening is styled before its view has a width, so with estimates that a restyle
+        // corrected a moment later, as the note might already scroll: the text above the screen
+        // then changed height and moved what was on it once scrolled back to the top.
+        let settings = MeasuredBlockHeightCache.Settings(blockKey: entry.key, textSize: configuration.textSize, typography: configuration.typography,
+                                                         themeFingerprint: configuration.theme?.tokens.fingerprint ?? "")
+        if let latestHeight = Self.measuredHeights.latestHeight(for: settings) { return latestHeight }
+        return estimate(of: entry, columnWidth: columnWidth, configuration: configuration).height
+    }
+
+    /// The block's estimate from its source, corrected by what the blocks of its kind measured.
+    private func estimate(of entry: LivePreviewBlockEntry, columnWidth: CGFloat, configuration: EditorConfiguration) -> BlockEstimate {
+        let kept = estimatedHeights[entry.key].flatMap { estimate in estimate.columnWidth == columnWidth ? estimate : nil }
+        let learningKey = kept?.learningKey
+            ?? BlockEstimateLearning.Key(blockKind: entry.block.kind, columnWidth: columnWidth, textSize: configuration.textSize,
+                                         typography: configuration.typography, themeFingerprint: configuration.theme?.tokens.fingerprint ?? "")
+        let scale = learningKey.flatMap { key in Self.measuredHeights.estimates.scale(for: key) }
+        if let kept, BlockEstimateLearning.isUnchanged(kept.scale, now: scale) { return kept }
+        let sourceEstimate = kept?.sourceEstimate ?? LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth)
+        let estimate = BlockEstimate(columnWidth: columnWidth, height: (sourceEstimate * (scale ?? 1)).rounded(), sourceEstimate: sourceEstimate,
+                                     learningKey: learningKey, scale: scale)
+        estimatedHeights[entry.key] = estimate
+        return estimate
     }
 
     private static func measuredHeightKey(for blockKey: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> MeasuredBlockHeightCache.Key? {
@@ -254,6 +284,9 @@ final class LivePreviewRenderedBlocks {
         let measuredWidth = (isFrontmatter ? propertiesHost : hosts[key])?.placedView.bounds.width ?? columnWidth
         if let measuredKey = Self.measuredHeightKey(for: key, columnWidth: measuredWidth, configuration: configuration) {
             Self.measuredHeights.record(height, for: measuredKey)
+        }
+        if let estimate = estimatedHeights[key], let learningKey = estimate.learningKey {
+            Self.measuredHeights.estimates.record(height, estimate: estimate.sourceEstimate, forBlockWithKey: key, under: learningKey)
         }
         if isFrontmatter { reportedPropertiesHeight = height }
         // Within a point of what the text reserves, the reserved height is kept, so the
@@ -440,16 +473,27 @@ final class LivePreviewRenderedBlocks {
 
     /// Whether the block's view was just built and still lays its content out for the
     /// first time, reporting heights it then corrects, while the height it will settle on
-    /// is already known: measured by an earlier view of the block at this width.
+    /// is already known, or nearly: measured by an earlier view of the block at this width,
+    /// or estimated from what the blocks of its kind measured.
     func isNewViewOfMeasuredBlock(withKey key: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> Bool {
         guard keysOfNewViews.contains(key) else { return false }
-        guard let measuredKey = Self.measuredHeightKey(for: key, columnWidth: columnWidth, configuration: configuration),
-              Self.measuredHeights.height(for: measuredKey) != nil else {
+        guard knowsHeightBeforeItsView(ofBlockWithKey: key, columnWidth: columnWidth, configuration: configuration) else {
             // Never measured: each report is the best height there is, reserved at once.
             keysOfNewViews.remove(key)
             return false
         }
         return true
+    }
+
+    /// Whether the height the block reserves before its view reports comes from views: its own,
+    /// measured at this width, or those of its kind, which corrected its estimate.
+    func knowsHeightBeforeItsView(ofBlockWithKey key: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> Bool {
+        if let measuredKey = Self.measuredHeightKey(for: key, columnWidth: columnWidth, configuration: configuration),
+           Self.measuredHeights.height(for: measuredKey) != nil {
+            return true
+        }
+        guard let estimate = estimatedHeights[key], estimate.columnWidth == columnWidth else { return false }
+        return estimate.scale != nil
     }
 
     func markViewSettled(forBlockWithKey key: LivePreviewBlockKey) {
@@ -970,55 +1014,5 @@ enum LivePreviewBlockHeightEstimate {
         case .imageLine(let pieces):
             return LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: columnWidth)
         }
-    }
-}
-
-/// Heights rendered blocks measured, shared by every editor, so a note opened again lays
-/// its blocks out at their measured heights at once instead of at estimates that each
-/// block then corrects with a restyle and a visible jump. A height holds for one column
-/// width and text size. Past the capacity, the heights recorded longest ago go first.
-struct MeasuredBlockHeightCache {
-    struct Key: Hashable {
-        let blockKey: LivePreviewBlockKey
-        let columnWidth: Int
-        let textSize: Double
-        /// A block's height also changes with the fonts it is drawn in.
-        let typography: NoteTypography
-        /// And with the theme's sizes, spacing and borders.
-        let themeFingerprint: String
-
-        /// Nil for a width that is not a finite number of points, as before the first layout.
-        init?(blockKey: LivePreviewBlockKey, columnWidth: CGFloat, textSize: Double, typography: NoteTypography = .standard, themeFingerprint: String = "") {
-            guard let wholeColumnWidth = Int(exactly: columnWidth.rounded()), wholeColumnWidth > 0 else { return nil }
-            self.blockKey = blockKey
-            self.columnWidth = wholeColumnWidth
-            self.textSize = textSize
-            self.typography = typography
-            self.themeFingerprint = themeFingerprint
-        }
-    }
-
-    private var heightsByKey: [Key: CGFloat] = [:]
-    /// Oldest first.
-    private var recordingOrder: [Key] = []
-    let capacity: Int
-
-    init(capacity: Int) {
-        self.capacity = capacity
-    }
-
-    var count: Int { heightsByKey.count }
-
-    func height(for key: Key) -> CGFloat? {
-        heightsByKey[key]
-    }
-
-    mutating func record(_ height: CGFloat, for key: Key) {
-        if heightsByKey.updateValue(height, forKey: key) == nil { recordingOrder.append(key) }
-        guard recordingOrder.count > capacity else { return }
-        // Dropping a quarter at a time keeps the cost of shifting the order off most records.
-        let droppedKeys = recordingOrder.prefix(max(1, capacity / 4))
-        for droppedKey in droppedKeys { heightsByKey[droppedKey] = nil }
-        recordingOrder.removeFirst(droppedKeys.count)
     }
 }

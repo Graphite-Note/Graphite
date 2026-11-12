@@ -7,8 +7,8 @@
  *              its pages sidebar, of an embedded PDF while other files change, and of the map's updates.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.8
- * Date: 04/11/2026
+ * Version: 0.9
+ * Date: 12/11/2026
  */
 import XCTest
 import SwiftUI
@@ -44,11 +44,13 @@ final class PerformanceBenchmarkTests: XCTestCase {
     private static let runCount = 3
     nonisolated private static let frameInterval = Duration.milliseconds(16)
     #if canImport(UIKit)
-    nonisolated private static let platformName = "iPad"
+    /// The iPhone runs the same benchmarks in a window of its own screen's size; the simulator names it.
+    nonisolated private static let platformName =
+        ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"]?.hasPrefix("iPhone") == true ? "iPhone" : "iPad"
     #else
     nonisolated private static let platformName = "Mac"
     #endif
-    /// The iPad Pro 11-inch's portrait window, used on the Mac too.
+    /// The iPad Pro 11-inch's portrait window, used on the Mac too; an iPhone takes its screen.
     private static let windowSize = CGSize(width: 834, height: 1210)
 
     private var temporaryDirectories: [URL] = []
@@ -163,7 +165,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             }
             quoteTyping.finish()
             try? await workspace.document(for: tab).saveAllChanges()
-            close(window)
+            close(window, of: workspace)
             try await reportMemoryKept(scenario: "note-memory-kept-after-close", run: run, since: footprintBeforeOpening)
         }
     }
@@ -209,7 +211,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
                 await reading.measureFrame { self.scroll(editor, to: nextOffset) }
             }
             reading.finish()
-            close(window)
+            close(window, of: workspace)
         }
     }
 
@@ -269,7 +271,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
                 try await measureSwitch(to: switchNumber % 2 == 0 ? pdfTab : noteTabs[0], in: window, workspace: workspace, measurement: withPDF)
             }
             withPDF.finish()
-            close(window)
+            close(window, of: workspace)
         }
     }
 
@@ -529,6 +531,13 @@ final class PerformanceBenchmarkTests: XCTestCase {
         return location
     }
 
+    /// Closes the window as the app does: its views go, then its workspace hears that it closed
+    /// and lets go of the editors it kept for its tabs.
+    private func close(_ window: BenchmarkWindow, of workspace: WorkspaceModel) {
+        close(window)
+        workspace.windowDidClose()
+    }
+
     /// The memory still taken a moment after a document's window closed, against before it opened.
     private func reportMemoryKept(scenario: String, run: Int, since footprintBeforeOpening: UInt64) async throws {
         try await Task.sleep(for: .seconds(1.5))
@@ -564,7 +573,8 @@ final class PerformanceBenchmarkTests: XCTestCase {
     private func host(_ view: some View) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(origin: .zero, size: Self.windowSize)
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        window.frame = CGRect(origin: .zero, size: isPhone ? scene.effectiveGeometry.coordinateSpace.bounds.size : Self.windowSize)
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = UIHostingController(rootView: AnyView(view))
         window.makeKeyAndVisible()

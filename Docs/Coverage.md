@@ -4,6 +4,30 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-12.
 
+## A long note opens at its measured heights, and a closed window gives its notes back: 2026-11-12
+
+`Docs/Editor-scrolling-todo.md`, three of its items (issue #57). Scrolling a long Live Preview note back to its top no longer jumps: a note opening is styled before its text view has a width, so its blocks reserved their estimates although their heights had been measured, and the restyle that corrected them a moment later, after a scroll could have begun, moved the text above the screen; a block now reserves the height it last measured at another width when none is known at this one (`MeasuredBlockHeightCache.latestHeight`). The first time a note's tables, formulas and callouts are shown, each is estimated from what the blocks of its kind measured (`BlockEstimateLearning`) and waits for its view's height to settle, so a block scrolling in is restyled once at most instead of three times. A closed window's workspace, its notes and their blocks' views are released: the note editors kept for their tabs held the workspace, and `windowDidClose()` now lets them go and keeps none that leave the screen afterwards (`MarkdownEditorRetention.stopKeepingEditors`).
+
+- **Measured** with `PerformanceBenchmarkTests.testOpeningScrollingAndTypingInALongNote` and `testReadingALongNoteAScreenAtATime`, runs 2 and 3 unless said; the Mac in Release with before and after built from the same tree one after the other, the iPad simulator in Debug:
+
+| | Mac before | Mac after | iPad before | iPad after |
+| --- | --- | --- | --- | --- |
+| Jumps over 50 pt per run | 3 | 0 | 1–2 | 0 |
+| Largest jump | 479 pt | 0 pt | 192.5 pt | 0.2 pt |
+| Frames over 16 ms, whole scroll | 107–116 of 173 | 101–112 of 175 | 43–44 of 192 | 37–48 of 194 |
+| Frame 95th percentile, whole scroll | 28 ms | 27–29 ms | 27–30 ms | 25–27 ms |
+| Main thread, whole scroll | 3,086–3,115 ms | 2,851–2,903 ms | 3,356–3,370 ms | 2,916–3,038 ms |
+| Memory kept after closing the window | 47.6–48.7 MB | 0.6–5.8 MB | 35.3–46.5 MB | −3.5–1.2 MB |
+| Reading benchmark's peak, runs 1 to 3 | 329, 354, 382 MB | 150–158 MB | 263, 294, 321 MB | 131–137 MB |
+| Restyles in the first scroll (Debug) | 357 | 131 | | |
+
+  The iPhone 17 Pro simulator (iOS 27.2, Debug, a window of the phone's screen), runs 2 and 3: jumps over 50 pt 1–3 → 0 (the largest 51–120 → 0.1 pt), frames over 16 ms 73–75 → 56 of 352, the 95th percentile 25–29 → 22–24 ms, main thread 5,269–5,572 → 4,418–4,582 ms, memory kept after closing 20.1–20.9 → −1.5–3.8 MB, the reading benchmark's peak 157–180 → 106–110 MB. Its first run's largest jump was 30 pt before and 0.1 to 120.5 pt in four runs after.
+
+- **Automated tests, passing on macOS (`swift test --filter`):** `UiEditorRenderedBlockReuseTests` (16, 4 new: a note opened again reserves the heights measured before its view has a width, failing before with 72 reserved for 41.5; the latest height at any width; a table not yet shown is estimated from the tables measured and waits to settle; a kind's correction within bounds), `WorkspaceReleaseTests` (3, 1 new, failing before: a window closed with a long note releases its workspace, the note and its text view), `MarkdownEditorRetentionTests` (9, 1 new), and the editor classes around them (`UiEditor*`, `MarkdownEditorStyling*`, `UiLivePreview*`, `MacEditorParityTests`, `UiStylingFixTests`, the properties classes: 386 tests).
+- **Hosted tests, passing on the iPad simulator:** `WorkspaceReleaseHostedTests` (new, failing before), and the benchmarks above.
+- **Full suites:** the Mac package suite (5,030 tests; `PixelEraserPassTests` and `UiPdfSessionFixTests` failed under its parallel load and passed alone) and the hosted suite on the iPad simulator (557 tests, 44 skipped; only the known `PDFTextBoxesTests` and `ReadAloudLectureHighlightTests` failures).
+- **Not established:** scrolling and closing windows by hand in the app; a physical iPad; the first run's frames on the Mac, which one run cannot tell from noise (frames over 16 ms 123 → 129, main thread 3,115 → 3,220 ms, its 95th percentile 32.5 → 27.3 ms).
+
 ## The cursor on one picture of a line shows that picture's source only: 2026-11-12
 
 `Docs/Inline-images-todo.md` section 1, its second item (issue #102). In Live Preview the cursor on a line of photos (`![[a.jpg|300]] ![[b.jpg|200]] …`) showed the whole line's source. As in Obsidian, only the embed the cursor is in now shows its source; the line's other pictures stay drawn at their sizes, in their places among its text, and the arrow keys walk through the line one embed's source at a time. Leaving the line draws its view again.

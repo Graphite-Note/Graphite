@@ -74,6 +74,24 @@ final class MarkdownEditorRetentionTests: XCTestCase {
         XCTAssertFalse(first.isDiscarded, "Its editor, with its undo history, is still kept.")
     }
 
+    /// A closed window keeps no editor: each holds the window's workspace, which holds the
+    /// retention, so one kept after the window closed kept all of it until the app quit. SwiftUI
+    /// takes the closed window's views apart after it reports closing, so editors leaving the
+    /// screen then are refused too.
+    func testAClosedWindowDiscardsItsHiddenEditorsAndKeepsNoneThatLeaveAfter() async throws {
+        let retention = MarkdownEditorRetention(limits: .init(maximumHiddenEditorCount: 3, maximumHiddenTextLength: 1_000))
+        let (firstDocument, firstSession) = try await openNote("First.md")
+        let (secondDocument, secondSession) = try await openNote("Second.md")
+        let first = RecordingEditor(session: firstSession)
+        let second = RecordingEditor(session: secondSession)
+        XCTAssertTrue(retention.keepHiddenEditor(first, owner: firstDocument))
+        retention.stopKeepingEditors()
+        XCTAssertTrue(first.isDiscarded)
+        XCTAssertEqual(retention.hiddenEditorCount, 0)
+        XCTAssertFalse(retention.keepHiddenEditor(second, owner: secondDocument), "The caller then tears the editor down.")
+        XCTAssertEqual(retention.hiddenEditorCount, 0)
+    }
+
     func testTextBudgetDiscardsOlderEditorsAndRefusesAnOversizedNote() async throws {
         let retention = MarkdownEditorRetention(limits: .init(maximumHiddenEditorCount: 5, maximumHiddenTextLength: 100))
         let (firstDocument, firstSession) = try await openNote("First.md")

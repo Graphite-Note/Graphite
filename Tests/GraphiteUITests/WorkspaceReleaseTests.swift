@@ -3,11 +3,11 @@
  * ---------------------------------
  * Layer: Tests
  * Description: A note's session and editor are released when its tab closes, and a workspace when
- *              nothing holds it, so memory comes back as notes are closed.
+ *              nothing holds it or its window closed, so memory comes back as notes and windows are closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 #if os(macOS)
@@ -82,6 +82,48 @@ final class WorkspaceReleaseTests: XCTestCase {
             window.contentView?.layoutSubtreeIfNeeded()
             return session.object == nil
         }
+    }
+
+    /// A window closed with a long note open in it, as the app closes one (its view taken out, then
+    /// `windowDidClose`): its workspace, the note's editor and the views of its blocks are released.
+    /// The editor of a note whose view leaves the screen is kept for its tab
+    /// (`MarkdownEditorRetention`), and it holds the workspace through its actions, so a closed
+    /// window's workspace and everything it showed stayed until the process ended.
+    func testClosingAWindowWithANoteOpenReleasesItsWorkspaceAndTheNotesEditor() async throws {
+        let references = try await showLongNoteInAWindowThenCloseIt()
+        try await waitUntil("the closed window's workspace, its note and the note's editor are released", timeoutSeconds: 10) {
+            references.workspace.object == nil && references.session.object == nil && references.textView.object == nil
+        }
+    }
+
+    private func showLongNoteInAWindowThenCloseIt() async throws
+        -> (workspace: WeakReference<WorkspaceModel>, session: WeakReference<MarkdownSession>, textView: WeakReference<NSTextView>) {
+        let workspace = try makeWorkspace(files: ["Note.md": PerformanceBenchmarkTests.longLectureNote(sectionCount: 4)])
+        await workspace.open(try VaultPath("Note.md"), placement: .currentTab)
+        let session = WeakReference(try XCTUnwrap(workspace.markdownSession))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 900), styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in },
+                                                                    showQuickSwitcher: {}))
+        window.showInvisibly()
+        let textView = try await waitForValue("the note's editor is shown") { () -> NSTextView? in
+            window.contentView?.layoutSubtreeIfNeeded()
+            return Self.firstTextView(in: window.contentView)
+        }
+        try await settle(for: .milliseconds(300))
+        window.contentView = nil
+        window.close()
+        workspace.windowDidClose()
+        return (WeakReference(workspace), session, WeakReference(textView))
+    }
+
+    private func waitForValue<Value>(_ description: String, _ value: () -> Value?) async throws -> Value {
+        var found: Value?
+        try await waitUntil(description, timeoutSeconds: 10) {
+            found = value()
+            return found != nil
+        }
+        return try XCTUnwrap(found)
     }
 
     private static func firstTextView(in view: NSView?) -> NSTextView? {
