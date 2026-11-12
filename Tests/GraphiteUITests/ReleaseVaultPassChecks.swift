@@ -53,8 +53,8 @@ struct ReleaseVaultFinding: Equatable, CustomStringConvertible {
     var description: String { "\(path) in \(shown.rawValue): \(problem)" }
 
     /// The vault's notes that show a failure on purpose: an embed of a note not written yet and of a heading that does not
-    /// exist (`Links/Embeds.md`), which Graphite must show as such rather than as an error; and what Graphite documents
-    /// it does not do. Each must be seen, so a change in how Graphite shows it changes this list.
+    /// exist (`Links/Embeds.md`), which Graphite must show as such rather than as an error; an empty diagram; and what
+    /// Graphite documents it does not do. Each must be seen, so a change in how Graphite shows it changes this list.
     static let intended: [ReleaseVaultFinding] = [
         ReleaseVaultFinding(path: "Links/Embeds.md", shown: .reading, problem: .missingEmbed(target: "A missing embed")),
         ReleaseVaultFinding(path: "Links/Embeds.md", shown: .reading, problem: .missingSection(target: "Link target#No such heading")),
@@ -62,6 +62,11 @@ struct ReleaseVaultFinding: Equatable, CustomStringConvertible {
         // "Not done"), so `Pictures.md`'s SVG is not drawn in the note.
         ReleaseVaultFinding(path: "Pictures.md", shown: .livePreview, problem: .pictureNotLoaded(target: "Logo.svg")),
         ReleaseVaultFinding(path: "Pictures.md", shown: .reading, problem: .pictureNotLoaded(target: "Attachments/Logo.svg")),
+        ReleaseVaultFinding(path: "Embeds/SVG in every form.md", shown: .livePreview, problem: .pictureNotLoaded(target: "Logo.svg")),
+        ReleaseVaultFinding(path: "Embeds/SVG in every form.md", shown: .reading, problem: .pictureNotLoaded(target: "Attachments/Logo.svg")),
+        // An empty Mermaid block is shown as its source with the reason (Docs/Native-diagrams-todo.md, the safety items).
+        ReleaseVaultFinding(path: "Diagrams/Diagram options.md", shown: .reading,
+                            problem: .diagramNotDrawn(reason: "reading(MermaidDiagrams.MermaidDiagramReadError.noDiagram)")),
     ]
 
     /// Defects the pass found and that are open in a todo file, reported on `GRAPHITE-RELEASE-KNOWN` lines rather than

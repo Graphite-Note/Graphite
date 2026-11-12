@@ -1,6 +1,6 @@
 # Heading level 1
 
-A paragraph with **bold**, *italic*, ***bold italic***, ~~strikethrough~~, `inline code`, ==a highlight== and a [link to the web](http://127.0.0.1:9/release-vault/page.html). A line ends with two spaces  
+A paragraph with **bold**, *italic*, ***bold italic***, ~~strikethrough~~, `inline code`, ==a highlight== and a [link to the web](https://example.com/). A line ends with two spaces  
 so this one is a hard break inside the paragraph.
 
 ## Heading level 2

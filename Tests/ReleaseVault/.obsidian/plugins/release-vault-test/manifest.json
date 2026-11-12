@@ -1,0 +1,9 @@
+{
+  "id": "release-vault-test",
+  "name": "Release Vault Test",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "description": "A command and a code block, to try community plugins without the network.",
+  "author": "Graphite release vault",
+  "isDesktopOnly": false
+}

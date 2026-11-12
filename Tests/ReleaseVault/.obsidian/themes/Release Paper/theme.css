@@ -1,0 +1,21 @@
+/* Release Paper: a small theme of the release test vault, warm headings and a teal accent. */
+.theme-light {
+  --color-accent: #1b7f79;
+  --interactive-accent: #1b7f79;
+  --text-accent: #1b7f79;
+  --h1-color: #7a3b16;
+  --h2-color: #8a4b20;
+  --h3-color: #1b5f79;
+  --blockquote-border-color: #1b7f79;
+  --tag-background: rgba(27, 127, 121, 0.12);
+  --tag-color: #14615c;
+}
+.theme-dark {
+  --color-accent: #4fc1b9;
+  --interactive-accent: #4fc1b9;
+  --text-accent: #4fc1b9;
+  --h1-color: #f0b98d;
+  --h2-color: #e9a978;
+  --h3-color: #8fd0e6;
+  --blockquote-border-color: #4fc1b9;
+}

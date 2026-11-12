@@ -170,33 +170,73 @@ enum ReleaseVaultScrolling {
 }
 
 /// The pages the pass's loopback server shows in the vault's frames, and the copy of the vault that points at it.
+///
+/// The vault's frames name real pages (https://example.com, a page of Wikipedia) for a person browsing it. The pass must
+/// reach no other host and play nothing, so in its copy of the vault every frame's address, whatever it is, becomes a
+/// page of the pass's own server: `/release-vault/frame-1.html` for the first address met, and so on.
 enum ReleaseVaultPassWebPages {
-    /// The address the vault's frames and web links are written with: a placeholder on the loopback address, where
-    /// nothing answers on port 9, that the pass points at its own server.
-    static let placeholderAddress = "http://127.0.0.1:9/"
-    static let framePath = "/release-vault/frame.html"
-    static let smallFramePath = "/release-vault/small-frame.html"
+    static let framePathPrefix = "/release-vault/frame-"
+    /// `src="…"` or `src='…'` inside an `<iframe` tag, as `WebFrameSyntax` reads it: the address is the second group.
+    private static let frameSourcePattern = #"(<iframe\b[^>]*?\bsrc\s*=\s*)(["'])(.*?)\2"#
 
-    /// Text and colour only: nothing a test loads may play a sound.
-    static let pages: [String: String] = [
-        framePath: "<html><body style=\"font: 16px -apple-system; background: #eef3ff; margin: 16px\"><h1>A test page</h1>"
-            + "<p>Served by the release pass on the loopback address.</p></body></html>",
-        smallFramePath: "<html><body style=\"font: 14px -apple-system; background: #fff4e0; margin: 12px\"><p>A small frame.</p></body></html>",
-    ]
+    /// Whether the server's path is one of the frames' pages.
+    static func isFramePage(_ path: String) -> Bool { path.hasPrefix(framePathPrefix) }
 
-    /// Copies `Tests/ReleaseVault` to `destination`, its settings folder included, and points every note's placeholder
-    /// address at `serverAddress` (`http://127.0.0.1:<port>/`), so the frames load from the pass's server.
+    /// Every frame address of the vault's notes, each once, in the order of the notes' paths and their lines.
+    static func frameAddresses(in vaultRoot: URL = FixtureFolders.releaseVault) throws -> [String] {
+        let expression = try NSRegularExpression(pattern: frameSourcePattern, options: [.caseInsensitive])
+        var addresses: [String] = []
+        for note in try notes(in: vaultRoot) {
+            let text = try String(contentsOf: note, encoding: .utf8) as NSString
+            for match in expression.matches(in: text as String, range: NSRange(location: 0, length: text.length)) {
+                let address = text.substring(with: match.range(at: 3))
+                if !addresses.contains(address) { addresses.append(address) }
+            }
+        }
+        return addresses
+    }
+
+    /// The server's page for each frame: text and colour only, naming the address it stands in for.
+    static func pages() throws -> [String: String] {
+        var pages: [String: String] = [:]
+        for (addressIndex, address) in try frameAddresses().enumerated() {
+            let escaped = address.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
+            pages[framePathPrefix + "\(addressIndex + 1).html"] = "<html><body style=\"font: 15px -apple-system; background: #eef3ff; margin: 16px\">"
+                + "<h1>Frame \(addressIndex + 1)</h1><p>Served by the release pass on the loopback address, in place of \(escaped).</p></body></html>"
+        }
+        return pages
+    }
+
+    /// Copies `Tests/ReleaseVault` to `destination`, its settings folder included, and points every frame of every note
+    /// at its page of `serverAddress` (`http://127.0.0.1:<port>/`).
     static func copyVault(to destination: URL, pointingFramesAt serverAddress: String) throws {
         let fileManager = FileManager.default
         for item in try fileManager.contentsOfDirectory(at: FixtureFolders.releaseVault, includingPropertiesForKeys: nil) {
             try fileManager.copyItem(at: item, to: destination.appendingPathComponent(item.lastPathComponent))
         }
-        let enumerator = fileManager.enumerator(at: destination, includingPropertiesForKeys: nil)
-        while let location = enumerator?.nextObject() as? URL {
-            guard location.pathExtension == "md" else { continue }
-            let note = try String(contentsOf: location, encoding: .utf8)
-            guard note.contains(placeholderAddress) else { continue }
-            try Data(note.replacingOccurrences(of: placeholderAddress, with: serverAddress).utf8).write(to: location)
+        let addresses = try frameAddresses()
+        let expression = try NSRegularExpression(pattern: frameSourcePattern, options: [.caseInsensitive])
+        let serverRoot = serverAddress.hasSuffix("/") ? String(serverAddress.dropLast()) : serverAddress
+        for note in try notes(in: destination) {
+            let text = try String(contentsOf: note, encoding: .utf8) as NSString
+            let matches = expression.matches(in: text as String, range: NSRange(location: 0, length: text.length))
+            guard !matches.isEmpty else { continue }
+            let rewritten = NSMutableString(string: text)
+            // From the end, so earlier ranges stay where they were.
+            for match in matches.reversed() {
+                let addressIndex = addresses.firstIndex(of: text.substring(with: match.range(at: 3))) ?? 0
+                rewritten.replaceCharacters(in: match.range(at: 3), with: serverRoot + framePathPrefix + "\(addressIndex + 1).html")
+            }
+            try Data((rewritten as String).utf8).write(to: note)
         }
+    }
+
+    private static func notes(in vaultRoot: URL) throws -> [URL] {
+        let enumerator = FileManager.default.enumerator(at: vaultRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        var notes: [URL] = []
+        while let location = enumerator?.nextObject() as? URL {
+            if location.pathExtension == "md" { notes.append(location) }
+        }
+        return notes.sorted { first, second in first.path < second.path }
     }
 }

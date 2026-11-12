@@ -1,0 +1,23 @@
+{
+  "folders" : {
+    "Daily" : {
+      "color" : "teal",
+      "symbol" : "calendar"
+    },
+    "Drawings" : {
+      "color" : "purple",
+      "symbol" : "pencil.tip"
+    },
+    "Embeds" : {
+      "color" : "#2F3B52"
+    },
+    "Notebooks" : {
+      "color" : "orange",
+      "emoji" : "📓"
+    },
+    "PDFs" : {
+      "color" : "red",
+      "symbol" : "doc.richtext"
+    }
+  }
+}

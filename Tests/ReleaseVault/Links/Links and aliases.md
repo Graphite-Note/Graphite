@@ -22,12 +22,12 @@
 - [A Markdown link to a note](Link%20target.md)
 - [A Markdown link to a heading](Link%20target.md#First%20section)
 - [A link with angle brackets](<Link target.md>)
-- [A web link](http://127.0.0.1:9/release-vault/page.html)
-- An autolink: <http://127.0.0.1:9/release-vault/autolink>
+- [A web link](https://example.com/)
+- An autolink: <https://en.wikipedia.org/wiki/Hyperlink>
 - A reference link: [the target][target] and [another][2]
 
 [target]: <Link target.md>
-[2]: http://127.0.0.1:9/release-vault/reference
+[2]: https://en.wikipedia.org/wiki/Markdown
 
 ## Tags as links
 

@@ -20,7 +20,7 @@ import XCTest
 /// bundle's attachments.
 @MainActor
 final class ReleaseVaultPassHostedTests: XCTestCase {
-    func testThePicturesPDFsCanvasNotebooksAndBasesOpenWithoutAFinding() async throws {
+    func testThePicturesCanvasesAndBasesOpenWithoutAFinding() async throws {
         try await pass(.filesAndBases)
     }
 
@@ -30,6 +30,14 @@ final class ReleaseVaultPassHostedTests: XCTestCase {
 
     func testTheDiagramsDailyNotesAndLongLectureOpenInEachOfTheirViewsWithoutAFinding() async throws {
         try await pass(.longAndRepeatedNotes)
+    }
+
+    func testThePDFsNotebooksImportsAndDrawingsOpenWithoutAFinding() async throws {
+        try await pass(.pdfsNotebooksAndDrawings)
+    }
+
+    func testTheNotesEmbeddingPicturesPDFsAndDrawingsInEveryFormOpenWithoutAFinding() async throws {
+        try await pass(.embeds)
     }
 
     private func pass(_ part: ReleaseVaultPassPart) async throws {

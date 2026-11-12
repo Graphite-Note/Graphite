@@ -23,7 +23,7 @@ related:
   - "[[Link target]]"
   - "[[Long lecture]]"
 link: "[[Math]]"
-website: http://127.0.0.1:9/release-vault/properties
+website: https://example.com/
 empty:
 nested:
   inner: value

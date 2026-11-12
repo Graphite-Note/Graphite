@@ -1,0 +1,32 @@
+filters:
+  and:
+    - file.hasTag("gallery-card")
+formulas:
+  label: 'html("<b>" + kind + "</b>")'
+  bytes_per_side: 'if(size, size * 2, "")'
+properties:
+  kind:
+    displayName: Kind
+  formula.label:
+    displayName: Label
+views:
+  - type: cards
+    name: Covers
+    image: note.cover
+    imageFit: contain
+    imageAspectRatio: 0.75
+    cardSize: 180
+    order:
+      - file.name
+      - kind
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - formula.label
+      - kind
+      - size
+      - formula.bytes_per_side
+    sort:
+      - property: file.name
+        direction: ASC

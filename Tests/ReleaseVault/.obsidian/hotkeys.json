@@ -1,0 +1,30 @@
+{
+  "editor:toggle-highlight": [
+    {
+      "modifiers": [
+        "Mod",
+        "Shift"
+      ],
+      "key": "H"
+    }
+  ],
+  "graphite:insert-drawing": [
+    {
+      "modifiers": [
+        "Mod",
+        "Alt"
+      ],
+      "key": "D"
+    }
+  ],
+  "workspace:export-pdf": [],
+  "release-vault-test:insert-checked-line": [
+    {
+      "modifiers": [
+        "Mod",
+        "Shift"
+      ],
+      "key": "L"
+    }
+  ]
+}

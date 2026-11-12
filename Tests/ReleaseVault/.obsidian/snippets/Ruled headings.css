@@ -1,0 +1,8 @@
+/* Ruled second-level headings and square bullets, to check that CSS snippets apply. */
+.markdown-rendered h2, .markdown-source-view h2, .cm-header-2 {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 2px;
+}
+.markdown-rendered ul > li::marker {
+  content: "\25AA  ";
+}

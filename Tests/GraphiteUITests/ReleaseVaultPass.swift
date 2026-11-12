@@ -45,6 +45,8 @@ final class ReleaseVaultPass {
     static let skipReason = "Not run: the release pass over Tests/ReleaseVault runs before a release, with GRAPHITE_RELEASE_PASS=1."
     static let screenshotFolderVariable = "GRAPHITE_RELEASE_PASS_SCREENSHOTS"
     static let maximumPagesPerView = 60
+    /// The vault's own community plugin (`.obsidian/plugins/release-vault-test`), made by `scripts/make-release-vault.py`.
+    static let testPluginIdentifier = "release-vault-test"
     /// The longest the main thread may stay busy in one stretch. Measured 2026-11-12 (Debug builds): see
     /// Docs/Release-test-vault-todo.md; the budget leaves room for a machine running other work.
     #if canImport(UIKit)
@@ -77,7 +79,7 @@ final class ReleaseVaultPass {
 
     /// The vault copied, indexed and shown in a window that closes when the test ends.
     static func open(for testCase: XCTestCase) async throws -> ReleaseVaultPass {
-        let webServer = try await LoopbackWebServer(pages: ReleaseVaultPassWebPages.pages)
+        let webServer = try await LoopbackWebServer(pages: try ReleaseVaultPassWebPages.pages())
         testCase.addTeardownBlock { webServer.stop() }
         let vaultRoot = try TemporaryVault.make(prefix: "ReleaseVault", for: testCase).root
         try ReleaseVaultPassWebPages.copyVault(to: vaultRoot, pointingFramesAt: webServer.address("/").absoluteString)
@@ -94,6 +96,7 @@ final class ReleaseVaultPass {
     func run(_ part: ReleaseVaultPassPart) async throws {
         self.part = part
         if part.contains("Notebooks/") { try await importNotebooks() }
+        if part.contains("Plugins/") { try await turnOnCommunityPlugins() }
         let files = try filesToOpen()
         if part == ReleaseVaultPassPart.allCases.first {
             for path in files where !ReleaseVaultPassPart.allCases.contains(where: { somePart in somePart.contains(path.rawValue) }) {
@@ -108,7 +111,7 @@ final class ReleaseVaultPass {
             }
             openedFileCount += 1
         }
-        if part.contains("Web/"), !webServer.requestedPaths.contains(ReleaseVaultPassWebPages.framePath) {
+        if part.contains("Web/"), !webServer.requestedPaths.contains(where: ReleaseVaultPassWebPages.isFramePage) {
             record(ReleaseVaultFinding(path: "Web/Web pages.md", shown: .livePreview, problem: .notShown("the page in the frame was never asked for")))
         }
     }
@@ -156,6 +159,19 @@ final class ReleaseVaultPass {
         workspace.endNotebookImport()
     }
 
+    /// Community plugins stay off in a vault until the person turns them on; the pass turns them on for the part with the
+    /// vault's test plugin (`Plugins/Test community plugin.md`), so its code block is drawn by the plugin.
+    private func turnOnCommunityPlugins() async throws {
+        let host = workspace.communityPlugins
+        testCase.addTeardownBlock { @MainActor in await host.vaultWillClose() }
+        await host.setTurnedOnForVault(true)
+        try? await waitUntil("the vault's test plugin is loaded", timeoutSeconds: 60) { host.loadStates[Self.testPluginIdentifier] == .loaded }
+        if host.loadStates[Self.testPluginIdentifier] != .loaded {
+            let state = host.loadStates[Self.testPluginIdentifier].map { state in String(describing: state) } ?? "not listed"
+            record(ReleaseVaultFinding(path: ".obsidian/plugins/\(Self.testPluginIdentifier)", shown: .wholeVault, problem: .notShown("the plugin is \(state)")))
+        }
+    }
+
     private func passFile(_ path: VaultPath) async throws {
         try await open(path)
         let isShown = switch DocumentKind(path: path) {
@@ -173,7 +189,7 @@ final class ReleaseVaultPass {
             return record(ReleaseVaultFinding(path: path.rawValue, shown: .livePreview, problem: .notShown("no note was opened")))
         }
         let text = session.text as NSString
-        let blocks = LivePreviewBlockScanner.blocks(in: text)
+        let blocks = LivePreviewBlockScanner.blocks(in: text, pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages)
         let views: [(shown: ReleaseVaultFinding.Shown, mode: NoteViewMode)] = [(.livePreview, .livePreview), (.reading, .reading), (.source, .source)]
         for view in views {
             if session.viewMode != view.mode {
@@ -242,7 +258,7 @@ final class ReleaseVaultPass {
     private func waitForWebFrames(of path: VaultPath, in blocks: [LivePreviewBlock]) async throws {
         guard blocks.contains(where: { block in if case .webFrame = block.kind { true } else { false } }) else { return }
         try? await waitUntil("the frame's page is asked for", timeoutSeconds: 40) {
-            self.webServer.requestedPaths.contains(ReleaseVaultPassWebPages.framePath)
+            self.webServer.requestedPaths.contains(where: ReleaseVaultPassWebPages.isFramePage)
         }
         try await measure(path.rawValue, "loading its frames") {}
     }
@@ -308,22 +324,26 @@ private final class OpeningRequest {
     var hasEnded = false
 }
 
-/// The pass in three parts, one test each, so each stays well within the hosted tests' four minutes a test: the vault's
+/// The pass in five parts, one test each, so each stays well within the hosted tests' four minutes a test: the vault's
 /// top-level folders and files, by what they hold. A file in none of them is a finding of the first part.
 enum ReleaseVaultPassPart: String, CaseIterable {
     case filesAndBases = "files-and-bases"
     case textNotes = "text-notes"
     case longAndRepeatedNotes = "long-and-repeated-notes"
+    case pdfsNotebooksAndDrawings = "pdfs-notebooks-and-drawings"
+    case embeds = "embeds"
 
     var topLevelNames: Set<String> {
         switch self {
         case .filesAndBases:
-            ["Attachments", "Books", "Books.base", "Canvas", "Drawings", "Embedded base.md", "Notebooks", "PDFs", "Places", "Places.base",
-             "Places.md", "Tasks", "Tasks.base"]
+            ["Attachments", "Books", "Books.base", "Canvas", "Embedded base.md", "Gallery", "Gallery.base", "Places", "Places.base", "Places.md",
+             "Tasks", "Tasks.base"]
         case .textNotes:
             ["Callouts.md", "Edge cases", "Links", "Markdown", "Math.md", "Pictures.md", "Plugins", "README.md", "Start here.md", "Tables.md",
              "Templates", "Web"]
         case .longAndRepeatedNotes: ["Daily", "Diagrams", "Lectures"]
+        case .pdfsNotebooksAndDrawings: ["Drawings", "Imports", "Notebooks", "PDFs"]
+        case .embeds: ["Embeds"]
         }
     }
 

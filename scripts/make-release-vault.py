@@ -19,6 +19,7 @@ Usage:
   python3 scripts/make-release-vault.py --graphite-files /tmp/graphite-build
 """
 import argparse
+import json
 import math
 import os
 import shutil
@@ -138,6 +139,57 @@ PICTURES = {
     "Attachments/Café menu – été.png": (96, 96, unicode_name_picture),
 }
 
+class LittleEndianBits:
+    """Bits written from the lowest of each byte up, as WebP's lossless format reads them."""
+
+    def __init__(self):
+        self.bits = []
+
+    def write(self, value, count):
+        self.bits.extend((value >> position) & 1 for position in range(count))
+
+    def data(self):
+        return bytes(sum(bit << position for position, bit in enumerate(self.bits[start:start + 8])) for start in range(0, len(self.bits), 8))
+
+
+def write_simple_prefix_code(bits, symbols):
+    """A WebP lossless "simple" prefix code of one or two symbols, the second written in eight bits."""
+    bits.write(1, 1)
+    bits.write(len(symbols) - 1, 1)
+    first_symbol = symbols[0]
+    if first_symbol < 2:
+        bits.write(0, 1)
+        bits.write(first_symbol, 1)
+    else:
+        bits.write(1, 1)
+        bits.write(first_symbol, 8)
+    if len(symbols) == 2:
+        bits.write(symbols[1], 8)
+
+
+def webp_checkers(side, square, red, green_values, blue):
+    """A lossless WebP of two colours in squares, written by hand since Python's standard library has no encoder: no
+    transform and no colour cache, a two-symbol code for green (one bit a pixel) and one-symbol codes for red, blue,
+    alpha and distance, which take no bits."""
+    bits = LittleEndianBits()
+    bits.write(0x2F, 8)
+    bits.write(side - 1, 14)
+    bits.write(side - 1, 14)
+    bits.write(0, 1)
+    bits.write(0, 3)
+    for _ in range(3):
+        bits.write(0, 1)  # no transform, no colour cache, no meta prefix codes
+    low_green, high_green = sorted(green_values)
+    for symbols in ([low_green, high_green], [red], [blue], [255], [0]):
+        write_simple_prefix_code(bits, symbols)
+    for row in range(side):
+        for column in range(side):
+            bits.write((column // square + row // square) % 2, 1)
+    payload = bits.data()
+    chunk = b"VP8L" + struct.pack("<I", len(payload)) + payload + (b"\0" if len(payload) % 2 else b"")
+    return b"RIFF" + struct.pack("<I", 4 + len(chunk)) + b"WEBP" + chunk
+
+
 LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
   <rect x="8" y="8" width="144" height="144" rx="28" fill="#2f3b52"/>
   <path d="M48 112 L80 40 L112 112 Z" fill="none" stroke="#f5c542" stroke-width="10" stroke-linejoin="round"/>
@@ -205,8 +257,9 @@ def info_object(document, title):
     return document.add(f"<< /Title {pdf_text(title)} /Producer (Graphite release vault script) /CreationDate (D:20261112000000Z) >>")
 
 
-def write_pdf(path, title, pages, outline_titles=None, annotations_by_page=None):
-    """`pages` is a list of (width, height, content bytes, extra resources); annotations are (dictionary, appearance) pairs."""
+def write_pdf(path, title, pages, outline_titles=None, annotations_by_page=None, page_extras=None):
+    """`pages` is a list of (width, height, content bytes, extra resources); annotations are (dictionary, appearance) pairs;
+    `page_extras` adds entries to a page's dictionary, by page index (a /Rotate, a /CropBox)."""
     document = PortableDocument()
     font = document.add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
     catalog = document.reserve()
@@ -223,10 +276,14 @@ def write_pdf(path, title, pages, outline_titles=None, annotations_by_page=None)
                 appearance_number = document.add_stream(f"/Type /XObject /Subtype /Form /BBox [{bounding_box}] /Resources << {appearance_resources} >>",
                                                         appearance_content)
             appearance_entry = f" /AP << /N {appearance_number} 0 R >>" if appearance_number else ""
+            # A link to another page names it as PAGE<index>: its object is known only once the pages are reserved.
+            for target_index, target_number in enumerate(page_numbers):
+                annotation = annotation.replace(f"PAGE{target_index}", f"{target_number} 0 R")
             annotation_numbers.append(document.add(f"<< /Type /Annot {annotation} /P {page_number} 0 R{appearance_entry} >>"))
         annotations_entry = f" /Annots [{' '.join(f'{number} 0 R' for number in annotation_numbers)}]" if annotation_numbers else ""
         document.replace(page_number, f"<< /Type /Page /Parent {page_tree} 0 R /MediaBox [0 0 {width} {height}] /Contents {content_number} 0 R"
-                                      f" /Resources << /Font << /F1 {font} 0 R >> {extra_resources} >>{annotations_entry} >>")
+                                      f" /Resources << /Font << /F1 {font} 0 R >> {extra_resources} >>{annotations_entry}"
+                                      f"{(page_extras or {}).get(page_index, '')} >>")
         page_numbers.append(page_number)
     document.replace(page_tree, f"<< /Type /Pages /Kids [{' '.join(f'{number} 0 R' for number in page_numbers)}] /Count {len(page_numbers)} >>")
     outline_entry = ""
@@ -265,7 +322,11 @@ def write_lecture_slides():
         lines = [(30, 60, 520, slide_title)] + [(18, 80, 440 - index * 48, "- " + bullet) for index, bullet in enumerate(bullets)]
         lines.append((10, 700, 30, f"Slide {slide_number}"))
         pages.append((792, 612, text_page_content(lines), ""))
-    write_pdf("PDFs/Lecture slides.pdf", "Signals and sampling, lecture 3", pages, outline_titles=[title for title, _ in LECTURE_SLIDES])
+    # The exercise line of the last slide links back to the first, as a PDF's own table of contents links its pages.
+    exercise_bottom = 440 - 3 * 48 - 4
+    link = (f"/Subtype /Link /Rect [78 {exercise_bottom} 470 {exercise_bottom + 22}] /Border [0 0 0] /Dest [PAGE0 /Fit] /NM (slide-link)", None)
+    write_pdf("PDFs/Lecture slides.pdf", "Signals and sampling, lecture 3", pages, outline_titles=[title for title, _ in LECTURE_SLIDES],
+              annotations_by_page={3: [link]})
 
 
 # A 5 by 7 pixel font, enough for the scanned page's words.
@@ -401,6 +462,21 @@ def write_annotated_handout():
     write_pdf("PDFs/Annotated handout.pdf", "Handout: the RC circuit", pages, annotations_by_page=annotations)
 
 
+def write_odd_pages():
+    """Pages of different sizes and turns, as a PDF stitched from several sources has them: A4 upright, a page turned a
+    quarter by its /Rotate, US Letter across, a small card, and a page whose crop box shows only part of its media box."""
+    pages = [
+        (595, 842, text_page_content([(24, 60, 760, "Page 1: A4, upright"), (14, 60, 720, "The pages of this PDF differ in size and turn.")]), ""),
+        (595, 842, text_page_content([(24, 60, 760, "Page 2: turned by /Rotate 90"), (14, 60, 720, "It shows across, read from the side.")]), ""),
+        (792, 612, text_page_content([(24, 60, 540, "Page 3: US Letter, across"), (14, 60, 500, "Wider than it is tall.")]), ""),
+        (288, 180, text_page_content([(16, 20, 140, "Page 4: a small card"), (10, 20, 110, "Four by two and a half inches.")]), ""),
+        (612, 792, text_page_content([(24, 60, 700, "Page 5: cropped"), (14, 60, 660, "Only the middle of the page shows."),
+                              (14, 60, 80, "This line is outside the crop box.")]), ""),
+    ]
+    write_pdf("PDFs/Odd pages.pdf", "Pages of every size and turn", pages,
+              page_extras={1: " /Rotate 90", 4: " /CropBox [40 120 572 760]"})
+
+
 # Notes ------------------------------------------------------------------------------------------------------------------
 
 DAILY_TOPICS = ["sampling", "quantization", "the z-transform", "filters", "the lab report", "the problem set", "the reading group",
@@ -464,6 +540,112 @@ def write_long_lecture():
     write_file("Lectures/Long lecture.md", "\n".join(header + body).encode("utf-8"))
 
 
+# Settings (.obsidian) --------------------------------------------------------------------------------------------------
+
+SNIPPET_CSS = """/* Ruled second-level headings and square bullets, to check that CSS snippets apply. */
+.markdown-rendered h2, .markdown-source-view h2, .cm-header-2 {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 2px;
+}
+.markdown-rendered ul > li::marker {
+  content: "\\25AA  ";
+}
+"""
+
+THEME_CSS = """/* Release Paper: a small theme of the release test vault, warm headings and a teal accent. */
+.theme-light {
+  --color-accent: #1b7f79;
+  --interactive-accent: #1b7f79;
+  --text-accent: #1b7f79;
+  --h1-color: #7a3b16;
+  --h2-color: #8a4b20;
+  --h3-color: #1b5f79;
+  --blockquote-border-color: #1b7f79;
+  --tag-background: rgba(27, 127, 121, 0.12);
+  --tag-color: #14615c;
+}
+.theme-dark {
+  --color-accent: #4fc1b9;
+  --interactive-accent: #4fc1b9;
+  --text-accent: #4fc1b9;
+  --h1-color: #f0b98d;
+  --h2-color: #e9a978;
+  --h3-color: #8fd0e6;
+  --blockquote-border-color: #4fc1b9;
+}
+"""
+
+TEST_PLUGIN_IDENTIFIER = "release-vault-test"
+
+# A plugin with no network and nothing it plays: a command that inserts a line, and a code block processor that draws a
+# counter for `release-vault-count` blocks. Like the hosted tests' own (`CommunityPluginHostTests`), smaller.
+TEST_PLUGIN_SOURCE = """'use strict';
+const { Plugin, Notice } = require('obsidian');
+module.exports = class ReleaseVaultTestPlugin extends Plugin {
+    async onload() {
+        this.addCommand({
+            id: 'insert-checked-line',
+            name: 'Insert a checked line',
+            editorCallback: (editor) => editor.replaceSelection('Checked by the release vault test plugin.'),
+        });
+        this.addCommand({ id: 'say-hello', name: 'Say hello', callback: () => new Notice('Hello from the release vault test plugin') });
+        this.registerMarkdownCodeBlockProcessor('release-vault-count', (source, element) => {
+            let count = Number(source.trim()) || 0;
+            const button = element.createEl('button', { cls: 'release-vault-count', text: 'Count ' + count });
+            button.addEventListener('click', () => { count += 1; button.setText('Count ' + count); });
+        });
+    }
+};
+"""
+
+
+def json_text(value):
+    """JSON as Obsidian writes its settings, `JSON.stringify(value, null, 2)`."""
+    return (json.dumps(value, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def write_obsidian_settings():
+    """The settings files Obsidian and Graphite read besides those written by hand: appearance (a theme and a snippet),
+    hotkeys, the graph's and the workspace's settings (Obsidian's, which Graphite leaves alone), the calendar's, and the
+    community plugin list with the test plugin."""
+    write_file(".obsidian/snippets/Ruled headings.css", SNIPPET_CSS.encode("utf-8"))
+    write_file(".obsidian/themes/Release Paper/theme.css", THEME_CSS.encode("utf-8"))
+    write_file(".obsidian/themes/Release Paper/manifest.json", json_text(
+        {"name": "Release Paper", "version": "1.0.0", "minAppVersion": "1.0.0", "author": "Graphite release vault"}))
+    write_file(".obsidian/appearance.json", json_text(
+        {"accentColor": "#1b7f79", "theme": "system", "cssTheme": "Release Paper", "enabledCssSnippets": ["Ruled headings"],
+         "baseFontSize": 16}))
+    write_file(".obsidian/hotkeys.json", json_text({
+        "editor:toggle-highlight": [{"modifiers": ["Mod", "Shift"], "key": "H"}],
+        "graphite:insert-drawing": [{"modifiers": ["Mod", "Alt"], "key": "D"}],
+        "workspace:export-pdf": [],
+        TEST_PLUGIN_IDENTIFIER + ":insert-checked-line": [{"modifiers": ["Mod", "Shift"], "key": "L"}],
+    }))
+    write_file(".obsidian/graph.json", json_text({
+        "collapse-filter": False, "search": "", "showTags": True, "showAttachments": False, "hideUnresolved": False, "showOrphans": True,
+        "collapse-color-groups": False,
+        "colorGroups": [{"query": "path:Daily", "color": {"a": 1, "rgb": 1482617}}, {"query": "tag:#book", "color": {"a": 1, "rgb": 14701138}}],
+        "collapse-display": False, "showArrow": True, "textFadeMultiplier": 0, "nodeSizeMultiplier": 1.2, "lineSizeMultiplier": 1,
+        "collapse-forces": True, "centerStrength": 0.5, "repelStrength": 10, "linkStrength": 1, "linkDistance": 250, "scale": 1, "close": True,
+    }))
+    write_file(".obsidian/workspace.json", json_text({
+        "main": {"id": "release-main", "type": "split", "direction": "vertical", "children": [
+            {"id": "release-tabs", "type": "tabs", "children": [
+                {"id": "release-leaf", "type": "leaf", "state": {"type": "markdown", "state": {"file": "Start here.md", "mode": "source"}}}]}]},
+        "active": "release-leaf",
+        "lastOpenFiles": ["Start here.md", "Embeds/Pictures in every form.md", "PDFs/Written in Graphite.pdf"],
+    }))
+    write_file(".obsidian/graphite-calendar.json", json_text(
+        {"eventNoteFolders": {"Lectures": "Lectures"}, "defaultEventNoteFolder": "Daily", "taskList": "Release vault", "importedList": ""}))
+    write_file(".obsidian/community-plugins.json", json_text([TEST_PLUGIN_IDENTIFIER]))
+    plugin_folder = f".obsidian/plugins/{TEST_PLUGIN_IDENTIFIER}"
+    write_file(f"{plugin_folder}/manifest.json", json_text(
+        {"id": TEST_PLUGIN_IDENTIFIER, "name": "Release Vault Test", "version": "1.0.0", "minAppVersion": "1.0.0",
+         "description": "A command and a code block, to try community plugins without the network.", "author": "Graphite release vault",
+         "isDesktopOnly": False}))
+    write_file(f"{plugin_folder}/main.js", TEST_PLUGIN_SOURCE.encode("utf-8"))
+
+
 # Copies and output -----------------------------------------------------------------------------------------------------
 
 def copy_bases():
@@ -504,12 +686,15 @@ def main():
     for relative_path, (width, height, color_at) in PICTURES.items():
         write_file(relative_path, png_data(width, height, color_at))
     write_file("Attachments/Logo.svg", LOGO_SVG.encode("utf-8"))
+    write_file("Attachments/Checkers.webp", webp_checkers(96, 12, 30, (60, 200), 140))
     write_lecture_slides()
     write_scanned_page()
     write_annotated_handout()
     write_daily_notes()
     write_long_lecture()
     write_windows_line_endings_note()
+    write_odd_pages()
+    write_obsidian_settings()
     copy_bases()
     copy_notebooks()
     if arguments.graphite_files:
