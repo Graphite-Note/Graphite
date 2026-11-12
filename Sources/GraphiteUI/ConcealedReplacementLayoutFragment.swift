@@ -287,7 +287,7 @@ final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
             let characterBeforeLastLocation = (attributedString.string as NSString).rangeOfComposedCharacterSequence(at: NSMaxRange(formulaRange) - 2).location
             guard NSLocationInRange(characterBeforeLastLocation, lineFragment.characterRange) else { return }
             let roomStartX = lineOrigin.x + lineFragment.locationForCharacter(at: characterBeforeLastLocation).x
-            Self.draw(layout, atX: roomStartX + InlineMathLayout.horizontalPadding, baseline: baseline)
+            Self.draw(layout, atX: roomStartX + layout.leadingPadding, baseline: baseline)
         }
     }
 

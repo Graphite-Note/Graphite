@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 02/11/2026
+ * Version: 0.12
+ * Date: 12/11/2026
  */
 
 import XCTest
@@ -951,6 +951,23 @@ final class AppProjectTextualPatchTests: XCTestCase {
                       "\\begin{matrix} a + b \\end{matrix}", "a + b \\over c", "\\displaystyle a + b", "a + b}", "a + \\\\ b",
                       "a +", "\\operatorname*{arg} x"] {
             XCTAssertNil(pieces(whole), whole)
+        }
+    }
+
+    /// Patch 26: the public pieces for text views outside SwiftUI are the reading view's pieces, given as ranges of
+    /// the formula's own characters, so an editor can draw each over its part of the source.
+    func testInlineMathPiecesGiveTheReadingViewsPiecesAsRangesOfTheFormula() throws {
+        for latex in ["(C_{jb} \\cdot L_A + C_{jsw})W + C_j \\cdot W \\cdot L/2", "C_{ox} \\cdot W \\cdot L \\parallel C_d", "E = mc^2", "a+b=c",
+                      "\\{a + b\\}", "é + ü = 𝑥"] {
+            let pieces = try XCTUnwrap(InlineMathPieces.pieces(of: latex), latex)
+            XCTAssertEqual(pieces.map { piece in String(latex[piece.range]) + piece.spaceAfterOperator }, InlineMathLineBreaks.pieces(of: latex), latex)
+            XCTAssertEqual(pieces.map { piece in String(latex[piece.range]) }.joined(), latex, "The pieces cover the formula once: \(latex)")
+            XCTAssertEqual(pieces.first?.range.lowerBound, latex.startIndex)
+            XCTAssertEqual(pieces.last?.range.upperBound, latex.endIndex)
+            XCTAssertEqual(pieces.last?.spaceAfterOperator, "", "Nothing follows the last piece.")
+        }
+        for whole in ["k_n", "\\frac{a+b}{c}", "\\displaystyle a + b", "a + b \\over c"] {
+            XCTAssertNil(InlineMathPieces.pieces(of: whole), whole)
         }
     }
 

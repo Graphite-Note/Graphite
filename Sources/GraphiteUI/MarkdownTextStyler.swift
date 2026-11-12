@@ -230,19 +230,30 @@ final class ThemedHeadingOrnament: NSObject {
     }
 }
 
-/// A `$…$` formula Live Preview draws in place of its source.
+/// A `$…$` formula Live Preview draws in place of its source, or one piece of a long formula
+/// drawn in pieces a line can break between (`LivePreviewInlineMathPieces`).
 final class InlineMathLayout: NSObject, Sendable {
     let latex: String
     let fontSize: CGFloat
     let metrics: InlineMathRendering.Metrics
+    /// Room left before and after the drawing: on each side of a formula drawn whole, and only at
+    /// the formula's two ends for its pieces, which meet as the formula drawn whole does.
+    let leadingPadding: CGFloat
+    let trailingPadding: CGFloat
     /// Room left on each side of the formula.
     static let horizontalPadding: CGFloat = 1
 
-    init(latex: String, fontSize: CGFloat, metrics: InlineMathRendering.Metrics) {
+    init(latex: String, fontSize: CGFloat, metrics: InlineMathRendering.Metrics,
+         leadingPadding: CGFloat = horizontalPadding, trailingPadding: CGFloat = horizontalPadding) {
         self.latex = latex
         self.fontSize = fontSize
         self.metrics = metrics
+        self.leadingPadding = leadingPadding
+        self.trailingPadding = trailingPadding
     }
+
+    /// The width the line keeps for the drawing.
+    var roomWidth: CGFloat { metrics.width + leadingPadding + trailingPadding }
 }
 
 /// Styles Markdown source in place. Only attributes change; the text is untouched, so
@@ -533,8 +544,7 @@ struct MarkdownTextStyler {
                     continue
                 }
                 if span.style == .math && isLivePreview && !isSpanShown && drawsConcealedReplacements && isWholeSpan,
-                   let layout = inlineMathLayout(for: source.substring(with: span.range), baseFont: fonts.baseFont) {
-                    drawInlineMath(layout, over: span.range, in: textStorage)
+                   drawsInlineMath(over: span.range, source: source, baseFont: fonts.baseFont, in: textStorage) {
                     continue
                 }
                 apply(span.style, to: textStorage, range: piece, fonts: fonts)
@@ -784,9 +794,20 @@ struct MarkdownTextStyler {
     /// which stays visible as source.
     private static var inlineMathMetricsByKey: [String: InlineMathRendering.Metrics?] = [:]
 
-    private func inlineMathLayout(for source: String, baseFont: PlatformFont) -> InlineMathLayout? {
+    func inlineMathLayout(for source: String, baseFont: PlatformFont) -> InlineMathLayout? {
         guard source.hasPrefix("$"), !source.hasPrefix("$$"), source.count > 2 else { return nil }
-        let latex = LaTeXCompatibility.normalized(String(source.dropFirst().dropLast()))
+        return inlineMathLayout(forLaTeX: LaTeXCompatibility.normalized(String(source.dropFirst().dropLast())), baseFont: baseFont)
+    }
+
+    /// Where inline math may break, as the reading view breaks it (Textual's `InlineMathPieces`, patch 26): each
+    /// piece's characters in `latex` and the space after the operator that ends it; nil when it stays whole.
+    nonisolated static func inlineMathCuts(of latex: String) -> [(range: Range<String.Index>, spaceAfterOperator: String)]? {
+        InlineMathPieces.pieces(of: latex)?.map { piece in (piece.range, piece.spaceAfterOperator) }
+    }
+
+    /// The layout of LaTeX already made readable by the typesetter (`LaTeXCompatibility.normalized`).
+    func inlineMathLayout(forLaTeX latex: String, baseFont: PlatformFont, leadingPadding: CGFloat = InlineMathLayout.horizontalPadding,
+                          trailingPadding: CGFloat = InlineMathLayout.horizontalPadding) -> InlineMathLayout? {
         // Formulas are set a little larger than text, as in reading view.
         let fontSize = baseFont.pointSize * 1.2
         let key = "\(fontSize)|\(latex)"
@@ -798,12 +819,14 @@ struct MarkdownTextStyler {
             if Self.inlineMathMetricsByKey.count > 5000 { Self.inlineMathMetricsByKey.removeAll() }
             Self.inlineMathMetricsByKey[key] = metrics
         }
-        return metrics.map { metrics in InlineMathLayout(latex: latex, fontSize: fontSize, metrics: metrics) }
+        return metrics.map { metrics in
+            InlineMathLayout(latex: latex, fontSize: fontSize, metrics: metrics, leadingPadding: leadingPadding, trailingPadding: trailingPadding)
+        }
     }
 
     /// Hides the source and makes room for the formula before its last character:
     /// `ConcealedReplacementLayoutFragment` draws the formula in that room.
-    private func drawInlineMath(_ layout: InlineMathLayout, over range: NSRange, in textStorage: NSTextStorage) {
+    func drawInlineMath(_ layout: InlineMathLayout, over range: NSRange, in textStorage: NSTextStorage) {
         conceal(range, in: textStorage)
         textStorage.addAttribute(ConcealedReplacement.attributeKey, value: ConcealedReplacement.inlineMath.rawValue, range: range)
         textStorage.addAttribute(ConcealedReplacement.mathAttributeKey, value: layout, range: range)
@@ -812,7 +835,7 @@ struct MarkdownTextStyler {
         // The room follows the character before the last. After the last, it could not fit at the
         // end of a line and would move the closing `$` alone to the next, as a line may break
         // between `}` and `$`, and the two characters below must stay on one line.
-        textStorage.addAttribute(.kern, value: layout.metrics.width + 2 * InlineMathLayout.horizontalPadding, range: characterBeforeLast)
+        textStorage.addAttribute(.kern, value: layout.roomWidth, range: characterBeforeLast)
         // TextKit sizes a line from the ascent and descent of its characters, moved by their
         // baseline offsets. Raising the hidden last character by the formula's ascent, and
         // lowering the one before it by its descent, makes a tall formula's line tall enough
