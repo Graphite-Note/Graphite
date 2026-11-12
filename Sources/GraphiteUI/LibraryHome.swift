@@ -44,18 +44,47 @@ struct LibraryModeSidebarVisibility: ViewModifier {
     let presentation: LibraryPresentation
     let isCompactWidth: Bool
     @Binding var columnVisibility: NavigationSplitViewVisibility
+    /// The presentation this modifier last answered. The column folds in the change that follows a switch to Library,
+    /// after one update of the window in which the switch is made and the column still shown.
+    @State private var answeredPresentation: LibraryPresentation?
 
     func body(content: Content) -> some View {
-        content.onChange(of: presentation, initial: true) { previousPresentation, presentation in
-            guard !isCompactWidth else { return }
-            switch presentation {
-            case .library: columnVisibility = .detailOnly
-            // Switching to List opens the file tree it switched to; a launch in List keeps
-            // the window's own choice, which its first shape made (`GraphiteRootView`).
-            case .list: if previousPresentation == .library { columnVisibility = .all }
+        content
+            .environment(\.sidebarFilesPlace, sidebarFilesPlace)
+            .onChange(of: presentation, initial: true) { previousPresentation, presentation in
+                answeredPresentation = presentation
+                guard !isCompactWidth else { return }
+                switch presentation {
+                case .library: columnVisibility = .detailOnly
+                // Switching to List opens the file tree it switched to; a launch in List keeps
+                // the window's own choice, which its first shape made (`GraphiteRootView`).
+                case .list: if previousPresentation == .library { columnVisibility = .all }
+                }
             }
-        }
     }
+
+    /// Where the sidebar's files are, counting the update in which the switch to Library is made and the column is about to
+    /// fold: the sidebar then builds no list it would drop again at once (the Tags view of 3,000 tags in the owner's vault).
+    private var sidebarFilesPlace: SidebarFilesPlace {
+        guard presentation == .library, !isCompactWidth else { return .fileTree }
+        return answeredPresentation != .library || columnVisibility == .detailOnly ? .foldedByLibrary : .besideLibrary
+    }
+}
+
+/// What the sidebar does with the vault's files, which Library mode shows in the library on a window wider than a phone.
+enum SidebarFilesPlace {
+    /// List mode, or a phone, whose sidebar lists the files (a phone's as the library itself).
+    case fileTree
+    /// Library mode has folded the sidebar out of the window, where nothing of it is seen: it keeps the file tree it had
+    /// rather than building another list behind the library, so the switch back to List finds the tree as it was.
+    case foldedByLibrary
+    /// A search opened the sidebar beside the library, which is the file browser: the sidebar offers its other panels.
+    case besideLibrary
+}
+
+extension EnvironmentValues {
+    /// Set by the window's root view (`LibraryModeSidebarVisibility`); a sidebar shown alone lists its files.
+    @Entry var sidebarFilesPlace = SidebarFilesPlace.fileTree
 }
 
 /// What the library's top row offers of the window once the sidebar is gone: finding a

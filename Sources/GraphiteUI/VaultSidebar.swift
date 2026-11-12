@@ -87,6 +87,8 @@ struct VaultSidebar: View {
     /// The calendar panel's month and chosen day, kept while the sidebar lives.
     @State private var calendarPanel = CalendarPanelModel(today: CalendarDay(.now, in: .autoupdatingCurrent))
     @Environment(LibraryModel.self) private var library: LibraryModel?
+    /// Read rather than the library's presentation, which changes one update before the column folds (`SidebarFilesPlace`).
+    @Environment(\.sidebarFilesPlace) private var filesPlace
     @AppStorage(SidebarPanelSettingKey.tagSortOrder) private var tagSortOrder = VaultListSortOrder.frequencyDescending
     @AppStorage(SidebarPanelSettingKey.showsNestedTags) private var showsNestedTags = true
     @AppStorage(SidebarPanelSettingKey.propertySortOrder) private var propertySortOrder = VaultListSortOrder.frequencyDescending
@@ -94,16 +96,16 @@ struct VaultSidebar: View {
     /// In Library mode on a wide window the library is the file browser, so the sidebar
     /// keeps search, bookmarks, tags and properties but not a second file tree.
     private var availablePanels: [SidebarPanel] {
-        let showsFileTree = workspace.preferences.library.presentation == .list || isWindowCompact
-        return SidebarPanel.allCases.filter { panel in
-            (panel.plugin.map(workspace.preferences.isEnabled) ?? true) && (panel != .files || showsFileTree)
+        SidebarPanel.allCases.filter { panel in
+            (panel.plugin.map(workspace.preferences.isEnabled) ?? true) && (panel != .files || filesPlace != .besideLibrary)
         }
     }
 
     /// The chosen panel, or the first offered when its plugin was turned off or the library
     /// replaces the file list.
     private var panel: SidebarPanel {
-        availablePanels.contains(storedPanel) ? storedPanel : (availablePanels.first ?? .files)
+        if filesPlace == .foldedByLibrary { return .files }
+        return availablePanels.contains(storedPanel) ? storedPanel : (availablePanels.first ?? .files)
     }
     /// A community plugin's view chosen in the picker, shown in place of Graphite's panels,
     /// kept by the plugin host so it is saved with the layout and shown again after a restart.
