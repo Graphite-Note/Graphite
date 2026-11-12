@@ -11,15 +11,29 @@ actor GraphSimulator {
         self.layout = layout
     }
 
-    /// Calms the layout (`GraphLayout.calm()`) and returns where its nodes are then.
-    func calm() -> [SIMD2<Double>] {
-        layout.calm()
+    /// Calms the layout as `GraphLayout.calm()` does, within its budget, and returns where its
+    /// nodes are then.
+    func calm() async -> [SIMD2<Double>] {
+        let maximumSteps = GraphLayout.calmingStepLimit(nodeCount: layout.positions.count)
+        var steps = 0
+        while !layout.isCalm, steps < maximumSteps {
+            await step()
+            steps += 1
+        }
         return layout.positions
     }
 
-    func advance(steps: Int) -> (positions: [SIMD2<Double>], isSettled: Bool) {
-        for _ in 0..<steps where !layout.isSettled { layout.step() }
+    func advance(steps: Int) async -> (positions: [SIMD2<Double>], isSettled: Bool) {
+        for _ in 0..<steps where !layout.isSettled { await step() }
         return (layout.positions, layout.isSettled)
+    }
+
+    /// One step, its repulsion shared between the cores. A pin or a change of forces that comes
+    /// in meanwhile applies from this step on; the pushes were worked out for the positions
+    /// before it, as they would have been.
+    private func step() async {
+        let pushes = await layout.repulsionPushesSharingWork()
+        layout.step(repulsionPushes: pushes)
     }
 
     func pin(_ identifier: String, at position: SIMD2<Double>) {
@@ -49,7 +63,8 @@ final class GraphCanvasModel {
     private(set) var radii: [Double] = []
     private(set) var neighborIndexes: [Set<Int>] = []
     private(set) var isSettled = true
-    /// Whether a graph laid out from nothing is being calmed before it is shown.
+    /// Whether a graph laid out from nothing is being calmed before it is shown, or the first
+    /// graph made ready.
     private(set) var isCalming = false
     /// What the graph shows, counted once when it is loaded.
     private(set) var counts = LinkGraph.Counts()
@@ -59,46 +74,49 @@ final class GraphCanvasModel {
     /// Each node's name as measured at the names' font, filled as the names are drawn, which
     /// needs their sizes every frame to keep them apart; as long as the graph's nodes.
     @ObservationIgnored private var measuredNameSizes: [CGSize?] = []
+    /// How many characters each node's name has, for the room the fit leaves for names.
+    @ObservationIgnored private var nameCharacterCounts: [Int] = []
+    /// Counts the loads, so a load that a later one replaced while it waited stops.
+    @ObservationIgnored private var loadCount = 0
     @ObservationIgnored private var simulator: GraphSimulator?
     @ObservationIgnored private var runTask: Task<Void, Never>?
 
     /// Shows a graph. Nodes with a known place start there and the layout adjusts on screen;
     /// a graph laid out from nothing is first calmed off the main thread, so it appears in
-    /// place rather than flying apart. Returns once the graph is shown, or at once when a
-    /// later load or the view's going replaced it meanwhile.
+    /// place rather than flying apart. The nodes shown until now keep where they are, winning
+    /// over `previousPositions`. Everything the canvas needs of the graph is worked out away
+    /// from the main thread (`GraphCanvasContents`); the graph shown until then stays. Returns
+    /// once the graph is shown, or at once when a later load or the view's going replaced it
+    /// meanwhile.
     func load(_ graph: LinkGraph, forces: GraphLayout.Forces, previousPositions: [String: SIMD2<Double>],
               groupIndexByIdentifier: [String: Int]) async {
         runTask?.cancel()
         runTask = nil
-        isCalming = false
-        let layout = GraphLayout(graph: graph, forces: forces, previousPositions: previousPositions)
+        // With nothing shown yet, the progress shows while the graph is made ready too.
+        isCalming = self.graph.nodes.isEmpty && !graph.nodes.isEmpty
+        loadCount += 1
+        let load = loadCount
+        let contents = await GraphCanvasContents.made(from: graph, forces: forces, previousPositions: previousPositions,
+                                                      shownNodes: self.graph.nodes, shownPositions: positions)
+        guard loadCount == load, !Task.isCancelled else { return }
         self.graph = graph
         measuredNameSizes = Array(repeating: nil, count: graph.nodes.count)
         colorNodes(by: groupIndexByIdentifier)
-        positions = []
-        indexByIdentifier = Dictionary(uniqueKeysWithValues: layout.identifiers.enumerated().map { index, identifier in (identifier, index) })
-        edgeIndexes = graph.edges.compactMap { edge in
-            guard let source = indexByIdentifier[edge.source], let target = indexByIdentifier[edge.target] else { return nil }
-            return (source, target)
-        }
-        var neighbors = Array(repeating: Set<Int>(), count: graph.nodes.count)
-        for edge in edgeIndexes {
-            neighbors[edge.source].insert(edge.target)
-            neighbors[edge.target].insert(edge.source)
-        }
-        neighborIndexes = neighbors
-        counts = graph.counts
-        let linkCounts = graph.linkCounts
-        // Obsidian draws well-linked notes larger, and a tag larger the more notes carry it.
-        radii = graph.nodes.map { node in 4 + min(Double(linkCounts[node.id] ?? 0).squareRoot(), 8) * 1.3 }
-        let simulator = GraphSimulator(layout: layout)
+        indexByIdentifier = contents.indexByIdentifier
+        edgeIndexes = contents.edgeIndexes
+        neighborIndexes = contents.neighborIndexes
+        counts = contents.counts
+        radii = contents.radii
+        nameCharacterCounts = contents.nameCharacterCounts
+        let simulator = GraphSimulator(layout: contents.layout)
         self.simulator = simulator
-        let startsFromNothing = !graph.nodes.contains { node in previousPositions[node.id] != nil }
-        guard startsFromNothing, !graph.nodes.isEmpty else {
-            positions = layout.positions
+        guard contents.startsFromNothing, !graph.nodes.isEmpty else {
+            isCalming = false
+            positions = contents.layout.positions
             run()
             return
         }
+        positions = []
         isCalming = true
         let calmedPositions = await simulator.calm()
         guard self.simulator === simulator, !Task.isCancelled else { return }
@@ -122,6 +140,17 @@ final class GraphCanvasModel {
     /// zoom. The drawing and the hit testing both use it.
     func screenRadius(ofNodeAt index: Int, in viewport: GraphViewport, display: GraphDisplayOptions) -> Double {
         viewport.screenRadius(ofNodeRadius: radii[index] * display.nodeSizeMultiplier)
+    }
+
+    /// The viewport that shows the whole graph in a view of this size, with room for the names
+    /// drawn at its zoom (`GraphViewport.fitting`); nil before the graph is shown.
+    func fittingViewport(in size: CGSize, display: GraphDisplayOptions, alwaysShowsNames: Bool) -> GraphViewport? {
+        guard nameCharacterCounts.count == graph.nodes.count else { return nil }
+        let names = graph.nodes.indices.map { index in
+            GraphViewport.NameRoom(characterCount: nameCharacterCounts[index],
+                                   shownFromScale: alwaysShowsNames ? 0 : display.nameFadeStartScale(of: graph.nodes[index].kind))
+        }
+        return GraphViewport.fitting(positions, names: names, in: size)
     }
 
     /// Takes the groups' coloring of the files, as after a group's search changes.
@@ -172,12 +201,20 @@ final class GraphCanvasModel {
         runTask = nil
     }
 
+    /// How many steps the layout takes between two drawings. Two steps a frame settle a small
+    /// graph in about three seconds; a larger one takes longer per step and to draw, so it is
+    /// drawn less often. With its steps shared between the cores, a graph of 100,000 notes was
+    /// drawn after every eighth step, and drawing it took most of the main thread while it
+    /// settled (`GraphBenchmarkTests`, frames of 180 to 210 ms on the iPad simulator).
+    static func stepsPerUpdate(nodeCount: Int) -> Int {
+        if nodeCount > 20_000 { return 24 }
+        return nodeCount > 3_000 ? 8 : 2
+    }
+
     private func run() {
         guard runTask == nil || isSettled, let simulator else { return }
         isSettled = false
-        // Two steps a frame settle a graph in about three seconds; a large one takes longer
-        // per step, so it is drawn less often.
-        let stepsPerUpdate = graph.nodes.count > 3_000 ? 8 : 2
+        let stepsPerUpdate = Self.stepsPerUpdate(nodeCount: graph.nodes.count)
         runTask = Task { [weak self] in
             while !Task.isCancelled {
                 let (positions, isSettled) = await simulator.advance(steps: stepsPerUpdate)

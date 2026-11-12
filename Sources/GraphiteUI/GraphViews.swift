@@ -122,6 +122,8 @@ struct VaultGraphView: View {
     @AppStorage(GraphSettingKey.centerStrength) private var centerStrength = GraphLayout.Forces().centerStrength
     @State private var vaultGraph: LinkGraph?
     @State private var shownGraph: LinkGraph?
+    /// What the corner says the shown graph holds, counted with it.
+    @State private var shownGraphSummary = ""
     @State private var showsSettings = false
     @State private var fitRequest = 0
     @State private var groupColoring = GraphGroupColoring()
@@ -162,7 +164,7 @@ struct VaultGraphView: View {
                                 fitRequest: fitRequest, centerRequest: document.graphCenterRequest, chosenTag: $document.graphChosenTag,
                                 groupColoring: groupColoring, display: display, keptPlace: $document.graphPlace)
                     .overlay(alignment: .bottomLeading) {
-                        Text(shownGraph.counts.summary)
+                        Text(shownGraphSummary)
                             .font(.caption).foregroundStyle(.secondary)
                             .padding(8).background(.thinMaterial, in: Capsule()).padding(12)
                     }
@@ -178,11 +180,27 @@ struct VaultGraphView: View {
         }
         .task(id: workspace.structureVersion) {
             vaultGraph = await workspace.vaultGraph()
-            shownGraph = vaultGraph?.filtered(by: filters)
+            await showFilteredGraph()
             recolor()
         }
-        .onChange(of: filters) { shownGraph = vaultGraph?.filtered(by: filters) }
+        .task(id: filters) { await showFilteredGraph() }
         .onChange(of: colorGroups) { recolor() }
+    }
+
+    /// Filters the vault's graph and counts what it shows away from the main thread, which a
+    /// vault of 100,000 notes held for a tenth of a second at each keystroke of the filter.
+    private func showFilteredGraph() async {
+        // Without the vault's graph (another vault, none read yet) nothing is shown.
+        guard let vaultGraph else { shownGraph = nil; return }
+        let filters = filters
+        let (filtered, summary) = await Task.detached(priority: .userInitiated) { () -> (LinkGraph, String) in
+            let filtered = vaultGraph.filtered(by: filters)
+            return (filtered, filtered.counts.summary)
+        }.value
+        // A newer filter or graph replaced this one while it was made.
+        guard !Task.isCancelled, filters == self.filters, vaultGraph == self.vaultGraph else { return }
+        shownGraph = filtered
+        shownGraphSummary = summary
     }
 
     /// Colors the files as the vault's groups match them, over the whole vault's graph.

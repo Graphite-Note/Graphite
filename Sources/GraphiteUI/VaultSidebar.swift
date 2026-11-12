@@ -221,7 +221,7 @@ struct VaultSidebar: View {
                 Button("Settings", systemImage: "gearshape") { showsSettings = true }.tint(.primary)
             }
             #endif
-            if workspace.store != nil, workspace.preferences.isEnabled(.graph) {
+            if workspace.store != nil, workspace.preferences.isEnabled(.graph), !showsGraphButtonBesidePanels {
                 // An item of its own, kept in view when the narrow sidebar folds New and the
                 // list's options into one menu.
                 ToolbarItem(placement: .primaryAction) { graphButton }
@@ -258,7 +258,8 @@ struct VaultSidebar: View {
         }
     }
 
-    /// The panels' picker and the List/Library switch, then the Files panel's filter field under them.
+    /// The panels' picker, the List/Library switch and on the iPad the graph's button, then the Files panel's filter
+    /// field under them.
     @ViewBuilder private var topBar: some View {
         if showsPanelPicker || showsPresentationSwitch || showsFileTreeFilter {
             VStack(spacing: 0) {
@@ -271,6 +272,12 @@ struct VaultSidebar: View {
                             LibraryPresentationSwitch(presentation: workspace.preferences.library.presentation) { presentation in
                                 workspace.preferences.library.presentation = presentation
                             }
+                        }
+                        if showsGraphButtonBesidePanels {
+                            graphButton
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.circle)
                         }
                     }
                     .padding(.horizontal, 16).padding(.vertical, 6)
@@ -313,6 +320,18 @@ struct VaultSidebar: View {
     }
 
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
+
+    /// Whether the graph's button is in the row of the panels rather than in the sidebar's bar: on the iPad, whose
+    /// narrow sidebar's bar has room for one control on its right and folded the graph into its "…" menu with New,
+    /// two taps away; beside Settings, it cut the vault's name, which switches vaults, to its first letters. The Mac's
+    /// bar and the phone's have room beside New.
+    private var showsGraphButtonBesidePanels: Bool {
+        #if canImport(UIKit)
+        showsPresentationSwitch && workspace.preferences.isEnabled(.graph)
+        #else
+        false
+        #endif
+    }
 
     /// One click from the file list to the whole vault's graph, in a tab of its own.
     private var graphButton: some View {

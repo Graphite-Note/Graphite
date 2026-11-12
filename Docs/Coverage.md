@@ -2,7 +2,17 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-11.
+Last updated: 2026-11-12.
+
+## The graph on a vault of thousands of notes, and its button on the iPad: 2026-11-12
+
+`Docs/Graph-view-todo.md` sections 1, 4 and 5 (issues #64, #67, #68). The whole vault's graph is shown and settles about three times sooner on the Mac and five times sooner on the iPad simulator: what the canvas needs of a graph and its layout are made off the main thread (`GraphCanvasContents`), the graph's tab filters and counts off the main thread, and each step's repulsion is shared between the processor's cores from 2,000 nodes on, giving the same positions as one core. A note without links pushes the others with a quarter of the repel force, so the notes without links keep to a thin ring around the linked ones instead of the outer quarter of the view. On the iPad the graph's button sits at the end of the sidebar's row of panels, one tap from the file list on the 11-inch iPad's narrow sidebar, without costing the vault's name in the header.
+
+- **Measured** (`PerformanceBenchmarkTests`' graph benchmarks, made-up vaults, before → after): a vault of 4,700 notes with tags is drawn 116 ms after it is asked for and settled 600 ms later on the Mac's release build (317 ms and 950 ms before), 2.0 s and 4.3 s on the iPad simulator's Debug build (11.0 s and 21.8 s); 100,000 notes 0.6 to 0.7 s and 5 to 6 s on the Mac (1.9 to 2.3 s and 28 to 32 s). Frames, memory and the iPad's 100,000 notes are in the todo's table.
+- **Automated tests, passing on macOS (`swift test --filter`):** `GraphLayoutShapeTests` (4: the ring of notes without links on the 4,700-note vault, the shared pass and the shared step equal one core's, a lighter node pushes in proportion), and the graph's existing classes (`LinkGraphTests`, `GraphCanvasModelTests`, `GraphTagsTests`, `GraphColorGroupTests`, `GraphNamePlacementTests`, `GraphViewportTests`, `GraphPaletteTests`, `GraphEmphasisTests`, `GraphDisplayOptionsTests`, `GraphCanvas*Tests`, `WorkspaceGraphTabTests`, `GuideContentTests`).
+- **Hosted tests, passing on the iPad simulator:** `GraphTabHostedTests` (3: the graph split beside a note opening a node on the other side and staying, the graph brought back with the window's tabs, the graph's button one tap from the file list, landscape and portrait). Screenshots of a demo vault of twelve made-up notes, light and dark, looked at.
+- **Decided:** one path per color for the nodes was measured faster at 100,000 nodes but kept far more memory, and was not kept.
+- **Not established:** the owner's vault on his iPad and Mac; a device in a Release build; a 100,000-note graph on the iPad simulator settles in 107 s with tags off and not within 120 s with tags on, and draws in about 180 ms a frame there; the graph's button placement is for the owner to confirm, as the todo asked for the header.
 
 ## Images side by side, in lines, list items, tables and callouts: 2026-11-11
 

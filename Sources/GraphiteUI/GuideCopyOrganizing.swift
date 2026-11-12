@@ -119,7 +119,7 @@ enum GuideOrganizingCopy {
         title: "Graph and Map",
         summary: "The graph draws every note and the links between them. The map shows notes that have a location.",
         steps: [
-            GuideStep(forPlatform(touch: "Tap the **graph** button at the top of the file list (in its **…** menu when the list is narrow), " +
+            GuideStep(forPlatform(touch: "Tap the **graph** button at the top of the file list, on an iPad beside the panels' buttons, " +
                                          "or press ⇧⌘G with a keyboard. The graph opens in a tab of its own.",
                                   mac: "Click the **graph** button above the file list, choose View › **Graph View**, or press ⇧⌘G. " +
                                        "The graph opens in a tab of its own.")),
