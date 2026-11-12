@@ -34,6 +34,17 @@ The growth is all in the binary; assets and resource bundles did not change. Sym
 - [ ] The remaining growth named by module (a link map of the Release build) and each part kept or moved out.
 - [ ] The budget recorded again (`scripts/app-size-budget.py --record`) only for growth the owner accepts, and the next TestFlight upload passes without `--allow-size-growth`.
 
+### 2. The welcome tour's pictures arrive with the app
+
+Issue: [#166](https://github.com/Graphite-Note/Graphite/issues/166)
+
+The owner, 2026-11-12, after a first launch in the simulator showed the tour's first page with "Downloading the pictures…": the tour's pictures should be there when Graphite is first installed, and the person should be able to delete them later. Today they are an add-on pack (`WelcomeTourScreenshotPack`: 3,142 KB for the iPad and iPhone, 1,680 KB for the Mac) downloaded from GitHub the first time the tour needs them.
+
+- [ ] On the iPad and the iPhone, the pictures come with the install, not at first launch: an On-Demand Resources tag in the App Store's initial install tags (`NSBundleResourceRequest`), so the App Store and TestFlight install them with the app and the first page shows its picture at once, offline included. Deleting them (Settings, where the add-on packs are listed) ends the app's use of the tag and lowers its preservation priority, so iOS can take the space back; the tour then downloads them again only if opened.
+- [ ] On the Mac, where On-Demand Resources may not be offered: the same if it is; otherwise the smallest way to have them at first launch that can still be deleted, or the pictures in the app, with the reason written here.
+- [ ] Tests: the tour's first page shows a picture with no network on a first launch; a deleted pack is reported as such and asked for again; the size budget counts the tag's files as the App Store does.
+- [ ] Checked on a TestFlight install on an iPad and a Mac: the first page's picture shows at once, and Delete frees the space.
+
 ## Decisions
 
 - The owner, 2026-11-12: bugs first, size after. Until the open bugs are fixed, TestFlight uploads go out with `--allow-size-growth`; the size work of this file starts once they are.
