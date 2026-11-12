@@ -7,8 +7,8 @@
  *              end between (a row of cards, a list item, a table row).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -91,7 +91,7 @@ enum NotePDFBases {
         case .callout(_, _, _, _, let body): body.flatMap { inner in baseKeys(in: inner, note: note) }
         case .transclusion(_, let path, _, let body): body.flatMap { inner in baseKeys(in: inner, note: path) }
         case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-             .footnotes, .pluginCodeBlock, .pluginSection, .diagram:
+             .footnotes, .pluginCodeBlock, .pluginSection, .diagram, .webFrame:
             []
         }
     }
@@ -102,7 +102,7 @@ enum NotePDFBases {
         case .baseFile(_, let path, let viewName): [(PrintedBaseKey(source: .file(path), viewName: viewName), note)]
         case .callout, .transclusion: nestedBaseKeys(in: block, note: note)
         case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .missingEmbed, .missingSection, .image, .footnotes,
-             .pluginCodeBlock, .pluginSection, .diagram:
+             .pluginCodeBlock, .pluginSection, .diagram, .webFrame:
             []
         }
     }

@@ -1,3 +1,14 @@
+/**
+ * File: LinkPreviewCard.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: A link's preview card: the note's name, which opens the link, and what an embed of the link shows, scrolling inside.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 12/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -43,6 +54,8 @@ struct LinkPreviewCard: View {
                                       },
                                       updateProperties: nil)
                 }
+                // A card is a glance at the note: its frames show their boxes, never a live page.
+                .environment(\.webFramePresentation, .placeholder)
                 .padding(Self.bodyPaddingPoints)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in

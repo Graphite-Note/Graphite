@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.51
- * Date: 11/11/2026
+ * Version: 0.52
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -93,13 +93,16 @@ indirect enum RenderedBlock: Identifiable, Sendable {
     case pluginSection(id: Int, text: String, request: CommunityPluginReadingBlockRequest)
     /// A ```` ```mermaid ```` block of a type drawn natively, read and laid out.
     case diagram(id: Int, diagram: ReadingDiagram)
+    /// A web page in a frame of its own (`<iframe>`), shown live near the screen (`WebFrameBlock`).
+    case webFrame(id: Int, frame: WebFrameEmbed)
 
     var id: String {
         switch self {
         case .properties: "properties"
         case .markdown(let id, _), .displayMath(let id, _), .heading(let id, _, _, _), .callout(let id, _, _, _, _), .video(let id, _), .audio(let id, _, _),
              .pdf(let id, _, _, _), .transclusion(let id, _, _, _), .base(let id, _), .baseFile(let id, _, _), .missingEmbed(let id, _), .missingSection(let id, _, _), .image(let id, _, _, _, _),
-             .footnotes(let id, _), .pluginCodeBlock(let id, _, _, _, _, _), .pluginSection(let id, _, _), .diagram(let id, _): "block-\(id)"
+             .footnotes(let id, _), .pluginCodeBlock(let id, _, _, _, _, _), .pluginSection(let id, _, _), .diagram(let id, _),
+             .webFrame(let id, _): "block-\(id)"
         }
     }
 }
@@ -500,6 +503,8 @@ actor ReadingViewBuilder {
             case .mermaidDiagram(let source):
                 // A type or a feature not drawn natively yet is the source with a line saying so (`ReadingDiagram.unreadable`).
                 rendered.append(.diagram(id: identifier(), diagram: ReadingDiagram(source: source, typography: typography(for: configuration))))
+            case .webFrame(let frame):
+                rendered.append(.webFrame(id: identifier(), frame: frame))
             }
         }
         return rendered
@@ -844,7 +849,7 @@ extension RenderedBlock {
         case .callout(_, _, _, _, let body), .transclusion(_, _, _, let body): body.contains { block in block.holdsReadingScrollTarget(target) }
         case .footnotes(_, let notes): notes.contains { footnote in RenderedFootnote.anchor(for: footnote.number) == target }
         case .properties, .markdown, .displayMath, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-             .pluginCodeBlock, .pluginSection, .diagram: false
+             .pluginCodeBlock, .pluginSection, .diagram, .webFrame: false
         }
     }
 }
@@ -1011,6 +1016,8 @@ struct MarkdownPreview: View {
     /// The word read, one cell per text, so a word changes only the texts it leaves and enters.
     @State private var wordCells = ReadingWordCells()
     @State private var mediaPlayers = ReadingMediaPlayers()
+    /// Which of the note's web frames hold their page, the few nearest the screen.
+    @State private var webFrameLiveViews = WebFrameLiveViews()
     /// Counts the tasks ticked in embedded notes. Their text is read from their files, so
     /// the note is built again although its own text is the same.
     @State private var embeddedNoteTaskEditCount = 0
@@ -1108,6 +1115,8 @@ struct MarkdownPreview: View {
             .environment(\.readingWordCells, wordCells)
             .environment(\.readingFollowsSource, followsReading)
             .environment(\.readingMediaPlayers, mediaPlayers)
+            .environment(\.webFramePresentation, .live)
+            .environment(\.webFrameLiveViews, webFrameLiveViews)
             .environment(\.readingTaskContext, toggleTask.map { toggleTask in
                 ReadingTaskContext(note: path) { note, location in await toggle(location, in: note, with: toggleTask) }
             })
@@ -1747,6 +1756,8 @@ struct ReadingBlocksView: View {
                 }
             case .diagram(_, let diagram):
                 ReadingDiagramView(diagram: diagram, textSize: textSize, root: root, navigate: navigate, scrollToHeading: scrollToHeading)
+            case .webFrame(_, let frame):
+                WebFrameBlock(frame: frame)
             case .missingSection(_, let path, let subpath):
                 Button { navigate(path.rawValue, true) } label: {
                     Label(NoteBlocks.missingSectionMessage(subpath: subpath, noteName: path.stem), systemImage: "questionmark.square.dashed")
@@ -2251,6 +2262,12 @@ struct ObsidianMarkdownParser: MarkupParser {
         for (range, color) in linkRuns { text[range].foregroundColor = color }
     }
 
+    /// Whether a run is HTML, a tag in a sentence or a block of it. Its text is the tag as written, so a `#ccc` in a
+    /// frame's `style` is not a tag, as in Obsidian, where the HTML is drawn and never read for tags.
+    private static func isHTML(_ run: AttributedString.Runs.Run) -> Bool {
+        run.inlinePresentationIntent?.intersection([.inlineHTML, .blockHTML]).isEmpty == false
+    }
+
     /// Whether a run is code, in a span or a block.
     private static func isCode(_ run: AttributedString.Runs.Run) -> Bool {
         if run.inlinePresentationIntent?.contains(.code) == true { return true }
@@ -2261,7 +2278,7 @@ struct ObsidianMarkdownParser: MarkupParser {
     }
 
     /// `#tags` as the accent's (or the theme's) pill, a link to a search for the tag when
-    /// the reading view can open one. A tag in code or in a link is text.
+    /// the reading view can open one. A tag in code, in HTML or in a link is text.
     private func styleTags(in text: inout AttributedString) {
         guard text.characters.contains("#") else { return }
         let tagColor = themeColors?.tag ?? accent
@@ -2287,7 +2304,7 @@ struct ObsidianMarkdownParser: MarkupParser {
             // Found again from its offset after each change of attributes, which leaves the characters as they are.
             let lower = text.characters.index(text.startIndex, offsetBy: tag.characterOffset)
             let range = lower..<text.characters.index(lower, offsetBy: tag.characterCount)
-            guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) }) else { continue }
+            guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) || Self.isHTML(run) }) else { continue }
             text[range].foregroundColor = tagColor
             // A pill: the background, corners and border, narrow enough that the space between
             // two tags still shows between their pills.

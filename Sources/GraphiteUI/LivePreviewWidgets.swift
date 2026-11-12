@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.38
- * Date: 11/11/2026
+ * Version: 0.39
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -258,8 +258,8 @@ struct LivePreviewWidgetView: View {
             } else {
                 RenderedMarkdownBlock(markdown: "```" + language + "\n" + block.markdown + "\n```", environment: environment)
             }
-        case .mermaidDiagram:
-            LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
+        case .mermaidDiagram: LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
+        case .webFrame(let frame): LivePreviewWebFrameView(frame: frame, revealSource: revealSource)
         case .callout:
             if let located = parsedSource.calloutBlock(from: block.markdown), case .callout(let type, let title, let folding, let bodyBlocks) = located.block {
                 LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, bodyLocated: located.body, noteReading: noteReading,
@@ -440,6 +440,7 @@ private struct LivePreviewBlockStack: View {
             AnyView(RenderedMarkdownBlock(markdown: "```" + language + "\n" + source + "\n```", environment: environment))
         case .mermaidDiagram(let source):
             AnyView(LivePreviewDiagramView(source: source, environment: environment, revealSource: revealSource))
+        case .webFrame(let frame): AnyView(LivePreviewWebFrameView(frame: frame, revealSource: revealSource))
         }
     }
 }

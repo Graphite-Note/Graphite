@@ -5,8 +5,8 @@
  * Description: Splits a note into the blocks of its reading view, and finds headings by the text a link names.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.18
- * Date: 01/11/2026
+ * Version: 0.19
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -35,6 +35,8 @@ public indirect enum NotePreviewBlock: Equatable, Sendable {
     case pluginCodeBlock(language: String, source: String)
     /// The text of a ```` ```mermaid ```` code block, which the reading view draws as a diagram.
     case mermaidDiagram(String)
+    /// An `<iframe>` on lines of its own, or alone in a list item, whose page the reading view shows (`WebFrameSyntax`).
+    case webFrame(WebFrameEmbed)
 }
 
 public enum NotePreviewDocument {
@@ -55,8 +57,8 @@ public enum NotePreviewDocument {
         public let lineStartOffsets: [Int]
         /// The blocks of a callout's body, located likewise. Empty for other blocks.
         public let body: [LocatedBlock]
-        /// How many lines of the body the block spans, fences included; 1 for blocks other
-        /// than a plugin's code block, which is the only one that needs it.
+        /// How many lines of the body the block spans, fences included: set for a plugin's code block and a web
+        /// frame, 1 for other blocks, which do not need it.
         public var lineCount = 1
     }
 
@@ -167,6 +169,14 @@ public enum NotePreviewDocument {
                     lineIndex += 1
                     continue
                 }
+            }
+            // A web page's frame is HTML, never a heading's text, and may run over several lines.
+            if let found = WebFrameSyntax.frame(startingAt: lineIndex, lineCount: lines.count, line: { index in lines[index] }) {
+                flushMarkdown()
+                blocks.append(LocatedBlock(block: .webFrame(found.frame), startOffset: lineStartOffsets[lineIndex], lineStartOffsets: [], body: [],
+                                           lineCount: found.lastLineIndex - lineIndex + 1))
+                lineIndex = found.lastLineIndex + 1
+                continue
             }
             if let heading = MarkdownHeadingSyntax.titledHeading(in: line) {
                 flushMarkdown()

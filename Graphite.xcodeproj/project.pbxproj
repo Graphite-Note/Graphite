@@ -73,6 +73,7 @@
 				GraphiteTestSupport/GeneratedCourseVault.swift,
 				GraphiteTestSupport/InvisibleWindow.swift,
 				GraphiteTestSupport/IsolatedDeviceState.swift,
+				GraphiteTestSupport/LoopbackWebServer.swift,
 				GraphiteTestSupport/PenTestSpeech.swift,
 				GraphiteTestSupport/SimulatorAudio.swift,
 				GraphiteTestSupport/TemporaryVault.swift,

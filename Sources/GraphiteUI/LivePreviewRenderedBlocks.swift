@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.21
- * Date: 11/11/2026
+ * Version: 0.22
+ * Date: 12/11/2026
  */
 
 #if canImport(UIKit)
@@ -824,7 +824,7 @@ struct LivePreviewWidgetSignature: Equatable {
         // A picture in a cell that the index has not read yet is looked up again once it has:
         // a table of photos opened while the vault was indexing kept them as text.
         case .table: block.markdown.contains("![")
-        case .frontmatter, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram: false
+        case .frontmatter, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame: false
         }
     }
 }
@@ -871,6 +871,9 @@ struct DetachedWidgetPool<Host> {
             return 0.15 + 0.12 * Double(max(1, rows.count - 1) * max(1, columns))
         case .baseDefinition: return 6
         case .frontmatter: return 4
+        // A frame's view holds a live page, which is never kept off screen; nor is a callout's that holds one.
+        case .webFrame: return nil
+        case .callout where WebFrameSyntax.mayHoldFrame(block.markdown): return nil
         case .mathBlock, .callout:
             return 0.15 + 0.05 * Double(block.markdown.split(separator: "\n", omittingEmptySubsequences: false).count)
         case .horizontalRule: return 0.1
@@ -953,6 +956,9 @@ enum LivePreviewBlockHeightEstimate {
         // A diagram's height comes from its layout, not from its lines: a few ranks of a flowchart, or a pie chart's
         // disc under its title.
         case .mermaidDiagram: return 300
+        // The tag gives the height, so the lines below are where they will stay before the page loads; the view's
+        // vertical padding is the rest.
+        case .webFrame(let frame): return CGFloat(frame.shownHeight) + 8
         case .embed(let embed):
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) { return columnWidth * 9 / 16 + 8 }

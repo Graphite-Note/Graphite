@@ -8,8 +8,8 @@
  *              web links the finished PDF needs.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -161,7 +161,7 @@ enum NotePDFBlocks {
             return await printedBase(.file(path), viewName: viewName, name: path.name, vault: vault, note: note, layoutWidth: layoutWidth)
         case .base(_, let yaml):
             return await printedBase(.inline(yaml), viewName: nil, name: "Base", vault: vault, note: note, layoutWidth: layoutWidth)
-        case .properties, .displayMath, .heading, .callout, .missingEmbed, .missingSection, .footnotes, .pluginCodeBlock, .diagram:
+        case .properties, .displayMath, .heading, .callout, .missingEmbed, .missingSection, .footnotes, .pluginCodeBlock, .diagram, .webFrame:
             return NotePDFBlock(content: .reading(block))
         }
     }
@@ -191,7 +191,7 @@ enum NotePDFBlocks {
             case .transclusion(let id, let path, let heading, let body):
                 .transclusion(id: id, path: path, heading: heading, body: openedForPrinting(body))
             case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram:
+                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram, .webFrame:
                 block
             }
         }
@@ -204,6 +204,8 @@ enum NotePDFBlocks {
         case .callout(_, _, let title, _, let body): [title] + body.flatMap(markdownTexts(in:))
         case .transclusion(_, _, _, let body): body.flatMap(markdownTexts(in:))
         case .footnotes(_, let notes): notes.map(\.text)
+        // A frame's page cannot be printed: its box shows the address, which the finished PDF links to the page.
+        case .webFrame(_, let frame): ["<" + frame.address.absoluteString + ">"]
         case .properties, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image, .pluginCodeBlock, .diagram: []
         }
     }

@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.16
- * Date: 11/11/2026
+ * Version: 0.17
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -32,6 +32,9 @@ public struct LivePreviewBlock: Equatable, Sendable {
         /// A fenced block whose whole info text is `mermaid`, in any case, that no community plugin draws: a diagram,
         /// as reading view finds it (`NotePreviewBlock.mermaidDiagram`), with the code between its fences in `markdown`.
         case mermaidDiagram
+        /// An `<iframe>` on lines of its own, or alone in a list item, as reading view finds it (`NotePreviewBlock.webFrame`):
+        /// the page shown over its lines, its tag in `markdown`.
+        case webFrame(WebFrameEmbed)
     }
     public let kind: Kind
     /// Whole lines, including the final line break when there is one.
@@ -137,25 +140,11 @@ public enum LivePreviewBlockScanner {
                 lineIndexAfterBlock = lineIndex
                 continue
             }
-            // Display math is a block of its own, found as reading view finds it, so a
-            // closing `$$` is never taken for a new opener.
-            if trimmedContent.hasPrefix("$$") {
-                let opening = mathLines.opening(at: lineIndex)
-                if let opening, opening.isAtLineStart {
-                    let lastIndex = opening.closingLineIndex ?? lines.count - 1
-                    blocks.append(LivePreviewBlock(kind: .mathBlock, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
-                    lineIndex = lastIndex + 1
-                    lineIndexAfterBlock = lineIndex
-                    continue
-                }
-                // A closed `$$…$$` alone on its line is display math too. With text after
-                // it (`$$E=mc^2$$ where…`) it is inline math in a paragraph.
-                if opening == nil, trimmedContent.hasSuffix("$$") {
-                    blocks.append(LivePreviewBlock(kind: .mathBlock, range: lines[lineIndex].range, markdown: content))
-                    lineIndex += 1
-                    lineIndexAfterBlock = lineIndex
-                    continue
-                }
+            if let (kind, lastIndex) = wholeLinesBlock(startingAt: lineIndex, of: lines, mathLines: mathLines) {
+                blocks.append(LivePreviewBlock(kind: kind, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
+                lineIndex = lastIndex + 1
+                lineIndexAfterBlock = lineIndex
+                continue
             }
             // A callout may sit in a list item, indented with the item's text.
             let containerColumn = listItems.innermostContentColumn
@@ -207,6 +196,25 @@ public enum LivePreviewBlockScanner {
             lineIndex += 1
         }
         return blocks
+    }
+
+    /// A display math block or a web frame that starts at `lineIndex`, and the last line it takes: blocks of whole lines,
+    /// found as reading view finds them.
+    private static func wholeLinesBlock(startingAt lineIndex: Int, of lines: [(range: NSRange, content: String)],
+                                        mathLines: DisplayMathLines) -> (kind: LivePreviewBlock.Kind, lastIndex: Int)? {
+        let trimmedContent = lines[lineIndex].content.trimmingCharacters(in: .whitespaces)
+        // Display math is a block of its own, found as reading view finds it, so a
+        // closing `$$` is never taken for a new opener.
+        if trimmedContent.hasPrefix("$$") {
+            let opening = mathLines.opening(at: lineIndex)
+            if let opening, opening.isAtLineStart { return (.mathBlock, opening.closingLineIndex ?? lines.count - 1) }
+            // A closed `$$…$$` alone on its line is display math too. With text after
+            // it (`$$E=mc^2$$ where…`) it is inline math in a paragraph.
+            if opening == nil, trimmedContent.hasSuffix("$$") { return (.mathBlock, lineIndex) }
+        }
+        // An `<iframe>` on lines of its own is HTML, never a callout's or a table's text.
+        return WebFrameSyntax.frame(startingAt: lineIndex, lineCount: lines.count, line: { index in lines[index].content })
+            .map { found in (.webFrame(found.frame), found.lastLineIndex) }
     }
 
     /// The pieces of a paragraph line that embeds images among its text. A heading, a list

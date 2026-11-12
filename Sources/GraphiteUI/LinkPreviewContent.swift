@@ -1,3 +1,14 @@
+/**
+ * File: LinkPreviewContent.swift
+ * ------------------------------
+ * Layer: UI
+ * Description: What a link's preview card shows: what the reading view shows for an embed of the same link.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 12/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -27,7 +38,7 @@ struct LinkPreviewContent: Sendable {
         case .image(_, let path, _, _, _):
             self.init(path: path, subpath: nil, blocks: [block])
         case .properties, .markdown, .displayMath, .heading, .callout, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .footnotes,
-             .pluginCodeBlock, .pluginSection, .diagram:
+             .pluginCodeBlock, .pluginSection, .diagram, .webFrame:
             return nil
         }
     }
