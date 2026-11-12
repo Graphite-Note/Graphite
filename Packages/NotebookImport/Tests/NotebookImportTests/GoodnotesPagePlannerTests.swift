@@ -234,7 +234,7 @@ final class GoodnotesPagePlannerTests: XCTestCase {
 
     // MARK: Elements left out
 
-    func testShapesTapeOlderInkAndOtherElementsAreLeftOutAndCounted() throws {
+    func testShapesTapeOlderInkAndOtherElementsAreLeftOutOrCounted() throws {
         let shapeStroke = Self.stroke(path: Self.straightPath(), shape: GoodnotesShape(geometry: nil, width: nil), counter: 1)
         let tape = Self.stroke(path: Self.straightPath(), ink: .fountainPenBrushPenOrTape, isTape: true, counter: 2)
         let olderInk = Self.stroke(path: .olderVaryingWidth(GoodnotesOlderVaryingWidthPath(width: 11, outline: [])),
@@ -256,10 +256,11 @@ final class GoodnotesPagePlannerTests: XCTestCase {
         let plan = try XCTUnwrap(Self.plannedPlan(GoodnotesPagePlanner.plan(Self.page(elements: elements), pageNumber: 1)))
         XCTAssertEqual(plan.strokes, [])
         XCTAssertEqual(plan.pictures, [], "Pictures without an attachment have no file to place.")
+        XCTAssertEqual(plan.textBoxes.count, 2, "The older text box and the sticky note; the text box without a size has no width.")
         XCTAssertEqual(plan.report, [
             .elementsNotYetConverted(kind: .shape, count: 1), .tapeLeftOut(strokeCount: 1), .olderVaryingWidthInkLeftOut(strokeCount: 1),
-            .pictureFilesMissing(count: 2), .elementsNotYetConverted(kind: .shapeFill, count: 1),
-            .elementsNotYetConverted(kind: .textBox, count: 3), .elementsNotYetConverted(kind: .stickyNote, count: 1)
+            .pictureFilesMissing(count: 2), .elementsNotYetConverted(kind: .shapeFill, count: 1), .textBoxesNotPlaced(count: 1),
+            .elementsNotYetConverted(kind: .textWithoutFrame, count: 1), .stickyNotesAsTextBoxes(count: 1)
         ])
     }
 

@@ -8,12 +8,15 @@ import GraphiteTestSupport
 @testable import GraphiteApple
 
 /// Converts the owner's real Goodnotes and Notability samples end to end and reads every written PDF back: each page's
-/// size, its strokes as `/Ink` annotations, its pictures as Graphite pictures with their files' own bytes, its paper as
-/// page content rather than ink, and, where the sample folder holds the app's own export (`export.pdf`), how much of
-/// the drawn page differs from it. The samples are personal notebooks, never in the repository: the test reads them
-/// from the folder `GRAPHITE_IMPORT_SAMPLES` names and is skipped on a machine without them.
+/// size, its strokes as `/Ink` annotations, its pictures as Graphite pictures with their files' own bytes, its typed text
+/// as Graphite text boxes, its paper as page content rather than ink, and, where the sample folder holds the app's own
+/// export (`export.pdf`), how much of the drawn page differs from it and where the export prints the typed text. The
+/// samples are personal notebooks, never in the repository: the test reads them from the folder `GRAPHITE_IMPORT_SAMPLES`
+/// names and is skipped on a machine without them.
 final class NotebookConversionSampleTests: XCTestCase {
     private static let samplesFolderVariable = "GRAPHITE_IMPORT_SAMPLES"
+    /// When set, the pages written and the export's are drawn there as PNG files, to compare by eye (never in the repository).
+    private static let rendersFolderVariable = "GRAPHITE_IMPORT_RENDERS"
     private static let skipReason = "The owner's import samples are not on this machine: set GRAPHITE_IMPORT_SAMPLES to their folder."
     /// Rendering resolution of the visual comparison: 100 pixels per inch, as the format documents compared.
     private static let comparisonPixelsPerPoint = 100.0 / 72.0
@@ -66,7 +69,7 @@ final class NotebookConversionSampleTests: XCTestCase {
     func testEverySampleIsWrittenWithItsPagesStrokesPicturesAndPaperAsPlanned() throws {
         let folder = try samplesFolder()
         let vault = try TemporaryVault.make(prefix: "NotebookConversionSamples", for: self)
-        var totals = (notebooks: 0, pages: 0, strokes: 0, pictures: 0, picturesKeptByteForByte: 0)
+        var totals = (notebooks: 0, pages: 0, strokes: 0, pictures: 0, picturesKeptByteForByte: 0, textBoxes: 0)
         for location in notebookFiles(in: folder) {
             let name = location.lastPathComponent
             let written: Written
@@ -76,8 +79,9 @@ final class NotebookConversionSampleTests: XCTestCase {
                 print("NOTEBOOK-CONVERSION \(name): no pages (left out whole)")
                 continue
             }
-            XCTAssertEqual(written.document.pageCount, written.plans.count, name)
-            XCTAssertEqual(written.writing.pageReports.count, written.notebook.sourcePageCount, name)
+            try drawIfAsked(written.document, named: name + " imported")
+            XCTAssertEqual(written.document.pageCount, written.writing.pageReports.count { report in report.written != nil }, name)
+            XCTAssertGreaterThanOrEqual(written.writing.pageReports.count, written.notebook.sourcePageCount, name)
             for (pageIndex, plan) in written.plans.enumerated() {
                 guard let page = written.document.page(at: pageIndex) else { continue }
                 let context = "\(name) page \(plan.sourcePageNumber)"
@@ -88,6 +92,10 @@ final class NotebookConversionSampleTests: XCTestCase {
                 let pictures = PDFPageManager.pictures(on: page)
                 let report = written.writing.pageReports.first { report in report.sourcePageNumber == plan.sourcePageNumber }
                 XCTAssertEqual(pictures.count, report?.written?.pictureCount, context)
+                let textBoxes = PDFPageManager.textBoxes(on: page)
+                XCTAssertEqual(textBoxes.count, report?.written?.textBoxCount, context)
+                XCTAssertGreaterThanOrEqual(textBoxes.count, plan.textBoxes.count { box in !ImportedTextRuns(box.content).isEmpty }, context)
+                totals.textBoxes += textBoxes.count
                 totals.picturesKeptByteForByte += try keptByteForByteCount(plan, pictures: pictures, sourceFiles: written.notebook.sourceFiles)
                 try assertPaperIsPageContent(page, background: plan.background, sourceFiles: written.notebook.sourceFiles, context: context)
                 totals.pages += 1
@@ -97,6 +105,11 @@ final class NotebookConversionSampleTests: XCTestCase {
             totals.notebooks += 1
         }
         print("NOTEBOOK-CONVERSION totals \(totals)")
+    }
+
+    private func drawIfAsked(_ document: PDFDocument, named name: String) throws {
+        guard let rendersPath = ProcessInfo.processInfo.environment[Self.rendersFolderVariable] else { return }
+        try PDFPagePictures.write(document, named: name, into: URL(fileURLWithPath: rendersPath, isDirectory: true))
     }
 
     /// The pictures whose plan shows the whole file unflipped, from a PNG or JPEG file that is upright as stored and
@@ -159,6 +172,7 @@ final class NotebookConversionSampleTests: XCTestCase {
             guard let export = PDFDocument(url: exportLocation) else { continue }
             guard let written = try? convert(location, into: vault) else { continue } // a notebook with no page to write has nothing to compare
             let name = location.lastPathComponent
+            try drawIfAsked(export, named: name + " export")
             guard export.pageCount == written.document.pageCount else {
                 print("NOTEBOOK-EXPORT \(name): \(written.document.pageCount) pages written, \(export.pageCount) exported; not compared")
                 continue
@@ -174,12 +188,107 @@ final class NotebookConversionSampleTests: XCTestCase {
         }
     }
 
+    /// Every upright text box's first line is drawn where the app's own export draws it: the glyphs of the box's first
+    /// line, found in both pages drawn at `textPixelsPerPoint`, have the same left, top and bottom edges within
+    /// `maximumTextOffsetPoints`. Only the first line is compared, below which Goodnotes prints a sticky note's author.
+    func testTypedTextIsWhereEachAppsExportPrintsIt() throws {
+        let folder = try samplesFolder()
+        let vault = try TemporaryVault.make(prefix: "NotebookConversionText", for: self)
+        var comparedCount = 0
+        for location in notebookFiles(in: folder) {
+            guard let export = PDFDocument(url: location.deletingLastPathComponent().appendingPathComponent("export.pdf")),
+                  let written = try? convert(location, into: vault) else { continue }
+            for pageIndex in 0..<min(export.pageCount, written.document.pageCount) {
+                guard let page = written.document.page(at: pageIndex), let exportPage = export.page(at: pageIndex) else { continue }
+                let writtenPixels = try TextPixels(page), exportPixels = try TextPixels(exportPage)
+                for box in PDFPageManager.textBoxes(on: page) where box.rotationRadians == 0 {
+                    let context = "\(location.lastPathComponent) page \(pageIndex + 1) “\(box.plainText.prefix(24))”"
+                    let firstLine = Self.firstLineArea(of: box)
+                    let drawn = try XCTUnwrap(writtenPixels.inkBounds(in: firstLine), "Graphite draws the text: \(context)")
+                    let exported = try XCTUnwrap(exportPixels.inkBounds(in: firstLine), "The export prints the text: \(context)")
+                    print(String(format: "NOTEBOOK-TEXT %@: first line from (%.2f, %.2f) to (%.2f, %.2f), export (%.2f, %.2f) to (%.2f, %.2f)", context,
+                                 drawn.minX, drawn.minY, drawn.maxX, drawn.maxY, exported.minX, exported.minY, exported.maxX, exported.maxY))
+                    XCTAssertEqual(drawn.minX, exported.minX, accuracy: Self.maximumTextOffsetPoints, context)
+                    XCTAssertEqual(drawn.minY, exported.minY, accuracy: Self.maximumTextOffsetPoints, context)
+                    XCTAssertEqual(drawn.maxY, exported.maxY, accuracy: Self.maximumTextOffsetPoints, context)
+                    comparedCount += 1
+                }
+            }
+        }
+        print("NOTEBOOK-TEXT compared \(comparedCount) text boxes")
+    }
+
+    /// How far the first line's glyphs may be from where the export draws them, in points.
+    private static let maximumTextOffsetPoints = 1.0
+    private static let textPixelsPerPoint = 4.0
+
+    /// The box's first line in page space: its width, from its top to the padding and one and a half times its first
+    /// font's size below it.
+    private static func firstLineArea(of box: PDFTextBox) -> CGRect {
+        let height = box.style.padding + 1.5 * box.leadingAttributes.fontSize
+        return CGRect(x: box.origin.x, y: box.origin.y - height, width: box.width, height: height).insetBy(dx: -2, dy: -1)
+    }
+
+    /// A page drawn in colour on white, read for the pixels of text: dark or strongly coloured, but not blue, the colour
+    /// of Goodnotes' link underline, and not the light lines of paper.
+    private struct TextPixels {
+        let pixels: [UInt8]
+        let width: Int
+        let height: Int
+        let pageBox: CGRect
+
+        init(_ page: PDFPage) throws {
+            pageBox = page.bounds(for: .cropBox)
+            width = Int(pageBox.width * NotebookConversionSampleTests.textPixelsPerPoint)
+            height = Int(pageBox.height * NotebookConversionSampleTests.textPixelsPerPoint)
+            var drawn = [UInt8](repeating: 255, count: width * height * 4)
+            let (pixelWidth, pixelHeight, box) = (width, height, pageBox)
+            try drawn.withUnsafeMutableBytes { buffer in
+                let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+                let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: pixelWidth, height: pixelHeight, bitsPerComponent: 8,
+                                                      bytesPerRow: pixelWidth * 4, space: colorSpace,
+                                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.setFillColor(red: 1, green: 1, blue: 1, alpha: 1)
+                context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+                context.scaleBy(x: NotebookConversionSampleTests.textPixelsPerPoint, y: NotebookConversionSampleTests.textPixelsPerPoint)
+                context.translateBy(x: -box.minX, y: -box.minY)
+                page.draw(with: .cropBox, to: context)
+            }
+            pixels = drawn
+        }
+
+        /// The bounds of the text pixels in an area of the page, in page space; nil when there are none.
+        func inkBounds(in area: CGRect) -> CGRect? {
+            let scale = NotebookConversionSampleTests.textPixelsPerPoint
+            let columns = max(0, Int((area.minX - pageBox.minX) * scale))..<min(width, Int((area.maxX - pageBox.minX) * scale))
+            // The bitmap's first row is the top of the page.
+            let rows = max(0, Int((pageBox.maxY - area.maxY) * scale))..<min(height, Int((pageBox.maxY - area.minY) * scale))
+            var minimumColumn = Int.max, maximumColumn = -1, minimumRow = Int.max, maximumRow = -1
+            for row in rows {
+                for column in columns {
+                    let index = (row * width + column) * 4
+                    let red = Int(pixels[index]), green = Int(pixels[index + 1]), blue = Int(pixels[index + 2])
+                    let luminance = (299 * red + 587 * green + 114 * blue) / 1000
+                    guard luminance < 160, blue <= red + 40 else { continue }
+                    minimumColumn = min(minimumColumn, column)
+                    maximumColumn = max(maximumColumn, column)
+                    minimumRow = min(minimumRow, row)
+                    maximumRow = max(maximumRow, row)
+                }
+            }
+            guard maximumColumn >= 0 else { return nil }
+            return CGRect(x: pageBox.minX + Double(minimumColumn) / scale, y: pageBox.maxY - Double(maximumRow + 1) / scale,
+                          width: Double(maximumColumn + 1 - minimumColumn) / scale, height: Double(maximumRow + 1 - minimumRow) / scale)
+        }
+    }
+
     private static func changesWhatTheExportShows(_ entry: ImportReportEntry) -> Bool {
         switch entry {
         case .elementsNotYetConverted, .tapeLeftOut, .olderVaryingWidthInkLeftOut, .pictureFilesMissing, .picturesNotDecodable, .backgroundFileMissing,
-             .paperRulingNotDrawn, .highlighterNotMultiplied, .pencilTextureNotKept:
+             .paperRulingNotDrawn, .highlighterNotMultiplied, .pencilTextureNotKept, .textStylesNotKept, .fontsReplaced, .stickyNotesAsTextBoxes,
+             .textBoxesNotPlaced:
             true
-        case .shapesDrawnAsInk, .dashesNotKept, .picturesMovedUnderInk, .animatedPicturesKeptStill,
+        case .shapesDrawnAsInk, .dashesNotKept, .picturesMovedUnderInk, .animatedPicturesKeptStill, .pageWidthAssumed,
              .recordingFilesMissing, .recordingsNotCopied, .recordingTimingNotKept, .outlineEntriesWithoutPage, .pageWithoutPaper, .pageGeometryUnknown,
              .goodnotesReadingIssue, .notabilityReadingIssue:
             false

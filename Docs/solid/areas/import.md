@@ -227,3 +227,13 @@ Found on the branch `notebook-import-in-app` while measuring and comparing the s
 - **Rule:** `FR-29`
 - **Evidence:** in the "fountain, brush, pencil and highlighter" sample, Goodnotes' export draws the pencil line pale grey (light force), while the imported page draws it as solid black (`ImportedPageInk` gives the stroke its planned colour at full opacity); a third of that page's content pixels differ from the export. The report already lists the pencil as "drawn without Goodnotes' grain".
 - **Fix direction:** carry the force into the pencil's PDF appearance (opacity or width) as Goodnotes does, then compare again with the export.
+
+## 8. Found while converting typed text (2026-11-12)
+
+Found on the branch `notebook-import-in-app-conversion` while comparing imported pages with the apps' exports; fixed there.
+
+#### BUG-IMPORT-05 Every page made from the same template page as an earlier one shows that page's ink, pictures and text too
+- **Severity:** High (verdict: Confirmed, reproduced and fixed)
+- **Rule:** `FR-29`
+- **Evidence:** `ImportedBackgroundPages` copied a source PDF page with `PDFPage.copy()` for each page that uses it, keeping the source document open. PDFKit's copies of one page share a single list of annotations with that page and with each other: an annotation added to the first copy is on every later copy (checked with PDFKit alone, 2026-11-12). Since Goodnotes gives most pages of a notebook one template page, the second and later pages of an imported notebook carried the ink, picture stamps and text boxes of every page before them: the synthetic lecture's pages 2 and 3 drew page 1's two strokes and a placeholder for its picture, and the deleted-page sample's last page drew "Page one" over "Page three".
+- **Fix:** each page is taken from a `PDFDocument` opened for it alone from the source file's bytes, which are kept for the next page ([ImportedBackgroundPages.swift](../../../Sources/GraphiteApple/NotebookImport/ImportedBackgroundPages.swift)). `NotebookImportEndToEndTests.testImportedNotebooksHoldEveryElementOfTheirSourceAsGraphiteObjects` checks that each written page holds exactly the strokes, pictures and text boxes its report counts; it failed before the fix on the lecture's pages 2 and 3.

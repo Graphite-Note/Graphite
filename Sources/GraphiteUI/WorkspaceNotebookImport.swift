@@ -5,8 +5,8 @@
  * Description: Hands the Goodnotes and Notability notebooks of an import to a notebook import session.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -15,15 +15,22 @@ import GraphiteApple
 import NotebookImport
 
 /// Importing Goodnotes and Notability notebooks: the New menu's Import, the library's, and files dropped on the library
-/// or the file list all reach `importFiles(from:into:)`, which hands the notebooks and folders to this. The share
+/// or the file list all reach `importFiles(from:into:)`, whose importers by file type hand the notebooks and folders to
+/// this (`notebookFileImporter`). The share
 /// sheet will too, once the share extension delivers its files into the vault through the same call.
 extension WorkspaceModel {
-    /// The sources an import converts as notebooks while the Notebook Import core plugin is on: Goodnotes and Notability
-    /// files, and folders, such as a library export, whose notebooks are converted and whose folders are kept. Read from
-    /// the locations only; nothing is opened.
-    func notebookImportSources(in sources: [URL]) -> [URL] {
-        guard preferences.isEnabled(.notebookImport) else { return [] }
-        return sources.filter { source in source.hasDirectoryPath || NotebookFileFormat(fileExtension: source.pathExtension) != nil }
+    /// The notebook import as one of the importers by file type, while the Notebook Import core plugin is on: it takes
+    /// Goodnotes and Notability files and folders, such as a library export, whose notebooks are converted and whose
+    /// folders are kept. It keeps the temporary copies of a drop until the conversion that reads them has ended; when no
+    /// import starts (one is already running) it hands them back. Off, it is not there and a notebook is copied as the file
+    /// it is.
+    var notebookFileImporter: FileTypeImporter? {
+        guard preferences.isEnabled(.notebookImport) else { return nil }
+        let notebookExtensions = Set(NotebookFileFormat.allCases.map(\.fileExtension))
+        return FileTypeImporter(fileExtensions: notebookExtensions, takesFolders: true) { [weak self] sources, folder, copies in
+            guard let self, self.importNotebooks(sources, into: folder, whenEnded: { copies.discard() }) else { return copies }
+            return DroppedFileBatch(files: [])
+        }
     }
 
     /// Converts the notebooks of `sources` into `directory`, away from the main actor, while the vault stays usable; the

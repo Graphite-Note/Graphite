@@ -16,7 +16,9 @@ public enum FixtureFolders {
 
     /// A Goodnotes notebook and a Notability note built by the NotebookImport package's own test builders (nothing from a
     /// real notebook): four pages with ink, a picture, an outline entry, a bookmark, a page without paper and a timed
-    /// recording; and a two-page note with a recording.
+    /// recording; and a two-page note with a recording. With them, typed text (`SyntheticTextNotebooks` in the package's
+    /// tests): a Goodnotes page of text boxes, a turned one, a sticky note and an older RTF box, and a Notability note whose
+    /// typed text flows onto a second page.
     public static let syntheticNotebooks = repositoryRoot.appendingPathComponent("Tests/SyntheticNotebooks", isDirectory: true)
 
     /// The Mac and iPad application's property lists.

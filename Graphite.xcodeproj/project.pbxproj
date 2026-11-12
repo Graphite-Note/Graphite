@@ -67,6 +67,7 @@
 				GraphiteAppleTests/VectorDrawingTests.swift,
 				GraphiteAppleTests/VideoRecordingTests.swift,
 				GraphiteAppleTests/VideoRecordingTestSupport.swift,
+				GraphiteFixtures/FixtureFolders.swift,
 				GraphiteTestSupport/AnsweringDeviceLocation.swift,
 				GraphiteTestSupport/FakeCalendarStore.swift,
 				GraphiteTestSupport/FakeConflictVersionStore.swift,

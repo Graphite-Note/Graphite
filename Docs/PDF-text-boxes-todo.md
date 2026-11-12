@@ -1,6 +1,6 @@
 # Text boxes on PDF pages: TODO
 
-Created: 2026-10-20. Built 2026-10-21 (phases 1 to 4); the import (phase 5) and the checks on a device (phase 6) are left.
+Created: 2026-10-20. Built 2026-10-21 (phases 1 to 4); the import (phase 5) on 2026-11-12; the checks on a device (phase 6) are left.
 
 Status: Graphite writes, reads and edits typed text boxes on every PDF page, as standard `/FreeText` annotations. What was built, how it was checked and what was not checked is below, in `Architecture.md` ("Text boxes on PDF pages") and in `Coverage.md` ("Text boxes on PDF pages"). Nothing was tried on a device or with Apple Pencil.
 
@@ -98,14 +98,15 @@ Issue: [#42](https://github.com/Graphite-Note/Graphite/issues/42)
 
 Issue: [#43](https://github.com/Graphite-Note/Graphite/issues/43)
 
-- [ ] Goodnotes text boxes and sticky notes, and Notability typed text, convert to these boxes: font, size, colour, box, rotation and links (Phase 3 step 8 of the import). The API is ready and listed in the design's "Text boxes (step 8)".
+- [x] Goodnotes text boxes and sticky notes, and Notability typed text, convert to these boxes: font, size, colour, box, rotation and links (Phase 3 step 8 of the import). The API is ready and listed in the design's "Text boxes (step 8)".
+  Done 2026-11-12: the planners give each text an `ImportedTextBox` or `ImportedFlowingText` (`GoodnotesTextPlanner`, `NotabilityTextPlanner`, in the NotebookImport package) and the writer places them with `PDFEdit.addTextBox` over the page's ink (`ImportedPageText`, `ImportedTextRuns`). A Goodnotes text box is its corner, its angle, its stored text width and an inset on each side, its insets and font sizes times its scale; its link is a `/Link` annotation over the text. A sticky note is a box of its square with its colour as the fill, without the author's name Goodnotes prints (reported). An older text box is placed by its text area and its RTF read with the iPad's text scaling kept (the platform's reader would turn 12 into 9.24 on the Mac). Notability's typed text flows from the top of the first page in whole lines onto pages added after the note's last one; a reflowable note is laid out at a Mac's width (reported); empty lines after the last word make no page. Styles a box does not draw, fonts the device lacks and boxes that cannot be placed are reported. Tests: `GoodnotesTextPlannerTests` (7), `NotabilityTextPlannerTests` (6), `SyntheticTextNotebooksTests` (3), `NotebookImportTextWriterTests` (8), `NotebookImportEndToEndTests` (through the app's Import), `NotebookImportHostedTests` (the boxes drawn over the canvas on the iPad simulator; screenshot looked at), and `NotebookConversionSampleTests` on the owner's samples: each upright box's first line within 0.75 point of where Goodnotes' or Notability's export draws it, the text pages 0% different from the exports. Not checked: a turned box against an export (the turned text-box sample of 2026-10-20 is not on the samples branch; turning is checked on the synthetic notebook), typing into an imported box on a device.
 
 ### 6. Verification
 
 Issue: [#44](https://github.com/Graphite-Note/Graphite/issues/44)
 
 - [x] Hosted tests on the iPad simulator: create, type, move, rotate, undo, save and reopen (`PDFTextBoxesTests`).
-- [ ] Imported PDFs and boxes made in Graphite look the same in Preview, Files, Obsidian and Acrobat. Done for boxes made in Graphite with Quick Look, poppler and Ghostscript renders (`Coverage.md`); Acrobat, Files and Obsidian not tried, imports not built.
+- [ ] Imported PDFs and boxes made in Graphite look the same in Preview, Files, Obsidian and Acrobat. Done for boxes made in Graphite with Quick Look, poppler and Ghostscript renders (`Coverage.md`); Acrobat, Files and Obsidian not tried. Imported boxes are drawn by PDFKit as every reader draws their appearance (pictures compared with the exports, 2026-11-12); not opened in Preview, Files, Obsidian or Acrobat.
 - [ ] On the owner's iPad: writing into a box with the Pencil, and editing a box on a lecture PDF.
 - [x] `Architecture.md`, `Coverage.md` and `Obsidian-mobile-gaps.md` updated.
 

@@ -10,17 +10,20 @@ import NotebookImport
 /// annotations. Any other is drawn into a new page of the plan's size, stretched along each axis to fill it and turned
 /// upright, since the plan's positions are in the page as shown; that page's annotations become part of its content.
 ///
-/// Source PDFs are opened through `ImportSourceFiles` and the most recently used stay open, so a notebook whose pages
-/// all use one template PDF reads and opens it once.
+/// Source PDFs are read through `ImportSourceFiles` and the bytes of the most recently used are kept, so a notebook
+/// whose pages all use one template PDF reads it once. Each page is taken from a document opened for it alone:
+/// PDFKit's copies of one page share a single list of annotations with that page and with each other, so a page copied
+/// from the template a second time would carry every annotation already added to the first copy (the ink, pictures and
+/// text of the pages before it).
 struct ImportedBackgroundPages {
-    /// Source PDFs kept open at once; the least recently used is closed first.
+    /// Source PDFs whose bytes are kept at once; the least recently used is let go first.
     static let maximumOpenSourceDocuments = 4
     /// Sizes closer than this, in points, are the same size: rounding in the source's units.
     static let sizeTolerancePoints = 0.01
 
     private let sourceFiles: any ImportSourceFiles
-    /// The most recently used last.
-    private var openSourceDocuments: [(file: ImportedSourceFile, document: PDFDocument)] = []
+    /// The bytes of source PDFs known to open, the most recently used last.
+    private var openSourceDocuments: [(file: ImportedSourceFile, contents: Data)] = []
 
     init(sourceFiles: any ImportSourceFiles) {
         self.sourceFiles = sourceFiles
@@ -86,11 +89,13 @@ struct ImportedBackgroundPages {
         return page
     }
 
+    /// A document of its own for the file, so the page taken from it shares its annotations with no other page.
     private mutating func openDocument(_ file: ImportedSourceFile) throws -> PDFDocument {
         if let openIndex = openSourceDocuments.firstIndex(where: { openDocument in openDocument.file == file }) {
             let reused = openSourceDocuments.remove(at: openIndex)
             openSourceDocuments.append(reused)
-            return reused.document
+            guard let document = PDFDocument(data: reused.contents) else { throw NotebookImportWriterError.sourceFileNotOpenablePDF(file) }
+            return document
         }
         let contents: Data
         do {
@@ -102,7 +107,7 @@ struct ImportedBackgroundPages {
             throw NotebookImportWriterError.sourceFileNotOpenablePDF(file)
         }
         if openSourceDocuments.count >= Self.maximumOpenSourceDocuments { openSourceDocuments.removeFirst() }
-        openSourceDocuments.append((file, document))
+        openSourceDocuments.append((file, contents))
         return document
     }
 
