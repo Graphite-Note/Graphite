@@ -5,8 +5,8 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.10
- * Date: 05/11/2026
+ * Version: 0.11
+ * Date: 12/11/2026
  */
 
 #if canImport(UIKit)
@@ -211,7 +211,8 @@ final class MarkdownEditorStyling {
         let textStorage = textView.styledTextStorage
         styler.applyStyles(to: textStorage, editedRange: NSRange(location: 0, length: 0), restyleEverything: true, revealedMarkup: revealedMarkup,
                            concealedBlocks: concealedBlocks(in: textView, restyledRange: NSRange(location: 0, length: textStorage.length)),
-                           foldedRegions: foldedRegions(), blockContextCheckpoints: blockContextCheckpoints)
+                           foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
+                           blockContextCheckpoints: blockContextCheckpoints)
         textView.typingAttributes = styler.baseAttributes
         didRestyle(textView)
     }
@@ -224,7 +225,8 @@ final class MarkdownEditorStyling {
         let selection = textView.styledSelection
         styler.applyStyles(to: textStorage, editedRange: range, restyleEverything: false, revealedMarkup: revealedMarkup,
                            concealedBlocks: concealedBlocks(in: textView, restyledRange: MarkdownTextStyler.linesRestyled(for: range, in: textStorage.mutableString)),
-                           foldedRegions: foldedRegions(), blockContextCheckpoints: blockContextCheckpoints)
+                           foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
+                           blockContextCheckpoints: blockContextCheckpoints)
         // Set only when styling moved it: setting the selection costs UIKit tens of
         // milliseconds far down a long note.
         if textView.styledSelection != selection { textView.styledSelection = selection }
@@ -273,7 +275,12 @@ final class MarkdownEditorStyling {
                                                               concealedBlocks: concealedBlocks(in: textView, restyledRange: nil), foldedRegions: foldedRegions(),
                                                               blockContextCheckpoints: blockContextCheckpoints)
         codeBlockShowingFences = codeBlockTouchedBySelection(in: textView)
-        guard !restyledBlockIndices.isEmpty || !restyledRanges.isEmpty else { return false }
+        // An image line's embed shows its source or its picture as a unit: its line is restyled whole when that changes.
+        let source = currentSource(of: textView)
+        let linesChangingPictures = LivePreviewInlinePictures.linesChanging(from: inlinePictures(revealedBy: previousMarkup, in: textView),
+                                                                            to: inlinePictures(revealedBy: newMarkup, in: textView), in: source)
+        for line in linesChangingPictures { restyle(line, in: textView) }
+        guard !restyledBlockIndices.isEmpty || !restyledRanges.isEmpty || !linesChangingPictures.isEmpty else { return false }
         if textView.styledSelection != selection { textView.styledSelection = selection }
         textView.typingAttributes = styler.baseAttributes
         didRestyle(textView)
@@ -385,6 +392,16 @@ final class MarkdownEditorStyling {
     }
 
     // MARK: Rendered blocks
+
+    /// The pictures of the image lines `markup`'s selection is on, but for the embeds whose
+    /// source it shows; none while the selection reveals nothing or the blocks describe older text.
+    private func inlinePictures(revealedBy markup: RevealedMarkup?, in textView: any MarkdownStyledTextView) -> [InlinePicture] {
+        guard rendersBlocks, let markup, let root = environment?.root, !textState.cachesDescribeOldText else { return [] }
+        return LivePreviewInlinePictures.pictures(in: textState.blockEntries, revealedMarkup: markup, source: currentSource(of: textView),
+                                                  columnWidth: textView.renderedBlockColumnWidth) { embed in
+            LivePreviewInlinePictures.lastDecodedThumbnail(of: embed, in: root)
+        }
+    }
 
     /// The blocks whose source is concealed under their views, in note order: every block
     /// the selection is not in (all of them while the selection reveals nothing), none that

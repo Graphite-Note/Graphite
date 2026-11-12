@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.52
+ * Version: 0.53
  * Date: 12/11/2026
  */
 
@@ -3152,9 +3152,21 @@ final class ReadingImageCache: @unchecked Sendable {
     }
 
     private let entries = NSCache<NSString, Entry>()
+    /// The key of the thumbnail last made or handed out for each file and kind, whatever its
+    /// width, so `latestThumbnail(for:kind:)` finds it without knowing that width.
+    private let latestKeys = NSCache<NSString, NSString>()
 
     init(totalCostLimit: Int = ReadingImageCache.defaultTotalCostLimit) {
         entries.totalCostLimit = totalCostLimit
+    }
+
+    /// The thumbnail last made or handed out for the file, at whatever width it was decoded
+    /// for, which may be older than the file. Live Preview draws the pictures of an image line
+    /// among the line's text with it while the cursor shows one embed's source, the pictures
+    /// its view decoded a moment before.
+    func latestThumbnail(for location: URL, kind: ReadingThumbnailKind) -> ReadingThumbnail? {
+        guard let key = latestKeys.object(forKey: Self.fileKey(for: location, kind: kind)) else { return nil }
+        return entries.object(forKey: key)?.thumbnail
     }
 
     /// The thumbnail last made for the file, which may be older than the file; shown while
@@ -3174,6 +3186,7 @@ final class ReadingImageCache: @unchecked Sendable {
         let byteCount = (attributes?[.size] as? NSNumber)?.intValue
         if let modificationDate, let byteCount, let entry = entries.object(forKey: key),
            entry.fileModificationDate == modificationDate, entry.fileByteCount == byteCount {
+            latestKeys.setObject(key, forKey: Self.fileKey(for: location, kind: kind))
             return entry.thumbnail
         }
         let limit = PreviewPixelLimit(maximumPixelDimension: kind.maximumDimension, displayPixelWidth: displayPixelWidth)
@@ -3183,12 +3196,17 @@ final class ReadingImageCache: @unchecked Sendable {
         if let modificationDate, let byteCount {
             entries.setObject(Entry(fileModificationDate: modificationDate, fileByteCount: byteCount, thumbnail: thumbnail), forKey: key,
                               cost: image.bytesPerRow * image.height)
+            latestKeys.setObject(key, forKey: Self.fileKey(for: location, kind: kind))
         }
         return thumbnail
     }
 
     private static func key(for location: URL, kind: ReadingThumbnailKind, displayPixelWidth: Int?) -> NSString {
         "\(kind.rawValue)|\(displayPixelWidth.map(String.init) ?? "")|\(location.standardizedFileURL.path)" as NSString
+    }
+
+    private static func fileKey(for location: URL, kind: ReadingThumbnailKind) -> NSString {
+        "\(kind.rawValue)|\(location.standardizedFileURL.path)" as NSString
     }
 }
 

@@ -3,15 +3,17 @@
  * ---------------------------------------
  * Layer: Tests
  * Description: A line of image embeds, or of images among text, is drawn in Live Preview as pictures side by
- *              side at their sizes, and shows its source while the cursor is on it (HUNT-323); a list item's
- *              pictures stand beside its bullet, wrapping under the first (issue #102).
+ *              side at their sizes (HUNT-323); with the cursor on it, only the embed the cursor is in shows its
+ *              source and the others stay pictures; a list item's pictures stand beside its bullet, wrapping
+ *              under the first (issue #102).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 11/11/2026
+ * Version: 0.3
+ * Date: 12/11/2026
  */
 
 import XCTest
+import AppKit
 import SwiftUI
 import ImageIO
 import UniformTypeIdentifiers
@@ -25,8 +27,19 @@ import GraphiteTestSupport
 final class UiLivePreviewImageLineTests: XCTestCase {
     private var vault: URL!
 
+    private var windows: [NSWindow] = []
+
     override func setUp() async throws {
         vault = try TemporaryVault.make(prefix: "ImageLine", for: self).root
+    }
+
+    override func tearDown() async throws {
+        for window in windows {
+            window.orderOut(nil)
+            window.contentView = nil
+        }
+        windows = []
+        try await super.tearDown()
     }
 
     /// The owner's line, with made-up file names: nine photos 200 points wide, uppercase `.JPG`.
@@ -168,6 +181,243 @@ final class UiLivePreviewImageLineTests: XCTestCase {
         XCTAssertEqual(concealedElsewhere.first?.range.location, lineRange.location)
         XCTAssertTrue(concealed(cursorAt: lineRange.location + 40).isEmpty, "The cursor on the line shows its source.")
         XCTAssertTrue(concealed(cursorAt: NSMaxRange(lineRange) - 1).isEmpty, "The cursor at the line's end shows its source.")
+    }
+
+    // MARK: The cursor on one embed (issue #102)
+
+    /// Three two-to-one pictures, 300, 200 and 100 points wide, between two lines of text.
+    private static let threePictures = "![[Left.png|300]] ![[Middle.png|200]] ![[Right.png|100]]"
+    private static let threePicturesNote = "Intro\n\n" + threePictures + "\n\nAfter the pictures\n"
+
+    /// The owner's screenshot showed the cursor on one photo of a row turning the whole row into its text. As in
+    /// Obsidian, only the embed the cursor is in shows its source; the line's other pictures stay drawn, at their
+    /// sizes and in their places among its text.
+    func testTheCursorInTheSecondEmbedShowsItsSourceAndTheOtherEmbedsStayPictures() async throws {
+        let (coordinator, textView, _) = try await makeEditorWithThreePictures()
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = Self.threePicturesNote as NSString
+        let (left, middle, right) = (source.range(of: "![[Left.png|300]]"), source.range(of: "![[Middle.png|200]]"), source.range(of: "![[Right.png|100]]"))
+        moveCursor(to: NSRange(location: middle.location + 5, length: 0), in: textView, coordinator)
+
+        XCTAssertFalse(isConcealedBlock(middle.location, in: textView), "The line shows its text.")
+        XCTAssertTrue(showsSource(middle, in: textView), "The embed the cursor is in shows its source.")
+        XCTAssertEqual(picture(at: left, in: textView)?.size, CGSize(width: 300, height: 150), "The first embed stays a picture at its width.")
+        XCTAssertEqual(picture(at: right, in: textView)?.size, CGSize(width: 100, height: 50), "The third embed stays a picture at its width.")
+
+        // In their places in the line: the first picture, then the second embed's source, then the third picture.
+        let line = try laidOutLine(holding: middle.location, in: textView)
+        // The line's characters are counted from its paragraph's start, the line's own.
+        let lineStart = source.lineRange(for: middle).location
+        func horizontalPosition(_ location: Int) -> CGFloat { line.locationForCharacter(at: location - lineStart).x }
+        // TextKit shares the room between the embed's last two characters, so it ends after the last.
+        let leftRoom = horizontalPosition(NSMaxRange(left)) - horizontalPosition(NSMaxRange(left) - 2)
+        XCTAssertEqual(leftRoom, 300 + 2 * InlinePictureLayout.horizontalPadding, accuracy: 1,
+                       "The first picture's room is as wide as it.")
+        XCTAssertGreaterThan(horizontalPosition(middle.location), 300, "The source follows the first picture.")
+        XCTAssertGreaterThan(horizontalPosition(NSMaxRange(right) - 2), horizontalPosition(NSMaxRange(middle)), "The third picture follows the source.")
+        XCTAssertTrue(NSLocationInRange(NSMaxRange(right) - 1 - lineStart, line.characterRange), "The three share one line.")
+        XCTAssertGreaterThanOrEqual(line.typographicBounds.height, 150, "The line is as tall as its tallest picture.")
+        // Drawn: a row through the pictures' lower halves is red for 400 points, the first and third pictures.
+        let redPoints = try redPointsAcrossTheLine(holding: middle.location, belowBaselineBy: -20, in: textView)
+        XCTAssertEqual(Double(redPoints), 400, accuracy: 6, "The first and third pictures are drawn, the second is text.")
+    }
+
+    /// Moving the cursor off the line draws every picture again in the line's view.
+    func testTheCursorLeavingTheLineDrawsEveryPictureAgain() async throws {
+        let (coordinator, textView, _) = try await makeEditorWithThreePictures()
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = Self.threePicturesNote as NSString
+        let middle = source.range(of: "![[Middle.png|200]]")
+        moveCursor(to: NSRange(location: middle.location + 5, length: 0), in: textView, coordinator)
+        XCTAssertNotNil(picture(at: source.range(of: "![[Left.png|300]]"), in: textView))
+        moveCursor(to: NSRange(location: source.range(of: "After").location, length: 0), in: textView, coordinator)
+        XCTAssertTrue(isConcealedBlock(middle.location, in: textView), "The line is drawn by its view again.")
+        let storage = try XCTUnwrap(textView.textStorage)
+        var drawnPictures = 0
+        storage.enumerateAttribute(ConcealedReplacement.pictureAttributeKey, in: NSRange(location: 0, length: storage.length)) { value, _, _ in
+            if value != nil { drawnPictures += 1 }
+        }
+        XCTAssertEqual(drawnPictures, 0, "No picture is left among the text.")
+        try await awaitConditionAfterLayout { self.blockViews(in: textView).count == 1 }
+    }
+
+    /// The right arrow walks through the line embed by embed: wherever the cursor is, exactly the embed it is in
+    /// shows its source, and the others are pictures.
+    func testTheArrowKeysWalkThroughTheLineEmbedByEmbed() async throws {
+        let (coordinator, textView, _) = try await makeEditorWithThreePictures()
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = Self.threePicturesNote as NSString
+        let embeds = ["![[Left.png|300]]", "![[Middle.png|200]]", "![[Right.png|100]]"].map { embed in source.range(of: embed) }
+        moveCursor(to: NSRange(location: embeds[0].location, length: 0), in: textView, coordinator)
+        var shownInOrder: [Int] = []
+        while textView.selectedRange().location <= NSMaxRange(embeds[2]) {
+            let cursor = textView.selectedRange().location
+            let shown = embeds.indices.filter { index in showsSource(embeds[index], in: textView) }
+            let expected = embeds.indices.filter { index in cursor >= embeds[index].location && cursor <= NSMaxRange(embeds[index]) }
+            XCTAssertEqual(shown, expected, "At \(cursor) the embed the cursor is in shows its source.")
+            for index in embeds.indices where !expected.contains(index) {
+                XCTAssertNotNil(picture(at: embeds[index], in: textView), "At \(cursor) embed \(index + 1) is a picture.")
+            }
+            if let index = shown.first, shownInOrder.last != index { shownInOrder.append(index) }
+            textView.moveRight(nil)
+            coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
+        }
+        XCTAssertEqual(shownInOrder, [0, 1, 2], "Each embed shows its source in turn.")
+    }
+
+    /// Typing in the source the cursor shows edits that embed, and the line's other embeds stay pictures.
+    func testTypingInTheShownSourceEditsThatEmbed() async throws {
+        let (coordinator, textView, _) = try await makeEditorWithThreePictures()
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = Self.threePicturesNote as NSString
+        let width = source.range(of: "200]]")
+        moveCursor(to: NSRange(location: width.location, length: 3), in: textView, coordinator)
+        textView.insertText("150", replacementRange: textView.selectedRange())
+        coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+        let edited = textView.string as NSString
+        XCTAssertTrue(textView.string.contains("![[Left.png|300]] ![[Middle.png|150]] ![[Right.png|100]]"), textView.string)
+        XCTAssertTrue(showsSource(edited.range(of: "![[Middle.png|150]]"), in: textView), "The edited embed still shows its source.")
+        XCTAssertEqual(picture(at: edited.range(of: "![[Left.png|300]]"), in: textView)?.size.width, 300)
+        XCTAssertEqual(picture(at: edited.range(of: "![[Right.png|100]]"), in: textView)?.size.width, 100)
+    }
+
+    /// Text between the pictures shows as text, and a list item's marker as it did, while one embed shows its source.
+    func testTextBetweenThePicturesAndAListMarkerShowAsBefore() async throws {
+        try writeRedImage(named: "Left.png")
+        try writeRedImage(named: "Right.png")
+        let line = "- ![[Left.png|100]] and then ![[Right.png|100]]"
+        try await rememberPictures(of: try imageLinePieces(line))
+        let note = "Intro\n\n" + line + "\n\nAfter\n"
+        let (coordinator, textView, _) = try await makeEditor(text: note)
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = note as NSString
+        let right = source.range(of: "![[Right.png|100]]")
+        moveCursor(to: NSRange(location: right.location + 4, length: 0), in: textView, coordinator)
+        XCTAssertTrue(showsSource(right, in: textView))
+        XCTAssertEqual(picture(at: source.range(of: "![[Left.png|100]]"), in: textView)?.size, CGSize(width: 100, height: 50))
+        XCTAssertTrue(showsSource(source.range(of: "and then"), in: textView), "The text between the pictures shows.")
+        XCTAssertTrue(showsSource(NSRange(location: source.range(of: "- ![[").location, length: 1), in: textView),
+                      "The list marker shows as written while the cursor is on its line, as before.")
+    }
+
+    // MARK: Editor helpers
+
+    private func makeEditorWithThreePictures() async throws -> (NativeMarkdownEditor.Coordinator, MarkdownMacTextView, NSScrollView) {
+        for name in ["Left.png", "Middle.png", "Right.png"] { try writeRedImage(named: name) }
+        try await rememberPictures(of: try imageLinePieces(Self.threePictures))
+        let editor = try await makeEditor(text: Self.threePicturesNote)
+        try await awaitConditionAfterLayout { self.blockViews(in: editor.1).count == 1 }
+        return editor
+    }
+
+    /// A Mac Live Preview editor of `text` in the test's vault, whose embeds are found where their targets say,
+    /// in a window with the note's keyboard focus, as after a click in it.
+    private func makeEditor(text: String) async throws -> (NativeMarkdownEditor.Coordinator, MarkdownMacTextView, NSScrollView) {
+        try Data(text.utf8).write(to: vault.appendingPathComponent("Note.md"))
+        let store = VaultStore(root: vault)
+        let notePath = try VaultPath("Note.md")
+        let session = try MarkdownSession(path: notePath, snapshot: try await store.read(notePath), store: store, didSave: { _ in })
+        var configuration = EditorConfiguration()
+        configuration.mode = .livePreview
+        let coordinator = NativeMarkdownEditor.Coordinator(session: session, configuration: configuration)
+        coordinator.environment = environment()
+        let scrollView = MarkdownMacTextView.makeScrollableTextView()
+        let textView = try XCTUnwrap(scrollView.documentView as? MarkdownMacTextView)
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.textContainerInset = CGSize(width: 32, height: 32)
+        textView.string = text
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
+        textView.delegate = coordinator
+        coordinator.connect(textView)
+        coordinator.restyleEverything(in: textView)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 600), styleMask: [.titled], backing: .buffered, defer: true)
+        window.isReleasedWhenClosed = false
+        windows.append(window)
+        window.contentView = scrollView
+        window.makeFirstResponder(textView)
+        scrollView.frame = NSRect(x: 0, y: 0, width: 760, height: 600)
+        textView.frame.size.width = 760
+        window.showInvisibly()
+        scrollView.layoutSubtreeIfNeeded()
+        return (coordinator, textView, scrollView)
+    }
+
+    private func moveCursor(to selection: NSRange, in textView: NSTextView, _ coordinator: NativeMarkdownEditor.Coordinator) {
+        textView.setSelectedRange(selection)
+        coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
+    }
+
+    private func awaitConditionAfterLayout(_ condition: () -> Bool) async throws {
+        try await waitUntil(timeoutSeconds: 10) {
+            windows.forEach { window in window.contentView?.layoutSubtreeIfNeeded(); window.displayIfNeeded() }
+            return condition()
+        }
+    }
+
+    private func blockViews(in textView: NSTextView) -> [NSView] {
+        textView.subviews.filter { subview in subview is NSHostingView<AnyView> }
+    }
+
+    /// Whether the line at `location` is concealed under a block's view.
+    private func isConcealedBlock(_ location: Int, in textView: NSTextView) -> Bool {
+        ((textView.textStorage?.attribute(.paragraphStyle, at: location, effectiveRange: nil) as? NSParagraphStyle)?.maximumLineHeight ?? 0) == 0.01
+    }
+
+    /// Whether every character of `range` is text of the note's size, none hidden or under a picture.
+    private func showsSource(_ range: NSRange, in textView: NSTextView) -> Bool {
+        guard let storage = textView.textStorage, range.location != NSNotFound else { return false }
+        return (range.location..<NSMaxRange(range)).allSatisfy { location in
+            ((storage.attribute(.font, at: location, effectiveRange: nil) as? NSFont)?.pointSize ?? 0) > 5
+                && storage.attribute(ConcealedReplacement.pictureAttributeKey, at: location, effectiveRange: nil) == nil
+        }
+    }
+
+    /// The picture drawn over all of `range`, when one is.
+    private func picture(at range: NSRange, in textView: NSTextView) -> InlinePictureLayout? {
+        guard let storage = textView.textStorage, range.location != NSNotFound else { return nil }
+        var pictureRange = NSRange(location: NSNotFound, length: 0)
+        let layout = storage.attribute(ConcealedReplacement.pictureAttributeKey, at: range.location, longestEffectiveRange: &pictureRange,
+                                       in: NSRange(location: 0, length: storage.length)) as? InlinePictureLayout
+        return pictureRange == range ? layout : nil
+    }
+
+    private func layoutFragment(holding location: Int, in textView: NSTextView) throws -> NSTextLayoutFragment {
+        let textLayoutManager = try XCTUnwrap(textView.textLayoutManager)
+        textLayoutManager.ensureLayout(for: textLayoutManager.documentRange)
+        let contentStorage = try XCTUnwrap(textLayoutManager.textContentManager as? NSTextContentStorage)
+        let textLocation = try XCTUnwrap(contentStorage.location(contentStorage.documentRange.location, offsetBy: location))
+        return try XCTUnwrap(textLayoutManager.textLayoutFragment(for: textLocation))
+    }
+
+    /// The laid-out line holding `location`, its character ranges counted in its paragraph's line, which here starts the
+    /// paragraph at the line's start.
+    private func laidOutLine(holding location: Int, in textView: NSTextView) throws -> NSTextLineFragment {
+        let fragment = try layoutFragment(holding: location, in: textView)
+        let paragraphStart = (textView.string as NSString).lineRange(for: NSRange(location: location, length: 0)).location
+        return try XCTUnwrap(fragment.textLineFragments.first { line in NSLocationInRange(location - paragraphStart, line.characterRange) })
+    }
+
+    /// How many points of a row `offset` points below the baseline of the line holding `location` are red, drawn
+    /// by the line's layout fragment one pixel a point.
+    private func redPointsAcrossTheLine(holding location: Int, belowBaselineBy offset: CGFloat, in textView: NSTextView) throws -> Int {
+        let fragment = try layoutFragment(holding: location, in: textView)
+        let line = try laidOutLine(holding: location, in: textView)
+        let width = Int(fragment.layoutFragmentFrame.width) + 20, height = Int(fragment.layoutFragmentFrame.height) + 20
+        let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.translateBy(x: 0, y: CGFloat(height))
+        context.scaleBy(x: 1, y: -1)
+        NSAppearance(named: .aqua)?.performAsCurrentDrawingAppearance {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+            fragment.draw(at: .zero, in: context)
+            NSGraphicsContext.restoreGraphicsState()
+        }
+        let image = try XCTUnwrap(context.makeImage())
+        let row = Int(line.typographicBounds.minY + line.glyphOrigin.y + offset)
+        return try (0..<width).filter { column in try isRed(image, x: column, y: row) }.count
     }
 
     // MARK: Other forms

@@ -10,6 +10,7 @@ final class ConcealedReplacementAttributeKeysTests: XCTestCase {
         XCTAssertEqual(ConcealedReplacement.attributeKey.rawValue, "GraphiteConcealedReplacement")
         XCTAssertEqual(ConcealedReplacement.colorAttributeKey.rawValue, "GraphiteConcealedReplacementColor")
         XCTAssertEqual(ConcealedReplacement.mathAttributeKey.rawValue, "GraphiteConcealedReplacementMath")
+        XCTAssertEqual(ConcealedReplacement.pictureAttributeKey.rawValue, "GraphiteConcealedReplacementPicture")
         XCTAssertEqual(ConcealedReplacement.roundedBackgroundKey.rawValue, "GraphiteThemedRoundedBackground")
         XCTAssertEqual(ConcealedReplacement.checkboxStyleKey.rawValue, "GraphiteThemedCheckbox")
         XCTAssertEqual(ConcealedReplacement.headingOrnamentKey.rawValue, "GraphiteThemedHeadingOrnament")

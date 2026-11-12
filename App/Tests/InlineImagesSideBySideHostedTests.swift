@@ -5,11 +5,12 @@
  * Description: Hosted tests of a note whose Photos section writes several image embeds on a line, as the
  *              owner's "Butter-basted steak.md" does: once the index has read the vault, the reading view and
  *              Live Preview draw every picture, in paragraph lines, a list item, a table and a callout, and
- *              none is left as a link (issue #102).
+ *              none is left as a link; the cursor on one embed of a line shows that embed's source only, the
+ *              line's other pictures staying drawn (issue #102).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 #if os(iOS)
@@ -139,6 +140,57 @@ final class InlineImagesSideBySideHostedTests: XCTestCase {
         let firstPhotoTop = sightings.embedFrames.first { frame in abs(frame.width - 300) < 1 }?.minY ?? 0
         try await attachScreenshot(named: "Live Preview's photos", showingContentFrom: firstPhotoTop - 60, of: scrollView)
         try await attachScreenshot(named: "Live Preview's list, table and callout", showingContentFrom: (listPictures.first?.minY ?? 0) - 60, of: scrollView)
+    }
+
+    /// As in Obsidian, the cursor in the second photo of the ten-photo line shows that embed's source only: the
+    /// line's other nine photos stay drawn at their widths, among the line's text.
+    func testTheCursorInTheSecondEmbedOfALineShowsItsSourceAndTheOtherPicturesStay() async throws {
+        let (workspace, picturePaths) = try await makeWorkspace(viewMode: .livePreview)
+        let controller = try host(workspace)
+        let scrollView = try await noteScrollView(in: controller)
+        try await indexThePictures(picturePaths, of: workspace)
+        _ = try await pictureSightings(scrolling: scrollView, in: controller) { sightings in sightings.embedFrames.count >= Self.photoNames.count }
+        let textView = try XCTUnwrap(scrollView as? MarkdownTextView, "Live Preview's text view")
+        let source = textView.text as NSString
+        let photos = (6652...6661).map { number in source.range(of: "![[IMG_\(number).JPG|250]]") }
+        XCTAssertFalse(photos.contains { range in range.location == NSNotFound })
+
+        // The cursor is put in the note as a tap does: the text view starts editing, and the selection is reported.
+        textView.beginEditing()
+        try await waitUntil("the note is being edited") { textView.isFirstResponder }
+        // Right after the embed's `]]`, still in it, where no link suggestions open over the screenshot.
+        textView.selectedRange = NSRange(location: NSMaxRange(photos[1]), length: 0)
+        textView.delegate?.textViewDidChangeSelection?(textView)
+        let storage = textView.textStorage
+        func pictureSize(at range: NSRange) -> CGSize? {
+            var pictureRange = NSRange(location: NSNotFound, length: 0)
+            let layout = storage.attribute(ConcealedReplacement.pictureAttributeKey, at: range.location, longestEffectiveRange: &pictureRange,
+                                           in: NSRange(location: 0, length: storage.length)) as? InlinePictureLayout
+            return pictureRange == range ? layout?.size : nil
+        }
+        func showsSource(_ range: NSRange) -> Bool {
+            (range.location..<NSMaxRange(range)).allSatisfy { location in
+                ((storage.attribute(.font, at: location, effectiveRange: nil) as? UIFont)?.pointSize ?? 0) > 5
+                    && storage.attribute(ConcealedReplacement.pictureAttributeKey, at: location, effectiveRange: nil) == nil
+            }
+        }
+        try await waitUntil("the second photo shows its source") { showsSource(photos[1]) }
+        // The ten photos are 4:3: each picture left drawn is 250 by 187.5 points.
+        for (index, photo) in photos.enumerated() where index != 1 {
+            XCTAssertEqual(pictureSize(at: photo), CGSize(width: 250, height: 187.5), "Photo \(index + 1) stays a picture.")
+        }
+        XCTAssertNil(pictureSize(at: photos[1]))
+        XCTAssertTrue(showsSource(photos[1]), "The embed the cursor is in shows its source.")
+        let caret = textView.caretRect(for: try XCTUnwrap(textView.selectedTextRange).start)
+        // The keyboard covers the screen's lower part: the line's first picture at the top shows the next lines below it.
+        try await attachScreenshot(named: "The cursor in the second photo of the line", showingContentFrom: caret.minY - 20, of: scrollView)
+
+        // The cursor leaving the line draws its view again, every photo a picture.
+        textView.selectedRange = NSRange(location: source.range(of: "The end.").location, length: 0)
+        textView.delegate?.textViewDidChangeSelection?(textView)
+        XCTAssertNil(pictureSize(at: photos[0]), "No picture is left among the text.")
+        XCTAssertEqual(((storage.attribute(.paragraphStyle, at: photos[1].location, effectiveRange: nil) as? NSParagraphStyle)?.maximumLineHeight ?? 0), 0.01,
+                       accuracy: 0.001, "The line is concealed under its view again.")
     }
 
     // MARK: Helpers

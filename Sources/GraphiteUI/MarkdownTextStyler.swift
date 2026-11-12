@@ -5,8 +5,8 @@
  * Description: Styles Markdown source in place, with attributes only, for the editor.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 02/11/2026
+ * Version: 0.20
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -134,6 +134,8 @@ enum ConcealedReplacement: String {
     static let colorAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementColor")
     /// Holds the `InlineMathLayout` of an `inlineMath` replacement.
     static let mathAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementMath")
+    /// Holds the `InlinePictureLayout` of a picture an image line draws among its text.
+    static let pictureAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementPicture")
     static let subpathSeparatorText = " > "
     /// A theme's shapes Live Preview draws behind or around text (theme Phase 3):
     /// a `ThemedTextShape` for tag pills and highlights, a `ThemedCheckboxStyle` for task
@@ -310,13 +312,13 @@ struct MarkdownTextStyler {
     /// Restyles whole lines touched by `range`, or the whole document. In Live Preview,
     /// `revealedMarkup` says which markup stays visible around the selection (nil while the
     /// note is only being read, so no markup shows), and `concealedBlocks` are drawn as
-    /// views. Source mode shows all markup.
+    /// views, and `inlinePictures` drawn in place of their embeds. Source mode shows all markup.
     /// `foldedRegions` are hidden, whatever the mode. `blockContextCheckpoints`, kept by the
     /// editor for its text storage, spares a restyle near the end of a long note from
     /// rescanning the note from its top; without it the scan starts at the top.
     func applyStyles(to textStorage: NSTextStorage, editedRange range: NSRange, restyleEverything: Bool,
                      revealedMarkup: RevealedMarkup?, concealedBlocks: [ConcealedBlock], foldedRegions: [FoldableRegion] = [],
-                     blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) {
+                     inlinePictures: [InlinePicture] = [], blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) {
         // A whole-note pass reads an immutable copy: the storage's mutable string proxy is
         // several times slower to scan, and the text does not change while it is styled.
         let source: NSString = restyleEverything ? (textStorage.mutableString.copy() as? NSString ?? textStorage.mutableString) : textStorage.mutableString
@@ -356,6 +358,7 @@ struct MarkdownTextStyler {
             drawCodeBlocksAsBoxes(in: spans, to: textStorage, source: source, revealedMarkup: revealedMarkup, fonts: fonts, blockContextCheckpoints: blockContextCheckpoints)
         }
         highlightCode(in: spans, to: textStorage, source: source, hiddenRanges: hiddenRanges)
+        drawInlinePictures(inlinePictures, within: styledRange, in: textStorage)
         if configuration.mode == .livePreview {
             for block in concealedBlocks where NSIntersectionRange(block.range, styledRange).length > 0 {
                 concealBlock(block, source: source, in: textStorage)
@@ -556,6 +559,7 @@ struct MarkdownTextStyler {
         textStorage.removeAttribute(.backgroundColor, range: hiddenRange)
         textStorage.removeAttribute(ConcealedReplacement.attributeKey, range: hiddenRange)
         textStorage.removeAttribute(ConcealedReplacement.mathAttributeKey, range: hiddenRange)
+        textStorage.removeAttribute(ConcealedReplacement.pictureAttributeKey, range: hiddenRange)
         textStorage.removeAttribute(.baselineOffset, range: hiddenRange)
         conceal(hiddenRange, in: textStorage)
         // The header's own line break stays in its paragraph; the lines after it collapse.
