@@ -36,4 +36,4 @@ The growth is all in the binary; assets and resource bundles did not change. Sym
 
 ## Decisions
 
-None yet.
+- The owner, 2026-11-12: bugs first, size after. Until the open bugs are fixed, TestFlight uploads go out with `--allow-size-growth`; the size work of this file starts once they are.

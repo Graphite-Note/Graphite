@@ -170,6 +170,7 @@ Issue: [#36](https://github.com/Graphite-Note/Graphite/issues/36)
 - [x] The last paper and size are remembered; spacing and colors start as Settings has them.
 - [ ] Not checked yet: the sheet at iPad portrait and landscape and on the iPhone.
 - [ ] Handwriting language (only with handwriting recognition).
+  Not a priority (the owner, 2026-11-12). Graphite has no handwriting recognition: its only text recognition is Vision on printed scanned pages, which finds the language itself.
   Looked at 2026-11-12, left open: Graphite has no handwriting recognition. Its only text recognition is Vision's on printed pages (`ScannedPageWordRecognizer` for scanned documents' text layer, `RecognizeTextRequest` and `RecognizeDocumentsRequest` in `PDFReadAloudPage` for reading a scanned PDF aloud), both detecting the page's language themselves; nothing reads a notebook's ink, and `HandwritingTidying` is geometry only (Apple's handwriting model has no public API). A language choice would have no recognizer to go to, so the sheet does not offer one until handwriting recognition exists.
 
 ## Part 6: creating a notebook from inside a note
@@ -182,6 +183,7 @@ Issue: [#37](https://github.com/Graphite-Note/Graphite/issues/37)
 - [x] New Drawing stays exactly as it was, beside New Notebook.
 - [x] Undo of the insert is the editor's undo of the inserted text; the PDF is kept. Not tested by an automated test.
 - [ ] "New Linked Note" from a notebook.
+  Wanted (the owner, 2026-11-12), once PDFs can hold such a link in a standard way that Obsidian also reads; Obsidian's own PDF support is expected to bring one. Waits for that.
 
 ## Part 7: choosing how you take notes
 
@@ -204,6 +206,6 @@ Issue: [#38](https://github.com/Graphite-Note/Graphite/issues/38)
 - Library presentation per device only, or also per vault or per folder (a course folder as a grid, a reference folder as a list)?
 - A real cover page in the PDF, or the first page as the cover? Answered 2026-10-21: both, the cover is optional.
 - Undo of "insert new notebook" in a note: keep the new PDF or delete it?
-- Is "New Linked Note" from a notebook wanted?
+- Is "New Linked Note" from a notebook wanted? Answered 2026-11-12: yes, once a standard way to link from a PDF exists (see Part 6).
 - Should the library also be offered on the Mac, or only iPad and iPhone?
 - Which later New menu entries come first: scanning, photos, or quick record?
