@@ -1203,3 +1203,25 @@ Where it lands in the rewrite: Phase 13.
   Fixed 2026-11-01, needs: look at the Mac menu bar with a note being edited: Edit › Find in Note… and Find and Replace in Note…, a Format menu (between Edit and View) and an Insert menu, dimmed when no note is being edited. The toolbar's Format and Insert menus, the Mac menu bar's and the right-click menu now come from one list (`EditorContextMenuContent`): Table, Math Block and Callout moved under Insert, headings under Paragraph, Quote, Body, Code Block, Horizontal Rule and Tag joined the toolbar, New Notebook joined the context menu. Color › Remove stays in the context menu only, because dimming it reads the note and the toolbar would be rebuilt at every keystroke. `ConsistencyBugHuntTests` (four tests: shared lists, no note reads, the registry). A probe app showed SwiftUI's default Edit menu has no Find, and that a Format menu replaces the system's one.
   Exact check, re-read 2026-11-04 (Mac, under a minute): while a note is edited, Edit has Find in Note… and Find and Replace in Note…, and the menu bar has Format (between Edit and View) and Insert; click in the sidebar so no note is edited: both show Available While Editing a Note, dimmed.
 
+
+## 15. Found by the release test vault's checks (2026-11-12)
+
+Issue: [#170](https://github.com/Graphite-Note/Graphite/issues/170)
+
+Found in the iPad simulator (iPad Pro 11-inch, iOS 27.2, Debug of main 21ea6b1a) with `Tests/ReleaseVault`, while checking the items of the other todo files; screenshots in that session's scratchpad. HUNT-280 and HUNT-212, also seen not fully fixed, stay in their sections.
+
+- [ ] **HUNT-328** (medium, bug) A Live Preview table's right "+" strip ("Add column to the right") takes no tap on the iPad, before or after a row is added; the bottom strip works.
+- [ ] **HUNT-329** (medium, bug) A row added by the bottom "+" strip is not drawn until something is typed in it: the source gets `|  |  |  |` and the cell editor opens floating below the table; a row of empty cells is not drawn in the reading view either.
+- [ ] **HUNT-330** (medium, ui) A picture on its own line in Live Preview offers only Edit Source on a long press: no Zoom In, Open in New Tab or the other side, which pictures in tables and text offer.
+- [ ] **HUNT-331** (low, ui) The picture zoom draws a small picture at its pixel size instead of fitting the window: a 480 × 270 picture is smaller in the zoom than in the note.
+- [ ] **HUNT-332** (medium, bug) Opening a file from the New Tab's Recent files in the right side of a split shows the alert "The operation couldn't be completed. (Swift.CancellationError error 1.)" (twice of two).
+- [ ] **HUNT-333** (medium, bug) The Colors core plugin's codes (`~={#e93147}text=~`) become tags: #e93147, #086ddd, #08b94e and #f5c542 appear as tags in the graph.
+- [ ] **HUNT-334** (low, ui) A web frame alone in a list item has no bullet, in Live Preview and the reading view.
+- [ ] **HUNT-335** (low, ui) Choosing a `folder:` search result leaves the search field focused with the keyboard up, and its suggestions cover the folder revealed in the tree.
+- [ ] **HUNT-336** (low, ui) In a split, or beside the right sidebar, the active tab's title and close button are hidden under the pane's Undo, Redo and Pencil buttons.
+- [ ] **HUNT-337** (low, ui) Graph view in the dark appearance: note names are hard to read.
+- [ ] **HUNT-338** (low, ui) Live Preview: a list item's bullet sits at the bottom left of its row of pictures instead of at its first line.
+- [ ] **HUNT-339** (low, bug) The map's notice that location access was refused stays after access is granted, until the location button is used again.
+- [ ] **HUNT-340** (low, ui) The table cell menu's "Sort by column (Z to A)" has no icon, while "(A to Z)" has one.
+- [ ] **HUNT-341** (low, ui) With the More menu's File submenu open, "Command Palette…" and "Focus" are drawn below the menu's card.
+- [ ] **HUNT-342** (low, bug) `Tests/ReleaseVault/Places.md` is only `# Places`, while the vault's README says it shows a map and a table (the vault, not the app).
