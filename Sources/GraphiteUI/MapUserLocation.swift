@@ -6,8 +6,8 @@
  *              Graphite may not use the person's location.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -99,6 +99,34 @@ final class MapUserLocationControl {
     }
 
     func dismissRefusal() { refusal = nil }
+
+    /// The person may have turned access on in Settings while the notice showed: once Graphite is
+    /// in front again, a refusal the device no longer makes goes, rather than staying until the
+    /// control is used again (HUNT-339). Asks nothing while no notice shows.
+    func checkAccessAgain(with location: any DeviceLocation) {
+        guard let refusal else { return }
+        let refusalNow: MapLocationRefusal? = switch location.access {
+        case .granted, .notAsked: nil
+        case .refused: .refused
+        case .restricted: .restricted
+        }
+        if refusalNow != refusal { self.refusal = refusalNow }
+    }
+}
+
+/// Looks at the device's location access again each time Graphite comes back to the front, for a
+/// map showing its refusal notice (`MapUserLocationControl.checkAccessAgain(with:)`).
+struct MapLocationAccessRecheck: ViewModifier {
+    let control: MapUserLocationControl
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.deviceLocation) private var deviceLocation
+
+    func body(content: Content) -> some View {
+        content.onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let deviceLocation else { return }
+            control.checkAccessAgain(with: deviceLocation)
+        }
+    }
 }
 
 /// The explanation a map shows when Graphite may not use the person's location, over the map,
@@ -140,5 +168,6 @@ extension View {
                 MapLocationRefusalNotice(refusal: refusal) { control.dismissRefusal() }.padding(12)
             }
         }
+        .modifier(MapLocationAccessRecheck(control: control))
     }
 }

@@ -945,6 +945,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private var foldedRegions: [FoldableRegion] { foldTracking.folded(foldedKeys: session.foldedKeys) }
         /// Set while a second viewport layout is waiting, so layout passes do not ask for more.
         private var isViewportRelayoutPending = false
+        /// Set when a layout pass found the viewport short while the relayout above waited, so it looks again after.
+        private var hasShortfallWhileRelayoutPending = false
         var actions = EditorActions()
         /// The quick font size pinch on the text view, which follows `actions.quickFontSize`.
         var quickFontSizePinch: QuickFontSizePinchRecognizer?
@@ -2136,7 +2138,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// never placed. Lines in such a gap have no rendered blocks or fold chevrons until
         /// the next scroll, so the viewport is laid out once more then.
         func layOutViewportAgainIfShort(in textView: MarkdownTextView) {
-            guard !isViewportRelayoutPending, let textLayoutManager = textView.textLayoutManager,
+            guard let textLayoutManager = textView.textLayoutManager,
                   let viewportRange = textLayoutManager.textViewportLayoutController.viewportRange else { return }
             var laidOutTop = CGFloat.greatestFiniteMagnitude
             var laidOutBottom: CGFloat = 0
@@ -2152,6 +2154,14 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                       laidOutTop: laidOutTop, laidOutBottom: laidOutBottom, visibleTop: visibleTop, visibleBottom: visibleTop + textView.bounds.height,
                       startsAtDocumentStart: viewportRange.location.compare(documentRange.location) != .orderedDescending,
                       endsAtDocumentEnd: viewportRange.endLocation.compare(documentRange.endLocation) != .orderedAscending) else { return }
+            // A shortfall within the moment after the last one is looked at again when that moment
+            // ends: a page scrolled to in the meantime, as by a jump or a scroll set in code, kept the
+            // viewport of the page before, and its blocks below that viewport stayed blank until the
+            // next scroll (Docs/Editor-scrolling-todo.md, the release pass's blank pictures).
+            guard !isViewportRelayoutPending else {
+                hasShortfallWhileRelayoutPending = true
+                return
+            }
             isViewportRelayoutPending = true
             DispatchQueue.main.async { [weak self, weak textView] in
                 guard let self, let textView else { return }
@@ -2159,7 +2169,12 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 self.placeWidgetsAgain(in: textView)
                 // Another shortfall is allowed only after a moment, so a note whose end is
                 // above the bottom of the view cannot loop.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.isViewportRelayoutPending = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak textView] in
+                    self.isViewportRelayoutPending = false
+                    guard self.hasShortfallWhileRelayoutPending else { return }
+                    self.hasShortfallWhileRelayoutPending = false
+                    textView?.setNeedsLayout()
+                }
             }
         }
 

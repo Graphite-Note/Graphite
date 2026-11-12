@@ -6,8 +6,8 @@
  *              Obsidian.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -108,9 +108,13 @@ private struct AddStrip: View {
                 .frame(width: Self.touchTargetSide, height: Self.touchTargetSide)
                 .contentShape(Rectangle())
                 .onTapGesture(perform: add)
+                // Outside the table, the text selection's overlay took the tap (HUNT-328): only
+                // the table layer itself was left out of it.
+                .modifier(TableControlOutsideTextSelection())
         }
         #else
         .onTapGesture(perform: add)
+        .modifier(TableControlOutsideTextSelection())
         #endif
         .onHover { isOver in
             isHighlighted = isOver

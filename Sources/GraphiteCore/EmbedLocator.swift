@@ -6,8 +6,8 @@
  *              the pictures of a line or list item that shows images among its text.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 11/11/2026
+ * Version: 0.7
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -40,12 +40,13 @@ public enum EmbedLocator {
         return DocumentKind(fileExtension: (path as NSString).pathExtension) == .image ? nil : embedInItem
     }
 
-    /// The pieces of `line` when it embeds at least one image of the vault and is not that
-    /// image alone: its text between the images, trimmed, and the images in order, as in
+    /// The pieces of `line` when it embeds at least one image or PDF of the vault and is not
+    /// that embed alone: its text between the embeds, trimmed, and the embeds in order, as in
     /// `![[a.jpg|200]] ![[b.jpg|200]]` or `See ![alt|120](a.png) here`. Obsidian draws such
-    /// a line as its text with the pictures side by side at their sizes. A web image, a
-    /// note or any other file embedded in the line stays text, and so does an embed in code.
-    /// Nil when the line embeds no image.
+    /// a line as its text with the pictures side by side at their sizes, and a PDF as its
+    /// viewer: two PDFs on one line were left as link text (HUNT-351). A web image, a note or
+    /// any other file embedded in the line stays text, and so does an embed in code. Nil when
+    /// the line embeds no image or PDF.
     static func imageLinePieces(onLine line: String) -> [ImageLinePiece]? {
         guard line.contains("![") else { return nil }
         let source = line as NSString
@@ -61,7 +62,7 @@ public enum EmbedLocator {
         }
         for embedRange in embedRanges where embedRange.location >= textStart {
             guard let embed = embed(at: embedRange.location + 1, in: source), embed.range == embedRange, !embed.isRemoteImage,
-                  DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension) == .image else { continue }
+                  [.image, .pdf].contains(DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension)) else { continue }
             appendText(upTo: embedRange.location)
             pieces.append(.image(embed))
             textStart = NSMaxRange(embedRange)
@@ -135,7 +136,7 @@ public enum ImageLinePiece: Equatable, Sendable {
     case listMarker(ImageLineListMarker)
     /// Text between pictures, drawn as Markdown.
     case text(String)
-    /// An image of the vault, its range counted in the line.
+    /// An image of the vault, or a PDF, which is shown as its viewer; its range counted in the line.
     case image(EmbedReference)
 }
 

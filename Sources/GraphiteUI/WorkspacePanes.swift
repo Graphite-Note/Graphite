@@ -339,6 +339,12 @@ private struct TabBar: View {
                 await Task.yield()
                 scrollProxy.scrollTo(group.activeTabID, anchor: .center)
             }
+            // The row narrows when a split, the right sidebar or the document's Undo, Redo and
+            // Write buttons take room beside it: the active tab is brought back into view, else
+            // its title and close button stayed hidden past the row's new end (HUNT-336).
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { _ in
+                scrollProxy.scrollTo(group.activeTabID)
+            }
         }
     }
 

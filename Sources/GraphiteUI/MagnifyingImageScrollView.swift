@@ -5,8 +5,8 @@
  * Description: A Mac view that fits a picture and magnifies it with a pinch or a double-click.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 09/11/2026
+ * Version: 0.9
+ * Date: 12/11/2026
  */
 
 #if canImport(AppKit) && !canImport(UIKit)
@@ -18,9 +18,12 @@ struct MagnifyingImageView: NSViewRepresentable {
     let image: CGImage
     /// Runs on a single click while the picture is fitted; nil does nothing.
     var singleClickWhileFitted: (() -> Void)? = nil
+    /// Whether a picture smaller than the view is enlarged to fit it (`MagnifyingImageScrollView.enlargesToFit`).
+    var enlargesToFit = false
 
     func makeNSView(context: Context) -> MagnifyingImageScrollView {
         let scrollView = MagnifyingImageScrollView()
+        scrollView.enlargesToFit = enlargesToFit
         scrollView.image = image
         scrollView.singleClickWhileFitted = singleClickWhileFitted
         return scrollView
@@ -32,7 +35,8 @@ struct MagnifyingImageView: NSViewRepresentable {
     }
 }
 
-/// Shows a picture fitted to the view, centered, never enlarged past its own size to fit.
+/// Shows a picture fitted to the view, centered, never enlarged past its own size to fit
+/// unless `enlargesToFit` says so.
 /// A trackpad pinch magnifies up to eight times the fitted size; a double-click toggles
 /// between fitted and two and a half times larger, around the point clicked. The Mac's
 /// counterpart of `ZoomingImageScrollView`.
@@ -43,6 +47,10 @@ final class MagnifyingImageScrollView: NSScrollView, NSGestureRecognizerDelegate
     static let maximumZoomFactor: CGFloat = 8
     /// Runs on a single click while the picture is fitted; nil does nothing.
     var singleClickWhileFitted: (() -> Void)?
+    /// Whether a picture smaller than the view is enlarged to fit it, as the zoom over a note
+    /// shows it (HUNT-331): a picture drawn wider in the note than its pixels was smaller in the
+    /// zoom. A file's own tab shows a small picture at its size.
+    var enlargesToFit = false
     private var singleClick: NSClickGestureRecognizer?
     private var doubleClick: NSClickGestureRecognizer?
 
@@ -90,7 +98,8 @@ final class MagnifyingImageScrollView: NSScrollView, NSGestureRecognizerDelegate
         super.layout()
         guard let image, image.width > 0, image.height > 0, bounds.width > 0, bounds.size != fittedBoundsSize else { return }
         let availableSize = CGSize(width: max(bounds.width - 2 * Self.margin, 1), height: max(bounds.height - 2 * Self.margin, 1))
-        let fittingMagnification = min(availableSize.width / CGFloat(image.width), availableSize.height / CGFloat(image.height), 1)
+        let wholePictureMagnification = min(availableSize.width / CGFloat(image.width), availableSize.height / CGFloat(image.height))
+        let fittingMagnification = enlargesToFit ? wholePictureMagnification : min(wholePictureMagnification, 1)
         let wasFitted = fittedBoundsSize == .zero || isFitted
         fittedMagnification = fittingMagnification
         minMagnification = fittingMagnification

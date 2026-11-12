@@ -115,7 +115,7 @@ final class PictureActionsTests: XCTestCase {
         let context = RenderedBlockMenuContext()
         let tabbed = actions()
         context.itemsAtPoint = { _ in [RenderedBlockMenuItem(title: "Row")] }
-        context.pictureItemsAtPoint = { point in pictures.picture(at: point).map { picture in tabbed.blockMenuItems(for: picture.path) } ?? [] }
+        context.pictureItemsAtPoint = { point in pictures.picture(at: point).map { picture in tabbed.blockMenuItems(for: picture) } ?? [] }
         XCTAssertEqual(context.items(at: CGPoint(x: 20, y: 20)).map(\.title), ["Zoom In", "Open in New Tab", "Open to the Right", "Row"])
         XCTAssertEqual(context.items(at: CGPoint(x: 300, y: 300)).map(\.title), ["Row"])
         context.items(at: CGPoint(x: 20, y: 20))[1].action?()

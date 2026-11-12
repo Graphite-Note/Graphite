@@ -65,6 +65,13 @@ final class CoreSemanticsParseTests: XCTestCase {
         XCTAssertEqual(try MarkdownSemantics.parse("#tag^block").tags, ["tag"], "Other modifier symbols still end a tag.")
     }
 
+    /// HUNT-333: the colour of the Colors plugin's markup became a tag in the graph and the tags view.
+    func testTheColorsPluginsHexColorIsNoTag() throws {
+        let text = "Colours: ~={#e93147}red text=~ and ~={#08b94e}green **bold** text=~, with a #real tag."
+        XCTAssertEqual(try MarkdownSemantics.parse(text).tags, ["real"])
+        XCTAssertEqual(try MarkdownSemantics.parse("{#heading-id} and ={#x}").tags, ["heading-id", "x"], "Only the Colors marker `~={` leaves its `#` alone.")
+    }
+
     func testAliasBombInFrontmatterIsRefusedQuickly() throws {
         var lines = ["a0: &a0 [x, x, x, x, x, x, x, x, x, x]"]
         for level in 1...9 { lines.append("a\(level): &a\(level) [" + Array(repeating: "*a\(level - 1)", count: 10).joined(separator: ", ") + "]") }

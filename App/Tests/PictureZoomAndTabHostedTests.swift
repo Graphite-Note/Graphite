@@ -167,7 +167,8 @@ final class PictureZoomAndTabHostedTests: XCTestCase {
             return [(element as? UIAction)?.title].compactMap { $0 }
         }
         let titlesOnPicture = titles(of: menu.makeMenu(at: pointOnPicture))
-        XCTAssertEqual(Array(titlesOnPicture.prefix(3)), ["Zoom In", "Open in New Tab", workspace.openOnOtherSideTitle], "\(titlesOnPicture)")
+        // As the reading view's own picture menu lists them: drawing on the image first, then zooming and the tabs.
+        XCTAssertEqual(Array(titlesOnPicture.prefix(4)), ["Draw on Image", "Zoom In", "Open in New Tab", workspace.openOnOtherSideTitle], "\(titlesOnPicture)")
         XCTAssertTrue(titlesOnPicture.contains("Edit Source"))
         let titlesOffPicture = titles(of: menu.makeMenu(at: CGPoint(x: pointOnPicture.x, y: blockView.bounds.maxY - 4)))
         XCTAssertFalse(titlesOffPicture.contains("Open in New Tab"), "Away from the picture the menu is the table's: \(titlesOffPicture)")

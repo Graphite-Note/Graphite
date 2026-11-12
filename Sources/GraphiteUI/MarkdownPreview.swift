@@ -2183,7 +2183,8 @@ struct ObsidianMarkdownParser: MarkupParser {
         if MarkdownNesting.exceedsSafeDepth(input) { return AttributedString(input) }
         // A numbered formula that is a block of its own is drawn by `NumberedEquationView`;
         // one that reaches here is among other text, and takes its numbers after its rows.
-        let markdown = ReadingMathPreparation.inliningEquationNumbers(in: input)
+        // A table row of empty cells, as the "+" strip adds, is drawn too (`MarkdownTableEmptyRows`).
+        let markdown = MarkdownTableEmptyRows.keepingEmptyRows(in: ReadingMathPreparation.inliningEquationNumbers(in: input))
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
         Self.applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
             if let color = Color(graphiteHex: hex) { text[range].foregroundColor = color }

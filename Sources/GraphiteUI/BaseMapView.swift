@@ -350,6 +350,7 @@ struct BaseMapView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let refusal = locationControl.refusal {
                 MapLocationRefusalNotice(refusal: refusal) { locationControl.dismissRefusal() }
+                    .modifier(MapLocationAccessRecheck(control: locationControl))
             }
             if options.coordinatesProperty == nil {
                 noticeLabel("Choose a coordinates property for this map in the base file.", systemImage: "mappin.slash")

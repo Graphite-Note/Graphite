@@ -27,6 +27,10 @@ extension WorkspaceModel {
             guard self.index === index else { return nil }
             graphCache = (version, graph)
             return graph
+        } catch is CancellationError {
+            // The graph's view went away or asked again (a tab hidden, the index changed) while
+            // the query ran: nothing went wrong, and an alert saying so is not wanted (HUNT-332).
+            return nil
         } catch {
             if self.index === index { errorMessage = error.localizedDescription }
             return nil

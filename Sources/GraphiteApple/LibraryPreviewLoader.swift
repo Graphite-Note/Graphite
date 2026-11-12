@@ -6,8 +6,8 @@
  *              picture scaled down, a note's first lines.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -96,16 +96,36 @@ public struct LibraryPreviewLoader: Sendable {
 
     /// A page with its annotations, as PDFKit draws it for any reader: turned as the page is, so a landscape or turned page
     /// keeps its proportions.
+    ///
+    /// Drawn at twice the size and scaled down: drawn at the tile's size, a dotted notebook's dots (1.3 points, under a
+    /// pixel there) came out at 4 % of the paper's brightness and the tile looked blank (HUNT-212); scaled down from twice
+    /// the size they keep about 11 %, as the paper looks.
     static func thumbnail(of page: PDFPage, longerSidePixels: Int) -> CGImage? {
         let size = displayedSize(of: page)
-        guard size.width > 0, size.height > 0 else { return nil }
+        guard size.width > 0, size.height > 0, longerSidePixels > 0 else { return nil }
         let scale = CGFloat(longerSidePixels) / max(size.width, size.height)
-        let thumbnail = page.thumbnail(of: CGSize(width: size.width * scale, height: size.height * scale), for: .cropBox)
+        let drawnScale = scale * thumbnailOversampling
+        let thumbnail = page.thumbnail(of: CGSize(width: size.width * drawnScale, height: size.height * drawnScale), for: .cropBox)
         #if canImport(UIKit)
-        return thumbnail.cgImage
+        let drawnImage = thumbnail.cgImage
         #else
-        return thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        let drawnImage = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil)
         #endif
+        guard let drawnImage else { return nil }
+        return scaledDown(drawnImage, to: CGSize(width: max(1, (size.width * scale).rounded()), height: max(1, (size.height * scale).rounded())))
+    }
+
+    /// How many times larger a page is drawn than its thumbnail, before it is scaled down.
+    static let thumbnailOversampling: CGFloat = 2
+
+    /// `image` at `pixelSize`, scaled with the high-quality filter, which averages the pixels it drops.
+    private static func scaledDown(_ image: CGImage, to pixelSize: CGSize) -> CGImage? {
+        guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+              let context = CGContext(data: nil, width: Int(pixelSize.width), height: Int(pixelSize.height), bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return image }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(origin: .zero, size: pixelSize))
+        return context.makeImage() ?? image
     }
 
     /// An image scaled down while it is decoded, never decoded at full size.

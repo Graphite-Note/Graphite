@@ -558,7 +558,16 @@ enum LivePreviewText {
                 hasUnresolvedEmbeds = true
                 continue
             }
-            guard DocumentKind(path: path) == .image, let location = try? path.url(in: environment.root) else { continue }
+            guard let location = try? path.url(in: environment.root) else { continue }
+            var isPicture = DocumentKind(path: path) == .image
+            if DocumentKind(path: path) == .pdf { isPicture = await ImageFileService().isEditableDrawingPDF(at: location) }
+            guard isPicture else {
+                // Any other file, as a PDF in a table cell, is a link to it named by its file, as the reading
+                // view writes it: left alone, its source showed with its `!` (HUNT-352).
+                let destination = GraphiteOpenLink.markdownDestination(target: embed.target, isWiki: embed.isWiki)
+                output.replaceCharacters(in: embed.range, with: "[\(ReadingViewBuilder.escapedLabel(path.name))](\(destination))")
+                continue
+            }
             let imageLocation = PreviewImageFragment.url(for: location, displaySize: embed.displaySize, version: environment.drawingVersion)
             output.replaceCharacters(in: embed.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
         }

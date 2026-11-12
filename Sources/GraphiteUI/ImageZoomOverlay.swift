@@ -122,6 +122,8 @@ private struct ZoomedPicture: UIViewRepresentable {
     func makeUIView(context: Context) -> ZoomingImageScrollView {
         let scrollView = ZoomingImageScrollView()
         scrollView.backgroundColor = .clear
+        // Fitted to the window, a small picture too, as Obsidian's zoom shows it.
+        scrollView.enlargesToFit = true
         scrollView.image = UIImage(cgImage: image)
         scrollView.singleTapWhileFitted = closeWhenTappedFitted
         return scrollView
@@ -139,7 +141,7 @@ private struct ZoomedPicture: View {
     let closeWhenTappedFitted: () -> Void
 
     var body: some View {
-        MagnifyingImageView(image: image, singleClickWhileFitted: closeWhenTappedFitted)
+        MagnifyingImageView(image: image, singleClickWhileFitted: closeWhenTappedFitted, enlargesToFit: true)
     }
 }
 #endif

@@ -183,6 +183,11 @@ final class ReleaseVaultPass {
         attachScreenshot(named: "\(path.rawValue) — \(ReleaseVaultFinding.Shown.ownView.rawValue)")
     }
 
+    /// Opens only these notes, each as `run` opens a note of its part, for a test of one defect the pass found.
+    func runNotes(_ paths: [VaultPath]) async throws {
+        for path in paths { try await passNote(path) }
+    }
+
     private func passNote(_ path: VaultPath) async throws {
         try await open(path)
         guard let session = workspace.markdownSession else {

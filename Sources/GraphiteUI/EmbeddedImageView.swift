@@ -6,8 +6,8 @@
  *              zooms into it or edits the drawing, and its menu and hover buttons open it in a tab.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -38,6 +38,10 @@ struct EmbeddedImageView: View {
     let drawOnImage: (() -> Void)?
     /// The picture's file in the vault, which opens in a tab; nil with no tabs to open it in.
     private let tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?
+    /// The picture's file in the vault, which a Live Preview block's menu lists the commands of.
+    private let picturePath: VaultPath?
+    /// Set in a Live Preview block, whose own menu takes the long press and the secondary click.
+    @Environment(\.renderedBlockMenuContext) private var blockMenuContext
     @State private var decodedImages = DecodedImageCache()
     /// Whether the pointer or Apple Pencil rests over the image, which shows its buttons.
     @State private var isHovered = false
@@ -54,17 +58,17 @@ struct EmbeddedImageView: View {
     init(image: CGImage, aspectRatio: CGFloat, displayWidth: CGFloat?, edit: (() -> Void)?, view: (() -> Void)?, drawOnImage: (() -> Void)? = nil,
          path: VaultPath? = nil, tabOpening: PictureTabOpening? = nil) {
         self.init(imageSource: .decoded(image), aspectRatio: aspectRatio, displayWidth: displayWidth, edit: edit, view: view, drawOnImage: drawOnImage,
-                  tabbedPicture: path.flatMap { path in tabOpening.map { opening in (path, opening) } })
+                  tabbedPicture: path.flatMap { path in tabOpening.map { opening in (path, opening) } }, picturePath: path)
     }
 
     /// Shows encoded image data, decoded away from the main thread when the view appears.
     init(imageData: Data, aspectRatio: CGFloat, displayWidth: CGFloat?, edit: (() -> Void)?, view: (() -> Void)?, drawOnImage: (() -> Void)? = nil) {
         self.init(imageSource: .encoded(imageData), aspectRatio: aspectRatio, displayWidth: displayWidth, edit: edit, view: view, drawOnImage: drawOnImage,
-                  tabbedPicture: nil)
+                  tabbedPicture: nil, picturePath: nil)
     }
 
     private init(imageSource: ImageSource, aspectRatio: CGFloat, displayWidth: CGFloat?, edit: (() -> Void)?, view: (() -> Void)?,
-                 drawOnImage: (() -> Void)?, tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?) {
+                 drawOnImage: (() -> Void)?, tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?, picturePath: VaultPath?) {
         self.imageSource = imageSource
         self.aspectRatio = aspectRatio
         self.displayWidth = displayWidth
@@ -72,6 +76,7 @@ struct EmbeddedImageView: View {
         self.view = view
         self.drawOnImage = edit == nil ? drawOnImage : nil
         self.tabbedPicture = tabbedPicture
+        self.picturePath = picturePath
     }
 
     var body: some View {
@@ -99,7 +104,7 @@ struct EmbeddedImageView: View {
             // SwiftUI gives the iPad no modifier keys on a tap; its menu has the command.
             .highPriorityGesture(TapGesture().modifiers(.command).onEnded { open(at: .newTab) }, including: tabbedPicture == nil ? .none : .all)
             #endif
-            .contextMenu { menuItems }
+            .modifier(PictureMenu(blockPicture: blockPicture) { menuItems })
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(edit != nil ? "Opens the drawing to edit" : "Opens the image to zoom")
             .accessibilityActions {
@@ -109,6 +114,15 @@ struct EmbeddedImageView: View {
                     Button(command.title(otherSideTitle: otherSideTitle)) { perform(command) }
                 }
             }
+    }
+
+    /// In a Live Preview block, the picture as the block's menu lists it: the block's view
+    /// carries its own menu, which took the long press and the secondary click from the picture's,
+    /// so a picture offered only "Edit Source" there (HUNT-330). Nil outside a block.
+    private var blockPicture: ZoomablePictureFrame? {
+        guard blockMenuContext != nil, let picturePath else { return nil }
+        let shownImage: CGImage? = if case .decoded(let decodedImage) = imageSource { decodedImage } else { nil }
+        return ZoomablePictureFrame(path: picturePath, frame: .zero, isEditableDrawing: edit != nil, shownImage: shownImage)
     }
 
     @ViewBuilder private var menuItems: some View {
@@ -226,5 +240,28 @@ struct PictureHoverButtons: View {
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(command.title(otherSideTitle: ""))
+    }
+}
+
+/// A picture's own menu, or, in a Live Preview block, the place its commands take in the
+/// block's menu (`RenderedBlockPictureMenu`): reported where the picture is drawn, in the
+/// block's coordinates. A block's picture stays in its block, so the choice never changes for
+/// a view.
+private struct PictureMenu<MenuItems: View>: ViewModifier {
+    let blockPicture: ZoomablePictureFrame?
+    @ViewBuilder let menuItems: () -> MenuItems
+
+    func body(content: Content) -> some View {
+        if let blockPicture {
+            content.background {
+                GeometryReader { geometry in
+                    let frameInBlock = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
+                    Color.clear.preference(key: ZoomablePictureFrame.Key.self, value: [ZoomablePictureFrame(
+                        path: blockPicture.path, frame: frameInBlock, isEditableDrawing: blockPicture.isEditableDrawing, shownImage: blockPicture.shownImage)])
+                }
+            }
+        } else {
+            content.contextMenu { menuItems() }
+        }
     }
 }

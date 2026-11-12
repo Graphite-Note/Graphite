@@ -596,7 +596,11 @@ struct VaultSidebar: View {
 
     /// A folder `folder:` found: choosing it reveals it in the file tree; its menu is the folder's menu in the tree.
     private func folderResult(_ folder: VaultPath) -> some View {
-        FolderSearchResultRow(folder: folder) { workspace.revealFolder(folder) } menu: {
+        FolderSearchResultRow(folder: folder) {
+            // The field gives up the keyboard, whose suggestions covered the folder shown in the tree (HUNT-335).
+            isSearchFocused = false
+            workspace.revealFolder(folder)
+        } menu: {
             VaultEntryMenu(entry: VaultEntry(path: folder, isDirectory: true, size: 0, modified: .distantPast), workspace: workspace) { kind, directory in
                 creation = CreationRequest(kind: kind, directory: directory)
             }

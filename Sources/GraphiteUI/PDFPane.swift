@@ -474,7 +474,9 @@ private struct PDFPaneContent: View {
         #if os(iOS)
         // The system's overflow menu (•••) holds the More commands together with whatever the
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
-        ToolbarOverflowMenu { moreMenuItems }
+        // Its icons take the tint of the items themselves: the column's accent, faint on the menu's
+        // material in the dark, reached them past the bar's own (HUNT-280).
+        ToolbarOverflowMenu { moreMenuItems.tint(.primary) }
         #endif
     }
 

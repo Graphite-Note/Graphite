@@ -105,11 +105,28 @@ struct ReadingImageActions: Equatable {
         return true
     }
 
-    /// The picture's commands as items of a rendered block's menu in Live Preview.
-    func blockMenuItems(for path: VaultPath) -> [RenderedBlockMenuItem] {
-        offeredCommands.map { command in
+    /// The picture's commands as items of a rendered block's menu in Live Preview, as the
+    /// picture's own menu in the reading view lists them (`EmbeddedImageView`): editing a drawing
+    /// or drawing on an image, zooming and the tabs, then copying where the picture says what it shows.
+    func blockMenuItems(for picture: ZoomablePictureFrame) -> [RenderedBlockMenuItem] {
+        let path = picture.path
+        var items: [RenderedBlockMenuItem] = []
+        if picture.isEditableDrawing, let editDrawing {
+            items.append(RenderedBlockMenuItem(title: "Edit Drawing", symbolName: "pencil.tip.crop.circle", action: { editDrawing(path) }))
+        } else if !picture.isEditableDrawing, let drawOnImage, DrawableImages.canDrawOn(path) {
+            items.append(RenderedBlockMenuItem(title: "Draw on Image", symbolName: "pencil.tip.crop.circle.badge.plus", action: { drawOnImage(path) }))
+        }
+        items += offeredCommands.map { command in
             RenderedBlockMenuItem(title: title(of: command), symbolName: command.systemImage, action: { perform(command, on: path) })
         }
+        #if canImport(UIKit)
+        if let shownImage = picture.shownImage {
+            items.append(RenderedBlockMenuItem(title: "Copy Image", symbolName: "doc.on.doc", action: {
+                UIPasteboard.general.image = UIImage(cgImage: shownImage)
+            }))
+        }
+        #endif
+        return items
     }
 }
 

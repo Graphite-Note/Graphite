@@ -63,6 +63,23 @@ final class MapUserLocationControlTests: XCTestCase {
         XCTAssertEqual(control.refusal, .refused)
     }
 
+    /// HUNT-339: the notice stayed after the person turned access on in Settings, until the
+    /// control was used again. Back in Graphite, it goes; while access is still off, it stays.
+    func testTheRefusalGoesOnceAccessIsTurnedOnInSettings() async throws {
+        let location = AnsweringDeviceLocation(access: .notAsked, answer: .refused, position: try lausanne)
+        let control = MapUserLocationControl()
+        _ = await control.controlWasUsed(with: location)
+
+        control.checkAccessAgain(with: location)
+        XCTAssertEqual(control.refusal, .refused, "Still refused: the notice stays.")
+        location.changeAccessInSettings(to: .granted)
+        control.checkAccessAgain(with: location)
+        XCTAssertNil(control.refusal)
+        let readsWithoutNotice = location.accessReadCount
+        control.checkAccessAgain(with: location)
+        XCTAssertEqual(location.accessReadCount, readsWithoutNotice, "Without a notice, nothing is asked.")
+    }
+
     func testARestrictedDeviceIsNotSentToSettings() async throws {
         let location = AnsweringDeviceLocation(access: .restricted, answer: .restricted, position: nil)
         let control = MapUserLocationControl()

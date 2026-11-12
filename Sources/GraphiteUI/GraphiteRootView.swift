@@ -469,7 +469,7 @@ struct GraphiteRootView: View {
     /// in the system's overflow menu (•••), the one such menu of the bar.
     @ToolbarContentBuilder private var windowMoreMenu: some ToolbarContent {
         #if os(iOS)
-        ToolbarOverflowMenu { WorkspaceMoreMenuItems() }
+        ToolbarOverflowMenu { WorkspaceMoreMenuItems().tint(.primary) }
         #else
         ToolbarItem(placement: .primaryAction) {
             Menu("More", systemImage: "ellipsis") { WorkspaceMoreMenuItems() }

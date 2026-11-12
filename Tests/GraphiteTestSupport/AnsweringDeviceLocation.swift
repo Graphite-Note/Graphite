@@ -48,6 +48,11 @@ public final class AnsweringDeviceLocation: DeviceLocation {
         return currentAccess
     }
 
+    /// The person changes the access in Settings, as when they turn it on after a refusal.
+    public func changeAccessInSettings(to newAccess: DeviceLocationAccess) {
+        currentAccess = newAccess
+    }
+
     public var lastKnownPosition: BaseCoordinate? {
         positionReadCount += 1
         return currentAccess == .granted ? position : nil

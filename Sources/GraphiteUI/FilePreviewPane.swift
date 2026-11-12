@@ -203,6 +203,10 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
     /// Runs on a single tap while the image is fitted, not zoomed in; nil does nothing. The
     /// zoom over a note closes with it, as Obsidian's does.
     var singleTapWhileFitted: (() -> Void)?
+    /// Whether an image smaller than the view is enlarged to fit it, as the zoom over a note
+    /// shows it (HUNT-331): a picture drawn wider in the note than its pixels was smaller in the
+    /// zoom. A file's own tab shows a small image at its size.
+    var enlargesToFit = false
 
     var image: UIImage? {
         get { imageView.image }
@@ -247,9 +251,10 @@ final class ZoomingImageScrollView: UIScrollView, UIScrollViewDelegate {
         super.layoutSubviews()
         guard let image, image.size.width > 0, image.size.height > 0, bounds.width > 0 else { return }
         if bounds.size != fittedBoundsSize {
-            // Fit within the view, never enlarging a small image beyond its size.
+            // Fit within the view, enlarging a small image beyond its size only where asked to.
             let availableSize = CGSize(width: max(bounds.width - 2 * Self.margin, 1), height: max(bounds.height - 2 * Self.margin, 1))
-            let fittingScale = min(availableSize.width / image.size.width, availableSize.height / image.size.height, 1)
+            let wholeImageScale = min(availableSize.width / image.size.width, availableSize.height / image.size.height)
+            let fittingScale = enlargesToFit ? wholeImageScale : min(wholeImageScale, 1)
             let wasFitted = fittedBoundsSize == .zero || abs(zoomScale - minimumZoomScale) < 0.001
             minimumZoomScale = fittingScale
             maximumZoomScale = max(fittingScale * ZoomableImageView.maximumZoomFactor, 1)

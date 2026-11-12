@@ -496,12 +496,29 @@ private struct LivePreviewTableEditingLayer: View {
     }
 }
 
+/// Leaves a control of a table's editing layer out of the text selection's overlay, which covers the
+/// block's text and took the touches of the "+" strips beside the table (HUNT-328).
+struct TableControlOutsideTextSelection: ViewModifier {
+    func body(content: Content) -> some View {
+        content.textual.excludedFromTextInteraction()
+    }
+}
+
 /// Where a picture of the vault is drawn inside a rendered block, which the block's own tap
 /// targets (a table's cell editor) need to leave the picture's tap to its zoom.
 struct ZoomablePictureFrame: Equatable {
     let path: VaultPath
     /// In the block's coordinate space (`LivePreviewTableEditor.blockCoordinateSpaceName`).
     let frame: CGRect
+    /// A Graphite drawing, which the menu offers to edit rather than to draw on.
+    var isEditableDrawing = false
+    /// The pixels shown, which the menu's "Copy Image" copies; nil where the menu has no copy.
+    var shownImage: CGImage? = nil
+
+    static func == (leftFrame: ZoomablePictureFrame, rightFrame: ZoomablePictureFrame) -> Bool {
+        leftFrame.path == rightFrame.path && leftFrame.frame == rightFrame.frame && leftFrame.isEditableDrawing == rightFrame.isEditableDrawing
+            && leftFrame.shownImage === rightFrame.shownImage
+    }
 
     struct Key: PreferenceKey {
         static let defaultValue: [ZoomablePictureFrame] = []

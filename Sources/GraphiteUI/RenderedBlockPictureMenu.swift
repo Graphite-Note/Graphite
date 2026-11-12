@@ -28,8 +28,8 @@ final class RenderedBlockPictures {
 
 /// A rendered block's menu (a long press on the iPad, a secondary click on the Mac) opened
 /// on one of its pictures starts with that picture's commands. Each picture inside the
-/// block's text reports where it is drawn (`InlinePictureView`); a block without pictures
-/// adds nothing.
+/// block's text reports where it is drawn (`InlinePictureView`), and so does a picture that
+/// is the block (`EmbeddedImageView`); a block without pictures adds nothing.
 struct RenderedBlockPictureMenu: ViewModifier {
     @Environment(\.renderedBlockMenuContext) private var menuContext
     @Environment(\.readingImageActions) private var imageActions
@@ -49,7 +49,7 @@ struct RenderedBlockPictureMenu: ViewModifier {
         }
         menuContext.pictureItemsAtPoint = { [pictures] point in
             guard let picture = pictures.picture(at: point) else { return [] }
-            return actions.blockMenuItems(for: picture.path)
+            return actions.blockMenuItems(for: picture)
         }
     }
 }

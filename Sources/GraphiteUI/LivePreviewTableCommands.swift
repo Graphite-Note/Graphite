@@ -65,8 +65,9 @@ enum TableCellCommand: CaseIterable {
         case .alignLeft: "text.alignleft"
         case .alignCenter: "text.aligncenter"
         case .alignRight: "text.alignright"
-        case .sortAscending: "arrow.up.arrow.down"
-        case .sortDescending: "arrow.down.arrow.up"
+        // Both sorts take the system's sort symbol: "arrow.down.arrow.up" is no SF Symbol, and drew
+        // no icon (HUNT-340).
+        case .sortAscending, .sortDescending: "arrow.up.arrow.down"
         }
     }
 

@@ -70,16 +70,15 @@ struct ReleaseVaultFinding: Equatable, CustomStringConvertible {
     ]
 
     /// Defects the pass found and that are open in a todo file, reported on `GRAPHITE-RELEASE-KNOWN` lines rather than
-    /// failing the pass; each goes when its item is fixed. Both were found on the iPad simulator on 2026-11-12
-    /// (Docs/Editor-scrolling-todo.md): a picture block low on the screen left blank, its source hidden and no view over
-    /// it, until the next scroll; and `Pictures.md` switched from the reading view to source mode still showing the
-    /// reading view, with no text view, through its four pages.
+    /// failing the pass; each goes when its item is fixed. Found on the iPad simulator on 2026-11-12
+    /// (Docs/Editor-scrolling-todo.md): `Pictures.md` switched from the reading view to source mode still showing the
+    /// reading view, with no text view, through its four pages. (The picture blocks left blank low on the screen are
+    /// fixed and fail the pass again.)
     var isKnownOpenDefect: Bool {
         #if os(iOS)
         switch problem {
-        case .blockLeftAsSource(let kind, _): kind.hasPrefix("embed of ")
         case .notShown: path == "Pictures.md" && shown == .source
-        case .error, .renderedViewInSourceMode, .pictureNotLoaded, .missingEmbed, .missingSection, .diagramNotDrawn, .freeze: false
+        case .error, .blockLeftAsSource, .renderedViewInSourceMode, .pictureNotLoaded, .missingEmbed, .missingSection, .diagramNotDrawn, .freeze: false
         }
         #else
         false
