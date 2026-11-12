@@ -233,8 +233,8 @@ final class GitGraphLayoutEngineTests: XCTestCase {
         }
     }
 
-    func testAGraphThatSetsOptionsIsNotLaidOut() throws {
-        let diagram = try GitGraphReading.gitGraph("---\nconfig:\n  gitGraph:\n    showBranches: false\n---\ngitGraph\n commit")
+    func testAGraphThatSetsOptionsNotAppliedIsNotLaidOut() throws {
+        let diagram = try GitGraphReading.gitGraph("%%{init: {'gitGraph': {'showBranches': false}}}%%\ngitGraph\n commit")
         XCTAssertThrowsError(try GitGraphLayoutEngine.layout(diagram, smallText: smallText, branchText: branchText, titleText: titleText,
                                                              font: UniformWidthLayout.font)) { error in
             XCTAssertEqual(error as? GitGraphLayoutError, .optionsNotApplied)

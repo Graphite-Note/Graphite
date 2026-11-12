@@ -12,6 +12,8 @@ public struct PieChart: Equatable, Sendable {
     /// `accDescr: …` or `accDescr { … }`, the longer description a screen reader reads, its lines joined by line
     /// breaks, or nil.
     public internal(set) var accessibilityDescription: String?
+    /// The options its front matter sets.
+    public internal(set) var options = PieChartOptions()
 
     init(slices: [PieChartSlice] = [], showsValues: Bool = false, title: String? = nil, accessibilityTitle: String? = nil,
          accessibilityDescription: String? = nil) {

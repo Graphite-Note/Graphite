@@ -17,6 +17,9 @@ struct GanttChartParser {
     /// Reads the Gantt chart whose `gantt` keyword ends at the cursor.
     static func parse(_ cursor: MermaidTextCursor, limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) -> GanttChart {
         var parser = GanttChartParser(cursor: cursor, limits: limits)
+        if case .text(let mode) = MermaidFrontMatterOptions(section: "gantt", in: cursor.bytes).values["displayMode"] {
+            parser.chart.isCompact = mode.lowercased() == "compact"
+        }
         try parser.readStatements()
         return parser.chart
     }

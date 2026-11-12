@@ -130,9 +130,9 @@ public struct GitGraphDrawingParts {
         let rings = CGMutablePath()
         let symbols = CGMutablePath()
 
-        /// The group, or nil when no lane takes its color.
+        /// The group, or nil when nothing takes its color: no lane, and no commit when lanes are hidden.
         func group(seriesIndex: Int) -> ColorGroup? {
-            guard !laneLines.isEmpty else { return nil }
+            guard !laneLines.isEmpty || !symbols.isEmpty || !rings.isEmpty else { return nil }
             return ColorGroup(seriesIndex: seriesIndex, laneLines: laneLines, nameBoxes: nameBoxes, curves: curves, cherryPickCurves: cherryPickCurves,
                               straightLines: straightLines, rings: rings, symbols: symbols)
         }

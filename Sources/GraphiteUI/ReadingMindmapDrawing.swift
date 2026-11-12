@@ -8,10 +8,11 @@ struct ReadingMindmapDrawing: View {
     let mindmap: ReadingMindmap
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: mindmap.layout.size, layoutTextSize: mindmap.layout.font.size, textSize: textSize) {
-            ReadingMindmapPainting(shapes: mindmap.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingMindmapPainting(shapes: mindmap.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -29,7 +30,7 @@ private struct ReadingMindmapPainting: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ForEach(shapes.branches, id: \.branchIndex) { branch in
-                let color = ReadingDiagramColors.seriesColor(branch.branchIndex)
+                let color = colors.seriesColor(branch.branchIndex)
                 branch.links.stroke(color, lineWidth: MindmapDrawingParts.linkLineWidth)
                 branch.nodeOutlines.fill(color.opacity(MindmapDrawingParts.nodeFillOpacity))
                 branch.nodeOutlines.stroke(color, lineWidth: MindmapDrawingParts.outlineLineWidth)

@@ -33,7 +33,7 @@ public struct PieChartDrawingParts {
         let fills = (0..<min(layout.legend.count, Self.seriesColorCount)).map { _ in CGMutablePath() }
         let edges = CGMutablePath()
         for slice in layout.slices {
-            let wedge = Self.wedge(slice, center: layout.center, radius: layout.radius)
+            let wedge = Self.wedge(slice, center: layout.center, radius: layout.radius, innerRadius: layout.innerRadius)
             fills[slice.seriesIndex % Self.seriesColorCount].addPath(wedge)
             edges.addPath(wedge)
         }
@@ -51,17 +51,31 @@ public struct PieChartDrawingParts {
         title = layout.title
     }
 
-    /// A slice from the center out to the rim and back, or the whole circle for a slice that is the whole pie.
-    static func wedge(_ slice: PieChartLayoutSlice, center: CGPoint, radius: CGFloat) -> CGPath {
-        guard !slice.isWholePie else {
-            return CGPath(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius), transform: nil)
-        }
+    /// A slice from the center (or the hole's rim, for a donut) out to the rim and back, or the whole circle (ring) for a
+    /// slice that is the whole pie.
+    static func wedge(_ slice: PieChartLayoutSlice, center: CGPoint, radius: CGFloat, innerRadius: CGFloat = 0) -> CGPath {
         let path = CGMutablePath()
-        path.move(to: center)
-        path.addLine(to: PieChartSlicePlacement.point(at: slice.startAngle, distance: radius, from: center))
         // Core Graphics measures angles from the x axis toward the y axis, which runs down here: a quarter turn
         // before the top, and with increasing angles, which turn clockwise on this page.
-        path.addArc(center: center, radius: radius, startAngle: slice.startAngle - .pi / 2, endAngle: slice.endAngle - .pi / 2, clockwise: false)
+        let start = slice.startAngle - .pi / 2
+        let end = slice.isWholePie ? start + 2 * .pi : slice.endAngle - .pi / 2
+        guard innerRadius > 0 else {
+            guard !slice.isWholePie else {
+                return CGPath(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: 2 * radius, height: 2 * radius), transform: nil)
+            }
+            path.move(to: center)
+            path.addLine(to: PieChartSlicePlacement.point(at: slice.startAngle, distance: radius, from: center))
+            path.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
+            path.closeSubpath()
+            return path
+        }
+        // The outer arc one way and the inner one back, so that the hole is left unfilled by the nonzero rule too.
+        path.addArc(center: center, radius: radius, startAngle: start, endAngle: end, clockwise: false)
+        if slice.isWholePie {
+            path.closeSubpath()
+            path.move(to: CGPoint(x: center.x + innerRadius * cos(end), y: center.y + innerRadius * sin(end)))
+        }
+        path.addArc(center: center, radius: innerRadius, startAngle: end, endAngle: start, clockwise: true)
         path.closeSubpath()
         return path
     }

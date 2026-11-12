@@ -7,23 +7,28 @@ import XCTest
 final class GitGraphCorpusTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 16))
 
-    func testEveryDocumentationExampleIsReadAndThoseWithoutOptionsAreDrawn() throws {
+    func testEveryDocumentationExampleIsDrawnWithItsOptionsButTheOneThatRepeatsACommitId() throws {
         let examples = try GitGraphCorpus.documentationExamples()
         XCTAssertEqual(examples.count, 35)
-        var drawnCount = 0
+        var drawnCount = 0, withOptionsCount = 0
         for example in examples {
-            let diagram = try GitGraphReading.gitGraph(example)
+            let diagram: GitGraphDiagram
             do {
-                let layout = try GitGraphLayoutEngine.layout(diagram, typography: typography)
-                XCTAssertEqual(layout.commits.count, diagram.commits.count)
-                XCTAssertEqual(layout.lanes.count, diagram.branches.count)
-                drawnCount += 1
+                diagram = try GitGraphReading.gitGraph(example)
             } catch {
-                XCTAssertEqual(error, .optionsNotApplied)
-                XCTAssertTrue(diagram.setsGitGraphOptions)
+                // The subway example names the commit "Boston" twice, which Mermaid draws by dropping the earlier one.
+                XCTAssertEqual(error as? MermaidDiagramReadError, GitGraphReading.problem(.duplicateCommitIdentifier("Boston"), line: 27))
+                continue
             }
+            XCTAssertFalse(diagram.setsGitGraphOptions, example)
+            if diagram.options != GitGraphOptions() { withOptionsCount += 1 }
+            let layout = try GitGraphLayoutEngine.layout(diagram, typography: typography)
+            XCTAssertEqual(layout.commits.count, diagram.commits.count)
+            XCTAssertEqual(layout.lanes.count, diagram.options.showsBranches ? diagram.branches.count : 0)
+            drawnCount += 1
         }
-        XCTAssertEqual(drawnCount, 26, "The nine examples that set gitGraph options in their front matter stay code")
+        XCTAssertEqual(drawnCount, 34)
+        XCTAssertEqual(withOptionsCount, 5, "Of the eight drawn examples that set gitGraph options, five set values other than the defaults")
     }
 
     func testTheGeneratedHistoriesAreDrawnWithoutTwoCommitsInOnePlace() throws {

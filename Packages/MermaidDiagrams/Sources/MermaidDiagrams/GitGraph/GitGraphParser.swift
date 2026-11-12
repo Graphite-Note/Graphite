@@ -11,10 +11,17 @@ struct GitGraphParser {
 
     /// `cursor` is just past the `gitGraph` keyword, as `MermaidDiagramReader` leaves it.
     static func parse(_ cursor: MermaidTextCursor, limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) -> GitGraphDiagram {
-        let setsOptionsBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: cursor.position - keyword.count, of: cursor.bytes)
+        let keywordStart = cursor.position - keyword.count
+        let mentionsOptionsBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: keywordStart, of: cursor.bytes)
+        let setsOptionsInDirectiveBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: keywordStart, of: cursor.bytes, skipsFrontMatter: true)
+        let frontMatterOptions = MermaidFrontMatterOptions(section: "gitGraph", in: cursor.bytes)
+        var options = GitGraphOptions(frontMatterOptions)
+        // Options the front matter writes in another form (`config: {"gitGraph": …}`) are not read: not applied either.
+        if mentionsOptionsBefore, !setsOptionsInDirectiveBefore, frontMatterOptions.values.isEmpty { options.setsOptionsNotApplied = true }
         var parser = try GitGraphParser(cursor: cursor)
         try parser.readStatements()
-        parser.diagram.setsGitGraphOptions = setsOptionsBefore || parser.lexer.hasSkippedOptionsDirective
+        parser.diagram.options = options
+        parser.diagram.setsGitGraphOptions = setsOptionsInDirectiveBefore || parser.lexer.hasSkippedOptionsDirective || options.setsOptionsNotApplied
         try parser.play(limits: limits)
         return parser.diagram
     }
@@ -142,7 +149,7 @@ struct GitGraphParser {
     /// Plays the statements read. When the graph sets options of Git graphs, which are not applied, a statement the
     /// history cannot take ends the playing without an error: the options may name the main branch it refers to.
     private mutating func play(limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) {
-        var builder = try GitGraphDiagramBuilder(limits: limits)
+        var builder = try GitGraphDiagramBuilder(limits: limits, options: diagram.options)
         defer { (diagram.commits, diagram.branches) = builder.played() }
         for (statement, line) in statements {
             do {

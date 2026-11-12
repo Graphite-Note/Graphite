@@ -8,10 +8,13 @@ struct ReadingTimelineDrawing: View {
     let timeline: ReadingTimeline
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: timeline.layout.size, layoutTextSize: timeline.layout.font.size, textSize: textSize) {
-            ReadingTimelinePainting(shapes: timeline.shapes, colors: ReadingDiagramColors(theme: theme))
+        ReadingScaledDiagram(size: timeline.layout.size, narrowSize: timeline.narrow?.layout.size, layoutTextSize: timeline.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingTimelinePainting(shapes: variant == .narrow ? timeline.narrow?.shapes ?? timeline.shapes : timeline.shapes,
+                                    colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -28,8 +31,8 @@ private struct ReadingTimelinePainting: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            shapes.axis.stroke(colors.foreground, lineWidth: TimelineDrawingParts.lineWidth)
-            shapes.axisArrow.fill(colors.foreground)
+            shapes.axis.stroke(colors.line, lineWidth: TimelineDrawingParts.lineWidth)
+            shapes.axisArrow.fill(colors.line)
             shapes.connectors.stroke(colors.border, lineWidth: TimelineDrawingParts.lineWidth)
             ForEach(shapes.colorGroups.indices, id: \.self) { index in
                 let group = shapes.colorGroups[index]
@@ -46,7 +49,7 @@ private struct ReadingTimelinePainting: View {
 
     private func color(_ color: TimelineColor) -> Color {
         switch color {
-        case .series(let index): ReadingDiagramColors.seriesColor(index)
+        case .series(let index): colors.seriesColor(index)
         case .muted: colors.muted
         }
     }

@@ -15,6 +15,13 @@ enum FlowchartCorpus {
       F --> G[Done]
     """
 
+    /// Every classic shape in a row from left to right: the flowchart the reading view turns to run down in a narrow column.
+    static let fourteenShapesInARow = """
+    flowchart LR
+      A[Rectangle] --> B(Rounded) --> C([Stadium]) --> D[[Subroutine]] --> E[(Database)] --> F((Circle)) --> G(((Double circle)))
+      G --> H>Flag] --> I{Diamond} --> J{{Hexagon}} --> K[/Lean right/] --> L[\\Lean left\\] --> M[/Trapezoid\\] --> N[\\Inverted/]
+    """
+
     static func documentationExamples() throws -> [String] {
         guard let location = Bundle.module.url(forResource: "flowchart-docs", withExtension: "json", subdirectory: "Resources") else {
             throw MissingResource()

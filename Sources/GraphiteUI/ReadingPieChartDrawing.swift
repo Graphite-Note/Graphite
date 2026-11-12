@@ -20,10 +20,11 @@ struct ReadingPieChartDrawing: View {
     let chart: ReadingPieChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
-            ReadingPieChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingPieChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)

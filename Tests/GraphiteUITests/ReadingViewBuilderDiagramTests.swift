@@ -110,13 +110,14 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertNotEqual(configuration.hashValueForReload, systemFontHash)
     }
 
-    func testAStateDiagramBecomesADiagramBlockAndOneWithCompositeStatesShowsWhy() async throws {
+    func testAStateDiagramBecomesADiagramBlockAndOneWithCompositeStatesToo() async throws {
         let blocks = try await build("```mermaid\nstateDiagram-v2\n  [*] --> Still\n  Still --> [*]\n```").blocks
         guard case .diagram(_, .stateDiagram(let diagram)) = blocks.first else { return XCTFail("The state diagram is drawn") }
         XCTAssertEqual(diagram.layout.states.count, 3)
         let composite = try await build("```mermaid\nstateDiagram-v2\n  state A {\n    a --> b\n  }\n```").blocks
-        guard case .diagram(_, .unreadable(_, let failure)) = composite.first else { return XCTFail("Shown with why") }
-        XCTAssertEqual(failure, .stateLayout(.compositeStatesNotLaidOut))
+        guard case .diagram(_, .stateDiagram(let boxed)) = composite.first else { return XCTFail("The state diagram with a composite state is drawn") }
+        XCTAssertEqual(boxed.layout.composites.count, 1)
+        XCTAssertEqual(boxed.layout.states.count, 2)
     }
 
     func testAnXYChartBecomesADiagramBlockAndOneWithoutSeriesShowsWhy() async throws {

@@ -78,7 +78,7 @@ public struct DiagramElementStyle: Equatable, Sendable {
             guard let color = DiagramColor(cssText: value) else { return false }
             textColor = color
         case "stroke-width":
-            guard let width = Self.length(value), width >= 0 else { return false }
+            guard let width = Self.length(value), width >= 0, width <= Self.largestStrokeWidth else { return false }
             strokeWidth = width
         case "stroke-dasharray":
             guard let lengths = Self.lengths(value) else { return false }
@@ -96,13 +96,24 @@ public struct DiagramElementStyle: Equatable, Sendable {
         return CGFloat(number)
     }
 
-    /// `5 5`, `5px 3px`: dashes and gaps. `none` is a solid line (no dashes); a list with a nonpositive length or only zeros is not one.
+    /// The widest line a style may ask for: wider, an outline covers its node's text and an edge the nodes it joins.
+    static let largestStrokeWidth: CGFloat = 16
+    /// The most dashes and gaps a dash pattern may list, and the longest each may be.
+    static let largestDashLengthCount = 16
+    static let largestDashLength: CGFloat = 1_000
+    /// The shortest a whole pattern of dashes and gaps may be: a shorter one would have a line drawn as millions of
+    /// dashes, which takes Core Graphics seconds to paint.
+    static let shortestDashPattern: CGFloat = 2
+
+    /// `5 5`, `5px 3px`: dashes and gaps. `none` is a solid line (no dashes); a list with a nonpositive length or only zeros is not one,
+    /// and neither is one past the bounds above.
     private static func lengths(_ text: String) -> [CGFloat]? {
         if text.lowercased() == "none" { return [] }
         let parts = text.split(whereSeparator: { character in character == " " || character == "\t" })
+        guard parts.count <= largestDashLengthCount else { return nil }
         let lengths = parts.compactMap { part in length(String(part)) }
-        let allAreUsable = lengths.count == parts.count && lengths.allSatisfy { length in length >= 0 }
-        guard allAreUsable, lengths.contains(where: { length in length > 0 }) else { return nil }
+        let allAreUsable = lengths.count == parts.count && lengths.allSatisfy { length in length >= 0 && length <= largestDashLength }
+        guard allAreUsable, lengths.reduce(0, +) >= shortestDashPattern else { return nil }
         return lengths
     }
 

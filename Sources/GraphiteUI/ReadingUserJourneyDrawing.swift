@@ -9,10 +9,11 @@ struct ReadingUserJourneyDrawing: View {
     let journey: ReadingUserJourney
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: journey.layout.size, layoutTextSize: journey.layout.font.size, textSize: textSize) {
-            ReadingUserJourneyPainting(shapes: journey.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingUserJourneyPainting(shapes: journey.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -41,11 +42,11 @@ private struct ReadingUserJourneyPainting: View {
             shapes.cards.fill(colors.surface)
             shapes.cards.stroke(colors.border, lineWidth: UserJourneyDrawingParts.lineWidth)
             ForEach(shapes.cardDotsBySeries.indices, id: \.self) { index in
-                shapes.cardDotsBySeries[index].fill(ReadingDiagramColors.seriesColor(index))
+                shapes.cardDotsBySeries[index].fill(colors.seriesColor(index))
                 shapes.cardDotsBySeries[index].stroke(colors.surface, lineWidth: UserJourneyDrawingParts.lineWidth)
             }
             ForEach(shapes.legendDotsBySeries.indices, id: \.self) { index in
-                shapes.legendDotsBySeries[index].fill(ReadingDiagramColors.seriesColor(index))
+                shapes.legendDotsBySeries[index].fill(colors.seriesColor(index))
             }
             lines(shapes.textLines, color: colors.foreground)
         }

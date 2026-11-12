@@ -6,10 +6,11 @@ import MermaidDiagrams
 enum StateDiagramBenchmark {
     static func run(typography: DiagramTypography) throws {
         let documentationExamples = try StateDiagramCorpus.documentationExamples()
-        let drawable = documentationExamples.filter { source in (try? layout(source, typography)) != nil } // Composite states are not laid out yet.
+        let drawable = documentationExamples.filter { source in (try? layout(source, typography)) != nil } // Every example is laid out.
         print("state documentation examples drawn: \(drawable.count) of \(documentationExamples.count)")
         let cases: [(name: String, sources: [String])] = [
-            ("state documentation examples", drawable),
+            ("state documentation examples without composite states", drawable.filter { source in !source.contains("{") }),
+            ("state documentation examples with composite states", drawable.filter { source in source.contains("{") }),
             ("state machine, 50 states and 20 labelled transitions", [StateDiagramCorpus.machine(stateCount: 50, extraTransitionCount: 20)]),
             ("state machine, 500 states and 200 labelled transitions", [StateDiagramCorpus.machine(stateCount: 500, extraTransitionCount: 200)]),
         ]

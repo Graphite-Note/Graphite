@@ -9,10 +9,11 @@ struct ReadingQuadrantChartDrawing: View {
     let chart: ReadingQuadrantChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
-            ReadingQuadrantChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingQuadrantChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -44,7 +45,7 @@ private struct ReadingQuadrantChartPainting: View {
 
     private func color(_ paint: QuadrantChartPaint) -> Color {
         switch paint {
-        case .firstSeries: ReadingDiagramColors.seriesColor(0)
+        case .firstSeries: colors.seriesColor(0)
         case .written(let written): Color(.sRGB, red: Double(written.red) / 255, green: Double(written.green) / 255, blue: Double(written.blue) / 255)
         }
     }

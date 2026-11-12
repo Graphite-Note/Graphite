@@ -7,6 +7,9 @@ import CoreGraphics
 /// notes beside their states across the flow; and the title above.
 public enum StateDiagramLayoutEngine {
     static let spacing = LayeredSpacing(nodeSeparation: 40, edgeSeparation: 16, rankSeparation: 44)
+    /// The gaps of a diagram with composite states: a border point of a box is 20 points from the rank next to it, as in
+    /// a flowchart's boxes.
+    static let clusterSpacing = LayeredSpacing(nodeSeparation: 40, edgeSeparation: 16, rankSeparation: 44, borderSeparation: 20)
     /// Around the whole diagram.
     static let padding: CGFloat = 8
     /// The widest a line of a state's or a transition's text is before it wraps.
@@ -25,11 +28,13 @@ public enum StateDiagramLayoutEngine {
 
     static func layout<Measurer: DiagramTextMeasuring>(_ diagram: StateDiagram, nameText: Measurer, smallText: Measurer, font: DiagramFont,
                                                        limits: MermaidDiagramLimits) throws(StateDiagramLayoutError) -> StateDiagramLayout {
-        guard diagram.composites.isEmpty else { throw .compositeStatesNotLaidOut }
         let flowAxes = FlowchartFlowAxes(direction: diagram.direction, alongExtent: 0)
         let measured = StateDiagramMeasurement(diagram: diagram, nameText: nameText, smallText: smallText, flowIsVertical: flowAxes.flowIsVertical,
                                                wrappingWidth: wrappingWidth, noteWrappingWidth: noteWrappingWidth)
         let surroundings = StateDiagramSurroundings(diagram: diagram, measured: measured, axes: flowAxes)
+        guard diagram.composites.isEmpty else {
+            return try layoutInBoxes(diagram, measured: measured, surroundings: surroundings, nameText: nameText, font: font, limits: limits)
+        }
         let order = flowOrder(of: diagram)
         var positionOfState = [Int](repeating: 0, count: order.count)
         for (position, state) in order.enumerated() { positionOfState[state] = position }
@@ -54,6 +59,32 @@ public enum StateDiagramLayoutEngine {
         page.placeStates(flowCenters: diagram.states.indices.map { state in placement.nodeCenters[positionOfState[state]] })
         page.placeTransitions(layeredTransitionIndices: layeredTransitionIndices, placement: placement)
         page.placeSelfLoops()
+        let title = diagram.title.map { title in DiagramTextBlock(label: DiagramLabel(title), measurer: nameText, maximumWidth: .greatestFiniteMagnitude) }
+        return page.finished(font: font, title: title, padding: padding, titleGap: titleGap)
+    }
+
+    /// A diagram with composite states: each composite a box laid out on its own and placed in the box around it, its
+    /// concurrent regions boxes side by side inside it (`StateDiagramClusterGraph`, `LayeredClusterLayout`). What is not
+    /// laid out fails with `compositeStatesNotLaidOut`.
+    private static func layoutInBoxes<Measurer: DiagramTextMeasuring>(_ diagram: StateDiagram, measured: StateDiagramMeasurement,
+                                                                      surroundings: StateDiagramSurroundings, nameText: Measurer, font: DiagramFont,
+                                                                      limits: MermaidDiagramLimits) throws(StateDiagramLayoutError) -> StateDiagramLayout {
+        let axes = FlowchartFlowAxes(direction: diagram.direction, alongExtent: 0)
+        let clustered = try StateDiagramClusterGraph(diagram: diagram, measured: measured, surroundings: surroundings,
+                                                     flowIsVertical: axes.flowIsVertical, titleText: nameText)
+        let placement: LayeredClusterPlacement
+        do {
+            placement = try LayeredClusterLayout.place(clustered.graph, spacing: clusterSpacing, maximumPointCount: limits.maximumLayoutPointCount)
+        } catch .tooManyPoints {
+            throw .tooManyLayoutPoints(limit: limits.maximumLayoutPointCount)
+        } catch {
+            throw .compositeStatesNotLaidOut
+        }
+        var page = StateDiagramPageAssembly(diagram: diagram, measured: measured, surroundings: surroundings, axes: axes)
+        page.placeStates(clustered: clustered, placement: placement)
+        page.placeTransitions(clustered: clustered, placement: placement)
+        page.placeSelfLoops()
+        page.placeComposites(clustered: clustered, placement: placement)
         let title = diagram.title.map { title in DiagramTextBlock(label: DiagramLabel(title), measurer: nameText, maximumWidth: .greatestFiniteMagnitude) }
         return page.finished(font: font, title: title, padding: padding, titleGap: titleGap)
     }

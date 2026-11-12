@@ -14,24 +14,20 @@ final class StateDiagramCorpusTests: XCTestCase {
         XCTAssertEqual(diagrams.filter { diagram in diagram.states.contains { state in state.kind == .fork } }.count, 1)
     }
 
-    func testEveryDocumentationExampleIsLaidOutOrRefusedForItsCompositeStates() throws {
+    func testEveryDocumentationExampleIsLaidOutWithoutOverlap() throws {
         let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 16))
         var laidOutCount = 0
         for example in try StateDiagramCorpus.documentationExamples() {
             let diagram = try StateDiagramReading.stateDiagram(example)
-            do {
-                let layout = try StateDiagramLayoutEngine.layout(diagram, typography: typography, limits: .standard)
-                let frames = layout.states.map(\.frame) + layout.notes.map(\.frame)
-                for (index, frame) in frames.enumerated() {
-                    for other in frames[(index + 1)...] { XCTAssertFalse(frame.intersects(other), example) }
-                }
-                laidOutCount += 1
-            } catch {
-                XCTAssertEqual(error, .compositeStatesNotLaidOut)
-                XCTAssertFalse(diagram.composites.isEmpty)
+            let layout = try StateDiagramLayoutEngine.layout(diagram, typography: typography, limits: .standard)
+            let frames = layout.states.map(\.frame) + layout.notes.map(\.frame)
+            for (index, frame) in frames.enumerated() {
+                for other in frames[(index + 1)...] { XCTAssertFalse(frame.intersects(other), example) }
             }
+            XCTAssertEqual(layout.composites.count, diagram.composites.count, example)
+            laidOutCount += 1
         }
-        XCTAssertEqual(laidOutCount, 15)
+        XCTAssertEqual(laidOutCount, 22)
     }
 
     func testTheGeneratedMachinesAreLaidOutWithoutOverlap() throws {

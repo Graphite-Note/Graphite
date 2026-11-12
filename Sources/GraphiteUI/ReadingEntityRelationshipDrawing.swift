@@ -20,10 +20,13 @@ struct ReadingEntityRelationshipDrawing: View {
     let diagram: ReadingEntityRelationshipDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
-            ReadingEntityRelationshipPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme))
+        ReadingScaledDiagram(size: diagram.layout.size, narrowSize: diagram.narrow?.layout.size, layoutTextSize: diagram.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingEntityRelationshipPainting(shapes: variant == .narrow ? diagram.narrow?.shapes ?? diagram.shapes : diagram.shapes,
+                                              colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -40,10 +43,10 @@ private struct ReadingEntityRelationshipPainting: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            shapes.identifyingLines.stroke(colors.foreground, style: Self.lineStyle())
-            shapes.nonIdentifyingLines.stroke(colors.foreground, style: Self.lineStyle(dash: EntityRelationshipDrawingParts.nonIdentifyingDashLengths))
+            shapes.identifyingLines.stroke(colors.line, style: Self.lineStyle())
+            shapes.nonIdentifyingLines.stroke(colors.line, style: Self.lineStyle(dash: EntityRelationshipDrawingParts.nonIdentifyingDashLengths))
             shapes.markFills.fill(colors.background)
-            shapes.markOutlines.stroke(colors.foreground, style: Self.lineStyle())
+            shapes.markOutlines.stroke(colors.line, style: Self.lineStyle())
             shapes.labelPatches.fill(colors.background)
             lines(shapes.labelLines, color: colors.foreground)
             shapes.boxFills.fill(colors.surface)

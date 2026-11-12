@@ -110,9 +110,13 @@ final class StateDiagramLayoutEngineTests: XCTestCase {
         XCTAssertEqual(laidOut.size, CGSize(width: 16, height: 16))
     }
 
-    func testCompositeStatesAndTheLayoutLimitAreRefused() throws {
-        XCTAssertThrowsError(try layout("stateDiagram-v2\nstate Moving {\n  slow --> fast\n}")) { error in
-            XCTAssertEqual(error as? StateDiagramLayoutError, .compositeStatesNotLaidOut)
+    func testWhatCompositeStatesCannotBeLaidOutWithAndTheLayoutLimitAreRefused() throws {
+        for source in ["stateDiagram-v2\nstate Moving {\n  slow --> fast\n}\nMoving --> Moving",
+                       "stateDiagram-v2\nstate Moving {\n  slow --> fast\n}\nnote right of Moving : busy",
+                       "stateDiagram-v2\nstate Moving {\n  slow --> fast\n}\nMoving --> slow"] {
+            XCTAssertThrowsError(try layout(source), source) { error in
+                XCTAssertEqual(error as? StateDiagramLayoutError, .compositeStatesNotLaidOut, source)
+            }
         }
         var limits = MermaidDiagramLimits.standard
         limits.maximumLayoutPointCount = 3

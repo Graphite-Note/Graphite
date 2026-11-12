@@ -39,6 +39,8 @@ extension ReadingDiagramFailure {
         switch self {
         case .reading(.invalidSyntax(let line, let problem)): "This diagram could not be drawn: line \(line), \(problem.explanation)."
         case .reading(.noDiagram): "This block does not name a diagram type."
+        case .nothingToDraw: "This diagram has nothing to draw yet."
+        case .tooLargeToDraw(let maximumSideLength): "This diagram is too large to draw (more than \(Int(maximumSideLength)) points on a side)."
         case .reading(.sourceTooLarge(let limitBytes)): "This diagram is too long to draw (more than \(limitBytes) bytes)."
         case .reading(.tooManyNodes(let limit)): "This diagram has more than \(limit) nodes, too many to draw."
         case .reading(.tooManyEdges(let limit)): "This diagram has more than \(limit) links, too many to draw."
@@ -46,11 +48,15 @@ extension ReadingDiagramFailure {
         case .layout(.tooManyLayoutPoints): "This diagram is too large to lay out."
         case .layout(.subgraphsNotLaidOut): "Flowcharts with a collapsed subgraph, or a link from a subgraph to itself, are not drawn yet."
         case .sequenceLayout(.statementsNotLaidOut(let statements)): "Sequence diagrams with \(Self.listed(statements.map(\.wording))) are not drawn yet."
-        case .gitGraphLayout(.optionsNotApplied): "Git graphs whose front matter or directive sets options are not drawn yet."
+        case .gitGraphLayout(.optionsNotApplied):
+            "Git graphs whose options are set in a directive, or in the front matter other than as its gitGraph options "
+                + "(mainBranchName, mainBranchOrder, showBranches, showCommitLabel, rotateCommitLabel, parallelCommits), are not drawn yet."
         case .sankeyLayout(.circularLinks): "Sankey diagrams whose links lead back to a node they come from are not drawn."
         case .sankeyLayout(.optionsNotDrawn): "Sankey diagrams whose front matter sets this option are not drawn yet."
         case .stateLayout(.tooManyLayoutPoints): "This state diagram is too large to lay out."
-        case .stateLayout(.compositeStatesNotLaidOut): "State diagrams with composite states are not drawn yet."
+        case .stateLayout(.compositeStatesNotLaidOut):
+            "State diagrams whose transitions join a composite state to itself or to a state inside it, or with notes beside a composite state, "
+                + "are not drawn yet."
         case .classLayout(.tooManyLayoutPoints): "This class diagram is too large to lay out."
         case .classLayout(.namespacesNotLaidOut): "Class diagrams with namespaces are not drawn yet."
         case .reading(.tooManyParticipants(let limit)): "This diagram has more than \(limit) participants, too many to draw."

@@ -10,6 +10,9 @@
         'quote', 'cite'];
     // Prism's token classes, one for each kind of code Graphite colors (`CodeTokenKind`).
     const codeTokenClasses = ['keyword', 'class-name', 'function', 'string', 'number', 'boolean', 'comment', 'important', 'tag', 'property', 'variable', 'operator'];
+    // Pele's color variables for Mermaid diagrams, after `--pele-` (`ThemeModeTokens.diagramColorVariableNames`).
+    const diagramColorVariables = ['bg', 'fg', 'line', 'surface', 'border', 'accent', 'critical', 'muted', 'surface-alt',
+        'series-1', 'series-2', 'series-3', 'series-4', 'series-5', 'series-6', 'series-7', 'series-8'];
 
     function element(tag, className, parent, text) {
         const created = document.createElement(tag);
@@ -38,6 +41,10 @@
         const muted = element('span', null, paragraph, 'muted'); muted.id = 'probe-muted'; muted.style.color = 'var(--text-muted)';
         const faint = element('span', null, paragraph, 'faint'); faint.id = 'probe-faint'; faint.style.color = 'var(--text-faint)';
         const accent = element('span', null, paragraph, 'accent'); accent.id = 'probe-accent'; accent.style.color = 'var(--text-accent)';
+        // A variable a theme leaves unset reads as transparent, which is no color.
+        for (const name of diagramColorVariables) {
+            const swatch = element('span', null, paragraph, name); swatch.id = 'probe-pele-' + name; swatch.style.color = 'var(--pele-' + name + ', transparent)';
+        }
         const lineWidth = element('div', null, sizer); lineWidth.id = 'probe-line-width'; lineWidth.style.width = 'var(--file-line-width)';
         const quote = element('blockquote', null, sizer); quote.id = 'probe-blockquote'; element('p', null, quote, 'Quote');
         element('hr', null, sizer).id = 'probe-hr';
@@ -90,6 +97,7 @@
         values['body.lineHeight'] = view.lineHeight;
         values['body.fontFamily'] = view.fontFamily;
         values['muted.color'] = style('probe-muted').color;
+        for (const name of diagramColorVariables) values['pele.' + name] = style('probe-pele-' + name).color;
         values['faint.color'] = style('probe-faint').color;
         values['accent.color'] = style('probe-accent').color;
         values['strong.color'] = style('probe-strong').color;

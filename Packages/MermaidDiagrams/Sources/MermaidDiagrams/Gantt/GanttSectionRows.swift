@@ -15,8 +15,8 @@ struct GanttSectionRows {
     /// Pele's number of section styles, of which the even ones are shaded.
     static let sectionStyleCount = 4
 
-    init(tasks: [GanttTask], measurer: some DiagramTextMeasuring) {
-        rowSections = tasks.map(\.section)
+    init(rowSections: [String], measurer: some DiagramTextMeasuring) {
+        self.rowSections = rowSections
         var order: [String: Int] = [:]
         var names: [String: DiagramTextBlock] = [:]
         for section in rowSections where order[section] == nil {

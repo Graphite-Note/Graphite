@@ -16,6 +16,7 @@ struct PieChartParser {
     /// Reads the pie chart whose `pie` keyword ends at the cursor.
     static func parse(_ cursor: MermaidTextCursor, limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) -> PieChart {
         var parser = PieChartParser(cursor: cursor, limits: limits)
+        parser.chart.options = PieChartOptions(MermaidFrontMatterOptions(section: "pie", in: cursor.bytes))
         parser.readShowData()
         try parser.readStatements()
         return parser.chart

@@ -169,10 +169,15 @@ final class GitGraphDiagramBuilderTests: XCTestCase {
         XCTAssertEqual(readError("gitGraph\n checkout nope\n commit oops"), .invalidSyntax(line: 3, problem: .unexpectedText("oops")))
     }
 
-    func testAGraphThatSetsOptionsStopsPlayingWithoutAnErrorWhereItsHistoryBreaks() throws {
-        let diagram = try gitGraph("---\nconfig:\n  gitGraph:\n    mainBranchName: trunk\n---\ngitGraph\n commit\n checkout trunk\n commit")
+    func testAGraphThatSetsOptionsInADirectiveStopsPlayingWithoutAnErrorWhereItsHistoryBreaks() throws {
+        let diagram = try gitGraph("%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk\n commit")
         XCTAssertTrue(diagram.setsGitGraphOptions)
         XCTAssertEqual(diagram.commits.count, 1)
+        let named = try gitGraph("---\nconfig:\n  gitGraph:\n    mainBranchName: trunk\n    mainBranchOrder: 2\n---\ngitGraph\n commit\n branch dev\n commit\n"
+                                 + " checkout trunk\n commit")
+        XCTAssertFalse(named.setsGitGraphOptions, "The front matter's main branch is applied.")
+        XCTAssertEqual(named.commits.count, 3)
+        XCTAssertEqual(named.branches.map(\.name), ["dev", "trunk"], "The main branch takes its lane by its order.")
         XCTAssertEqual(readError("---\nconfig:\n  gitGraph:\n    showBranches: false\n---\ngitGraph\n commit oops"),
                        .invalidSyntax(line: 7, problem: .unexpectedText("oops")))
     }

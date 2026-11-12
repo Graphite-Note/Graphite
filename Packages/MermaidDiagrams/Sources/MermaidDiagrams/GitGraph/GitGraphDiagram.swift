@@ -14,10 +14,12 @@ public struct GitGraphDiagram: Equatable, Sendable {
     public internal(set) var accessibilityTitle: String?
     /// `accDescr: …` or `accDescr { … }`, the longer description a screen reader reads, or nil.
     public internal(set) var accessibilityDescription: String?
-    /// Whether the front matter's `config` or a `%%{init: …}%%` directive sets options of Git graphs (`gitGraph:`): the
-    /// main branch's name and order, `showBranches`, `showCommitLabel`, `rotateCommitLabel` or `parallelCommits`. They
-    /// are not applied, so the layout refuses such a graph rather than draw it otherwise than Mermaid does.
+    /// Whether a `%%{init: …}%%` directive sets options of Git graphs (`gitGraph:`), which are not read, or the front
+    /// matter sets one that is not applied (`GitGraphOptions.setsOptionsNotApplied`): the layout refuses such a graph
+    /// rather than draw it otherwise than Mermaid does.
     public internal(set) var setsGitGraphOptions: Bool
+    /// The options the front matter sets, which are applied.
+    public internal(set) var options = GitGraphOptions()
 
     init(direction: GitGraphDirection = .leftToRight, title: String? = nil, commits: [GitGraphCommit] = [], branches: [GitGraphBranch] = [],
          accessibilityTitle: String? = nil, accessibilityDescription: String? = nil, setsGitGraphOptions: Bool = false) {

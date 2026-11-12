@@ -9,6 +9,8 @@ public struct PieChartLayout: Equatable, Sendable {
     /// The pie's center.
     public let center: CGPoint
     public let radius: CGFloat
+    /// The radius of the hole of a donut (`donutHole`), 0 for a full pie.
+    public let innerRadius: CGFloat
     /// The slices drawn, clockwise from the top in the order they are written. A slice under one percent of the
     /// whole is not drawn, and its legend entry stays.
     public let slices: [PieChartLayoutSlice]

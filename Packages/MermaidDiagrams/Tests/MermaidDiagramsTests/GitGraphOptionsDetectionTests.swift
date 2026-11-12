@@ -8,9 +8,13 @@ final class GitGraphOptionsDetectionTests: XCTestCase {
         try GitGraphReading.gitGraph(source).setsGitGraphOptions
     }
 
-    func testFrontMatterThatConfiguresGitGraphsSetsOptions() throws {
-        XCTAssertTrue(try setsOptions("---\nconfig:\n  logLevel: 'debug'\n  gitGraph:\n    showBranches: false\n---\n      gitGraph\n        commit"))
-        XCTAssertTrue(try setsOptions("---\nconfig: {\"gitGraph\" : {\"parallelCommits\": true}}\n---\ngitGraph\n commit"))
+    func testFrontMatterOptionsAreReadAndThoseNotAppliedOrNotReadAreKnown() throws {
+        let read = try GitGraphReading.gitGraph("---\nconfig:\n  logLevel: 'debug'\n  gitGraph:\n    showBranches: false\n---\n      gitGraph\n        commit")
+        XCTAssertFalse(read.setsGitGraphOptions)
+        XCTAssertFalse(read.options.showsBranches)
+        XCTAssertTrue(try setsOptions("---\nconfig: {\"gitGraph\" : {\"parallelCommits\": true}}\n---\ngitGraph\n commit"), "Flow-style options are not read.")
+        XCTAssertTrue(try setsOptions("---\nconfig:\n  gitGraph:\n    nodeLabel: x\n---\ngitGraph\n commit"), "An option not applied.")
+        XCTAssertTrue(try setsOptions("---\nconfig:\n  gitGraph:\n    showBranches: maybe\n---\ngitGraph\n commit"), "A value of the wrong kind.")
     }
 
     func testADirectiveBeforeTheKeywordOrAmongTheStatementsSetsOptions() throws {

@@ -8,10 +8,11 @@ struct ReadingXYChartDrawing: View {
     let chart: ReadingXYChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
-            ReadingXYChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingXYChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -30,12 +31,12 @@ private struct ReadingXYChartPainting: View {
         ZStack(alignment: .topLeading) {
             shapes.gridLines.stroke(colors.alternateSurface, lineWidth: XYChartDrawingParts.lineWidth)
             ForEach(shapes.barFills.indices, id: \.self) { index in
-                shapes.barFills[index].fill(ReadingDiagramColors.seriesColor(index))
+                shapes.barFills[index].fill(colors.seriesColor(index))
             }
             ForEach(shapes.lines.indices, id: \.self) { index in
                 let line = shapes.lines[index]
-                line.stroke.stroke(ReadingDiagramColors.seriesColor(line.seriesIndex), style: Self.seriesLineStyle)
-                line.dots.fill(ReadingDiagramColors.seriesColor(line.seriesIndex))
+                line.stroke.stroke(colors.seriesColor(line.seriesIndex), style: Self.seriesLineStyle)
+                line.dots.fill(colors.seriesColor(line.seriesIndex))
             }
             shapes.axisLines.stroke(colors.border, lineWidth: XYChartDrawingParts.lineWidth)
             lines(shapes.axisLabelLines, color: colors.muted)

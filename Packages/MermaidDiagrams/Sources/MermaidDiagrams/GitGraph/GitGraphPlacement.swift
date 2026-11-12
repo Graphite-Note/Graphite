@@ -12,7 +12,8 @@ struct GitGraphPlacement {
     private(set) var bounds = CGRect.null
 
     init(diagram: GitGraphDiagram, room: GitGraphRoom, positions: GitGraphPositions, geometry: GitGraphGeometry) {
-        for (lane, name) in room.names.enumerated() {
+        // Hidden branches (`showBranches: false`) have neither lines nor names: the commits and their links alone.
+        for (lane, name) in room.names.enumerated() where diagram.options.showsBranches {
             placeLane(name: name, across: positions.across[lane], lastAlong: positions.lastAlong, geometry: geometry)
         }
         for (index, commit) in diagram.commits.enumerated() {
@@ -20,7 +21,10 @@ struct GitGraphPlacement {
             let dotReach = GitGraphGeometry.dotRadius + 1
             include(CGRect(x: center.x - dotReach, y: center.y - dotReach, width: 2 * dotReach, height: 2 * dotReach))
             commits.append(GitGraphLayoutCommit(center: center, laneIndex: commit.branchIndex, symbol: Self.symbol(of: commit),
-                                                label: room.labels[index].map { label in placedLabel(label, beside: center, direction: geometry.direction) },
+                                                label: room.labels[index].map { label in
+                                                    diagram.options.rotatesCommitLabels ? placedLabel(label, beside: center, direction: geometry.direction)
+                                                        : placedLevelLabel(label, beside: center, isVertical: geometry.isVertical)
+                                                },
                                                 tags: placedTags(room.tags[index], beside: center, isVertical: geometry.isVertical)))
         }
         if bounds.isNull { bounds = .zero }
@@ -62,6 +66,19 @@ struct GitGraphPlacement {
         let outset = GitGraphGeometry.labelPatchOutset
         let patchSize = CGSize(width: label.size.width + outset.width, height: label.size.height + outset.height)
         return GitGraphLayoutCommitLabel(text: text, angle: angle, patchSize: patchSize)
+    }
+
+    /// The id level (`rotateCommitLabel: false`), centered under the dot in a horizontal graph and left of it in a
+    /// vertical one.
+    private mutating func placedLevelLabel(_ label: DiagramTextBlock, beside center: CGPoint, isVertical: Bool) -> GitGraphLayoutCommitLabel {
+        let reach = GitGraphGeometry.dotRadius + GitGraphGeometry.labelOffset
+        var text = label
+        text.center = isVertical ? CGPoint(x: center.x - reach - label.size.width / 2, y: center.y)
+            : CGPoint(x: center.x, y: center.y + reach + label.size.height / 2)
+        include(text.frame)
+        let outset = GitGraphGeometry.labelPatchOutset
+        let patchSize = CGSize(width: label.size.width + outset.width, height: label.size.height + outset.height)
+        return GitGraphLayoutCommitLabel(text: text, angle: 0, patchSize: patchSize)
     }
 
     /// Tags stacked above the commit, the first furthest out, or in a row to its right in a vertical graph.
