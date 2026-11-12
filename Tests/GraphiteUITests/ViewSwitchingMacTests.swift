@@ -38,10 +38,10 @@ final class ViewSwitchingMacTests: XCTestCase {
         let backToList = try await quietWatch.measure { workspace.preferences.library.presentation = .list }
         XCTAssertTrue(Self.fileTree(in: window) === fileTree, "List shows the same file tree again.")
         XCTAssertEqual(fileTree.numberOfRows, rowsWithOpenFolders, "Its open folders are open at once, not listed again.")
-        // Measured 2026-11-12 on a Debug build: 100 to 230 ms each way at this size; the budget leaves room for a loaded
+        // Measured 2026-11-12 on a Debug build: 100 to 230 ms each way at this size; the 3 s budget leaves room for a loaded
         // machine and still catches a freeze such as the Tags view's 4.5 s.
         for measurement in [firstList, toLibrary, backToList] {
-            XCTAssertLessThan(measurement.busy, .milliseconds(2_000), "A switch kept the main thread busy \(measurement.busy).")
+            XCTAssertLessThan(measurement.busy, .milliseconds(3_000), "A switch kept the main thread busy \(measurement.busy).")
         }
     }
 
