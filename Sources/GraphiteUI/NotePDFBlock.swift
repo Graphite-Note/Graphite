@@ -4,7 +4,8 @@
  * Layer: UI
  * Description: A note's reading-view blocks as a PDF prints them: callouts printed open, lists, tables, code,
  *              callouts and embedded notes divided into the parts a page may end between, pictures and PDF pages
- *              loaded before drawing, bases run before drawing, and the headings and web links the finished PDF needs.
+ *              loaded before drawing, bases run before drawing (also inside callouts and embedded notes), and the headings and
+ *              web links the finished PDF needs.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -49,6 +50,8 @@ struct NotePDFBlock: Sendable {
     /// The heading's level and text, for the PDF's outline; nil for other blocks.
     var outlineHeading: (level: Int, title: String)?
     var webLinks: [NotePDFWebLink] = []
+    /// The bases inside its callouts and embedded notes, run before drawing.
+    var nestedBases: [PrintedBaseKey: PrintedBase] = [:]
 
     /// Parts a page may end between; 1 for a block printed whole.
     var unitCount: Int {
@@ -118,6 +121,7 @@ enum NotePDFBlocks {
             let scan = await NotePDFTextScan.scanning(markdownTexts(in: block), root: root)
             await scan.loadInlineImages()
             printedBlock.webLinks = scan.webLinks
+            printedBlock.nestedBases = await NotePDFBases.nested(in: block, note: note, vault: vault, layoutWidth: layoutWidth)
             if case .heading(_, let level, let text, _) = block {
                 printedBlock.outlineHeading = (level, await NotePDFTextScan.plainText(of: text, root: root))
             }

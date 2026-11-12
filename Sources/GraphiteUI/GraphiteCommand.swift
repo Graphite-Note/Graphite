@@ -192,7 +192,8 @@ extension GraphiteCommand {
             return Descriptor(title: "Files: Filter files and folders by name", group: .file, defaultCombinations: command("J", [.command, .option]),
                               binding: .menuBar, macMenuTitles: ["Filter Files"])
         case .copyURL: return Descriptor(title: "Copy Graphite URL", group: .file)
-        case .exportToPDF: return Descriptor(title: "Export to PDF", group: .file, binding: .menuBar, macMenuTitles: ["Export as PDF…"])
+        case .exportToPDF: return Descriptor(title: "Export to PDF", group: .file, defaultCombinations: command("E", [.command, .shift]),
+                                             binding: .menuBar, macMenuTitles: ["Export as PDF…"]) // ⇧⌘E: free on the Mac and the iPad.
         case .printNote:
             // ⌘P prints on the Mac, as in its other apps; the iPad keeps it for the command palette, as Obsidian does.
             return Descriptor(title: "Print current file", group: .file, defaultCombinations: ShortcutPlatform.current == .macOS ? command("P") : [],
@@ -268,9 +269,8 @@ extension GraphiteCommand {
                               macMenuTitles: ["Show All Tabs"])
         case .focusOtherSide:
             return Descriptor(title: "Focus the other side of the split", group: .go, binding: .menuBar, macMenuTitles: ["Focus the Other Side"])
-        case .todaysDailyNote:
-            return Descriptor(title: "Daily notes: Open today's daily note", group: .go,
-                              binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Today's Daily Note"])
+        case .todaysDailyNote: return Descriptor(title: "Daily notes: Open today's daily note", group: .go,
+                                                 binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Today's Daily Note"])
         case .previousDailyNote:
             return Descriptor(title: "Daily notes: Open previous daily note", group: .go,
                               binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Previous Daily Note"])

@@ -47,6 +47,23 @@ final class KeyboardShortcutsPageContentTests: XCTestCase {
         XCTAssertEqual(byWords, [pluginCommand.id])
     }
 
+    func testExportToPDFIsListedUnderFileWithShiftCommandEAndCanBeChanged() throws {
+        for platform in [ShortcutPlatform.macOS, .iPadOS] {
+            let page = content(platform: platform)
+            let fileRows = try XCTUnwrap(page.sections(matching: "").first { section in section.title == "File" }).rows.map(\.id)
+            XCTAssertTrue(fileRows.contains(GraphiteCommand.exportToPDF.identifier), "\(platform)")
+            XCTAssertEqual(page.sections(matching: "⇧⌘E").flatMap(\.rows).map(\.id), [GraphiteCommand.exportToPDF.identifier], "\(platform)")
+            let row = try row(GraphiteCommand.exportToPDF.identifier, in: page)
+            XCTAssertEqual(row.sharedWithTitles, [], "\(platform)")
+            XCTAssertTrue(row.systemShortcuts.isEmpty, "\(platform)")
+        }
+        var file = HotkeyFile()
+        file.assign([KeyCombination([.command, .option], .character("E"))], to: GraphiteCommand.exportToPDF.identifier)
+        let changed = try row(GraphiteCommand.exportToPDF.identifier, in: content(file: file))
+        XCTAssertTrue(changed.isChanged)
+        XCTAssertEqual(changed.combinations.map(\.symbols), ["⌥⌘E"])
+    }
+
     func testMarksBothCommandsOfAClashAndTheSystemsShortcuts() throws {
         var file = HotkeyFile()
         file.assign([KeyCombination(.command, .character("B"))], to: GraphiteCommand.newNotebook.identifier)

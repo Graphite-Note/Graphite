@@ -70,6 +70,7 @@ public struct BaseCodeBlockView: View {
     private let yaml: String
     private let context: BaseEmbedContext?
     @Environment(\.baseEmbedContext) private var environmentContext
+    @Environment(\.printedNestedBases) private var printedBases
 
     public init(yaml: String, context: BaseEmbedContext? = nil) {
         self.yaml = yaml
@@ -77,7 +78,10 @@ public struct BaseCodeBlockView: View {
     }
 
     public var body: some View {
-        if let activeContext = context ?? environmentContext {
+        if let printedBases {
+            // On paper, inside a callout or an embedded note: run before drawing.
+            NotePDFNestedBaseView(base: printedBases[PrintedBaseKey(source: .inline(yaml), viewName: nil)], name: "Base")
+        } else if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(yaml: yaml, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
                              contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
                                  isIndexComplete: activeContext.isIndexComplete,
@@ -101,6 +105,7 @@ public struct BaseFileEmbedView: View {
     private let context: BaseEmbedContext?
     private let openWithoutContext: ((VaultPath) -> Void)?
     @Environment(\.baseEmbedContext) private var environmentContext
+    @Environment(\.printedNestedBases) private var printedBases
 
     public init(path: VaultPath, viewName: String?, context: BaseEmbedContext? = nil, openWithoutContext: ((VaultPath) -> Void)? = nil) {
         self.path = path
@@ -110,7 +115,10 @@ public struct BaseFileEmbedView: View {
     }
 
     public var body: some View {
-        if let activeContext = context ?? environmentContext {
+        if let printedBases {
+            // On paper, inside a callout or an embedded note: run before drawing.
+            NotePDFNestedBaseView(base: printedBases[PrintedBaseKey(source: .file(path), viewName: viewName)], name: path.name)
+        } else if let activeContext = context ?? environmentContext {
             EmbeddedBaseView(basePath: path, viewName: viewName, embeddingNote: activeContext.embeddingNote, store: activeContext.store, index: activeContext.index,
                              contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
                                  isIndexComplete: activeContext.isIndexComplete,

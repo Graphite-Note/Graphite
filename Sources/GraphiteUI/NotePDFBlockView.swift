@@ -108,6 +108,7 @@ struct NotePDFPrintedBlock: View {
     var body: some View {
         NotePDFBlockView(block: block, units: units, root: root, layoutWidth: layoutWidth, typography: appearance.typography)
             .printedNoteEnvironment(appearance, layoutWidth: layoutWidth)
+            .environment(\.printedNestedBases, block.nestedBases)
     }
 }
 

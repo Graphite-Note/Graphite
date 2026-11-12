@@ -1611,7 +1611,6 @@ struct ReadingBlocksView: View {
     var declaredPropertyTypes: [String: PropertyType] = [:]
     /// Follows where the note's own blocks are as the view scrolls; nil for embedded notes.
     var blockPositions: ReadingPosition? = nil
-    @Environment(\.readingTaskContext) private var taskContext
     // The word being read is not read here: it changes with every word, and this view's body
     // goes over every block of the note. Only the views that show the word, and callouts
     // (`ReadingCallout`), read it.
@@ -1713,17 +1712,8 @@ struct ReadingBlocksView: View {
                 EmbeddedPDFViewer(location: location, startPageNumber: options.startPageNumber, height: options.height.map { height in CGFloat(height) },
                                   openInPane: { pageIndex in openPDF(path, pageIndex) })
             case .transclusion(_, let path, let heading, let body):
-                VStack(alignment: .leading, spacing: 10) {
-                    Button { navigate(path.rawValue + (heading.map { "#" + $0 } ?? ""), true) } label: {
-                        Label(path.stem + (heading.map { " > " + $0 } ?? ""), systemImage: "doc.text").font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.borderless)
-                    ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading, openPDF: openPDF, updateProperties: nil)
-                        // The embedded note's tasks are ticked in that note.
-                        .environment(\.readingTaskContext, taskContext.map { context in ReadingTaskContext(note: path, toggle: context.toggle) })
-                }
-                .padding(.leading, 16)
-                .overlay(alignment: .leading) { Rectangle().fill(.tint.opacity(0.6)).frame(width: 3) }
+                ReadingTransclusionBlock(path: path, heading: heading, blocks: body, root: root, textSize: textSize, navigate: navigate,
+                                         scrollToHeading: scrollToHeading, openPDF: openPDF)
             case .base(_, let yaml):
                 BaseCodeBlockView(yaml: yaml)
             case .baseFile(_, let path, let viewName):
@@ -2109,13 +2099,17 @@ extension EnvironmentValues {
 
 /// A reading text on screen (selectable, wide content scrolling) or printed. The choice is
 /// made once for a whole view hierarchy and never changes in it, so the two branches never
-/// replace each other's text.
+/// replace each other's text. On paper a display formula wider than the column keeps its
+/// line and is scaled down to the column, as a wide picture is: broken into lines, a long
+/// derivation came apart at odd places, and measured again at the width it had been broken
+/// to, it narrowed into a column of fragments.
 private struct ReadingTextPrinting: ViewModifier {
     let isPrinted: Bool
 
     func body(content: Content) -> some View {
         if isPrinted {
             content.textual.textSelection(.disabled).textual.overflowMode(.wrap)
+                .textual.mathProperties(MathProperties(wideDisplayMath: .scaledToFit))
         } else {
             content.textual.textSelection(.enabled)
         }

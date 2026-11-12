@@ -556,7 +556,7 @@ struct GraphiteRootView: View {
                 case .templatePicker:
                     TemplatePicker(workspace: workspace) { self.activePalette = nil }
                 case .commandPalette:
-                    NotePDFPaletteCommands(hasNoteInFront: workspace.markdownSession != nil) { noteCommands in
+                    NotePDFPaletteCommands(hasNoteInFront: workspace.markdownSession != nil, shortcuts: workspace.keyboardShortcuts) { noteCommands in
                         let recentCommandIdentifiers = Binding(get: { workspace.preferences.recentCommandIdentifiers },
                                                                set: { identifiers in workspace.preferences.recentCommandIdentifiers = identifiers })
                         CommandPalette(commands: WorkspaceCommandList.commands(for: workspace, window: windowActions, offersSplit: !isCompactWidth) + noteCommands,

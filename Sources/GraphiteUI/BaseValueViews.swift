@@ -289,6 +289,9 @@ struct BaseImageValueView: View {
 
     @Environment(\.readingIsPrinted) private var isPrinted
 
+    /// The thumbnail's size in its cell, which printing decodes the picture for.
+    static let frameSize = CGSize(width: 44, height: 32)
+
     var body: some View {
         // A drawing for paper runs no task, so it resolves the image at once.
         let shownReference = resolvedReference ?? (isPrinted ? Self.reference(for: target) : nil)
@@ -296,7 +299,7 @@ struct BaseImageValueView: View {
             if let resolvedReference = shownReference {
                 BaseCoverImageView(reference: resolvedReference, fit: .contain, thumbnails: actions.thumbnails, vaultRoot: actions.vaultRoot,
                                    contentVersion: actions.contentVersion)
-                    .frame(width: 44, height: 32)
+                    .frame(width: Self.frameSize.width, height: Self.frameSize.height)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
             } else {
                 Label(target, systemImage: "photo").labelStyle(.titleAndIcon).lineLimit(1).foregroundStyle(.secondary)

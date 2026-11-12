@@ -35,6 +35,20 @@ struct PrintedBase: Sendable {
     }
 }
 
+/// A base inside a callout or an embedded note, by what it runs. Such a base is drawn by
+/// the reading view's own block views (`BaseCodeBlockView`, `BaseFileEmbedView`), which on
+/// paper look it up by this key.
+struct PrintedBaseKey: Hashable, Sendable {
+    let source: BaseSource
+    let viewName: String?
+}
+
+extension EnvironmentValues {
+    /// The bases inside a printed block's callouts and embedded notes, run before drawing;
+    /// nil on screen, where each base runs itself. One missing from it prints as its name.
+    @Entry var printedNestedBases: [PrintedBaseKey: PrintedBase]? = nil
+}
+
 enum NotePDFBases {
     /// The views a page can show; a map or kanban prints as the base's name.
     private static let printedViewTypes: Set<BaseViewType> = [.cards, .list, .table]
@@ -50,10 +64,47 @@ enum NotePDFBases {
         await model.reload()
         guard let result = model.result, printedViewTypes.contains(result.view.type) else { return nil }
         let cardWidth = result.view.cards.cardSize.map { size in CGFloat(size) } ?? BaseCardsView.defaultCardWidth
-        let covers = await decodedCovers(of: result, root: store.root, maximumPixelDimension: Int(cardWidth * coverPixelsPerPoint))
+        let covers = await decodedPictures(of: result, root: store.root, coverPixelDimension: Int(cardWidth * coverPixelsPerPoint))
         let cardMetrics = BaseCardGridMetrics(availableWidth: layoutWidth, preferredCardWidth: cardWidth, isPrinted: true)
         let rowsPerPart = result.view.type == .cards ? cardMetrics.columnCount : 1
         return PrintedBase(result: result, covers: covers, partStarts: partStarts(of: result, rowsPerPart: rowsPerPart), vaultRoot: store.root)
+    }
+
+    /// The bases inside the callouts and embedded notes of `block`, at any depth, each run
+    /// with the note it is written in as `this`. A base the paper cannot show is left out
+    /// and prints as its name. The same base in two embedded notes is run once, with the
+    /// first note as `this`, as the lookup has only what the block says.
+    @MainActor
+    static func nested(in block: RenderedBlock, note: VaultPath, vault: ReadingVault, layoutWidth: CGFloat) async -> [PrintedBaseKey: PrintedBase] {
+        var bases: [PrintedBaseKey: PrintedBase] = [:]
+        var tried: Set<PrintedBaseKey> = []
+        for (key, baseNote) in nestedBaseKeys(in: block, note: note) where tried.insert(key).inserted {
+            guard !Task.isCancelled else { return bases }
+            bases[key] = await printed(key.source, viewName: key.viewName, note: baseNote, vault: vault, layoutWidth: layoutWidth)
+        }
+        return bases
+    }
+
+    /// The bases inside a callout's or an embedded note's blocks, with the note each is in.
+    static func nestedBaseKeys(in block: RenderedBlock, note: VaultPath) -> [(key: PrintedBaseKey, note: VaultPath)] {
+        switch block {
+        case .callout(_, _, _, _, let body): body.flatMap { inner in baseKeys(in: inner, note: note) }
+        case .transclusion(_, let path, _, let body): body.flatMap { inner in baseKeys(in: inner, note: path) }
+        case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
+             .footnotes, .pluginCodeBlock, .pluginSection, .diagram:
+            []
+        }
+    }
+
+    private static func baseKeys(in block: RenderedBlock, note: VaultPath) -> [(key: PrintedBaseKey, note: VaultPath)] {
+        switch block {
+        case .base(_, let yaml): [(PrintedBaseKey(source: .inline(yaml), viewName: nil), note)]
+        case .baseFile(_, let path, let viewName): [(PrintedBaseKey(source: .file(path), viewName: viewName), note)]
+        case .callout, .transclusion: nestedBaseKeys(in: block, note: note)
+        case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .missingEmbed, .missingSection, .image, .footnotes,
+             .pluginCodeBlock, .pluginSection, .diagram:
+            []
+        }
     }
 
     /// Where each part starts: each group's rows in runs of `rowsPerPart`, a run never
@@ -68,18 +119,48 @@ enum NotePDFBases {
         return starts + [groupStart]
     }
 
-    /// The cards' covers from files and the web, each decoded once at the size a card prints
-    /// it; one that cannot be read is left out and prints as an empty photo.
-    private static func decodedCovers(of result: BaseQueryResult, root: URL, maximumPixelDimension: Int) async -> [BaseImageReference: ReadingThumbnail] {
-        guard result.view.type == .cards, result.view.cards.imageProperty != nil else { return [:] }
-        var covers: [BaseImageReference: ReadingThumbnail] = [:]
-        for row in result.rows {
-            guard !Task.isCancelled else { return covers }
-            guard let reference = row.presentation.coverImage, covers[reference] == nil,
-                  let cover = await decodedCover(reference, root: root, maximumPixelDimension: maximumPixelDimension) else { continue }
-            covers[reference] = ReadingThumbnail(image: cover, aspectRatio: CGFloat(cover.width) / CGFloat(max(cover.height, 1)), isEditableDrawing: false)
+    /// The pictures the view shows from files and the web, each decoded once at the size it
+    /// prints: the cards' covers, then the `image()` values of its cells. One that cannot be
+    /// read is left out and prints as an empty photo.
+    private static func decodedPictures(of result: BaseQueryResult, root: URL, coverPixelDimension: Int) async -> [BaseImageReference: ReadingThumbnail] {
+        var pictures: [BaseImageReference: ReadingThumbnail] = [:]
+        for (reference, maximumPixelDimension) in pictureReferences(of: result, coverPixelDimension: coverPixelDimension) {
+            guard !Task.isCancelled else { return pictures }
+            guard let picture = await decodedCover(reference, root: root, maximumPixelDimension: maximumPixelDimension) else { continue }
+            pictures[reference] = ReadingThumbnail(image: picture, aspectRatio: CGFloat(picture.width) / CGFloat(max(picture.height, 1)),
+                                                   isEditableDrawing: false)
         }
-        return covers
+        return pictures
+    }
+
+    /// Each picture of the view once, with the longest side in pixels it is decoded at: a
+    /// card's cover at `coverPixelDimension`, a cell's `image()` at the size of its cell.
+    static func pictureReferences(of result: BaseQueryResult, coverPixelDimension: Int) -> [(reference: BaseImageReference, maximumPixelDimension: Int)] {
+        var references: [(reference: BaseImageReference, maximumPixelDimension: Int)] = []
+        var listed: Set<BaseImageReference> = []
+        func list(_ reference: BaseImageReference, maximumPixelDimension: Int) {
+            if case .color = reference { return }
+            if listed.insert(reference).inserted { references.append((reference, maximumPixelDimension)) }
+        }
+        if result.view.type == .cards, result.view.cards.imageProperty != nil {
+            for row in result.rows { if let cover = row.presentation.coverImage { list(cover, maximumPixelDimension: coverPixelDimension) } }
+        }
+        let cellPixelDimension = Int(BaseImageValueView.frameSize.width * coverPixelsPerPoint)
+        for row in result.rows {
+            for target in row.cells.flatMap({ cell in cell.value.map(imageTargets(in:)) ?? [] }) {
+                if let reference = BaseImageValueView.reference(for: target) { list(reference, maximumPixelDimension: cellPixelDimension) }
+            }
+        }
+        return references
+    }
+
+    /// The targets of the `image()` values in a cell's value, also inside a list.
+    private static func imageTargets(in value: BaseValue) -> [String] {
+        switch value {
+        case .image(let target): [target]
+        case .list(let elements): elements.flatMap(imageTargets(in:))
+        case .null, .boolean, .number, .string, .date, .duration, .link, .file, .object, .regularExpression, .icon, .html: []
+        }
     }
 
     /// A cover from a file or the web; nil for a colour, or a picture that cannot be read,
@@ -130,5 +211,20 @@ struct NotePDFBaseView: View {
         BaseViewActions(openPath: { _ in }, openLink: { _ in }, editRequest: { _, _, _ in nil }, beginEditing: { _ in },
                         toggleCheckbox: { _, _ in }, requestedCheckboxValue: { _ in nil }, thumbnails: BaseThumbnailStore(),
                         vaultRoot: base.vaultRoot, contentVersion: 0)
+    }
+}
+
+/// A base inside a callout or an embedded note on paper: drawn whole as the base draws it,
+/// or as its name when it could not be run for paper.
+struct NotePDFNestedBaseView: View {
+    let base: PrintedBase?
+    let name: String
+
+    var body: some View {
+        if let base {
+            NotePDFBaseView(base: base, units: 0..<base.unitCount)
+        } else {
+            Label(name, systemImage: "tablecells").foregroundStyle(.secondary)
+        }
     }
 }

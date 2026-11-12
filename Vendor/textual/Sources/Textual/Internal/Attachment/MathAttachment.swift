@@ -81,6 +81,11 @@ struct MathAttachment: Attachment {
       let width = proposal.width,
       naturalBounds.width > width + Self.naturalWidthTolerance
     else { return naturalBounds.size }
+    // Graphite patch: a wide formula on paper keeps its one line, scaled to the column
+    // (`MathProperties.WideDisplayMath.scaledToFit`); `MathView` draws it scaled to this size.
+    if environment.mathProperties.wideDisplayMath == .scaledToFit, width > 0 {
+      return CGSize(width: width, height: naturalBounds.size.height * width / naturalBounds.width)
+    }
     return typographicBounds(fitting: proposal, in: environment).size
   }
 
@@ -111,14 +116,22 @@ private struct MathView: View {
   let latex: String
   let style: MathAttachment.DisplayStyle
 
+  private var font: Math.Font {
+    .init(
+      name: .init(environment.mathProperties.fontName),
+      size: FontScaled(environment.mathProperties.fontScale).resolve(in: environment)
+    )
+  }
+
+  /// Graphite patch: the formula's width on one line, which a formula scaled to its column
+  /// is scaled from.
+  private var naturalWidth: CGFloat {
+    Math.typographicBounds(for: latex, fitting: .unspecified, font: font, style: .init(style)).width
+  }
+
   var body: some View {
     let math = Math(latex)
-      .mathFont(
-        .init(
-          name: .init(environment.mathProperties.fontName),
-          size: FontScaled(environment.mathProperties.fontScale).resolve(in: environment)
-        )
-      )
+      .mathFont(font)
       .mathTypesettingStyle(.init(style))
       // Explicit LaTeX colors take precedence; ordinary formulas keep the surrounding style.
       .mathRenderingMode(latex.contains("\\color") || latex.contains("\\textcolor") ? .multicolor : .monochrome)
@@ -129,8 +142,28 @@ private struct MathView: View {
     switch style {
     case .inline:
       math.fixedSize(horizontal: true, vertical: false)
+    case .block where environment.mathProperties.wideDisplayMath == .scaledToFit:
+      ScaledDownToItsFrame(naturalWidth: naturalWidth) { math }
     case .block:
       NaturalWidthWhenItFits { math }
+    }
+  }
+}
+
+/// Graphite patch: draws its subview at its natural size, scaled down uniformly to the
+/// width of its frame when it is wider, from its top leading corner. The attachment's frame
+/// was measured that way (`MathAttachment.sizeThatFits`), so the formula fills it exactly;
+/// a transform keeps the formula's outlines as vectors.
+private struct ScaledDownToItsFrame<Content: View>: View {
+  let naturalWidth: CGFloat
+  @ViewBuilder let content: () -> Content
+
+  var body: some View {
+    GeometryReader { geometry in
+      let fits = naturalWidth <= geometry.size.width + MathAttachment.naturalWidthTolerance
+      content()
+        .fixedSize()
+        .scaleEffect(fits || naturalWidth <= 0 ? 1 : geometry.size.width / naturalWidth, anchor: .topLeading)
     }
   }
 }

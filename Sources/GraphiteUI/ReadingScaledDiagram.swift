@@ -2,7 +2,8 @@
  * File: ReadingScaledDiagram.swift
  * --------------------------------
  * Layer: UI
- * Description: Places a laid-out diagram in the reading column: scaled down to fit, or scrolling sideways once fitting would make its text too small to read.
+ * Description: Places a laid-out diagram in the reading column: scaled down to fit, or scrolling sideways once fitting would make its text too
+ *              small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier
  * Version: 0.2
@@ -46,6 +47,9 @@ struct ReadingScaledDiagram<Painting: View>: View {
     let textSize: Double
     let painting: Painting
     @State private var columnWidth: CGFloat = 0
+    /// On paper the diagram is always fitted: paper does not scroll, and a drawing for a PDF
+    /// shows no scroll view.
+    @Environment(\.readingIsPrinted) private var isPrinted
 
     init(size: CGSize, layoutTextSize: CGFloat, textSize: Double, @ViewBuilder painting: () -> Painting) {
         self.size = size
@@ -63,6 +67,8 @@ struct ReadingScaledDiagram<Painting: View>: View {
         Group {
             switch presentation {
             case .fitted:
+                fitted(naturalWidth: naturalWidth)
+            case .scrolling where isPrinted:
                 fitted(naturalWidth: naturalWidth)
             case .scrolling(let scale):
                 scrolling(at: scale)
