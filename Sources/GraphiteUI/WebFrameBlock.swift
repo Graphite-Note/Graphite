@@ -6,7 +6,7 @@
  *              placeholder, loading indicator and failure message elsewhere.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 12/11/2026
  */
 
@@ -69,7 +69,11 @@ struct WebFrameBlock: View {
         let shape = RoundedRectangle(cornerRadius: CGFloat(frame.cornerRadius), style: .continuous)
         return ZStack {
             if holdsPage {
+                // Hidden until its page has loaded: a web view is white before it draws a page and after one fails, and
+                // the placeholder's tint over it let that white through, so the dark appearance's white message could
+                // not be read. The web view stays, hidden, so Try Again loads the page in it again.
                 WebFramePage(address: frame.address, controller: page, openExternally: { address in openURL(address) })
+                    .opacity(page.loadState == .loaded ? 1 : 0)
             }
             if !holdsPage || page.loadState != .loaded {
                 WebFramePlaceholder(frame: frame, presentation: presentation, loadState: holdsPage ? page.loadState : nil,

@@ -6,7 +6,7 @@
  *              to the vault or the app, new windows in the browser, and how its loading went.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 12/11/2026
  */
 
@@ -51,6 +51,18 @@ enum WebFrameWebViews {
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         #endif
         return webView
+    }
+
+    /// The request that loads a frame's page: its address, with Graphite's identity as the HTTP `Referer`. A web view
+    /// loading a page by itself sends none, and YouTube's player refuses to play without one (Error 153, "Video player
+    /// configuration error"); YouTube asks an application that embeds it to send `https://` and its bundle identifier
+    /// (YouTube API Services, Required Minimum Functionality). Only the application is named, never the note or the vault.
+    static func request(for address: URL, bundleIdentifier: String? = Bundle.main.bundleIdentifier) -> URLRequest {
+        var request = URLRequest(url: address)
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            request.setValue("https://\(bundleIdentifier)/", forHTTPHeaderField: "Referer")
+        }
+        return request
     }
 
     /// Whether a page may go to `address` inside its frame. Only web pages: a vault file, a `file:` address or another
@@ -107,7 +119,7 @@ final class WebFramePageController: NSObject {
         guard let webView, loadedAddress != address else { return }
         loadedAddress = address
         setLoadState(.loading)
-        webView.load(URLRequest(url: address))
+        webView.load(WebFrameWebViews.request(for: address))
     }
 
     /// Loads the page again after a failure.

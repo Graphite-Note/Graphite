@@ -6,7 +6,7 @@
  *              from the internet.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 12/11/2026
  */
 
@@ -22,9 +22,12 @@ public final class LoopbackWebServer {
     public let port: UInt16
     private let listener: NWListener
     private let requests: LockedLog
+    private let referrers: LockedLog
 
     /// The paths asked for so far, in order.
     public var requestedPaths: [String] { requests.entries }
+    /// The `Referer` each request sent, in the order of `requestedPaths`; empty where a request sent none.
+    public var requestedReferrers: [String] { referrers.entries }
 
     /// Starts the server with `pages`, HTML by path (`/grapher`).
     public init(pages: [String: String]) async throws {
@@ -32,13 +35,18 @@ public final class LoopbackWebServer {
         parameters.requiredLocalEndpoint = NWEndpoint.hostPort(host: .ipv4(.loopback), port: .any)
         let listener = try NWListener(using: parameters)
         let requests = LockedLog()
+        let referrers = LockedLog()
         let queue = DispatchQueue(label: "LoopbackWebServer")
         listener.newConnectionHandler = { connection in
             connection.start(queue: queue)
             connection.receive(minimumIncompleteLength: 1, maximumLength: 65_536) { data, _, _, _ in
-                let requestLine = data.flatMap { bytes in String(data: bytes, encoding: .utf8) }?.components(separatedBy: "\r\n").first ?? ""
-                let parts = requestLine.split(separator: " ")
+                let lines = data.flatMap { bytes in String(data: bytes, encoding: .utf8) }?.components(separatedBy: "\r\n") ?? []
+                let parts = (lines.first ?? "").split(separator: " ")
                 let path = parts.count >= 2 ? String(parts[1]) : "/"
+                let referrerPrefix = "referer:"
+                let referrer = lines.first { line in line.lowercased().hasPrefix(referrerPrefix) }
+                    .map { line in line.dropFirst(referrerPrefix.count).trimmingCharacters(in: .whitespaces) } ?? ""
+                referrers.append(referrer)
                 requests.append(path)
                 let page = pages[path]
                 let body = Data((page ?? "<html><body>Not found</body></html>").utf8)
@@ -65,6 +73,7 @@ public final class LoopbackWebServer {
         }
         self.listener = listener
         self.requests = requests
+        self.referrers = referrers
     }
 
     /// The address of `path` on this server.

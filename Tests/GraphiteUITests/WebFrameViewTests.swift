@@ -7,7 +7,7 @@
  *              placeholders where a live page does not fit, and the page given up when its view leaves the window.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 12/11/2026
  */
 
@@ -215,6 +215,52 @@ final class WebFrameViewTests: XCTestCase {
     }
 
     /// A Live Preview block's view taken off screen into the pool of kept views leaves the window: its page goes with it.
+    /// YouTube's player refused the frame's embed with Error 153 on the Mac (2026-11-12): a web view loading a page by
+    /// itself sends no `Referer`, and YouTube asks an application that embeds it to send `https://` and its bundle identifier.
+    func testThePageIsAskedForWithGraphitesIdentityAsItsReferrer() async throws {
+        let address = try XCTUnwrap(URL(string: "https://www.youtube.com/embed/example"))
+        XCTAssertEqual(WebFrameWebViews.request(for: address, bundleIdentifier: "com.graphite.study").value(forHTTPHeaderField: "Referer"),
+                       "https://com.graphite.study/")
+        XCTAssertNil(WebFrameWebViews.request(for: address, bundleIdentifier: nil).value(forHTTPHeaderField: "Referer"))
+        XCTAssertEqual(WebFrameWebViews.request(for: address, bundleIdentifier: "com.graphite.study").url, address)
+        let server = try await LoopbackWebServer(pages: ["/grapher": Self.page])
+        self.server = server
+        let controller = WebFramePageController()
+        let webView = WebFrameWebViews.make()
+        let window = host(WebViewHost(webView: webView))
+        _ = window
+        controller.attach(webView, address: server.address("/grapher"))
+        try await waitUntil("the page loads") { controller.loadState == .loaded }
+        let expected = Bundle.main.bundleIdentifier.map { identifier in "https://\(identifier)/" } ?? ""
+        XCTAssertEqual(server.requestedReferrers.first, expected, "The web view sends the request's referrer.")
+        controller.detach(webView)
+    }
+
+    /// A page that could not load showed a white box with only its buttons in the dark appearance (2026-11-12): the failed
+    /// web view's white showed through the placeholder's tint, under the appearance's white message. The web view is now
+    /// hidden until its page has loaded, and shown once it has.
+    func testAFramesWebViewIsHiddenUntilItsPageHasLoaded() async throws {
+        let closedServer = try await LoopbackWebServer(pages: [:])
+        closedServer.stop()
+        let failing = try XCTUnwrap(frame(src: closedServer.address("/missing").absoluteString, attributes: #"width="400" height="200""#))
+        let failingWindow = host(WebFrameBlock(frame: failing).environment(\.webFramePresentation, .live))
+        var failedWebView: WKWebView?
+        try await waitUntil("the failing frame's web view has tried its page") {
+            failedWebView = self.webViews(in: failingWindow).first
+            return failedWebView.map { webView in !webView.isLoading } ?? false
+        }
+        try await settle(failingWindow)
+        XCTAssertEqual(effectiveOpacity(of: try XCTUnwrap(failedWebView)), 0, "A page that failed is not shown under its message.")
+
+        let server = try await LoopbackWebServer(pages: ["/grapher": Self.page])
+        self.server = server
+        let loading = try XCTUnwrap(frame(src: server.address("/grapher").absoluteString, attributes: #"width="400" height="200""#))
+        let window = host(WebFrameBlock(frame: loading).environment(\.webFramePresentation, .live))
+        let webView = try await loadedWebView(in: window)
+        try await settle(window)
+        XCTAssertEqual(effectiveOpacity(of: webView), 1, "A loaded page is shown.")
+    }
+
     func testAFrameGivesItsPageUpWhenItsViewLeavesTheWindowAndLoadsItAgainWhenBack() async throws {
         let server = try await LoopbackWebServer(pages: ["/grapher": Self.page])
         self.server = server
@@ -267,6 +313,17 @@ final class WebFrameViewTests: XCTestCase {
             return (try? await webView.evaluateJavaScript("document.readyState") as? String) == "complete"
         }
         return try XCTUnwrap(found)
+    }
+
+    /// The opacity a view is drawn with: its own and every view's above it, by their alpha and their layers'.
+    private func effectiveOpacity(of view: NSView) -> CGFloat {
+        var opacity: CGFloat = 1
+        var current: NSView? = view
+        while let shown = current {
+            opacity *= shown.alphaValue * CGFloat(shown.layer?.opacity ?? 1)
+            current = shown.superview
+        }
+        return opacity
     }
 
     /// Lets the window lay out and the views' tasks run a few times.
