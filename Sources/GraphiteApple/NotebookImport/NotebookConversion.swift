@@ -22,10 +22,12 @@ public struct NotebookConversion: Sendable {
                          pagesDone: (Int) -> Void) throws -> NotebookImportWriting {
         guard notebook.sourcePageCount > 0 else { throw NotebookImportFailure.noPages }
         do {
+            // Every page is read before any is written (`NotebookImportWriter`); writing is most of the time, so a page is
+            // announced as it is written.
             let writing = try pdfWriter.write(sourcePageCount: notebook.sourcePageCount, outcomeForPage: { pageIndex in
-                pagesDone(pageIndex)
-                return try notebook.outcome(ofPageAt: pageIndex)
-            }, outline: notebook.outline.entries, sourceFiles: notebook.sourceFiles, strokeCreationDate: strokeCreationDate, to: destination)
+                try notebook.outcome(ofPageAt: pageIndex)
+            }, outline: notebook.outline.entries, sourceFiles: notebook.sourceFiles, strokeCreationDate: strokeCreationDate, to: destination,
+               pageWillBeWritten: pagesDone)
             pagesDone(notebook.sourcePageCount)
             return writing
         } catch let error as CancellationError {

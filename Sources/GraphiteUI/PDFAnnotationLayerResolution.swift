@@ -6,8 +6,8 @@
  *              boxes) at the screen's resolution, within a memory bound, on the Mac and the iPad.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 05/11/2026
+ * Version: 0.4
+ * Date: 12/11/2026
  */
 import PDFKit
 import SwiftUI
@@ -272,13 +272,19 @@ final class PDFAnnotationLayerResolution: NSObject {
     }
     #endif
 
-    /// Every annotation layer under the document's layer. The layers of Graphite's own views
+    /// Every annotation layer shown under the document's layer. The layers of Graphite's own views
     /// over a page (its Pencil canvas, with PencilKit's many tiles) are not looked into, nor
     /// an annotation layer's own sublayers.
+    ///
+    /// PDFKit hides the layer of an annotation that is not displayed, as Graphite's ink is while
+    /// a page's canvas shows it, and keeps it: a page written as densely as a formula sheet has
+    /// 6,000 of them. Drawing those again at the screen's resolution drew nothing anyone sees, on
+    /// the main thread, from each stroke's appearance: about a second at each step of a zoom on
+    /// such a notebook, and looking at them took 20 to 50 ms at every frame of a scroll.
     static func annotationLayers(under layer: CALayer, annotationLayerClass: AnyClass) -> [CALayer] {
         var found: [CALayer] = []
         func look(under layer: CALayer) {
-            for sublayer in layer.sublayers ?? [] {
+            for sublayer in layer.sublayers ?? [] where !sublayer.isHidden {
                 if type(of: sublayer) == annotationLayerClass {
                     found.append(sublayer)
                 } else if !isGraphitesOwnOverlay(sublayer) {

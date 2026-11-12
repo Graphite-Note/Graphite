@@ -5,8 +5,8 @@
  * Description: Standard PDF ink for one Pencil stroke.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 12/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -104,6 +104,13 @@ final class PDFOutlinedInkAnnotation: PDFAnnotation {
     }
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
+        // Hidden under the page's canvas, it draws nothing, as `PDFShownInkAnnotation` explains.
+        if !drawsAppearance, !shouldDisplay { return }
+        drawEvenWhenHidden(with: box, in: context)
+    }
+
+    /// Draws the outline, also while the annotation is hidden (`PDFAnnotation.drawAsShown`).
+    func drawEvenWhenHidden(with box: PDFDisplayBox, in context: CGContext) {
         guard let outlinePath, let fillColor else {
             super.draw(with: box, in: context)
             return

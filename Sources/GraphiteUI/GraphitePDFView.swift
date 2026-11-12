@@ -6,8 +6,8 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.37
- * Date: 11/11/2026
+ * Version: 0.38
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -1424,12 +1424,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
-        guard let canvas = (overlayView as? PDFPageOverlayView)?.canvas else { return }
+        guard overlayView is PDFPageOverlayView else { return }
         let identifier = ObjectIdentifier(page)
         displayedPages.remove(identifier)
-        // Thumbnails and other views show the saved ink while no canvas covers the page.
-        setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group)
-        canvas.inkAnnotationsState = (false, session.editCount(of: page))
+        // The page's ink annotations stay hidden while its canvas is kept: PDFKit gives every annotation a layer of its
+        // own, drawn on the main thread from its appearance whenever it is shown, so showing a page's ink each time its
+        // view left the screen, and hiding it again as it came back, drew every stroke of the page twice. On a page of
+        // 6,000 strokes that froze the iPad for one to two and a half seconds at each zoom (Docs/Bug-hunt-todo.md,
+        // HUNT-344). Thumbnails draw hidden ink themselves (`PDFThumbnailRenderer`); the ink shows again when the canvas
+        // is let go (`release`).
         textBoxInteraction?.pageDidDisappear(page)
         hiddenCanvasOrder.append(identifier)
         // A page kept for scrolling back takes no more than a page's memory. It leaves the
@@ -1484,7 +1487,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// draws the ink annotations as lines of one width in one flat color, so a highlighter
     /// became a thin opaque line, a pencil lost its grain and every stroke its pressure, and
     /// the page changed each time writing was turned on or off. The annotations, which other
-    /// PDF readers show, stay hidden only while a displayed canvas shows the same ink.
+    /// PDF readers show, stay hidden only while the page's canvas, shown or kept, has the same ink.
     func configure(_ canvas: PDFPageCanvasView) {
         restoreStoredInkIfNeeded(on: canvas)
         canvas.readAloudPenTapped = readAloudPen == nil ? nil : { [weak self] windowPoint in self?.handleReadAloudPenTap(atWindowPoint: windowPoint) }
@@ -1497,7 +1500,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         // takes touches: a stroke begun then is kept and recorded after the stored ink (HUNT-307).
         canvas.isUserInteractionEnabled = input.isEnabled
         if let page = canvas.page {
-            let isHidden = displayedPages.contains(ObjectIdentifier(page)) && !canvas.isRestoringStoredInk
+            // Hidden while the canvas has the page's ink, shown or kept for scrolling back (`willEndDisplayingOverlayView`).
+            let isHidden = !canvas.isRestoringStoredInk
             let pageEditCount = session.editCount(of: page)
             if canvas.inkAnnotationsState?.isHidden != isHidden || canvas.inkAnnotationsState?.pageEditCount != pageEditCount {
                 setInkAnnotationsHidden(isHidden, on: page, group: canvas.inkTracker.group)
@@ -2071,7 +2075,7 @@ final class GraphiteMacPDFView: PDFView {
     var pendingPlace: PDFPagePlace?
     /// The shown document's change count (`PDFSession.changeVersion`).
     var contentChangeCount: () -> Int = { 0 }
-    private lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+    lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
     /// Text markup by pointer and keyboard; owned by the view's coordinator.
     weak var markupInteraction: MacPDFMarkupInteraction?
     /// The PDF's own history (`PDFSession.undoManager`), which Edit › Undo and Redo, ⌘Z and

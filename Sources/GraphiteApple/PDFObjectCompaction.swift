@@ -27,7 +27,10 @@ import ImageIO
 /// PDFKit does not write a `/FreeText` annotation's rich text `/RC`, so Graphite's text
 /// boxes keep theirs under `PDFPageManager.textBoxRichTextKey`; here that key is renamed
 /// `/RC`, the standard key every reader takes rich text from, and Apple's markup copy of
-/// the box is left out (`TextBoxRichTextPromotion`).
+/// the box is left out (`TextBoxRichTextPromotion`). Apple's markup copy of each Graphite ink
+/// annotation is left out too (`InkMarkupCopyRemoval`): it doubled the room every stroke took.
+/// The appearances PDFKit wrote each with a colour profile of its own share one copy of each
+/// (`ColorProfileSharing`).
 ///
 /// PDFKit writes the font a text box's appearance embeds without its stream's `/Length`
 /// when the document was read from a file (seen with PDFKit on macOS 27, for its own
@@ -50,6 +53,10 @@ public enum PDFObjectCompaction {
         public let textBoxRichTextsNamed: Int
         /// Streams PDFKit wrote without `/Length`, given theirs (`StreamLengthRepair`).
         public let streamLengthsRepaired: Int
+        /// Graphite ink annotations whose markup copy PDFKit wrote was left out (`InkMarkupCopyRemoval`).
+        public let inkMarkupCopiesRemoved: Int
+        /// Copies of colour profiles no appearance names any more (`ColorProfileSharing`).
+        public let colorProfileCopiesShared: Int
     }
 
     /// Writes the compacted PDF to `destination` and reports what changed. Returns nil, and
@@ -209,6 +216,10 @@ private struct CompactionPlanner {
         static let freeText = Candidacy(rawValue: 1 << 1)
         /// A stream whose dictionary has no `/Length`.
         static let streamWithoutLength = Candidacy(rawValue: 1 << 2)
+        /// Graphite ink with Apple's markup copy.
+        static let inkWithMarkupCopy = Candidacy(rawValue: 1 << 3)
+        /// A form whose own resources name a colour profile.
+        static let formWithProfiles = Candidacy(rawValue: 1 << 4)
     }
 
     private static func candidacy(of value: PDFSyntaxValue, isStream: Bool) -> Candidacy {
@@ -217,6 +228,8 @@ private struct CompactionPlanner {
         if PictureStorage.storedImage(in: dictionary) != nil { candidacy.insert(.picture) }
         if TextBoxRichTextPromotion.needsRepair(dictionary) { candidacy.insert(.freeText) }
         if isStream, dictionary.entries["Length"] == nil { candidacy.insert(.streamWithoutLength) }
+        if !isStream, InkMarkupCopyRemoval.holdsMarkupCopy(dictionary) { candidacy.insert(.inkWithMarkupCopy) }
+        if isStream, ColorProfileSharing.namesProfiles(dictionary) { candidacy.insert(.formWithProfiles) }
         return candidacy
     }
 
@@ -284,15 +297,18 @@ private struct CompactionPlanner {
         let picturesWithoutMarkupCopy = PictureMarkupCopyRemoval.find(in: candidates(.picture), objects: objectLocations, bytes: bytes)
         let textBoxes = TextBoxRichTextPromotion.find(in: candidates(.freeText), objects: objectLocations, bytes: bytes)
         let repairedStreams = StreamLengthRepair.find(in: candidates(.streamWithoutLength), objects: objectLocations, bytes: bytes)
-        if !pictureImages.isEmpty {
-            // A picture image written as its JPEG no longer refers to its soft mask.
+        let inkWithoutMarkupCopy = InkMarkupCopyRemoval.find(in: candidates(.inkWithMarkupCopy), objects: objectLocations, bytes: bytes)
+        let profiles = ColorProfileSharing.find(in: candidates(.formWithProfiles), objects: objectLocations, bytes: bytes)
+        if !pictureImages.isEmpty || !profiles.keptCopyByDuplicate.isEmpty {
+            // A picture image written as its JPEG no longer refers to its soft mask, nor a form to a profile's copy.
             reachable = Self.reachableNumbers(from: trailerReferences) { number in
-                pictureImages[number]?.references ?? objects[number]?.references ?? []
+                let references = pictureImages[number]?.references ?? objects[number]?.references ?? []
+                return references.map { reference in profiles.keptCopyByDuplicate[reference] ?? reference }
             }
         }
         let removedNumbers = objects.keys.filter { number in !reachable.contains(number) }
         guard !removedNumbers.isEmpty || !pictureImages.isEmpty || !picturesWithoutMarkupCopy.isEmpty || !textBoxes.replacements.isEmpty
-                || !repairedStreams.isEmpty else {
+                || !repairedStreams.isEmpty || !inkWithoutMarkupCopy.isEmpty || !profiles.replacements.isEmpty else {
             return nil
         }
 
@@ -304,7 +320,7 @@ private struct CompactionPlanner {
             return CompactionPlan.KeptObject(number: number, generation: object.generation, sourceRange: object.range,
                                              replacement: pictureImages[number]?.objectBytes ?? picturesWithoutMarkupCopy[number]
                                                  ?? textBoxes.replacements[number]
-                                                ?? repairedStreams[number])
+                                                ?? repairedStreams[number] ?? inkWithoutMarkupCopy[number] ?? profiles.replacements[number])
         }
         let removedByteCount = removedNumbers.reduce(0) { total, number in total + (objects[number]?.range.count ?? 0) }
         let headerEnd = inUseEntries[firstNumber]!.offset
@@ -312,7 +328,9 @@ private struct CompactionPlanner {
                               freeGenerations: freeGenerations, trailerDictionaryRange: trailerRange,
                               report: .init(removedObjectCount: removedNumbers.count, removedByteCount: removedByteCount,
                                             picturesStoredAsJPEG: pictureImages.count, pictureMarkupCopiesRemoved: picturesWithoutMarkupCopy.count,
-                                            textBoxRichTextsNamed: textBoxes.richTextsNamed, streamLengthsRepaired: repairedStreams.count))
+                                            textBoxRichTextsNamed: textBoxes.richTextsNamed, streamLengthsRepaired: repairedStreams.count,
+                                            inkMarkupCopiesRemoved: inkWithoutMarkupCopy.count,
+                                            colorProfileCopiesShared: profiles.keptCopyByDuplicate.count))
     }
 
     private static func reachableNumbers(from roots: [Int], references: (Int) -> [Int]) -> Set<Int> {

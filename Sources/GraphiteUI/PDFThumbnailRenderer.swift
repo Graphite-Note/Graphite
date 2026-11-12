@@ -5,8 +5,8 @@
  * Description: Renders and caches small page images for the pages sidebar.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -129,7 +129,7 @@ final class PDFThumbnailRenderer {
         context.draw(contentImage, in: CGRect(x: 0, y: 0, width: contentImage.width, height: contentImage.height))
         // A bitmap context already has the PDF's upward y axis.
         context.scaleBy(x: content.pixelsPerPagePoint, y: content.pixelsPerPagePoint)
-        for annotation in annotations { annotation.draw(with: .cropBox, in: context) }
+        for annotation in annotations { annotation.drawAsShown(with: .cropBox, in: context) }
         guard let compositeImage = context.makeImage() else { return Self.image(contentImage, pointSize: content.outputSize, scale: content.scale) }
         return Self.image(compositeImage, pointSize: content.outputSize, scale: content.scale)
     }
@@ -167,7 +167,7 @@ final class PDFThumbnailRenderer {
         // Ink under a live Pencil canvas, and text boxes over it, are hidden in the document;
         // draw them here explicitly.
         for annotation in page.annotations where !annotation.shouldDisplay && Self.isHiddenUnderLiveOverlay(annotation) {
-            annotation.draw(with: .cropBox, in: context)
+            annotation.drawAsShown(with: .cropBox, in: context)
         }
         guard let pageImage = context.makeImage() else { return page.thumbnail(of: outputSize, for: .cropBox) }
         return Self.image(pageImage, pointSize: outputSize, scale: scale)

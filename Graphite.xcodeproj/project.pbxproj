@@ -69,6 +69,7 @@
 				GraphiteAppleTests/VideoRecordingTestSupport.swift,
 				GraphiteFixtures/FixtureFolders.swift,
 				GraphiteTestSupport/AnsweringDeviceLocation.swift,
+				GraphiteTestSupport/DenseHandwritingNotebook.swift,
 				GraphiteTestSupport/FakeCalendarStore.swift,
 				GraphiteTestSupport/FakeConflictVersionStore.swift,
 				GraphiteTestSupport/GeneratedCourseVault.swift,
