@@ -5,8 +5,8 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.16
- * Date: 11/11/2026
+ * Version: 0.17
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -185,6 +185,8 @@ public struct GraphiteCommands: Commands {
         Divider()
         Button("Open Quick Switcher…") { actions?.window.showQuickSwitcher() }
             .keyboardShortcut(shortcut(.quickSwitcher))
+        // PDFs, pictures, Goodnotes and Notability notebooks and folders, copied into the vault (`FileManagementPresentation`).
+        Button("Import…") { workspace?.isChoosingFilesToImport = true }
         Divider()
         Button("Close Tab") {
             guard let workspace else { return }

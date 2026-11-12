@@ -393,6 +393,8 @@ struct VaultSidebar: View {
         }
         Divider()
         Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(nil)) }
+        // As the iPad's New offers: PDFs, pictures, notebooks and folders copied into the vault, converted where they need to be.
+        Button("Import…", systemImage: "square.and.arrow.down") { workspace.isChoosingFilesToImport = true }
     }
 
     /// The chosen list, or a community plugin's view, which fills the sidebar below the picker

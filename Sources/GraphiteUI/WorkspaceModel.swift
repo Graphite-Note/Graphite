@@ -74,6 +74,8 @@ final class WorkspaceModel {
     var pendingDeletion: VaultPath?
     /// A rename, move, or new folder sheet on screen.
     var fileSheet: FileSheet?
+    /// The file chooser of Import… (the Mac's File menu and New menu) on screen; what is chosen is copied into the vault.
+    var isChoosingFilesToImport = false
     /// The notebook import running or showing its report: nil until notebooks are imported and again once its report is
     /// closed (`importNotebooks`, `endNotebookImport`), so the import holds nothing while it is not used.
     var notebookImport: NotebookImportSession?
