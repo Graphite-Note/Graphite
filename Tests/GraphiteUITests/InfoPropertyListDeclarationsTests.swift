@@ -73,6 +73,8 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
             "NSCameraUsageDescription", "NSLocalNetworkUsageDescription", "NSMicrophoneUsageDescription", "NSPhotoLibraryAddUsageDescription",
             // The maps' location control (Docs/Map-view-todo.md section 1): iOS reads the first, the Mac the second.
             "NSLocationWhenInUseUsageDescription", "NSLocationUsageDescription",
+            // The Calendar core plugin's events and reminders (Docs/Calendar-and-reminders-todo.md).
+            "NSCalendarsFullAccessUsageDescription", "NSRemindersFullAccessUsageDescription",
             "NSUserActivityTypes",
             "UIApplicationSceneManifest", "UIApplicationSceneManifest~ipad", "UIBackgroundModes", "UIFileSharingEnabled", "UILaunchScreen",
             "UISupportedInterfaceOrientations", "UISupportsDocumentBrowser", "UTExportedTypeDeclarations",

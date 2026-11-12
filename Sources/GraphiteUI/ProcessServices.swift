@@ -5,8 +5,8 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.10
- * Date: 11/11/2026
+ * Version: 0.11
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -61,6 +61,9 @@ public final class ProcessServices {
     /// Where the device is, for the maps' location control, shared by every window. It makes no
     /// location manager until a map asks: access is asked only at the first use of the control.
     let deviceLocation: any DeviceLocation = LiveDeviceLocation()
+    /// Apple's Calendar and Reminders, for the Calendar core plugin, shared by every window. The live store makes no event
+    /// store until a calendar feature is used, and asks for access only at that first use.
+    let calendar: CalendarServices
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the
@@ -70,7 +73,8 @@ public final class ProcessServices {
     let makeReadAloudController: @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController
 
     /// Services over `defaults` and `applicationFolders`.
-    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30),
+    /// - Parameter calendarStore: The live store for the app; tests give one that answers for Calendar and Reminders.
+    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30), calendarStore: any CalendarStore,
          makeReadAloudController: @escaping @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController) {
         self.defaults = defaults
         // Before the preferences read the switches: a device that used Read Aloud keeps it on.
@@ -85,12 +89,14 @@ public final class ProcessServices {
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
         unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
+        calendar = CalendarServices(store: calendarStore)
         self.makeReadAloudController = makeReadAloudController
     }
 
     /// The app's own: the standard preferences and the system's folders.
     static func live() -> ProcessServices {
-        ProcessServices(defaults: .standard, applicationFolders: .system, makeReadAloudController: ReadAloudVoices.makeController)
+        ProcessServices(defaults: .standard, applicationFolders: .system, calendarStore: LiveCalendarStore(),
+                        makeReadAloudController: ReadAloudVoices.makeController)
     }
 
     /// What a launch in `launchMode` uses. A hosted-tests launch gets a preferences suite of
@@ -108,7 +114,9 @@ public final class ProcessServices {
                 preconditionFailure("The preferences suite \(uniqueName) cannot be made, and a hosted-tests launch must not use the device's preferences.")
             }
             let folderRoot = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName, isDirectory: true)
-            return ProcessServices(defaults: suite, applicationFolders: .temporary(below: folderRoot),
+            // The live store, which asks nothing and makes no event store until a calendar feature is used; the hosted
+            // tests of those features give a workspace a store that answers for them.
+            return ProcessServices(defaults: suite, applicationFolders: .temporary(below: folderRoot), calendarStore: LiveCalendarStore(),
                                    makeReadAloudController: ReadAloudVoices.makeController)
         }
     }

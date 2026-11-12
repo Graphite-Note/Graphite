@@ -22,7 +22,7 @@ import GraphitePostgreSQLMirror
 enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     case backlinks, outgoingLinks, outline, properties, tags, wordCount
     case colors, drawings, audioRecorder, readAloud, bases
-    case templates, dailyNotes, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview
+    case templates, dailyNotes, calendar, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview
 
     var id: String { rawValue }
 
@@ -41,6 +41,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .bases: "Bases"
         case .templates: "Templates"
         case .dailyNotes: "Daily Notes"
+        case .calendar: "Calendar"
         case .footnotes: "Footnotes View"
         case .fileRecovery: "File Recovery"
         case .bookmarks: "Bookmarks"
@@ -74,6 +75,9 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .bases: "Opens .base files and base code blocks as tables, cards, lists, and maps."
         case .templates: "Inserts notes from a templates folder, filling in the title, date, and time."
         case .dailyNotes: "Opens a note for today, created from a template, and the notes of other days."
+        case .calendar:
+            "A month of daily notes in the left sidebar, with each day's events from Apple's Calendar, notes made from events, "
+                + "and tasks sent to Reminders. Calendar and Reminders are asked for only when you first use them."
         case .footnotes: "Lists the current note's footnotes in the right sidebar."
         case .fileRecovery: "Keeps copies of notes as they are edited, outside the vault, to recover earlier versions and deleted notes."
         case .bookmarks: "Keeps notes, headings, folders, and searches at hand in the left sidebar, shared with Obsidian."
@@ -98,7 +102,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .readAloud, .postgreSQLMirror: false
         case .backlinks, .outgoingLinks, .outline, .properties, .tags, .wordCount, .colors, .drawings, .audioRecorder,
-             .bases, .templates, .dailyNotes, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview: true
+             .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview: true
         }
     }
 
@@ -117,6 +121,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .bases: "tablecells"
         case .templates: "doc.on.doc"
         case .dailyNotes: "calendar"
+        case .calendar: "calendar.day.timeline.left"
         case .footnotes: "textformat.superscript"
         case .fileRecovery: "clock.arrow.circlepath"
         case .bookmarks: "bookmark"

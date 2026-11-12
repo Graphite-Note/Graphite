@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.85
- * Date: 11/11/2026
+ * Version: 0.86
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -445,7 +445,7 @@ final class WorkspaceModel {
         // Opening the folder again makes a new identifier, so nothing would read these again.
         let vaultKeys = [Self.expandedFoldersKey(for: vault.id),
                          Self.tabLayoutKey(for: vault.id), Self.foldsKey(for: vault.id),
-                         Self.noteViewsKey(for: vault.id), Self.vaultNoteViewKey(for: vault.id)]
+                         Self.noteViewsKey(for: vault.id), Self.vaultNoteViewKey(for: vault.id), Self.linkedTasksKey(for: vault.id)]
         for key in vaultKeys {
             deviceDefaults.removeObject(forKey: key)
         }
@@ -558,6 +558,8 @@ final class WorkspaceModel {
         await recoverDraftsLeftBehind()
         joinVaultsPlugins()
         if preferences.isEnabled(.dailyNotes), dailyNoteSettings.opensOnStartup { await openDailyNote() }
+        // Tasks ticked in Reminders while Graphite was closed; nothing is asked or read without Reminders access.
+        await updateLinkedTasksAndReminders()
     }
 
     /// How long a note's first showing waits for the vault's settings, so it does not draw in

@@ -12,7 +12,7 @@ final class SidebarPanelSettingKeyTests: XCTestCase {
     }
 
     func testTheLeftSidebarRemembersItsPanelByTheseRawValues() {
-        XCTAssertEqual(SidebarPanel.allCases.map(\.rawValue), ["files", "tags", "properties", "bookmarks"])
+        XCTAssertEqual(SidebarPanel.allCases.map(\.rawValue), ["files", "tags", "properties", "bookmarks", "calendar"])
     }
 
     func testTheRightSidebarRemembersItsPanelByTheseRawValues() {

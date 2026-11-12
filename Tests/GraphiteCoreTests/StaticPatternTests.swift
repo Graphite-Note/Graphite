@@ -56,6 +56,8 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(ReferenceLinkDefinitionsPattern.self)
         assertEveryCaseCompiles(TagSyntaxPattern.self)
         assertEveryCaseCompiles(TemplateRendererPattern.self)
+        assertEveryCaseCompiles(CalendarTemplateVariablePattern.self)
+        assertEveryCaseCompiles(TaskReminderPattern.self)
         assertEveryCaseCompiles(TextColorMarkupPattern.self)
     }
 

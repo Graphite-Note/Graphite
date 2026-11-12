@@ -5,8 +5,8 @@
  * Description: The device state of a workspace under test: a preferences suite of its own and temporary
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 12/11/2026
  */
 
 import XCTest
@@ -28,6 +28,9 @@ import GraphiteTestSupport
 struct IsolatedWorkspaceDevice {
     let deviceState: IsolatedDeviceState
     let temporaryFolders: TemporaryVault
+    /// The device's Calendar and Reminders, which answer as a test sets them up: no workspace made here ever asks for
+    /// the access of the machine running the tests, or reads its calendars or reminders.
+    let calendarStore: FakeCalendarStore
 
     /// The preferences the workspaces made here write to.
     var defaults: UserDefaults { deviceState.preferences }
@@ -45,6 +48,7 @@ struct IsolatedWorkspaceDevice {
     init() throws {
         deviceState = try IsolatedDeviceState(prefix: "WorkspaceDevice")
         temporaryFolders = try TemporaryVault(prefix: "WorkspaceDeviceFolders")
+        calendarStore = FakeCalendarStore()
     }
 
     func remove() {
@@ -61,7 +65,8 @@ struct IsolatedWorkspaceDevice {
     /// the lock screen.
     func makeServices(makeReadAloudController: (@MainActor () -> ReadAloudController)? = nil) -> ProcessServices {
         let defaults = defaults
-        return ProcessServices(defaults: defaults, applicationFolders: applicationFolders, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans) { startRefusal in
+        return ProcessServices(defaults: defaults, applicationFolders: applicationFolders, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans,
+                               calendarStore: calendarStore) { startRefusal in
             // A controller a test gives keeps its own rules; the default one refuses as the app's does.
             makeReadAloudController?() ?? ReadAloudController(session: ReadAloudSession(speech: PenTestSpeech(), preferences: defaults),
                                                               preferences: defaults, startRefusal: startRefusal)

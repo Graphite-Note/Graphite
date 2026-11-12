@@ -71,7 +71,7 @@ MODULE_ROWS = {
         "folders": ["Sources/GraphiteApple"],
         "modules": {"GraphiteCore"},
         "frameworks": {"UIKit", "AppKit", "PDFKit", "PencilKit", "AVFoundation", "Vision", "Security", "MetricKit", "ImageIO",
-                       "CoreText", "CoreImage", "QuickLookThumbnailing", "UniformTypeIdentifiers", "CoreLocation"},
+                       "CoreText", "CoreImage", "QuickLookThumbnailing", "UniformTypeIdentifiers", "CoreLocation", "EventKit"},
         "allows_runtime": True,
     },
     "GraphiteVoices": {

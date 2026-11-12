@@ -33,6 +33,8 @@
 	<string>public.app-category.productivity</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>The Calendar panel shows a day's events beside its daily note, puts them into a note when you ask, and makes meeting and lecture notes from them. Your events stay on this device and are never sent anywhere.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Record lectures as ordinary video files in your selected vault, and take photos of the board or a page for your notes, and scan paper documents into PDFs.</string>
 	<key>NSLocalNetworkUsageDescription</key>
@@ -41,6 +43,8 @@
 	<string>The map centers on where you are when you use its location button. Your location is not stored or sent anywhere.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>The map centers on where you are when you use its location button. Your location is not stored or sent anywhere.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Graphite sends the tasks you choose to Reminders, ticks them on both sides when either is done, and brings your reminders into notes when you ask. Your reminders are never sent anywhere.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Record lectures as ordinary audio and video files in your selected vault.</string>
 	<key>NSUserActivityTypes</key>

@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.49
- * Date: 11/11/2026
+ * Version: 0.50
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -84,6 +84,8 @@ struct VaultSidebar: View {
     @Environment(\.noteTypography) private var typography
     @AppStorage(SidebarPanelSettingKey.panel) private var storedPanel = SidebarPanel.files
     @State private var overview = VaultOverviewModel()
+    /// The calendar panel's month and chosen day, kept while the sidebar lives.
+    @State private var calendarPanel = CalendarPanelModel(today: CalendarDay(.now, in: .autoupdatingCurrent))
     @Environment(LibraryModel.self) private var library: LibraryModel?
     @AppStorage(SidebarPanelSettingKey.tagSortOrder) private var tagSortOrder = VaultListSortOrder.frequencyDescending
     @AppStorage(SidebarPanelSettingKey.showsNestedTags) private var showsNestedTags = true
@@ -361,6 +363,10 @@ struct VaultSidebar: View {
             }
         case .files:
             FileExplorerMenuItems(workspace: workspace)
+        case .calendar:
+            Button("Today", systemImage: "calendar.circle") {
+                Task { await calendarPanel.showToday(CalendarDay(.now, in: .autoupdatingCurrent), actions: workspace.calendarPanelActions()) }
+            }
         }
     }
 
@@ -524,6 +530,9 @@ struct VaultSidebar: View {
                 VaultPropertiesList(workspace: workspace, overview: overview)
             } else if panel == .bookmarks {
                 VaultBookmarksList(workspace: workspace, overview: overview)
+            } else if panel == .calendar {
+                CalendarPanel(model: calendarPanel, actions: workspace.calendarPanelActions(),
+                              filesVersion: "\(workspace.currentVaultIdentifier?.uuidString ?? "")|\(workspace.structureVersion)")
             } else if !workspace.hasListedRoot {
                 // The vault is open and its documents show; its root is being listed.
                 ProgressView().frame(maxWidth: .infinity)

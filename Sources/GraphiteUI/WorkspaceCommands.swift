@@ -5,8 +5,8 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.18
- * Date: 11/11/2026
+ * Version: 0.19
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -138,6 +138,18 @@ enum WorkspaceCommandList {
                 },
             ]
         }
+        if workspace.preferences.isEnabled(.calendar) {
+            commands.append(PaletteCommand(id: "calendar-show", command: .showCalendar, systemImage: "calendar") {
+                workspace.deviceDefaults.set(SidebarPanel.calendar.rawValue, forKey: SidebarPanelSettingKey.panel)
+                workspace.searchQuery = ""
+                window.showSidebar()
+            })
+            if workspace.store != nil {
+                commands.append(PaletteCommand(id: "calendar-event-note", command: .openCurrentEventNote, systemImage: "calendar.badge.clock") {
+                    Task { await workspace.openNoteForCurrentEvent(at: .now) }
+                })
+            }
+        }
         if let path = workspace.selection {
             commands += [
                 PaletteCommand(id: "rename", command: .renameFile, systemImage: "pencil") { workspace.fileSheet = .rename(path) },
@@ -153,7 +165,7 @@ enum WorkspaceCommandList {
             }
         }
         if let session = workspace.markdownSession {
-            commands += noteCommands(session: session, workspace: workspace, window: window)
+            commands += noteCommands(session: session, workspace: workspace, window: window) + workspace.calendarNoteCommands(session: session)
         }
         if workspace.preferences.isEnabled(.audioRecorder) {
             if workspace.recording.canStartRecording {

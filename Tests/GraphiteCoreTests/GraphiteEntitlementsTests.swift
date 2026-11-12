@@ -12,7 +12,7 @@ final class GraphiteEntitlementsTests: XCTestCase {
         return try XCTUnwrap(PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any])
     }
 
-    func testTheMacAppIsSandboxedWithExactlyTheEightEntitlements() throws {
+    func testTheMacAppIsSandboxedWithExactlyTheNineEntitlements() throws {
         let entitlements = try propertyList(named: "Graphite.entitlements")
         let expectedEntitlements: [String: Bool] = [
             "com.apple.security.app-sandbox": true,
@@ -21,6 +21,9 @@ final class GraphiteEntitlementsTests: XCTestCase {
             "com.apple.security.device.audio-input": true,
             "com.apple.security.device.camera": true,
             "com.apple.security.network.client": true,
+            // The Calendar core plugin's events and reminders, which the sandbox's Calendars entitlement covers both of
+            // (EventKit has no Reminders entitlement of its own); asked for at a feature's first use (Docs/Calendar-and-reminders-todo.md).
+            "com.apple.security.personal-information.calendars": true,
             // The maps' location control, while Graphite is in use (Docs/Map-view-todo.md section 1).
             "com.apple.security.personal-information.location": true,
             // File › Print… (d896ecd).
@@ -40,13 +43,15 @@ final class GraphiteEntitlementsTests: XCTestCase {
         }
     }
 
-    func testTheCameraMicrophonePhotoLibraryAddLocalNetworkAndLocationReasonsStayInInformationPropertyList() throws {
+    func testTheCameraMicrophonePhotoLibraryAddLocalNetworkLocationCalendarsAndRemindersReasonsStayInInformationPropertyList() throws {
         let information = try propertyList(named: "Info.plist")
         let usageDescriptionKeys = Set(information.keys.filter { key in key.hasSuffix("UsageDescription") })
         // The local network reason is the PostgreSQL Mirror's, for a server on the person's network. The location
-        // reasons are the maps' (iOS reads the when-in-use one, the Mac the other); never "always".
+        // reasons are the maps' (iOS reads the when-in-use one, the Mac the other); never "always". The calendars and
+        // reminders reasons are the Calendar core plugin's, full access for reading.
         XCTAssertEqual(usageDescriptionKeys, ["NSCameraUsageDescription", "NSMicrophoneUsageDescription", "NSPhotoLibraryAddUsageDescription",
-                                              "NSLocalNetworkUsageDescription", "NSLocationWhenInUseUsageDescription", "NSLocationUsageDescription"])
+                                              "NSLocalNetworkUsageDescription", "NSLocationWhenInUseUsageDescription", "NSLocationUsageDescription",
+                                              "NSCalendarsFullAccessUsageDescription", "NSRemindersFullAccessUsageDescription"])
         for key in usageDescriptionKeys {
             let reason = try XCTUnwrap(information[key] as? String, key)
             XCTAssertFalse(reason.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(key) states why the app asks.")

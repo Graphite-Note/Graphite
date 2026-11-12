@@ -5,8 +5,8 @@
  * Description: What the left sidebar lists, as the tabs of Obsidian's left sidebar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -15,7 +15,7 @@ import GraphiteIndex
 
 /// What the left sidebar lists, as the tabs of Obsidian's left sidebar.
 enum SidebarPanel: String, CaseIterable, Identifiable {
-    case files, tags, properties, bookmarks
+    case files, tags, properties, bookmarks, calendar
 
     var id: String { rawValue }
 
@@ -25,6 +25,7 @@ enum SidebarPanel: String, CaseIterable, Identifiable {
         case .tags: "Tags"
         case .properties: "Properties"
         case .bookmarks: "Bookmarks"
+        case .calendar: "Calendar"
         }
     }
 
@@ -34,6 +35,7 @@ enum SidebarPanel: String, CaseIterable, Identifiable {
         case .tags: "tag"
         case .properties: "list.bullet.rectangle"
         case .bookmarks: "bookmark"
+        case .calendar: "calendar"
         }
     }
 
@@ -41,7 +43,8 @@ enum SidebarPanel: String, CaseIterable, Identifiable {
     /// total every tag and property of the vault, which typing in a note's text does not change.
     func reloadVersion(indexVersion: Int, structureVersion: Int) -> Int {
         switch self {
-        case .tags, .properties: structureVersion
+        // The calendar marks the days that have a daily note, which only a new, moved or deleted file changes.
+        case .tags, .properties, .calendar: structureVersion
         case .files, .bookmarks: indexVersion
         }
     }
@@ -53,6 +56,7 @@ enum SidebarPanel: String, CaseIterable, Identifiable {
         case .tags: .tags
         case .properties: .properties
         case .bookmarks: .bookmarks
+        case .calendar: .calendar
         }
     }
 }
@@ -151,7 +155,8 @@ final class VaultOverviewModel {
         }
         do {
             switch panel {
-            case .files: return
+            // The calendar panel loads its own days and events (`CalendarPanelModel`).
+            case .files, .calendar: return
             case .bookmarks:
                 // The file may have changed in Obsidian and synced.
                 await workspace.reloadBookmarks()

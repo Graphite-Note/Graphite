@@ -68,6 +68,7 @@
 				GraphiteAppleTests/VideoRecordingTests.swift,
 				GraphiteAppleTests/VideoRecordingTestSupport.swift,
 				GraphiteTestSupport/AnsweringDeviceLocation.swift,
+				GraphiteTestSupport/FakeCalendarStore.swift,
 				GraphiteTestSupport/FakeConflictVersionStore.swift,
 				GraphiteTestSupport/GeneratedCourseVault.swift,
 				GraphiteTestSupport/InvisibleWindow.swift,

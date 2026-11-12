@@ -6,8 +6,8 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.9
- * Date: 11/11/2026
+ * Version: 0.10
+ * Date: 12/11/2026
  */
 import Foundation
 import GraphiteCore
@@ -68,6 +68,7 @@ enum GraphiteCommand: String, CaseIterable {
     case toggleFocusMode = "graphite:toggle-focus-mode"
     case increaseFontSize = "graphite:increase-font-size", decreaseFontSize = "graphite:decrease-font-size", resetFontSize = "graphite:reset-font-size"
     case showBookmarks = "bookmarks:open", bookmarkCurrentFile = "bookmarks:bookmark-current-view", bookmarkCurrentSearch = "bookmarks:bookmark-current-search"
+    case showCalendar = "graphite:calendar-show"
     // Go
     case searchAllFiles = "global-search:open", goBack = "app:go-back", goForward = "app:go-forward"
     case nextTab = "workspace:next-tab", previousTab = "workspace:previous-tab"
@@ -77,6 +78,7 @@ enum GraphiteCommand: String, CaseIterable {
     case moveTabToOtherSide = "graphite:move-tab-to-other-side", focusOtherSide = "graphite:focus-other-side"
     case toggleStackedTabs = "workspace:toggle-stacked-tabs", showTabOverview = "graphite:show-tab-overview"
     case todaysDailyNote = "daily-notes", previousDailyNote = "daily-notes:goto-prev", nextDailyNote = "daily-notes:goto-next"
+    case openCurrentEventNote = "graphite:calendar-open-event-note"
     // Editor
     case toggleBold = "editor:toggle-bold", toggleItalics = "editor:toggle-italics", toggleStrikethrough = "editor:toggle-strikethrough"
     case toggleHighlight = "editor:toggle-highlight", toggleCode = "editor:toggle-code", toggleComment = "editor:toggle-comments"
@@ -90,6 +92,8 @@ enum GraphiteCommand: String, CaseIterable {
     case insertTask = "graphite:insert-task", insertTable = "editor:insert-table", insertMathBlock = "editor:insert-mathblock"
     case insertCallout = "editor:insert-callout", insertTemplate = "insert-template", insertNotebook = "graphite:insert-notebook"
     case insertDrawing = "graphite:insert-drawing"
+    case insertCalendarEvents = "graphite:calendar-insert-events", sendTaskToReminders = "graphite:reminders-send-task"
+    case insertReminders = "graphite:reminders-insert"
     // Tables: the commands of a Live Preview table's cell (`TableCellCommand`), with Obsidian's
     // identifiers for its table commands; sorting is Graphite's own.
     case tableAddRowAbove = "editor:table-row-before", tableAddRowBelow = "editor:table-row-after"
@@ -239,6 +243,7 @@ extension GraphiteCommand {
             return Descriptor(title: "Default text size", group: .view, defaultCombinations: command("0"),
                               binding: .menuBar, macMenuTitles: ["Default Text Size"])
         case .showBookmarks: return Descriptor(title: "Bookmarks: Show bookmarks", group: .view, corePlugin: .bookmarks)
+        case .showCalendar: return Descriptor(title: "Calendar: Show calendar", group: .view, corePlugin: .calendar)
         case .bookmarkCurrentFile: return Descriptor(title: "Bookmarks: Bookmark current file", group: .view, corePlugin: .bookmarks)
         case .bookmarkCurrentSearch: return Descriptor(title: "Bookmarks: Bookmark current search", group: .view, corePlugin: .bookmarks)
         case .searchAllFiles:
@@ -277,6 +282,7 @@ extension GraphiteCommand {
         case .nextDailyNote:
             return Descriptor(title: "Daily notes: Open next daily note", group: .go,
                               binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Next Daily Note"])
+        case .openCurrentEventNote: return Descriptor(title: "Calendar: Open note for current event", group: .go, corePlugin: .calendar)
         case .toggleBold: return Descriptor(title: "Toggle bold", group: .editor, defaultCombinations: command("B"), binding: .editor(.bold))
         case .toggleItalics: return Descriptor(title: "Toggle italics", group: .editor, defaultCombinations: command("I"), binding: .editor(.italic))
         case .toggleStrikethrough:
@@ -326,6 +332,9 @@ extension GraphiteCommand {
                               binding: .menuBar, corePlugin: .templates, macMenuTitles: ["Insert Template…"])
         case .insertNotebook: return Descriptor(title: "Notebooks: Insert new notebook", group: .editor)
         case .insertDrawing: return Descriptor(title: "Pencil drawings: Insert drawing", group: .editor, corePlugin: .drawings)
+        case .insertCalendarEvents: return Descriptor(title: "Calendar: Insert the day's events", group: .editor, corePlugin: .calendar)
+        case .sendTaskToReminders: return Descriptor(title: "Reminders: Send task to Reminders", group: .editor, corePlugin: .calendar)
+        case .insertReminders: return Descriptor(title: "Reminders: Insert open reminders", group: .editor, corePlugin: .calendar)
         case .tableAddRowAbove, .tableAddRowBelow, .tableMoveRowUp, .tableMoveRowDown, .tableDuplicateRow, .tableDeleteRow, .tableAddColumnToTheLeft,
              .tableAddColumnToTheRight, .tableMoveColumnLeft, .tableMoveColumnRight, .tableAlignLeft, .tableAlignCenter, .tableAlignRight,
              .tableDuplicateColumn, .tableDeleteColumn, .tableSortAscending, .tableSortDescending: return tableCommandDescriptor

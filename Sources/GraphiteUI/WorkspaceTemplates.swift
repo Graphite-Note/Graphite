@@ -5,8 +5,8 @@
  * Description: Obsidian's Templates and Daily notes core plugins, with the vault's own settings files.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -84,8 +84,10 @@ extension WorkspaceModel {
         do {
             let snapshot = try await store.read(template, maximumBytes: MarkdownSession.maximumEditableBytes)
             guard let templateText = String(data: snapshot.data, encoding: .utf8) else { throw GraphiteError.invalidFile("“\(template.name)” is not UTF-8 text.") }
-            let rendered = TemplateRenderer.render(templateText, title: session.path.stem, date: .now, dateFormat: settings.dateFormat, timeFormat: settings.timeFormat,
-                                                   language: preferences.dateNames.language)
+            let rendered = await fillingCalendarEvents(
+                in: TemplateRenderer.render(templateText, title: session.path.stem, date: .now, dateFormat: settings.dateFormat, timeFormat: settings.timeFormat,
+                                            language: preferences.dateNames.language),
+                on: dailyNoteDay(of: session.path) ?? CalendarDay(.now, in: personalCalendar), note: session.path)
             let declaredTypes = await store.propertyTypes()
             session.apply(TemplateInsertion.edit(inserting: rendered, into: session.text, at: session.selection, declaredTypes: declaredTypes))
         } catch { errorMessage = error.localizedDescription }
@@ -114,6 +116,8 @@ extension WorkspaceModel {
                     content = TemplateRenderer.render(templateText, title: path.stem, date: date,
                                                       dateFormat: settings.format, timeFormat: templateSettings.timeFormat,
                                                       language: preferences.dateNames.language)
+                    // `{{events}}`: the Calendar core plugin's list of the note's own day.
+                    content = await fillingCalendarEvents(in: content, on: CalendarDay(date, in: personalCalendar), note: path)
                 }
                 try await store.createDirectory(path.parent)
                 _ = try await store.save(Data(content.utf8), at: path, expecting: .absent)
@@ -126,7 +130,7 @@ extension WorkspaceModel {
         } catch { errorMessage = error.localizedDescription }
     }
 
-    private func dailyNotesFolder(of settings: DailyNoteSettings) -> VaultPath {
+    func dailyNotesFolder(of settings: DailyNoteSettings) -> VaultPath {
         settings.folder.isEmpty ? .root : ((try? VaultPath(settings.folder)) ?? .root) // A folder no path can name: the whole vault.
     }
 
