@@ -170,6 +170,7 @@ Issue: [#36](https://github.com/Graphite-Note/Graphite/issues/36)
 - [x] The last paper and size are remembered; spacing and colors start as Settings has them.
 - [ ] Not checked yet: the sheet at iPad portrait and landscape and on the iPhone.
 - [ ] Handwriting language (only with handwriting recognition).
+  Looked at 2026-11-12, left open: Graphite has no handwriting recognition. Its only text recognition is Vision's on printed pages (`ScannedPageWordRecognizer` for scanned documents' text layer, `RecognizeTextRequest` and `RecognizeDocumentsRequest` in `PDFReadAloudPage` for reading a scanned PDF aloud), both detecting the page's language themselves; nothing reads a notebook's ink, and `HandwritingTidying` is geometry only (Apple's handwriting model has no public API). A language choice would have no recognizer to go to, so the sheet does not offer one until handwriting recognition exists.
 
 ## Part 6: creating a notebook from inside a note
 

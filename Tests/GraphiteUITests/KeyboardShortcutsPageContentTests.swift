@@ -5,8 +5,8 @@
  * Description: What Settings › Keyboard Shortcuts lists: groups, search, clashes and the system's notes.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 11/11/2026
+ * Version: 0.3
+ * Date: 12/11/2026
  */
 import XCTest
 import GraphiteCore
@@ -62,6 +62,27 @@ final class KeyboardShortcutsPageContentTests: XCTestCase {
         let changed = try row(GraphiteCommand.exportToPDF.identifier, in: content(file: file))
         XCTAssertTrue(changed.isChanged)
         XCTAssertEqual(changed.combinations.map(\.symbols), ["⌥⌘E"])
+    }
+
+    /// The Live Preview table's cell commands are listed under Editor on both platforms, with no
+    /// shortcut until one is given.
+    func testTheTableCommandsAreListedUnderEditorWithoutAShortcutAndCanBeGivenOne() throws {
+        let tableCommands = TableCellCommand.allCases.map(\.graphiteCommand)
+        for platform in [ShortcutPlatform.macOS, .iPadOS] {
+            let editorRows = try XCTUnwrap(content(platform: platform).sections(matching: "").first { section in section.title == "Editor" }).rows
+            for command in tableCommands {
+                let row = try XCTUnwrap(editorRows.first { row in row.id == command.identifier }, "\(command.identifier) on \(platform)")
+                XCTAssertTrue(row.combinations.isEmpty, command.identifier)
+            }
+        }
+        XCTAssertEqual(content().sections(matching: "sort by column").flatMap(\.rows).map(\.id),
+                       [GraphiteCommand.tableSortAscending.identifier, GraphiteCommand.tableSortDescending.identifier])
+        var file = HotkeyFile()
+        file.assign([KeyCombination([.command, .control, .option], .character("Z"))], to: GraphiteCommand.tableSortDescending.identifier)
+        let changed = try row(GraphiteCommand.tableSortDescending.identifier, in: content(file: file))
+        XCTAssertTrue(changed.isChanged)
+        XCTAssertEqual(changed.combinations.map(\.symbols), ["⌃⌥⌘Z"])
+        XCTAssertEqual(changed.sharedWithTitles, [], "No other command has the shortcut.")
     }
 
     func testMarksBothCommandsOfAClashAndTheSystemsShortcuts() throws {

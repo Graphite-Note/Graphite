@@ -6,7 +6,7 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.50
+ * Version: 0.51
  * Date: 12/11/2026
  */
 
@@ -604,18 +604,16 @@ struct VaultSidebar: View {
     /// Obsidian's search operators, offered while the query does not use one yet.
     @ViewBuilder private var searchSuggestions: some View {
         let query = workspace.searchQuery
-        if query.isEmpty || query.hasSuffix(" ") {
-            ForEach(SearchOperatorSuggestion.all) { suggestion in
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(suggestion.syntax).font(.body.monospaced())
-                        Text(suggestion.summary).font(.caption).foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "magnifyingglass")
+        ForEach(SearchOperatorSuggestion.offered(after: query)) { suggestion in
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.syntax).font(.body.monospaced())
+                    Text(suggestion.summary).font(.caption).foregroundStyle(.secondary)
                 }
-                .searchCompletion(query + suggestion.syntax)
+            } icon: {
+                Image(systemName: "magnifyingglass")
             }
+            .searchCompletion(suggestion.completion(after: query))
         }
     }
 }
@@ -647,27 +645,6 @@ private struct FileExplorerMenuItems: View {
             }
         }
     }
-}
-
-/// An operator the search field suggests, with what it finds.
-private struct SearchOperatorSuggestion: Identifiable {
-    let syntax: String
-    let summary: String
-    var id: String { syntax }
-
-    static let all = [
-        SearchOperatorSuggestion(syntax: "path:", summary: "Find text in the file path"),
-        SearchOperatorSuggestion(syntax: "file:", summary: "Find text in the file name"),
-        SearchOperatorSuggestion(syntax: "folder:", summary: "Find folders by name, and the notes inside them"),
-        SearchOperatorSuggestion(syntax: "tag:", summary: "Find notes with a tag"),
-        SearchOperatorSuggestion(syntax: "line:", summary: "Find words on the same line"),
-        SearchOperatorSuggestion(syntax: "section:", summary: "Find words under the same heading"),
-        SearchOperatorSuggestion(syntax: "task-todo:", summary: "Find open tasks"),
-        SearchOperatorSuggestion(syntax: "task-done:", summary: "Find completed tasks"),
-        SearchOperatorSuggestion(syntax: "content:", summary: "Find text in note content only"),
-        SearchOperatorSuggestion(syntax: "match-case:", summary: "Find text with the same capitals"),
-        SearchOperatorSuggestion(syntax: "[", summary: "Find notes by property, as in [status:draft]"),
-    ]
 }
 
 /// A search result: the file, then the lines that matched, each opening the note there.
