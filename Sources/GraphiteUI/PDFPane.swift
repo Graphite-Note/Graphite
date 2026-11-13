@@ -29,6 +29,8 @@ enum PDFAnnotationPreferenceKey {
     static let markupStyle = "GraphitePDFMarkupStyle"
     /// The colour and width of the Mac's Draw tool (`PDFMarkupInkStyle`).
     static let markupInkStyle = "GraphitePDFMarkupInkStyle"
+    /// The shape, colours and width of the Mac's Shapes tool (`PDFMarkupShapeStyle`).
+    static let markupShapeStyle = "GraphitePDFMarkupShapeStyle"
 
     /// Light gray, so the guides stay behind the page's own content.
     static func writingGuides(pattern: DrawingPaperPattern, spacing: DrawingPaperSpacing) -> DrawingPaper {
@@ -116,6 +118,7 @@ private struct PDFPaneContent: View {
     @State private var markupToolbar = PDFMarkupToolbar()
     @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     @AppStorage(PDFAnnotationPreferenceKey.markupInkStyle) private var markupInkStyle = PDFMarkupInkStyle.default
+    @AppStorage(PDFAnnotationPreferenceKey.markupShapeStyle) private var markupShapeStyle = PDFMarkupShapeStyle.default
     #endif
 
     init(session: PDFSession, isFocused: Bool, focus: @escaping () -> Void, linkActions: PDFLinkActions?,
@@ -239,7 +242,7 @@ private struct PDFPaneContent: View {
         }
         #if os(macOS)
         .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, inkStyle: $markupInkStyle,
-                                     isFocused: isFocused))
+                                     shapeStyle: $markupShapeStyle, isFocused: isFocused))
         #endif
         #if canImport(UIKit)
         // The iPad's bars above the page. The Mac has none: an inset with no content takes

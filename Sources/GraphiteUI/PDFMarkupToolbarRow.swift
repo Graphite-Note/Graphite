@@ -7,13 +7,14 @@
  *              and the pane's part that adds the row and serves the menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 13/11/2026
  */
 
 #if os(macOS)
 import SwiftUI
 import AppKit
+import PencilKit
 import GraphiteApple
 
 /// The markup button of a PDF's toolbar, which shows and hides the markup row. A protected
@@ -48,15 +49,18 @@ enum PDFMarkupRowFolding: Int, CaseIterable, Comparable {
 
 /// The markup row under the toolbar. Its tools and their choices are buttons laid out in
 /// the row, as the owner asked (2026-11-13): Text Selection; the highlight colours,
-/// Underline and Strikethrough; Draw and Eraser; Text Box; then the chosen tool's choices.
+/// Underline and Strikethrough; Draw and Eraser; Text Box, Shapes and the Sign menu; then
+/// the chosen tool's choices.
 /// Where the pane is too narrow for all of them, the choices fold into menus first, then
 /// the highlight colours, then the tools (`PDFMarkupRowFolding`).
 struct PDFMarkupToolbarRow: View {
     let toolbar: PDFMarkupToolbar
     @Binding var style: PDFMarkupStyle
     @Binding var inkStyle: PDFMarkupInkStyle
+    @Binding var shapeStyle: PDFMarkupShapeStyle
     let textFormat: PDFMarkupTextFormatSource
     let markSelection: (PDFMarkupStyle) -> Void
+    var reportFailure: (Error) -> Void = { _ in }
 
     static let rowHeight: CGFloat = 34
     private static let horizontalPadding: CGFloat = 10
@@ -65,8 +69,8 @@ struct PDFMarkupToolbarRow: View {
         // The first layout that fits the pane's width, from none folded to all.
         ViewThatFits(in: .horizontal) {
             ForEach(PDFMarkupRowFolding.allCases, id: \.self) { folding in
-                PDFMarkupRowContent(toolbar: toolbar, style: $style, inkStyle: $inkStyle, textFormat: textFormat, markSelection: markSelection,
-                                    folding: folding)
+                PDFMarkupRowContent(toolbar: toolbar, style: $style, inkStyle: $inkStyle, shapeStyle: $shapeStyle, textFormat: textFormat,
+                                    markSelection: markSelection, folding: folding, reportFailure: reportFailure)
             }
         }
         .padding(.horizontal, Self.horizontalPadding)
@@ -82,14 +86,17 @@ struct PDFMarkupRowContent: View {
     let toolbar: PDFMarkupToolbar
     @Binding var style: PDFMarkupStyle
     @Binding var inkStyle: PDFMarkupInkStyle
+    @Binding var shapeStyle: PDFMarkupShapeStyle
     let textFormat: PDFMarkupTextFormatSource
     let markSelection: (PDFMarkupStyle) -> Void
     let folding: PDFMarkupRowFolding
+    var reportFailure: (Error) -> Void = { _ in }
+    @Environment(\.pdfSignatureStore) private var signatureStore
 
     var body: some View {
         HStack(spacing: PDFMarkupRowMetrics.groupSpacing) {
             if folding >= .tools {
-                PDFMarkupToolMenu(toolbar: toolbar, style: $style, markSelection: markSelection)
+                PDFMarkupToolMenu(toolbar: toolbar, style: $style, markSelection: markSelection, signatureStore: signatureStore)
             } else {
                 PDFMarkupToolButton(tool: .textSelection, toolbar: toolbar)
                 groupDivider
@@ -99,6 +106,8 @@ struct PDFMarkupRowContent: View {
                 PDFMarkupToolButton(tool: .eraseInk, toolbar: toolbar)
                 groupDivider
                 PDFMarkupToolButton(tool: .textBox, toolbar: toolbar)
+                PDFMarkupToolButton(tool: .shapes, toolbar: toolbar)
+                if let signatureStore { PDFMarkupSignMenu(toolbar: toolbar, store: signatureStore, reportFailure: reportFailure) }
             }
             options
         }
@@ -113,7 +122,10 @@ struct PDFMarkupRowContent: View {
         case .textBox:
             groupDivider
             PDFMarkupTextFormatControls(source: textFormat, isFolded: folding >= .options)
-        case .textSelection, .highlight, .eraseInk:
+        case .shapes:
+            groupDivider
+            PDFMarkupShapeOptions(toolbar: toolbar, shapeStyle: $shapeStyle, isFolded: folding >= .options)
+        case .textSelection, .highlight, .eraseInk, .sign:
             EmptyView()
         }
     }
@@ -264,6 +276,7 @@ struct PDFMarkupToolMenu: View {
     let toolbar: PDFMarkupToolbar
     @Binding var style: PDFMarkupStyle
     let markSelection: (PDFMarkupStyle) -> Void
+    let signatureStore: PDFSignatureStore?
 
     var body: some View {
         Menu {
@@ -280,8 +293,16 @@ struct PDFMarkupToolMenu: View {
                 }
             }
             Section {
-                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox], id: \.self) { tool in
+                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .shapes], id: \.self) { tool in
                     Button(tool.title, systemImage: tool.symbolName) { toolbar.choose(tool) }
+                }
+            }
+            if let signatureStore {
+                Section {
+                    ForEach(Array(signatureStore.signatures.enumerated()), id: \.element.id) { position, signature in
+                        Button("Sign with Signature \(position + 1)", systemImage: PDFMarkupTool.sign.symbolName) { toolbar.placeSignature(signature) }
+                    }
+                    Button("Create Signature…") { toolbar.isCreatingSignature = true }
                 }
             }
         } label: {
@@ -308,20 +329,40 @@ struct PDFMarkupControls: ViewModifier {
     let toolbar: PDFMarkupToolbar
     @Binding var style: PDFMarkupStyle
     @Binding var inkStyle: PDFMarkupInkStyle
+    @Binding var shapeStyle: PDFMarkupShapeStyle
     let isFocused: Bool
+    /// The wall clock, for the name that orders the signatures kept.
+    var currentDate: () -> Date = Date.init
+    @Environment(\.pdfSignatureStore) private var signatureStore
 
     func body(content: Content) -> some View {
         VStack(spacing: 0) {
             if toolbar.isRowShown && !session.isProtected {
-                PDFMarkupToolbarRow(toolbar: toolbar, style: $style, inkStyle: $inkStyle, textFormat: PDFMarkupTextFormatSource(session: session),
-                                    markSelection: markSelection)
+                PDFMarkupToolbarRow(toolbar: toolbar, style: $style, inkStyle: $inkStyle, shapeStyle: $shapeStyle,
+                                    textFormat: PDFMarkupTextFormatSource(session: session), markSelection: markSelection,
+                                    reportFailure: session.reportFailedChange)
             }
             content
+        }
+        .sheet(isPresented: Binding(get: { toolbar.isCreatingSignature }, set: { isShown in toolbar.isCreatingSignature = isShown })) {
+            MacPDFSignatureSheet(save: saveSignature, cancel: { toolbar.isCreatingSignature = false })
         }
         .environment(\.pdfMarkupToolbar, toolbar)
         .focusedSceneValue(\.pdfMarkupMenuActions, isFocused ? menuActions : nil)
         // The PDF view's Draw tool reads the style from the row's model when a stroke begins.
         .onChange(of: inkStyle, initial: true) { toolbar.useInkStyle(inkStyle) }
+        .onChange(of: shapeStyle, initial: true) { toolbar.useShapeStyle(shapeStyle) }
+    }
+
+    /// Keeps the signature drawn in the sheet on the device and places it on the page in view.
+    private func saveSignature(_ drawing: PKDrawing) {
+        toolbar.isCreatingSignature = false
+        guard let signatureStore else { return }
+        do {
+            toolbar.placeSignature(try signatureStore.save(drawing, madeAt: currentDate()))
+        } catch {
+            session.reportFailedChange(error)
+        }
     }
 
     private func markSelection(_ style: PDFMarkupStyle) {

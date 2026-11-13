@@ -3,10 +3,11 @@
  * ----------------------------
  * Layer: UI
  * Description: One PDF pane's markup row on the Mac: whether it shows, the tool chosen in it, the Draw tool's
- *              colour and width, and whether the PDF has text selected, for the row and the menu bar.
+ *              colour and width, the Shapes tool's look, the signature to place, and whether the PDF has text
+ *              selected, for the row and the menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 13/11/2026
  */
 
@@ -23,6 +24,17 @@ final class PDFMarkupToolbar {
     /// The colour and width of the Draw tool's next stroke, as kept on the device
     /// (`PDFAnnotationPreferenceKey.markupInkStyle`), which the pane hands over.
     private(set) var inkStyle = PDFMarkupInkStyle.default
+    /// The shape the Shapes tool draws next and its look, as kept on the device
+    /// (`PDFAnnotationPreferenceKey.markupShapeStyle`), or the selected shape's while one is.
+    private(set) var shapeStyle = PDFMarkupShapeStyle.default
+    /// Whether the sheet to draw a new signature is open.
+    var isCreatingSignature = false
+    /// The signature chosen in the Sign menu, until the PDF view places it (`takeSignatureToPlace`).
+    @ObservationIgnored private var signatureToPlace: PDFSavedSignature?
+    /// Set by the PDF view's page tools: places a signature chosen while they already exist.
+    @ObservationIgnored var signaturePlacementRequested: (() -> Void)?
+    /// Set by the PDF view's page tools: gives the selected shape a look chosen in the row.
+    @ObservationIgnored var shapeStyleChosen: ((PDFMarkupShapeStyle) -> Void)?
 
     /// The tool the PDF view follows: text selection while the row is hidden.
     var tool: PDFMarkupTool { isRowShown ? chosenTool : .textSelection }
@@ -44,6 +56,35 @@ final class PDFMarkupToolbar {
 
     func useInkStyle(_ style: PDFMarkupInkStyle) {
         if inkStyle != style { inkStyle = style }
+    }
+
+    /// Takes the style kept on the device, for the next shape.
+    func useShapeStyle(_ style: PDFMarkupShapeStyle) {
+        if shapeStyle != style { shapeStyle = style }
+    }
+
+    /// A style chosen in the row: for the next shape, and for the selected one.
+    func chooseShapeStyle(_ style: PDFMarkupShapeStyle) {
+        useShapeStyle(style)
+        shapeStyleChosen?(style)
+    }
+
+    /// Shows the selected shape's look in the row, without changing the shape.
+    func showShapeStyle(_ style: PDFMarkupShapeStyle) {
+        useShapeStyle(style)
+    }
+
+    /// Places a signature on the PDF's page in view, choosing the Sign tool.
+    func placeSignature(_ signature: PDFSavedSignature) {
+        signatureToPlace = signature
+        choose(.sign)
+        signaturePlacementRequested?()
+    }
+
+    /// The signature waiting to be placed, given once.
+    func takeSignatureToPlace() -> PDFSavedSignature? {
+        defer { signatureToPlace = nil }
+        return signatureToPlace
     }
 }
 

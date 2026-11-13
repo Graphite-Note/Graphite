@@ -73,7 +73,7 @@ final class PDFPointerInkTests: XCTestCase {
     }
 
     func testOnlyThePageToolsTakePressesFromPDFKit() {
-        XCTAssertEqual(PDFMarkupTool.allCases.filter(\.takesPagePresses), [.draw, .eraseInk, .textBox])
+        XCTAssertEqual(PDFMarkupTool.allCases.filter(\.takesPagePresses), [.draw, .eraseInk, .textBox, .shapes, .sign])
         for tool in [PDFMarkupTool.draw, .eraseInk, .textBox] {
             XCTAssertNil(tool.styleToApplyOnMouseUp(style: .default, selectionHasText: true, clickChoseExistingMark: false))
         }

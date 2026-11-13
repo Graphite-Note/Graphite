@@ -3,10 +3,11 @@
  * ------------------------------------
  * Layer: Tests
  * Description: The Mac markup row's layout: each folding is narrower than the one before, a wide pane shows every
- *              tool and colour as a button, and screenshots of the row in light and dark, wide and narrow.
+ *              tool and colour as a button, the Sign menu only with a store, and screenshots of the row in light and
+ *              dark, wide and narrow.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
@@ -19,9 +20,16 @@ import GraphiteTestSupport
 
 @MainActor
 final class PDFMarkupToolbarRowTests: XCTestCase {
+    /// A store of one signature, so the row shows its Sign menu.
+    private lazy var signatureStore: PDFSignatureStore = {
+        // Nothing is saved in it: a folder that does not exist stays empty.
+        PDFSignatureStore(directory: URL(fileURLWithPath: "/nonexistent/PDFMarkupToolbarRowTests/Signatures"))
+    }()
+
     private func content(_ toolbar: PDFMarkupToolbar, folding: PDFMarkupRowFolding) -> some View {
-        PDFMarkupRowContent(toolbar: toolbar, style: .constant(.highlight(.green)), inkStyle: .constant(.default),
+        PDFMarkupRowContent(toolbar: toolbar, style: .constant(.highlight(.green)), inkStyle: .constant(.default), shapeStyle: .constant(.default),
                             textFormat: PDFMarkupTextFormatSource(boxFormat: nil, applyToBox: nil), markSelection: { _ in }, folding: folding)
+            .environment(\.pdfSignatureStore, signatureStore)
     }
 
     private func fittingWidth(_ view: some View) -> CGFloat {
@@ -30,7 +38,7 @@ final class PDFMarkupToolbarRowTests: XCTestCase {
     }
 
     func testEachFoldingIsNarrowerThanTheOneBefore() {
-        for tool in [PDFMarkupTool.draw, .textBox, .highlight] {
+        for tool in [PDFMarkupTool.draw, .textBox, .highlight, .shapes] {
             let toolbar = PDFMarkupToolbar()
             toolbar.choose(tool)
             let widths = PDFMarkupRowFolding.allCases.map { folding in fittingWidth(content(toolbar, folding: folding)) }
@@ -44,9 +52,21 @@ final class PDFMarkupToolbarRowTests: XCTestCase {
 
     func testAWidePaneLaysEveryToolAndColourOutAsAButton() {
         // `ViewThatFits` takes the first layout whose width fits, and the unfolded one comes first.
+        // Shapes shows two palettes, border and fill, and needs a wider window before its choices fold into menus.
+        for (tool, widest) in [(PDFMarkupTool.draw, 1000), (.shapes, 1200)] as [(PDFMarkupTool, CGFloat)] {
+            let toolbar = PDFMarkupToolbar()
+            toolbar.choose(tool)
+            XCTAssertLessThan(fittingWidth(content(toolbar, folding: .none)), widest, "\(tool): a wide window shows the whole row.")
+        }
+    }
+
+    func testTheRowHasAShapesButtonAndASignMenuOnlyWhereSignaturesCanBeKept() {
         let toolbar = PDFMarkupToolbar()
-        toolbar.choose(.draw)
-        XCTAssertLessThan(fittingWidth(content(toolbar, folding: .none)), 1000, "A window a little wider than a page shows the whole row.")
+        let withStore = fittingWidth(content(toolbar, folding: .none))
+        let withoutStore = fittingWidth(PDFMarkupRowContent(toolbar: toolbar, style: .constant(.highlight(.green)), inkStyle: .constant(.default),
+                                                            shapeStyle: .constant(.default), textFormat: PDFMarkupTextFormatSource(boxFormat: nil, applyToBox: nil),
+                                                            markSelection: { _ in }, folding: .none))
+        XCTAssertGreaterThan(withStore, withoutStore, "The Sign menu takes room in the row only with a place to keep signatures.")
     }
 
     /// Writes the row in light and dark, wide and narrow, with Draw, Text Box and Highlight chosen, when a folder is
@@ -54,13 +74,14 @@ final class PDFMarkupToolbarRowTests: XCTestCase {
     func testScreenshotsOfTheRow() throws {
         guard let folder = ProcessInfo.processInfo.environment["GRAPHITE_MARKUP_ROW_SCREENSHOTS"] else { return }
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-            for tool in [PDFMarkupTool.draw, .textBox, .highlight] {
+            for tool in [PDFMarkupTool.draw, .textBox, .highlight, .shapes] {
                 for width in [1100, 760, 560, 360] as [CGFloat] {
                     let toolbar = PDFMarkupToolbar()
                     toolbar.choose(tool)
                     let row = PDFMarkupToolbarRow(toolbar: toolbar, style: .constant(.highlight(.green)), inkStyle: .constant(.default),
+                                                  shapeStyle: .constant(.default),
                                                   textFormat: PDFMarkupTextFormatSource(boxFormat: nil, applyToBox: nil), markSelection: { _ in })
-                    let hostingView = NSHostingView(rootView: row.frame(width: width))
+                    let hostingView = NSHostingView(rootView: row.frame(width: width).environment(\.pdfSignatureStore, signatureStore))
                     hostingView.appearance = NSAppearance(named: appearanceName)
                     hostingView.frame = CGRect(x: 0, y: 0, width: width, height: PDFMarkupToolbarRow.rowHeight)
                     let window = NSWindow(contentRect: hostingView.frame, styleMask: [.titled], backing: .buffered, defer: true)

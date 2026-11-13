@@ -47,6 +47,9 @@ public final class ProcessServices {
     let vaultIndexes: VaultIndexRegistry
     /// The unsaved strokes of drawing editors, kept in Application Support for every window.
     let drawingDrafts: DrawingEditorDraftStore
+    /// The signatures drawn on this device for signing PDFs, outside every vault. Made the first
+    /// time a PDF's markup row asks; it reads its folder only when the Sign menu first shows.
+    private(set) lazy var pdfSignatures = PDFSignatureStore(directory: PDFSignatureStore.directory(in: applicationFolders))
     /// Text of notes and canvases that could not reach their files, kept in Application
     /// Support for every window.
     let unsavedDrafts: UnsavedDocumentDraftStore

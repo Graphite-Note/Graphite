@@ -314,9 +314,10 @@ extension PDFSession {
 
     /// Records a drawing change already applied to the page's ink: by a page's canvas on the
     /// iPad, by the Mac's Draw tool and eraser (`PDFSessionPointerInk.swift`).
-    func registerInkChange(_ change: PencilDrawingChange, on page: PDFPage, overlaySize: CGSize) {
+    /// - Parameter actionName: "Drawing" for strokes, as on the iPad; the Mac's signatures name their own steps.
+    func registerInkChange(_ change: PencilDrawingChange, on page: PDFPage, overlaySize: CGSize, actionName: String = "Drawing") {
         let drawnPage = historyPage(for: page)
-        registerStep(named: "Drawing") { session in
+        registerStep(named: actionName) { session in
             try session.applyInkFromHistory(on: drawnPage, overlaySize: overlaySize, changedBounds: change.changedBounds)
                 { drawing in change.reverting(drawing) }
         } redo: { session in

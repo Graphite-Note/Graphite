@@ -59,6 +59,11 @@ public enum PDFEdit: Sendable {
     case replaceTextBox(PDFAnnotationReference, with: PDFTextBox)
     /// Removes a text box with the links over its text.
     case removeTextBox(PDFAnnotationReference)
+    /// Places a rectangle, oval, line or arrow on a page, over its other annotations.
+    case addShape(page: Int, shape: PDFShape)
+    /// Puts a shape in the place of one, Graphite's or another application's, as when it is
+    /// moved, reshaped or recoloured; the new one keeps the former's author.
+    case replaceShape(PDFAnnotationReference, with: PDFShape)
     case bookmark(page: Int, label: String)
     /// Removes the outline item at this path of child indices from the outline root.
     case removeOutlineItem(path: [Int])
@@ -81,11 +86,12 @@ public enum PDFEdit: Sendable {
     /// The page whose appearance the edit changes, for thumbnail invalidation.
     public var changedPageIndex: Int? {
         switch self {
-        case .rotate(let pageIndex, _), .addMarkup(let pageIndex, _), .addPicture(let pageIndex, _), .addTextBox(let pageIndex, _): pageIndex
+        case .rotate(let pageIndex, _), .addMarkup(let pageIndex, _), .addPicture(let pageIndex, _), .addTextBox(let pageIndex, _),
+             .addShape(let pageIndex, _): pageIndex
         case .updateInk(let update): update.pageIndex
         case .recolorMarkup(let reference, _), .restoreMarkupColor(let reference, _), .removeAnnotation(let reference),
              .movePicture(let reference, _), .replacePicture(let reference, _, _), .replaceTextBox(let reference, _),
-             .removeTextBox(let reference): reference.pageIndex
+             .removeTextBox(let reference), .replaceShape(let reference, _): reference.pageIndex
         default: nil
         }
     }
@@ -235,6 +241,10 @@ public enum PDFPageManager {
             try replaceTextBox(reference, with: textBox, in: document, isForWrittenDocument: drawsInkOutlines)
         case .removeTextBox(let reference):
             try removeTextBox(reference, from: document)
+        case .addShape(let pageIndex, let shape):
+            try page(at: pageIndex).addAnnotation(shape.makeAnnotation(authorName: author.name))
+        case .replaceShape(let reference, let shape):
+            try replaceShape(reference, with: shape, on: page(at: reference.pageIndex), authorName: author.name)
         case .bookmark(let pageIndex, let label):
             let targetPage = try page(at: pageIndex)
             let outline = PDFOutline()
@@ -306,7 +316,7 @@ public enum PDFPageManager {
 
     /// The annotation a reference names, or, when its name was lost, the unnamed
     /// annotation of the same subtype and rectangle.
-    private static func referencedAnnotation(_ reference: PDFAnnotationReference, on page: PDFPage) -> PDFAnnotation? {
+    static func referencedAnnotation(_ reference: PDFAnnotationReference, on page: PDFPage) -> PDFAnnotation? {
         let annotations = page.annotations
         return annotations.first(where: reference.matches) ?? annotations.first(where: reference.matchesAfterNameWasLost)
     }

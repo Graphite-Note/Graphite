@@ -57,9 +57,17 @@ extension PDFSession {
     }
 
     /// Records, as one step, everything the pointer changed of a page's ink since `drawingBefore`.
-    func registerPointerInkStep(from drawingBefore: PKDrawing, to drawingAfter: PKDrawing, on page: PDFPage) {
+    func registerPointerInkStep(from drawingBefore: PKDrawing, to drawingAfter: PKDrawing, on page: PDFPage, actionName: String = "Drawing") {
         guard let change = PencilDrawingChange(from: drawingBefore, to: drawingAfter) else { return }
-        registerInkChange(change, on: page, overlaySize: page.bounds(for: .cropBox).size)
+        registerInkChange(change, on: page, overlaySize: page.bounds(for: .cropBox).size, actionName: actionName)
+    }
+
+    /// Gives the page's ink the drawing `drawingAfter`, as one step named `actionName`: a
+    /// signature placed, moved, resized or deleted (`PDFSignatureInk`).
+    func replacePointerInk(_ ink: PDFPointerPageInk, with drawingAfter: PKDrawing, on page: PDFPage, actionName: String) throws -> PDFPointerPageInk {
+        let changed = try changePointerInk(ink, to: drawingAfter, on: page)
+        registerPointerInkStep(from: ink.drawing, to: drawingAfter, on: page, actionName: actionName)
+        return changed
     }
 
     /// Writes the page's annotations and re-editing record for `drawingAfter`. The record is

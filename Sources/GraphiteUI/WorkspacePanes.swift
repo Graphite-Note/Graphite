@@ -677,6 +677,7 @@ struct TabDocumentView: View {
                     isRecording: workspace.recording.state.isActive) { location in
                 Task { await workspace.resolvePDFConflict(opening: location, inTab: tab.id) }
             }
+            .environment(\.pdfSignatureStore, workspace.processServices.pdfSignatures)
             // A PDF's pane keeps state of its own (pages shown, a reading start), which
             // another PDF must not take over.
             .id(ObjectIdentifier(session))

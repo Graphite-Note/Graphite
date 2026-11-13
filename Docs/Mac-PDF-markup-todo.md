@@ -2,7 +2,7 @@
 
 Created: 2026-11-11.
 
-Status: planned 2026-11-11; section 1 (the markup row and text markup) built and checked on the Mac 2026-11-11, except on the iPad and in Preview itself; 2026-11-13 the row lays its choices out (section 1's last item), and Draw with the eraser (section 5) and Text Box (section 2) are built and tested in the package, not yet checked by hand; sections 3, 4 and 6 not started. Issues: [#150](https://github.com/Graphite-Note/Graphite/issues/150) to [#155](https://github.com/Graphite-Note/Graphite/issues/155), one per section. The Mac's PDF viewer (`GraphitePDFView` for AppKit, `GraphiteMacPDFView`) shows a PDF and its annotations but has no tool to add or change any: no highlight, no text box, no ink.
+Status: planned 2026-11-11; section 1 (the markup row and text markup) built and checked on the Mac 2026-11-11, except on the iPad and in Preview itself; 2026-11-13 the row lays its choices out (section 1's last item), and Draw with the eraser (section 5) and Text Box (section 2) are built and tested in the package, not yet checked by hand; also 2026-11-13, Shapes (section 4) and Signatures (section 6) are built and tested in the package, not yet checked by hand, in Preview or on an iPad; section 3 not started. Issues: [#150](https://github.com/Graphite-Note/Graphite/issues/150) to [#155](https://github.com/Graphite-Note/Graphite/issues/155), one per section. The Mac's PDF viewer (`GraphitePDFView` for AppKit, `GraphiteMacPDFView`) shows a PDF and its annotations but has no tool to add or change any: no highlight, no text box, no ink.
 
 ## Request
 
@@ -73,10 +73,14 @@ Graphite has no notes today: the text boxes' decision 2 (`PDF-text-boxes-todo.md
 
 Issue: [#153](https://github.com/Graphite-Note/Graphite/issues/153)
 
-- [ ] A Shapes menu in the row: rectangle, oval, line and arrow, drawn by dragging on a page, stored as standard `/Square`, `/Circle` and `/Line` annotations with appearances.
-- [ ] The row's border colour, fill colour and line width controls act on the selected shape and on the next one.
-- [ ] Select, move, resize and delete a shape; each step is one undo step.
+- [x] A Shapes menu in the row: rectangle, oval, line and arrow, drawn by dragging on a page, stored as standard `/Square`, `/Circle` and `/Line` annotations with appearances.
+  Done 2026-11-13: a Shapes button in the row (not a menu, as the owner asked of the row), whose choices are the four shapes as buttons (`PDFMarkupShapeOptions`, folded into one menu where the pane is narrow). `MacPDFShapeTool` draws by dragging; a click with no drag draws nothing. A shape is a `PDFShape` (GraphiteApple) written as PDFKit's own `/Square`, `/Circle` or `/Line`, an arrow as a `/Line` with `/LE [/None /OpenArrow]`; PDFKit writes its `/AP` with the file. The edits are `addShape` and `replaceShape`, and `removeAnnotation`. Tests: `PDFShapeTests` (subtype, `/AP`, `/NM`, `/C`, `/IC`, `/L`, width and the arrow's ending written and read back; another application's line with its head at its start), `MacPDFShapeToolTests.testDraggingDrawsTheRowsShapeAsOneStepAndSelectsIt`, `testShapesAreSavedAsStandardAnnotationsThatReadersShow` (saved, read back, and drawn when PDFKit draws the page).
+- [x] The row's border colour, fill colour and line width controls act on the selected shape and on the next one.
+  Done 2026-11-13: border swatches, No Fill and fill swatches (black and the favourite colours of Settings › Colors), and Fine, Medium and Bold, kept on the device as `PDFMarkupShapeStyle` under `GraphitePDFMarkupShapeStyle`. A choice restyles the selected shape (one step, Format Shape) and is the next shape's look; selecting a shape shows its look in the row. Tested: `testASelectedShapeIsMovedReshapedRestyledAndDeletedEachAsOneStep`, the row's layouts in `PDFMarkupToolbarRowTests` (Shapes needs a window under 1,200 points wide before its choices fold).
+- [x] Select, move, resize and delete a shape; each step is one undo step.
+  Done 2026-11-13: a click selects the topmost shape (inside a box, near a line), a drag moves it, a handle at each corner of a box or end of a line reshapes it, Delete or the right-click menu's Delete removes it, Escape leaves it: Add Rectangle (Oval, Line, Arrow), Move Shape, Resize Shape, Format Shape, Delete Shape (`PDFSessionShapes.swift`). Another application's shape without a name is found the first time by its subtype and rectangle and keeps its author. Tests: `MacPDFShapeToolTests` (each step and its undo and redo, a line's end, Preview's unnamed square moved and put back). Not checked in the running app; arrow keys do not move a shape.
 - [ ] The iPad shows them; whether it edits them is decided with the owner.
+  2026-11-13: they are PDFKit's standard annotations, which the iPad's PDFKit draws as the Mac's does (seen only in the Mac package test that draws the saved page). Not opened on an iPad; the iPad has no tool to edit them, to decide with the owner.
 - [ ] Tests, and checked in Preview and on the iPad.
 
 ## 5. Freehand drawing with the mouse and trackpad
@@ -95,7 +99,10 @@ Issue: [#154](https://github.com/Graphite-Note/Graphite/issues/154)
 
 Issue: [#155](https://github.com/Graphite-Note/Graphite/issues/155)
 
-- [ ] A Sign menu in the row lists the signatures kept on this Mac and Create Signature, which draws one with the trackpad or mouse in a sheet.
-- [ ] Choosing a signature places it on the page as ink (vector, like section 5); it can then be moved and resized.
-- [ ] Signatures are kept on the device, outside the vault, and can be deleted from the menu.
+- [x] A Sign menu in the row lists the signatures kept on this Mac and Create Signature, which draws one with the trackpad or mouse in a sheet.
+  Done 2026-11-13: `PDFMarkupSignMenu`, after Text Box and Shapes, lists each signature as its picture, then Create Signature…, which opens `MacPDFSignatureSheet`: a canvas with a signing line, Clear, Cancel and Done; Done keeps the signature and places it. Tested: the canvas's strokes in PencilKit's drawing space (`MacPDFSignatureTests.testTheSheetsCanvasDrawsFromItsTopLeftCornerAsPencilKitDoes`), the menu taking room only with a place to keep signatures (`PDFMarkupToolbarRowTests`). The menu and the sheet were seen only in renderings of the row, not used in the running app.
+- [x] Choosing a signature places it on the page as ink (vector, like section 5); it can then be moved and resized.
+  Done 2026-11-13: `MacPDFSignatureTool` places it 160 points wide (narrower on a small page) in the middle of the page in view, as the page's editable ink, as the Draw tool writes it; its strokes share one creation date (`PDFSignatureInk`), by which a press on its ink selects them again. A drag moves it, a corner resizes it keeping its proportions, Delete removes it: Add Signature, Move Signature, Resize Signature, Delete Signature, each one ink step (`PDFSession.replacePointerInk`). Tests: `MacPDFSignatureTests` (placed as the iPad's editable ink in one step, moved, resized and their undo, deleted leaving other ink, saved and read back as editable ink), the frame's arithmetic. Not checked by hand; on a turned page the signature is placed in the page's own upright space.
+- [x] Signatures are kept on the device, outside the vault, and can be deleted from the menu.
+  Done 2026-11-13: `PDFSignatureStore`, one PencilKit drawing per file in Application Support's `Signatures` folder, in the order made, read only when the Sign menu first shows; the menu's Delete Signature submenu removes one. `testSignaturesAreKeptInTheirOrderOutsideTheVaultReadAgainAndDeleted`.
 - [ ] Tests, and checked in Preview and on the iPad.
