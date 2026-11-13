@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.87
- * Date: 12/11/2026
+ * Version: 0.88
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -79,6 +79,9 @@ final class WorkspaceModel {
     /// The notebook import running or showing its report: nil until notebooks are imported and again once its report is
     /// closed (`importNotebooks`, `endNotebookImport`), so the import holds nothing while it is not used.
     var notebookImport: NotebookImportSession?
+    /// Files opened in Graphite from another app while no vault was open and several are known, waiting for the person
+    /// to choose the vault they go into (`importOpenedFiles(_:into:)`).
+    var openedFilesAwaitingVault: OpenedFilesAwaitingVault?
     /// Files and folders with a move or rename under way; a second request for one is
     /// ignored (the title bar can report the same rename twice).
     var pathsBeingMoved: Set<VaultPath> = []

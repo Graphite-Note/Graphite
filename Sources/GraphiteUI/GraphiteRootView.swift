@@ -264,6 +264,8 @@ struct GraphiteRootView: View {
         // A picture zoomed in over the window, as Obsidian zooms: the note stays behind it.
         .overlay { imageZoom }
         .messageAlert($workspace.errorMessage)
+        .modifier(OpenedFilesVaultChoiceDialog(waiting: $workspace.openedFilesAwaitingVault, vaults: workspace.vaultLibrary.vaults,
+                                               choose: { files, vault in Task { await workspace.importOpenedFiles(files, into: vault) } }))
         .task {
             if restoresLastVault { await openVaultOfWindow() }
             isRestoringVault = false

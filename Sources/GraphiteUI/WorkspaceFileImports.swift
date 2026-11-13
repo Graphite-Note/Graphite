@@ -2,11 +2,11 @@
  * File: WorkspaceFileImports.swift
  * --------------------------------
  * Layer: UI
- * Description: Files brought into the vault from outside it, by a drop or the file picker.
+ * Description: Files brought into the vault from outside it, by a drop, the file picker or another app's Open in.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -23,18 +23,34 @@ extension WorkspaceModel {
     ///   converted, only when that conversion has ended, since it reads it long after this call returns. The
     ///   conversion's end says nothing about the other files of the drop, which this call may still be copying.
     /// - Parameter importers: Asked after the notebook import and before the plain copy, as `DroppedFileImporters.registered` is.
+    /// - Returns: The files the plain copy made; a notebook being converted is not among them.
+    @discardableResult
     func importFiles(from chosenSources: [URL], into directory: VaultPath, stagedCopies: DroppedFileBatch? = nil,
-                     importers: [FileTypeImporter] = DroppedFileImporters.registered) async {
+                     importers: [FileTypeImporter] = DroppedFileImporters.registered) async -> [VaultPath] {
         var copiesThisCallRemoves = stagedCopies ?? DroppedFileBatch(files: [])
         defer { copiesThisCallRemoves.discard() }
-        guard let store, let root = folderAccess?.root else { return }
+        guard store != nil, folderAccess?.root != nil else { return [] }
         let routing = DroppedFileImporters.route(chosenSources, through: [notebookFileImporter].compactMap(\.self) + importers)
         for routed in routing.routed {
             let copies = copiesThisCallRemoves.split(at: routed.files)
             copiesThisCallRemoves = copies.others
             await routed.importer.importFiles(routed.files, directory, copies.atLocations).discard()
         }
-        let sources = routing.remaining
+        let copied = await copyIntoVault(routing.remaining, into: directory)
+        if !copied.importedPaths.isEmpty {
+            refreshIndex(for: copied.importedPaths)
+            await refreshDirectory()
+        }
+        if !copied.failedNames.isEmpty {
+            errorMessage = "Could not import " + copied.failedNames.map { name in "“\(name)”" }.joined(separator: ", ") + "."
+        }
+        return copied.importedPaths
+    }
+
+    /// Copies each source into `directory` under a free name, a text file as a note, without refreshing the index or
+    /// the file list, which the caller does once for all its copies.
+    func copyIntoVault(_ sources: [URL], into directory: VaultPath) async -> (importedPaths: [VaultPath], failedNames: [String]) {
+        guard let store, let root = folderAccess?.root else { return ([], sources.map(\.lastPathComponent)) }
         var importedPaths: [VaultPath] = []
         var failedNames: [String] = []
         for source in sources {
@@ -53,12 +69,6 @@ extension WorkspaceModel {
                 failedNames.append(source.lastPathComponent)
             }
         }
-        if !importedPaths.isEmpty {
-            refreshIndex(for: importedPaths)
-            await refreshDirectory()
-        }
-        if !failedNames.isEmpty {
-            errorMessage = "Could not import " + failedNames.map { name in "“\(name)”" }.joined(separator: ", ") + "."
-        }
+        return (importedPaths, failedNames)
     }
 }

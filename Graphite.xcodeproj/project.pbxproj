@@ -78,6 +78,7 @@
 				GraphiteTestSupport/LoopbackWebServer.swift,
 				GraphiteTestSupport/PenTestSpeech.swift,
 				GraphiteTestSupport/SimulatorAudio.swift,
+				GraphiteTestSupport/StoredZipArchive.swift,
 				GraphiteTestSupport/TemporaryVault.swift,
 				GraphiteTestSupport/TextRecognitionCapability.swift,
 				GraphiteTestSupport/WaitUntil.swift,

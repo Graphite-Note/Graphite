@@ -2,11 +2,11 @@
  * File: WorkspaceDeepLinks.swift
  * ------------------------------
  * Layer: UI
- * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
+ * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`), and files other apps open.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 02/11/2026
+ * Version: 0.11
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -15,6 +15,8 @@ import GraphiteCore
 /// `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
 extension WorkspaceModel {
     func handle(_ url: URL) async {
+        // A file another app opened in Graphite, which arrives the way a link does.
+        if url.isFileURL { return await importOpenedFile(url) }
         guard let link = VaultURI(url: url) else {
             errorMessage = "Graphite can't open this link: \(url.absoluteString)"
             return

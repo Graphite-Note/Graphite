@@ -67,7 +67,7 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
 
     func testTheInfoPropertyListHasExactlyTheseTopLevelKeys() throws {
         XCTAssertEqual(Set(try infoPropertyList().keys), [
-            "CFBundleDisplayName", "CFBundleExecutable", "CFBundleIdentifier", "CFBundleName", "CFBundlePackageType",
+            "CFBundleDisplayName", "CFBundleDocumentTypes", "CFBundleExecutable", "CFBundleIdentifier", "CFBundleName", "CFBundlePackageType",
             "CFBundleShortVersionString", "CFBundleVersion", "CFBundleURLTypes",
             "ITSAppUsesNonExemptEncryption", "LSApplicationCategoryType", "LSSupportsOpeningDocumentsInPlace",
             "NSCameraUsageDescription", "NSLocalNetworkUsageDescription", "NSMicrophoneUsageDescription", "NSPhotoLibraryAddUsageDescription",
@@ -78,6 +78,8 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
             "NSUserActivityTypes",
             "UIApplicationSceneManifest", "UIApplicationSceneManifest~ipad", "UIBackgroundModes", "UIFileSharingEnabled", "UILaunchScreen",
             "UISupportedInterfaceOrientations", "UISupportsDocumentBrowser", "UTExportedTypeDeclarations",
+            // Open in Graphite from any app (Docs/Goodnotes-Notability-import-todo.md, Phase 4; InfoPlistDocumentTypesTests).
+            "UTImportedTypeDeclarations",
         ])
     }
 
