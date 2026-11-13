@@ -6,7 +6,7 @@
  *              section 15): where the reading view starts after Live Preview, and an embedded PDF's page in a callout.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
@@ -56,6 +56,41 @@ final class ReleaseVaultMacFindingsTests: XCTestCase {
         try await settle(root, seconds: 2)
         XCTAssertLessThan(session.readingPosition.topLocation() ?? 0, 200, "The reading view starts at the note's top")
         XCTAssertLessThan(session.readingPosition.visibleTop, 50, "The reading view is scrolled to its top")
+    }
+
+    /// HUNT-349 again, on 2026-11-13: the long picture note's reading view left at its top, after the switch from Live
+    /// Preview, starts at its top again when the note is reopened in its tab and when the tab comes back by Back.
+    func testThePictureNotesReadingViewStartsAtItsTopWhenReopenedAndWhenItsTabComesBack() async throws {
+        let pass = try await ReleaseVaultPass.open(for: self)
+        let path = try VaultPath("Embeds/Pictures in every form.md")
+        _ = await pass.workspace.open(path, placement: .currentTab)
+        let root = try XCTUnwrap(pass.window.contentView)
+        try await waitUntil("the note's editor is shown") { ReleaseVaultViews.noteTextView(in: root) != nil }
+        try await settle(root, seconds: 1)
+        try XCTUnwrap(pass.workspace.markdownSession).viewMode = .reading
+        try await assertReadingViewAtItsTop(pass, root, "after the switch from Live Preview")
+
+        _ = await pass.workspace.open(try VaultPath("Start here.md"), placement: .currentTab)
+        try await settle(root, seconds: 1)
+        await pass.workspace.goBack()
+        try await waitUntil("the picture note is back") { pass.workspace.markdownSession?.path == path }
+        try await assertReadingViewAtItsTop(pass, root, "when its tab comes back by Back")
+
+        _ = await pass.workspace.open(try VaultPath("Start here.md"), placement: .currentTab)
+        try await settle(root, seconds: 1)
+        _ = await pass.workspace.open(path, placement: .currentTab)
+        try await waitUntil("the picture note is reopened") { pass.workspace.markdownSession?.path == path }
+        try await assertReadingViewAtItsTop(pass, root, "when it is reopened")
+    }
+
+    private func assertReadingViewAtItsTop(_ pass: ReleaseVaultPass, _ root: NSView, _ when: String,
+                                           file: StaticString = #filePath, line: UInt = #line) async throws {
+        let session = try XCTUnwrap(pass.workspace.markdownSession, file: file, line: line)
+        if session.viewMode != .reading { session.viewMode = .reading }
+        try await waitUntil("the reading view laid out its blocks \(when)") { session.readingPosition.hasLaidOutBlocks }
+        try await settle(root, seconds: 2)
+        XCTAssertLessThan(session.readingPosition.topLocation() ?? 0, 200, "The reading view starts at the note's top \(when)", file: file, line: line)
+        XCTAssertLessThan(session.readingPosition.visibleTop, 50, "The reading view is scrolled to its top \(when)", file: file, line: line)
     }
 
     /// HUNT-350: in the pass's screenshot, `![[Lecture slides.pdf#page=4&height=240]]` in a callout showed the foot of

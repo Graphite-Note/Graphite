@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.17
- * Date: 12/11/2026
+ * Version: 0.18
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -35,6 +35,15 @@ public struct LivePreviewBlock: Equatable, Sendable {
         /// An `<iframe>` on lines of its own, or alone in a list item, as reading view finds it (`NotePreviewBlock.webFrame`):
         /// the page shown over its lines, its tag in `markdown`.
         case webFrame(WebFrameEmbed)
+
+        /// Whether the block's view edits table cells in place, a table's own or those of a
+        /// callout's body, and so is kept across the new keys its edits give the block.
+        public var editsTablesInItsView: Bool {
+            switch self {
+            case .table, .callout: true
+            case .frontmatter, .mathBlock, .embed, .imageLine, .baseDefinition, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame: false
+            }
+        }
     }
     public let kind: Kind
     /// Whole lines, including the final line break when there is one.

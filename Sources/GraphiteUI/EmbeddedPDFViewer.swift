@@ -5,8 +5,8 @@
  * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 07/11/2026
+ * Version: 0.17
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -24,7 +24,6 @@ import UIKit
 /// The PDF loads when the embed scrolls into view and is saved and released shortly after
 /// it leaves, so a note with many embeds keeps only the visible ones in memory.
 struct EmbeddedPDFViewer: View {
-    static let defaultHeight: CGFloat = 560
     /// A viewer that is scrolled away only briefly keeps its document.
     private static let releaseDelay = Duration.seconds(1.5)
     private static let zoomStep: CGFloat = 1.25
@@ -32,7 +31,8 @@ struct EmbeddedPDFViewer: View {
 
     let location: URL
     let startPageNumber: Int?
-    let height: CGFloat
+    /// From `#height=N`; nil shows the page it opens at whole, at the column's width (`EmbeddedPDFPageFit`).
+    let height: CGFloat?
     /// Changes when files the vault shows change; the embed then shows this PDF as saved
     /// elsewhere, such as from its own tab, unless it has annotations not saved yet.
     let drawingVersion: Int
@@ -88,12 +88,13 @@ struct EmbeddedPDFViewer: View {
 
     /// - Parameters:
     ///   - startPageNumber: One-based page to show first, from `#page=N`.
-    ///   - height: Viewer height in points, from `#height=N`; defaults to 560.
+    ///   - height: Viewer height in points, from `#height=N`; without it the viewer is as tall as
+    ///     its toolbar and the page it opens at, shown whole at the viewer's width.
     ///   - openInPane: Opens the PDF in the full PDF pane at the page shown here.
     init(location: URL, startPageNumber: Int? = nil, height: CGFloat? = nil, drawingVersion: Int = 0, openInPane: @escaping (Int) -> Void) {
         self.location = location
         self.startPageNumber = startPageNumber
-        self.height = height.map { requestedHeight in min(max(requestedHeight, CGFloat(PDFEmbedOptions.minimumHeight)), CGFloat(PDFEmbedOptions.maximumHeight)) } ?? Self.defaultHeight
+        self.height = height.map { requestedHeight in min(max(requestedHeight, CGFloat(PDFEmbedOptions.minimumHeight)), CGFloat(PDFEmbedOptions.maximumHeight)) }
         self.drawingVersion = drawingVersion
         self.openInPane = openInPane
     }
@@ -359,6 +360,7 @@ struct EmbeddedPDFViewer: View {
                                 noteDestination: noteDestination)
                     // A reloaded file is a new session; its view and canvases start fresh.
                     .id(ObjectIdentifier(session))
+                    .modifier(EmbeddedPDFPageFit(pageSize: height == nil ? EmbeddedPDFPageFit.shownSize(of: session.document, pageNumber: startPageNumber) : nil))
             }
         } else if let loadingError {
             ContentUnavailableView {
@@ -368,8 +370,10 @@ struct EmbeddedPDFViewer: View {
             } actions: {
                 Button("Try Again") { self.loadingError = nil; loadGeneration += 1 }
             }
+            .frame(height: height == nil ? EmbeddedPDFPageFit.pageAreaHeightWhileLoading : nil)
         } else {
             ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(height: height == nil ? EmbeddedPDFPageFit.pageAreaHeightWhileLoading : nil)
         }
     }
 

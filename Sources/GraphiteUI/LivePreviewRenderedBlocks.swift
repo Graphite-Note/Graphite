@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.23
- * Date: 12/11/2026
+ * Version: 0.24
+ * Date: 13/11/2026
  */
 
 #if canImport(UIKit)
@@ -333,7 +333,8 @@ final class LivePreviewRenderedBlocks {
 
     // MARK: Editing in a block's view
 
-    /// Keeps a table's view across the edits its view makes, until its editor, `owner`, ends.
+    /// Keeps a table's view, or a callout's whose body table is edited, across the edits its view
+    /// makes, until its editor, `owner`, ends.
     func beginEditingInView(blockWithKey key: LivePreviewBlockKey, at location: Int, owner: ObjectIdentifier) {
         editingInViewGeneration += 1
         blockEditedInItsView = (key, location, owner)
@@ -372,7 +373,7 @@ final class LivePreviewRenderedBlocks {
     /// its key.
     func entryEditedInItsView(by owner: ObjectIdentifier, in entries: [LivePreviewBlockEntry]) -> LivePreviewBlockEntry? {
         guard let edited = blockEditedInItsView, edited.owner == owner else { return nil }
-        return entries.first { entry in entry.range.location == edited.location && entry.block.kind == .table }
+        return entries.first { entry in entry.range.location == edited.location && entry.block.kind.editsTablesInItsView }
             ?? entries.first { entry in entry.key == edited.key }
     }
 
@@ -385,7 +386,7 @@ final class LivePreviewRenderedBlocks {
         let range: NSRange?
         if let location = locationEditedInItsView(by: editor) {
             range = entryEditedInItsView(by: editor, in: entries)?.range
-                ?? LivePreviewBlockScanner.blocks(in: source).first { block in block.kind == .table && block.range.location == location }?.range
+                ?? LivePreviewBlockScanner.blocks(in: source).first { block in block.kind.editsTablesInItsView && block.range.location == location }?.range
         } else {
             range = entries.first { entry in entry.key == key }?.range
         }
@@ -404,7 +405,7 @@ final class LivePreviewRenderedBlocks {
     /// being typed in) or jump to an estimated height.
     private func adoptBlockEditedInItsView(_ entry: LivePreviewBlockEntry) {
         guard let edited = blockEditedInItsView, edited.key != entry.key, edited.location == entry.range.location,
-              entry.block.kind == .table else { return }
+              entry.block.kind.editsTablesInItsView else { return }
         blockEditedInItsView = (entry.key, edited.location, edited.owner)
         if let height = reportedHeights.removeValue(forKey: edited.key) { reportedHeights[entry.key] = height }
         if let height = heightsKeptInText[edited.key] { heightsKeptInText[entry.key] = height }
@@ -658,15 +659,16 @@ final class LivePreviewRenderedBlocks {
     /// block moves with edits elsewhere, so its actions find the block by key when they run.
     /// - Parameter colorScheme: Passed where the hosted view does not take the appearance
     ///   from the text view it is in, as on the iPad.
-    /// - Parameter sourceEditing: How a table's view edits its cells in the note; nil leaves
-    ///   the table to be edited as source, as one a comment runs out of always is.
+    /// - Parameter sourceEditing: How a table's view, or a callout's for the tables of its body,
+    ///   edits cells in the note; nil leaves the table to be edited as source, as one a comment
+    ///   runs out of always is.
     /// - Parameter currentLocation: Where the block starts in the note now, found by its key.
     static func rootView(for entry: LivePreviewBlockEntry, environment: LivePreviewEnvironment, accentHex: String, colorScheme: ColorScheme?,
                          revealSource: @escaping () -> Void, reportHeight: @escaping (CGFloat) -> Void,
                          sourceEditing: RenderedBlockSourceEditing? = nil, currentLocation: (@MainActor () -> Int?)? = nil) -> RenderedBlockRoot {
         let accent = Color.graphiteAccent(hex: accentHex) ?? .accentColor
         let widget = LivePreviewWidgetView(block: entry.block, environment: environment, revealSource: revealSource, reportHeight: reportHeight,
-                                           sourceEditing: entry.block.kind == .table && !entry.block.isCutByComment ? sourceEditing : nil,
+                                           sourceEditing: entry.block.kind.editsTablesInItsView && !entry.block.isCutByComment ? sourceEditing : nil,
                                            currentLocation: currentLocation)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)

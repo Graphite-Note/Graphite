@@ -5,8 +5,8 @@
  * Description: Editing a rendered table's cells in place, its cell commands and its "+" strips.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 11/11/2026
+ * Version: 0.7
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -279,9 +279,15 @@ final class LivePreviewTableEditor {
 
     private func menuCell(at point: CGPoint) -> TableCellPosition? {
         let pointInTable = CGPoint(x: point.x - tableOriginInBlock.x, y: point.y - tableOriginInBlock.y)
-        let tableBounds = layout?.bounds ?? .null
-        let pointedCell = tableBounds.insetBy(dx: -4, dy: -4).contains(pointInTable) ? layout.flatMap { layout in Self.cell(at: pointInTable, in: layout) } : nil
+        let pointedCell = isOnTable(point) ? layout.flatMap { layout in Self.cell(at: pointInTable, in: layout) } : nil
         return pointedCell ?? editingCell
+    }
+
+    /// Whether `point`, in the block view's coordinates, is on the table as last laid out, or
+    /// within a few points of its edge: of a callout's tables, the one its menu is for.
+    func isOnTable(_ point: CGPoint) -> Bool {
+        let pointInTable = CGPoint(x: point.x - tableOriginInBlock.x, y: point.y - tableOriginInBlock.y)
+        return (layout?.bounds ?? .null).insetBy(dx: -4, dy: -4).contains(pointInTable)
     }
 
     /// Whether the command palette's and the Edit menu's `command` applies to the cell they act on.

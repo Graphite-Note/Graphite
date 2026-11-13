@@ -6,8 +6,8 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.38
- * Date: 12/11/2026
+ * Version: 0.39
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -286,7 +286,10 @@ struct GraphitePDFView: UIViewRepresentable {
         // A picture placed on a page is drawn from all its pixels at any size: below high
         // quality, a picture made smaller than its pixels shows jagged, pixelated edges.
         view.interpolationQuality = .high
-        if isEmbedded { view.pageBreakMargins = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6) }
+        if isEmbedded {
+            let margin = PDFEmbedFitting.pageMargin
+            view.pageBreakMargins = UIEdgeInsets(top: margin, left: margin, bottom: margin, right: margin)
+        }
         // PDFKit asks for page overlays only when it creates page views, so the provider
         // must be in place before the document is.
         view.pageOverlayViewProvider = context.coordinator
