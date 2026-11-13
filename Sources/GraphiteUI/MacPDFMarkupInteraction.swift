@@ -6,8 +6,8 @@
  *              highlighter, selecting, recolouring and removing a mark, and the markup items of the right-click menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 13/11/2026
  */
 
 #if os(macOS)
@@ -29,9 +29,21 @@ final class MacPDFMarkupInteraction: NSObject {
     private weak var view: PDFView?
     /// The pane's markup row, told when the text selection comes and goes for the menu bar.
     weak var toolbar: PDFMarkupToolbar? {
-        didSet { reportTextSelection() }
+        didSet {
+            reportTextSelection()
+            pageTools?.toolbar = toolbar
+        }
     }
-    var input = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false)
+    var input = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false) {
+        didSet { followPageTool() }
+    }
+    /// Draw, Eraser and Text Box, made when one of them is first chosen.
+    private(set) var pageTools: MacPDFPageTools?
+    /// Where the page tools keep the look of the next text box: the device's, as the
+    /// iPad's text tool keeps it; a test gives its own.
+    var pageToolPreferences: UserDefaults = .standard
+    /// The wall clock, read for the date PencilKit keeps with each stroke, as the iPad's canvas dates its strokes.
+    var currentDate: () -> Date = Date.init
     var linkActions: PDFLinkActions?
     private var selectedMark: (annotation: PDFAnnotation, page: PDFPage)?
     private var mouseDownChoseMark = false
@@ -44,9 +56,23 @@ final class MacPDFMarkupInteraction: NSObject {
         NotificationCenter.default.addObserver(self, selector: #selector(selectionChanged), name: .PDFViewSelectionChanged, object: view)
     }
 
-    /// Ends the observation of the view's selection; called when the view is taken down.
+    /// Ends the observation of the view's selection, and what the page tools observe; called
+    /// when the view is taken down.
     func stopObservingSelection() {
         NotificationCenter.default.removeObserver(self, name: .PDFViewSelectionChanged, object: nil)
+        pageTools?.stop()
+    }
+
+    /// Gives the page tools the row's tool, making them when a page tool is first chosen: a
+    /// PDF only ever read or highlighted makes none.
+    private func followPageTool() {
+        let tool = input.isEnabled ? input.markupTool : .textSelection
+        if pageTools == nil {
+            guard tool.takesPagePresses, let session, let view else { return }
+            pageTools = MacPDFPageTools(session: session, view: view, preferences: pageToolPreferences, currentDate: currentDate)
+            pageTools?.toolbar = toolbar
+        }
+        pageTools?.use(tool)
     }
 
     @objc private func selectionChanged() { reportTextSelection() }
@@ -81,6 +107,7 @@ final class MacPDFMarkupInteraction: NSObject {
 
     /// Takes Delete and Forward Delete while a mark is selected, which remove it.
     func handleKeyDown(_ event: NSEvent) -> Bool {
+        if pageTools?.handleKeyDown(event) == true { return true }
         guard let selectedMark, let session, let key = event.charactersIgnoringModifiers?.unicodeScalars.first,
               Self.deletionKeys.contains(Int(key.value)) else { return false }
         self.selectedMark = nil

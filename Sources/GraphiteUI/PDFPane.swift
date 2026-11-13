@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.31
- * Date: 11/11/2026
+ * Version: 0.32
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -27,6 +27,8 @@ enum PDFAnnotationPreferenceKey {
     static let writingGuideSpacing = "GraphitePDFWritingGuideSpacing"
     /// The mark the Mac's highlight button makes (`PDFMarkupStyle`).
     static let markupStyle = "GraphitePDFMarkupStyle"
+    /// The colour and width of the Mac's Draw tool (`PDFMarkupInkStyle`).
+    static let markupInkStyle = "GraphitePDFMarkupInkStyle"
 
     /// Light gray, so the guides stay behind the page's own content.
     static func writingGuides(pattern: DrawingPaperPattern, spacing: DrawingPaperSpacing) -> DrawingPaper {
@@ -113,6 +115,7 @@ private struct PDFPaneContent: View {
     #if os(macOS)
     @State private var markupToolbar = PDFMarkupToolbar()
     @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
+    @AppStorage(PDFAnnotationPreferenceKey.markupInkStyle) private var markupInkStyle = PDFMarkupInkStyle.default
     #endif
 
     init(session: PDFSession, isFocused: Bool, focus: @escaping () -> Void, linkActions: PDFLinkActions?,
@@ -235,7 +238,8 @@ private struct PDFPaneContent: View {
             }
         }
         #if os(macOS)
-        .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, isFocused: isFocused))
+        .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, inkStyle: $markupInkStyle,
+                                     isFocused: isFocused))
         #endif
         #if canImport(UIKit)
         // The iPad's bars above the page. The Mac has none: an inset with no content takes

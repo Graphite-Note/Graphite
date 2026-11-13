@@ -109,9 +109,11 @@ struct LivePreviewBlockStack: View {
         switch block {
         case .markdown(let markdown):
             calloutRun(markdown, at: index, readingSection: readingSection).map { run in AnyView(run) }
-                ?? AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens, place: place(ofBlockAt: index)))
+                ?? AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens,
+                                                 place: place(ofBlockAt: index)))
         case .heading(let level, let text, _):
-            AnyView(RenderedMarkdownBlock(markdown: String(repeating: "#", count: level) + " " + text, environment: environment, sourceTokens: readingSection?.tokens))
+            AnyView(RenderedMarkdownBlock(markdown: String(repeating: "#", count: level) + " " + text, environment: environment,
+                                          sourceTokens: readingSection?.tokens))
         case .callout(let type, let title, let folding, let bodyBlocks):
             AnyView(LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks,
                                            bodyLocated: located?.indices.contains(index) == true ? located?[index].body : nil, noteReading: noteReading,

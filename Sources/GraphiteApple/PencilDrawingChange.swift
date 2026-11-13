@@ -7,10 +7,9 @@
  *              drawings.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 13/11/2026
  */
-#if canImport(UIKit)
 import Foundation
 import PencilKit
 
@@ -160,4 +159,3 @@ public struct PencilDrawingChange {
         return (unmatchedBefore, unmatchedAfter)
     }
 }
-#endif

@@ -1,5 +1,19 @@
+/**
+ * File: PDFTextBoxTextConversion.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: A text box's runs as the attributed text of the view it is typed in, on the iPad and the Mac, and back.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 13/11/2026
+ */
+
 #if canImport(UIKit)
 import UIKit
+#else
+import AppKit
+#endif
 import GraphiteCore
 import GraphiteApple
 
@@ -22,10 +36,11 @@ enum PDFTextBoxTextConversion {
     /// The attributes text typed with these looks takes, at `scale`.
     static func textAttributes(of attributes: PDFTextAttributes, style: PDFTextBoxStyle, scale: CGFloat) -> [NSAttributedString.Key: Any] {
         let postScriptFont = PDFTextBoxFonts.postScriptFont(for: attributes, scale: Double(scale))
-        let font = UIFont(name: postScriptFont.name, size: CGFloat(postScriptFont.pointSize)) ?? UIFont.systemFont(ofSize: CGFloat(attributes.fontSize) * scale)
+        let font = PlatformFont(name: postScriptFont.name, size: CGFloat(postScriptFont.pointSize))
+            ?? PlatformFont.systemFont(ofSize: CGFloat(attributes.fontSize) * scale)
         var textAttributes: [NSAttributedString.Key: Any] = [
             .font: font,
-            .foregroundColor: UIColor(cgColor: PDFTextBoxLayout.cgColor(attributes.color)),
+            .foregroundColor: platformColor(attributes.color),
             .paragraphStyle: paragraphStyle(of: style),
             attributesKey: PDFTextAttributesBox(attributes),
         ]
@@ -54,22 +69,31 @@ enum PDFTextBoxTextConversion {
         let string = text.string as NSString
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
             var looks = (attributes[attributesKey] as? PDFTextAttributesBox)?.attributes ?? typingDefaults
-            if let font = attributes[.font] as? UIFont {
-                let traits = font.fontDescriptor.symbolicTraits
-                looks.isBold = traits.contains(.traitBold)
-                looks.isItalic = traits.contains(.traitItalic)
+            if let font = attributes[.font] as? PlatformFont {
+                looks.isBold = isBold(font)
+                looks.isItalic = isItalic(font)
                 if scale > 0 { looks.fontSize = min(max(Double(font.pointSize / scale), PDFTextAttributes.fontSizeRange.lowerBound),
                                                     PDFTextAttributes.fontSizeRange.upperBound) }
             }
             looks.isUnderlined = ((attributes[.underlineStyle] as? Int) ?? 0) != 0
-            if let color = (attributes[.foregroundColor] as? UIColor).flatMap(textColor(of:)) { looks.color = color }
+            if let color = (attributes[.foregroundColor] as? PlatformColor).flatMap(textColor(of:)) { looks.color = color }
             looks.link = attributes[.link] as? URL ?? (attributes[.link] as? String).flatMap(URL.init(string:))
             runs.append(PDFTextRun(text: string.substring(with: range), attributes: looks))
         }
         return PDFTextRun.normalized(runs)
     }
 
-    private static func textColor(of color: UIColor) -> PDFTextColor? {
+    #if canImport(UIKit)
+    private static func platformColor(_ color: PDFTextColor) -> UIColor { UIColor(cgColor: PDFTextBoxLayout.cgColor(color)) }
+    private static func isBold(_ font: UIFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.traitBold) }
+    private static func isItalic(_ font: UIFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.traitItalic) }
+    #else
+    private static func platformColor(_ color: PDFTextColor) -> NSColor { NSColor(cgColor: PDFTextBoxLayout.cgColor(color)) ?? .black }
+    private static func isBold(_ font: NSFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.bold) }
+    private static func isItalic(_ font: NSFont) -> Bool { font.fontDescriptor.symbolicTraits.contains(.italic) }
+    #endif
+
+    private static func textColor(of color: PlatformColor) -> PDFTextColor? {
         guard let components = color.cgColor.converted(to: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
                                                        intent: .defaultIntent, options: nil)?.components, components.count >= 3 else { return nil }
         return PDFTextColor(red: Double(components[0]), green: Double(components[1]), blue: Double(components[2]))
@@ -94,4 +118,3 @@ final class PDFTextAttributesBox: NSObject {
         return hasher.finalize()
     }
 }
-#endif
