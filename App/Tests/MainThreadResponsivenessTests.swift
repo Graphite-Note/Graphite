@@ -20,6 +20,14 @@ final class MainThreadResponsivenessTests: XCTestCase {
     private var workspace: WorkspaceModel?
     private var savedSpeed = 1.0
 
+    /// Nothing here may be heard: the long note's test gives the reading view each word itself and makes no speech, and the
+    /// tests that read aloud do it in this process, whose speech renders and is discarded (`AudioOutputRoute`). On
+    /// 2026-11-12 a full run's audio watch stopped at the long note's test; the speaker was held for the owner's browser
+    /// (Brave's audio helper, PID 25619, which another run's watch also caught, during `PDFGestureWinsTests`), not by this.
+    override func setUp() async throws {
+        XCTAssertEqual(AudioOutputRoute.thisProcess, .silent, "The hosted app renders sound and discards it.")
+    }
+
     override func tearDown() async throws {
         workspace?.activeReadAloud.clear()
         workspace?.activeReadAloud.session.setSpeed(savedSpeed)

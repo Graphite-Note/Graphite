@@ -571,12 +571,14 @@ final class MarkdownTextView: UITextView {
                 }
             } else if let typeIdentifier = LibraryDropReader.importableType(of: provider)?.identifier {
                 // Any other file, such as a PDF, a recording or a Word document, keeps its own format.
+                // The name is read here: the provider is not sendable, and the file arrives on another thread.
+                let suggestedName = provider.suggestedName
                 provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { [weak self] location, _ in
                     guard let location, let data = try? Data(contentsOf: location, options: .mappedIfSafe) else {
                         Task { @MainActor in self?.reportUnreadableItem?() }
                         return
                     }
-                    let suggestedExtension = provider.suggestedName.map { name in (name as NSString).pathExtension } ?? ""
+                    let suggestedExtension = suggestedName.map { name in (name as NSString).pathExtension } ?? ""
                     let fileExtension = !location.pathExtension.isEmpty ? location.pathExtension
                         : !suggestedExtension.isEmpty ? suggestedExtension : (UTType(typeIdentifier)?.preferredFilenameExtension ?? "bin")
                     let stem = suggestedStem ?? location.deletingPathExtension().lastPathComponent

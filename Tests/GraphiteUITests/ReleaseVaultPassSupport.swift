@@ -88,7 +88,7 @@ enum ReleaseVaultWindow {
     /// the pages' annotations too.
     private static func drawPDFPages(in contentView: NSView, into context: CGContext) {
         for pdfView in ReleaseVaultViews.descendants(of: contentView, ofType: PDFView.self) where ReleaseVaultViews.isShown(pdfView) {
-            let shownArea = bitmapRect(pdfView.convert(pdfView.visibleRect, to: contentView), in: contentView)
+            let shownArea = bitmapRect(shownArea(of: pdfView, in: contentView), in: contentView)
             for page in pdfView.visiblePages {
                 let pageBox = page.bounds(for: pdfView.displayBox)
                 let pageArea = bitmapRect(pdfView.convert(pdfView.convert(pageBox, from: page), to: contentView), in: contentView)
@@ -103,6 +103,13 @@ enum ReleaseVaultWindow {
                 context.restoreGState()
             }
         }
+    }
+
+    /// Where a PDF view shows its pages, in the content view: the part of its bounds on screen. A PDF view's `visibleRect`
+    /// reaches past its bounds, as far above it as the embed's toolbar is high, so drawing the pages there painted the foot
+    /// of the page before over the toolbar of an embed that starts at a later page (HUNT-350, which the app never showed).
+    static func shownArea(of pdfView: PDFView, in contentView: NSView) -> CGRect {
+        pdfView.convert(pdfView.visibleRect.intersection(pdfView.bounds), to: contentView)
     }
 
     /// A rectangle of the content view in the bitmap's coordinates, whose origin is at the bottom left.

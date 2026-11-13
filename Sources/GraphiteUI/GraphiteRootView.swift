@@ -137,7 +137,12 @@ struct GraphiteRootView: View {
                     }
                 }
         }
+        #if os(iOS)
+        // The window's own shape: the root view gives the software keyboard its room (HUNT-353).
+        .background { WindowShapeReader { isTallerThanWide in windowShapeMeasured(isTallerThanWide) } }
+        #else
         .onGeometryChange(for: Bool?.self, of: Self.windowShape) { measuredShape in windowShapeMeasured(measuredShape) }
+        #endif
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
         // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
         .tint(Color.primary)
@@ -741,12 +746,14 @@ struct GraphiteRootView: View {
         return !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
     }
 
+    #if os(macOS)
     /// Whether the window is taller than wide; nil for a layout pass before the window has its size, which measures
     /// nothing: taken as a shape, an empty size read as wider than tall and showed an upright window's sidebar beside
-    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317).
+    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317; the iPad reads `WindowShapeReader`).
     nonisolated private static func windowShape(of geometry: GeometryProxy) -> Bool? {
         geometry.size.width > 0 && geometry.size.height > 0 ? geometry.size.height > geometry.size.width : nil
     }
+    #endif
 
     private func windowShapeMeasured(_ measuredShape: Bool?) {
         guard let isTallerThanWide = measuredShape else { return }
@@ -950,22 +957,5 @@ private struct CreateDocumentSheet: View {
         guard nameProblem == nil else { return }
         create(chosenName)
         dismiss()
-    }
-}
-
-/// The document's name in the navigation bar. A compact width shows it as a plain title,
-/// which truncates to make room for the document's controls; the editable title, with its
-/// Rename menu, kept its full width beside a long file name and sent Write, Undo and More
-/// into an overflow menu. Rename is in the document's More menu there.
-private struct DocumentTitle: ViewModifier {
-    @Binding var title: String
-    let isCompactWidth: Bool
-
-    func body(content: Content) -> some View {
-        if isCompactWidth {
-            content.navigationTitle(title)
-        } else {
-            content.navigationTitle($title)
-        }
     }
 }

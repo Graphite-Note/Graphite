@@ -112,7 +112,14 @@ final class ReleaseVaultFindingsHostedTests: XCTestCase {
         let blocksLeftBlank = pass.findings.filter { finding in
             if case .blockLeftAsSource = finding.problem { true } else { false }
         }
-        XCTAssertEqual(blocksLeftBlank, [], "Each finding is printed on a GRAPHITE-RELEASE-FINDING or GRAPHITE-RELEASE-KNOWN line.")
+        XCTAssertEqual(blocksLeftBlank, [], "Each finding is printed on a GRAPHITE-RELEASE-FINDING line.")
+        // Docs/Editor-scrolling-todo.md: in about a third of these runs the switch from the reading view to source mode
+        // left the reading view on screen with no editor. The pane was drawn from inside Observation's notice of the
+        // switch, before the session stored the new mode, read the mode it was leaving, and was not drawn again.
+        let viewsNotShown = pass.findings.filter { finding in
+            if case .notShown = finding.problem { true } else { false }
+        }
+        XCTAssertEqual(viewsNotShown, [], "Every view of the note shows, source mode after the reading view too.")
     }
 
     private static func descendants(of view: UIView) -> [UIView] {

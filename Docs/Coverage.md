@@ -2,7 +2,16 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-12.
+Last updated: 2026-11-13.
+
+## Warnings, a quiet Read Aloud test, and the release vault's remaining findings: 2026-11-13
+
+Xcode's warnings: the ones of the owner's screenshot (`unsafeBitCast` of a run's font, the audio interruption types deprecated in iOS 27, `UIScreen.main`, `loadItem`, the unused `workspace`, SwiftUIMath's `symbolClass` called from Textual off the main actor) were fixed on 2026-11-04 and are not in a build of main; the screenshot was of an older build's log. What a clean build of main still warned of (the TestFlight archives of f3c76057 for iOS and the Mac, and the Mac package with its tests) is fixed: `BaseImageValueView.frameSize` and `reference(for:)` are nonisolated for printing, a dropped file's suggested name is read before its loading closure, and `PictureActionsTests` has no nonisolated `setUp`. SwiftUIMath's patch 6 now records why `symbolClass` is nonisolated. Read Aloud's long-note responsiveness test makes no speech; the speaker the audio watch saw open during it on 2026-11-12 was held for the owner's browser (Brave's audio helper, the same process another run's watch caught during `PDFGestureWinsTests`). Fixed: source mode after the reading view of `Pictures.md` (the session stores its mode before Observation's notice, from inside which SwiftUI drew the pane), the iPad's sidebar opening at a tap in a note (HUNT-353, the keyboard read as turning the window sideways), and the Mac pass's screenshot of a PDF embed starting at a later page (HUNT-350, the screenshot's, not the app's).
+
+- **Automated tests, passing on macOS:** `ReleaseVaultMacFindingsTests` (2: the callout's PDF and the screenshot's area, failing with the old area; the reading view's start after Live Preview, HUNT-349, which passes before too).
+- **Hosted on the iPad simulator (iOS 27.2):** `SidebarAtKeyboardHostedTests` (the real software keyboard; failing before), `ReleaseVaultFindingsHostedTests.testEveryPictureBlockOfThePicturesNoteHasItsViewOnEveryPageAsThePassScrollsIt` (now also every view shown: the source finding in 4 of 12 runs before, none of 23 after), `PDFTurnHostedTests`, `MainThreadResponsivenessTests.testALongNoteInTheReadingViewUpdatesQuicklyAsEachWordIsRead` alone with the audio watch.
+- **Full suites:** hosted on the iPad simulator, 574 tests, 44 skipped, failing only `PDFTextBoxesTests`' three and `ReadAloudLectureHighlightTests`' pen test, as before, with no audio opened; the Mac package suite under --parallel, 5,087 tests, none failed.
+- **Open:** HUNT-341 (the More menu's File submenu, not looked at), HUNT-348 (measured again at 280 and 292 ms, under the 1.5 s budget), HUNT-349 (not reproduced); nothing checked on a device.
 
 ## What the release test vault's checks found, fixed: 2026-11-12
 

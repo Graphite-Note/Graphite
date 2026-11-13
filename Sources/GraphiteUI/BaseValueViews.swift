@@ -289,8 +289,9 @@ struct BaseImageValueView: View {
 
     @Environment(\.readingIsPrinted) private var isPrinted
 
-    /// The thumbnail's size in its cell, which printing decodes the picture for.
-    static let frameSize = CGSize(width: 44, height: 32)
+    /// The thumbnail's size in its cell, which printing decodes the picture for, away from the main actor:
+    /// a constant, so nonisolated though the view is the main actor's.
+    nonisolated static let frameSize = CGSize(width: 44, height: 32)
 
     var body: some View {
         // A drawing for paper runs no task, so it resolves the image at once.
@@ -308,8 +309,9 @@ struct BaseImageValueView: View {
         .task(id: target) { resolvedReference = Self.reference(for: target) }
     }
 
-    /// Links in `image()` were resolved to vault paths by the query when possible.
-    static func reference(for target: String) -> BaseImageReference? {
+    /// Links in `image()` were resolved to vault paths by the query when possible. It reads only its
+    /// argument, so printing asks it away from the main actor.
+    nonisolated static func reference(for target: String) -> BaseImageReference? {
         if target.hasPrefix("#"), BaseColorParsing.color(from: target) != nil { return .color(target) }
         if let url = URL(string: target), ["http", "https"].contains(url.scheme?.lowercased() ?? "") { return .remote(url) }
         if let path = try? VaultPath(target), !path.rawValue.isEmpty, DocumentKind(path: path) == .image { return .vaultFile(path) }

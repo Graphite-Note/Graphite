@@ -34,7 +34,7 @@ Regression tests: `AppProjectTextualPatchTests.testUnderbraceAndOverbraceAreType
 
 ## 6. The TeX class of a symbol, for Textual
 
-`Sources/SwiftUIMath/Math+SymbolClass.swift` (new): `Math.symbolClass(ofCommand:)` and `symbolClass(ofCharacter:)` (`@_spi(Textual)`) give the TeX class of a symbol (ordinary, large operator, binary operator, relation, open, close, punctuation) from the typesetter's own tables, its aliases included. Textual uses it to find where a line may break inside inline math (its patch 21) without a second list of operators. Test: `AppProjectTextualPatchTests.testInlineMathBreaksAfterOperatorsAndRelationsAtItsOuterLevelOnly`.
+`Sources/SwiftUIMath/Math+SymbolClass.swift` (new): `Math.symbolClass(ofCommand:)` and `symbolClass(ofCharacter:)` (`@_spi(Textual)`) give the TeX class of a symbol (ordinary, large operator, binary operator, relation, open, close, punctuation) from the typesetter's own tables, its aliases included. Textual uses it to find where a line may break inside inline math (its patch 21) without a second list of operators. Test: `AppProjectTextualPatchTests.testInlineMathBreaksAfterOperatorsAndRelationsAtItsOuterLevelOnly`. Both are `nonisolated` (2026-11-04), though `Math` is a view and so the main actor's: they read only the typesetter's tables, which are constants or behind a lock, and Textual's line breaks (its patch 21, `InlineMathLineBreaks`) ask from any thread; as the main actor's they made Xcode warn of a main-actor call from a nonisolated context. No `assumeIsolated` or unchecked conformance is involved.
 
 ## 7. A space at the end of a formula counts in its width
 

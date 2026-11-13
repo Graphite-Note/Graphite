@@ -21,13 +21,9 @@ import GraphiteTestSupport
 /// once in `PictureCommand` and run through `ReadingImageActions`, wherever the picture is drawn.
 @MainActor
 final class PictureActionsTests: XCTestCase {
+    // XCTest makes a new test case for each test, so each starts with these empty.
     private var zoomedPaths: [VaultPath] = []
     private var openedPictures: [(VaultPath, GraphiteUI.TabPlacement)] = []
-
-    override func setUp() {
-        zoomedPaths = []
-        openedPictures = []
-    }
 
     private func actions(withTabs: Bool = true) -> ReadingImageActions {
         ReadingImageActions(providerIdentity: ObjectIdentifier(self), viewImage: { [weak self] path in self?.zoomedPaths.append(path) }, editDrawing: nil,
