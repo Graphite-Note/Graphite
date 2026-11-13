@@ -137,6 +137,31 @@ final class UiEditorMacCalloutTableEditingTests: XCTestCase {
         XCTAssertEqual(textView.string, Self.calloutNote, "Adding the column is one edit.")
     }
 
+    private static let listItemCalloutNote = "Intro line\n\n> [!note] Steps\n> - First step\n>   | Year | Rate |\n>   | --- | --- |\n"
+        + ">   | 2024 | 2.0 |\n> - Second step\n\nAfter the callout\n"
+
+    /// A table in a list item of a callout is edited in place too: its right-click menu is the
+    /// cell menu, and a row it adds keeps the quote marker and the item's indentation.
+    func testATableInAListItemOfACalloutHasTheCellMenuAndKeepsTheItemsIndentation() async throws {
+        let (coordinator, textView, _) = try await makeEditor(text: Self.listItemCalloutNote)
+        defer { withExtendedLifetime(coordinator) {} }
+        try await awaitConditionAfterLayout("The callout is drawn") { self.calloutView(in: textView) != nil }
+        let view = try XCTUnwrap(calloutView(in: textView))
+        var tableMenu: NSMenu?
+        try await awaitConditionAfterLayout("The list item's table is laid out as a table that edits") {
+            tableMenu = self.menus(downThe: view).first { _, menu in menu.items.first?.title == "Row" }?.menu
+            return tableMenu != nil
+        }
+        let rowMenu = try XCTUnwrap(tableMenu?.items[0].submenu)
+        rowMenu.performActionForItem(at: try XCTUnwrap(rowMenu.items.firstIndex { item in item.title == "Add row below" }))
+        let withRow = textView.string
+        XCTAssertEqual(withRow.components(separatedBy: "\n").count, Self.listItemCalloutNote.components(separatedBy: "\n").count + 1)
+        XCTAssertTrue(withRow.contains("\n>   |  |  |\n"), withRow)
+        XCTAssertTrue(withRow.contains("\n> - Second step\n"), "The next item is untouched: \(withRow)")
+        textView.undoManager?.undo()
+        XCTAssertEqual(textView.string, Self.listItemCalloutNote, "Adding the row is one edit.")
+    }
+
     /// The callout's table editors as the callout's view holds them (`LivePreviewCalloutTableEditing`),
     /// with what the note's editor gives the callout's view (`NativeMarkdownEditor.Coordinator.blockRootView`):
     /// each `editor()` gives the table's editor the table's source as the note has it now, as the

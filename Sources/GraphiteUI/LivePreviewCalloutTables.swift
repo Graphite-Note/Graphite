@@ -101,16 +101,23 @@ struct LivePreviewCalloutRun: View {
     }
 
     @ViewBuilder private func pieceView(_ piece: CalloutTables.RunPiece) -> some View {
-        let markdown = lines[piece.lineRange].joined(separator: "\n")
-        let lineOffsets = Array(located.lineStartOffsets[piece.lineRange])
+        // A table in a list item is drawn without the item's indentation, moved in by it instead,
+        // so four columns or more do not make it indented code.
+        let indentationLength = piece.indentationLength
+        let markdown = lines[piece.lineRange].map { line in String((line as NSString).substring(from: indentationLength)) }.joined(separator: "\n")
+        let lineOffsets = located.lineStartOffsets[piece.lineRange].map { offset in offset + indentationLength }
         let place = noteReading.map { reading in RenderedBlockPlace(reading: reading, lineOffsets: lineOffsets) }
         let block = RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: tokens(of: piece), place: place)
+            .padding(.leading, indentationLength == 0 ? 0 : Self.listItemIndentation(textSize: environment.textSize))
         if piece.isTable, let startOffset = lineOffsets.first, let editor = tableEditing.editor(forTableStartingAt: startOffset) {
             block.environment(\.livePreviewTableEditor, editor)
         } else {
             block
         }
     }
+
+    /// How far a table in a list item is moved in: about where the item's text starts after its marker.
+    private static func listItemIndentation(textSize: Double) -> CGFloat { CGFloat(textSize * 1.5) }
 
     /// The run's Read Aloud tokens in the piece's lines.
     private func tokens(of piece: CalloutTables.RunPiece) -> [ReadAloudSourceToken]? {

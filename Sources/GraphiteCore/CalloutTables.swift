@@ -29,12 +29,21 @@ public enum CalloutTables {
         /// The run's lines the piece takes.
         public let lineRange: Range<Int>
         public let isTable: Bool
+        /// The length (UTF-16) of the whitespace before each of a table's lines that puts it in a
+        /// list item; 0 for a table at the line's first column and for text.
+        public let indentationLength: Int
+
+        public init(lineRange: Range<Int>, isTable: Bool, indentationLength: Int = 0) {
+            self.lineRange = lineRange
+            self.isTable = isTable
+            self.indentationLength = indentationLength
+        }
     }
 
     /// The lines of a run cut before and after each table. A table needs a header row and a
     /// delimiter row as `LivePreviewBlockScanner` finds tables in the note, and starts at the
-    /// line's first column: a table indented in a list item is drawn in its item and stays text
-    /// here. Fenced code holds no table.
+    /// line's first column or, in a list item, at the item's indentation, which each of its rows
+    /// keeps; an indented table elsewhere is indented code. Fenced code holds no table.
     public static func pieces(ofRunLines lines: [String]) -> [RunPiece] {
         var pieces: [RunPiece] = []
         var fenceTracker = CodeFenceTracker()
@@ -46,12 +55,12 @@ public enum CalloutTables {
                 lineIndex += 1
                 continue
             }
-            guard let lastIndex = lastLineOfTable(startingAt: lineIndex, in: lines) else {
+            guard let (lastIndex, indentationLength) = lastLineOfTable(startingAt: lineIndex, in: lines) else {
                 lineIndex += 1
                 continue
             }
             if textStart < lineIndex { pieces.append(RunPiece(lineRange: textStart..<lineIndex, isTable: false)) }
-            pieces.append(RunPiece(lineRange: lineIndex..<(lastIndex + 1), isTable: true))
+            pieces.append(RunPiece(lineRange: lineIndex..<(lastIndex + 1), isTable: true, indentationLength: indentationLength))
             // The tracker follows list items too, so it reads every line.
             for rowIndex in (lineIndex + 1)...lastIndex { _ = fenceTracker.isCodeLine(untrimmedLine: lines[rowIndex]) }
             textStart = lastIndex + 1
@@ -61,20 +70,43 @@ public enum CalloutTables {
         return pieces
     }
 
-    /// The last line of the table whose header is `lines[headerIndex]`, or nil when no table starts there.
-    private static func lastLineOfTable(startingAt headerIndex: Int, in lines: [String]) -> Int? {
+    /// The last line of the table whose header is `lines[headerIndex]` and the length of the
+    /// indentation its lines share, or nil when no table starts there.
+    private static func lastLineOfTable(startingAt headerIndex: Int, in lines: [String]) -> (lastIndex: Int, indentationLength: Int)? {
         let header = lines[headerIndex]
-        guard headerIndex + 1 < lines.count, let first = header.first, first != " ", first != "\t" else { return nil }
+        guard headerIndex + 1 < lines.count, header.contains(where: { character in character != " " && character != "\t" }) else { return nil }
+        let indentation = String(header.prefix { character in character == " " || character == "\t" })
+        guard indentation.isEmpty || isInListItem(lineAt: headerIndex, indentedBy: indentation, in: lines) else { return nil }
         let trimmedHeader = header.trimmingCharacters(in: .whitespaces)
-        guard MarkdownTableSyntax.startsTable(header: trimmedHeader, delimiter: lines[headerIndex + 1]) else { return nil }
+        let delimiter = lines[headerIndex + 1]
+        guard delimiter.hasPrefix(indentation),
+              MarkdownTableSyntax.startsTable(header: trimmedHeader, delimiter: String(delimiter.dropFirst(indentation.count))) else { return nil }
         let hasOuterPipes = trimmedHeader.hasPrefix("|")
         var lastIndex = headerIndex + 1
-        while lastIndex + 1 < lines.count {
+        while lastIndex + 1 < lines.count, lines[lastIndex + 1].hasPrefix(indentation) {
             let row = lines[lastIndex + 1].trimmingCharacters(in: .whitespaces)
             guard row.hasPrefix("|") || (!hasOuterPipes && !row.isEmpty && row.contains("|")) else { break }
             lastIndex += 1
         }
-        return lastIndex
+        return (lastIndex, indentation.utf16.count)
+    }
+
+    /// Whether the line at `lineIndex`, indented by `indentation`, continues a list item: the
+    /// nearest line above it with text and less indentation is a list item.
+    private static func isInListItem(lineAt lineIndex: Int, indentedBy indentation: String, in lines: [String]) -> Bool {
+        let columns = indentationColumns(of: indentation)
+        for lineAbove in lines[..<lineIndex].reversed() {
+            guard lineAbove.contains(where: { character in character != " " && character != "\t" }) else { continue }
+            let indentationAbove = String(lineAbove.prefix { character in character == " " || character == "\t" })
+            guard indentationColumns(of: indentationAbove) < columns else { continue }
+            return MarkdownListSyntax.isListItem(lineAbove)
+        }
+        return false
+    }
+
+    /// Columns of leading whitespace, a tab reaching the next multiple of four.
+    private static func indentationColumns(of indentation: String) -> Int {
+        indentation.reduce(0) { columns, character in character == "\t" ? columns + 4 - columns % 4 : columns + 1 }
     }
 
     /// The tables of `callout`'s body in the order they are drawn, those of nested callouts included.
@@ -87,7 +119,10 @@ public enum CalloutTables {
                     let lines = markdown.components(separatedBy: "\n")
                     guard lines.count == located.lineStartOffsets.count else { continue }
                     for piece in pieces(ofRunLines: lines) where piece.isTable {
-                        tables.append(CalloutTable(lineStartOffsets: Array(located.lineStartOffsets[piece.lineRange])))
+                        // Past the item's indentation, which each line keeps as it keeps its quote markers.
+                        tables.append(CalloutTable(lineStartOffsets: located.lineStartOffsets[piece.lineRange].map { offset in
+                            offset + piece.indentationLength
+                        }))
                     }
                 case .callout:
                     collect(located.body)

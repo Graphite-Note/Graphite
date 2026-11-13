@@ -167,10 +167,13 @@ struct MainThreadQuietWatch {
 /// sideways. The window closes when the test ends.
 @MainActor
 enum ViewSwitchingWindow {
-    static func open(_ shape: OwnerShapedVault, for testCase: XCTestCase) async throws -> (WorkspaceModel, MainThreadQuietWatch.Window) {
+    /// - Parameter preparingVault: Writes more into the vault before it opens (a vault's community plugins, say).
+    static func open(_ shape: OwnerShapedVault, for testCase: XCTestCase,
+                     preparingVault: (URL) throws -> Void = { _ in }) async throws -> (WorkspaceModel, MainThreadQuietWatch.Window) {
         let device = try IsolatedWorkspaceDevice.make(for: testCase)
         let vault = try TemporaryVault.make(prefix: "ViewSwitching", for: testCase).root
         let notes = try shape.write(into: vault)
+        try preparingVault(vault)
         let workspace = device.makeWorkspace()
         workspace.preferences.library.presentation = .library
         try await workspace.openFolderAsVault(vault)

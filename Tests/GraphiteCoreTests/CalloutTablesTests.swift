@@ -136,6 +136,31 @@ final class CalloutTablesTests: XCTestCase {
         XCTAssertEqual(edited(source) { table in MarkdownTableEditing.insertingRow(atBodyIndex: 1, in: table) }, source + "  > |  |  |\n")
     }
 
+    func testATableInAListItemInACalloutIsEditedWithTheItemsIndentationKept() {
+        let source = "> [!note] Steps\n> - First\n>   | A | B |\n>   | - | - |\n>   | 1 | 2 |\n> - Second\n"
+        let lines = ["- First", "  | A | B |", "  | - | - |", "  | 1 | 2 |", "- Second"]
+        XCTAssertEqual(CalloutTables.pieces(ofRunLines: lines), [
+            CalloutTables.RunPiece(lineRange: 0..<1, isTable: false),
+            CalloutTables.RunPiece(lineRange: 1..<4, isTable: true, indentationLength: 2),
+            CalloutTables.RunPiece(lineRange: 4..<5, isTable: false),
+        ])
+        XCTAssertEqual(CalloutTables.tableSource(at: 0, inCallout: source), "| A | B |\n| - | - |\n| 1 | 2 |")
+        XCTAssertEqual(edited(source) { table in MarkdownTableEditing.replacingCell(row: 1, column: 1, with: "two", in: table) },
+                       source.replacingOccurrences(of: "| 2 |", with: "| two |"))
+        XCTAssertEqual(edited(source) { table in MarkdownTableEditing.insertingRow(atBodyIndex: 1, in: table) },
+                       source.replacingOccurrences(of: ">   | 1 | 2 |\n", with: ">   | 1 | 2 |\n>   |  |  |\n"),
+                       "A new row takes the quote marker and the item's indentation.")
+        let tabbed = "> [!note] Steps\n> 1. First\n> \t| A |\n> \t| - |\n"
+        XCTAssertEqual(CalloutTables.tableSource(at: 0, inCallout: tabbed), "| A |\n| - |", "A tab indents the table as well.")
+    }
+
+    func testAnIndentedTableOutsideAListItemStaysText() {
+        XCTAssertEqual(CalloutTables.pieces(ofRunLines: ["Some text", "", "    | A |", "    | - |"]),
+                       [CalloutTables.RunPiece(lineRange: 0..<4, isTable: false)], "Indented code, not a table.")
+        XCTAssertEqual(CalloutTables.pieces(ofRunLines: ["- Item", "  | A |", "| - |"]),
+                       [CalloutTables.RunPiece(lineRange: 0..<3, isTable: false)], "Its rows must keep the item's indentation.")
+    }
+
     func testEditsReachOnlyTheirOwnTable() {
         let source = "> [!note] Two\n> | A |\n> | - |\n> | 1 |\n>\n> | B |\n> | - |\n> | 2 |\n"
         XCTAssertEqual(edited(source, table: 1) { table in MarkdownTableEditing.replacingCell(row: 1, column: 0, with: "two", in: table) },
