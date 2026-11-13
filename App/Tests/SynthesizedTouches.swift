@@ -63,6 +63,27 @@ final class SynthesizedTouches {
         await pause(0.05)
     }
 
+    /// The fingers already down slid in straight lines to `points`, in `steps` moves `stepSeconds` apart, still down.
+    func slide(to points: [CGPoint], steps: Int, stepSeconds: Double = 0.016) async {
+        let starts = touches.map { touch in touch.location(in: window) }
+        let stepCount = max(steps, 1)
+        for step in 1...stepCount {
+            let fraction = CGFloat(step) / CGFloat(stepCount)
+            moveTo(zip(starts, points).map { start, end in
+                CGPoint(x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
+            })
+            await pause(stepSeconds)
+        }
+    }
+
+    /// The fingers already down held still for `seconds`, as a person pausing before lifting.
+    func hold(seconds: Double) async {
+        for _ in 0..<Int((seconds / 0.05).rounded(.up)) {
+            stay()
+            await pause(0.05)
+        }
+    }
+
     // MARK: Phases
 
     func begin(at points: [CGPoint]) {

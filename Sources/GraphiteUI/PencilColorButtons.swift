@@ -3,12 +3,12 @@
  * ------------------------------
  * Layer: UI
  * Description: The Pencil bar's colors: black and the favorite colors, or the highlighter's own, Other Color, and the
- *              moves, removal and adding of a color at the bar itself; and the strip that scrolls them on a bar too narrow
- *              for every color even at the mini size.
+ *              arranging (by dragging, `PencilColorSwatchRow`), changing, removal with Undo and adding of a color at
+ *              the bar itself; and the strip that scrolls them on a bar too narrow for every color even at the mini size.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -31,20 +31,24 @@ enum PencilColorControls {
 /// its own; a pen writes in black and the note colors. The lists are the ones Settings › Colors
 /// keeps, followed with `@AppStorage`, so a change there shows on a bar already on screen.
 ///
-/// Each favorite color's menu (a long press) moves it along the bar or removes it, and the plus
-/// after Other Color adds the color in use to the list, as Settings › Colors does with its rows:
-/// the bar is where the colors are used, so it is where they are arranged (HUNT-312).
+/// A favorite color is dragged to its place along the bar, as in Apple's markup palette, or off the bar to remove it
+/// (with Undo); a second tap on the color in use opens its color picker, its menu (a long press) removes it, and the
+/// plus after Other Color adds the color in use to the list, as Settings › Colors does with its rows: the bar is where
+/// the colors are used, so it is where they are arranged (HUNT-312, the owner's request of 2026-11-13).
 struct PencilColorButtons: View {
     @Bindable var toolbox: PencilToolbox
     let rowHeight: CGFloat
     var density: PencilToolRowLayout.Density = .regular
     var controls: PencilColorControls = .all
+    /// How the strip the colors sit in scrolls under a drag, when they sit in one (`PencilColorStrip`).
+    var scrolling: PencilColorRowScrolling?
+    @State private var removalUndo = PencilColorRemovalUndo()
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
 
     /// The two lists of Settings › Colors the bar shows: the favorite colors for writing, the
     /// highlighter's own while a highlighter is in use.
-    private enum EditedPalette {
+    enum EditedPalette {
         case favorites, highlighter
     }
 
@@ -63,21 +67,27 @@ struct PencilColorButtons: View {
         }
     }
 
-    /// Black and the favorite colors, or the highlighter's colors, each with its editing menu.
-    @ViewBuilder private var swatches: some View {
-        switch editedPalette {
-        case .highlighter:
-            ForEach(palette(.highlighter)) { highlighterColor in
-                buttons.colorButton(name: highlighterColor.name, hex: highlighterColor.hex)
-                    .contextMenu { editingMenu(for: highlighterColor, in: .highlighter) }
-            }
-        case .favorites:
-            buttons.colorButton(name: "black", hex: PencilInk.pen.defaultColorHex)
-            ForEach(palette(.favorites)) { favorite in
-                buttons.colorButton(name: favorite.name, hex: favorite.hex)
-                    .contextMenu { editingMenu(for: favorite, in: .favorites) }
-            }
-        }
+    /// Black and the favorite colors, or the highlighter's colors, arranged by dragging.
+    private var swatches: some View {
+        let editedPalette = editedPalette
+        let colors = palette(editedPalette)
+        let removal = removalUndo.removal.flatMap { removal in removal.palette == editedPalette ? removal : nil }
+        return PencilColorSwatchRow(
+            toolbox: toolbox,
+            fixedLeadingColor: editedPalette == .favorites ? PaletteColor(name: "black", hex: PencilInk.pen.defaultColorHex) : nil,
+            colors: colors,
+            pickerTitle: editedPalette == .favorites ? "Pen Color" : "Highlighter Color",
+            rowHeight: rowHeight, density: density, scrolling: scrolling,
+            actions: PencilColorRowActions(
+                arrange: { colorIdentifier, destinationIndex in
+                    store(FavoriteColorEditing.moving(colorIdentifier, toIndex: destinationIndex, in: palette(editedPalette)), as: editedPalette)
+                },
+                remove: { color in remove(color, from: editedPalette) },
+                changeHex: { colorIdentifier, hex in
+                    store(FavoriteColorEditing.changingHex(of: colorIdentifier, to: hex, in: palette(editedPalette)), as: editedPalette)
+                },
+                removedColorName: removal?.color.name,
+                putBack: { putBack() }))
     }
 
     // MARK: Counted by the bar
@@ -108,14 +118,18 @@ struct PencilColorButtons: View {
         }
     }
 
-    @ViewBuilder private func editingMenu(for color: PaletteColor, in editedPalette: EditedPalette) -> some View {
+    private func remove(_ color: PaletteColor, from editedPalette: EditedPalette) {
         let colors = palette(editedPalette)
-        Button("Move Left", systemImage: "arrow.left") { store(FavoriteColorEditing.moving(color.id, .earlier, in: colors), as: editedPalette) }
-            .disabled(!FavoriteColorEditing.canMove(color.id, .earlier, in: colors))
-        Button("Move Right", systemImage: "arrow.right") { store(FavoriteColorEditing.moving(color.id, .later, in: colors), as: editedPalette) }
-            .disabled(!FavoriteColorEditing.canMove(color.id, .later, in: colors))
-        Button("Remove from Favorite Colors", systemImage: "minus.circle", role: .destructive) {
-            store(FavoriteColorEditing.removing(color.id, from: colors), as: editedPalette)
+        guard let index = colors.firstIndex(where: { existing in existing.id == color.id }) else { return }
+        store(FavoriteColorEditing.removing(color.id, from: colors), as: editedPalette)
+        removalUndo.offer(PencilColorRemovalUndo.Removal(color: color, index: index, palette: editedPalette))
+    }
+
+    /// Brings back the color the last removal took off the bar, at its place.
+    private func putBack() {
+        guard let removal = removalUndo.take() else { return }
+        withAnimation(.snappy(duration: 0.22)) {
+            store(FavoriteColorEditing.puttingBack(removal.color, at: removal.index, in: palette(removal.palette)), as: removal.palette)
         }
     }
 
@@ -141,17 +155,80 @@ struct PencilColorStrip: View {
     @Bindable var toolbox: PencilToolbox
     let rowHeight: CGFloat
     let visibleSwatchCount: Int
+    @State private var scrollPosition = ScrollPosition(x: 0)
+    /// Where the strip stands and how far it can scroll, in points, as its scroll view reports them.
+    @State private var scrollOffset: Double = 0
+    @State private var largestScrollOffset: Double = 0
 
     var body: some View {
         let density = PencilToolRowLayout.Density.tightest
+        let visibleWidth = Double(visibleSwatchCount) * density.swatchPitch
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 0) {
-                PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density, controls: .swatches)
-            }
-            .scrollTargetLayout()
+            PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: density, controls: .swatches,
+                               scrolling: PencilColorRowScrolling(visibleWidth: visibleWidth, scrollBy: scroll(by:)))
         }
+        .scrollPosition($scrollPosition)
         .scrollTargetBehavior(.viewAligned)
-        .frame(width: CGFloat(Double(visibleSwatchCount) * density.swatchPitch), height: rowHeight)
+        .onScrollGeometryChange(for: CGSize.self) { geometry in
+            CGSize(width: geometry.contentOffset.x, height: max(0, geometry.contentSize.width - geometry.containerSize.width))
+        } action: { _, offsetAndLargest in
+            scrollOffset = offsetAndLargest.width
+            largestScrollOffset = offsetAndLargest.height
+        }
+        .frame(width: visibleWidth, height: rowHeight)
+    }
+
+    /// Scrolls by up to `distance` points within the strip's ends, for a drag held near one, and says how far it went.
+    private func scroll(by distance: Double) -> Double {
+        let target = max(0, min(scrollOffset + distance, largestScrollOffset))
+        let travelled = target - scrollOffset
+        guard travelled != 0 else { return 0 }
+        scrollPosition.scrollTo(x: target)
+        scrollOffset = target
+        return travelled
+    }
+}
+
+/// The color the last removal took off the bar, which the bar's Undo and the colors' Put Back bring back for a few
+/// seconds; the bar keeps one for its life.
+@MainActor
+@Observable
+final class PencilColorRemovalUndo {
+    struct Removal {
+        let color: PaletteColor
+        let index: Int
+        let palette: PencilColorButtons.EditedPalette
+    }
+
+    /// How long Undo stays on the bar after a removal.
+    static let offeredSeconds = 6.0
+
+    private(set) var removal: Removal?
+    @ObservationIgnored private var expiry: Task<Void, Never>?
+    @ObservationIgnored private let clock: any Clock<Duration>
+
+    init(clock: any Clock<Duration> = ContinuousClock()) {
+        self.clock = clock
+    }
+
+    /// Offers to bring this removal back, in place of any earlier one.
+    func offer(_ removal: Removal) {
+        self.removal = removal
+        expiry?.cancel()
+        expiry = Task { [weak self, clock] in
+            try? await clock.sleep(for: .seconds(Self.offeredSeconds)) // Cancelled by a later removal or Undo, checked next.
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.22)) { self?.removal = nil }
+        }
+    }
+
+    /// The removal to bring back, which is then no longer offered.
+    func take() -> Removal? {
+        defer {
+            removal = nil
+            expiry?.cancel()
+        }
+        return removal
     }
 }
 #endif
