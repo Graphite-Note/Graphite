@@ -16,6 +16,48 @@
 		A00000000000000000000064 /* AppIconBlueGraphite.icon in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000054 /* AppIconBlueGraphite.icon */; };
 		A00000000000000000000065 /* IconPreviews.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000055 /* IconPreviews.xcassets */; };
 		A00000000000000000000066 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000056 /* PrivacyInfo.xcprivacy */; };
+		A00000000000000000000400 /* WelcomeTourBasesGallery-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000300 /* WelcomeTourBasesGallery-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000401 /* WelcomeTourBasesGallery-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000301 /* WelcomeTourBasesGallery-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000402 /* WelcomeTourBasesGallery-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000302 /* WelcomeTourBasesGallery-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000403 /* WelcomeTourBasesGallery-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000303 /* WelcomeTourBasesGallery-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000404 /* WelcomeTourCorePlugins-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000304 /* WelcomeTourCorePlugins-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000405 /* WelcomeTourCorePlugins-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000305 /* WelcomeTourCorePlugins-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000406 /* WelcomeTourCorePlugins-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000306 /* WelcomeTourCorePlugins-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000407 /* WelcomeTourCorePlugins-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000307 /* WelcomeTourCorePlugins-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000408 /* WelcomeTourDrawingCanvas-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000308 /* WelcomeTourDrawingCanvas-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000409 /* WelcomeTourDrawingCanvas-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000309 /* WelcomeTourDrawingCanvas-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000410 /* WelcomeTourDrawingInNote-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000310 /* WelcomeTourDrawingInNote-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000411 /* WelcomeTourDrawingInNote-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000311 /* WelcomeTourDrawingInNote-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000412 /* WelcomeTourEmbeddedNote-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000312 /* WelcomeTourEmbeddedNote-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000413 /* WelcomeTourEmbeddedNote-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000313 /* WelcomeTourEmbeddedNote-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000414 /* WelcomeTourEmbeddedNote-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000314 /* WelcomeTourEmbeddedNote-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000415 /* WelcomeTourEmbeddedNote-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000315 /* WelcomeTourEmbeddedNote-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000416 /* WelcomeTourEmbeddedPDF-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000316 /* WelcomeTourEmbeddedPDF-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000417 /* WelcomeTourEmbeddedPDF-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000317 /* WelcomeTourEmbeddedPDF-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000418 /* WelcomeTourEmbeddedPDF-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000318 /* WelcomeTourEmbeddedPDF-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000419 /* WelcomeTourEmbeddedPDF-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000319 /* WelcomeTourEmbeddedPDF-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000420 /* WelcomeTourLibrary-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000320 /* WelcomeTourLibrary-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000421 /* WelcomeTourLibrary-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000321 /* WelcomeTourLibrary-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000422 /* WelcomeTourLibrary-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000322 /* WelcomeTourLibrary-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000423 /* WelcomeTourLibrary-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000323 /* WelcomeTourLibrary-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000424 /* WelcomeTourMarkdown-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000324 /* WelcomeTourMarkdown-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000425 /* WelcomeTourMarkdown-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000325 /* WelcomeTourMarkdown-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000426 /* WelcomeTourMarkdown-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000326 /* WelcomeTourMarkdown-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000427 /* WelcomeTourMarkdown-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000327 /* WelcomeTourMarkdown-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000428 /* WelcomeTourNewItem-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000328 /* WelcomeTourNewItem-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000429 /* WelcomeTourNewItem-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000329 /* WelcomeTourNewItem-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000430 /* WelcomeTourNewNotebook-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000330 /* WelcomeTourNewNotebook-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000431 /* WelcomeTourNewNotebook-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000331 /* WelcomeTourNewNotebook-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000432 /* WelcomeTourNote-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000332 /* WelcomeTourNote-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000433 /* WelcomeTourNote-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000333 /* WelcomeTourNote-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000434 /* WelcomeTourNote-mac-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000334 /* WelcomeTourNote-mac-dark.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000435 /* WelcomeTourNote-mac-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000335 /* WelcomeTourNote-mac-light.jpg */; platformFilters = (macos, ); };
+		A00000000000000000000436 /* WelcomeTourPDFFixedBar-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000336 /* WelcomeTourPDFFixedBar-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000437 /* WelcomeTourPDFFixedBar-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000337 /* WelcomeTourPDFFixedBar-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000438 /* WelcomeTourPDFFloatingPalette-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000338 /* WelcomeTourPDFFloatingPalette-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000439 /* WelcomeTourPDFFloatingPalette-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000339 /* WelcomeTourPDFFloatingPalette-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000440 /* WelcomeTourPencilSettings-dark.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000340 /* WelcomeTourPencilSettings-dark.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
+		A00000000000000000000441 /* WelcomeTourPencilSettings-light.jpg in Resources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000341 /* WelcomeTourPencilSettings-light.jpg */; platformFilters = (ios, ); settings = {ASSET_TAGS = (WelcomeTourPictures, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,6 +88,48 @@
 		A00000000000000000000205 /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
 		A00000000000000000000206 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A00000000000000000000207 /* Graphite.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Graphite.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000300 /* WelcomeTourBasesGallery-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourBasesGallery-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000301 /* WelcomeTourBasesGallery-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourBasesGallery-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000302 /* WelcomeTourBasesGallery-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourBasesGallery-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000303 /* WelcomeTourBasesGallery-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourBasesGallery-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000304 /* WelcomeTourCorePlugins-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourCorePlugins-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000305 /* WelcomeTourCorePlugins-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourCorePlugins-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000306 /* WelcomeTourCorePlugins-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourCorePlugins-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000307 /* WelcomeTourCorePlugins-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourCorePlugins-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000308 /* WelcomeTourDrawingCanvas-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourDrawingCanvas-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000309 /* WelcomeTourDrawingCanvas-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourDrawingCanvas-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000310 /* WelcomeTourDrawingInNote-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourDrawingInNote-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000311 /* WelcomeTourDrawingInNote-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourDrawingInNote-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000312 /* WelcomeTourEmbeddedNote-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedNote-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000313 /* WelcomeTourEmbeddedNote-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedNote-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000314 /* WelcomeTourEmbeddedNote-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedNote-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000315 /* WelcomeTourEmbeddedNote-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedNote-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000316 /* WelcomeTourEmbeddedPDF-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedPDF-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000317 /* WelcomeTourEmbeddedPDF-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedPDF-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000318 /* WelcomeTourEmbeddedPDF-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedPDF-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000319 /* WelcomeTourEmbeddedPDF-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourEmbeddedPDF-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000320 /* WelcomeTourLibrary-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourLibrary-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000321 /* WelcomeTourLibrary-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourLibrary-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000322 /* WelcomeTourLibrary-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourLibrary-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000323 /* WelcomeTourLibrary-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourLibrary-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000324 /* WelcomeTourMarkdown-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourMarkdown-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000325 /* WelcomeTourMarkdown-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourMarkdown-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000326 /* WelcomeTourMarkdown-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourMarkdown-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000327 /* WelcomeTourMarkdown-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourMarkdown-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000328 /* WelcomeTourNewItem-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNewItem-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000329 /* WelcomeTourNewItem-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNewItem-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000330 /* WelcomeTourNewNotebook-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNewNotebook-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000331 /* WelcomeTourNewNotebook-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNewNotebook-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000332 /* WelcomeTourNote-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNote-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000333 /* WelcomeTourNote-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNote-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000334 /* WelcomeTourNote-mac-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNote-mac-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000335 /* WelcomeTourNote-mac-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourNote-mac-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000336 /* WelcomeTourPDFFixedBar-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPDFFixedBar-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000337 /* WelcomeTourPDFFixedBar-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPDFFixedBar-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000338 /* WelcomeTourPDFFloatingPalette-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPDFFloatingPalette-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000339 /* WelcomeTourPDFFloatingPalette-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPDFFloatingPalette-light.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000340 /* WelcomeTourPencilSettings-dark.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPencilSettings-dark.jpg"; sourceTree = "<group>"; };
+		A00000000000000000000341 /* WelcomeTourPencilSettings-light.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "WelcomeTourPencilSettings-light.jpg"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -159,6 +243,7 @@
 				A00000000000000000000213 /* Tests */,
 				A00000000000000000000214 /* Docs */,
 				A00000000000000000000215 /* Design */,
+				A00000000000000000000232 /* WelcomeTour */,
 				A00000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -196,6 +281,56 @@
 				A00000000000000000000051 /* AppIconRed.icon */,
 			);
 			path = Icons;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000232 /* WelcomeTour */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000300 /* WelcomeTourBasesGallery-dark.jpg */,
+				A00000000000000000000301 /* WelcomeTourBasesGallery-light.jpg */,
+				A00000000000000000000302 /* WelcomeTourBasesGallery-mac-dark.jpg */,
+				A00000000000000000000303 /* WelcomeTourBasesGallery-mac-light.jpg */,
+				A00000000000000000000304 /* WelcomeTourCorePlugins-dark.jpg */,
+				A00000000000000000000305 /* WelcomeTourCorePlugins-light.jpg */,
+				A00000000000000000000306 /* WelcomeTourCorePlugins-mac-dark.jpg */,
+				A00000000000000000000307 /* WelcomeTourCorePlugins-mac-light.jpg */,
+				A00000000000000000000308 /* WelcomeTourDrawingCanvas-dark.jpg */,
+				A00000000000000000000309 /* WelcomeTourDrawingCanvas-light.jpg */,
+				A00000000000000000000310 /* WelcomeTourDrawingInNote-dark.jpg */,
+				A00000000000000000000311 /* WelcomeTourDrawingInNote-light.jpg */,
+				A00000000000000000000312 /* WelcomeTourEmbeddedNote-dark.jpg */,
+				A00000000000000000000313 /* WelcomeTourEmbeddedNote-light.jpg */,
+				A00000000000000000000314 /* WelcomeTourEmbeddedNote-mac-dark.jpg */,
+				A00000000000000000000315 /* WelcomeTourEmbeddedNote-mac-light.jpg */,
+				A00000000000000000000316 /* WelcomeTourEmbeddedPDF-dark.jpg */,
+				A00000000000000000000317 /* WelcomeTourEmbeddedPDF-light.jpg */,
+				A00000000000000000000318 /* WelcomeTourEmbeddedPDF-mac-dark.jpg */,
+				A00000000000000000000319 /* WelcomeTourEmbeddedPDF-mac-light.jpg */,
+				A00000000000000000000320 /* WelcomeTourLibrary-dark.jpg */,
+				A00000000000000000000321 /* WelcomeTourLibrary-light.jpg */,
+				A00000000000000000000322 /* WelcomeTourLibrary-mac-dark.jpg */,
+				A00000000000000000000323 /* WelcomeTourLibrary-mac-light.jpg */,
+				A00000000000000000000324 /* WelcomeTourMarkdown-dark.jpg */,
+				A00000000000000000000325 /* WelcomeTourMarkdown-light.jpg */,
+				A00000000000000000000326 /* WelcomeTourMarkdown-mac-dark.jpg */,
+				A00000000000000000000327 /* WelcomeTourMarkdown-mac-light.jpg */,
+				A00000000000000000000328 /* WelcomeTourNewItem-dark.jpg */,
+				A00000000000000000000329 /* WelcomeTourNewItem-light.jpg */,
+				A00000000000000000000330 /* WelcomeTourNewNotebook-dark.jpg */,
+				A00000000000000000000331 /* WelcomeTourNewNotebook-light.jpg */,
+				A00000000000000000000332 /* WelcomeTourNote-dark.jpg */,
+				A00000000000000000000333 /* WelcomeTourNote-light.jpg */,
+				A00000000000000000000334 /* WelcomeTourNote-mac-dark.jpg */,
+				A00000000000000000000335 /* WelcomeTourNote-mac-light.jpg */,
+				A00000000000000000000336 /* WelcomeTourPDFFixedBar-dark.jpg */,
+				A00000000000000000000337 /* WelcomeTourPDFFixedBar-light.jpg */,
+				A00000000000000000000338 /* WelcomeTourPDFFloatingPalette-dark.jpg */,
+				A00000000000000000000339 /* WelcomeTourPDFFloatingPalette-light.jpg */,
+				A00000000000000000000340 /* WelcomeTourPencilSettings-dark.jpg */,
+				A00000000000000000000341 /* WelcomeTourPencilSettings-light.jpg */,
+			);
+			name = WelcomeTour;
+			path = AddOns/WelcomeTour;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -248,6 +383,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
+				knownAssetTags = (
+					WelcomeTourPictures,
+				);
 				LastSwiftUpdateCheck = 2720;
 				LastUpgradeCheck = 2720;
 			};
@@ -285,6 +423,48 @@
 				A00000000000000000000063 /* AppIconCharcoal.icon in Resources */,
 				A00000000000000000000064 /* AppIconBlueGraphite.icon in Resources */,
 				A00000000000000000000065 /* IconPreviews.xcassets in Resources */,
+				A00000000000000000000400 /* WelcomeTourBasesGallery-dark.jpg in Resources */,
+				A00000000000000000000401 /* WelcomeTourBasesGallery-light.jpg in Resources */,
+				A00000000000000000000402 /* WelcomeTourBasesGallery-mac-dark.jpg in Resources */,
+				A00000000000000000000403 /* WelcomeTourBasesGallery-mac-light.jpg in Resources */,
+				A00000000000000000000404 /* WelcomeTourCorePlugins-dark.jpg in Resources */,
+				A00000000000000000000405 /* WelcomeTourCorePlugins-light.jpg in Resources */,
+				A00000000000000000000406 /* WelcomeTourCorePlugins-mac-dark.jpg in Resources */,
+				A00000000000000000000407 /* WelcomeTourCorePlugins-mac-light.jpg in Resources */,
+				A00000000000000000000408 /* WelcomeTourDrawingCanvas-dark.jpg in Resources */,
+				A00000000000000000000409 /* WelcomeTourDrawingCanvas-light.jpg in Resources */,
+				A00000000000000000000410 /* WelcomeTourDrawingInNote-dark.jpg in Resources */,
+				A00000000000000000000411 /* WelcomeTourDrawingInNote-light.jpg in Resources */,
+				A00000000000000000000412 /* WelcomeTourEmbeddedNote-dark.jpg in Resources */,
+				A00000000000000000000413 /* WelcomeTourEmbeddedNote-light.jpg in Resources */,
+				A00000000000000000000414 /* WelcomeTourEmbeddedNote-mac-dark.jpg in Resources */,
+				A00000000000000000000415 /* WelcomeTourEmbeddedNote-mac-light.jpg in Resources */,
+				A00000000000000000000416 /* WelcomeTourEmbeddedPDF-dark.jpg in Resources */,
+				A00000000000000000000417 /* WelcomeTourEmbeddedPDF-light.jpg in Resources */,
+				A00000000000000000000418 /* WelcomeTourEmbeddedPDF-mac-dark.jpg in Resources */,
+				A00000000000000000000419 /* WelcomeTourEmbeddedPDF-mac-light.jpg in Resources */,
+				A00000000000000000000420 /* WelcomeTourLibrary-dark.jpg in Resources */,
+				A00000000000000000000421 /* WelcomeTourLibrary-light.jpg in Resources */,
+				A00000000000000000000422 /* WelcomeTourLibrary-mac-dark.jpg in Resources */,
+				A00000000000000000000423 /* WelcomeTourLibrary-mac-light.jpg in Resources */,
+				A00000000000000000000424 /* WelcomeTourMarkdown-dark.jpg in Resources */,
+				A00000000000000000000425 /* WelcomeTourMarkdown-light.jpg in Resources */,
+				A00000000000000000000426 /* WelcomeTourMarkdown-mac-dark.jpg in Resources */,
+				A00000000000000000000427 /* WelcomeTourMarkdown-mac-light.jpg in Resources */,
+				A00000000000000000000428 /* WelcomeTourNewItem-dark.jpg in Resources */,
+				A00000000000000000000429 /* WelcomeTourNewItem-light.jpg in Resources */,
+				A00000000000000000000430 /* WelcomeTourNewNotebook-dark.jpg in Resources */,
+				A00000000000000000000431 /* WelcomeTourNewNotebook-light.jpg in Resources */,
+				A00000000000000000000432 /* WelcomeTourNote-dark.jpg in Resources */,
+				A00000000000000000000433 /* WelcomeTourNote-light.jpg in Resources */,
+				A00000000000000000000434 /* WelcomeTourNote-mac-dark.jpg in Resources */,
+				A00000000000000000000435 /* WelcomeTourNote-mac-light.jpg in Resources */,
+				A00000000000000000000436 /* WelcomeTourPDFFixedBar-dark.jpg in Resources */,
+				A00000000000000000000437 /* WelcomeTourPDFFixedBar-light.jpg in Resources */,
+				A00000000000000000000438 /* WelcomeTourPDFFloatingPalette-dark.jpg in Resources */,
+				A00000000000000000000439 /* WelcomeTourPDFFloatingPalette-light.jpg in Resources */,
+				A00000000000000000000440 /* WelcomeTourPencilSettings-dark.jpg in Resources */,
+				A00000000000000000000441 /* WelcomeTourPencilSettings-light.jpg in Resources */,
 				A00000000000000000000066 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -468,6 +648,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.0.3;
+				"ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS[sdk=iphone*]" = WelcomeTourPictures;
 				PRODUCT_BUNDLE_IDENTIFIER = com.graphite.study;
 				PRODUCT_NAME = Graphite;
 				SDKROOT = auto;
@@ -508,6 +689,7 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 27.0;
 				MARKETING_VERSION = 1.0.3;
+				"ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS[sdk=iphone*]" = WelcomeTourPictures;
 				PRODUCT_BUNDLE_IDENTIFIER = com.graphite.study;
 				PRODUCT_NAME = Graphite;
 				SDKROOT = auto;

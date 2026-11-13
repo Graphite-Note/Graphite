@@ -1,8 +1,8 @@
 import SwiftUI
 import GraphiteCore
 
-/// Settings › General › Add-ons: each pack Graphite can download, its size, and whether it is
-/// on this device, with Download or Remove.
+/// Settings › General › Add-ons: each pack Graphite can download or that came with it, its size,
+/// and whether it is on this device, with Download or Remove.
 struct AddOnsSettingsSection: View {
     @Environment(AddOnLibrary.self) private var addOns: AddOnLibrary?
 
@@ -13,7 +13,7 @@ struct AddOnsSettingsSection: View {
             } header: {
                 Text("Add-ons")
             } footer: {
-                Text("Extras Graphite downloads the first time a feature needs them, rather than carrying them in the app. "
+                Text("Extras that come with Graphite or that it downloads the first time a feature needs them. "
                      + "They are kept on this device, outside your vaults. Removing one frees its space; it downloads again when needed.")
                     .formFooterAlignment()
             }
@@ -34,10 +34,12 @@ private struct AddOnPackRow: View {
             switch state {
             case .notDownloaded, .failed:
                 Button("Download") { library.download(pack) }
-            case .downloading:
+            case .checking, .downloading:
                 ProgressView().controlSize(.small)
             case .downloaded:
                 Button("Remove", role: .destructive) { library.remove(pack) }
+            case .includedWithApp:
+                EmptyView()
             }
         } label: {
             VStack(alignment: .leading, spacing: 2) {
@@ -50,8 +52,10 @@ private struct AddOnPackRow: View {
     private var detail: String {
         switch state {
         case .notDownloaded: "\(size), not downloaded"
+        case .checking: size
         case .downloading: "Downloading \(size)…"
         case .downloaded: "\(size) on this device"
+        case .includedWithApp: "\(size), included with Graphite"
         case .failed(let reason): reason.explanation
         }
     }

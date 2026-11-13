@@ -6,7 +6,7 @@
  *              copied at once, then imported into the open vault, or into the vault the person chooses.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
@@ -41,7 +41,7 @@ final class OpenedFilesAwaitingVault: Identifiable {
 /// imports into its vault rather than editing the file where it is, as Goodnotes' Open in does: the file is copied into
 /// a staging folder at once (`OpenedFileStaging`), then imported as Import imports a chosen file, into the vault's
 /// folder for new files: a Goodnotes or Notability notebook converted, a ZIP archive unpacked with its folders kept
-/// (`importArchive`), any other file copied, a text file as a note. A single file copied is opened.
+/// (`archiveFileImporter`), any other file copied, a text file as a note. A single file copied is opened.
 extension WorkspaceModel {
     func importOpenedFile(_ file: URL) async {
         // Already in the open vault (shared from Graphite's own folder in Files): it is shown, not copied again.
@@ -109,12 +109,8 @@ extension WorkspaceModel {
     private func importStagedOpenedFiles(_ files: DroppedFileBatch) async {
         let directory = newFileDirectory(nil)
         for file in files.files {
+            // A ZIP archive is unpacked by the importers by file type, as an archive chosen with Import is.
             let staged = DroppedFileBatch(files: [file])
-            guard file.location.pathExtension.lowercased() != "zip" else {
-                await importArchive(file.location, into: directory)
-                staged.discard()
-                continue
-            }
             let importedPaths = await importFiles(from: [file.location], into: directory, stagedCopies: staged)
             if files.files.count == 1, importedPaths.count == 1 { _ = await open(importedPaths[0]) }
         }

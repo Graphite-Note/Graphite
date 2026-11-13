@@ -2,11 +2,11 @@
  * File: WelcomeTour.swift
  * -----------------------
  * Layer: UI
- * Description: The welcome tour that shows once on a device, and the pictures it fetches at launch.
+ * Description: The welcome tour that shows once on a device, and the pictures it asks for at launch.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 13/11/2026
  */
 
 import SwiftUI
@@ -23,9 +23,9 @@ enum WelcomeTourPreference {
 struct FirstLaunchWelcomeTour: ViewModifier {
     /// False until the launch has settled, and always false for a launch that hosts tests.
     let isReadyToShow: Bool
-    /// Whether this launch would show the tour, so its pictures are fetched from the start: while the last vault
-    /// reopens, rather than when the tour opens and the first page waits on the network (HUNT-270). False for a
-    /// launch that hosts tests, which fetch nothing.
+    /// Whether this launch would show the tour, so its pictures are asked for from the start: while the last vault
+    /// reopens, the copy installed with the app is found (or, without it, downloaded) rather than when the tour opens
+    /// and the first page waits (HUNT-270). False for a launch that hosts tests, which fetch nothing.
     var fetchesPicturesAtLaunch = false
     @AppStorage(WelcomeTourPreference.shownKey) private var hasBeenShown = false
     @Environment(AddOnLibrary.self) private var addOns: AddOnLibrary?
@@ -101,7 +101,7 @@ struct WelcomeTour: View {
         .tint(accent)
         .onAppear {
             if visiblePage == nil { visiblePage = pages.first }
-            // The screenshots are an add-on: fetched the first time the tour opens.
+            // The screenshots are an add-on pack: read from the copy installed with the app, or fetched.
             if let pack = WelcomeTourScreenshotPack.forThisPlatform { addOns?.download(pack) }
         }
     }

@@ -5,8 +5,8 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.11
- * Date: 12/11/2026
+ * Version: 0.12
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -40,8 +40,8 @@ public final class ProcessServices {
     /// removal asks for it, so a launch that shows no graph builds nothing for it.
     private(set) lazy var graphColorGroups = GraphColorGroupStore(defaults: defaults, makeIdentifier: UUID.init)
     let applicationFolders: ApplicationFolders
-    /// What this device has downloaded of the extras Graphite does not carry, such as the
-    /// welcome tour's pictures; every window and Settings read the same one.
+    /// The extras Graphite downloads or that came with it, such as the welcome tour's
+    /// pictures, and which of them are on this device; every window and Settings read the same one.
     let addOns: AddOnLibrary
     /// One index per open vault, shared by every window on it.
     let vaultIndexes: VaultIndexRegistry
@@ -84,7 +84,7 @@ public final class ProcessServices {
         documentPlaceStore = DocumentPlaceStore(defaults: defaults)
         recentFilesStore = RecentFilesStore(defaults: defaults)
         self.applicationFolders = applicationFolders
-        addOns = .standard(applicationFolders: applicationFolders)
+        addOns = .standard(applicationFolders: applicationFolders, defaults: defaults)
         vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
         unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))

@@ -2,11 +2,12 @@
  * File: WorkspaceArchiveImport.swift
  * ----------------------------------
  * Layer: UI
- * Description: A ZIP archive opened in Graphite from another app: unpacked into a temporary folder, then its files copied
- *              and its notebooks converted into the vault, its folders kept.
+ * Description: A ZIP archive chosen with Import, dropped on the library or the file list, or opened in Graphite from another
+ *              app: unpacked into a temporary folder, then its files copied and its notebooks converted into the vault,
+ *              its folders kept.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
@@ -16,6 +17,17 @@ import GraphiteApple
 import NotebookImport
 
 extension WorkspaceModel {
+    /// The importer by file type for ZIP archives (`importFiles(from:into:)`), so an archive chosen with Import, dropped
+    /// on the library or the file list, or opened from another app is unpacked the same way: a Goodnotes or Notability
+    /// export of several notebooks, or a zipped folder, arrives as its folders, files and converted notebooks rather
+    /// than as the ZIP. The unpacking has read the whole archive when `importArchive` returns, so a drop's temporary
+    /// copy of it is removed then.
+    var archiveFileImporter: FileTypeImporter {
+        FileTypeImporter(fileExtensions: [ZipArchiveHandling.fileExtension]) { [weak self] archives, folder in
+            for archive in archives { await self?.importArchive(archive, into: folder) }
+        }
+    }
+
     /// Imports the contents of the ZIP archive at `archive` into `directory`: it is unpacked into a temporary folder
     /// (`ZipArchiveUnpacking`, which refuses a zip bomb and any name that leaves the folder), laid out as Archive
     /// Utility lays it out (`ArchiveImportLayout`), its files copied as Import copies them, and its Goodnotes and
@@ -30,7 +42,10 @@ extension WorkspaceModel {
             return
         }
         let unpacking = await Task.detached(priority: .userInitiated) { () -> Result<UnpackedArchive, ArchiveUnpackingFailure> in
-            Result { () throws(ArchiveUnpackingFailure) in try ZipArchiveUnpacking.unpack(archive, into: unpackingFolder) }
+            // An archive chosen with Import is read where it is, outside the app's own folders.
+            let hasAccess = archive.startAccessingSecurityScopedResource()
+            defer { if hasAccess { archive.stopAccessingSecurityScopedResource() } }
+            return Result { () throws(ArchiveUnpackingFailure) in try ZipArchiveUnpacking.unpack(archive, into: unpackingFolder) }
         }.value
         let unpacked: UnpackedArchive
         switch unpacking {
@@ -58,8 +73,9 @@ extension WorkspaceModel {
         let unpackedFiles = DroppedFileBatch(files: layout.files.map { file in DroppedFile(location: file.location, stagingFolder: unpackingFolder) })
         guard let folderName = layout.folderName else {
             // One file alone, imported as Import imports it: it reports a failure itself, and keeps a notebook's copy
-            // until its conversion ends.
-            await importFiles(from: unpackedFiles.locations, into: directory, stagedCopies: unpackedFiles)
+            // until its conversion ends. A ZIP inside the ZIP is copied as it is: unpacking it too would never end for
+            // an archive that holds itself.
+            await importFiles(from: unpackedFiles.locations, into: directory, stagedCopies: unpackedFiles, zipArchives: .copiedAsTheyAre)
             return []
         }
         guard let archiveFolder = await newFolder(named: folderName, in: directory) else {
@@ -111,5 +127,23 @@ extension ArchiveImportLayout {
     static func isEmptyMessage(_ unpacked: UnpackedArchive, archiveName: String) -> String {
         ArchiveImportWording.leftOut(unpacked.leftOutEntries, notCopied: [], archiveName: archiveName)
             ?? ArchiveImportWording.holdsNothing(archiveName: archiveName)
+    }
+}
+
+/// What `WorkspaceModel.importFiles(from:into:)` does with a ZIP archive.
+enum ZipArchiveHandling {
+    /// Unpacked and its contents imported: what Import, a drop and a file opened from another app do.
+    case unpacked
+    /// Copied as the file it is: a ZIP found inside an archive that is being unpacked.
+    case copiedAsTheyAre
+
+    /// The extension of the archives unpacked, lowercased as `FileTypeImporter` compares them.
+    static let fileExtension = "zip"
+
+    var unpacksArchives: Bool {
+        switch self {
+        case .unpacked: true
+        case .copiedAsTheyAre: false
+        }
     }
 }
