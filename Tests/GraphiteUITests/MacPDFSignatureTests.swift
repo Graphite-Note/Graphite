@@ -134,6 +134,11 @@ final class MacPDFSignatureTests: XCTestCase {
         XCTAssertNotNil(PDFPageInkTracker.restoring(try XCTUnwrap(PDFInkGroups.editableGroup(on: fixture.page))),
                         "The group restores as the iPad's canvas restores it.")
         XCTAssertEqual(fixture.session.undoManager.undoActionName, "Add Signature")
+        // Placed smaller than it was drawn, its lines are drawn thinner, not thinner than PencilKit draws at all, as a
+        // point size scaled with the frame was: it vanished on the iPad (seen 2026-11-13).
+        for stroke in drawing.strokes {
+            XCTAssertGreaterThan(PencilStrokeSampler.drawnWidth(ofPointSize: stroke.path[0].size.width, inkType: .pen), 0.5)
+        }
         fixture.session.undoManager.undo()
         XCTAssertTrue(try pageDrawing(of: fixture).strokes.isEmpty)
     }

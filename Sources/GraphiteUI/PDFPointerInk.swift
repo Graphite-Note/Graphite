@@ -6,13 +6,14 @@
  *              pointer's places on a page, and which strokes of a page's drawing a point of the eraser touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
 import Foundation
 import PencilKit
 import GraphiteCore
+import GraphiteApple
 #if canImport(UIKit)
 import UIKit
 #else
@@ -53,7 +54,10 @@ enum PDFPointerInk {
                                             timeSeconds: firstSample.timeSeconds))
         }
         let widthScale = coordinates.overlaySize.width / coordinates.cropBox.width
-        let pointSize = CGSize(width: CGFloat(style.width.points) * widthScale, height: CGFloat(style.width.points) * widthScale)
+        // The style's width is the width drawn: PencilKit draws a pen point narrower than its size, and nothing below a
+        // size of 2, so Fine ink written at its width as the size was invisible on the iPad (seen 2026-11-13).
+        let side = PencilStrokeSampler.pointSize(forDrawnWidth: CGFloat(style.width.points) * widthScale, inkType: .pen)
+        let pointSize = CGSize(width: side, height: side)
         let controlPoints = kept.map { sample in
             PKStrokePoint(location: coordinates.overlayPoint(fromPDF: sample.pagePoint), timeOffset: max(0, sample.timeSeconds - firstSample.timeSeconds),
                           size: pointSize, opacity: 1, force: 1, azimuth: 0, altitude: .pi / 2)

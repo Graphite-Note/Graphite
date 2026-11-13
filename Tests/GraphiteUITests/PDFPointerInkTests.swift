@@ -13,6 +13,7 @@
 import XCTest
 import PencilKit
 import GraphiteCore
+import GraphiteApple
 @testable import GraphiteUI
 
 final class PDFPointerInkTests: XCTestCase {
@@ -30,9 +31,23 @@ final class PDFPointerInkTests: XCTestCase {
         XCTAssertEqual(stroke.path.count, 2)
         XCTAssertEqual(stroke.path[0].location.x, 50, accuracy: 0.001)
         XCTAssertEqual(stroke.path[0].location.y, 50, accuracy: 0.001, "Page y = 550 is 50 points from the top of a 600-point page.")
-        XCTAssertEqual(stroke.path[0].size.width, 5, accuracy: 0.001)
+        XCTAssertEqual(PencilStrokeSampler.drawnWidth(ofPointSize: stroke.path[0].size.width, inkType: .pen), 5, accuracy: 0.01,
+                       "The style's width is the width PencilKit draws, not the point's size.")
         XCTAssertEqual(stroke.path[1].timeOffset, 1.0 / 60, accuracy: 0.0001)
         XCTAssertEqual(stroke.ink.inkType, .pen)
+    }
+
+    /// A pen point of size 2 or less draws nothing in PencilKit: Fine ink written at its width as the size was invisible
+    /// on the iPad's canvas and in the saved outline (seen 2026-11-13 in the iPad simulator).
+    func testEveryWidthOfTheRowIsDrawnAtThatWidth() throws {
+        let coordinates = try PDFPointerInk.coordinates(of: cropBox)
+        for width in PDFMarkupInkWidth.allCases {
+            let stroke = try XCTUnwrap(PDFPointerInk.stroke(through: samples([CGPoint(x: 50, y: 550), CGPoint(x: 150, y: 550)]),
+                                                            style: PDFMarkupInkStyle(color: .black, width: width), coordinates: coordinates,
+                                                            creationDate: Date(timeIntervalSince1970: 1)))
+            XCTAssertGreaterThan(stroke.path[0].size.width, 2, "\(width): drawn at all")
+            XCTAssertEqual(PencilStrokeSampler.drawnWidth(ofPointSize: stroke.path[0].size.width, inkType: .pen), CGFloat(width.points), accuracy: 0.01)
+        }
     }
 
     func testPlacesTooCloseAreDroppedAndAClickLeavesADot() throws {

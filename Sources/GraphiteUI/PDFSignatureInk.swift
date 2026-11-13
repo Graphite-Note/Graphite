@@ -6,12 +6,13 @@
  *              again by the creation date they share, and moved or resized by a corner keeping their proportions.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 13/11/2026
  */
 
 import Foundation
 import PencilKit
+import GraphiteApple
 
 /// A corner of a placed signature's frame, by which it is resized.
 enum PDFSignatureCorner: CaseIterable, Sendable {
@@ -113,15 +114,17 @@ enum PDFSignatureInk {
                       width: size.width, height: size.height)
     }
 
-    /// The stroke carried from `frame` to `newFrame`, its points and their widths scaled by
-    /// the change of width, with its transform taken into its points.
+    /// The stroke carried from `frame` to `newFrame`, its points and their drawn widths scaled by the change of width,
+    /// with its transform taken into its points. The drawn width is scaled, not the point size: PencilKit draws a pen
+    /// point narrower than its size, and a signature placed small with its sizes scaled drew nothing on the iPad.
     private static func transformed(_ stroke: PKStroke, from frame: CGRect, to newFrame: CGRect, creationDate: Date) -> PKStroke {
         let scale = frame.width > 0 ? newFrame.width / frame.width : 1
         let points = stroke.path.map { point in
             let location = point.location.applying(stroke.transform)
             let carried = CGPoint(x: newFrame.minX + (location.x - frame.minX) * scale, y: newFrame.minY + (location.y - frame.minY) * scale)
             return PKStrokePoint(location: carried, timeOffset: point.timeOffset,
-                                 size: CGSize(width: point.size.width * scale, height: point.size.height * scale),
+                                 size: CGSize(width: PencilStrokeSampler.pointSize(point.size.width, forDrawnWidthScaledBy: scale, inkType: stroke.ink.inkType),
+                                              height: PencilStrokeSampler.pointSize(point.size.height, forDrawnWidthScaledBy: scale, inkType: stroke.ink.inkType)),
                                  opacity: point.opacity, force: point.force, azimuth: point.azimuth, altitude: point.altitude)
         }
         return PKStroke(ink: stroke.ink, path: PKStrokePath(controlPoints: points, creationDate: creationDate), transform: .identity, mask: stroke.mask)

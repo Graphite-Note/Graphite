@@ -5,8 +5,8 @@
  * Description: Reads PencilKit strokes as geometry that other formats can store.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 13/11/2026
  */
 import CoreGraphics
 import PencilKit
@@ -130,6 +130,12 @@ public enum PencilStrokeSampler {
     /// before it is one, as a shape while the Pencil rests.
     public static func drawnWidth(ofPointSize pointSize: CGFloat, inkType: PKInkingTool.InkType) -> CGFloat {
         CGFloat(PencilInkRenderedWidth.drawnWidth(forPointSize: Double(pointSize), inkType: inkType, nibAcrossness: 1))
+    }
+
+    /// The size of a point PencilKit draws `drawnWidth` points wide, for ink made from a width: a pen point of size 1
+    /// draws nothing, so a width written as the size vanishes on the iPad's canvas and in the saved outline.
+    public static func pointSize(forDrawnWidth drawnWidth: CGFloat, inkType: PKInkingTool.InkType) -> CGFloat {
+        CGFloat(PencilInkRenderedWidth.pointSize(forDrawnWidth: Double(drawnWidth), inkType: inkType))
     }
 
     /// The size of a point that draws `scale` times as wide as one of `pointSize`, for ink
