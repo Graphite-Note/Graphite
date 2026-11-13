@@ -213,10 +213,14 @@ public enum NotePreviewDocument {
                 continue
             }
             // A web image (`![](https://…)`) is not a vault file. It stays Markdown, which the
-            // renderer draws from the web as it does an inline one.
-            if let embed = EmbedLocator.standaloneEmbed(onLine: line), !embed.isRemoteImage {
+            // renderer draws from the web as it does an inline one. PDFs on a paragraph line among
+            // pictures or text are each their viewer, the rest of the line Markdown (HUNT-351).
+            let lineStart = lineStartOffsets[lineIndex]
+            let standaloneEmbed = EmbedLocator.standaloneEmbed(onLine: line).flatMap { embed in embed.isRemoteImage ? nil : embed }
+            if let embedBlocks = standaloneEmbed.map({ embed in [LocatedBlock(block: .embed(embed), startOffset: lineStart, lineStartOffsets: [], body: [])] })
+                ?? ReadingPDFLine.locatedBlocks(of: line, lineStart: lineStart) {
                 flushMarkdown()
-                append(.embed(embed), startingAtLine: lineIndex)
+                blocks.append(contentsOf: embedBlocks)
                 lineIndex += 1
                 continue
             }

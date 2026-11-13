@@ -46,6 +46,15 @@ final class UiCodeBraceLineFormattingMacTests: XCTestCase {
         for _ in 0..<10 { await Task.yield() }
     }
 
+    /// The main queue's work dispatched so far, run: the block's formatting is dispatched there
+    /// when the selection leaves it.
+    private func runMainQueueTurnsAndItsDispatches() async {
+        for _ in 0..<3 {
+            await withCheckedContinuation { continuation in DispatchQueue.main.async { continuation.resume() } }
+            await runMainQueueTurns()
+        }
+    }
+
     /// Typed key by key, Return after each line, as the owner wrote `int main()` then `{`.
     private func typeLines(_ lines: [String], in textView: MarkdownMacTextView, coordinator: NativeMarkdownEditor.Coordinator) async {
         for (lineIndex, line) in lines.enumerated() {
@@ -73,6 +82,57 @@ final class UiCodeBraceLineFormattingMacTests: XCTestCase {
             await typeLines(["int main()", "{", "return 0;", "}"], in: textView, coordinator: coordinator)
             XCTAssertEqual(textView.string, "Intro\n\n```c\nint main()\n{\nreturn 0;\n}\n```\n\nAfter the block.\n", "\(mode)")
             withExtendedLifetime(coordinator) {}
+        }
+    }
+
+    /// The paths the owner's block may have taken, tried on 2026-11-13: typed key by key then
+    /// left, pasted then left, undone and done again, in Live Preview and Source mode. At every step `{` stays right under `int main()`, with no blank line between.
+    func testABlockTypedOrPastedThenLeftUndoneAndRedoneKeepsItsBraceUnderItsLine() async throws {
+        let note = "Intro\n\n```c\nx\n```\n\nAfter the block.\n"
+        let formattedNote = "Intro\n\n```c\nint main()\n{\n    return 0;\n}\n```\n\nAfter the block.\n"
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("GraphiteHUNT355-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        for mode in [EditingMode.livePreview, .source] {
+            for pastes in [false, true] {
+                let label = "\(mode), \(pastes ? "pasted" : "typed")"
+                let (coordinator, textView) = try await makeEditor(text: note, mode: mode)
+                defer { withExtendedLifetime(coordinator) {} }
+                // In a window as its first responder, as when typing in Graphite: otherwise the
+                // text view ends editing after each change, and the block is formatted there.
+                let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+                window.isReleasedWhenClosed = false
+                window.contentView = textView.enclosingScrollView
+                window.showInvisibly()
+                window.makeFirstResponder(textView)
+                defer { window.orderOut(nil); window.contentView = nil }
+                func select(_ range: NSRange) async throws {
+                    textView.setSelectedRange(range)
+                    coordinator.textViewDidChangeSelection(Notification(name: NSTextView.didChangeSelectionNotification, object: textView))
+                    await runMainQueueTurnsAndItsDispatches()
+                }
+                func assertBraceUnderItsLine(_ step: String) {
+                    XCTAssertTrue(textView.string.contains("int main()\n{\n"), "\(step), \(label): \(textView.string.debugDescription)")
+                }
+                try await select(NSRange(location: (note as NSString).range(of: "x\n```").location, length: 1))
+                if pastes {
+                    pasteboard.clearContents()
+                    pasteboard.setString("int main()\n{\nreturn 0;\n}", forType: .string)
+                    XCTAssertTrue(textView.readSelection(from: pasteboard, type: .string), label)
+                    coordinator.textDidChange(Notification(name: NSText.didChangeNotification, object: textView))
+                    await runMainQueueTurns()
+                } else {
+                    await typeLines(["int main()", "{", "return 0;", "}"], in: textView, coordinator: coordinator)
+                }
+                assertBraceUnderItsLine("Written")
+                try await select(NSRange(location: (textView.string as NSString).range(of: "After").location, length: 0))
+                XCTAssertEqual(textView.string, formattedNote, "Formatted on leaving the block, \(label)")
+                textView.undoManager?.undo()
+                await runMainQueueTurnsAndItsDispatches()
+                assertBraceUnderItsLine("Undone")
+                textView.undoManager?.redo()
+                await runMainQueueTurnsAndItsDispatches()
+                XCTAssertEqual(textView.string, formattedNote, "Redone, \(label)")
+            }
         }
     }
 

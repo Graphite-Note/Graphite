@@ -229,7 +229,7 @@ public enum LivePreviewBlockScanner {
     /// The pieces of a paragraph line that embeds images among its text. A heading, a list
     /// item (`imageLinePieces(ofListItem:followsListItem:)`), a quote, a table row or indented
     /// code keeps its own drawing, its images inline.
-    private static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
+    static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
         guard line.contains("!["), MarkdownHeadingSyntax.level(of: line) == nil, !MarkdownListSyntax.isListItem(line) else { return nil }
         var indentationColumns = 0
         for character in line {

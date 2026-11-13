@@ -75,6 +75,31 @@ final class ReleaseVaultFindingsTests: XCTestCase {
         XCTAssertEqual(targets, ["Lab notebook.pdf#height=200", "Cornell.pdf#height=200"])
     }
 
+    /// HUNT-351, the reading view: the line of two PDF embeds was written as two links, while
+    /// one PDF alone on its line is its viewer. Each PDF is now an embed block of its own, and the
+    /// text and pictures between them stay Markdown, the pictures side by side.
+    func testTwoPDFEmbedsOnALineAreTwoViewersInTheReadingView() {
+        func described(_ blocks: [NotePreviewBlock]) -> [String] {
+            blocks.map { block in
+                switch block {
+                case .embed(let embed): "embed " + embed.target
+                case .markdown(let markdown): "markdown " + markdown
+                default: "other"
+                }
+            }
+        }
+        XCTAssertEqual(described(NotePreviewDocument.blocks(from: "Above\n\n![[Lab notebook.pdf#height=200]] ![[Cornell.pdf#height=200]]\n\nBelow\n")),
+                       ["markdown Above\n", "embed Lab notebook.pdf#height=200", "embed Cornell.pdf#height=200", "markdown \nBelow\n"])
+        XCTAssertEqual(described(NotePreviewDocument.blocks(from: "See ![[a.png|100]] ![[b.png|100]] then ![[Slides.pdf#page=2]] and after")),
+                       ["markdown See ![[a.png|100]] ![[b.png|100]] then", "embed Slides.pdf#page=2", "markdown and after"])
+        XCTAssertEqual(described(NotePreviewDocument.blocks(from: "![[a.png|100]] ![[b.png|100]]")), ["markdown ![[a.png|100]] ![[b.png|100]]"],
+                       "A line of pictures alone stays one paragraph, side by side.")
+        XCTAssertEqual(described(NotePreviewDocument.blocks(from: "- ![[Slides.pdf]] ![[Cornell.pdf]]")), ["markdown - ![[Slides.pdf]] ![[Cornell.pdf]]"],
+                       "A list item keeps its line.")
+        let located = NotePreviewDocument.locatedBlocks(from: "x\n\nA ![[Slides.pdf]] B\n")
+        XCTAssertEqual(located.map(\.startOffset), [0, 3, 5, 21], "Each piece starts where it is in the note.")
+    }
+
     /// HUNT-352: a PDF embedded in a table cell showed its source, `!` included, in Live Preview. It is a
     /// link to the PDF's page named by its file, as the reading view writes it.
     func testAPDFEmbeddedInATableCellIsALinkToIt() async throws {
