@@ -1,0 +1,106 @@
+# PDF annotation and picture tools on the Mac and the iPad: TODO
+
+Created: 2026-11-14.
+
+Status: planned 2026-11-14; nothing built. Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d.
+
+## Request
+
+The owner, 2026-11-14, a list of bugs and requests for marking up PDFs on the Mac and the iPad, with the goal of "reliable image insertion and object layering", the same annotation tools on both platforms, colour palettes the person can add to, marks that can be edited and removed, and "a compact, predictable iPad toolbar with horizontal color scrolling". In short:
+
+1. Pictures dragged onto a PDF page are not placed (Mac and iPad); a placed picture should be positioned and resized freely.
+2. No way to change the stacking order of objects: Bring to Front, Send to Back, Bring Forward, Send Backward, for pictures, drawings and other annotations, which may overlap in any order.
+3. The iPad's colour palette "can be dragged or moved in multiple directions (up, down, left, and right)": it should scroll sideways only, with a "+" that saves custom colours as swatches, and stay compact.
+4. A text highlighter tool on the iPad, as on the Mac, using the custom colours.
+5. On the Mac, no straightforward way to remove a highlight (only ⌘Z or Preview); select a highlight to delete it or change its colour.
+6. Highlighting the same text again darkens it; an existing highlight should be replaced or changed, not stacked.
+7. Highlight, underline and strikethrough take only a few preset colours: a full colour picker, saved presets, the same on the Mac and the iPad.
+
+## What exists today (main b2c3787d)
+
+- **Pictures.** The iPad adds a picture from the photo library, a file or the clipboard (`PDFAddImageMenuContent`, `PDFPictureAdding` in `PDFPictureControls.swift`; the fixed bar's Add Image in `PDFPane.swift`) through `PDFSession.addPicture` (`PDFSessionPictures.swift`), placed in the middle of the page in view. A tap selects it; `PDFPictureSelectionController` moves, resizes and rotates it; `PDFPictureArrangementBar` has Rotate, Crop, Arrange and Delete. The Mac shows pictures but has no tool to add, move or resize them (`PDFMarkupTool` has text selection, highlight, draw, eraser, text box, shapes and sign). **Neither PDF view takes drops**: `GraphitePDFDisplayView` and `GraphiteMacPDFView` have no drop handling; `Docs/Drag-and-drop-todo.md` covers notes and the file tree only.
+- **Stacking.** Only the iPad's pictures have Bring to Front and Send to Back (`PictureEditingButtons`, `PDFSession.movePictureInOrder`, `PDFPageManager.replacePicture`). Invariant M-15: Graphite's ink stays after its pictures, its text boxes (each with its links) after the ink; shapes and text marks are added over the rest. Ink is one `/Ink` annotation per stroke, and on the iPad one PencilKit canvas lies over the whole page, so ink cannot go between two pictures without ink in several layers and a change to M-15.
+- **The iPad's colour row.** `PencilColorStrip` is a `ScrollView(.horizontal)` in the compact layout; `PencilColorSwatchRow` an `HStack`. Since 2026-11-13 (`Docs/Pen-color-palette-todo.md`, #178) a colour is dragged along the row to arrange it, and dragged up or down off the row to remove it (Undo puts it back); a 0.25 s hold starts a drag inside the strip; "+" adds the colour in use; a second tap opens the colour picker. The floating palette is the system's `PKToolPicker`, which the system moves. Which of these is "moved in multiple directions" is not known yet (section 3).
+- **Text marks.** The iPad marks selected text from its selection menu (Highlight in five colours, Underline, Strikethrough, through `PDFSelectionMarking`) and recolours or removes a mark from a tap on it; it has no tool that marks text as it is selected. The Pencil highlighter is freehand ink. The Mac's row has the highlighter, which marks a selection when the mouse is let go.
+- **Removing marks on the Mac.** `MacPDFMarkupInteraction`: a click on a mark selects its text, Delete removes the mark, and its right-click menu has its colours and Remove. None of this shows in the markup row, and a swatch clicked while a mark is selected marks the selection again (`PDFMarkupToolbarRow`, `markSelection`), so it probably adds a second mark instead of recolouring (read from the code, not run).
+- **Repeated marks.** `PDFSession.addMarkup` adds a new annotation every time, with no check for a mark already on that text; highlights are drawn with multiply blending, so each repeat is darker.
+- **Colours.** Text marks use the fixed `PDFMarkupColor.highlightColors` (yellow, green, blue, pink, purple; `PDFMarkup.swift`), underline and strikethrough are red. The iPad's ink highlighter has its own palette (`defaultHighlighterPalette`, with orange and other hexes). The Mac's draw, shapes and text box tools use black and the Settings › Colors favourites (`PDFMarkupRowColors`), the iPad's pen colours. No colour picker for marks on either platform, and none on the Mac at all.
+
+## What the result must be
+
+- **Ordinary PDF** (OBJECTIVE.md): pictures stay `/Stamp` annotations with appearances, marks stay `/Highlight`, `/Underline` and `/StrikeOut` with `/QuadPoints` and `/C`, and a mark of any colour is drawn the same by Preview, Acrobat and Files. Stacking order is the page's annotation order, which every reader follows. No sidecar.
+- **The same file and the same tools on both devices**, each with its own interface (`Docs/Mac-PDF-markup-todo.md`: pointer, keyboard and menus on the Mac; touch and Pencil on the iPad).
+- **One history.** Each drop, reorder, mark, recolour and removal is one step of `PDFEditHistory`.
+- **Off costs nothing**: no new work when a PDF opens and no tool is used.
+
+## Open questions for the owner
+
+1. **Ink between pictures (section 2).** Free stacking of pictures, text boxes and shapes among themselves is possible within the file's order. Putting ink between two pictures needs ink in several layers on the iPad (several PencilKit canvases, or pictures drawn into the canvas) and a change to invariant M-15. Proposed: objects stack freely; ink moves as one layer (Ink to Front, Ink to Back); strokes inside a picture's layer later if wanted.
+2. **The palette's movement (section 3).** Is it the bar's colour row (a colour moved up or down is removed, by the 2026-11-13 drag), the floating system palette, or the fixed bar itself? Proposed: reproduce each on the iPad first.
+3. **One colour list or two (section 7).** Proposed: text marks get their own saved colours, shared by the Mac's highlighter and the iPad's text highlighter, kept apart from the pen colours, as the ink highlighter's are.
+
+## 1. Dropping pictures onto PDF pages
+
+Issue: [#180](https://github.com/Graphite-Note/Graphite/issues/180)
+
+- [ ] The iPad's PDF view takes a picture dragged from another app (Photos, Files, Safari) or from a note: it is placed where it is dropped, at most 60% of the page wide, selected, as one undo step ("Add Image").
+- [ ] The Mac's PDF view takes a dropped picture (file address, image data and the file promises of Photos and Mail, as `MacDroppedFiles` reads them) and places it at the drop point.
+- [ ] The Mac selects, moves, resizes and deletes a picture with the pointer and the keyboard, and has an Add Image tool in the markup row; the iPad's picture controls stay as they are.
+- [ ] A PDF file dropped onto a page is refused or offered as its first page's picture (to decide while building); a protected or signed PDF takes no drops.
+- [ ] Tests: the drop's placement with plain values (point, page size, rotation, zoom); hosted iPad and Mac tests that a drop adds one picture where it landed; checked with real drags from Photos and the Finder on the Mac and from Photos and Files on the iPad.
+
+## 2. Stacking order of a page's objects
+
+Issue: [#181](https://github.com/Graphite-Note/Graphite/issues/181)
+
+- [ ] Bring to Front, Bring Forward, Send Backward and Send to Back for a selected picture, text box or shape, on the iPad (its arrangement bar and menu) and on the Mac (right-click menu and the Arrange items of the menu bar, with Preview's shortcuts where it has them).
+- [ ] Objects may overlap in any order; the order is the page's annotation order, kept after saving and reopening, and the same in Preview.
+- [ ] Ink as a layer, as the owner decides (open question 1), with invariant M-15 changed to match and its tests.
+- [ ] Each change of order is one undo step; another application's annotations keep their place.
+- [ ] Tests: the order rules with plain values; `PDFAnnotationOrderTests` for every move; checked on the iPad and the Mac with overlapping pictures, a text box and a shape.
+
+## 3. The iPad's colour row
+
+Issue: [#182](https://github.com/Graphite-Note/Graphite/issues/182)
+
+- [ ] Find what moves "up, down, left, and right" on the owner's iPad (open question 2) and record it here.
+- [ ] The colour row scrolls sideways only, left to right, with no vertical give, in every layout of the bar (fixed bar, compact strip, beside the sidebar).
+- [ ] "+" saves a new colour (the one in use or one chosen in the picker) as a swatch in the row; saved colours stay on the device and in Settings › Colors.
+- [ ] The row keeps its height: more colours scroll inside it instead of widening the bar.
+- [ ] Tests: hosted tests that a vertical drag neither scrolls nor moves the row unless it removes a colour (if that stays), and that "+" adds a swatch; checked on the iPad with a finger and the Pencil.
+
+## 4. Text highlighting on the iPad
+
+Issue: [#183](https://github.com/Graphite-Note/Graphite/issues/183)
+
+- [ ] A text highlighter tool on the iPad's bar: with it chosen, selecting PDF text with the Pencil or a finger marks it when the touch lifts, in the current style (highlight colour, underline, strikethrough), as one undo step; the Pencil's freehand highlighter stays a tool of its own.
+- [ ] Its colours are the saved text-mark colours of section 7, with "+" as in section 3.
+- [ ] Tests: hosted iPad tests that a selection with the tool chosen is marked once; checked on the owner's iPad with the Pencil.
+
+## 5. Removing and recolouring marks on the Mac
+
+Issue: [#184](https://github.com/Graphite-Note/Graphite/issues/184)
+
+- [ ] A selected mark shows in the markup row: its colour ticked, a swatch recolours it (one step, no second mark), and a Remove button deletes it; Delete keeps working.
+- [ ] Removing a mark leaves every other change in place (no ⌘Z needed), on the Mac and the iPad.
+- [ ] Underline and strikethrough recolour the same way as highlights.
+- [ ] Tests: `MacPDFMarkupInteractionTests` for a swatch on a selected mark (recoloured, one annotation) and Remove from the row; checked by hand in a copy of the Mac app.
+
+## 6. Highlighting text that is already marked
+
+Issue: [#185](https://github.com/Graphite-Note/Graphite/issues/185)
+
+- [ ] Marking text that a mark of the same kind already covers changes that mark (its colour) instead of adding another; the text never gets darker.
+- [ ] Marking text that partly overlaps a mark of the same kind joins them into one mark covering both (or replaces the overlapped part; decided while building, the same on both platforms).
+- [ ] A highlight and an underline on the same text stay two marks.
+- [ ] Tests: the overlap rules with plain values (`PDFSelectionMarking`), session tests for each case on both platforms; checked in Preview that the file holds one annotation per run of text.
+
+## 7. Any colour for text marks
+
+Issue: [#186](https://github.com/Graphite-Note/Graphite/issues/186)
+
+- [ ] Highlight, underline and strikethrough take any colour: a colour picker (`NSColorPanel` on the Mac, `UIColorPickerViewController` on the iPad) beside the swatches.
+- [ ] Chosen colours can be saved as presets and removed, kept on the device, shared by the Mac's highlighter, the iPad's text highlighter and both platforms' mark menus (open question 3).
+- [ ] A mark of a colour outside the list (made by Preview, Acrobat or a picker) is shown with its own colour in the menus and the row, and recoloured like the others.
+- [ ] The Mac's draw, shapes and text box colours get the same picker.
+- [ ] Tests: the stored presets and the written `/C` for an arbitrary colour; checked in Preview and on the iPad with a custom colour made on the Mac.
