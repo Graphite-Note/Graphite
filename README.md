@@ -29,14 +29,36 @@ It is a native app written in Swift, built iPad-first for lectures and handwriti
 
 ## Features
 
-- **Markdown, the Obsidian way.** Live Preview, reading view and source mode; Wikilinks, embeds, callouts, math, tables, tasks, tags, properties and frontmatter, without rewriting notes on open.
-- **Pencil drawings inside notes.** Draw on a full-width canvas and Graphite saves an ordinary image in your attachment folder with a normal `![[embed]]`, re-editable later.
-- **PDF notebooks.** One system for blank notebooks, lecture slides, worksheets and scans: paper templates, page thumbnails, reordering, bookmarks, and annotations stored in the PDF itself.
+### Move in from Goodnotes and Notability
+
+- **Your notebooks come with you.** Import `.goodnotes` notebooks and Notability `.note` files, one at a time, a whole folder, or a ZIP of either. Each page keeps its paper, page size, ink, pictures, typed text boxes, outline and bookmarks, and Notability recordings come along as audio files. The result is an ordinary PDF that any reader opens and Graphite keeps editing.
+- **Open in Graphite from anywhere.** Graphite is in the share sheet and Open With for Goodnotes and Notability files, ZIP archives, PDFs, pictures and Markdown. Notebooks are converted, ZIPs are unpacked with their folders, and everything lands in your vault.
+- **Dense handwriting stays smooth.** A formula sheet with thousands of strokes a page scrolls at the display's rate and zooms without freezing, and PDFs Graphite writes are about a third the size they used to be.
+
+### Write by hand, Pencil first
+
+- **Pencil drawings inside notes**, saved as ordinary PNG, PDF or SVG attachments with a normal `![[embed]]`, editable stroke by stroke later.
+- **PDF notebooks and slides**: paper templates, page thumbnails, reordering, bookmarks, text boxes, and annotations stored in the PDF itself.
+- **Your colours, arranged by dragging**, as in Apple's markup palette.
 - **Lecture recording** that keeps going while you move between documents.
-- **Knowledge tools.** Full-text search, backlinks, outgoing and unresolved links, outline, tags, Bases (table, cards, list and map views), each switchable like Obsidian's core plugins.
+
+### PDF markup on the Mac
+
+Highlight, underline and strike through text, draw with the mouse or trackpad, add text boxes, sign with a signature you drew once, and draw rectangles, ovals, lines and arrows, all from one row of tools. Everything is a standard PDF annotation that Preview and Acrobat show, and ink made on the Mac stays editable with the Pencil on the iPad.
+
+### Obsidian, native
+
+- **Markdown the Obsidian way.** Live Preview, reading view and source mode; wikilinks, embeds, callouts, math, tasks, tags, properties and frontmatter, without rewriting notes on open.
+- **Tables you edit in place**, inside callouts and lists too, with Obsidian's "+" strips and cell menu, and long formulas that wrap so a table fits the page.
+- **Pictures and PDFs in notes**: photos side by side, zoom into any picture or open it in a tab, and a PDF embed that shows its whole first page.
+- **Mermaid diagrams drawn natively**, web pages in notes (`<iframe>`), and Export to PDF that prints formulas, drawings, diagrams and bases as the reading view shows them.
+- **Knowledge tools.** Full-text search with `folder:`, backlinks, outline, tags, a fast graph view, Bases (table, cards, list and map), maps that can center on you, and a calendar of daily notes with Apple Calendar and Reminders, each switchable like Obsidian's core plugins.
 - **Obsidian community plugins and themes**, run from the vault's own `.obsidian` folder. See [what works today](Docs/Community-plugins.md).
-- **Import from Goodnotes and Notability** into ordinary PDFs and recordings.
-- **A small core.** Extras such as voices and tour pictures are downloaded on first use, so the app stays light in size, memory and battery.
+
+### Built to be trusted
+
+- **A small core.** The welcome tour's pictures come with the iPad and iPhone app and can be removed in Settings; larger extras such as voices are downloaded on first use.
+- **Tested on every feature.** `Tests/ReleaseVault` holds a note or file for every feature, and a release pass opens each one in every view on the Mac and the iPad before an upload.
 
 ## Apple Pencil drawings inside notes
 
