@@ -9,11 +9,18 @@
   Notes, handwriting, PDFs and lecture recordings, kept as ordinary files you own.
 </p>
 
+
 <p align="center">
   <img alt="Platforms: iPadOS, iOS, macOS" src="https://img.shields.io/badge/platforms-iPadOS%20%7C%20iOS%20%7C%20macOS-lightgrey">
   <img alt="Swift" src="https://img.shields.io/badge/Swift-6-F05138?logo=swift&logoColor=white">
   <img alt="Status: TestFlight beta" src="https://img.shields.io/badge/status-TestFlight%20beta-blue">
   <a href="LICENSE"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/license-Apache%202.0-green"></a>
+</p>
+
+<p align="center">
+  <a href="https://testflight.apple.com/join/bgttrdnQ">
+    <strong>Join the TestFlight Beta</strong>
+  </a>
 </p>
 
 <p align="center">
