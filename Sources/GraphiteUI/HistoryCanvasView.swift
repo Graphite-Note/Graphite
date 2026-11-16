@@ -5,7 +5,7 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.30
+ * Version: 0.31
  * Date: 16/11/2026
  */
 #if canImport(UIKit)
@@ -222,12 +222,15 @@ class HistoryCanvasView: PKCanvasView {
             pointsWithLaser = newFixedTool.kind == .laser
             pointsToRead = newFixedTool.kind == .readAloud
             placesTextBoxes = newFixedTool.kind == .text
-            // The lasso, the laser, the Read Aloud pen and the text tool are Graphite's own;
+            marksText = newFixedTool.kind == .textHighlighter
+            // The lasso, the laser, the Read Aloud pen, the text tool and the text highlighter are Graphite's own;
             // PencilKit's tool stays what it was and draws nothing.
             if newFixedTool.kind.drawsInk { drawWith(newFixedTool.tool) } else if hasPixelEraser { pixelEraser.chosenWidth = nil }
             isRulerActive = newFixedTool.isRulerActive
         } else if !followsToolPicker {
             fixedTool = nil
+            // The floating palette has no text highlighter; its pages mark text from the selection menu.
+            marksText = false
             followsToolPicker = true
             followedToolPicker = toolPicker
             let follower = PaletteToolFollower(canvas: self)
@@ -339,8 +342,9 @@ class HistoryCanvasView: PKCanvasView {
         didSet { if isDrawingSuspended != oldValue { applyDrawingEnabled() } }
     }
 
-    private func applyDrawingEnabled() {
-        let usesGraphiteTool = isDrawingSuspended || selectsInk || pointsWithLaser || pointsToRead || placesTextBoxes
+    /// Turns PencilKit's drawing off while one of Graphite's own tools has the canvas, and on again after.
+    func applyDrawingEnabled() {
+        let usesGraphiteTool = isDrawingSuspended || selectsInk || pointsWithLaser || pointsToRead || placesTextBoxes || marksText
         let erasesWithGraphite = hasPixelEraser && pixelEraser.erases(whileAnotherToolIsInUse: usesGraphiteTool)
         isDrawingEnabled = !usesGraphiteTool && !erasesWithGraphite
     }
@@ -409,6 +413,16 @@ class HistoryCanvasView: PKCanvasView {
             applyDrawingEnabled()
         }
     }
+
+    // MARK: Marking text
+
+    /// The text highlighter on this canvas, made the first time it is chosen; `marksText` turns it on
+    /// (`TextHighlighterTool.swift`).
+    var textHighlighter: TextHighlighterToolController?
+
+    /// Where the text highlighter is dragged, in the window; set by the owner of a PDF page's canvas.
+    /// Without it the tool marks nothing.
+    var textHighlighterDragged: ((TextHighlighterDrag) -> Void)?
 
     /// Scrolling and zooming move the lasso's selection with the drawing; its frame and a
     /// marked area are placed again, at the same size on screen.

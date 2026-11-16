@@ -6,8 +6,8 @@
  *              palette.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 05/11/2026
+ * Version: 0.10
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -139,6 +139,7 @@ struct PencilToolGlyph: View {
         case laser
         case readAloud
         case text
+        case textHighlighter
 
         /// The glyph of a tool other than an ink.
         init(kind: PencilToolKind) {
@@ -148,6 +149,7 @@ struct PencilToolGlyph: View {
             case .laser: self = .laser
             case .readAloud: self = .readAloud
             case .text: self = .text
+            case .textHighlighter: self = .textHighlighter
             }
         }
     }
@@ -167,6 +169,7 @@ struct PencilToolGlyph: View {
         case .laser: PencilToolKind.laser.symbolName
         case .readAloud: PencilToolKind.readAloud.symbolName
         case .text: PencilToolKind.text.symbolName
+        case .textHighlighter: PencilToolKind.textHighlighter.symbolName
         }
     }
 

@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.41
+ * Version: 0.42
  * Date: 16/11/2026
  */
 
@@ -51,9 +51,10 @@ struct PDFAnnotationInput: Equatable {
     var fixedTool: PencilToolSelection?
     /// Lines or dots shown under the ink while writing, never saved into the PDF.
     var writingGuides: DrawingPaper = .plain
-    /// The Mac's markup row: its tool, and the mark its highlight button makes. The iPad
-    /// marks text from its selection menu.
+    /// The Mac's markup row: its tool. The iPad marks text from its selection menu, and with
+    /// the fixed bar's text highlighter (`fixedTool`).
     var markupTool = PDFMarkupTool.textSelection
+    /// The mark the Mac's highlight button and the iPad's text highlighter make.
     var markupStyle = PDFMarkupStyle.default
 
     /// Whether the view keeps first responder for its document: Undo shortcuts reach the
@@ -788,7 +789,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// Where the saved text-mark colours are kept (`PDFTextMarkColors`); a test gives its own.
     var markupPreferences: UserDefaults = .standard
     private lazy var markColorPicker = PDFMarkColorPicker(preferences: markupPreferences)
-    private var selectionAnchor: (page: PDFPage, point: CGPoint)?
+    /// The finger's text selection being dragged (`handleTextSelection`).
+    private var selectionDrag: PDFTextSelectionDrag?
+    /// The fixed bar's text highlighter: a drag on a page selects text and marks it on lift.
+    private var textHighlighter: PDFTextHighlighterInteraction?
     private var pageObserver: PDFViewPageObserver?
     private var pictureSelection: PDFPictureSelectionController?
     /// The page's text boxes: drawn over the ink, placed, selected and typed in.
@@ -921,6 +925,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         session.visiblePageCenter = { [weak pictureSelection] in pictureSelection?.visiblePageCenter() }
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
         if !isEmbedded { pictureDrops = PDFPictureDropInteraction(session: session, pdfView: view) }
+        textHighlighter = PDFTextHighlighterInteraction(session: session, pdfView: view)
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
@@ -1065,6 +1070,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         pictureDrops?.stop()
         pictureDrops = nil
         textBoxInteraction = nil
+        textHighlighter = nil
         if let toolboxObserver { NotificationCenter.default.removeObserver(toolboxObserver) }
         toolboxObserver = nil
         if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
@@ -1198,7 +1204,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             if !newInput.isEnabled { session.textBoxActivity = .idle }
             editMenuInteraction?.dismissMenu()
             tappedMarkup = nil
-            selectionAnchor = nil
+            selectionDrag = nil
             pdfView.clearSelection()
         }
         for canvas in canvasesByPage.values { configure(canvas) }
@@ -1506,6 +1512,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         restoreStoredInkIfNeeded(on: canvas)
         canvas.readAloudPenTapped = readAloudPen == nil ? nil : { [weak self] windowPoint in self?.handleReadAloudPenTap(atWindowPoint: windowPoint) }
         canvas.textToolTapped = { [weak self] windowPoint in self?.textBoxInteraction?.handleTextToolTap(atWindowPoint: windowPoint) }
+        canvas.textHighlighterDragged = { [weak self] dragEvent in self?.handleTextHighlighterDrag(dragEvent) }
         canvas.takeTool(from: toolPicker, fixedTool: input.fixedTool)
         canvas.drawingPolicy = input.drawsWithFinger ? .anyInput : .pencilOnly
         canvas.showWritingGuides(input.writingGuides)
@@ -1806,7 +1813,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
 
     /// While annotating, touches on a page belong to its canvas, so PDFKit's own text
     /// selection never sees them. A finger press selects the word under it; dragging
-    /// extends the selection, and lifting shows Copy and the markup actions.
+    /// extends the selection, and lifting shows Copy and the markup actions, or, with the
+    /// text highlighter chosen, marks the selection.
     @objc private func handleTextSelection(_ recognizer: UILongPressGestureRecognizer) {
         guard let pdfView else { return }
         let viewPoint = recognizer.location(in: pdfView)
@@ -1814,22 +1822,35 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         case .began:
             beginInteraction?()
             editMenuInteraction?.dismissMenu()
-            guard let page = pdfView.page(for: viewPoint, nearest: true) else { return }
-            let pagePoint = pdfView.convert(viewPoint, to: page)
-            selectionAnchor = (page, pagePoint)
-            pdfView.currentSelection = page.selectionForWord(at: pagePoint)
+            selectionDrag = PDFTextSelectionDrag(startingAt: viewPoint, in: pdfView)
+            pdfView.currentSelection = selectionDrag?.anchorWord
         case .changed:
-            guard let selectionAnchor, let page = pdfView.page(for: viewPoint, nearest: true) else { return }
-            let pagePoint = pdfView.convert(viewPoint, to: page)
-            let rangeSelection = session.document.selection(from: selectionAnchor.page, at: selectionAnchor.point, to: page, at: pagePoint)
-            if let anchorWord = selectionAnchor.page.selectionForWord(at: selectionAnchor.point) { rangeSelection?.add(anchorWord) }
-            if let rangeSelection, !(rangeSelection.string ?? "").isEmpty { pdfView.currentSelection = rangeSelection }
+            if let selection = selectionDrag?.selection(extendedTo: viewPoint, in: pdfView) { pdfView.currentSelection = selection }
         case .ended:
-            selectionAnchor = nil
-            presentSelectionMenu()
+            selectionDrag = nil
+            let marked = textHighlighter?.markSelectionOnLift(style: input.markupStyle, marksOnLift: marksTextOnLift) ?? false
+            if !marked { presentSelectionMenu() }
         default:
-            selectionAnchor = nil
+            selectionDrag = nil
         }
+    }
+
+    /// Whether a text selection is marked as the touch that made it lifts: the fixed bar's text highlighter is chosen.
+    private var marksTextOnLift: Bool { input.fixedTool?.kind == .textHighlighter }
+
+    /// A drag of the text highlighter on a page's canvas (`TextHighlighterToolController`).
+    private func handleTextHighlighterDrag(_ dragEvent: TextHighlighterDrag) {
+        // A tool changed during the drag ends it unmarked.
+        guard input.isEnabled, marksTextOnLift else {
+            textHighlighter?.handle(.cancelled, style: input.markupStyle)
+            return
+        }
+        if case .began = dragEvent {
+            beginInteraction?()
+            editMenuInteraction?.dismissMenu()
+            tappedMarkup = nil
+        }
+        textHighlighter?.handle(dragEvent, style: input.markupStyle)
     }
 
     private func presentSelectionMenu() {

@@ -7,7 +7,7 @@
  *              sideways inside it), and which controls move, least used first, into the one control that opens the rest.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 16/11/2026
  */
 
@@ -19,14 +19,15 @@ enum PencilToolRowLayout {
     /// A tool of the bar's row: one of the ink presets by position, or one of the other tools.
     enum Tool: Hashable {
         case preset(index: Int)
-        case eraser, lasso, laser, text, readAloud
+        case eraser, lasso, laser, textHighlighter, text, readAloud
     }
 
     /// The tools of the row in the order the bar shows them: the presets, the eraser, the lasso, the laser pointer,
-    /// then the text tool and the Read Aloud pen where the page has them.
-    static func tools(presetCount: Int, offersTextBoxes: Bool, offersReadAloudPen: Bool) -> [Tool] {
+    /// then the text highlighter, the text tool and the Read Aloud pen where the page has them.
+    static func tools(presetCount: Int, offersTextMarking: Bool, offersTextBoxes: Bool, offersReadAloudPen: Bool) -> [Tool] {
         var tools = (0..<max(presetCount, 0)).map { presetIndex in Tool.preset(index: presetIndex) }
         tools += [.eraser, .lasso, .laser]
+        if offersTextMarking { tools.append(.textHighlighter) }
         if offersTextBoxes { tools.append(.text) }
         if offersReadAloudPen { tools.append(.readAloud) }
         return tools
@@ -51,13 +52,14 @@ enum PencilToolRowLayout {
     }
 
     /// The tools the folded forms keep on the bar: the ones a person writes with (every ink preset, the eraser and the
-    /// lasso), and the tool in use wherever it is, in the bar's order. The laser pointer, the text tool and the Read
-    /// Aloud pen, used now and then rather than while writing, go behind the More control.
+    /// lasso), and the tool in use wherever it is, in the bar's order. The laser pointer, the text highlighter, the text
+    /// tool and the Read Aloud pen, used now and then rather than while writing, go behind the More control, so a PDF's
+    /// folded bar is as wide as before the text highlighter and keeps every color upright beside the sidebar.
     static func compactSplit(_ tools: [Tool], toolInUse: Tool?) -> (shown: [Tool], folded: [Tool]) {
         let shown = tools.filter { tool in
             switch tool {
             case .preset, .eraser, .lasso: true
-            case .laser, .text, .readAloud: tool == toolInUse
+            case .laser, .textHighlighter, .text, .readAloud: tool == toolInUse
             }
         }
         return (shown, tools.filter { tool in !shown.contains(tool) })
@@ -97,7 +99,8 @@ enum PencilToolRowLayout {
     /// What a folded form puts behind the bar's More control, least used first: each stage folds everything the one
     /// before it folds, and more (HUNT-317's order).
     enum FoldStage: Int, Comparable, CaseIterable {
-        /// The laser pointer, the text tool and the Read Aloud pen: presenting, typing and listening, not writing.
+        /// The laser pointer, the text highlighter, the text tool and the Read Aloud pen: presenting, marking, typing and
+        /// listening, not writing.
         case occasionalTools
         /// Also the tool's own choices (the eraser's kind, the lasso's type), Other Color with its plus, and Shapes, which
         /// is switched once for a session.
@@ -186,12 +189,13 @@ enum PencilToolRowLayout {
 
     /// What a bar holds, counted for its widths.
     struct Contents: Equatable {
-        /// Every tool of the row, in order (`tools(presetCount:offersTextBoxes:offersReadAloudPen:)`).
+        /// Every tool of the row, in order (`tools(presetCount:offersTextMarking:offersTextBoxes:offersReadAloudPen:)`).
         var tools: [Tool]
         var toolInUse: Tool?
         /// Three for an ink or the eraser; none for the other tools, which have no width.
         var sizeCount: Int
-        /// Whether the tool in use takes a color: not the laser pointer, the text tool or the Read Aloud pen.
+        /// Whether the tool in use takes a color: not the laser pointer, the text tool, the text highlighter or the Read
+        /// Aloud pen.
         var offersColors: Bool
         /// Black and the favorite colors, or the highlighter's colors; none for a tool that takes no color.
         var swatchCount: Int
@@ -259,12 +263,19 @@ extension PencilToolRowLayout {
         case .laser: .laser
         case .text: .text
         case .readAloud: .readAloud
+        case .textHighlighter: .textHighlighter
         }
     }
 
     /// Whether the colors follow the tool's own controls: not for the laser pointer, which points in its own red, nor for
-    /// the Read Aloud pen or the text tool, which have their own.
-    static func offersColors(toolInUse: PencilToolKind) -> Bool { toolInUse != .laser && toolInUse != .readAloud && toolInUse != .text }
+    /// the Read Aloud pen, the text tool or the text highlighter, which have their own (the text highlighter's styles
+    /// stand beside it, `PDFTextHighlighterStyleChoices`).
+    static func offersColors(toolInUse: PencilToolKind) -> Bool {
+        switch toolInUse {
+        case .ink, .eraser, .lasso: true
+        case .laser, .readAloud, .text, .textHighlighter: false
+        }
+    }
 
     /// Whether the bar shows the highlighter's colors rather than black and the favorite colors.
     @MainActor static func editsHighlighterColors(_ toolbox: PencilToolbox) -> Bool { toolbox.presetInUse.ink == .highlighter }
@@ -277,10 +288,11 @@ extension PencilToolRowLayout {
     /// What the bar holds for `toolbox` with these colors from Settings › Colors: the row's tools, the tool in use, its
     /// sizes, black and the favorite colors (or the highlighter's) and the plus, and Add Image where `offersImages`.
     @MainActor static func contents(of toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor],
-                                    offersTextBoxes: Bool, offersReadAloudPen: Bool, offersImages: Bool) -> Contents {
+                                    offersTextMarking: Bool, offersTextBoxes: Bool, offersReadAloudPen: Bool, offersImages: Bool) -> Contents {
         let offersColors = offersColors(toolInUse: toolbox.toolInUse)
         let swatchCount = editsHighlighterColors(toolbox) ? highlighterColors.count : 1 + favorites.count
-        return Contents(tools: tools(presetCount: toolbox.presets.count, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen),
+        return Contents(tools: tools(presetCount: toolbox.presets.count, offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes,
+                                     offersReadAloudPen: offersReadAloudPen),
                         toolInUse: toolInUse(of: toolbox), sizeCount: toolbox.toolInUse == .ink || toolbox.toolInUse == .eraser ? 3 : 0,
                         offersColors: offersColors, swatchCount: offersColors ? swatchCount : 0,
                         showsAddColor: showsAddColor(toolbox), offersImages: offersImages)

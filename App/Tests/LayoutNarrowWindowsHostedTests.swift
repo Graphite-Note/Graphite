@@ -6,7 +6,7 @@
  *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
+ * Version: 0.7
  * Date: 16/11/2026
  */
 
@@ -171,7 +171,7 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         for width in [140, 180, 245, 320, 400, 640, 1_100] as [CGFloat] {
             PencilToolRowForm.lastShown = nil
             let controller = UIHostingController(rootView: PencilToolRow(toolbox: PencilToolbox.shared, drawsShapes: .constant(false), addImage: {},
-                                                                         offersReadAloudPen: true, offersTextBoxes: true)
+                                                                         offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                 .frame(width: width, height: PencilToolbarMetrics.height)
                 .background(Color(uiColor: .systemBackground)))
             let window = UIWindow(windowScene: scene)

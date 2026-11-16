@@ -8,7 +8,7 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 16/11/2026
  */
 
@@ -223,7 +223,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
                 try await waitUntil("the row of the width before is let go") { previousController == nil }
                 PencilToolRowForm.lastShown = nil
                 let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
-                                                                             offersReadAloudPen: true, offersTextBoxes: true)
+                                                                             offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                     .frame(width: width, height: PencilToolbarMetrics.height)
                     .background(Color(uiColor: .systemBackground)))
                 previousController = controller
@@ -263,14 +263,14 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         XCTAssertEqual(toolbox.presetInUse.ink, .pen)
         let favorites = PaletteColor.defaultPalette
         let contents = PencilToolRowLayout.contents(of: toolbox, favorites: favorites, highlighterColors: PaletteColor.defaultHighlighterPalette,
-                                                    offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+                                                    offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         let scene = try scene
         weak var previousController: UIViewController?
         for width in [514, 834, 1_194] as [CGFloat] {
             try await waitUntil("the row of the width before is let go") { previousController == nil }
             PencilToolRowForm.lastShown = nil
             let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
-                                                                         offersReadAloudPen: true, offersTextBoxes: true)
+                                                                         offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                 .frame(width: width, height: PencilToolbarMetrics.height)
                 .background(Color(uiColor: .systemBackground))
                 .defaultAppStorage(isolatedDefaults))

@@ -8,7 +8,7 @@
  *              (HUNT-317); past nine colors the strip scrolls (Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 16/11/2026
  */
 
@@ -78,7 +78,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     /// What a PDF's bar holds with `toolbox` and the default colors: the text tool and, as on his iPad, the Read Aloud pen.
     private func barContents(of toolbox: PencilToolbox) -> Layout.Contents {
         var contents = Layout.contents(of: toolbox, favorites: PaletteColor.defaultPalette, highlighterColors: PaletteColor.defaultHighlighterPalette,
-                                       offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+                                       offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         switch toolbox.toolInUse {
         case .eraser: contents.toolChoicesWidth = Self.eraserChoicesWidth
         case .lasso: contents.toolChoicesWidth = Self.lassoChoicesWidth
@@ -122,7 +122,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         }
     }
 
-    func testTheOwnersBarFoldsNothingUprightOrSidewaysWhileWritingWithAnInk() throws {
+    func testTheOwnersBarFoldsNothingUprightOrSidewaysWhileWritingWithAnInkAndOnlyTheOccasionalToolsInFocus() throws {
         let toolbox = try ownersToolbox()
         for presetIndex in toolbox.presets.indices {
             toolbox.usePreset(at: presetIndex)
@@ -131,15 +131,18 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
             let upright = Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox))
             XCTAssertTrue([Layout.Arrangement.whole(.regular), .whole(.tight)].contains(upright), "\(ink) upright: at most the gaps are smaller (\(upright)).")
         }
-        XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.regular), "The highlighter's six colors fit sideways' spacing.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tight),
+                       "The highlighter's six colors, closer since the text highlighter joined a PDF's tools (2026-11-16).")
         toolbox.usePreset(at: 0)
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tight), "The monoline with black and eight favorites.")
         toolbox.use(.eraser)
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tightest),
                        "The eraser upright, with Strokes or Pixels beside it: smaller gaps and mini colors, nothing folded.")
         toolbox.usePreset(at: 0)
-        XCTAssertEqual(Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: barContents(of: toolbox)), .whole(.tightest),
-                       "Beside Undo, Redo and Write, the monoline's bar still folds nothing.")
+        // Since the text highlighter joined a PDF's tools (2026-11-16) the occasional tools go behind More here; every
+        // writing control, size and color stays on the bar.
+        XCTAssertEqual(Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: barContents(of: toolbox)), .folded(.occasionalTools),
+                       "Beside Undo, Redo and Write, the monoline's bar folds only the laser, text highlighter, text and Read Aloud tools.")
     }
 
     func testBesideUndoRedoAndWriteTheEraserFoldsOnlyTheLeastUsedControls() throws {
@@ -149,7 +152,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         let arrangement = Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: contents)
         XCTAssertEqual(arrangement, .folded(.choicesAndShapes))
         let placement = try XCTUnwrap(Layout.placement(of: arrangement, holding: contents))
-        XCTAssertEqual(placement.foldedTools, [.laser, .text, .readAloud])
+        XCTAssertEqual(placement.foldedTools, [.laser, .textHighlighter, .text, .readAloud])
         XCTAssertFalse(placement.showsToolChoices, "Strokes or Pixels is in More.")
         XCTAssertFalse(placement.showsShapes)
         XCTAssertTrue(placement.showsAddImage, "Add Image stays on the bar.")
@@ -187,7 +190,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
 
     /// The bar's contents for `inks` with each of them, the eraser and the lasso in use.
     private func barContents(inks: [PencilInk], favoriteCount: Int) -> [(String, Layout.Contents)] {
-        let tools = Layout.tools(presetCount: inks.count, offersTextBoxes: true, offersReadAloudPen: true)
+        let tools = Layout.tools(presetCount: inks.count, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true)
         let highlighterColorCount = PaletteColor.defaultHighlighterPalette.count
         var contents = inks.enumerated().map { presetIndex, ink in
             ("\(ink.title) \(presetIndex)", Layout.Contents(tools: tools, toolInUse: .preset(index: presetIndex), sizeCount: 3, offersColors: true,

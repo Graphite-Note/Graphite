@@ -6,7 +6,7 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.33
+ * Version: 0.34
  * Date: 16/11/2026
  */
 
@@ -25,7 +25,7 @@ enum PDFAnnotationPreferenceKey {
     /// Lines or dots shown on PDF pages while writing, and their spacing; never saved.
     static let writingGuidePattern = "GraphitePDFWritingGuidePattern"
     static let writingGuideSpacing = "GraphitePDFWritingGuideSpacing"
-    /// The mark the Mac's highlight button makes (`PDFMarkupStyle`).
+    /// The mark the Mac's highlight button and the iPad's text highlighter make (`PDFMarkupStyle`), kept on each device.
     static let markupStyle = "GraphitePDFMarkupStyle"
     /// The colours saved for highlights, underlines and strikethroughs (`PDFTextMarkColors`).
     static let textMarkColors = "GraphitePDFTextMarkColors"
@@ -116,9 +116,9 @@ private struct PDFPaneContent: View {
     /// bar gives way to the palette while writing.
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
     #endif
+    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     #if os(macOS)
     @State private var markupToolbar = PDFMarkupToolbar()
-    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     @AppStorage(PDFAnnotationPreferenceKey.markupInkStyle) private var markupInkStyle = PDFMarkupInkStyle.default
     @AppStorage(PDFAnnotationPreferenceKey.markupShapeStyle) private var markupShapeStyle = PDFMarkupShapeStyle.default
     #endif
@@ -263,7 +263,7 @@ private struct PDFPaneContent: View {
                     // One row for both, as in Focus, where no tab bar holds the controls.
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar) {
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, offersTextMarking: true, beginWriting: beginWritingFromBar) {
                         EmptyView()
                     } trailingControls: {
                         HStack(spacing: 12) {
@@ -280,7 +280,7 @@ private struct PDFPaneContent: View {
                 } else if showsFixedToolbar {
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar)
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, offersTextMarking: true, beginWriting: beginWritingFromBar)
                 }
             }
         }
@@ -381,7 +381,8 @@ private struct PDFPaneContent: View {
                                       && session.textBoxActivity == .idle,
                                   drawsShapes: drawsShapes, isFocused: isFocused && isAnnotating,
                                   fixedTool: usesFixedToolbar ? toolbox.selection : nil,
-                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing))
+                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing),
+                                  markupStyle: markupStyle)
         #else
         return PDFAnnotationInput(isEnabled: isAnnotating, drawsWithFinger: drawsWithFinger, showsToolPicker: false,
                                   markupTool: markupToolbar.tool, markupStyle: markupStyle)

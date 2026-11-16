@@ -7,7 +7,7 @@
  *              colors with its plus, the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.15
+ * Version: 0.16
  * Date: 16/11/2026
  */
 
@@ -65,6 +65,8 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
     var offersReadAloudPen = false
     /// The text tool, on PDF pages.
     var offersTextBoxes = false
+    /// The text highlighter, on PDF pages with text to mark.
+    var offersTextMarking = false
     /// Called by a tap on the tools while the document is read, which starts writing with
     /// the tool tapped; nil where the bar shows only while writing.
     var beginWriting: (() -> Void)? = nil
@@ -77,7 +79,8 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
         HStack(spacing: 12) {
             leadingControls.padding(.leading, 16)
             PencilToolRow(toolbox: toolbox, drawsShapes: $drawsShapes, addImage: addImage,
-                          undoAvailability: undoAvailability, offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes)
+                          undoAvailability: undoAvailability, offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes,
+                          offersTextMarking: offersTextMarking)
                 // With the tool's own action: the tool tapped is the one written with.
                 .simultaneousGesture(TapGesture().onEnded { beginWriting?() }, isEnabled: beginWriting != nil)
                 .frame(maxWidth: .infinity)
@@ -124,6 +127,8 @@ struct PencilToolRow: View {
     var offersReadAloudPen = false
     /// The text tool, on PDF pages.
     var offersTextBoxes = false
+    /// The text highlighter, on PDF pages.
+    var offersTextMarking = false
     @State private var showsInkOptions = false
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
@@ -165,7 +170,8 @@ struct PencilToolRow: View {
     private var layoutContents: PencilToolRowLayout.Contents {
         PencilToolRowLayout.contents(of: toolbox, favorites: GraphitePreferences.colorPalette(decoding: storedColorPalette),
                                      highlighterColors: GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette),
-                                     offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen, offersImages: addImage != nil)
+                                     offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen,
+                                     offersImages: addImage != nil)
     }
 
     @ViewBuilder private func row(_ arrangement: PencilToolRowLayout.Arrangement, holding contents: PencilToolRowLayout.Contents) -> some View {
@@ -253,7 +259,8 @@ struct PencilToolRow: View {
 
     /// Every tool of the row, in order.
     private var allTools: [PencilToolRowLayout.Tool] {
-        PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen)
+        PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes,
+                                  offersReadAloudPen: offersReadAloudPen)
     }
 
     /// The tool in use as a tool of the row.
@@ -282,6 +289,7 @@ struct PencilToolRow: View {
         case .lasso: buttons.toolButton(.lasso)
         case .laser: buttons.toolButton(.laser)
         case .text: buttons.toolButton(.text)
+        case .textHighlighter: buttons.toolButton(.textHighlighter)
         case .readAloud: buttons.toolButton(.readAloud)
         }
     }
@@ -308,7 +316,7 @@ struct PencilToolRow: View {
                 .opacity(toolbox.erasesWholeStrokes ? 0.55 : 1)
                 .accessibilityHint(toolbox.erasesWholeStrokes ? "Erases pixels at this width" : "")
             }
-        case .lasso, .laser, .text, .readAloud:
+        case .lasso, .laser, .text, .readAloud, .textHighlighter:
             EmptyView()
         }
     }
@@ -509,9 +517,9 @@ private extension View {
 
 extension PencilToolbar where LeadingControls == EmptyView, TrailingControls == EmptyView {
     init(toolbox: PencilToolbox, drawsShapes: Binding<Bool>, addImage: (() -> Void)? = nil, undoAvailability: UndoAvailability? = nil,
-         offersReadAloudPen: Bool = false, offersTextBoxes: Bool = false, beginWriting: (() -> Void)? = nil) {
+         offersReadAloudPen: Bool = false, offersTextBoxes: Bool = false, offersTextMarking: Bool = false, beginWriting: (() -> Void)? = nil) {
         self.init(toolbox: toolbox, drawsShapes: drawsShapes, addImage: addImage, undoAvailability: undoAvailability,
-                  offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes, beginWriting: beginWriting,
+                  offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes, offersTextMarking: offersTextMarking, beginWriting: beginWriting,
                   leadingControls: { EmptyView() }, trailingControls: { EmptyView() })
     }
 }

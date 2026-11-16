@@ -5,8 +5,8 @@
  * Description: An Obsidian-style PDF embed for `![[lecture.pdf]]` in the reading view: a framed,
  *
  * Authors: Bahey Shalash
- * Version: 0.17
- * Date: 13/11/2026
+ * Version: 0.18
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -67,6 +67,8 @@ struct EmbeddedPDFViewer: View {
     @AppStorage(PDFAnnotationPreferenceKey.drawsShapes) private var drawsShapes = false
     @AppStorage(PDFAnnotationPreferenceKey.writingGuidePattern) private var writingGuidePattern = DrawingPaperPattern.plain
     @AppStorage(PDFAnnotationPreferenceKey.writingGuideSpacing) private var writingGuideSpacing = DrawingPaperSpacing.standard
+    /// The mark the iPad's text highlighter makes (`PDFTextHighlighterStyleChoices`).
+    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     #if canImport(UIKit)
     @AppStorage(PencilToolbarStyle.preferenceKey) private var toolbarStyle = PencilToolbarStyle.floating
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -107,7 +109,8 @@ struct EmbeddedPDFViewer: View {
             #if canImport(UIKit)
             if let session, isAnnotating, !session.isProtected, usesFixedToolbar {
                 PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
-                              addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability, offersTextBoxes: true)
+                              addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability, offersTextBoxes: true,
+                              offersTextMarking: true)
             }
             #endif
             content
@@ -336,7 +339,8 @@ struct EmbeddedPDFViewer: View {
                                   showsToolPicker: isEnabled && !usesFixedToolbar && session.selectedPicture == nil && session.textBoxActivity == .idle,
                                   drawsShapes: drawsShapes,
                                   isFocused: isEnabled, fixedTool: usesFixedToolbar ? toolbox.selection : nil,
-                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing))
+                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing),
+                                  markupStyle: markupStyle)
         #else
         return PDFAnnotationInput(isEnabled: isEnabled, drawsWithFinger: drawsWithFinger, showsToolPicker: false, drawsShapes: drawsShapes)
         #endif
