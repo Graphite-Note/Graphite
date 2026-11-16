@@ -22,6 +22,8 @@ enum EditorCommand {
     case bulletList, numberedList, task
     case indent, outdent
     case moveLinesUp, moveLinesDown
+    /// Shift-Return: a line break that starts no new list item (`MarkdownEditing.breakingLineWithinItem`).
+    case lineBreakInItem
     case insertWikilink, insertTag, insertMarkdownLink
     case attach, draw
     case find, findAndReplace
@@ -102,6 +104,7 @@ extension MarkdownEditing {
         case .outdent: return outdenting(in: text, selection: selection, indentUnit: indentUnit, tabSize: tabSize)
         case .moveLinesUp: return movingLines(up: true, in: text, selection: selection)
         case .moveLinesDown: return movingLines(up: false, in: text, selection: selection)
+        case .lineBreakInItem: return breakingLineWithinItem(in: text, selection: selection)
         case .insertWikilink:
             // Typed `[[`, so link suggestions open for the text that follows.
             let selected = text.substring(with: selection)

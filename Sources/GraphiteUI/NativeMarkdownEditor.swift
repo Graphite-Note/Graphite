@@ -613,7 +613,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
 
         /// The text as an immutable snapshot: reading `UITextView.text` copies the whole note.
-        private func currentSource(of textView: UITextView) -> NSString {
+        func currentSource(of textView: UITextView) -> NSString {
             styling.currentSource(of: textView)
         }
 
@@ -1066,6 +1066,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             guard !isApplyingInsertion else { return }
             settleTextChange(in: textView)
             publish(textView)
+            // Typing can carry the cursor into code, as a fence's closing line does.
+            updateKeyboardForCode(in: textView)
             updateCompletion(in: textView)
         }
 
@@ -1270,6 +1272,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // During an edit the selection is reported before the text; `textViewDidChange`
             // updates the suggestions right after, for the same selection.
             guard !textState.cachesDescribeOldText else { return }
+            updateKeyboardForCode(in: textView)
             updateCompletion(in: textView)
         }
 

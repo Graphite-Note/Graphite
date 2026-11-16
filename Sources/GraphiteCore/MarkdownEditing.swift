@@ -5,8 +5,8 @@
  * Description: Obsidian's editing commands on a note's text, each as one edit that leaves the rest unchanged.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 1.0
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -132,7 +132,7 @@ public enum MarkdownEditing {
 
     /// The line break a new line after this one gets: the line's own, or the one the line
     /// above has when this is the note's last line, so a CRLF note stays CRLF.
-    private static func lineBreakForNewLine(lineStart: Int, lineEnd: Int, contentsEnd: Int, in text: NSString) -> String {
+    static func lineBreakForNewLine(lineStart: Int, lineEnd: Int, contentsEnd: Int, in text: NSString) -> String {
         var ending = text.substring(with: NSRange(location: contentsEnd, length: lineEnd - contentsEnd))
         if ending.isEmpty, lineStart > 0 {
             let previousLine = lineContents(in: text, range: text.lineRange(for: NSRange(location: lineStart - 1, length: 0)))
@@ -148,9 +148,16 @@ public enum MarkdownEditing {
     /// closing fence or to the first line outside the quote, whichever comes first. A fence
     /// opens within the indentation limit of its list item, as the editor styles it.
     private static func isInCodeOrFrontmatter(lineStart: Int, in text: NSString) -> Bool {
+        codeQuoteDepth(lineStart: lineStart, in: text) != nil
+    }
+
+    /// How many quote markers the fenced code holding the line at `lineStart` is inside of
+    /// (0 for code outside quotes and for the frontmatter), or nil when the line is not code,
+    /// as `isInCodeOrFrontmatter(lineStart:in:)` reads it.
+    static func codeQuoteDepth(lineStart: Int, in text: NSString) -> Int? {
         var location = 0
         if let frontmatterEnd = frontmatterEnd(in: text) {
-            if lineStart < frontmatterEnd { return true }
+            if lineStart < frontmatterEnd { return 0 }
             location = frontmatterEnd
         }
         var openFence: String?
@@ -185,13 +192,13 @@ public enum MarkdownEditing {
                 fenceQuoteDepth = depth
             }
         }
-        guard openFence != nil else { return false }
-        guard fenceQuoteDepth > 0 else { return true }
+        guard openFence != nil else { return nil }
+        guard fenceQuoteDepth > 0 else { return 0 }
         // The line itself is outside a quoted fence when it has fewer quote markers than the fence.
         var lineContentsEnd = 0
         text.getLineStart(nil, end: nil, contentsEnd: &lineContentsEnd, for: NSRange(location: lineStart, length: 0))
         let line = text.substring(with: NSRange(location: lineStart, length: lineContentsEnd - lineStart))
-        return MarkdownQuoteSyntax.markersAndTrimmedContent(of: line, maximumDepth: fenceQuoteDepth).depth >= fenceQuoteDepth
+        return MarkdownQuoteSyntax.markersAndTrimmedContent(of: line, maximumDepth: fenceQuoteDepth).depth >= fenceQuoteDepth ? fenceQuoteDepth : nil
     }
 
     /// Where the note's frontmatter ends, just past its closing line, or nil when the note
@@ -565,34 +572,45 @@ public enum MarkdownEditing {
     // MARK: Pairs
 
     /// Brackets and quotes typed in pairs, as Obsidian's "Auto pair brackets" does.
-    public static let bracketPairs: [String: String] = ["(": ")", "[": "]", "{": "}", "\"": "\"", "`": "`"]
-    /// Markdown markers that wrap a selection, as Obsidian's "Auto pair Markdown syntax" does.
-    public static let markdownWrapMarkers: Set<String> = ["*", "_", "~", "=", "`", "$"]
+    public static let bracketPairs: [String: String] = ["(": ")", "[": "]", "{": "}", "\"": "\"", "'": "'"]
+    /// Markdown markers typed in pairs, as Obsidian's "Auto pair Markdown syntax" does with
+    /// the backtick. Obsidian also pairs `*` and `_`; Graphite does not, since a bullet typed
+    /// as `* ` would end with a stray `*` and `snake_case` would get a second underscore.
+    public static let markdownPairs: [String: String] = ["`": "`"]
+    /// Markdown markers that wrap a selection, as Obsidian's "Auto pair Markdown syntax" does;
+    /// `%` typed twice makes an Obsidian comment.
+    public static let markdownWrapMarkers: Set<String> = ["*", "_", "~", "=", "`", "$", "%"]
+
+    /// The pairs typed with the two settings as they are.
+    private static func typedPairs(pairsBrackets: Bool, pairsMarkdown: Bool) -> [String: String] {
+        (pairsBrackets ? bracketPairs : [:]).merging(pairsMarkdown ? markdownPairs : [:]) { bracketClosing, _ in bracketClosing }
+    }
 
     /// What typing `typed` should do instead of inserting it, or nil to insert it as usual.
     public static func pairing(typed: String, in text: NSString, selection: NSRange, pairsBrackets: Bool, pairsMarkdown: Bool) -> MarkdownTextEdit? {
         guard typed.utf16.count == 1 else { return nil }
+        let pairs = typedPairs(pairsBrackets: pairsBrackets, pairsMarkdown: pairsMarkdown)
         let next = selection.length == 0 && selection.location < text.length ? text.substring(with: NSRange(location: selection.location, length: 1)) : ""
         let previous = selection.location > 0 ? text.substring(with: NSRange(location: selection.location - 1, length: 1)) : ""
         if selection.length > 0 {
-            let wraps = (pairsBrackets && bracketPairs[typed] != nil) || (pairsMarkdown && markdownWrapMarkers.contains(typed))
+            let wraps = pairs[typed] != nil || (pairsMarkdown && markdownWrapMarkers.contains(typed))
             guard wraps else { return nil }
-            let closing = bracketPairs[typed] ?? typed
+            let closing = pairs[typed] ?? typed
             let selected = text.substring(with: selection)
             return MarkdownTextEdit(range: selection, replacement: typed + selected + closing,
                                     selectionAfter: NSRange(location: selection.location + 1, length: selection.length))
         }
-        guard pairsBrackets else { return nil }
         // Typing a closing character right in front of the same one steps over it.
-        if [")", "]", "}", "\"", "`"].contains(typed), next == typed {
-            return MarkdownTextEdit(range: NSRange(location: selection.location, length: 0), replacement: "", selectionAfter: NSRange(location: selection.location + 1, length: 0))
+        if Set(pairs.values).contains(typed), next == typed {
+            return MarkdownTextEdit(range: NSRange(location: selection.location, length: 0), replacement: "",
+                                    selectionAfter: NSRange(location: selection.location + 1, length: 0))
         }
-        guard let closing = bracketPairs[typed] else { return nil }
+        guard let closing = pairs[typed] else { return nil }
         let previousScalar = scalar(containingUnitAt: selection.location - 1, in: text)
         let nextScalar = selection.length == 0 ? scalar(containingUnitAt: selection.location, in: text) : nil
-        // Quotes and backticks pair only at the start of a word, so "it's" stays as typed and
-        // three backticks make a code fence.
-        if typed == "\"" || typed == "`" {
+        // Quotes and backticks pair only at the start of a word, so "it's" and "l'été" stay as
+        // typed and three backticks make a code fence.
+        if typed == "\"" || typed == "'" || typed == "`" {
             if let previousScalar, CharacterSet.alphanumerics.contains(previousScalar) || previous == typed { return nil }
         }
         // In front of a word, an opening bracket is typed alone.
@@ -638,11 +656,11 @@ public enum MarkdownEditing {
     }
 
     /// Backspace between an empty pair, such as `(|)` or `[[|]]`, removes both halves.
-    public static func deletingPair(in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
+    public static func deletingPair(in text: NSString, selection: NSRange, pairsBrackets: Bool = true, pairsMarkdown: Bool = true) -> MarkdownTextEdit? {
         guard selection.length == 0, selection.location > 0, selection.location < text.length else { return nil }
         let previous = text.substring(with: NSRange(location: selection.location - 1, length: 1))
         let next = text.substring(with: NSRange(location: selection.location, length: 1))
-        guard bracketPairs[previous] == next else { return nil }
+        guard typedPairs(pairsBrackets: pairsBrackets, pairsMarkdown: pairsMarkdown)[previous] == next else { return nil }
         return MarkdownTextEdit(range: NSRange(location: selection.location - 1, length: 2), replacement: "", selectionAfter: NSRange(location: selection.location - 1, length: 0))
     }
 

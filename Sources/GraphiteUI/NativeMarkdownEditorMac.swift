@@ -1043,7 +1043,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             case .moveLinesUp: return moveLines(up: true, in: textView)
             case .moveLinesDown: return moveLines(up: false, in: textView)
             case .heading, .wrap, .bulletList, .numberedList, .task, .indent, .outdent,
-                 .insertWikilink, .insertTag, .insertMarkdownLink:
+                 .insertWikilink, .insertTag, .insertMarkdownLink, .lineBreakInItem:
                 guard let edit = MarkdownEditing.edit(for: command, in: currentSource(of: textView), selection: textView.selectedRange(),
                                                       indentUnit: configuration.editingBehavior.indentUnit, tabSize: configuration.editingBehavior.tabSize) else { return false }
                 perform(edit, in: textView)

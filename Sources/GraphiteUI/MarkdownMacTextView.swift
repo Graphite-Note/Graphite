@@ -136,7 +136,20 @@ final class MarkdownMacTextView: NSTextView {
 
     override func keyDown(with event: NSEvent) {
         if runKeyCommand(for: event) { return }
+        // Shift-Return breaks the line without a new list item, as Obsidian's Shift-Enter does;
+        // AppKit gives it the same `insertNewline:` as Return.
+        let returnKeyCodes: Set<UInt16> = [36, 76]  // kVK_Return and kVK_ANSI_KeypadEnter
+        if returnKeyCodes.contains(event.keyCode), event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .shift,
+           !hasMarkedText(), let keyCommandOwner, !keyCommandOwner.session.completion.isVisible,
+           keyCommandOwner.runKeyCommand(.lineBreakInItem, in: self) { return }
         super.keyDown(with: event)
+    }
+
+    /// Control-Return: AppKit would write a Unicode line separator, which Markdown readers do
+    /// not take as a new line, so it makes the same line break as Shift-Return.
+    override func insertLineBreak(_ sender: Any?) {
+        if let keyCommandOwner, keyCommandOwner.runKeyCommand(.lineBreakInItem, in: self) { return }
+        insertNewline(sender)
     }
 
     /// Runs the editing command the vault gives the key press; false when it gives none, or

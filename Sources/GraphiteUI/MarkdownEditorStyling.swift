@@ -391,6 +391,19 @@ final class MarkdownEditorStyling {
     }
 
     /// The formattable block whose code holds `location`, with its code now.
+    /// Whether `location` is in code: on a line of a fenced code block, fences included, or
+    /// inside an inline code span. Answered from the block context checkpoints and the one
+    /// line, so it is cheap enough for every selection change.
+    func isCode(at location: Int, in textView: any MarkdownStyledTextView, source: NSString) -> Bool {
+        let textStorage = textView.styledTextStorage
+        guard location <= source.length, textStorage.length == source.length else { return false }
+        let lineRange = source.lineRange(for: NSRange(location: location, length: 0))
+        if blockContextCheckpoints.blockContext(atLineStart: lineRange.location, in: textStorage, source: source) == .fencedCode { return true }
+        return MarkdownStyleScanner.spans(in: source, range: lineRange).contains { span in
+            span.style == .inlineCode && span.range.location < location && location < NSMaxRange(span.range)
+        }
+    }
+
     private func codeBlock(at location: Int, in textView: any MarkdownStyledTextView, source: NSString) -> VisitedCodeBlock? {
         let textStorage = textView.styledTextStorage
         guard location <= source.length, textStorage.length == source.length else { return nil }

@@ -345,6 +345,12 @@ final class MarkdownTextView: UITextView {
 
     override var keyCommands: [UIKeyCommand]? {
         var keyCommands = (super.keyCommands ?? []) + editorKeyCommands
+        if completion?.isVisible != true, markedTextRange == nil {
+            // Shift-Return breaks the line without a new list item, as Obsidian's Shift-Enter does.
+            let lineBreak = UIKeyCommand(title: "", action: #selector(breakLineWithinItem), input: "\r", modifierFlags: .shift)
+            lineBreak.wantsPriorityOverSystemBehavior = true
+            keyCommands.append(lineBreak)
+        }
         if completion?.isVisible == true {
             for (input, name) in [(UIKeyCommand.inputUpArrow, "up"), (UIKeyCommand.inputDownArrow, "down"), (UIKeyCommand.inputEscape, "escape")] {
                 let keyCommand = UIKeyCommand(title: "", action: #selector(runCompletionKey(_:)), input: input, modifierFlags: [], propertyList: name)
@@ -362,6 +368,10 @@ final class MarkdownTextView: UITextView {
         default:
             if let dismissCompletion { dismissCompletion() } else { completion?.dismiss() }
         }
+    }
+
+    @objc private func breakLineWithinItem() {
+        runCommand?(.lineBreakInItem)
     }
 
     @objc private func runKeyCommand(_ keyCommand: UIKeyCommand) {

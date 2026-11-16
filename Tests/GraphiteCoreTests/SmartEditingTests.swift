@@ -1,3 +1,14 @@
+/**
+ * File: SmartEditingTests.swift
+ * -----------------------------
+ * Layer: Tests
+ * Description: Obsidian's typing helpers on note text: lists on Return, Tab, toggles, wrapping, and the pairs of its two settings.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 16/11/2026
+ */
+
 import GraphiteTestSupport
 import XCTest
 @testable import GraphiteCore
@@ -82,5 +93,41 @@ final class SmartEditingTests: XCTestCase {
         XCTAssertNil(MarkdownEditing.pairing(typed: "*", in: "a" as NSString, selection: NSRange(location: 1, length: 0), pairsBrackets: true, pairsMarkdown: true))
         XCTAssertEqual(applying(MarkdownEditing.deletingPair(in: "f()" as NSString, selection: NSRange(location: 2, length: 0)), to: "f()"), "f")
         XCTAssertNil(MarkdownEditing.deletingPair(in: "f(x)" as NSString, selection: NSRange(location: 2, length: 0)))
+    }
+
+    private func typing(_ typed: String, in text: String, at location: Int, length: Int = 0, brackets: Bool = true, markdown: Bool = true) -> String? {
+        applying(MarkdownEditing.pairing(typed: typed, in: text as NSString, selection: NSRange(location: location, length: length),
+                                         pairsBrackets: brackets, pairsMarkdown: markdown), to: text)
+    }
+
+    /// Obsidian 1.15.1 pairs the backtick under "Auto pair Markdown syntax", not "Auto pair brackets".
+    func testABacktickPairsWithTheMarkdownSettingAsInObsidian() {
+        XCTAssertEqual(typing("`", in: "", at: 0, brackets: false), "``")
+        XCTAssertNil(typing("`", in: "", at: 0, markdown: false))
+        XCTAssertEqual(typing("(", in: "", at: 0, markdown: false), "()")
+        XCTAssertNil(typing("(", in: "", at: 0, brackets: false))
+        let backspace = MarkdownEditing.deletingPair(in: "``" as NSString, selection: NSRange(location: 1, length: 0),
+                                                     pairsBrackets: false, pairsMarkdown: true)
+        XCTAssertEqual(applying(backspace, to: "``"), "")
+        XCTAssertNil(MarkdownEditing.deletingPair(in: "``" as NSString, selection: NSRange(location: 1, length: 0), pairsBrackets: true, pairsMarkdown: false))
+    }
+
+    func testASingleQuotePairsOnlyAtTheStartOfAWordAndStepsOver() {
+        XCTAssertEqual(typing("'", in: "say ", at: 4), "say ''")
+        XCTAssertNil(typing("'", in: "it", at: 2), "An apostrophe after a letter is typed alone: it's.")
+        XCTAssertNil(typing("'", in: "l", at: 1), "l'été stays as typed.")
+        XCTAssertEqual(typing("'", in: "''", at: 1), "''", "The closing quote steps over the inserted one.")
+        XCTAssertEqual(typing("'", in: "quote me", at: 0, length: 5), "'quote' me")
+        XCTAssertNil(typing("'", in: "", at: 0, brackets: false))
+    }
+
+    func testPercentWrapsASelectionTwiceIntoAComment() {
+        XCTAssertEqual(typing("%", in: "hide me", at: 0, length: 4), "%hide% me")
+        let once = MarkdownEditing.pairing(typed: "%", in: "hide me" as NSString, selection: NSRange(location: 0, length: 4),
+                                           pairsBrackets: true, pairsMarkdown: true)
+        XCTAssertEqual(once?.selectionAfter, NSRange(location: 1, length: 4))
+        XCTAssertEqual(typing("%", in: "%hide% me", at: 1, length: 4), "%%hide%% me")
+        XCTAssertNil(typing("%", in: "50", at: 2), "With nothing selected, % is typed alone.")
+        XCTAssertNil(typing("%", in: "hide", at: 0, length: 4, markdown: false))
     }
 }

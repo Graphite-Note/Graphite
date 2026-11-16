@@ -2,11 +2,11 @@
  * File: MacEditorParityTests.swift
  * --------------------------------
  * Layer: Tests
- * Description: The Mac note editor does what the iPad's does: lists, Tab, pairs, folds, the note's name, and clicks that act on release.
+ * Description: The Mac note editor does what the iPad's does: lists, Tab, pairs, code fences, folds, the note's name, and clicks that act on release.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 02/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -100,6 +100,55 @@ final class MacEditorParityTests: XCTestCase {
         editor.textView.setSelectedRange(NSRange(location: 1, length: 0))
         editor.textView.deleteBackward(nil)
         XCTAssertEqual(editor.textView.string, "")
+    }
+
+    func testATypedFenceClosesBelowAndUndoTakesItBackInOneStep() async throws {
+        let editor = try await makeEditor(text: "Intro\n\n``", cursor: 9)
+        editor.textView.insertText("`", replacementRange: editor.textView.selectedRange())
+        XCTAssertEqual(editor.textView.string, "Intro\n\n```\n```")
+        XCTAssertEqual(editor.textView.selectedRange(), NSRange(location: 10, length: 0))
+        for character in "js" { editor.textView.insertText(String(character), replacementRange: editor.textView.selectedRange()) }
+        editor.textView.insertNewline(nil)
+        XCTAssertEqual(editor.textView.string, "Intro\n\n```js\n\n```", "Return after the language opens the line between the fences.")
+        XCTAssertEqual(editor.session.text, "Intro\n\n```js\n\n```")
+        let backtick = try await makeEditor(text: "``", cursor: 2)
+        backtick.textView.insertText("`", replacementRange: backtick.textView.selectedRange())
+        backtick.coordinator.noteUndoManager.undo()
+        XCTAssertEqual(backtick.textView.string, "``", "One undo takes back the backtick and the closing fence together.")
+    }
+
+    func testABacktickPairsUnderTheMarkdownSettingAndAQuoteUnderBrackets() async throws {
+        let editor = try await makeEditor(text: "", cursor: 0)
+        var configuration = editor.coordinator.configuration
+        configuration.editingBehavior.pairsBrackets = false
+        editor.coordinator.configuration = configuration
+        editor.textView.insertText("`", replacementRange: editor.textView.selectedRange())
+        XCTAssertEqual(editor.textView.string, "``", "Auto pair Markdown syntax pairs the backtick, as in Obsidian.")
+        editor.textView.setSelectedRange(NSRange(location: 2, length: 0))
+        editor.textView.insertText(" '", replacementRange: editor.textView.selectedRange())
+        XCTAssertEqual(editor.textView.string, "`` '", "With brackets off, a quote is typed alone.")
+        configuration.editingBehavior.pairsBrackets = true
+        editor.coordinator.configuration = configuration
+        editor.textView.insertText(" ", replacementRange: editor.textView.selectedRange())
+        editor.textView.insertText("'", replacementRange: editor.textView.selectedRange())
+        XCTAssertEqual(editor.textView.string, "`` ' ''")
+    }
+
+    func testShiftReturnBreaksAnItemsLineWithoutANewItemAndControlReturnWritesNoLineSeparator() async throws {
+        let editor = try await makeEditor(text: "- item", cursor: 6)
+        // The editor's update gives the text view its command owner; the fixture does not run it.
+        editor.textView.keyCommandOwner = editor.coordinator
+        let shiftReturn = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .shift, timestamp: 0,
+                                                         windowNumber: editor.window.windowNumber, context: nil, characters: "\r",
+                                                         charactersIgnoringModifiers: "\r", isARepeat: false, keyCode: 36))
+        editor.textView.keyDown(with: shiftReturn)
+        XCTAssertEqual(editor.textView.string, "- item\n  ")
+        XCTAssertEqual(editor.textView.selectedRange(), NSRange(location: 9, length: 0))
+        editor.coordinator.noteUndoManager.undo()
+        XCTAssertEqual(editor.textView.string, "- item")
+        editor.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        editor.textView.insertLineBreak(nil)
+        XCTAssertEqual(editor.textView.string, "- item\n  ", "Control-Return makes the same break, with no U+2028.")
     }
 
     func testTypedMarkerWrapsTheSelection() async throws {
