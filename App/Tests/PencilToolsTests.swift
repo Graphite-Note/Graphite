@@ -5,8 +5,8 @@
  * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
  *
  * Authors: Bahey Shalash
- * Version: 0.22
- * Date: 04/11/2026
+ * Version: 0.23
+ * Date: 16/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -633,8 +633,9 @@ final class PencilToolsTests: XCTestCase {
     }
 
     /// With the highlighter ignoring tilt, the canvas draws with an invisible stand-in and
-    /// shows the band the stroke will become; at the lift a tilted Pencil's stroke becomes
-    /// that band, so nothing on screen changes, and no frame shows the canvas without it.
+    /// shows the stroke it will become, drawn by PencilKit; at the lift a tilted Pencil's stroke
+    /// becomes that stroke, so nothing on screen changes, its edges and ends included (HUNT-356),
+    /// and no frame shows the canvas without it.
     func testAnEvenHighlightLooksTheSameBeforeAndAfterTheLift() async throws {
         UserDefaults.standard.set(false, forKey: PDFAnnotationPreferenceKey.drawsShapes)
         UserDefaults.standard.set(true, forKey: EvenHighlighterPreference.key)
@@ -660,7 +661,10 @@ final class PencilToolsTests: XCTestCase {
                           azimuth: 0.4 + 0.05 * CGFloat(pointIndex), altitude: .pi / 5)
         }
         let invisibleStroke = PKStroke(ink: standIn.ink, path: PKStrokePath(controlPoints: tiltedPoints, creationDate: Date()))
-        let band = canvas.convert(EvenHighlighter.bandPath(through: canvasPoints, width: standIn.width).boundingBoxOfPath.insetBy(dx: -12, dy: -12), to: nil)
+        let shownStroke = try XCTUnwrap(EvenHighlighter.evenStroke(through: tiltedPoints.map(\.location), width: standIn.width, ink: PKInk(.marker, color: EvenHighlighter.inkColor(for: highlighterColor))))
+        let shownRegion = shownStroke.renderBounds
+        let band = canvas.convert(CGRect(x: shownRegion.minX * canvas.zoomScale, y: shownRegion.minY * canvas.zoomScale, width: shownRegion.width * canvas.zoomScale,
+                                         height: shownRegion.height * canvas.zoomScale).insetBy(dx: -12, dy: -12), to: nil)
 
         canvas.showEvenStrokeBeingDrawn(through: canvasPoints)
         try await Task.sleep(for: .milliseconds(100))
@@ -677,17 +681,13 @@ final class PencilToolsTests: XCTestCase {
         let inked = { (pixel: (Int, Int, Int)) in pixel.2 < 200 }
         let inkedWhileDrawing = whileDrawing.filter(inked).count, inkedAfterTheLift = afterTheLift.filter(inked).count
         XCTAssertGreaterThan(inkedWhileDrawing, 1000)
-        XCTAssertEqual(Double(inkedAfterTheLift), Double(inkedWhileDrawing), accuracy: Double(inkedWhileDrawing) * 0.12, "As large before and after.")
-        // The same color: PencilKit softens the band's edges over a pixel or two, which the
-        // band drawn while the stroke is drawn does not, so only the inside is compared.
-        let inkedInBoth = zip(whileDrawing, afterTheLift).filter { before, after in inked(before) && inked(after) }
-        func medianBlue(_ pixels: [(Int, Int, Int)]) -> Int { pixels.map(\.2).sorted()[pixels.count / 2] }
-        XCTAssertFalse(inkedInBoth.isEmpty)
-        XCTAssertEqual(Double(medianBlue(inkedInBoth.map(\.0))), Double(medianBlue(inkedInBoth.map(\.1))), accuracy: 6)
-        let changedPixels = inkedInBoth.filter { before, after in
+        XCTAssertEqual(Double(inkedAfterTheLift), Double(inkedWhileDrawing), accuracy: Double(inkedWhileDrawing) * 0.02, "As large before and after.")
+        // Every pixel, edges and ends included: until 2026-11-16 the band shown while drawing had hard
+        // edges and square ends, which became PencilKit's softer, rounded stroke at the lift (HUNT-356).
+        let changedPixels = zip(whileDrawing, afterTheLift).filter { before, after in
             abs(before.0 - after.0) > 24 || abs(before.1 - after.1) > 24 || abs(before.2 - after.2) > 24
         }.count
-        XCTAssertLessThan(Double(changedPixels), Double(inkedWhileDrawing) * 0.15, "Only the softened edges differ.")
+        XCTAssertLessThan(Double(changedPixels), Double(inkedWhileDrawing) * 0.01, "Nothing changes at the lift.")
         attachScreenshot(of: controller, named: "Even highlight after the lift")
     }
 

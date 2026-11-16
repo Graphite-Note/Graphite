@@ -2,12 +2,12 @@
  * File: EvenHighlighterTests.swift
  * --------------------------------
  * Layer: Tests
- * Description: The even highlighter's stroke: one upright tip as wide as the tool, its band, and its translucent
- *              color over text.
+ * Description: The even highlighter's stroke: one upright tip as wide as the tool, the same stroke shown while it is
+ *              drawn, and its translucent color over text.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 #if canImport(UIKit)
 import XCTest
@@ -40,12 +40,12 @@ final class EvenHighlighterTests: XCTestCase {
             XCTAssertEqual(point.size.height, 18 / EvenHighlighter.chiselLengthPerPointSize, accuracy: 0.001)
             XCTAssertEqual(point.azimuth, EvenHighlighter.tipAzimuth, accuracy: 0.001)
             XCTAssertEqual(point.altitude, EvenHighlighter.uprightAltitude, accuracy: 0.001)
-            XCTAssertEqual(point.force, evenPoints[0].force, accuracy: 0.001)
+            XCTAssertEqual(point.force, EvenHighlighter.tipForce, accuracy: 0.001)
             XCTAssertEqual(point.opacity, EvenHighlighter.tipOpacity, accuracy: 0.001, "One opacity, however fast the stroke was drawn.")
         }
         XCTAssertEqual(evenStroke.ink.inkType, .marker)
         XCTAssertEqual(evenStroke.path.creationDate, stroke.path.creationDate)
-        XCTAssertEqual(evenStroke.randomSeed, stroke.randomSeed)
+        XCTAssertEqual(evenStroke.randomSeed, EvenHighlighter.textureSeed, "The seed of the stroke shown while it was drawn")
     }
 
     func testWidthIsInTheDrawingsPointsUnderAScaledStroke() throws {
@@ -165,22 +165,27 @@ final class EvenHighlighterTests: XCTestCase {
         XCTAssertEqual(blue, 0.263, accuracy: 0.001)
     }
 
-    /// The band the canvas shows while the stand-in draws reaches as far as the even stroke.
-    func testTheBandReachesPastTheStrokesEndsAsTheEvenStrokeDoes() throws {
-        let points = (0...8).map { step in CGPoint(x: 100 + 25 * CGFloat(step), y: 300) }
-        let band = EvenHighlighter.bandPath(through: points, width: 24).boundingBoxOfPath
-        let stroke = PKStroke(ink: PKInk(.marker, color: .systemYellow), path: PKStrokePath(controlPoints: points.enumerated().map { pointIndex, location in
-            PKStrokePoint(location: location, timeOffset: TimeInterval(pointIndex) * 0.016, size: CGSize(width: 16, height: 16), opacity: 1, force: 1,
-                          azimuth: .pi / 2, altitude: .pi / 2)
-        }, creationDate: Date()))
-        let evenBounds = try XCTUnwrap(EvenHighlighter.evenStroke(stroke, width: 24)).renderBounds
-        XCTAssertEqual(band.minX, evenBounds.minX, accuracy: 4)
-        XCTAssertEqual(band.maxX, evenBounds.maxX, accuracy: 4)
-        let dot = EvenHighlighter.bandPath(through: [CGPoint(x: 50, y: 50)], width: 24).boundingBoxOfPath
-        XCTAssertGreaterThan(dot.width, 0, "A dot's band has a length.")
-        XCTAssertLessThan(EvenHighlighter.bandOpacity(forWidth: 8), EvenHighlighter.bandOpacity(forWidth: 50))
-        XCTAssertEqual(EvenHighlighter.bandOpacity(forWidth: 2), EvenHighlighter.bandOpacity(forWidth: 8))
-        XCTAssertLessThanOrEqual(EvenHighlighter.bandOpacity(forWidth: 200), 1)
+    /// The stroke the canvas shows while the stand-in draws is the even stroke the lift keeps,
+    /// whatever the drawn stroke's tilt, pressure and seed (HUNT-356): the same points, tips and texture.
+    func testTheStrokeShownWhileDrawingIsTheEvenStrokeKeptAtTheLift() throws {
+        let drawn = tiltedStroke()
+        let ink = PKInk(.marker, color: EvenHighlighter.inkColor(for: .systemYellow))
+        let kept = try XCTUnwrap(EvenHighlighter.evenStroke(drawn, width: 24, ink: ink))
+        let shown = try XCTUnwrap(EvenHighlighter.evenStroke(through: Array(drawn.path).map(\.location), width: 24, ink: ink))
+        XCTAssertEqual(Array(shown.path).map(\.location), Array(kept.path).map(\.location))
+        for (shownPoint, keptPoint) in zip(Array(shown.path), Array(kept.path)) {
+            XCTAssertEqual(shownPoint.size, keptPoint.size)
+            XCTAssertEqual(shownPoint.opacity, keptPoint.opacity, accuracy: 0.001)
+            XCTAssertEqual(shownPoint.force, keptPoint.force, accuracy: 0.001)
+            XCTAssertEqual(shownPoint.azimuth, keptPoint.azimuth, accuracy: 0.001)
+            XCTAssertEqual(shownPoint.altitude, keptPoint.altitude, accuracy: 0.001)
+        }
+        XCTAssertEqual(shown.randomSeed, kept.randomSeed)
+        XCTAssertEqual(shown.ink.inkType, kept.ink.inkType)
+        XCTAssertEqual(shown.ink.color, kept.ink.color)
+        XCTAssertTrue(shown.renderBounds.insetBy(dx: -0.5, dy: -0.5).contains(kept.renderBounds))
+        XCTAssertNotNil(EvenHighlighter.evenStroke(through: [CGPoint(x: 50, y: 50)], width: 24, ink: ink), "A dot is shown too.")
+        XCTAssertNil(EvenHighlighter.evenStroke(through: [], width: 24, ink: ink))
     }
 
     func testOnlyHighlighterStrokesAndUsableWidthsAreChanged() {

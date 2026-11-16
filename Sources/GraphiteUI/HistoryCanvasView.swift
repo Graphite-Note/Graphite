@@ -5,8 +5,8 @@
  * Description: A PencilKit canvas whose undo history belongs to its document rather than to the canvas.
  *
  * Authors: Bahey Shalash
- * Version: 0.29
- * Date: 04/11/2026
+ * Version: 0.30
+ * Date: 16/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -628,7 +628,7 @@ class HistoryCanvasView: PKCanvasView {
               let drawingShape = ShapeRecognizer.recognizeHeldStroke(canvasPoints: strokePoints, zoomScale: Double(zoomScale)) else { return }
         let shape = drawingShape.transformed(scale: Double(zoomScale), rotation: 0, about: .zero)
         heldShape = .overStroke(shape: shape, drawingShape: drawingShape, heldPoint: heldPoint)
-        // The shape shows instead of the highlighter's band, which comes back if the stroke goes on.
+        // The shape shows instead of the highlighter's stroke, which comes back if the stroke goes on.
         removeEvenStrokeLayer()
         showShapePreview(shape, color: shownColor(of: inkingTool.ink), width: Self.drawnWidth(of: inkingTool))
         // Apple Pencil Pro taps when the stroke snaps to its shape.
@@ -816,9 +816,11 @@ class HistoryCanvasView: PKCanvasView {
 
     // MARK: The even highlighter's stroke while it is drawn
 
-    /// Shows the stroke the invisible stand-in is drawing as the band its even form draws
-    /// (`EvenHighlighter.bandPath`), in the highlighter's color, so nothing changes at the lift.
-    private let evenStrokeLayer = CAShapeLayer()
+    /// Shows the stroke the invisible stand-in is drawing as its even form, drawn by PencilKit
+    /// (`EvenHighlighter.evenStroke(through:width:ink:)`): the stroke the lift keeps, so nothing
+    /// changes then. Until 2026-11-16 it was a band of one flat color with square ends and hard
+    /// edges, which became PencilKit's softer, rounded stroke at the lift (HUNT-356).
+    private let evenStrokeLayer = CALayer()
     private var evenStrokePoints: [CGPoint] = []
     /// Whether PencilKit has begun drawing the stroke the layer shows: once it stops, as when
     /// palm rejection or a held shape takes the stroke back, the layer goes too.
@@ -838,7 +840,7 @@ class HistoryCanvasView: PKCanvasView {
         return follower
     }()
 
-    /// For tests, which cannot send touches: shows the band of a stroke being drawn through
+    /// For tests, which cannot send touches: shows the even stroke of a stroke being drawn through
     /// points in the canvas's own coordinates, as the stroke's touch would.
     func showEvenStrokeBeingDrawn(through points: [CGPoint]) {
         guard let firstPoint = points.first else { return }
@@ -876,7 +878,7 @@ class HistoryCanvasView: PKCanvasView {
             hideEvenStroke()
             return
         }
-        // The band stays until the even stroke takes its place; should no stroke arrive, as
+        // The stroke shown stays until the even stroke takes its place; should none arrive, as
         // when PencilKit discarded it, it goes.
         showEvenStroke(predicted: [])
         let expiry = DispatchWorkItem { [weak self] in self?.hideEvenStroke() }
@@ -885,21 +887,25 @@ class HistoryCanvasView: PKCanvasView {
     }
 
     private func showEvenStroke(predicted predictedPoints: [CGPoint]) {
-        guard let inkingTool = tool as? PKInkingTool, !isShowingShapePreview else { return }
+        guard let inkingTool = tool as? PKInkingTool, !isShowingShapePreview, zoomScale > 0 else { return }
+        // The points are the canvas's, the drawing's are the canvas's over its zoom.
+        let drawingPoints = (evenStrokePoints + predictedPoints).map { point in CGPoint(x: point.x / zoomScale, y: point.y / zoomScale) }
+        let ink = PKInk(.marker, color: shownColor(of: inkingTool.ink))
+        guard let evenStroke = EvenHighlighter.evenStroke(through: drawingPoints, width: inkingTool.width, ink: ink) else { return }
+        evenStrokePicturer.picture(EvenStrokePicturer.Request(stroke: evenStroke, zoomScale: zoomScale, displayScale: traitCollection.displayScale,
+                                                               interfaceStyle: traitCollection.userInterfaceStyle))
+    }
+
+    /// Pictures the stroke being drawn away from the main thread, newest points first.
+    private lazy var evenStrokePicturer = EvenStrokePicturer { [weak self] picture in self?.showEvenStroke(picture) }
+
+    private func showEvenStroke(_ picture: EvenStrokePicturer.Picture) {
+        // A held shape shows instead of the stroke until the Pencil moves on.
+        guard !evenStrokePoints.isEmpty, !isShowingShapePreview else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        // The points are the canvas's, the tool's width the drawing's.
-        let widthOnCanvas = inkingTool.width * zoomScale
-        evenStrokeLayer.path = EvenHighlighter.bandPath(through: evenStrokePoints + predictedPoints, width: widthOnCanvas)
-        evenStrokeLayer.fillColor = nil
-        // The color the canvas draws the ink in, which PencilKit adapts to a dark canvas.
-        evenStrokeLayer.strokeColor = PKInkingTool.convertColor(shownColor(of: inkingTool.ink), from: .light, to: traitCollection.userInterfaceStyle).cgColor
-        evenStrokeLayer.lineWidth = widthOnCanvas * EvenHighlighter.bandHeightPerWidth
-        // PencilKit softens a marker's edges in the drawing's own points, so how strong the
-        // band's middle is follows its width in the drawing, not on screen.
-        evenStrokeLayer.opacity = Float(EvenHighlighter.bandOpacity(forWidth: inkingTool.width))
-        evenStrokeLayer.lineCap = .butt
-        evenStrokeLayer.lineJoin = .round
+        evenStrokeLayer.contents = picture.image
+        evenStrokeLayer.frame = picture.frameOnCanvas
         // Under PencilKit's own views, as PencilKit draws a highlight: under the ink it
         // crosses, which stays as dark as it is.
         if evenStrokeLayer.superlayer == nil {
@@ -909,6 +915,7 @@ class HistoryCanvasView: PKCanvasView {
     }
 
     private func hideEvenStroke() {
+        evenStrokePicturer.cancel()
         evenStrokeExpiry?.cancel()
         evenStrokeExpiry = nil
         evenStrokePoints = []
