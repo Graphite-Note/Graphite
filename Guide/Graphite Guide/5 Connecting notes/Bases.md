@@ -16,6 +16,10 @@ A base shows notes as a table, cards, a list, a board or a map, built from their
 
 *The recipes as a gallery, and the reading list's covers in the dark, on iPad.*
 
+![[Mac - Recipes gallery, dark.jpg|620]]
+
+*The same gallery on the Mac, in the dark appearance.*
+
 ## A base inside a note
 
 **Copy this**
