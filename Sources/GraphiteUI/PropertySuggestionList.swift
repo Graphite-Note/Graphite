@@ -70,7 +70,7 @@ struct PropertySuggestionList: View {
                     Button { choose(suggestion) } label: {
                         HStack(spacing: 8) {
                             Image(systemName: suggestion.systemImage).foregroundStyle(.secondary).frame(width: 18)
-                            Text(highlighted(suggestion.text)).lineLimit(1)
+                            Text(highlighted(suggestion.shownTitle)).lineLimit(1)
                             Spacer(minLength: 8)
                             Text(suggestion.countText).font(.caption).foregroundStyle(.secondary)
                         }
@@ -80,7 +80,7 @@ struct PropertySuggestionList: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(suggestion.text)
+                    .accessibilityLabel(suggestion.shownTitle)
                     .accessibilityValue(suggestion.countText)
                 }
             }
@@ -109,6 +109,20 @@ struct PropertySuggestionList: View {
     static let rowHeight: CGFloat = 26
     #endif
     static let maximumWidth: CGFloat = 360
+}
+
+/// A `[[` link typed in a property's value: the notes it can name are suggested instead of the property's values.
+enum PropertyLinkTyping {
+    /// The text before an unclosed `[[`, and what is typed after it; nil when no link is being typed.
+    static func openLink(in text: String) -> (prefix: String, query: String)? {
+        guard let opening = text.range(of: "[[", options: .backwards), !text[opening.upperBound...].contains("]]") else { return nil }
+        return (String(text[..<opening.lowerBound]), String(text[opening.upperBound...]))
+    }
+
+    /// The value once a note is chosen: its link closed, as Obsidian writes a link in a property.
+    static func completed(prefix: String, target: String) -> String {
+        prefix + "[[" + target + "]]"
+    }
 }
 
 extension View {

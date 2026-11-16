@@ -309,31 +309,7 @@ private struct PropertyRow: View {
             .accessibilityLabel(property.key)
             .accessibilityValue(isChecked ? "Checked" : "Unchecked")
         case .list(let items):
-            // Items wrap like text, and the field for a new item follows the last one.
-            WrappingRowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
-                PropertyItems(items: items, style: declaredType == .tags ? .tags : .plain, isEditable: isEditable, follow: follow) { remainingItems in
-                    commit(.list(remainingItems))
-                }
-                if isEditable {
-                    TextField(items.isEmpty ? "Empty" : "", text: $draftListItem)
-                        .focused($isListItemFocused)
-                        .frame(minWidth: 60, maxWidth: 160)
-                        .autocorrectionDisabled()
-                        #if canImport(UIKit)
-                        .textInputAutocapitalization(.never)
-                        #endif
-                        .propertySuggestionKeys(valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
-                        .onSubmit {
-                            if let highlighted = valueSuggestions.highlighted { addSuggestedListItem(highlighted) } else { commitDraftListItem() }
-                        }
-                }
-            }
-            .suggestingValues(state: valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
-            .task(id: ValueQuery(text: draftListItem, isFocused: isListItemFocused)) {
-                await valueSuggestions.update(query: draftListItem, isFocused: isListItemFocused && suggestions != nil) {
-                    await suggestions?.values(property.key, draftListItem, items) ?? []
-                }
-            }
+            listEditor(items)
         case .date(let dateText):
             dateEditor(dateText, includesTime: false)
         case .dateTime(let dateText):
@@ -357,6 +333,36 @@ private struct PropertyRow: View {
         }
     }
 
+    /// A list's items, which wrap like text, the field for a new item after the last one, and its suggestions.
+    @ViewBuilder private func listEditor(_ items: [String]) -> some View {
+        // Items wrap like text, and the field for a new item follows the last one.
+        WrappingRowLayout(horizontalSpacing: 6, verticalSpacing: 6) {
+            PropertyItems(items: items, style: declaredType == .tags ? .tags : .plain, isEditable: isEditable, follow: follow) { remainingItems in
+                commit(.list(remainingItems))
+            }
+            if isEditable {
+                TextField(items.isEmpty ? "Empty" : "", text: $draftListItem)
+                    .focused($isListItemFocused)
+                    .frame(minWidth: 60, maxWidth: 160)
+                    .autocorrectionDisabled()
+                    #if canImport(UIKit)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .propertySuggestionKeys(valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
+                    .onSubmit {
+                        if let highlighted = valueSuggestions.highlighted { addSuggestedListItem(highlighted) } else { commitDraftListItem() }
+                    }
+            }
+        }
+        .suggestingValues(state: valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
+        .task(id: ValueQuery(text: draftListItem, isFocused: isListItemFocused)) {
+            await valueSuggestions.update(query: draftListItem, isFocused: isListItemFocused && suggestions != nil) {
+                if let link = PropertyLinkTyping.openLink(in: draftListItem) { return await suggestions?.notes(link.query) ?? [] }
+                return await suggestions?.values(property.key, draftListItem, items) ?? []
+            }
+        }
+    }
+
     private var textField: some View {
         TextField("Empty", text: $draftText)
             .focused($isTextFocused)
@@ -371,23 +377,28 @@ private struct PropertyRow: View {
                 // Nothing is suggested for the value as it stands, only once it is being changed.
                 let isChanging = isTextFocused && draftText != property.value.displayText
                 await valueSuggestions.update(query: draftText, isFocused: isChanging && suggestions != nil) {
-                    await suggestions?.values(property.key, draftText, [property.value.displayText]) ?? []
+                    if let link = PropertyLinkTyping.openLink(in: draftText) { return await suggestions?.notes(link.query) ?? [] }
+                    return await suggestions?.values(property.key, draftText, [property.value.displayText]) ?? []
                 }
             }
     }
 
     private func chooseSuggestedText(_ suggestion: PropertySuggestions.Suggestion) {
         valueSuggestions.clear()
-        draftText = suggestion.text
-        if .text(suggestion.text) != property.value { commit(.text(suggestion.text)) }
+        let chosen = PropertyLinkTyping.openLink(in: draftText).map { link in PropertyLinkTyping.completed(prefix: link.prefix, target: suggestion.text) }
+            ?? suggestion.text
+        draftText = chosen
+        if .text(chosen) != property.value { commit(.text(chosen)) }
     }
 
     /// A suggested item is added to the list, and the field is left empty for the next one.
     private func addSuggestedListItem(_ suggestion: PropertySuggestions.Suggestion) {
         guard case .list(let items) = property.value else { return }
         valueSuggestions.clear()
+        let chosen = PropertyLinkTyping.openLink(in: draftListItem).map { link in PropertyLinkTyping.completed(prefix: link.prefix, target: suggestion.text) }
+            ?? suggestion.text
         draftListItem = ""
-        commit(.list(items + [suggestion.text]))
+        commit(.list(items + [chosen]))
     }
 
     private func commitDraftText() {

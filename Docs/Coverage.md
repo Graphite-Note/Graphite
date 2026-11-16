@@ -9,8 +9,8 @@ Last updated: 2026-11-17.
 [Property-and-tag-completion-todo.md](Property-and-tag-completion-todo.md) sections 1 to 3 (issues #167 to #169). Typing a property's name, a value or a tag suggests what the vault uses: in the frontmatter written as text, in the Properties panel, in the Bases property editor and after `tag:`, `[` and `[name:` in the sidebar's search.
 
 - **Automated tests, passing on macOS:** `FrontmatterCompletionTests` (6), `PropertyValueQueriesTests` (4), `PropertyCompletionTests` (3), `SearchTermCompletionTests` (2), `LinkCompletionTests` unchanged.
-- **Hosted tests, passing on the iPad simulator:** `PropertySuggestionsHostedTests` (3: a new name with its type, a `tags` item, the Bases sheet), `LivePreviewRevealTests.testTypingATagUnderTagsInTheFrontmatterSuggestsAVaultTagAndAcceptingWritesIt`; screenshots looked at.
-- **Not checked:** `[[` in the panel's fields (not built), the keys pressed by hand, the timing and the look in the owner's vault, the sidebar's suggestion list drawn.
+- **Hosted tests, passing on the iPad simulator:** `PropertySuggestionsHostedTests` (4: a new name with its type, a `tags` item, a `[[` link in `aliases`, the Bases sheet), `LivePreviewRevealTests.testTypingATagUnderTagsInTheFrontmatterSuggestsAVaultTagAndAcceptingWritesIt`; screenshots looked at.
+- **Not checked:** the keys pressed by hand, the timing and the look in the owner's vault, the sidebar's suggestion list drawn.
 
 ## Web frames in list items and the Mac's wheel: 2026-11-17
 

@@ -44,8 +44,11 @@ extension WorkspaceModel {
 
     /// The vault's property names, values and tags suggested while they are typed, read from the index. The workspace is
     /// held weakly: the suggestions live in editors and panels that the workspace outlives.
-    var propertySuggestions: PropertySuggestions {
-        PropertySuggestions(vaultTags: { [weak self] query, limit in
+    var propertySuggestions: PropertySuggestions { propertySuggestions(linkingFrom: nil) }
+
+    /// `propertySuggestions` whose `[[` links are written as the vault's link format writes them from `notePath`.
+    func propertySuggestions(linkingFrom notePath: VaultPath?) -> PropertySuggestions {
+        var suggestions = PropertySuggestions(vaultTags: { [weak self] query, limit in
             let tags = (try? await self?.index?.tags(matching: query, limit: limit)) ?? [] // No answer, no suggestions; typing goes on.
             return tags.map { tagCount in (tagCount.tag, tagCount.fileCount) }
         }, vaultValues: { [weak self] name, query, limit in
@@ -54,10 +57,28 @@ extension WorkspaceModel {
         }, vaultNames: { [weak self] in
             await self?.cachedPropertySummaries() ?? []
         })
+        suggestions.vaultNotes = { [weak self] query, limit in
+            guard let self, !query.isEmpty else { return [] }
+            let matches = (try? await self.index?.quickSwitcherMatches(for: query, limit: limit)) ?? [] // No answer, no notes.
+            let settings = self.vaultSettings
+            return matches.map { match in
+                let name = VaultIndex.switcherName(match.path)
+                let isNameUnique = matches.filter { other in VaultIndex.switcherName(other.path) == name }.count == 1
+                let target = notePath.map { from in LinkCompletion.linkTarget(for: match.path, from: from, settings: settings, isNameUnique: isNameUnique) }
+                    ?? (isNameUnique ? name : (DocumentKind(path: match.path) == .markdown ? String(match.path.rawValue.dropLast(3)) : match.path.rawValue))
+                return (target, match.alias ?? name, DocumentKind(path: match.path).systemImage)
+            }
+        }
+        return suggestions
     }
 
     /// `propertySuggestions` for the Properties panel and the Bases sheet.
     var propertySuggestionLookup: PropertySuggestionLookup { PropertySuggestionLookup(suggestions: propertySuggestions) }
+
+    /// `propertySuggestionLookup` for a note's Properties panel, whose `[[` links name notes from `notePath`.
+    func propertySuggestionLookup(linkingFrom notePath: VaultPath) -> PropertySuggestionLookup {
+        PropertySuggestionLookup(suggestions: propertySuggestions(linkingFrom: notePath))
+    }
 
     /// The vault's property names with their types, read once for each version of the index: the names change only when
     /// a note is indexed again, and reading them all takes longer than a keystroke's frame in a large vault.

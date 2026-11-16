@@ -33,7 +33,10 @@ final class PropertySuggestionsHostedTests: SettingsHostedTestCase {
             guard name == "tags" else { return [] }
             return [self.suggestion("eth/vlsi", 30, "number"), self.suggestion("exam", 8, "number")]
                 .filter { tag in !written.contains(tag.text) && (query.isEmpty || tag.text.localizedCaseInsensitiveContains(query)) }
-        }, type: { name in name == "due" ? .date : (name == "tags" ? .tags : .text) })
+        }, type: { name in name == "due" ? .date : (name == "tags" ? .tags : .text) },
+           notes: { query in
+            [self.suggestion("Lectures/VLSI 1", 0, "doc.text")].filter { note in note.text.localizedCaseInsensitiveContains(query) }
+        })
     }
 
     private func panel(_ properties: [NoteProperty]) throws -> UIHostingController<AnyView> {
@@ -89,6 +92,22 @@ final class PropertySuggestionsHostedTests: SettingsHostedTestCase {
         XCTAssertEqual(committed.last?.first?.value, .list(["exam", "eth/vlsi"]))
         XCTAssertEqual(field.text, "", "The field is left empty for the next tag.")
     }
+    func testALinkTypedInAnAliasesItemSuggestsNotesAndChoosingWritesTheLink() async throws {
+        let controller = try panel([NoteProperty(key: "aliases", value: .list([]))])
+        var itemField: UITextField?
+        try await waitUntil("the list's field", timeoutSeconds: 10) {
+            itemField = self.textFields(in: controller.view).first { field in field.placeholder == "Empty" }
+            return itemField != nil
+        }
+        let field = try XCTUnwrap(itemField)
+        XCTAssertTrue(field.becomeFirstResponder())
+        type("[[VLSI", in: field)
+        let note = try await element(in: controller, "the suggested note") { object in object.accessibilityLabel == "Lectures/VLSI 1" }
+        XCTAssertTrue(note.accessibilityActivate())
+        try await waitUntil("the link is added", timeoutSeconds: 10) { !self.committed.isEmpty }
+        XCTAssertEqual(committed.last?.first?.value, .list(["[[Lectures/VLSI 1]]"]), "The link is closed, as Obsidian writes it.")
+    }
+
     // MARK: Section 3: the Bases property editor sheet
 
     func testTheBasePropertyEditorSuggestsTheVaultsValuesAndSavesTheChosenOne() async throws {

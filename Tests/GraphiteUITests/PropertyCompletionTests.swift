@@ -73,4 +73,25 @@ final class PropertyCompletionTests: XCTestCase {
         XCTAssertEqual(inline.titles, ["exam", "eth/comparch"])
         XCTAssertEqual(inline.textAfterFirst, "---\ntags: [eth/vlsi, exam]\n---\n")
     }
+
+    // MARK: Section 1: `[[` in the Properties panel's fields
+
+    func testALinkTypedInAValueIsFoundAndClosedWhenANoteIsChosen() {
+        XCTAssertNil(PropertyLinkTyping.openLink(in: "VLSI 3"))
+        XCTAssertNil(PropertyLinkTyping.openLink(in: "[[Done]]"))
+        let link = PropertyLinkTyping.openLink(in: "see [[Lec")
+        XCTAssertEqual(link?.prefix, "see ")
+        XCTAssertEqual(link?.query, "Lec")
+        XCTAssertEqual(PropertyLinkTyping.completed(prefix: "", target: "Lectures/VLSI 1"), "[[Lectures/VLSI 1]]")
+    }
+
+    func testTheNotesALinkCanNameAreFoundWithTheirTargets() async throws {
+        var files = Self.vault
+        files["Editing.md"] = "---\nrelated:\n---\n"
+        let (workspace, _) = try await testBed.openedWorkspace(files: files)
+        try await waitUntil("the vault is indexed", timeoutSeconds: 20) { workspace.hasCompletedIndexScan }
+        let notes = await workspace.propertySuggestions(linkingFrom: try VaultPath("Editing.md")).notes(matching: "Arch")
+        XCTAssertEqual(notes.map(\.text), ["Arch 1"], "The vault's shortest link format names the note alone.")
+        XCTAssertEqual(notes.map(\.shownTitle), ["Arch 1"])
+    }
 }

@@ -23,6 +23,8 @@ struct PropertySuggestions {
     let vaultValues: @MainActor (_ name: String, _ query: String, _ limit: Int) async -> [(value: String, fileCount: Int)]
     /// The vault's property names with their types, kept until the index changes (`WorkspaceModel.propertySuggestions`).
     let vaultNames: @MainActor () async -> [PropertySummary]
+    /// The vault's notes matching a query, as the quick switcher finds them, each with the link target that names it.
+    var vaultNotes: @MainActor (_ query: String, _ limit: Int) async -> [(target: String, title: String, systemImage: String)] = { _, _ in [] }
     /// Suggestions listed at most.
     static let maximumCount = 40
 
@@ -31,8 +33,12 @@ struct PropertySuggestions {
         let text: String
         let fileCount: Int
         let systemImage: String
+        /// What the row shows when it is not the written text: a note's name for a link's target.
+        var title: String? = nil
         var id: String { text }
-        var countText: String { fileCount == 1 ? "1 note" : "\(fileCount) notes" }
+        var shownTitle: String { title ?? text }
+        /// How many notes use it; a note offered for a link has no count.
+        var countText: String { fileCount == 0 ? "" : (fileCount == 1 ? "1 note" : "\(fileCount) notes") }
     }
 
     /// Whether `name` holds the vault's tags, as Obsidian treats `tags` (and its old spelling `tag`).
@@ -53,6 +59,11 @@ struct PropertySuggestions {
         }.prefix(Self.maximumCount).map { summary in
             Suggestion(text: summary.key, fileCount: summary.fileCount, systemImage: summary.type.systemImage)
         }
+    }
+
+    /// The notes a `[[` link typed in a value can name: the suggestion's text is the link's target, without brackets.
+    func notes(matching query: String) async -> [Suggestion] {
+        await vaultNotes(query, Self.maximumCount).map { note in Suggestion(text: note.target, fileCount: 0, systemImage: note.systemImage, title: note.title) }
     }
 
     /// The type the vault gives a property's name, for a new property taken from a suggestion.
@@ -127,19 +138,24 @@ struct PropertySuggestionLookup {
     let names: @MainActor (_ query: String, _ writtenNames: [String]) async -> [PropertySuggestions.Suggestion]
     let values: @MainActor (_ name: String, _ query: String, _ writtenValues: [String]) async -> [PropertySuggestions.Suggestion]
     let type: @MainActor (_ name: String) async -> PropertyType?
+    /// The notes a `[[` link typed in a value can name.
+    var notes: @MainActor (_ query: String) async -> [PropertySuggestions.Suggestion] = { _ in [] }
 
     /// The vault's suggestions, as the editor takes them.
     @MainActor init(suggestions: PropertySuggestions) {
         names = { query, writtenNames in await suggestions.names(matching: query, leavingOut: writtenNames) }
         values = { name, query, writtenValues in await suggestions.values(of: name, matching: query, leavingOut: writtenValues) }
         type = { name in await suggestions.type(ofName: name) }
+        notes = { query in await suggestions.notes(matching: query) }
     }
 
     init(names: @escaping @MainActor (String, [String]) async -> [PropertySuggestions.Suggestion],
          values: @escaping @MainActor (String, String, [String]) async -> [PropertySuggestions.Suggestion],
-         type: @escaping @MainActor (String) async -> PropertyType?) {
+         type: @escaping @MainActor (String) async -> PropertyType?,
+         notes: @escaping @MainActor (String) async -> [PropertySuggestions.Suggestion] = { _ in [] }) {
         self.names = names
         self.values = values
+        self.notes = notes
         self.type = type
     }
 }

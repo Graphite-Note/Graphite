@@ -2,7 +2,7 @@
 
 Created: 2026-11-12.
 
-Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; open: links in the panel's fields, the keys driven by a hardware keyboard, the timing in the owner's vault and the checks with it. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
+Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; open: the keys driven by a hardware keyboard, the timing in the owner's vault and the checks with it. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
 
 ## Request
 
@@ -31,8 +31,8 @@ Issue: [#167](https://github.com/Graphite-Note/Graphite/issues/167)
   Done 2026-11-17: a list field of `tags` (or `tag`) lists `VaultIndex.tags(matching:)` without `#`, nested tags included, leaving out the note's items; choosing one adds it and empties the field. Test: `PropertySuggestionsHostedTests.testATagsItemSuggestsTheVaultsTagsWithoutTheNotesOwnAndChoosingAddsIt`.
 - [x] Typing a value of any other text or list property suggests the values that property already takes in the vault (`course` suggests `VLSI 3`, `Computer Architecture`), most used first. Needs an index query for one property's values with their counts, bounded (top values only, from the index's property table).
   Done 2026-11-17: `VaultIndex.propertyValues(of:matching:limit:)` (`Sources/GraphiteIndex/PropertyValueQueries.swift`) reads one property's rows (at most 20,000), counts each value and each list item by note, spellings differing in capitals as one, most used first; a text field suggests them once its value is being changed, a list field for its next item. Tests: `PropertyValueQueriesTests` (4), `PropertyCompletionTests.testAValueSuggestsWhatThatPropertyTakesMostUsedFirst`.
-- [ ] `aliases` and properties whose values are links: typing `[[` in the field suggests notes as in the body, and accepting writes `"[[Note]]"` as Obsidian does.
-  2026-11-17: not built: the panel's fields suggest names and values, not notes after `[[`. Typing `[[` in the frontmatter written as text suggests notes (section 2).
+- [x] `aliases` and properties whose values are links: typing `[[` in the field suggests notes as in the body, and accepting writes `"[[Note]]"` as Obsidian does.
+  Done 2026-11-17: in a value's or a list item's field, an unclosed `[[` suggests the vault's notes as the quick switcher finds them (`PropertyLinkTyping`, `PropertySuggestions.notes`), each named by the vault's link format from the note; choosing one writes `[[target]]`, which the frontmatter writer quotes as Obsidian does. Tests: `PropertyCompletionTests.testALinkTypedInAValueIsFoundAndClosedWhenANoteIsChosen`, `testTheNotesALinkCanNameAreFoundWithTheirTargets`, the hosted `PropertySuggestionsHostedTests.testALinkTypedInAnAliasesItemSuggestsNotesAndChoosingWritesTheLink`.
 - [ ] Keyboard on the Mac and the iPad's keyboard: arrows move through the suggestions, Return or Tab accepts, Escape closes them without leaving the field. On touch, a tap on a suggestion accepts it.
   Built 2026-11-17 (`propertySuggestionKeys`): ↓ and ↑ move the highlight, Tab and Return choose it, Escape closes the list and keeps the field; a tap chooses (tested above). The keys were not pressed in a test or by hand.
 - [ ] Answers within one frame of a keystroke in the owner's 32,843-file vault on the iPad (a timing budget in `App/Tests/TimingBudgets.swift`).
