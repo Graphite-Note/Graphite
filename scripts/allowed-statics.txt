@@ -40,7 +40,7 @@ Sources/GraphiteUI/ReadAloudPen.swift               ReadAloudPenGlyph.cachedTemp
 Sources/GraphiteUI/LivePreviewWidgets.swift         LivePreviewEmbedImageLocations.foundImages # image location memo
 # Per-device and per-process facts that become environment-owned objects with one owner in Phase 2.
 Sources/GraphiteUI/HistoryCanvasView.swift          HistoryCanvasView.footprintsByTool  # stroke footprints per tool
-Sources/GraphiteUI/GraphitePDFView.swift            PDFAnnotationCoordinator.enclosingScrollRestrictions # scroll-restriction bookkeeping per scroll view
+Sources/GraphiteUI/PDFAnnotationCoordinator.swift    PDFAnnotationCoordinator.enclosingScrollRestrictions # scroll-restriction bookkeeping per scroll view
 Sources/GraphiteUI/InkSelection.swift               InkSelectionController.controllerWithSelection # weak: the controller that holds the selection
 Sources/GraphiteUI/LassoTools.swift                 LassoPasteboard.pasteboard          # the pasteboard the lasso copies to (platform edge)
 Sources/GraphiteUI/LassoTools.swift                 LassoPasteboard.recentScreenshotSizes # recent screenshot sizes for paste fitting
