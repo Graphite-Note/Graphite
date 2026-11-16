@@ -37,7 +37,7 @@ The owner, 2026-11-14, a list of bugs and requests for marking up PDFs on the Ma
 
 1. **Ink between pictures (section 2).** Free stacking of pictures, text boxes and shapes among themselves is possible within the file's order. Putting ink between two pictures needs ink in several layers on the iPad (several PencilKit canvases, or pictures drawn into the canvas) and a change to invariant M-15. Proposed: objects stack freely; ink moves as one layer (Ink to Front, Ink to Back); strokes inside a picture's layer later if wanted.
 2. **The palette's movement (section 3).** Is it the bar's colour row (a colour moved up or down is removed, by the 2026-11-13 drag), the floating system palette, or the fixed bar itself? Proposed: reproduce each on the iPad first.
-3. **One colour list or two (section 7).** Proposed: text marks get their own saved colours, shared by the Mac's highlighter and the iPad's text highlighter, kept apart from the pen colours, as the ink highlighter's are.
+3. **One colour list or two (section 7).** Proposed: text marks get their own saved colours, shared by the Mac's highlighter and the iPad's text highlighter, kept apart from the pen colours, as the ink highlighter's are. **Answered: owner delegated; proposal taken 2026-11-16.** The list is `PDFTextMarkColors` under the device key `GraphitePDFTextMarkColors`, agreed with the iPad text highlighter session (section 4).
 
 ## 1. Dropping pictures onto PDF pages
 
@@ -103,7 +103,7 @@ Decided while building (2026-11-16): overlapping marks join. The rule is `PDFMar
 
 Issue: [#186](https://github.com/Graphite-Note/Graphite/issues/186)
 
-Open question 3 taken as proposed (2026-11-16): text marks have their own saved colours, `PDFTextMarkColors` under `GraphitePDFTextMarkColors` on the device (a JSON list of Graphite's colour names and `#RRGGBB`, starting as the five highlight colours, at most 24), apart from the pen colours. The iPad's text highlighter (section 4) reads the same list.
+Open question 3: owner delegated; proposal taken 2026-11-16: text marks have their own saved colours, `PDFTextMarkColors` under `GraphitePDFTextMarkColors` on the device (a JSON list of Graphite's colour names and `#RRGGBB`, starting as the five highlight colours, at most 24), apart from the pen colours. The iPad's text highlighter (section 4) reads the same list.
 
 - [ ] Highlight, underline and strikethrough take any colour: a colour picker (`NSColorPanel` on the Mac, `UIColorPickerViewController` on the iPad) beside the swatches. Built 2026-11-16: `PDFMarkupColor` is any colour, eight bits a component in device RGB, written to `/C` as is; `PDFMarkupStyle` is a kind and a colour (old stored names read the same). The Mac's row has a colour-panel button (`MacMarkupColorPanel`, a colour reported when the pointer lets go, so one step per choice) and Underline and Strikethrough with colour arrows; the right-click menus have Other Color…. The iPad's selection menu Highlight and a tapped mark's Color menu have Other Color…, which opens `UIColorPickerViewController` (`PDFMarkColorPicker`, `PDFMarkMenus`).
 - [ ] Chosen colours can be saved as presets and removed, kept on the device, shared by the Mac's highlighter, the iPad's text highlighter and both platforms' mark menus (open question 3). Built: a colour picked in either picker is saved; on the Mac a swatch's right-click menu removes it (or saves a mark's own colour), on the iPad the selection menu's Highlight › Remove a Color.
