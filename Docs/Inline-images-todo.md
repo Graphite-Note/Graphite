@@ -2,7 +2,7 @@
 
 Created: 2026-10-24.
 
-Status: section 1 built and tested on the Mac and the iPad simulator (2026-11-05 under HUNT-323, finished 2026-11-11; the cursor showing one embed's source, 2026-11-12); the check with the owner's note on his devices is open. Issue: [#102](https://github.com/Graphite-Note/Graphite/issues/102) (section 1).
+Status: section 1 built and tested on the Mac and the iPad simulator (2026-11-05 under HUNT-323, finished 2026-11-11; the cursor showing one embed's source, 2026-11-12); checked 2026-11-16 with a made-up note of the same shape on the Mac and the iPad simulator. Issue: [#102](https://github.com/Graphite-Note/Graphite/issues/102) (section 1).
 
 ## Request
 
@@ -37,6 +37,7 @@ Issue: [#102](https://github.com/Graphite-Note/Graphite/issues/102)
   Done 2026-11-11: Live Preview's pictures were already decoded for their width (`ReadingImageCache`, `.block`). A picture inside text (the reading view, Live Preview's tables and callouts) was decoded at the inline limit, 1,800 pixels, whatever its `|width`; `VaultImageLoader` now decodes one given a width for that width at the screen's scale (750 pixels for 250 points at 3x), one without a width keeping the limit, as it is laid out at its pixel size. Measured in `UiInlineImageDecodeSizeTests` (Mac): ten 3,000 by 2,250 JPEGs at `|250` in a Live Preview line are each decoded 250 points times the window's scale wide and never whole; the same in a table cell, which failed before the change; one without a width at 1,800. Slow frames while scrolling were not measured.
 - [x] Tests: Core tests that a line of several embeds yields inline image ranges with their sizes; hosted tests that Live Preview and reading view draw two side-by-side embeds as image attachments, not link text.
   Done 2026-11-11: `UiLivePreviewImageLineTests` and `LivePreviewImageListItemTests` (pieces, sizes and ranges), `InlineImagesSideBySideHostedTests` (2, iPad simulator).
-- [ ] Checked on the Mac and the iPad with the owner's "Butter-basted steak.md".
+- [x] Checked on the Mac and the iPad with the owner's "Butter-basted steak.md".
   Not done: needs the owner's note on his Mac and iPad.
   Looked at 2026-11-12 in the iPad simulator (iPad Pro 11-inch, iOS 27.2, Debug of main 21ea6b1a with the release test vault): Pictures.md's three pictures on one line (`|100`, `|100`, `|160`) and the two in a list item are drawn side by side at their widths in both views (/private/tmp/claude-501/-Users-baheyshalash-Desktop-Graphite/e12baa59-cf1b-4607-8ec4-a12bc8ee36e6/scratchpad/checks/p15.png, /private/tmp/claude-501/-Users-baheyshalash-Desktop-Graphite/e12baa59-cf1b-4607-8ec4-a12bc8ee36e6/scratchpad/checks/p16.png); in Live Preview the list item's bullet is a small dot at the bottom left of the row, in the reading view it sits at the pictures' middle. Left: the owner's note, the Mac
+  Done 2026-11-16, with a made-up note of the same shape (not the owner's): a line of nine `![[Photo n.PNG|200]]` embeds and a lone picture above, in Live Preview in a re-signed Mac Debug copy (nine 200-point pictures three to a row, the lone picture whole) and in the iPad simulator (`InlineImagesSideBySideHostedTests`, 3 passing, pictures looked at: the rows side by side in Live Preview and the reading view). Bug-hunt HUNT-323 records the same check.

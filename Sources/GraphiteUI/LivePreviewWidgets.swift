@@ -6,7 +6,7 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
+ * Version: 0.42
  * Date: 16/11/2026
  */
 
@@ -73,6 +73,8 @@ struct LivePreviewEnvironment {
     let updateProperties: (([NoteProperty]) -> Void)?
     /// Property types assigned in `.obsidian/types.json`, which the frontmatter is read with.
     var declaredPropertyTypes: [String: PropertyType] = [:]
+    /// The vault's names, values and tags the Properties panel suggests while they are typed.
+    var propertySuggestions: PropertySuggestionLookup? = nil
     /// Nil when Bases are turned off: base blocks then show their YAML.
     var baseContext: BaseEmbedContext? = nil
     /// Shows an embedded image full screen, where it can be zoomed.
@@ -250,7 +252,7 @@ struct LivePreviewWidgetView: View {
         case .frontmatter:
             if let properties = parsedSource.properties(from: block.markdown, declaredTypes: environment.declaredPropertyTypes) {
                 PropertiesPanel(properties: properties, update: environment.updateProperties, follow: environment.follow,
-                                declaredTypes: environment.declaredPropertyTypes)
+                                declaredTypes: environment.declaredPropertyTypes, suggestions: environment.propertySuggestions)
             } else {
                 Label("These properties are not valid YAML. Edit the source to fix them.", systemImage: "exclamationmark.triangle")
                     .font(.callout).foregroundStyle(.orange).onTapGesture(perform: revealSource)
@@ -303,7 +305,7 @@ struct LivePreviewWidgetView: View {
                 RenderedMarkdownBlock(markdown: "```" + language + "\n" + block.markdown + "\n```", environment: environment)
             }
         case .mermaidDiagram: LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
-        case .webFrame(let frame): LivePreviewWebFrameView(frame: frame, revealSource: revealSource)
+        case .webFrame(let frame): LivePreviewWebFrameView(frame: frame, textSize: CGFloat(environment.textSize), revealSource: revealSource)
         case .callout:
             calloutContent
         }

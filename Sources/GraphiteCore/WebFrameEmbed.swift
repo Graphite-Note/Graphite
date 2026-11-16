@@ -5,8 +5,8 @@
  * Description: A web page a note shows in a frame (`<iframe>`): its address, size and look, read from the tag as written.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -48,6 +48,9 @@ public struct WebFrameEmbed: Hashable, Sendable {
     public let border: Border?
     public let cornerRadius: Double
     public let title: String?
+    /// The list item's marker the tag follows (`-`, `*`, `+`, `1.`, `1)`), nil when it stands on lines of its own: the
+    /// frame is the whole item, drawn after its bullet or number.
+    public var listMarker: String?
 
     public init(address: URL, width: Width? = nil, height: Double? = nil, border: Border? = nil, cornerRadius: Double = 0, title: String? = nil) {
         self.address = address
@@ -100,11 +103,14 @@ public enum WebFrameSyntax {
     public static func frame(startingAt firstLineIndex: Int, lineCount: Int, line: (Int) -> String) -> (frame: WebFrameEmbed, lastLineIndex: Int)? {
         let firstLine = line(firstLineIndex)
         guard firstLine.contains("<"), let tagStart = tagStart(onFirstLine: firstLine) else { return nil }
+        let marker = firstLine[..<tagStart].trimmingCharacters(in: .whitespaces)
         var text = String(firstLine[tagStart...])
         var lineIndex = firstLineIndex
         while true {
             switch parsedFrame(in: text) {
-            case .frame(let frame): return (frame, lineIndex)
+            case .frame(var frame):
+                frame.listMarker = marker.isEmpty ? nil : marker
+                return (frame, lineIndex)
             case .notAFrame: return nil
             case .needsMoreLines:
                 lineIndex += 1

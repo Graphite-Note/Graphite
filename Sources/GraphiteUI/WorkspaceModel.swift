@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.88
- * Date: 13/11/2026
+ * Version: 0.89
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -196,6 +196,8 @@ final class WorkspaceModel {
     var indexVersion = 0 {
         didSet { schedulePostgreSQLMirrorCopy() }
     }
+    /// The vault's property names read for suggestions, kept until the index changes (`PropertySuggestions`).
+    @ObservationIgnored var propertySuggestionCache: PropertySuggestionCache?
     /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
     /// none of them can affect do not run again.
     @ObservationIgnored var lastIndexChange: BaseContentChange?

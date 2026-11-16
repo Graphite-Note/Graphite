@@ -2,11 +2,11 @@
  * File: EditorCompletion.swift
  * ----------------------------
  * Layer: UI
- * Description: Suggestions while typing a link or a tag, and the popup that lists them.
+ * Description: Suggestions while typing a link, a tag or a property in the frontmatter, and the popup that lists them.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -135,6 +135,10 @@ struct CompletionProvider {
             if let blockQuery = query.blockQuery { return await blockItems(query: query, blockQuery: blockQuery) }
             if let headingQuery = query.headingQuery { return await headingItems(query: query, headingQuery: headingQuery) }
             return await fileItems(query: query)
+        case .propertyName(let query, _, let writtenNames):
+            return await propertyNameItems(query: query, writtenNames: writtenNames)
+        case .propertyValue(let name, let query, _, let writtenValues):
+            return await propertyValueItems(name: name, query: query, writtenValues: writtenValues)
         case .pluginSuggestion(let revision):
             return await workspace.communityPlugins.suggestionItems(forRevision: revision)
         }

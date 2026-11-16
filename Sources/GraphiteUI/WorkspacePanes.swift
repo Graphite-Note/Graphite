@@ -698,6 +698,7 @@ struct TabDocumentView: View {
                                      viewRequestApplied: { document.baseViewRequest = nil })
                     .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                     .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
+                    .environment(\.propertySuggestionLookup, workspace.propertySuggestionLookup)
                 }
             case .media:
                 // One player per file: its playback, size and duration are not carried over

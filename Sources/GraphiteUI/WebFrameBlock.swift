@@ -6,8 +6,8 @@
  *              placeholder, loading indicator and failure message elsewhere.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -19,6 +19,12 @@ import GraphiteCore
 /// screen (`WebFrameLiveViews`). Until the page has loaded, and when it cannot, the box shows the site's address.
 struct WebFrameBlock: View {
     let frame: WebFrameEmbed
+    /// The note's text size, for a list item's bullet or number.
+    var textSize: CGFloat = 16
+    /// How far the view's lists set their items in: the reading view's, from the column's edge; Live Preview's none.
+    var listItemIndentation: CGFloat = 0
+    /// The colour of the view's list markers: the text's in the reading view, dimmed in Live Preview.
+    var listMarkerStyle: HierarchicalShapeStyle = .secondary
     @Environment(\.webFramePresentation) private var presentation
     @Environment(\.webFrameLiveViews) private var liveViews
     @Environment(\.openURL) private var openURL
@@ -41,6 +47,29 @@ struct WebFrameBlock: View {
     }
 
     var body: some View {
+        if let listMarker = frame.listMarker {
+            // A frame alone in a list item is the item, after its bullet or number, as Obsidian draws it: the marker in the
+            // note's text size, where the other items' markers are.
+            HStack(alignment: .top, spacing: textSize * 0.35) {
+                // A bullet is drawn larger than the text, as a list's own bullets are; a number at the text's size.
+                let isBullet = Self.shownMarker(listMarker) == "•"
+                Text(Self.shownMarker(listMarker)).font(.system(size: isBullet ? textSize * 1.3 : textSize, weight: isBullet ? .heavy : .regular))
+                    .foregroundStyle(listMarkerStyle)
+                    .frame(minWidth: textSize * 0.6, alignment: .leading).accessibilityHidden(true)
+                framedPage
+            }
+            .padding(.leading, listItemIndentation)
+        } else {
+            framedPage
+        }
+    }
+
+    /// A bullet for `-`, `*` and `+`, a number as written.
+    static func shownMarker(_ marker: String) -> String {
+        ["-", "*", "+"].contains(marker) ? "•" : marker
+    }
+
+    private var framedPage: some View {
         Color.clear
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
             .overlay(alignment: .topLeading) {
@@ -157,12 +186,13 @@ private struct WebFramePlaceholder: View {
 /// is never kept off screen (`DetachedWidgetPool.estimatedMegabytes(of:)`), so it holds its page while it is shown.
 struct LivePreviewWebFrameView: View {
     let frame: WebFrameEmbed
+    var textSize: CGFloat = 16
     let revealSource: () -> Void
     @Environment(\.renderedBlockMenuContext) private var menuContext
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        WebFrameBlock(frame: frame)
+        WebFrameBlock(frame: frame, textSize: textSize)
             .environment(\.webFramePresentation, .live)
             .background { Color.clear.contentShape(Rectangle()).onTapGesture(perform: revealSource) }
             .onAppear {

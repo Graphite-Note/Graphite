@@ -5,8 +5,8 @@
  * Description: The properties of a note, shown above its text.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -24,7 +24,10 @@ struct PropertiesPanel: View {
     /// Types from `.obsidian/types.json`. They decide which lists read as tags or aliases,
     /// as in Obsidian; without them, names such as `tags` keep their built-in types.
     var declaredTypes: [String: PropertyType] = [:]
+    /// The vault's names, values and tags suggested while they are typed; nil suggests nothing.
+    var suggestions: PropertySuggestionLookup? = nil
     @State private var editing = PropertyListEditing()
+    @State private var nameSuggestions = PropertySuggestionState()
     @State private var isExpanded = true
     @State private var newPropertyName = ""
     @State private var isAddingProperty = false
@@ -60,7 +63,7 @@ struct PropertiesPanel: View {
             if isExpanded {
                 ForEach(shownProperties) { property in
                     PropertyRow(property: property, declaredType: declaredType(forKey: property.key), isEditable: update != nil,
-                                keyColumnWidth: keyColumnWidth, follow: follow) { newValue in
+                                keyColumnWidth: keyColumnWidth, follow: follow, suggestions: suggestions) { newValue in
                         commit(editing.replacing(property.key, with: newValue, parsedProperties: properties))
                     } remove: {
                         commit(editing.removing(property.key, parsedProperties: properties))
@@ -99,24 +102,49 @@ struct PropertiesPanel: View {
             ?? NoteProperties.defaultType(forKey: key)
     }
 
+    /// Adds a property named as the vault names it, with the field of the type the vault gives it (a date picker for a
+    /// date, a list for a list), as Obsidian does when a suggested name is chosen.
+    private func addSuggestedProperty(_ suggestion: PropertySuggestions.Suggestion) {
+        let name = suggestion.text
+        newPropertyName = ""; isAddingProperty = false
+        nameSuggestions.clear()
+        Task {
+            let kind = await suggestions?.type(name).map(PropertyValueKind.init(type:)) ?? .text
+            let value = PropertyValueKind.converted(.empty, to: kind) ?? .empty
+            commit(editing.adding(name, value: value, parsedProperties: properties))
+        }
+    }
+
     @ViewBuilder private var addPropertyControl: some View {
         if isAddingProperty {
-            HStack(spacing: 12) {
-                Image(systemName: "plus").foregroundStyle(.secondary).frame(width: PropertyRow.iconWidth)
-                TextField("Property name", text: $newPropertyName)
-                    .focused($isNewPropertyNameFocused)
-                    .autocorrectionDisabled()
-                    #if canImport(UIKit)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                    .onSubmit {
-                        commit(editing.adding(newPropertyName, parsedProperties: properties))
-                        newPropertyName = ""; isAddingProperty = false
-                    }
-                Button("Cancel") { newPropertyName = ""; isAddingProperty = false }.buttonStyle(.borderless)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 12) {
+                    Image(systemName: "plus").foregroundStyle(.secondary).frame(width: PropertyRow.iconWidth)
+                    TextField("Property name", text: $newPropertyName)
+                        .focused($isNewPropertyNameFocused)
+                        .autocorrectionDisabled()
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                        .propertySuggestionKeys(nameSuggestions, query: newPropertyName, choose: addSuggestedProperty)
+                        .onSubmit {
+                            if let highlighted = nameSuggestions.highlighted { addSuggestedProperty(highlighted); return }
+                            commit(editing.adding(newPropertyName, parsedProperties: properties))
+                            newPropertyName = ""; isAddingProperty = false
+                        }
+                    Button("Cancel") { newPropertyName = ""; isAddingProperty = false }.buttonStyle(.borderless)
+                }
+                PropertySuggestionList(state: nameSuggestions, query: newPropertyName, choose: addSuggestedProperty)
+                    .padding(.leading, PropertyRow.iconWidth + 12)
             }
             .padding(.top, 8)
             .onAppear { isNewPropertyNameFocused = true }
+            .task(id: NameQuery(text: newPropertyName, isFocused: isNewPropertyNameFocused)) {
+                let writtenNames = shownProperties.map(\.key)
+                await nameSuggestions.update(query: newPropertyName, isFocused: isNewPropertyNameFocused && suggestions != nil) {
+                    await suggestions?.names(newPropertyName, writtenNames) ?? []
+                }
+            }
         } else {
             Button { isAddingProperty = true } label: {
                 Label("Add Property", systemImage: "plus")
@@ -124,6 +152,26 @@ struct PropertiesPanel: View {
             }
             .buttonStyle(.plain)
             .padding(.top, 8)
+        }
+    }
+}
+
+/// What the name field's suggestions are found for.
+private struct NameQuery: Equatable {
+    let text: String
+    let isFocused: Bool
+}
+
+/// What a value field's suggestions are found for.
+private typealias ValueQuery = NameQuery
+
+extension View {
+    /// The suggestions under a value's field, as a list that takes the panel's width below the value.
+    fileprivate func suggestingValues(state: PropertySuggestionState, query: String,
+                                      choose: @escaping (PropertySuggestions.Suggestion) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            self
+            PropertySuggestionList(state: state, query: query, choose: choose)
         }
     }
 }
@@ -154,13 +202,13 @@ struct PropertyListEditing: Equatable {
     }
 
     /// Nil when the name is empty or already used, which changes nothing.
-    mutating func adding(_ name: String, parsedProperties: [NoteProperty]) -> [NoteProperty]? {
+    mutating func adding(_ name: String, value: PropertyValue = .empty, parsedProperties: [NoteProperty]) -> [NoteProperty]? {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentProperties = properties(parsedProperties: parsedProperties)
         // Obsidian takes `Tags` and `tags` for one property, so a name differing only in case is taken.
         guard !trimmedName.isEmpty,
               !currentProperties.contains(where: { existing in existing.key.caseInsensitiveCompare(trimmedName) == .orderedSame }) else { return nil }
-        return record(currentProperties + [NoteProperty(key: trimmedName, value: .empty)])
+        return record(currentProperties + [NoteProperty(key: trimmedName, value: value)])
     }
 
     private mutating func record(_ updatedProperties: [NoteProperty]) -> [NoteProperty] {
@@ -178,8 +226,10 @@ private struct PropertyRow: View {
     let isEditable: Bool
     let keyColumnWidth: CGFloat
     let follow: ((String, Bool) -> Void)?
+    let suggestions: PropertySuggestionLookup?
     let commit: (PropertyValue) -> Void
     let remove: () -> Void
+    @State private var valueSuggestions = PropertySuggestionState()
     @State private var draftText = ""
     @State private var draftListItem = ""
     @State private var isEditingLinkText = false
@@ -272,7 +322,16 @@ private struct PropertyRow: View {
                         #if canImport(UIKit)
                         .textInputAutocapitalization(.never)
                         #endif
-                        .onSubmit(commitDraftListItem)
+                        .propertySuggestionKeys(valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
+                        .onSubmit {
+                            if let highlighted = valueSuggestions.highlighted { addSuggestedListItem(highlighted) } else { commitDraftListItem() }
+                        }
+                }
+            }
+            .suggestingValues(state: valueSuggestions, query: draftListItem, choose: addSuggestedListItem)
+            .task(id: ValueQuery(text: draftListItem, isFocused: isListItemFocused)) {
+                await valueSuggestions.update(query: draftListItem, isFocused: isListItemFocused && suggestions != nil) {
+                    await suggestions?.values(property.key, draftListItem, items) ?? []
                 }
             }
         case .date(let dateText):
@@ -303,7 +362,32 @@ private struct PropertyRow: View {
             .focused($isTextFocused)
             .disabled(!isEditable)
             .literalTextEntry()
-            .onSubmit(commitDraftText)
+            .propertySuggestionKeys(valueSuggestions, query: draftText, choose: chooseSuggestedText)
+            .onSubmit {
+                if let highlighted = valueSuggestions.highlighted { chooseSuggestedText(highlighted) } else { commitDraftText() }
+            }
+            .suggestingValues(state: valueSuggestions, query: draftText, choose: chooseSuggestedText)
+            .task(id: ValueQuery(text: draftText, isFocused: isTextFocused)) {
+                // Nothing is suggested for the value as it stands, only once it is being changed.
+                let isChanging = isTextFocused && draftText != property.value.displayText
+                await valueSuggestions.update(query: draftText, isFocused: isChanging && suggestions != nil) {
+                    await suggestions?.values(property.key, draftText, [property.value.displayText]) ?? []
+                }
+            }
+    }
+
+    private func chooseSuggestedText(_ suggestion: PropertySuggestions.Suggestion) {
+        valueSuggestions.clear()
+        draftText = suggestion.text
+        if .text(suggestion.text) != property.value { commit(.text(suggestion.text)) }
+    }
+
+    /// A suggested item is added to the list, and the field is left empty for the next one.
+    private func addSuggestedListItem(_ suggestion: PropertySuggestions.Suggestion) {
+        guard case .list(let items) = property.value else { return }
+        valueSuggestions.clear()
+        draftListItem = ""
+        commit(.list(items + [suggestion.text]))
     }
 
     private func commitDraftText() {
@@ -382,6 +466,18 @@ enum PropertyValueKind: CaseIterable, Hashable {
         case .date: self = .date
         case .dateTime: self = .dateTime
         case .unsupported: return nil
+        }
+    }
+
+    /// The field a property of the vault's `type` is given when it is added to a note.
+    init(type: PropertyType) {
+        switch type {
+        case .text: self = .text
+        case .multitext, .tags, .aliases: self = .list
+        case .number: self = .number
+        case .checkbox: self = .checkbox
+        case .date: self = .date
+        case .datetime: self = .dateTime
         }
     }
 

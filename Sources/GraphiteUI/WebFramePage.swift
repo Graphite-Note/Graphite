@@ -3,11 +3,12 @@
  * ------------------------
  * Layer: UI
  * Description: The live page of a note's web frame: a web view of its own with Graphite's frame data store, no access
- *              to the vault or the app, new windows in the browser, and how its loading went.
+ *              to the vault or the app, new windows in the browser, how its loading went, and on the Mac the wheel past its
+ *              end handed to the note.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -45,7 +46,11 @@ enum WebFrameWebViews {
     }
 
     @MainActor static func make() -> WKWebView {
+        #if os(macOS)
+        let webView: WKWebView = WebFrameWebView(frame: .zero, configuration: configuration())
+        #else
         let webView = WKWebView(frame: .zero, configuration: configuration())
+        #endif
         #if canImport(UIKit)
         // The frame sits in the note's column; the window's safe areas are the note's, not the page's.
         webView.scrollView.contentInsetAdjustmentBehavior = .never
@@ -282,6 +287,42 @@ extension WebFramePage: NSViewRepresentable {
 
     static func dismantleNSView(_ container: WebFramePageContainer, coordinator: WebFramePageController) {
         container.releaseWebView()
+    }
+}
+#endif
+
+#if os(macOS)
+
+/// A frame's web view on the Mac. In Obsidian the note scrolls on once a frame's page reaches its end; a web view
+/// otherwise keeps every wheel step over it, so a page as tall as the window stopped the note (found 2026-11-12). The
+/// page's scroll position is read after each step, in a world of Graphite's own (`WKContentWorld.defaultClient`) that
+/// the page's scripts cannot see, and the next step past an end goes to the scroll view around the frame.
+final class WebFrameWebView: WKWebView {
+    private(set) var scrollEdges = WebFramePageScrollEdges()
+    private var readsScrollEdges = false
+
+    override func scrollWheel(with event: NSEvent) {
+        if scrollEdges.passesToNote(deltaY: Double(event.scrollingDeltaY)), let noteScrollView = superview?.enclosingScrollView {
+            noteScrollView.scrollWheel(with: event)
+        } else {
+            super.scrollWheel(with: event)
+        }
+        readScrollEdges()
+    }
+
+    /// Reads where the page is scrolled; one read at a time, as wheel steps come faster than answers.
+    func readScrollEdges() {
+        guard !readsScrollEdges else { return }
+        readsScrollEdges = true
+        Task { @MainActor [weak self] in
+            defer { self?.readsScrollEdges = false }
+            let script = "const element = document.scrollingElement || document.documentElement; "
+                + "return [element.scrollTop, window.innerHeight, element.scrollHeight];"
+            guard let self,
+                  let numbers = try? await self.callAsyncJavaScript(script, contentWorld: .defaultClient) as? [Double], // No answer: edges kept.
+                  numbers.count == 3 else { return }
+            self.scrollEdges = WebFramePageScrollEdges(scrollTop: numbers[0], viewportHeight: numbers[1], scrollHeight: numbers[2])
+        }
     }
 }
 #endif

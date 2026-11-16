@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.51
- * Date: 12/11/2026
+ * Version: 0.52
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -75,6 +75,8 @@ struct VaultSidebar: View {
     @State private var isRootDropTargeted = false
     /// The query the results shown answer; the list says it is searching while the field holds another.
     @State private var searchedQuery = ""
+    /// The vault's tags, property names or values for the search term being typed (`SearchTermCompletion`).
+    @State private var vaultSearchSuggestions: [PropertySuggestions.Suggestion] = []
     /// The file "Reveal Current File" scrolls to once the folders above it have listed their contents.
     @State private var fileToReveal: VaultPath?
     @FocusState private var isSearchFocused: Bool
@@ -209,6 +211,7 @@ struct VaultSidebar: View {
         .modifier(SearchFocusOnceTheListIsInFront(searchFocusRequest: workspace.searchFocusRequest, isWindowCompact: isWindowCompact,
                                                    isDocumentColumnInFront: isDocumentColumnInFront, isSearchFocused: $isSearchFocused))
         .searchSuggestions { searchSuggestions }
+        .task(id: workspace.searchQuery) { await findVaultSearchSuggestions(for: workspace.searchQuery) }
         .task(id: workspace.searchQuery) {
             // An empty field shows the file tree. Results of the last query are cleared rather
             // than replaced by a search for everything, which would show under the next query.
@@ -607,9 +610,37 @@ struct VaultSidebar: View {
         }
     }
 
-    /// Obsidian's search operators, offered while the query does not use one yet.
+    /// The vault's tags after `tag:`, its property names after `[`, and a property's values after `[name:`.
+    private func findVaultSearchSuggestions(for query: String) async {
+        guard let completion = SearchTermCompletion(query: query) else { vaultSearchSuggestions = []; return }
+        let suggestions = workspace.propertySuggestions
+        let found = switch completion {
+        case .tag(let tagQuery): await suggestions.values(of: "tags", matching: tagQuery, leavingOut: [])
+        case .propertyName(let nameQuery): await suggestions.names(matching: nameQuery, leavingOut: [])
+        case .propertyValue(let name, let valueQuery): await suggestions.values(of: name, matching: valueQuery, leavingOut: [])
+        }
+        guard workspace.searchQuery == query else { return }
+        vaultSearchSuggestions = Array(found.prefix(PropertySuggestionState.maximumShownCount))
+    }
+
+    /// Obsidian's search operators, offered while the query does not use one yet, and the vault's tags, names and values
+    /// while a `tag:` or `[` term is typed.
     @ViewBuilder private var searchSuggestions: some View {
         let query = workspace.searchQuery
+        if let completion = SearchTermCompletion(query: query) {
+            ForEach(vaultSearchSuggestions) { suggestion in
+                Label {
+                    HStack {
+                        Text(suggestion.text)
+                        Spacer(minLength: 8)
+                        Text(suggestion.countText).font(.caption).foregroundStyle(.secondary)
+                    }
+                } icon: {
+                    Image(systemName: suggestion.systemImage)
+                }
+                .searchCompletion(completion.completion(of: query, choosing: suggestion.text))
+            }
+        }
         ForEach(SearchOperatorSuggestion.offered(after: query)) { suggestion in
             Label {
                 VStack(alignment: .leading, spacing: 2) {

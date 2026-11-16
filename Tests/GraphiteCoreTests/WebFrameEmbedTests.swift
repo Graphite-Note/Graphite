@@ -151,6 +151,15 @@ final class WebFrameEmbedTests: XCTestCase {
         XCTAssertNil(frame("-" + Self.ownersLine))
     }
 
+    func testAFrameInAListItemKeepsItsMarkerSoItsBulletIsDrawn() {
+        // Found 2026-11-12: such a frame was drawn at the item's indent with no bullet before it.
+        XCTAssertEqual(frame("- " + Self.ownersLine)?.listMarker, "-")
+        XCTAssertEqual(frame("  12. " + Self.ownersLine)?.listMarker, "12.")
+        XCTAssertEqual(frame("3) " + Self.ownersLine)?.listMarker, "3)")
+        XCTAssertNil(frame(Self.ownersLine)?.listMarker, "A frame on lines of its own has no marker.")
+        XCTAssertNil(frame("    " + Self.ownersLine)?.listMarker)
+    }
+
     // MARK: The reading view's blocks
 
     func testTheReadingViewGivesTheFrameABlockOfItsOwnBetweenItsText() throws {

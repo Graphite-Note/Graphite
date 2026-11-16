@@ -5,7 +5,7 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.69
+ * Version: 0.70
  * Date: 16/11/2026
  */
 
@@ -88,6 +88,7 @@ struct MarkdownPane: View {
                 .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                 .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
                 .environment(\.readingTagSearch, tagSearch)
+                .environment(\.propertySuggestionLookup, preferences.isEnabled(.properties) ? workspace.propertySuggestionLookup : nil)
                 .modifier(QuickFontSizePinchModifier(adjustment: quickFontSizeAdjustment))
                 .environment(\.lassoNoteDestination, LassoNoteDestination.note(session, in: workspace))
                 // Photos, files and sidebar items dropped on the note are added at its end.
@@ -413,6 +414,7 @@ struct MarkdownPane: View {
             openPDF: openPDF, embeddedPDFSessions: workspace.embeddedPDFSessions,
             updateProperties: preferences.isEnabled(.properties) ? { [session] properties in session.replaceProperties(properties) } : nil,
             declaredPropertyTypes: session.declaredPropertyTypes,
+            propertySuggestions: preferences.isEnabled(.properties) ? workspace.propertySuggestionLookup : nil,
             baseContext: workspace.baseEmbedContext(for: notePath),
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, pictureTabOpening: workspace.pictureTabOpening,
             indexVersion: workspace.indexVersion,

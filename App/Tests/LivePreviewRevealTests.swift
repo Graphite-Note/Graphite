@@ -6,8 +6,8 @@
  *              long inline formula of a paragraph wrapping after its operators.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 12/11/2026
+ * Version: 0.7
+ * Date: 16/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -271,6 +271,20 @@ final class LivePreviewRevealTests: XCTestCase {
         attachScreenshot(named: "After pairing, a list and toolbar commands")
     }
 
+    /// `Docs/Property-and-tag-completion-todo.md` section 2: in the frontmatter written as text, a `- ` item under `tags:`
+    /// suggests the vault's tags without `#`, and choosing one writes it as the item.
+    func testTypingATagUnderTagsInTheFrontmatterSuggestsAVaultTagAndAcceptingWritesIt() async throws {
+        let text = "---\ntags:\n  - \n---\nBody\n"
+        let (editor, session) = try await openNote(text, otherNotes: ["Lecture.md": "---\ntags: [eth/vlsi, exam]\n---\nText.\n"], viewMode: .source)
+        try await startEditing(editor, at: NSMaxRange((text as NSString).range(of: "  - ")))
+        typeAsKeyboard("eth", in: editor)
+        try await waitUntil { session.completion.isVisible }
+        XCTAssertEqual(session.completion.items.map(\.title), ["eth/vlsi"], "The vault's tag, without `#`; `exam` does not contain the letters typed.")
+        attachScreenshot(named: "Tag suggestions under tags in the frontmatter")
+        session.completion.accept()
+        try await waitUntil { session.text == "---\ntags:\n  - eth/vlsi\n---\nBody\n" }
+    }
+
     func testChosenLinkSuggestionIsInsertedWithTheCursorAfterIt() async throws {
         let (editor, session) = try await openNote("See \n\nnext **bold** line\n", otherNotes: ["Target note.md": "Target.\n"])
         try await startEditing(editor, at: 4)
@@ -509,7 +523,8 @@ final class LivePreviewRevealTests: XCTestCase {
     // MARK: Helpers
 
     /// Opens a vault holding the note in Live Preview and returns its text view.
-    private func openNote(_ text: String, otherNotes: [String: String] = ["Target.md": "Target.\n"]) async throws -> (MarkdownTextView, MarkdownSession) {
+    private func openNote(_ text: String, otherNotes: [String: String] = ["Target.md": "Target.\n"],
+                          viewMode: NoteViewMode = .livePreview) async throws -> (MarkdownTextView, MarkdownSession) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LivePreviewReveal-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         vaultDirectory = directory
@@ -525,7 +540,7 @@ final class LivePreviewRevealTests: XCTestCase {
         await workspace.open(path, placement: .currentTab)
         let tab = try XCTUnwrap(workspace.layout.tabID(showing: path))
         let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
-        session.viewMode = .livePreview
+        session.viewMode = viewMode
         let controller = UIHostingController(rootView: AnyView(NavigationStack {
             WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
         }))

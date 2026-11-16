@@ -1,3 +1,14 @@
+/**
+ * File: BasePropertyEditorSheet.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Edits one note property from a base, with the vault's values suggested while a text or list is typed.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.2
+ * Date: 17/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -15,6 +26,8 @@ struct BasePropertyEditorSheet: View {
     @State private var numberIsInvalid = false
     @State private var isSaving = false
     @State private var failureMessage: String?
+    @State private var valueSuggestions = PropertySuggestionState()
+    @Environment(\.propertySuggestionLookup) private var propertySuggestions
 
     /// - Parameter writtenNode: The property as written in the note's frontmatter. With
     ///   it, links, embeds and dates are shown and kept exactly as written.
@@ -67,6 +80,10 @@ struct BasePropertyEditorSheet: View {
             case .text:
                 TextField("Value", text: $draft.text, axis: .vertical)
                     .literalTextEntry()
+                    .propertySuggestionKeys(valueSuggestions, query: suggestionQuery, choose: chooseSuggestion)
+                    // On the field: the list draws nothing while it is empty, and a view that draws nothing runs no task.
+                    .task(id: suggestionQuery) { await findSuggestions() }
+                PropertySuggestionList(state: valueSuggestions, query: suggestionQuery, choose: chooseSuggestion)
             case .number:
                 TextField("Number", text: $draft.text)
                     .literalTextEntry()
@@ -89,7 +106,44 @@ struct BasePropertyEditorSheet: View {
                 TextField("One value per line", text: $draft.text, axis: .vertical)
                     .literalTextEntry()
                     .lineLimit(4...12)
+                    .propertySuggestionKeys(valueSuggestions, query: suggestionQuery, choose: chooseSuggestion)
+                    // On the field: the list draws nothing while it is empty, and a view that draws nothing runs no task.
+                    .task(id: suggestionQuery) { await findSuggestions() }
+                PropertySuggestionList(state: valueSuggestions, query: suggestionQuery, choose: chooseSuggestion)
             }
+        }
+    }
+
+    // MARK: Suggestions (Docs/Property-and-tag-completion-todo.md, section 3)
+
+    /// The value being typed: the whole text, or a list's last line.
+    private var suggestionQuery: String {
+        request.kind == .list ? String(draft.text.split(separator: "\n", omittingEmptySubsequences: false).last ?? "") : draft.text
+    }
+
+    /// The list's other lines, which are not suggested again.
+    private var otherListItems: [String] {
+        guard request.kind == .list else { return [] }
+        return draft.text.split(whereSeparator: \.isNewline).dropLast().map { line in line.trimmingCharacters(in: .whitespaces) }
+    }
+
+    private func findSuggestions() async {
+        guard case .note(let name) = request.property, let propertySuggestions, draft.readOnlyReason == nil else { valueSuggestions.clear(); return }
+        let query = suggestionQuery.trimmingCharacters(in: .whitespaces)
+        // Nothing is suggested for the value as the note has it, only once it is being changed.
+        let isChanging = draft != loadedDraft
+        let written = otherListItems
+        await valueSuggestions.update(query: suggestionQuery, isFocused: isChanging) {
+            await propertySuggestions.values(name, query, written)
+        }
+    }
+
+    private func chooseSuggestion(_ suggestion: PropertySuggestions.Suggestion) {
+        valueSuggestions.clear()
+        if request.kind == .list {
+            draft.text = (otherListItems + [suggestion.text]).joined(separator: "\n") + "\n"
+        } else {
+            draft.text = suggestion.text
         }
     }
 

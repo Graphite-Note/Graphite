@@ -5,8 +5,8 @@
  * Description: The vault's tags and properties for the sidebar lists, and searching for one.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -40,6 +40,33 @@ extension WorkspaceModel {
             PropertySummary(key: usage.key, fileCount: usage.fileCount,
                             type: NoteProperties.type(ofKey: usage.key, sampleValues: usage.sampleValues, declaredTypes: declaredTypes))
         }
+    }
+
+    /// The vault's property names, values and tags suggested while they are typed, read from the index. The workspace is
+    /// held weakly: the suggestions live in editors and panels that the workspace outlives.
+    var propertySuggestions: PropertySuggestions {
+        PropertySuggestions(vaultTags: { [weak self] query, limit in
+            let tags = (try? await self?.index?.tags(matching: query, limit: limit)) ?? [] // No answer, no suggestions; typing goes on.
+            return tags.map { tagCount in (tagCount.tag, tagCount.fileCount) }
+        }, vaultValues: { [weak self] name, query, limit in
+            let values = (try? await self?.index?.propertyValues(of: name, matching: query, limit: limit)) ?? [] // No answer, no suggestions.
+            return values.map { value in (value.value, value.fileCount) }
+        }, vaultNames: { [weak self] in
+            await self?.cachedPropertySummaries() ?? []
+        })
+    }
+
+    /// `propertySuggestions` for the Properties panel and the Bases sheet.
+    var propertySuggestionLookup: PropertySuggestionLookup { PropertySuggestionLookup(suggestions: propertySuggestions) }
+
+    /// The vault's property names with their types, read once for each version of the index: the names change only when
+    /// a note is indexed again, and reading them all takes longer than a keystroke's frame in a large vault.
+    private func cachedPropertySummaries() async -> [PropertySummary] {
+        let version = indexVersion
+        if let cached = propertySuggestionCache, cached.indexVersion == version { return cached.summaries }
+        guard let summaries = try? await vaultProperties() else { return [] } // No answer: no suggestions, nothing kept.
+        propertySuggestionCache = PropertySuggestionCache(indexVersion: version, summaries: summaries)
+        return summaries
     }
 
     /// Shows the notes with a tag, nested tags included, in the sidebar's search.

@@ -2,7 +2,7 @@
 
 Created: 2026-11-12.
 
-Status: not started. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
+Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; open: links in the panel's fields, the keys driven by a hardware keyboard, the timing in the owner's vault and the checks with it. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
 
 ## Request
 
@@ -25,30 +25,43 @@ The owner, 2026-11-12: "auto complete for properties tags etc in notes". While a
 
 Issue: [#167](https://github.com/Graphite-Note/Graphite/issues/167)
 
-- [ ] Typing a new property's name suggests the vault's property names that contain the typed text, most used first, each with its type's icon and how many notes use it; choosing one gives the new property that name and its type (a `date` property gets the date field, a list property the list field). A name the note already has is not offered.
-- [ ] Typing a list item of `tags` suggests the vault's tags (without `#`), nested tags included, most used first; a tag the note already lists is not offered. Accepting adds it as a list item and leaves the field ready for the next one.
-- [ ] Typing a value of any other text or list property suggests the values that property already takes in the vault (`course` suggests `VLSI 3`, `Computer Architecture`), most used first. Needs an index query for one property's values with their counts, bounded (top values only, from the index's property table).
+- [x] Typing a new property's name suggests the vault's property names that contain the typed text, most used first, each with its type's icon and how many notes use it; choosing one gives the new property that name and its type (a `date` property gets the date field, a list property the list field). A name the note already has is not offered.
+  Done 2026-11-17: the panel's Add Property field lists the vault's names containing the typed letters (`PropertySuggestions.names`, from `vaultProperties`, kept until the index changes), each with its type's icon and its count, leaving out the note's own; choosing one adds it with its type's field (`PropertyValueKind(type:)`, `PropertyListEditing.adding(_:value:)`): a date gets the date picker, a list the list field. Test: `PropertySuggestionsHostedTests.testANewPropertysNameIsSuggestedWithItsTypeAndChoosingItAddsTheTypesField` (iPad simulator, screenshot looked at: course and due with their icons and counts under the field).
+- [x] Typing a list item of `tags` suggests the vault's tags (without `#`), nested tags included, most used first; a tag the note already lists is not offered. Accepting adds it as a list item and leaves the field ready for the next one.
+  Done 2026-11-17: a list field of `tags` (or `tag`) lists `VaultIndex.tags(matching:)` without `#`, nested tags included, leaving out the note's items; choosing one adds it and empties the field. Test: `PropertySuggestionsHostedTests.testATagsItemSuggestsTheVaultsTagsWithoutTheNotesOwnAndChoosingAddsIt`.
+- [x] Typing a value of any other text or list property suggests the values that property already takes in the vault (`course` suggests `VLSI 3`, `Computer Architecture`), most used first. Needs an index query for one property's values with their counts, bounded (top values only, from the index's property table).
+  Done 2026-11-17: `VaultIndex.propertyValues(of:matching:limit:)` (`Sources/GraphiteIndex/PropertyValueQueries.swift`) reads one property's rows (at most 20,000), counts each value and each list item by note, spellings differing in capitals as one, most used first; a text field suggests them once its value is being changed, a list field for its next item. Tests: `PropertyValueQueriesTests` (4), `PropertyCompletionTests.testAValueSuggestsWhatThatPropertyTakesMostUsedFirst`.
 - [ ] `aliases` and properties whose values are links: typing `[[` in the field suggests notes as in the body, and accepting writes `"[[Note]]"` as Obsidian does.
+  2026-11-17: not built: the panel's fields suggest names and values, not notes after `[[`. Typing `[[` in the frontmatter written as text suggests notes (section 2).
 - [ ] Keyboard on the Mac and the iPad's keyboard: arrows move through the suggestions, Return or Tab accepts, Escape closes them without leaving the field. On touch, a tap on a suggestion accepts it.
+  Built 2026-11-17 (`propertySuggestionKeys`): ↓ and ↑ move the highlight, Tab and Return choose it, Escape closes the list and keeps the field; a tap chooses (tested above). The keys were not pressed in a test or by hand.
 - [ ] Answers within one frame of a keystroke in the owner's 32,843-file vault on the iPad (a timing budget in `App/Tests/TimingBudgets.swift`).
-- [ ] Tests: index tests of the value query (counts, limit, list and text values, accents); UI or hosted tests that a new property's name is suggested with its type, that a `tags` item suggests a vault tag and skips one the note has, and that accepting writes the frontmatter once.
+- [x] Tests: index tests of the value query (counts, limit, list and text values, accents); UI or hosted tests that a new property's name is suggested with its type, that a `tags` item suggests a vault tag and skips one the note has, and that accepting writes the frontmatter once.
+  Done 2026-11-17: `PropertyValueQueriesTests` (counts, the limit, list and text values, capitals and accents) and `PropertySuggestionsHostedTests` (a name suggested with its type, a `tags` item from the vault's tags without the note's own, the frontmatter written once on a choice).
 - [ ] Checked on the Mac and the iPad with the owner's vault.
 
 ## 2. Property names, values and tags in the frontmatter as text
 
 Issue: [#168](https://github.com/Graphite-Note/Graphite/issues/168)
 
-- [ ] In the frontmatter block of the text editor (Source mode, and Live Preview when the YAML is shown), the cursor at the start of a line, typing a name, suggests the vault's property names; accepting writes `name: `.
-- [ ] After `tags:` (inline `tags: [a, b]` or as `- ` items under it), typing suggests the vault's tags without `#`; after any other `name:` or under it as `- ` items, typing suggests that property's values from the vault (the query of section 1).
-- [ ] A new `CompletionContext` case for the frontmatter, found by `LinkCompletion.context` only inside the block `FrontmatterLocator` finds, so the body's `[[` and `#` suggestions are unchanged and nothing is looked up outside the frontmatter. `[[` inside a frontmatter value still suggests notes.
-- [ ] Tests: Core tests of the context (name at line start, value after `name: `, list items, inline lists, quoted values, the cursor just after the closing `---`, which is body); a hosted test that typing under `tags:` shows a vault tag and accepting writes it.
+- [x] In the frontmatter block of the text editor (Source mode, and Live Preview when the YAML is shown), the cursor at the start of a line, typing a name, suggests the vault's property names; accepting writes `name: `.
+  Done 2026-11-17: `FrontmatterCompletion` finds a name being typed at a line's start in a block that opens on the first line and is closed after the cursor's line; choosing one writes `name: ` (quoted when the name needs it), replacing the rest of the name and its colon. Live Preview conceals the YAML behind the Properties panel (section 1); Source mode is where it is typed as text.
+- [x] After `tags:` (inline `tags: [a, b]` or as `- ` items under it), typing suggests the vault's tags without `#`; after any other `name:` or under it as `- ` items, typing suggests that property's values from the vault (the query of section 1).
+  Done 2026-11-17: a value after `name: ` (an opening quote left out), the item of an inline list `[a, b` being typed, and a `- ` item under `name:` suggest that property's values, or the vault's tags without `#` under `tags`, leaving out the list's other items. Tests: `FrontmatterCompletionTests`, `PropertyCompletionTests` (3).
+- [x] A new `CompletionContext` case for the frontmatter, found by `LinkCompletion.context` only inside the block `FrontmatterLocator` finds, so the body's `[[` and `#` suggestions are unchanged and nothing is looked up outside the frontmatter. `[[` inside a frontmatter value still suggests notes.
+  Done 2026-11-17: `CompletionContext.propertyName` and `.propertyValue`; `LinkCompletion.context` looks for them only inside the frontmatter, after a `[[` link, and never for a `#` tag there, where `#` starts a YAML comment. The body's suggestions are unchanged (`LinkCompletionTests`).
+- [x] Tests: Core tests of the context (name at line start, value after `name: `, list items, inline lists, quoted values, the cursor just after the closing `---`, which is body); a hosted test that typing under `tags:` shows a vault tag and accepting writes it.
+  Done 2026-11-17: `FrontmatterCompletionTests` (6: a name at a line's start, a value after `name: `, quoted values, list items, inline lists, links and comments, the body just after the closing `---`, an unclosed block) and the hosted `LivePreviewRevealTests.testTypingATagUnderTagsInTheFrontmatterSuggestsAVaultTagAndAcceptingWritesIt` (Source mode on the iPad simulator, screenshot looked at: `eth/vlsi` suggested under `  - eth`, written by the choice).
 - [ ] Checked on the Mac and the iPad with the owner's vault, in Source mode and Live Preview.
 
 ## 3. Other places that take a property or a tag
 
 Issue: [#169](https://github.com/Graphite-Note/Graphite/issues/169)
 
-- [ ] The Bases property editor sheet suggests the edited property's values, and tags for `tags`, as section 1 does.
-- [ ] The sidebar's search field suggests tags after `tag:` and property names after `[`, then that property's values after `[name:`, beside the operators it already suggests.
-- [ ] Tests: a test per place that a vault tag or value is suggested and accepting writes it.
+- [x] The Bases property editor sheet suggests the edited property's values, and tags for `tags`, as section 1 does.
+  Done 2026-11-17: the sheet's text field, and a list's last line, suggest the property's values or the vault's tags (`BasePropertyEditorSheet`, through `propertySuggestionLookup` set for a base's tab), the list's other lines left out. Test: `PropertySuggestionsHostedTests.testTheBasePropertyEditorSuggestsTheVaultsValuesAndSavesTheChosenOne`.
+- [x] The sidebar's search field suggests tags after `tag:` and property names after `[`, then that property's values after `[name:`, beside the operators it already suggests.
+  Done 2026-11-17: after `tag:` the vault's tags, after `[` its property names, after `[name:` that property's values, before the operators (`SearchTermCompletion`, `VaultSidebar.findVaultSearchSuggestions`); choosing one writes `tag:#tag `, `[name:` or `[name:"value"] `. Tests: `SearchTermCompletionTests` (when each is offered, the query written). The suggestion list of the system's search field was not drawn in a test.
+- [x] Tests: a test per place that a vault tag or value is suggested and accepting writes it.
+  Done 2026-11-17: the Properties panel and the Bases sheet (`PropertySuggestionsHostedTests`), the text editor (`PropertyCompletionTests`, `LivePreviewRevealTests`), the search (`SearchTermCompletionTests`, with the vault's values from `PropertySuggestions` as the others take them).
 - [ ] Checked on the Mac and the iPad.

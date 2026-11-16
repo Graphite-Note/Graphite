@@ -2,7 +2,7 @@
 
 Created: 2026-11-16.
 
-Status: built 2026-11-16; sections 1 and 2 done, section 3 waits for its check by hand in the running apps. Issues: [#187](https://github.com/Graphite-Note/Graphite/issues/187) to [#189](https://github.com/Graphite-Note/Graphite/issues/189), one per section.
+Status: built 2026-11-16; sections 1 and 2 done, section 3 looked at in the running apps on 2026-11-17 (a tap on a card not made). Issues: [#187](https://github.com/Graphite-Note/Graphite/issues/187) to [#189](https://github.com/Graphite-Note/Graphite/issues/189), one per section.
 
 ## Request
 
@@ -43,4 +43,5 @@ Issue: [#189](https://github.com/Graphite-Note/Graphite/issues/189)
 - [x] `![…](YouTube address)` on a line of its own draws a card in Live Preview and in the reading view: thumbnail, title, play button; a tap or click opens the address. Done 2026-11-16: `WebVideoCard` (at most 560 points wide, a 16:9 picture, the play button, a Playlist badge, the written or fetched title), `EmbedReference.isBlockOfItsOwn`; the card has the link trait and opens the address with `openURL`. `WebLinksHostedTests` (Live Preview and the reading view on the iPad simulator), `UiEditorMacWebLinksTests` (the Mac editor's block); screenshots with YouTube's thumbnails and titles for both playlists looked at. The tap's opening was not run in a test.
 - [x] Videos (`watch?v=`, `youtu.be/`, `shorts/`) and playlists (`playlist?list=`) are recognized. Done 2026-11-16: `WebVideo`; `WebLinkPreviewTests.testYouTubeVideosAndPlaylistsAreRecognized`.
 - [x] Tests: recognizing the addresses, the block found for such a line in both renderers. Done 2026-11-16: `WebLinkPreviewTests` (7).
-- [ ] Checked by hand on the iPad simulator and the Mac with the request's two playlists. 2026-11-16: both playlists drawn with YouTube's thumbnails and titles in hosted iPad renderings and in a rendering of the Mac editor; not by hand in the running apps, as the simulator's taps and computer use were not granted while the owner was away. oEmbed answers for both, with the Spring 2026 and Fall 2026 livestreams of the storage systems course.
+- [x] Checked by hand on the iPad simulator and the Mac with the request's two playlists. 2026-11-16: both playlists drawn with YouTube's thumbnails and titles in hosted iPad renderings and in a rendering of the Mac editor; not by hand in the running apps, as the simulator's taps and computer use were not granted while the owner was away. oEmbed answers for both, with the Spring 2026 and Fall 2026 livestreams of the storage systems course.
+  Done 2026-11-17: looked at in the running apps: a note of the two playlists as `![](…)` lines, in the reading view of a re-signed Mac Debug copy (dark) and in Live Preview in the iPad simulator (light): each is a card with YouTube's thumbnail, its title (Spring 2026 and Fall 2026 livestreams), the play button and the Playlist badge. Not done: a tap or click on a card, which opens YouTube through `openURL`, as the simulator's taps and computer use were not granted.

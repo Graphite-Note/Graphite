@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Web frames on the Mac: the reading view's block for the owner's note, tags inside HTML left as text, the
  *              frame's web view at the tag's size with a page served by the test, the web view's limits, a failed load,
- *              placeholders where a live page does not fit, and the page given up when its view leaves the window.
+ *              placeholders where a live page does not fit, the page given up when its view leaves the window, and the
+ *              note scrolling on past a page's end.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -277,6 +278,48 @@ final class WebFrameViewTests: XCTestCase {
         XCTAssertEqual(server.requestedPaths.filter { path in path == "/grapher" }.count, 2)
     }
 
+    // MARK: The note scrolls on past a page's end (section 3)
+
+    func testAWheelStepGoesToTheNoteOnlyPastThePagesEnd() {
+        let middle = WebFramePageScrollEdges(scrollTop: 300, viewportHeight: 400, scrollHeight: 1_200)
+        XCTAssertFalse(middle.passesToNote(deltaY: -10))
+        XCTAssertFalse(middle.passesToNote(deltaY: 10))
+        let bottom = WebFramePageScrollEdges(scrollTop: 799.6, viewportHeight: 400, scrollHeight: 1_200)
+        XCTAssertTrue(bottom.passesToNote(deltaY: -10), "Down past the page's end scrolls the note.")
+        XCTAssertFalse(bottom.passesToNote(deltaY: 10), "Up scrolls the page back.")
+        let short = WebFramePageScrollEdges(scrollTop: 0, viewportHeight: 400, scrollHeight: 300)
+        XCTAssertTrue(short.passesToNote(deltaY: -10) && short.passesToNote(deltaY: 10), "A page that does not scroll leaves the wheel to the note.")
+        XCTAssertFalse(short.passesToNote(deltaY: 0))
+    }
+
+    /// Found 2026-11-12 on the Mac: with the page at its end, 30 more wheel steps over the frame did not move the note.
+    func testWithThePageAtItsEndTheWheelOverTheFrameScrollsTheNote() async throws {
+        let tallPage = "<html><body style=\"margin:0\"><div style=\"height:3000px\">Tall</div></body></html>"
+        let server = try await LoopbackWebServer(pages: ["/tall": tallPage])
+        self.server = server
+        let webView = WebFrameWebViews.make()
+        let frameWebView = try XCTUnwrap(webView as? WebFrameWebView)
+        let note = FlippedNoteView(frame: CGRect(x: 0, y: 0, width: 500, height: 3_000))
+        webView.frame = CGRect(x: 0, y: 200, width: 500, height: 400)
+        note.addSubview(webView)
+        let noteScrollView = NSScrollView(frame: CGRect(x: 0, y: 0, width: 500, height: 800))
+        noteScrollView.documentView = note
+        let window = host(Color.clear, width: 500, height: 800)
+        try XCTUnwrap(window.contentView).addSubview(noteScrollView)
+        webView.load(URLRequest(url: server.address("/tall")))
+        try await waitUntil("the tall page loads", timeoutSeconds: 20) { !webView.isLoading && webView.url != nil }
+        _ = try await webView.evaluateJavaScript("window.scrollTo(0, document.documentElement.scrollHeight); 0")
+        frameWebView.readScrollEdges()
+        try await waitUntil("the page is known to be at its end", timeoutSeconds: 10) { frameWebView.scrollEdges.isAtBottom }
+
+        let noteTopBefore = noteScrollView.contentView.bounds.origin.y
+        let downward = try XCTUnwrap(CGEvent(scrollWheelEvent2Source: nil, units: .pixel, wheelCount: 1, wheel1: -40, wheel2: 0, wheel3: 0))
+        let wheelStep = try XCTUnwrap(NSEvent(cgEvent: downward))
+        XCTAssertLessThan(wheelStep.scrollingDeltaY, 0)
+        for _ in 0..<5 { webView.scrollWheel(with: wheelStep) }
+        try await waitUntil("the note scrolls on", timeoutSeconds: 5) { noteScrollView.contentView.bounds.origin.y != noteTopBefore }
+    }
+
     // MARK: Helpers
 
     private func frame(src: String, attributes: String) -> WebFrameEmbed? {
@@ -342,4 +385,9 @@ private struct WebViewHost: NSViewRepresentable {
     let webView: WKWebView
     func makeNSView(context: Context) -> WKWebView { webView }
     func updateNSView(_ webView: WKWebView, context: Context) {}
+}
+
+/// A note's text as a scroll view holds it on the Mac: top to bottom, so it starts scrolled to its top.
+private final class FlippedNoteView: NSView {
+    override var isFlipped: Bool { true }
 }

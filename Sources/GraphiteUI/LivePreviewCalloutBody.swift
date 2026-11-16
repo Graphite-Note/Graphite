@@ -5,7 +5,7 @@
  * Description: A Live Preview callout drawn as a box, and the reading-view blocks of its body or of an embedded note.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
+ * Version: 0.3
  * Date: 16/11/2026
  */
 
@@ -131,7 +131,7 @@ struct LivePreviewBlockStack: View {
             AnyView(RenderedMarkdownBlock(markdown: "```" + language + "\n" + source + "\n```", environment: environment))
         case .mermaidDiagram(let source):
             AnyView(LivePreviewDiagramView(source: source, environment: environment, revealSource: revealSource))
-        case .webFrame(let frame): AnyView(LivePreviewWebFrameView(frame: frame, revealSource: revealSource))
+        case .webFrame(let frame): AnyView(LivePreviewWebFrameView(frame: frame, textSize: CGFloat(environment.textSize), revealSource: revealSource))
         }
     }
 }

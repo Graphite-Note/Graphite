@@ -17,6 +17,12 @@ public enum CompletionContext: Equatable, Sendable {
     case link(LinkQuery)
     /// A `#tag` being typed; `query` excludes the `#`.
     case tag(query: String, replacementRange: NSRange)
+    /// A property's name typed at the start of a frontmatter line (`FrontmatterCompletion`); `writtenNames` are the
+    /// note's other properties, which are not suggested again.
+    case propertyName(query: String, replacementRange: NSRange, writtenNames: [String])
+    /// A property's value typed after `name:` in the frontmatter, inline or as a `- ` item; `writtenValues` are the
+    /// list's other items. For `tags` the values are the vault's tags, without `#`.
+    case propertyValue(name: String, query: String, replacementRange: NSRange, writtenValues: [String])
     /// Elsewhere, while community plugins suggest as the person types (`EditorSuggest`):
     /// `revision` names the change the plugins were asked about, a new one at each change.
     case pluginSuggestion(revision: Int)
@@ -82,6 +88,11 @@ public enum LinkCompletion {
         // The query only reads the cursor's line; the code check reads the lines before it,
         // so it runs only when there is something to suggest.
         let lineEnd = contentEnd(of: lineRange, in: text)
+        // In the frontmatter `#` starts a YAML comment, not a tag: a link is still suggested, then names and values.
+        if FrontmatterCompletion.isInsideFrontmatter(text, cursor: cursor) {
+            if let link = linkQuery(beforeCursor: beforeCursor, text: text, cursor: cursor, lineEnd: lineEnd) { return .link(link) }
+            return FrontmatterCompletion.context(in: text, cursor: cursor)
+        }
         guard let candidate = linkQuery(beforeCursor: beforeCursor, text: text, cursor: cursor, lineEnd: lineEnd).map(CompletionContext.link)
                 ?? tagQuery(beforeCursor: beforeCursor, text: text, cursor: cursor, lineEnd: lineEnd),
               !isInCode(text, lineRange: lineRange, cursor: cursor) else { return nil }

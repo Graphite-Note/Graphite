@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.54
+ * Version: 0.55
  * Date: 16/11/2026
  */
 
@@ -1622,6 +1622,7 @@ struct ReadingBlocksView: View {
     var folding: ReadingFolding? = nil
     /// The types the properties block was parsed with, which also decide how it shows them.
     var declaredPropertyTypes: [String: PropertyType] = [:]
+    @Environment(\.propertySuggestionLookup) private var propertySuggestions
     /// Follows where the note's own blocks are as the view scrolls; nil for embedded notes.
     var blockPositions: ReadingPosition? = nil
     // The word being read is not read here: it changes with every word, and this view's body
@@ -1671,7 +1672,8 @@ struct ReadingBlocksView: View {
             let block = entry.block
             switch block {
             case .properties(let properties):
-                PropertiesPanel(properties: properties, update: updateProperties, follow: navigate, declaredTypes: declaredPropertyTypes)
+                PropertiesPanel(properties: properties, update: updateProperties, follow: navigate, declaredTypes: declaredPropertyTypes,
+                                suggestions: propertySuggestions)
             case .markdown(_, let text):
                 ObsidianMarkdownText(markdown: text, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
                                      sourceTokens: readingSourceTokensByBlock[block.id])
@@ -1763,7 +1765,8 @@ struct ReadingBlocksView: View {
             case .diagram(_, let diagram):
                 ReadingDiagramView(diagram: diagram, textSize: textSize, root: root, navigate: navigate, scrollToHeading: scrollToHeading)
             case .webFrame(_, let frame):
-                WebFrameBlock(frame: frame)
+                // The reading view sets list items in by about their marker's width; Live Preview's lists are not set in.
+                WebFrameBlock(frame: frame, textSize: CGFloat(textSize), listItemIndentation: CGFloat(textSize) * 0.9, listMarkerStyle: .primary)
             case .missingSection(_, let path, let subpath):
                 Button { navigate(path.rawValue, true) } label: {
                     Label(NoteBlocks.missingSectionMessage(subpath: subpath, noteName: path.stem), systemImage: "questionmark.square.dashed")
