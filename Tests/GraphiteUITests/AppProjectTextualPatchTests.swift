@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 12/11/2026
+ * Version: 0.13
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -345,6 +345,17 @@ final class AppProjectTextualPatchTests: XCTestCase {
         // wide, and the line it is on adds a few points below it.
         XCTAssertGreaterThanOrEqual(layout.rowBounds(1).height, 49)
         XCTAssertLessThanOrEqual(layout.rowBounds(1).height, 56)
+    }
+
+    /// HUNT-360: the width a cell's pictures fit is the width its column offers. With a flexible frame a picture a point
+    /// wider than that made the cell report the picture's width, the picture was fitted to it and then to the column again,
+    /// and the two widths took turns at every layout pass.
+    func testAColumnOffersItsPicturesItsOwnWidthEvenWhenAPictureIsWider() {
+        let frame = StructuredText.ColumnWidthFrame(alignment: .leading) { Color.clear.frame(width: 80, height: 53) }
+        let controller = NSHostingController(rootView: frame)
+        XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: 79.8, height: 500)).width, 79.8, accuracy: 0.01, "The column's width, not the picture's.")
+        XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: 200, height: 500)).width, 200, accuracy: 0.01, "The column's width when the picture is narrower.")
+        XCTAssertEqual(controller.sizeThatFits(in: CGSize(width: CGFloat.infinity, height: 500)).width, 80, accuracy: 0.01, "The content's width when offered any width.")
     }
 
     func testFiguresThatFitKeepTheirSizeAndTheTableDoesNotStretch() async throws {

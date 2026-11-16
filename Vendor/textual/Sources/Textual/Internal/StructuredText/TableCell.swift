@@ -45,23 +45,59 @@ extension StructuredText {
 
     // Graphite patch: the content fills its column, where `Grid` aligned a cell of the
     // content's own width; the column's width is then the width attachments fit.
+    @ViewBuilder
     private var label: some View {
-      WithInlineStyle(AttributedString(content)) {
+      let text = WithInlineStyle(AttributedString(content)) {
         TextFragment($0)
       }
       .environment(\.attachmentContainerWidth, fitsAttachmentsToColumn ? contentWidth : nil)
-      .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))
-      .onGeometryChange(for: CGFloat?.self) { geometry in
-        // Whole points: text as wide as an attachment is rounded up to whole pixels, which
-        // would make it wider than a column that ends between two of them.
-        fitsAttachmentsToColumn ? geometry.size.width.rounded(.down) : nil
-      } action: { newWidth in
-        contentWidth = newWidth
+
+      if fitsAttachmentsToColumn {
+        // The width its images fit is the width the column offers, never the width of the
+        // images themselves: a flexible frame takes the width of content wider than offered,
+        // so an image a point wider than its column made the column's width that of the
+        // image, which fitted the image to it, and the two took turns for good (HUNT-360).
+        ColumnWidthFrame(alignment: alignment) { text }
+          .onGeometryChange(for: CGFloat.self) { geometry in
+            // Whole points: text as wide as an attachment is rounded up to whole pixels,
+            // which would make it wider than a column that ends between two of them.
+            geometry.size.width.rounded(.down)
+          } action: { newWidth in
+            contentWidth = newWidth
+          }
+      } else {
+        text.frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .center))
       }
     }
 
     private var indentationLevel: Int {
       content.presentationIntent?.indentationLevel ?? 0
+    }
+  }
+
+  /// Graphite patch: as wide as it is offered, whatever its content's width, with the content
+  /// aligned in it; as wide as its content when offered no width.
+  struct ColumnWidthFrame: Layout {
+    let alignment: HorizontalAlignment
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+      let contentSize = subviews.first?.sizeThatFits(proposal) ?? .zero
+      let width = proposal.width.flatMap { width in width.isFinite ? width : nil } ?? contentSize.width
+      return CGSize(width: width, height: contentSize.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+      guard let content = subviews.first else { return }
+      let contentProposal = ProposedViewSize(width: bounds.width, height: proposal.height)
+      let contentWidth = content.sizeThatFits(contentProposal).width
+      let spareWidth = bounds.width - contentWidth
+      let contentMinX: CGFloat
+      switch alignment {
+      case .center: contentMinX = bounds.minX + spareWidth / 2
+      case .trailing: contentMinX = bounds.minX + spareWidth
+      default: contentMinX = bounds.minX
+      }
+      content.place(at: CGPoint(x: contentMinX, y: bounds.midY), anchor: .leading, proposal: contentProposal)
     }
   }
 }
