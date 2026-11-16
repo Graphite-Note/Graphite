@@ -3,11 +3,12 @@
  * --------------------------------
  * Layer: Tests
  * Description: On the Mac, a page written as densely as a formula sheet (6,000 strokes) is shown, scrolled and zoomed
- *              with its main-thread work within budget; and the annotation layers kept sharp are only those shown.
+ *              with its main-thread work within budget; the annotation layers kept sharp are only those shown, and a
+ *              look draws them again only for its share of a frame.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 import XCTest
 import PDFKit
@@ -24,7 +25,8 @@ import GraphiteTestSupport
 /// The formula sheet's density on the Mac, where PDFKit shows every stroke's annotation in a layer of its own and
 /// `PDFAnnotationLayerResolution` draws those layers at the screen's resolution. Measured 2026-11-12 (debug build, M5
 /// Max): shown sharp 1.5 s after opening, a look at the layers with nothing to draw 6 ms, the 6,000 layers drawn again
-/// at a new zoom in 0.39 s.
+/// at a new zoom in 0.39 s, all in one frame. Since 2026-11-16 a look draws for at most `drawingTimePerLook`, and the
+/// looks that follow draw the rest.
 @MainActor
 final class DenseInkPageMacTests: XCTestCase {
     private var vault: TemporaryVault!
@@ -58,17 +60,42 @@ final class DenseInkPageMacTests: XCTestCase {
         pdfView.annotationLayerResolution.update()
         let lookDuration = ContinuousClock.now - start
 
+        let scaleBeforeZoom = try XCTUnwrap(Self.annotationLayers(in: pdfView).first).contentsScale
         pdfView.scaleFactor *= 2
         start = ContinuousClock.now
         pdfView.annotationLayerResolution.update()
+        let zoomLookDuration = ContinuousClock.now - start
         let layers = Self.annotationLayers(in: pdfView)
-        for layer in layers { layer.displayIfNeeded() }
+        let redrawnInOneLook = layers.filter { layer in layer.contentsScale > scaleBeforeZoom * 1.5 }.count
+        try await waitUntil("every stroke is drawn again at the zoom by the looks that follow", timeoutSeconds: 60) {
+            Self.annotationLayers(in: pdfView).allSatisfy { layer in layer.contentsScale > scaleBeforeZoom * 1.5 }
+        }
         let redrawDuration = ContinuousClock.now - start
-        print("DenseInkPageMacTests timing: shown sharp \(shownDuration), a look \(lookDuration), "
-              + "\(layers.count) layers drawn again at the zoom in \(redrawDuration)")
+        print("DenseInkPageMacTests timing: shown sharp \(shownDuration), a look \(lookDuration), a look after the zoom \(zoomLookDuration) "
+              + "drawing \(redrawnInOneLook) of \(layers.count) layers, all drawn again in \(redrawDuration)")
         XCTAssertLessThan(shownDuration, .seconds(20), "A page of 6,000 strokes shows sharp soon after opening.")
         XCTAssertLessThan(lookDuration, .milliseconds(60), "A look at the layers, made at every scroll, stays a small part of a frame.")
-        XCTAssertLessThan(redrawDuration, .seconds(3), "Drawing every stroke again at a new zoom, once when the zoom ends.")
+        XCTAssertLessThan(redrawnInOneLook, layers.count, "One look draws a share of the strokes, not all 6,000 in one frame.")
+        XCTAssertLessThan(zoomLookDuration, .milliseconds(60), "A look after the zoom stays a small part of a frame.")
+        XCTAssertLessThan(redrawDuration, .seconds(30), "Every stroke is drawn again at the zoom within seconds.")
+    }
+
+    /// A look draws layers while it has time and stops when it has none, after the first, which it always draws.
+    func testALookDrawsLayersOnlyWhileItHasTime() {
+        let layers = (0..<5).map { _ in TestAnnotationLayer() }
+        var timeChecks = 0
+        let drawnCount = PDFAnnotationLayerResolution.draw(layers.map { layer in (layer, 2) }) {
+            timeChecks += 1
+            return timeChecks <= 2
+        }
+        XCTAssertEqual(drawnCount, 3)
+        XCTAssertEqual(layers.map(\.contentsScale), [2, 2, 2, 1, 1])
+        XCTAssertEqual(layers.prefix(3).map(\.drawCount), [1, 1, 1], "Drawn in the look, so its time is counted.")
+
+        let slowLayers = (0..<3).map { _ in TestAnnotationLayer() }
+        XCTAssertEqual(PDFAnnotationLayerResolution.draw(slowLayers.map { layer in (layer, 3) }) { false }, 1,
+                       "With no time left the first is still drawn, so the looks move on.")
+        XCTAssertEqual(slowLayers.map(\.contentsScale), [3, 1, 1])
     }
 
     /// A hidden layer draws nothing anyone sees: it is not drawn again at the screen's resolution, nor looked into.
@@ -99,6 +126,12 @@ final class DenseInkPageMacTests: XCTestCase {
     }
 }
 
-/// Stands for PDFKit's annotation layer class.
-private final class TestAnnotationLayer: CALayer {}
+/// Stands for PDFKit's annotation layer class, and counts its drawing.
+private final class TestAnnotationLayer: CALayer {
+    private(set) var drawCount = 0
+
+    override func display() {
+        drawCount += 1
+    }
+}
 #endif
