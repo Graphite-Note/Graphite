@@ -6,8 +6,8 @@
  *              and heights shared between editors.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
- * Date: 12/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -123,6 +123,17 @@ final class UiEditorRenderedBlockReuseTests: XCTestCase {
     }
 
     // MARK: Views kept off screen (P8)
+
+    /// A frame given to a view is read back with its last digits changed; compared exactly, every view counted as moved
+    /// at every placement pass, the passes that follow a real move were spent, and the map below a table in the
+    /// Graphite Guide's `Lisbon weekend.md` stayed over its heading (HUNT-362).
+    func testAFrameReadBackWithItsLastDigitsChangedIsTheSameFrame() {
+        let frame = CGRect(x: 52, y: 988.1163888888885, width: 730, height: 523)
+        let readBack = CGRect(x: 52, y: 988.1163888888887, width: 730, height: 523)
+        XCTAssertTrue(LivePreviewRenderedBlocks.isSameFrame(readBack, frame))
+        XCTAssertFalse(LivePreviewRenderedBlocks.isSameFrame(frame.offsetBy(dx: 0, dy: 0.5), frame), "Half a point is a move.")
+        XCTAssertFalse(LivePreviewRenderedBlocks.isSameFrame(CGRect(x: 52, y: 988.1163888888885, width: 730, height: 456), frame), "So is a new height.")
+    }
 
     func testAViewTakenOffScreenIsShownAgain() {
         var pool = DetachedWidgetPool<String>(budgetMegabytes: 24)

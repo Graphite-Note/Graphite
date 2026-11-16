@@ -5,7 +5,7 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.25
+ * Version: 0.26
  * Date: 16/11/2026
  */
 
@@ -454,7 +454,10 @@ final class LivePreviewRenderedBlocks {
             let frame = CGRect(x: column.minX, y: fragment.layoutFragmentFrame.minY + column.textContainerTop,
                                width: column.width, height: heightsKeptInText[entry.key] ?? reservedHeight)
             let placedView = host(for: entry, makeRootView: makeRootView).placedView
-            if placedView.frame != frame {
+            // A frame set is read back with its last digits changed: compared exactly, every
+            // view counted as moved at every pass, which spent the passes that follow a real
+            // move, and a view then stayed where an earlier pass left it.
+            if !Self.isSameFrame(placedView.frame, frame) {
                 placedView.frame = frame
                 placement.didMoveView = true
             }
@@ -468,6 +471,14 @@ final class LivePreviewRenderedBlocks {
             NSIntersectionRange(entry.range, viewportCharacters).length > 0 && !placement.keysInUse.contains(entry.key)
         }
         return placement
+    }
+
+    /// Whether a view's frame is the frame given, but for the hundredth of a point a view
+    /// rounds a frame it is given to.
+    static func isSameFrame(_ placedFrame: CGRect, _ frame: CGRect) -> Bool {
+        let tolerance: CGFloat = 0.01
+        return abs(placedFrame.minX - frame.minX) < tolerance && abs(placedFrame.minY - frame.minY) < tolerance
+            && abs(placedFrame.width - frame.width) < tolerance && abs(placedFrame.height - frame.height) < tolerance
     }
 
     // MARK: Views
