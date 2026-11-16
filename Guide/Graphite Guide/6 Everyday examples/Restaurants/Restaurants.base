@@ -1,0 +1,35 @@
+filters:
+  and:
+    - file.hasTag("restaurant")
+properties:
+  file.name:
+    displayName: Restaurant
+  note.cuisine:
+    displayName: Cuisine
+  note.rating:
+    displayName: Rating
+  note.price:
+    displayName: Price
+  note.visited:
+    displayName: Visited
+views:
+  - type: map
+    name: Map
+    coordinates: note.coordinates
+    order:
+      - file.name
+      - cuisine
+      - rating
+  - type: table
+    name: By rating
+    order:
+      - file.name
+      - cuisine
+      - rating
+      - price
+      - visited
+    sort:
+      - property: rating
+        direction: DESC
+    summaries:
+      rating: Average

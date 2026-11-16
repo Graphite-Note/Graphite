@@ -1,0 +1,8 @@
+/* Ruled headings: a thin line under each second-level heading, and square bullets. Turn it on to try a snippet. */
+.markdown-rendered h2, .markdown-source-view h2, .cm-header-2 {
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding-bottom: 2px;
+}
+.markdown-rendered ul > li::marker {
+  content: "\25AA  ";
+}

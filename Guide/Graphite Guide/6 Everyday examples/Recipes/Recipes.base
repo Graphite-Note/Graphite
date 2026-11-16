@@ -1,0 +1,35 @@
+filters:
+  and:
+    - file.hasTag("recipe")
+properties:
+  file.name:
+    displayName: Dish
+  note.minutes:
+    displayName: Minutes
+  note.servings:
+    displayName: Serves
+  note.course:
+    displayName: Course
+views:
+  - type: cards
+    name: Gallery
+    image: note.cover
+    imageFit: cover
+    imageAspectRatio: 0.66
+    cardSize: 200
+    order:
+      - file.name
+      - minutes
+      - course
+  - type: table
+    name: Quickest first
+    order:
+      - file.name
+      - minutes
+      - servings
+      - course
+    sort:
+      - property: minutes
+        direction: ASC
+    summaries:
+      minutes: Average
