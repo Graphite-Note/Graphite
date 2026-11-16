@@ -7,8 +7,8 @@
  *              PDF's history, through the session's text box model the iPad uses.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -187,7 +187,7 @@ final class MacPDFTextBoxTool: NSObject {
         changeSelectedBox(actionName: "Move Text Box") { box in box = PDFTextBoxPointerDrag.moved(box, by: delta) }
     }
 
-    /// A box's right-click menu: Edit Text, Duplicate and Delete.
+    /// A box's right-click menu: Edit Text, Duplicate, Delete and Arrange.
     func menu(atViewPoint viewPoint: CGPoint) -> NSMenu? {
         guard editor == nil, let pressed = textBox(at: viewPoint) else { return nil }
         select(pressed.box, on: pressed.page)
@@ -204,6 +204,13 @@ final class MacPDFTextBoxTool: NSObject {
         menu.addItem(MacPDFPageToolMenuItem(title: "Delete") { [weak self] in
             self?.perform { [weak self] in try self?.session.deleteSelectedTextBox() }
         })
+        let page = pressed.page
+        let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
+            self?.perform { [weak self] in try self?.session.arrangeInk(on: page, arrangement) }
+        }
+        MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangementsOfSelectedTextBox, ink: ink) { [weak self] arrangement in
+            self?.perform { [weak self] in try self?.session.arrangeSelectedTextBox(arrangement) }
+        }
         return menu
     }
 

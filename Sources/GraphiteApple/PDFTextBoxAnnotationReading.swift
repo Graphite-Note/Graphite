@@ -34,7 +34,7 @@ extension PDFTextBox {
     }
 
     /// Whether an annotation holds a record of Graphite's text box, without reading it.
-    static func hasRecord(_ annotation: PDFAnnotation) -> Bool {
+    public static func hasRecord(_ annotation: PDFAnnotation) -> Bool {
         annotation.type == annotationTypeName && annotation.value(forAnnotationKey: PDFPageManager.textBoxRecordKey) != nil
     }
 

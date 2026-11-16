@@ -5,8 +5,8 @@
  * Description: Renders and caches small page images for the pages sidebar.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 12/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -145,9 +145,11 @@ final class PDFThumbnailRenderer {
     /// Draws the whole page on the main actor, for a page without a Core Graphics page or
     /// one turned while its content was drawn. PDFKit's page and annotation drawing both
     /// apply the page rotation themselves, in a context with the PDF's upward y axis.
-    /// Graphite's ink and text boxes, which the document hides while a page's overlay shows them.
+    /// Graphite's ink, text boxes and pictures, and shapes, which the document hides while a
+    /// page's overlay shows them (the ink under its canvas, the objects over the ink in it).
     private static func isHiddenUnderLiveOverlay(_ annotation: PDFAnnotation) -> Bool {
         annotation.value(forAnnotationKey: PDFPageManager.groupKey) != nil || annotation.value(forAnnotationKey: PDFPageManager.textBoxRecordKey) != nil
+            || PDFPageManager.isPicture(annotation) || PDFShape.isShape(annotation)
     }
 
     private func render(_ page: PDFPage, fitting pointSize: CGSize, scale: CGFloat) -> PDFThumbnailImage {

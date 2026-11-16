@@ -92,7 +92,7 @@ final class NotebookImportHostedTests: XCTestCase {
     }
 
     private func shownTextBoxCount(in controller: UIViewController) -> Int {
-        descendants(of: controller.view, matching: PDFPageTextBoxesView.self).reduce(0) { count, view in
+        descendants(of: controller.view, matching: PDFPageObjectsOverInkView.self).reduce(0) { count, view in
             count + (view.layer.sublayers?.first?.sublayers?.count ?? 0)
         }
     }

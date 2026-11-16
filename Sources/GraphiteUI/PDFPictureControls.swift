@@ -5,8 +5,8 @@
  * Description: Where an image to place on a PDF page comes from.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 16/11/2026
  */
 #if canImport(UIKit)
 import SwiftUI
@@ -111,10 +111,11 @@ struct PDFPictureArrangementBar: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
                 Spacer(minLength: 8)
-                PictureEditingButtons(isEnabled: session.selectedPicture != nil, canReorder: pictureCountOnSelectedPage > 1,
+                PictureEditingButtons(isEnabled: session.selectedPicture != nil, offeredArrangements: PDFArrangement.menuArrangements,
+                                      possibleArrangements: possibleArrangementsOfSelectedPicture, ink: inkOptionsOfSelectedPicture,
                                       rotateRight: { run { if let selection = session.selectedPicture { try session.rotatePictureRight(selection) } } },
                                       crop: { beginCropping() },
-                                      moveInOrder: { toFront in run { if let selection = session.selectedPicture { try session.movePictureInOrder(selection, toFront: toFront) } } },
+                                      arrange: { arrangement in run { if let selection = session.selectedPicture { try session.arrangePicture(selection, arrangement) } } },
                                       delete: { run { if let selection = session.selectedPicture { try session.removePicture(selection) } } })
                 Button("Done") { session.selectedPicture = nil }
                     .fontWeight(.semibold)
@@ -129,8 +130,19 @@ struct PDFPictureArrangementBar: View {
 }
 
 extension PDFPictureArrangementBar {
-    private var pictureCountOnSelectedPage: Int {
-        session.selectedPicture?.page.page.map { page in session.pictures(on: page).count } ?? 0
+    /// Ink to Front and Ink to Back for the selected picture's page, read again with each edit.
+    private var inkOptionsOfSelectedPicture: PDFInkArrangeOptions {
+        _ = session.changeVersion
+        guard let page = session.selectedPicture?.page.page else { return .none }
+        return PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { arrangement in
+            run { try session.arrangeInk(on: page, arrangement) }
+        }
+    }
+
+    /// Read again whenever the session's edits change, as each arrangement does.
+    private var possibleArrangementsOfSelectedPicture: Set<PDFArrangement> {
+        _ = session.changeVersion
+        return session.selectedPicture.map(session.possibleArrangements(of:)) ?? []
     }
 
     /// The crop starts as the whole picture.
@@ -150,21 +162,22 @@ extension PDFPictureArrangementBar {
 /// Rotate Right, Crop, Arrange and Delete for the image being arranged, on a drawing or a PDF page.
 struct PictureEditingButtons: View {
     let isEnabled: Bool
-    let canReorder: Bool
+    /// The items of the Arrange menu: a drawing's pictures are only brought to the front or sent to the back.
+    let offeredArrangements: [PDFArrangement]
+    /// Those that would move the image; the others are dimmed.
+    let possibleArrangements: Set<PDFArrangement>
+    /// Ink to Front and Ink to Back for a PDF page; none on a drawing.
+    var ink = PDFInkArrangeOptions.none
     let rotateRight: () -> Void
     let crop: () -> Void
-    let moveInOrder: (_ toFront: Bool) -> Void
+    let arrange: (PDFArrangement) -> Void
     let delete: () -> Void
 
     var body: some View {
         Group {
             Button("Rotate Image Right", systemImage: "rotate.right", action: rotateRight)
             Button("Crop Image", systemImage: "crop", action: crop)
-            Menu("Arrange", systemImage: "square.3.layers.3d") {
-                Button("Bring to Front", systemImage: "square.3.layers.3d.top.filled") { moveInOrder(true) }
-                Button("Send to Back", systemImage: "square.3.layers.3d.bottom.filled") { moveInOrder(false) }
-            }
-            .disabled(!canReorder)
+            PDFArrangeMenu(offeredArrangements: offeredArrangements, possibleArrangements: possibleArrangements, ink: ink, arrange: arrange)
             Button("Delete Image", systemImage: "trash", role: .destructive, action: delete)
         }
         .labelStyle(.iconOnly)

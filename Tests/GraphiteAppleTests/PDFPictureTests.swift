@@ -130,14 +130,14 @@ final class PDFPictureTests: XCTestCase {
         let savedPage = try XCTUnwrap(savedDocument.page(at: 0))
         var moved = first
         moved.bounds = newBounds
-        // The picture moved last is over the other one.
-        XCTAssertEqual(PDFPageManager.pictures(on: savedPage), [second, moved])
+        // A picture moved keeps its place in the page's stacking order, under the one placed after it.
+        XCTAssertEqual(PDFPageManager.pictures(on: savedPage), [moved, second])
         XCTAssertEqual(try color(of: savedPage, atShownPoint: CGPoint(x: 70, y: 300 - 112)), .red, "The picture is shown at its new place and size.")
         XCTAssertEqual(try color(of: savedPage, atShownPoint: CGPoint(x: 40, y: 75)), .white, "Nothing is left at its old place.")
 
         // A picture read from a file moves and is removed by its name as well.
         try PDFPageManager.apply(.movePicture(moved.reference(onPageAt: 0), to: first.bounds), to: savedDocument)
-        XCTAssertEqual(PDFPageManager.pictures(on: savedPage).last, first)
+        XCTAssertEqual(PDFPageManager.pictures(on: savedPage).first, first)
         try PDFPageManager.apply(.removeAnnotation(first.reference(onPageAt: 0)), to: savedDocument)
         XCTAssertEqual(PDFPageManager.pictures(on: savedPage), [second])
         XCTAssertThrowsError(try PDFPageManager.apply(.movePicture(first.reference(onPageAt: 0), to: newBounds), to: savedDocument))
@@ -229,28 +229,28 @@ final class PDFPictureTests: XCTestCase {
         var turned = first
         turned.imageData = try PictureEditing.rotatedClockwise(first.imageData)
         turned.bounds = CGRect(x: 45, y: 175, width: 50, height: 100)
-        try PDFPageManager.apply(.replacePicture(first.reference(onPageAt: 0), with: turned, order: .unchanged), to: document)
+        try PDFPageManager.apply(.replacePicture(first.reference(onPageAt: 0), with: turned), to: document)
         XCTAssertEqual(PDFPageManager.pictures(on: page), [turned, second, third])
         XCTAssertTrue(page.annotations.contains { annotation in annotation === foreignNote })
 
-        try PDFPageManager.apply(.replacePicture(turned.reference(onPageAt: 0), with: turned, order: .front), to: document)
+        try PDFPageManager.apply(.arrange(turned.reference(onPageAt: 0), .bringToFront), to: document)
         XCTAssertEqual(PDFPageManager.pictures(on: page).map(\.name), [second.name, third.name, turned.name])
-        try PDFPageManager.apply(.replacePicture(third.reference(onPageAt: 0), with: third, order: .back), to: document)
+        try PDFPageManager.apply(.arrange(third.reference(onPageAt: 0), .sendToBack), to: document)
         XCTAssertEqual(PDFPageManager.pictures(on: page).map(\.name), [third.name, second.name, turned.name])
-        try PDFPageManager.apply(.replacePicture(turned.reference(onPageAt: 0), with: turned, order: .position(1)), to: document)
+        try PDFPageManager.apply(.arrange(turned.reference(onPageAt: 0), .position(1)), to: document)
         XCTAssertEqual(PDFPageManager.pictures(on: page).map(\.name), [third.name, turned.name, second.name])
 
         // The same edits on the file give the same page, shown turned.
         let written = try Self.blankDocument(rotation: 0)
         try PDFPageManager.replay([first, second, third].map { picture in .addPicture(page: 0, picture: picture) }
-                                  + [.replacePicture(first.reference(onPageAt: 0), with: turned, order: .unchanged)], on: written)
+                                  + [.replacePicture(first.reference(onPageAt: 0), with: turned)], on: written)
         let savedPage = try XCTUnwrap(PDFDocument(data: try XCTUnwrap(written.dataRepresentation()))?.page(at: 0))
         XCTAssertEqual(PDFPageManager.pictures(on: savedPage), [turned, second, third])
         // Red on top, blue under it, as the turned picture is shown.
         XCTAssertEqual(try color(of: savedPage, atShownPoint: CGPoint(x: 70, y: 300 - 250)), .red)
         XCTAssertEqual(try color(of: savedPage, atShownPoint: CGPoint(x: 70, y: 300 - 200)), .blue)
         XCTAssertThrowsError(try PDFPageManager.apply(.replacePicture(PDFAnnotationReference(pageIndex: 0, name: "gone", annotationType: "Stamp",
-                                                                                             bounds: .zero), with: turned, order: .unchanged), to: document))
+                                                                                             bounds: .zero), with: turned), to: document))
     }
 
     // MARK: Drawn smoothly after the PDF is opened again
@@ -473,7 +473,7 @@ final class PDFPictureTests: XCTestCase {
         // Turned back upright, the picture returns to the old key.
         var straightened = try XCTUnwrap(PDFPageManager.pictures(on: savedPage).last)
         straightened.rotationRadians = 0
-        try PDFPageManager.replay([.replacePicture(turned.reference(onPageAt: 0), with: straightened, order: .unchanged)], on: savedDocument)
+        try PDFPageManager.replay([.replacePicture(turned.reference(onPageAt: 0), with: straightened)], on: savedDocument)
         let straightenedAnnotation = try XCTUnwrap(savedPage.annotations.first { annotation in annotation.persistentName == turned.name })
         XCTAssertNotNil(straightenedAnnotation.value(forAnnotationKey: PDFPageManager.pictureKey))
         XCTAssertNil(straightenedAnnotation.value(forAnnotationKey: PDFPageManager.turnedPictureKey))

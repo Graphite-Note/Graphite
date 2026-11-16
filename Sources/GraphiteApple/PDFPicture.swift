@@ -6,8 +6,8 @@
  *              in.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 04/11/2026
+ * Version: 0.11
+ * Date: 16/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -151,6 +151,14 @@ public struct PDFPicture: Sendable, Equatable {
     /// JPEG data is handed to Core Graphics as it is, which decodes it only when it is drawn;
     /// other formats are decoded. (PDFKit still writes a stamp's appearance image as Flate
     /// pixels, not the JPEG's own bytes.)
+    /// Draws a picture Graphite placed, as a shown page draws it, into a context whose
+    /// coordinates are the page's, unturned: for a view laid over the page that draws the
+    /// objects over the ink. False when the annotation is not one of Graphite's pictures of a
+    /// shown document.
+    public static func drawShown(_ annotation: PDFAnnotation, inPageCoordinates context: CGContext) -> Bool {
+        (annotation as? PDFPictureAnnotation)?.drawInPageCoordinates(context) ?? false
+    }
+
     static func decodedImage(_ imageData: Data) -> CGImage? {
         if imageData.starts(with: [0xFF, 0xD8]), let provider = CGDataProvider(data: imageData as CFData),
            let jpegImage = CGImage(jpegDataProviderSource: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent) {
@@ -214,7 +222,6 @@ final class PDFPictureAnnotation: PDFAnnotation {
             super.draw(with: box, in: context)
             return
         }
-        let annotationBounds = bounds
         context.saveGState()
         if drawing.drawsAppearance {
             if let mediaBoxOrigin = page?.bounds(for: .mediaBox).origin {
@@ -223,6 +230,22 @@ final class PDFPictureAnnotation: PDFAnnotation {
         } else {
             page?.transform(context, for: box)
         }
+        draw(drawing, inPageCoordinates: context)
+        context.restoreGState()
+    }
+
+    /// Draws the picture into a context whose coordinates are the page's, unturned, as a view
+    /// laid over the page draws it (`PDFPicture.drawShown`). False when it is not a picture Graphite placed.
+    func drawInPageCoordinates(_ context: CGContext) -> Bool {
+        guard let drawing = picture ?? readPictureFromFile() else { return false }
+        context.saveGState()
+        draw(drawing, inPageCoordinates: context)
+        context.restoreGState()
+        return true
+    }
+
+    private func draw(_ drawing: PDFPictureAnnotationDrawing, inPageCoordinates context: CGContext) {
+        let annotationBounds = bounds
         // A stamp's saved appearance is drawn with the image interpolation of the context
         // it is drawn into, and PDFView on iOS draws it with low interpolation even with
         // its `interpolationQuality` set to high: a picture shown much smaller than its
@@ -239,7 +262,6 @@ final class PDFPictureAnnotation: PDFAnnotation {
         let drawnSize = isSideways ? CGSize(width: pictureSize.height, height: pictureSize.width) : pictureSize
         let image = drawing.image(forLongestDrawnPixels: max(drawnSize.width, drawnSize.height) * pixelsPerPoint)
         context.draw(image, in: CGRect(x: -drawnSize.width / 2, y: -drawnSize.height / 2, width: drawnSize.width, height: drawnSize.height))
-        context.restoreGState()
     }
 
     /// The picture a stamp read from a shown document's file holds, read once; nil for a

@@ -3,15 +3,16 @@
  * ---------------------------
  * Layer: UI
  * Description: The Mac's Shapes tool in one PDF view: dragging draws the row's rectangle, oval, line or arrow; a click
- *              selects a shape, which a drag moves, a handle reshapes, the row restyles and Delete removes.
+ *              selects a shape, which a drag moves, a handle reshapes, the row restyles, Arrange stacks and Delete removes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
 import AppKit
+import GraphiteCore
 import PDFKit
 import GraphiteApple
 
@@ -148,6 +149,16 @@ final class MacPDFShapeTool: NSObject {
         surface?.needsDisplay = true
         let menu = NSMenu()
         menu.addItem(MacPDFPageToolMenuItem(title: "Delete") { [weak self] in self?.deleteSelectedShape() })
+        if let session {
+            let page = pressed.page
+            let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
+                self?.perform { [weak self] in try self?.session?.arrangeInk(on: page, arrangement) }
+                self?.surface?.needsDisplay = true
+            }
+            MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangements(of: pressed.annotation, on: page), ink: ink) { [weak self] arrangement in
+                self?.arrangeSelectedShape(arrangement)
+            }
+        }
         return menu
     }
 
@@ -155,6 +166,22 @@ final class MacPDFShapeTool: NSObject {
     func applyStyle(_ style: PDFMarkupShapeStyle) {
         guard let selected = selectedAnnotation(), let shape = PDFShape(annotation: selected.annotation) else { return }
         change(selected.annotation, on: selected.page, to: style.restyling(shape), actionName: "Format Shape")
+    }
+
+    /// Brings the selected shape forward or sends it back among its page's objects.
+    func arrangeSelectedShape(_ arrangement: PDFArrangement) {
+        guard let selected = selectedAnnotation() else { return }
+        perform { try session?.arrange(selected.annotation, on: selected.page, arrangement) }
+        surface?.needsDisplay = true
+    }
+
+    /// The page of the selected shape, for Ink to Front and Ink to Back.
+    var selectedShapePage: PDFPage? { selectedAnnotation()?.page }
+
+    /// The arrangements that would move the selected shape.
+    var possibleArrangementsOfSelectedShape: Set<PDFArrangement> {
+        guard let session, let selected = selectedAnnotation() else { return [] }
+        return session.possibleArrangements(of: selected.annotation, on: selected.page)
     }
 
     private func deleteSelectedShape() {

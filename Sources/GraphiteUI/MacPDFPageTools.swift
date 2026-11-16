@@ -6,12 +6,13 @@
  *              the pointer from PDFKit through a surface over the view while one of them is chosen.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 16/11/2026
  */
 
 #if os(macOS)
 import AppKit
+import GraphiteCore
 import PDFKit
 import GraphiteApple
 
@@ -37,8 +38,12 @@ final class MacPDFPageTools {
             toolbar?.signaturePlacementRequested = { [weak self] in self?.placeChosenSignature() }
             toolbar?.shapeStyleChosen = { [weak self] style in self?.shapes?.applyStyle(style) }
             toolbar?.pictureFileChosen = { [weak self] location in self?.pictures?.addPicture(fromFileAt: location) }
+            toolbar?.arrangeSelectedObject = { [weak self] arrangement in self?.arrangeSelection(arrangement) }
+            toolbar?.arrangeInkOfSelectedPage = { [weak self] arrangement in self?.arrangeInkOfSelectedPage(arrangement) }
+            updateArrangeableSelection()
         }
     }
+
     /// Where the Text Box tool keeps the look of the last box formatted (`PDFTextBoxDefaults`).
     private let preferences: UserDefaults
     /// The date a stroke is given when it is drawn.
@@ -49,6 +54,8 @@ final class MacPDFPageTools {
         self.view = view
         self.preferences = preferences
         self.currentDate = currentDate
+        // A change of the page's objects, as Undo makes, may move or remove the selected one.
+        session.registerPageObjectsChangeObserver(for: self) { [weak self] in self?.updateArrangeableSelection() }
     }
 
     /// Follows the row's tool: a page tool puts the surface over the view, any other takes it away.
@@ -60,6 +67,7 @@ final class MacPDFPageTools {
         if tool == .pictures { pictures?.toolWasPutDown() }
         pointerInk?.cancelStroke()
         tool = newTool
+        defer { updateArrangeableSelection() }
         guard let view, let session else { return }
         if newTool.takesPagePresses {
             let surface = surface ?? MacPDFToolSurface(tools: self, frame: view.bounds)
@@ -88,6 +96,8 @@ final class MacPDFPageTools {
 
     /// Ends what the tools observe; called when the PDF view is taken down.
     func stop() {
+        session?.unregisterPageObjectsChangeObserver(for: self)
+        toolbar?.selectedObjectChanged(arrangements: [], inkArrangements: [])
         textBoxes?.stop()
         shapes?.stop()
         signatures?.stop()
@@ -120,6 +130,7 @@ final class MacPDFPageTools {
 
     func mouseDown(_ event: NSEvent) {
         guard let view else { return }
+        defer { updateArrangeableSelection() }
         // Delete, Escape and ⌘D reach the tools through the PDF view's keyboard handling.
         if view.window?.firstResponder !== view { view.window?.makeFirstResponder(view) }
         let viewPoint = view.convert(event.locationInWindow, from: nil)
@@ -150,6 +161,7 @@ final class MacPDFPageTools {
 
     func mouseUp(_ event: NSEvent) {
         guard let view else { return }
+        defer { updateArrangeableSelection() }
         let viewPoint = view.convert(event.locationInWindow, from: nil)
         switch tool {
         case .draw: pointerInk?.endStroke(at: viewPoint, timeSeconds: event.timestamp, creationDate: currentDate())
@@ -165,7 +177,8 @@ final class MacPDFPageTools {
     /// Takes the keys of the chosen tool: Delete, Escape, Return and ⌘D for a text box;
     /// Delete and Escape for a shape or a signature; those and the arrow keys for a picture.
     func handleKeyDown(_ event: NSEvent) -> Bool {
-        switch tool {
+        defer { updateArrangeableSelection() }
+        return switch tool {
         case .textBox: textBoxes?.handleKeyDown(event) ?? false
         case .shapes: shapes?.handleKeyDown(event) ?? false
         case .sign: signatures?.handleKeyDown(event) ?? false
@@ -176,6 +189,7 @@ final class MacPDFPageTools {
 
     func menu(for event: NSEvent) -> NSMenu? {
         guard let view else { return nil }
+        defer { updateArrangeableSelection() }
         let viewPoint = view.convert(event.locationInWindow, from: nil)
         switch tool {
         case .textBox: return textBoxes?.menu(atViewPoint: viewPoint)
@@ -184,6 +198,51 @@ final class MacPDFPageTools {
         case .pictures: return pictures?.menu(atViewPoint: viewPoint)
         case .textSelection, .highlight, .draw, .eraseInk: return nil
         }
+    }
+
+    // MARK: Arrange
+
+    /// Brings the selected picture, text box or shape forward or sends it back, for Tools › Arrange.
+    func arrangeSelection(_ arrangement: PDFArrangement) {
+        switch tool {
+        case .textBox:
+            do { try session?.arrangeSelectedTextBox(arrangement) } catch { session?.reportFailedChange(error) }
+        case .shapes: shapes?.arrangeSelectedShape(arrangement)
+        case .pictures: pictures?.arrangeSelection(arrangement)
+        case .textSelection, .highlight, .draw, .eraseInk, .sign: break
+        }
+        surface?.needsDisplay = true
+        updateArrangeableSelection()
+    }
+
+    /// Ink to Front or Ink to Back for the page of the selected text box or shape, for Tools › Arrange.
+    func arrangeInkOfSelectedPage(_ arrangement: PDFArrangement) {
+        guard let page = selectedObjectPage else { return }
+        do { try session?.arrangeInk(on: page, arrangement) } catch { session?.reportFailedChange(error) }
+        surface?.needsDisplay = true
+        updateArrangeableSelection()
+    }
+
+    /// The page of the selected text box or shape.
+    private var selectedObjectPage: PDFPage? {
+        switch tool {
+        case .textBox: session?.textBoxActivity.selection?.page.page
+        case .shapes: shapes?.selectedShapePage
+        case .pictures: session?.selectedPicture?.page.page
+        case .textSelection, .highlight, .draw, .eraseInk, .sign: nil
+        }
+    }
+
+    /// Tells the row what Tools › Arrange can do to the selection and to its page's ink.
+    private func updateArrangeableSelection() {
+        let arrangements: Set<PDFArrangement> = switch tool {
+        case .textBox: session?.possibleArrangementsOfSelectedTextBox ?? []
+        case .shapes: shapes?.possibleArrangementsOfSelectedShape ?? []
+        case .pictures: pictures?.possibleArrangementsOfSelection ?? []
+        case .textSelection, .highlight, .draw, .eraseInk, .sign: []
+        }
+        let inkArrangements = selectedObjectPage.flatMap { page in session?.possibleInkArrangements(on: page) } ?? []
+        toolbar?.selectedObjectChanged(arrangements: arrangements, inkArrangements: inkArrangements)
     }
 
     /// Places the signature chosen in the row's Sign menu, once the Sign tool is in use.

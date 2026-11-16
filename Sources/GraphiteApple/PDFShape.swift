@@ -6,8 +6,8 @@
  *              annotations, read back from any application's file, and moved or reshaped by a handle.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -279,9 +279,9 @@ extension PDFPageManager {
     /// from a file with the appearance it was written with. It keeps the former's author.
     static func replaceShape(_ reference: PDFAnnotationReference, with shape: PDFShape, on page: PDFPage, authorName: String?) throws {
         guard let annotation = referencedAnnotation(reference, on: page), PDFShape.isShape(annotation) else { throw PDFShapeError.shapeMissing }
-        page.removeAnnotation(annotation)
         var replacement = shape
         replacement.author = shape.author ?? annotation.userName
-        page.addAnnotation(replacement.makeAnnotation(authorName: authorName))
+        replaceKeepingItsPlace(annotation, on: page, removeFormer: { page.removeAnnotation(annotation) },
+                               addReplacement: { page.addAnnotation(replacement.makeAnnotation(authorName: authorName)) })
     }
 }

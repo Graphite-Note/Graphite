@@ -241,14 +241,14 @@ final class PDFPictureEditingTests: XCTestCase {
         let names = session.pictures(on: page).map(\.name)
         let middle = PDFPictureSelection(pictureName: names[1], page: session.historyPage(for: page))
 
-        try await step(in: session) { try session.movePictureInOrder(middle, toFront: true) }
+        try await step(in: session) { try session.arrangePicture(middle, .bringToFront) }
         XCTAssertEqual(session.pictures(on: page).map(\.name), [names[0], names[2], names[1]])
-        XCTAssertEqual(session.undoAvailability.undoActionName, "Bring Image to Front")
-        try await step(in: session) { try session.movePictureInOrder(middle, toFront: false) }
+        XCTAssertEqual(session.undoAvailability.undoActionName, "Bring to Front")
+        try await step(in: session) { try session.arrangePicture(middle, .sendToBack) }
         XCTAssertEqual(session.pictures(on: page).map(\.name), [names[1], names[0], names[2]])
         // Already at the back: nothing changes, and no step is added.
-        try session.movePictureInOrder(middle, toFront: false)
-        XCTAssertEqual(session.undoAvailability.undoActionName, "Send Image to Back")
+        try session.arrangePicture(middle, .sendToBack)
+        XCTAssertEqual(session.undoAvailability.undoActionName, "Send to Back")
 
         session.undoAvailability.undo()
         XCTAssertEqual(session.pictures(on: page).map(\.name), [names[0], names[2], names[1]])

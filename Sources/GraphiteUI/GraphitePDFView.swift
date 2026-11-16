@@ -6,7 +6,7 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.40
+ * Version: 0.41
  * Date: 16/11/2026
  */
 
@@ -1883,14 +1883,24 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             pdfView.clearSelection()
             // A tap on a text box selects it, or types in the one selected; a tap beside it
             // ends typing or arranging.
-            if input.isEnabled, !placesTextBoxes, textBoxInteraction?.handleTap(at: viewPoint) == true { return }
+            // A picture over the box there takes the tap.
+            let isPictureOnTop = isPictureTheTopmostObject(at: viewPoint)
+            if input.isEnabled, !placesTextBoxes, !isPictureOnTop, textBoxInteraction?.handleTap(at: viewPoint) == true { return }
             // A tap on a picture selects it; a tap beside it ends arranging.
             let tappedPicture = input.isEnabled ? pictureSelection?.picture(at: viewPoint) : nil
+            if tappedPicture != nil, session.textBoxActivity != .idle { session.textBoxActivity = .idle }
             if session.selectedPicture != tappedPicture { session.selectedPicture = tappedPicture }
             return
         }
         tappedMarkup = markup
         editMenuInteraction?.presentEditMenu(with: UIEditMenuConfiguration(identifier: Self.markupMenuIdentifier, sourcePoint: viewPoint))
+    }
+
+    /// Whether a picture is the topmost object under the point, over any text box there, while no box is typed in.
+    private func isPictureTheTopmostObject(at viewPoint: CGPoint) -> Bool {
+        guard textBoxInteraction?.isEditing != true, let pdfView, let page = pdfView.page(for: viewPoint, nearest: false),
+              let topmost = session.topmostObjectAnnotation(at: pdfView.convert(viewPoint, to: page), on: page, shapeTolerance: 0) else { return false }
+        return PDFPageManager.isPicture(topmost)
     }
 
     private func markup(at viewPoint: CGPoint) -> (annotation: PDFAnnotation, page: PDFPage)? {

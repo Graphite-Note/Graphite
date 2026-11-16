@@ -38,6 +38,8 @@ public struct GraphiteCommands: Commands {
     #if os(macOS)
     /// The markup row of the focused window's PDF in front (`PDFMarkupMenuActions`).
     @FocusedValue(\.pdfMarkupMenuActions) private var pdfMarkupActions
+    /// Arrange for the selected picture, text box or shape of the focused window's PDF (`PDFArrangeMenuActions`).
+    @FocusedValue(\.pdfArrangeMenuActions) private var pdfArrangeActions
     #endif
     /// The shortcuts of the Mac's one workspace, which the menus keep while the Settings
     /// window, which has no workspace actions, is in front.
@@ -99,6 +101,7 @@ public struct GraphiteCommands: Commands {
         // As in Preview.
         CommandMenu("Tools") {
             PDFAnnotateMenu(actions: pdfMarkupActions, shortcut: shortcut)
+            PDFArrangeCommandsMenu(actions: pdfArrangeActions, shortcut: shortcut)
         }
         #endif
         CommandMenu("Go") {

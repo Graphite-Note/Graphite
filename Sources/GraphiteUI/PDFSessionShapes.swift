@@ -6,8 +6,8 @@
  *              each change an ordinary edit that saving replays and one step of the PDF's history.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -46,9 +46,20 @@ extension PDFSession {
 
     private func transitionShape(from previous: PDFShape?, to next: PDFShape?, on page: PDFHistoryPage, firstReference: PDFAnnotationReference?,
                                  actionName: String) throws {
+        // A deleted shape goes back where it was among the page's layers.
+        let formerPosition: Int? = if next == nil, let pageOfShape = page.page, let firstReference {
+            PDFPageManager.stackingPosition(of: firstReference, on: pageOfShape)
+        } else {
+            nil
+        }
         try applyShapeTransition(from: previous, to: next, on: page, reference: firstReference)
         registerStep(named: actionName) { session in
             try session.applyShapeTransition(from: next, to: previous, on: page, reference: nil)
+            if let previous, next == nil {
+                let pageIndex = try session.currentIndex(of: page)
+                try session.putBack(PDFAnnotationReference(pageIndex: pageIndex, name: previous.name, annotationType: previous.kind.annotationTypeName,
+                                                           bounds: previous.bounds), at: formerPosition)
+            }
         } redo: { session in
             try session.applyShapeTransition(from: previous, to: next, on: page, reference: nil)
         }

@@ -5,8 +5,8 @@
  * Description: The full-screen drawing editor and its canvas controller.
  *
  * Authors: Bahey Shalash
- * Version: 0.23
- * Date: 01/11/2026
+ * Version: 0.24
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -252,10 +252,11 @@ struct DrawingEditor: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                PictureEditingButtons(isEnabled: canvasController.selectedPictureIdentifier != nil && !canvasController.pictureOperations.isRunning, canReorder: canvasController.pictures.count > 1,
+                PictureEditingButtons(isEnabled: canvasController.selectedPictureIdentifier != nil && !canvasController.pictureOperations.isRunning, offeredArrangements: [.bringToFront, .sendToBack],
+                                      possibleArrangements: canvasController.pictures.count > 1 ? [.bringToFront, .sendToBack] : [],
                                       rotateRight: { runPictureChange { try await canvasController.rotateSelectedPictureRight() } },
                                       crop: { canvasController.beginCroppingPicture() },
-                                      moveInOrder: { toFront in canvasController.moveSelectedPictureInOrder(toFront: toFront) },
+                                      arrange: { arrangement in canvasController.moveSelectedPictureInOrder(toFront: arrangement == .bringToFront) },
                                       delete: { canvasController.deleteSelectedPicture() })
                 Button("Done") { canvasController.finishArrangingPictures() }
                     .fontWeight(.semibold)

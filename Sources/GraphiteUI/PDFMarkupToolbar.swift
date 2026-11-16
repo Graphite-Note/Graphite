@@ -7,13 +7,14 @@
  *              selected, for the row and the menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 16/11/2026
  */
 
 import SwiftUI
 import PDFKit
 import GraphiteApple
+import GraphiteCore
 
 /// One PDF pane's markup row on the Mac. The row starts hidden in every pane; hiding it
 /// goes back to text selection, so a hidden row never leaves the highlighter on.
@@ -47,6 +48,14 @@ final class PDFMarkupToolbar {
     @ObservationIgnored var selectedMarkChangeRequested: ((PDFSelectedMarkChange) -> Void)?
     /// Set by the PDF view's page tools: places the image file chosen with the row's Add Image.
     @ObservationIgnored var pictureFileChosen: ((URL) -> Void)?
+    /// What Tools › Arrange can do to the selected text box or shape; empty while none is.
+    private(set) var selectedObjectArrangements: Set<PDFArrangement> = []
+    /// Set by the PDF view's page tools: arranges the selected text box or shape.
+    @ObservationIgnored var arrangeSelectedObject: ((PDFArrangement) -> Void)?
+    /// What Tools › Arrange can do to the ink of the selected object's page.
+    private(set) var selectedPageInkArrangements: Set<PDFArrangement> = []
+    /// Set by the PDF view's page tools: Ink to Front or Ink to Back on the selected object's page.
+    @ObservationIgnored var arrangeInkOfSelectedPage: ((PDFArrangement) -> Void)?
 
     /// The tool the PDF view follows: text selection while the row is hidden.
     var tool: PDFMarkupTool { isRowShown ? chosenTool : .textSelection }
@@ -60,6 +69,11 @@ final class PDFMarkupToolbar {
     func choose(_ tool: PDFMarkupTool) {
         chosenTool = tool
         isRowShown = true
+    }
+
+    func selectedObjectChanged(arrangements: Set<PDFArrangement>, inkArrangements: Set<PDFArrangement>) {
+        if selectedObjectArrangements != arrangements { selectedObjectArrangements = arrangements }
+        if selectedPageInkArrangements != inkArrangements { selectedPageInkArrangements = inkArrangements }
     }
 
     func textSelectionChanged(hasText: Bool) {

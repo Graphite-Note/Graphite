@@ -160,8 +160,7 @@ final class MacPDFPictureTool: NSObject {
 
     private static let escapeCharacter = 0x1B
 
-    /// The right-click menu of a picture, which it selects. Arranging commands for the
-    /// picture's place among the page's objects go here, before Delete.
+    /// The right-click menu of a picture, which it selects: Arrange, then Delete.
     func menu(atViewPoint viewPoint: CGPoint) -> NSMenu? {
         guard let session, let pagePoint = pagePoint(viewPoint, on: nil) else { return nil }
         if selected?.page !== pagePoint.page || selected?.picture.contains(pagePoint.point) != true {
@@ -170,8 +169,37 @@ final class MacPDFPictureTool: NSObject {
         }
         surface?.needsDisplay = true
         let menu = NSMenu()
+        if let selection = session.selectedPicture, let page = selection.page.page {
+            let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
+                self?.perform { session in try session.arrangeInk(on: page, arrangement) }
+            }
+            MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangements(of: selection), ink: ink) { [weak self] arrangement in
+                self?.arrangeSelection(arrangement)
+            }
+            menu.addItem(.separator())
+        }
         menu.addItem(MacPDFPageToolMenuItem(title: "Delete Image") { [weak self] in self?.deleteSelection() })
         return menu
+    }
+
+    /// Brings the selected picture forward or sends it back among its page's objects.
+    func arrangeSelection(_ arrangement: PDFArrangement) {
+        perform { session in
+            guard let selection = session.selectedPicture else { return }
+            try session.arrangePicture(selection, arrangement)
+        }
+    }
+
+    /// The arrangements that would move the selected picture.
+    var possibleArrangementsOfSelection: Set<PDFArrangement> {
+        guard let session, let selection = session.selectedPicture else { return [] }
+        return session.possibleArrangements(of: selection)
+    }
+
+    private func perform(_ change: (PDFSession) throws -> Void) {
+        guard let session else { return }
+        do { try change(session) } catch { session.reportFailedChange(error) }
+        surface?.needsDisplay = true
     }
 
     func deleteSelection() {

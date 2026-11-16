@@ -111,6 +111,9 @@ enum GraphiteCommand: String, CaseIterable {
     // PDF, the Mac's markup row and its Annotate commands
     case toggleMarkupToolbar = "graphite:pdf-toggle-markup-toolbar", highlightPDFText = "graphite:pdf-highlight-text"
     case underlinePDFText = "graphite:pdf-underline-text", strikethroughPDFText = "graphite:pdf-strikethrough-text"
+    // PDF, Tools › Arrange for the selected picture, text box or shape
+    case bringPDFObjectToFront = "graphite:pdf-bring-to-front", bringPDFObjectForward = "graphite:pdf-bring-forward"
+    case sendPDFObjectBackward = "graphite:pdf-send-backward", sendPDFObjectToBack = "graphite:pdf-send-to-back"
 
     var identifier: String { rawValue }
 
@@ -137,7 +140,8 @@ enum GraphiteCommand: String, CaseIterable {
 
     private static let iPadOnlyCommands: Set<GraphiteCommand> = [.openSettings, .followLink, .openLinkInNewTab, .openLinkOnOtherSide, .insertDrawing]
     /// The iPad marks a PDF's text from its selection menu and has no markup row.
-    private static let macOnlyCommands: Set<GraphiteCommand> = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText]
+    private static let macOnlyCommands: Set<GraphiteCommand> = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText,
+                                                                .bringPDFObjectToFront, .bringPDFObjectForward, .sendPDFObjectBackward, .sendPDFObjectToBack]
 
     /// The commands a platform offers.
     static func available(on platform: ShortcutPlatform) -> [GraphiteCommand] {
@@ -355,6 +359,15 @@ extension GraphiteCommand {
                               binding: .menuBar, macMenuTitles: ["Underline Text"])
         case .strikethroughPDFText:
             return Descriptor(title: "PDF: Strike through selected text", group: .pdf, binding: .menuBar, macMenuTitles: ["Strikethrough Text"])
+        // Preview has no Arrange commands, so no shortcut is given; Keynote's ⇧⌘F is Search in all files here.
+        case .bringPDFObjectToFront:
+            return Descriptor(title: "PDF: Bring the selected object to front", group: .pdf, binding: .menuBar, macMenuTitles: ["Bring to Front"])
+        case .bringPDFObjectForward:
+            return Descriptor(title: "PDF: Bring the selected object forward", group: .pdf, binding: .menuBar, macMenuTitles: ["Bring Forward"])
+        case .sendPDFObjectBackward:
+            return Descriptor(title: "PDF: Send the selected object backward", group: .pdf, binding: .menuBar, macMenuTitles: ["Send Backward"])
+        case .sendPDFObjectToBack:
+            return Descriptor(title: "PDF: Send the selected object to back", group: .pdf, binding: .menuBar, macMenuTitles: ["Send to Back"])
         }
     }
 

@@ -5,7 +5,7 @@
  * Description: An open PDF: its pages, edits, saving and conflicts.
  *
  * Authors: Bahey Shalash
- * Version: 0.20
+ * Version: 0.21
  * Date: 16/11/2026
  */
 
@@ -265,6 +265,10 @@ final class PDFSession {
     /// Told when a page's text boxes change, keyed by the view drawing them
     /// (`registerTextBoxChangeObserver`).
     @ObservationIgnored private var textBoxChangeObservers: [ObjectIdentifier: () -> Void] = [:]
+    /// Told after an edit adds, changes, removes or reorders a page's pictures, text boxes or
+    /// shapes (`PDFEdit.changesPageObjects`), keyed by the view that draws or arranges them
+    /// (`registerPageObjectsChangeObserver`).
+    @ObservationIgnored private var pageObjectsChangeObservers: [ObjectIdentifier: () -> Void] = [:]
     /// Identifies this session's page drags, so a page dragged from another PDF is refused.
     let identifier = UUID()
 
@@ -434,6 +438,7 @@ final class PDFSession {
         // Assigned only when they change: every view showing the page count or the current
         // page would otherwise be redrawn after each stroke.
         if pageCount != document.pageCount { pageCount = document.pageCount }
+        if edit.changesPageObjects { for changed in pageObjectsChangeObservers.values { changed() } }
         let currentPageIndexInRange = min(currentPageIndex, max(0, pageCount - 1))
         if currentPageIndex != currentPageIndexInRange { currentPageIndex = currentPageIndexInRange }
         changeVersion += 1
@@ -482,6 +487,15 @@ final class PDFSession {
 
     func unregisterTextBoxChangeObserver(for owner: AnyObject) {
         textBoxChangeObservers[ObjectIdentifier(owner)] = nil
+    }
+
+    /// Registers a view that draws a page's objects over the ink or arranges them, told after each edit of them.
+    func registerPageObjectsChangeObserver(for owner: AnyObject, _ changed: @escaping () -> Void) {
+        pageObjectsChangeObservers[ObjectIdentifier(owner)] = changed
+    }
+
+    func unregisterPageObjectsChangeObserver(for owner: AnyObject) {
+        pageObjectsChangeObservers[ObjectIdentifier(owner)] = nil
     }
 
     func textBoxesDidChange() {
