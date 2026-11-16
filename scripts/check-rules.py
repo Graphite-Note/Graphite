@@ -28,7 +28,8 @@ Usage:
   python3 scripts/check-rules.py --coverage      check that every SRP/OCP/LSP/ISP/DIP/CC/TR rule is in a Sources cell of
                                                  rewrite-foundations.md section 11 (exit 1 when one is missing)
   python3 scripts/check-rules.py --test-log <file>   only compare the skipped-test count of a `swift test` or `xcodebuild test` log
-                                                 with the entry of "skippedTestsBaselines" named like the log file (swift-test.log, hosted-ipad.log; exit 1 when it rose)
+                                                 with the entry of "skippedTestsBaselines" named like the log file (swift-test.log, hosted-ipad.log; exit 1 when it rose),
+                                                 and fail on any compiler warning in Graphite's own files that the log shows
   python3 scripts/check-rules.py --root <path>   check another checkout (default: the repository)
 
 To lower a baseline: remove the hits (python3 scripts/check-rules.py --show <gate> lists them), then run --record and
@@ -677,6 +678,13 @@ def run_checks(arguments):
     return 1 if failures else 0
 
 
+# A compiler's warning names its file, line and column; an XCTest runtime warning names only a line. Graphite's own
+# files are under these folders of the checkout, not under derived data's checkouts of other packages or Vendor.
+OWN_COMPILER_WARNING = re.compile(
+    r"(/(?:[^\s:/]+/)*?(?:Sources|App|Tests|Packages/NotebookImport|Packages/MermaidDiagrams)/[^\s:]+\.(?:swift|mm?|h|c)):(\d+:\d+): warning: (.*)")
+OTHER_PACKAGES_FOLDERS = ("/SourcePackages/", "/checkouts/", "/Vendor/", "/.build/")
+
+
 def check_test_log(arguments, baseline_path):
     """Compare the skipped-test count of a test log with its baseline. The count is the number of distinct tests with a
     "Test Case '-[Class test]' skipped" line, which `swift test --parallel --verbose` and `xcodebuild test` both print (a
@@ -684,6 +692,16 @@ def check_test_log(arguments, baseline_path):
     ("Executed N tests, with M tests skipped and K failures")."""
     with open(arguments.test_log, encoding="utf-8", errors="replace") as handle:
         text = handle.read()
+    # Graphite's own code builds with no warning (RULES.md, "No warnings"). `.treatAllWarnings(as: .error)` in Package.swift
+    # makes a warning an error under `swift build`, but xcodebuild compiles the local package with Xcode's own settings,
+    # where a package's warning stays a warning (HUNT-321): the log of the build is checked instead.
+    own_warnings = sorted({(f"{path}:{line_and_column}", message) for path, line_and_column, message in OWN_COMPILER_WARNING.findall(text)
+                           if not any(folder in path for folder in OTHER_PACKAGES_FOLDERS)})
+    if own_warnings:
+        for location, message in own_warnings:
+            print(f"FAIL build warning: {location}: {message}")
+        print(f"FAIL test log: {len(own_warnings)} compiler warning(s) in Graphite's own code (RULES.md, \"No warnings\")")
+        return 1
     results = {}
     for name, outcome in re.findall(r"Test Case '(-\[[^\]]+\])' (passed|failed|skipped)", text):
         # A test that is retried or listed twice counts once, with the last outcome.

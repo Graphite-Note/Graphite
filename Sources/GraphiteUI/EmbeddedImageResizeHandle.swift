@@ -131,6 +131,7 @@ private struct ImageResizeTouchArea: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator { Coordinator(changed: changed, ended: ended) }
 
+    @MainActor
     final class Coordinator: NSObject {
         var changed: (CGFloat) -> Void
         var ended: () -> Void

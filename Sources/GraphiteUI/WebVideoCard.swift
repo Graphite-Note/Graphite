@@ -76,7 +76,7 @@ struct WebVideoCard: View {
 
     private static let cornerRadius: CGFloat = 10
     /// A card as wide as a laptop's video player, not the whole column on a large screen.
-    static let maximumWidth: CGFloat = 560
+    nonisolated static let maximumWidth: CGFloat = 560
 
     private var title: String {
         if let writtenTitle, !writtenTitle.trimmingCharacters(in: .whitespaces).isEmpty { return writtenTitle }

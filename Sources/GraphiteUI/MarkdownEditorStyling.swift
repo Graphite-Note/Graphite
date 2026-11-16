@@ -111,6 +111,8 @@ final class MarkdownEditorStyling {
     let blockContextCheckpoints = MarkdownBlockContextCheckpoints()
     let renderedBlocks: LivePreviewRenderedBlocks
     private var characterEditObserver: NSObjectProtocol?
+    /// The text storage whose edits `characterEditObserver` hears, while it lives.
+    private weak var observedTextStorage: NSTextStorage?
 
     init(configuration: EditorConfiguration, propertiesSource: PropertiesSourceVisibility, detachedViewsBudgetMegabytes: Int) {
         self.configuration = configuration
@@ -166,14 +168,19 @@ final class MarkdownEditorStyling {
         stopObservingCharacterEdits()
         // The notification center matches `object` by its address, which a text storage made later can take once this one
         // is freed: PDFKit makes one for each annotation as it writes a PDF away from the main thread, and the assumption
-        // of the main actor below stopped the app there (HUNT-361). Only the storage observed, while it lives, is heard.
-        let observedTextStorage = textView.styledTextStorage
+        // of the main actor below stopped the app there (HUNT-361). Only the storage observed, while it lives, is heard: an
+        // editor's storage is edited on the main thread, so an edit away from it is another storage's, and on the main
+        // thread the storage is compared with the one observed, which `self` holds weakly.
+        observedTextStorage = textView.styledTextStorage
         characterEditObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
-                                                                       object: observedTextStorage, queue: nil) { [weak self, weak textView, weak observedTextStorage] notification in
-            guard let textStorage = notification.object as? NSTextStorage, let observedTextStorage, textStorage === observedTextStorage,
+                                                                       object: textView.styledTextStorage, queue: nil) { [weak self, weak textView] notification in
+            guard Thread.isMainThread, let textStorage = notification.object as? NSTextStorage,
                   textStorage.editedMask.contains(.editedCharacters) else { return }
             let edit = CharacterEdit(editedRange: textStorage.editedRange, changeInLength: textStorage.changeInLength)
+            let editedTextStorage = ObjectIdentifier(textStorage)
             MainActor.assumeIsolated {
+                // While the observed storage lives, no other object has its identifier.
+                guard let observedTextStorage = self?.observedTextStorage, ObjectIdentifier(observedTextStorage) == editedTextStorage else { return }
                 self?.renderedBlocks.moveBlockEditedInItsView(through: edit)
                 guard let self, let textView,
                       self.textState.recordCharacterEdit(edit, revealedRange: self.revealedMarkup?.shownLineRange) else { return }
@@ -188,6 +195,7 @@ final class MarkdownEditorStyling {
     func stopObservingCharacterEdits() {
         if let characterEditObserver { NotificationCenter.default.removeObserver(characterEditObserver) }
         characterEditObserver = nil
+        observedTextStorage = nil
     }
 
     /// The text as an immutable snapshot: the one last styled while it is current, a fresh
