@@ -66,8 +66,18 @@ final class PDFPictureDropHostedTests: XCTestCase {
         return (window, view, drops)
     }
 
+    /// An item that offers its bytes as `type`, as Photos, Files and Safari offer a picture.
+    private func provider(of fileData: Data, as type: UTType) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .all) { completion in
+            completion(fileData, nil)
+            return nil
+        }
+        return provider
+    }
+
     private func imageProvider(_ imageData: Data) -> NSItemProvider {
-        NSItemProvider(item: imageData as NSData, typeIdentifier: UTType.png.identifier)
+        provider(of: imageData, as: .png)
     }
 
     func testAnImageDroppedOnAPageIsPlacedWhereItLandedSelectedAsOneStep() async throws {
@@ -111,7 +121,7 @@ final class PDFPictureDropHostedTests: XCTestCase {
         XCTAssertEqual(placedCount, 1)
         XCTAssertEqual(session.pictures(on: page).first?.bounds.width ?? 0, 150, accuracy: 1)
 
-        let pdfFile = NSItemProvider(item: try Data(contentsOf: try makePDF(named: "Other.pdf")) as NSData, typeIdentifier: UTType.pdf.identifier)
+        let pdfFile = provider(of: try Data(contentsOf: try makePDF(named: "Other.pdf")), as: .pdf)
         XCTAssertEqual(PDFPictureDropReader.kind(of: pdfFile), .pdfDocument)
         XCTAssertFalse(drops.takesDrop(of: [pdfFile]))
         let refusedCount = await drops.placePictures(of: [pdfFile], atViewPoint: view.convert(CGPoint(x: 200, y: 300), from: page))
