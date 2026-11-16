@@ -20,7 +20,7 @@ import GraphiteCore
 /// against the commit and `GuideVaultContentsTests` against the vault in the checkout, so a change to the vault is
 /// pinned again before it ships.
 enum GuideVaultPack {
-    static let revision = "87e47d93a9c01f0ee8c2c278b40646e0bd81dbd4"
+    static let revision = "ebd0c6af8742616440814290ce1ce4a226ad6978"
     /// The note the Guide vault opens at when no other is asked for.
     static let startNote = "Start here"
     private static let baseAddress = URL(string: "https://raw.githubusercontent.com/Graphite-Note/Graphite/\(revision)/Guide/Graphite%20Guide")
@@ -63,8 +63,8 @@ enum GuideVaultPack {
                   sha256: "f36c4ff17c79082e1d1217cb6cc2974ca7f425f8f7fa96c70917e21e699cabe5"),
         AddOnFile(name: "2 Coming from Obsidian/What differs.md", byteCount: 1486,
                   sha256: "95180ceedfea61d43ae7bf998eb9d2d2af3055e52c7d11fceb85272f8baee6f0"),
-        AddOnFile(name: "3 Handwriting and PDFs/Drawings in notes.md", byteCount: 2012,
-                  sha256: "73efd26f21119b9e3796f1a6ef65b7f1970634a140f9947fd0f07f4855e7b4af"),
+        AddOnFile(name: "3 Handwriting and PDFs/Drawings in notes.md", byteCount: 2096,
+                  sha256: "b20194d0a03cc8680028f461f01be9f5bee4ca0d595e3a950a7958ec72fa2659"),
         AddOnFile(name: "3 Handwriting and PDFs/Handwriting and PDFs.md", byteCount: 1269,
                   sha256: "a231a636eb25f97aa7d799ef29c006092e82ba840cdbc2ba25dec49214d48ef2"),
         AddOnFile(name: "3 Handwriting and PDFs/Notebooks and paper.md", byteCount: 1533,
@@ -99,8 +99,8 @@ enum GuideVaultPack {
                   sha256: "ee0761d8c76502bdc41f617e5855abe8cba6a63c17b9c6c47eeb1853333e2ed9"),
         AddOnFile(name: "4 Making notes look good/Web pages in notes.md", byteCount: 706,
                   sha256: "4ca251bdae2bfe9d4e30ed05d3f15717a4c65e82a40c4b2bc18c89d78396130b"),
-        AddOnFile(name: "5 Connecting notes/Bases.md", byteCount: 1855,
-                  sha256: "397ed23b7281e032933ca3e9a56fb4c0bcda41135922dc53fc8b3ce348f18f64"),
+        AddOnFile(name: "5 Connecting notes/Bases.md", byteCount: 1953,
+                  sha256: "ffb46bb9da375356879fcb819249b50f05bf4320619ae181635ea46106172869"),
         AddOnFile(name: "5 Connecting notes/Canvas.md", byteCount: 1179,
                   sha256: "4c7056e6522b8af75232f382596306581752ce18d6ffeafc638a83cfdf7e0bc2"),
         AddOnFile(name: "5 Connecting notes/Connecting notes.md", byteCount: 1035,
@@ -203,12 +203,16 @@ enum GuideVaultPack {
                   sha256: "8b83900f7a2563d4becdfcba32d8634c471f5dcc43a3a99089851e78d398cf69"),
         AddOnFile(name: "Attachments/Pancakes.png", byteCount: 5834,
                   sha256: "ec8cb3903eb0e6b40d05918cc86156760e75f2481de59e2e74cb648f2496e9f0"),
+        AddOnFile(name: "Attachments/Screenshots/Mac - A drawing in a note, dark.jpg", byteCount: 74515,
+                  sha256: "5a04a33d0f6e2703c6dcf6abf2a37d972b9779939ae30baaeadb341b4be7a425"),
         AddOnFile(name: "Attachments/Screenshots/Mac - A slide in a lecture note.jpg", byteCount: 68349,
                   sha256: "bceef30f8c9b630264be76e54f2cb53440059a33ec95b23afae51bf703ae5701"),
         AddOnFile(name: "Attachments/Screenshots/Mac - Course map canvas.jpg", byteCount: 101366,
                   sha256: "ec0e0bcdd627331d052ac27e041809c3febe21295879f5f891140e3acf873b4c"),
         AddOnFile(name: "Attachments/Screenshots/Mac - Diagrams.jpg", byteCount: 73406,
                   sha256: "521acb9f6924c9342a9897a972072e36b6461e6eb5134e7c7d9d2794402e78ed"),
+        AddOnFile(name: "Attachments/Screenshots/Mac - Recipes gallery, dark.jpg", byteCount: 66917,
+                  sha256: "f9ab0e590028af28f9a88ca092fc4d78ad04f449dc0a16d582acda7d31e852f7"),
         AddOnFile(name: "Attachments/Screenshots/iPad - A drawing in a note.jpg", byteCount: 147312,
                   sha256: "2a2c1c489582b4404c8fb34a84c77e97c3cb31b3ba1806829b5ca498d6b7328f"),
         AddOnFile(name: "Attachments/Screenshots/iPad - A recipe.jpg", byteCount: 147539,
