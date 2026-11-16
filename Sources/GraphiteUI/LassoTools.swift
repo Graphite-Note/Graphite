@@ -148,6 +148,7 @@ import LinkPresentation
 import ImageIO
 import UniformTypeIdentifiers
 import GraphiteCore
+import GraphiteApple
 
 /// The colors of what the lasso draws over a page. The pages and a drawing's paper keep
 /// their own colors in dark appearance, so these do not follow the appearance: the accent
@@ -366,23 +367,13 @@ enum LassoPasteboard {
     /// a screenshot taken here at the size of its area; an image with a stated resolution at
     /// that size on paper; any other at half its pixels, as on a Retina screen.
     static func preferredWidth(ofImageData imageData: Data) -> CGFloat? {
-        guard let source = CGImageSourceCreateWithData(imageData as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let pixelWidth = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
-              let pixelHeight = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue, pixelWidth > 0 else { return nil }
-        // EXIF orientations 5 to 8 turn the picture a quarter turn.
-        let isTurned = (5...8).contains((properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1)
-        let shownPixelWidth = isTurned ? pixelHeight : pixelWidth
-        let shownPixelHeight = isTurned ? pixelWidth : pixelHeight
+        guard let measure = PictureNaturalSize.measure(ofImageData: imageData) else { return nil }
         if let screenshot = recentScreenshotSizes.last(where: { remembered in
-            abs(remembered.pixels.width - shownPixelWidth) < 1 && abs(remembered.pixels.height - shownPixelHeight) < 1
+            abs(remembered.pixels.width - measure.shownPixelSize.width) < 1 && abs(remembered.pixels.height - measure.shownPixelSize.height) < 1
         }) {
             return screenshot.points.width
         }
-        if let dotsPerInch = (properties[kCGImagePropertyDPIWidth] as? NSNumber)?.doubleValue, dotsPerInch > 72 {
-            return CGFloat(shownPixelWidth * 72 / dotsPerInch)
-        }
-        return CGFloat(shownPixelWidth / 2)
+        return measure.widthInPoints
     }
 }
 

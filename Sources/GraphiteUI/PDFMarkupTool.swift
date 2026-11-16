@@ -6,8 +6,8 @@
  *              it, and whether it takes presses on pages from PDFKit.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 13/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 /// The tool chosen in the Mac's markup row. With the row hidden, the tool is text selection.
@@ -26,6 +26,8 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     case shapes
     /// A signature chosen from the row's Sign menu is placed on the page; a press on it moves or resizes it.
     case sign
+    /// A click on a picture selects it to move, resize or delete; the row's Add Image places one.
+    case pictures
 
     var title: String {
         switch self {
@@ -36,6 +38,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
         case .textBox: "Text Box"
         case .shapes: "Shapes"
         case .sign: "Sign"
+        case .pictures: "Images"
         }
     }
 
@@ -48,6 +51,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
         case .textBox: "character.textbox"
         case .shapes: "square.on.circle"
         case .sign: "signature"
+        case .pictures: "photo"
         }
     }
 
@@ -56,7 +60,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     var takesPagePresses: Bool {
         switch self {
         case .textSelection, .highlight: false
-        case .draw, .eraseInk, .textBox, .shapes, .sign: true
+        case .draw, .eraseInk, .textBox, .shapes, .sign, .pictures: true
         }
     }
 
@@ -64,7 +68,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     /// A click that chose a mark already on the page selects that mark, so it never marks the text again.
     func styleToApplyOnMouseUp(style: PDFMarkupStyle, selectionHasText: Bool, clickChoseExistingMark: Bool) -> PDFMarkupStyle? {
         switch self {
-        case .textSelection, .draw, .eraseInk, .textBox, .shapes, .sign: nil
+        case .textSelection, .draw, .eraseInk, .textBox, .shapes, .sign, .pictures: nil
         case .highlight: selectionHasText && !clickChoseExistingMark ? style : nil
         }
     }

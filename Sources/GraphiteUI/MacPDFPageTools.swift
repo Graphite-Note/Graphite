@@ -2,12 +2,12 @@
  * File: MacPDFPageTools.swift
  * ---------------------------
  * Layer: UI
- * Description: The Mac markup row's page tools in one PDF view: Draw, Eraser, Text Box, Shapes and Sign, which take
+ * Description: The Mac markup row's page tools in one PDF view: Draw, Eraser, Text Box, Shapes, Sign and Images, which take
  *              the pointer from PDFKit through a surface over the view while one of them is chosen.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 13/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -28,6 +28,7 @@ final class MacPDFPageTools {
     private var textBoxes: MacPDFTextBoxTool?
     private(set) var shapes: MacPDFShapeTool?
     private(set) var signatures: MacPDFSignatureTool?
+    private(set) var pictures: MacPDFPictureTool?
     /// The pane's markup row: the colour and width the next stroke takes, the next shape's
     /// look, and the signature chosen in its Sign menu.
     weak var toolbar: PDFMarkupToolbar? {
@@ -35,6 +36,7 @@ final class MacPDFPageTools {
             shapes?.toolbar = toolbar
             toolbar?.signaturePlacementRequested = { [weak self] in self?.placeChosenSignature() }
             toolbar?.shapeStyleChosen = { [weak self] style in self?.shapes?.applyStyle(style) }
+            toolbar?.pictureFileChosen = { [weak self] location in self?.pictures?.addPicture(fromFileAt: location) }
         }
     }
     /// Where the Text Box tool keeps the look of the last box formatted (`PDFTextBoxDefaults`).
@@ -55,6 +57,7 @@ final class MacPDFPageTools {
         if tool == .textBox { textBoxes?.toolWasPutDown() }
         if tool == .shapes { shapes?.toolWasPutDown() }
         if tool == .sign { signatures?.toolWasPutDown() }
+        if tool == .pictures { pictures?.toolWasPutDown() }
         pointerInk?.cancelStroke()
         tool = newTool
         guard let view, let session else { return }
@@ -74,6 +77,8 @@ final class MacPDFPageTools {
             if newTool == .sign, signatures == nil {
                 signatures = MacPDFSignatureTool(session: session, view: view, surface: surface, currentDate: currentDate)
             }
+            if newTool == .pictures, pictures == nil { pictures = MacPDFPictureTool(session: session, view: view, surface: surface) }
+            surface.needsDisplay = true
             view.window?.invalidateCursorRects(for: surface)
             if newTool == .sign { placeChosenSignature() }
         } else {
@@ -86,6 +91,7 @@ final class MacPDFPageTools {
         textBoxes?.stop()
         shapes?.stop()
         signatures?.stop()
+        pictures?.stop()
         pointerInk?.cancelStroke()
         surface?.removeFromSuperview()
     }
@@ -107,6 +113,7 @@ final class MacPDFPageTools {
         case .textBox: return textBoxes?.cursor(atViewPoint: viewPoint) ?? .iBeam
         case .shapes: return shapes?.cursor(atViewPoint: viewPoint)
         case .sign: return signatures?.cursor(atViewPoint: viewPoint)
+        case .pictures: return pictures?.cursor(atViewPoint: viewPoint)
         case .textSelection, .highlight: return nil
         }
     }
@@ -122,6 +129,7 @@ final class MacPDFPageTools {
         case .textBox: textBoxes?.mouseDown(at: viewPoint, clickCount: event.clickCount)
         case .shapes: shapes?.mouseDown(at: viewPoint)
         case .sign: signatures?.mouseDown(at: viewPoint)
+        case .pictures: pictures?.mouseDown(at: viewPoint)
         case .textSelection, .highlight: break
         }
     }
@@ -135,6 +143,7 @@ final class MacPDFPageTools {
         case .textBox: textBoxes?.mouseDragged(to: viewPoint)
         case .shapes: shapes?.mouseDragged(to: viewPoint)
         case .sign: signatures?.mouseDragged(to: viewPoint)
+        case .pictures: pictures?.mouseDragged(to: viewPoint)
         case .textSelection, .highlight: break
         }
     }
@@ -148,17 +157,19 @@ final class MacPDFPageTools {
         case .textBox: textBoxes?.mouseUp(at: viewPoint)
         case .shapes: shapes?.mouseUp(at: viewPoint)
         case .sign: signatures?.mouseUp(at: viewPoint)
+        case .pictures: pictures?.mouseUp(at: viewPoint)
         case .textSelection, .highlight: break
         }
     }
 
     /// Takes the keys of the chosen tool: Delete, Escape, Return and ⌘D for a text box;
-    /// Delete and Escape for a shape or a signature.
+    /// Delete and Escape for a shape or a signature; those and the arrow keys for a picture.
     func handleKeyDown(_ event: NSEvent) -> Bool {
         switch tool {
         case .textBox: textBoxes?.handleKeyDown(event) ?? false
         case .shapes: shapes?.handleKeyDown(event) ?? false
         case .sign: signatures?.handleKeyDown(event) ?? false
+        case .pictures: pictures?.handleKeyDown(event) ?? false
         case .textSelection, .highlight, .draw, .eraseInk: false
         }
     }
@@ -170,6 +181,7 @@ final class MacPDFPageTools {
         case .textBox: return textBoxes?.menu(atViewPoint: viewPoint)
         case .shapes: return shapes?.menu(atViewPoint: viewPoint)
         case .sign: return signatures?.menu(atViewPoint: viewPoint)
+        case .pictures: return pictures?.menu(atViewPoint: viewPoint)
         case .textSelection, .highlight, .draw, .eraseInk: return nil
         }
     }
@@ -187,6 +199,7 @@ final class MacPDFPageTools {
         case .textBox: textBoxes?.drawSelectionFrame(in: surface, of: pdfView)
         case .shapes: shapes?.drawOverlay(in: surface, of: pdfView)
         case .sign: signatures?.drawSelectionFrame(in: surface, of: pdfView)
+        case .pictures: pictures?.drawSelectionFrame(in: surface, of: pdfView)
         case .eraseInk, .textSelection, .highlight: break
         }
     }

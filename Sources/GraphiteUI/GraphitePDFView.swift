@@ -790,6 +790,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var pictureSelection: PDFPictureSelectionController?
     /// The page's text boxes: drawn over the ink, placed, selected and typed in.
     private var textBoxInteraction: PDFTextBoxInteraction?
+    /// Takes pictures dropped onto the pages; a PDF embedded in a note leaves drops to the note.
+    private(set) var pictureDrops: PDFPictureDropInteraction?
     private var toolboxObserver: NSObjectProtocol?
     private var zoomObserver: NSObjectProtocol?
     /// Draws the canvases at the zoom once it has settled, not at every step of a pinch.
@@ -915,6 +917,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         self.pictureSelection = pictureSelection
         session.visiblePageCenter = { [weak pictureSelection] in pictureSelection?.visiblePageCenter() }
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
+        if !isEmbedded { pictureDrops = PDFPictureDropInteraction(session: session, pdfView: view) }
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
@@ -1056,6 +1059,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         pictureSelection?.stop()
         pictureSelection = nil
         textBoxInteraction?.stop()
+        pictureDrops?.stop()
+        pictureDrops = nil
         textBoxInteraction = nil
         if let toolboxObserver { NotificationCenter.default.removeObserver(toolboxObserver) }
         toolboxObserver = nil
@@ -2061,6 +2066,13 @@ struct GraphitePDFView: NSViewRepresentable {
         let markupInteraction = MacPDFMarkupInteraction(session: session, view: view)
         context.coordinator.markupInteraction = markupInteraction
         view.markupInteraction = markupInteraction
+        session.visiblePageCenter = { [weak view] in view?.visiblePageCenter() }
+        if !isEmbedded {
+            let pictureDrops = MacPDFPictureDropTarget(session: session, view: view)
+            pictureDrops.picturesWerePlaced = { [weak view] in view?.markupInteraction?.toolbar?.choose(.pictures) }
+            view.pictureDrops = pictureDrops
+            view.registerForDraggedTypes(MacPDFPictureDropTarget.pasteboardTypes)
+        }
         session.pdfView = view
         return view
     }
@@ -2094,6 +2106,8 @@ final class GraphiteMacPDFView: PDFView {
     lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
     /// Text markup by pointer and keyboard; owned by the view's coordinator.
     weak var markupInteraction: MacPDFMarkupInteraction?
+    /// Takes pictures dropped onto the pages; nil in a PDF embedded in a note.
+    var pictureDrops: MacPDFPictureDropTarget?
     /// The PDF's own history (`PDFSession.undoManager`), which Edit › Undo and Redo, ⌘Z and
     /// ⇧⌘Z reach while the PDF is the first responder.
     weak var documentUndoManager: UndoManager?
@@ -2132,6 +2146,18 @@ final class GraphiteMacPDFView: PDFView {
     override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
         markupInteraction?.mouseUpFinished()
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        pictureDrops?.draggingUpdated(sender) ?? super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        pictureDrops?.draggingUpdated(sender) ?? super.draggingUpdated(sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        pictureDrops?.performDrop(sender) ?? super.performDragOperation(sender)
     }
 
     override func keyDown(with event: NSEvent) {

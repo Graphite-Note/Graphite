@@ -45,6 +45,8 @@ final class PDFMarkupToolbar {
     private(set) var selectedMarkAppearance: PDFSelectedMarkAppearance?
     /// Set by the PDF view's markup handling: recolours or removes the selected mark.
     @ObservationIgnored var selectedMarkChangeRequested: ((PDFSelectedMarkChange) -> Void)?
+    /// Set by the PDF view's page tools: places the image file chosen with the row's Add Image.
+    @ObservationIgnored var pictureFileChosen: ((URL) -> Void)?
 
     /// The tool the PDF view follows: text selection while the row is hidden.
     var tool: PDFMarkupTool { isRowShown ? chosenTool : .textSelection }
@@ -105,6 +107,12 @@ final class PDFMarkupToolbar {
         signatureToPlace = signature
         choose(.sign)
         signaturePlacementRequested?()
+    }
+
+    /// Places the image file chosen with Add Image on the PDF's page in view, choosing the Images tool.
+    func addPicture(fromFileAt location: URL) {
+        choose(.pictures)
+        pictureFileChosen?(location)
     }
 
     /// The signature waiting to be placed, given once.

@@ -49,8 +49,8 @@ enum PDFMarkupRowFolding: Int, CaseIterable, Comparable {
 
 /// The markup row under the toolbar. Its tools and their choices are buttons laid out in
 /// the row, as the owner asked (2026-11-13): Text Selection; the highlight colours,
-/// Underline and Strikethrough; Draw and Eraser; Text Box, Shapes and the Sign menu; then
-/// the chosen tool's choices.
+/// Underline and Strikethrough; Draw and Eraser; Text Box, Shapes, the Sign menu and Images;
+/// then the chosen tool's choices.
 /// Where the pane is too narrow for all of them, the choices fold into menus first, then
 /// the highlight colours, then the tools (`PDFMarkupRowFolding`).
 struct PDFMarkupToolbarRow: View {
@@ -108,6 +108,7 @@ struct PDFMarkupRowContent: View {
                 PDFMarkupToolButton(tool: .textBox, toolbar: toolbar)
                 PDFMarkupToolButton(tool: .shapes, toolbar: toolbar)
                 if let signatureStore { PDFMarkupSignMenu(toolbar: toolbar, store: signatureStore, reportFailure: reportFailure) }
+                PDFMarkupToolButton(tool: .pictures, toolbar: toolbar)
             }
             options
         }
@@ -125,6 +126,9 @@ struct PDFMarkupRowContent: View {
         case .shapes:
             groupDivider
             PDFMarkupShapeOptions(toolbar: toolbar, shapeStyle: $shapeStyle, isFolded: folding >= .options)
+        case .pictures:
+            groupDivider
+            PDFMarkupPictureOptions(toolbar: toolbar)
         case .textSelection, .highlight, .eraseInk, .sign:
             EmptyView()
         }
@@ -378,7 +382,7 @@ struct PDFMarkupToolMenu: View {
             Button(PDFMarkupTool.textSelection.title, systemImage: PDFMarkupTool.textSelection.symbolName) { toolbar.choose(.textSelection) }
             textMarkItems
             Section {
-                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .shapes], id: \.self) { tool in
+                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .shapes, .pictures], id: \.self) { tool in
                     Button(tool.title, systemImage: tool.symbolName) { toolbar.choose(tool) }
                 }
             }
