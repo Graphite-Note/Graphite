@@ -2,7 +2,7 @@
 
 Created: 2026-11-14.
 
-Status: planned 2026-11-14; sections 5, 6 and 7 built 2026-11-16 (see each). Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d.
+Status: planned 2026-11-14; sections 5, 6 and 7 built 2026-11-16 (see each), with their tests passing on the Mac and, for the session, colour and stored-colour tests, in the hosted iPad suite. Their items stay open until checked by hand: on 2026-11-16 access to a re-signed copy of the Mac app, to the iPad simulator and to Preview was not granted, so nothing was tried by hand yet. Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d.
 
 ## Request
 
