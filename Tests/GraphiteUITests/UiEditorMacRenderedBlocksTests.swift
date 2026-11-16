@@ -192,6 +192,25 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         XCTAssertTrue(blockViews(in: textView).first === tableView, "The view kept off screen comes back, not a new one")
     }
 
+    /// A restyle gives a block's lines new fragments, which TextKit has not laid out when the
+    /// views are placed. The Mac waited for TextKit's next layout of the viewport, which could
+    /// come only with the next scroll: the owner's pictures stayed blank over their space until
+    /// then (HUNT-364). No layout or drawing of the window runs between the placement and
+    /// the check here, so the view is back only if the editor lays out the viewport itself.
+    func testABlockWhoseLinesAreNotLaidOutGetsItsViewWithoutWaitingForAScroll() async throws {
+        let (coordinator, textView, _) = try await makeEditor(text: Self.tableNote)
+        try await awaitConditionAfterLayout { self.blockViews(in: textView).count == 1 }
+        let textLayoutManager = try XCTUnwrap(textView.textLayoutManager)
+        let contentManager = try XCTUnwrap(textLayoutManager.textContentManager)
+        coordinator.removeAllBlockViews()
+        let start = try XCTUnwrap(contentManager.location(contentManager.documentRange.location, offsetBy: Self.tableRange.location))
+        let end = try XCTUnwrap(contentManager.location(start, offsetBy: Self.tableRange.length))
+        textLayoutManager.invalidateLayout(for: try XCTUnwrap(NSTextRange(location: start, end: end)))
+        XCTAssertNotEqual(textLayoutManager.textLayoutFragment(for: start)?.state, .layoutAvailable, "The table's lines wait for layout")
+        coordinator.placeBlockViews(in: textView)
+        XCTAssertEqual(blockViews(in: textView).count, 1, "The table's view is placed by this pass, not by a later layout")
+    }
+
     /// A note opened from the file list keeps its cursor at the start without keyboard focus:
     /// a block there is drawn, and shows its source only once the note has focus.
     func testABlockAtTheCursorShowsItsSourceOnlyWhileTheNoteHasKeyboardFocus() async throws {

@@ -987,11 +987,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private var blockEntries: [LivePreviewBlockEntry] { textState.blockEntries }
         private var renderedBlocks: LivePreviewRenderedBlocks { styling.renderedBlocks }
         private var memoryWarningObserver: NSObjectProtocol?
-        /// Consecutive layout passes that placed, moved, or could not place a rendered block.
-        private var unsettledPlacementPasses = 0
-        /// Later tries for a rendered block still missing after the passes above, which can
-        /// happen when TextKit lays out the viewport only after the view settles.
-        private var delayedPlacementTries = 0
+        /// The layout passes that follow one that could not place a rendered block, or moved one.
+        private var placementRetries = RenderedBlockPlacementRetries()
         /// Set while blocks are placed again on a viewport laid out for them in the same pass.
         private var isPlacingOnViewportLaidOutNow = false
         /// Makes the views of the blocks just below the screen once the note is still.
@@ -1729,8 +1726,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         /// Places rendered blocks again with a fresh set of passes.
         private func placeWidgetsAgain(in textView: UITextView) {
-            unsettledPlacementPasses = 0
-            delayedPlacementTries = 0
+            placementRetries.reset()
             textView.setNeedsLayout()
         }
 
@@ -1950,8 +1946,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             session.undoAvailability.refresh()
             // An edit moves the text again, so rendered blocks get a fresh set of placement
             // passes; a budget spent earlier would otherwise leave a block unplaced.
-            unsettledPlacementPasses = 0
-            delayedPlacementTries = 0
+            placementRetries.reset()
             lookahead.stop()
         }
 
@@ -1992,19 +1987,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 widgetRootView(for: entry, environment: environment, textView: textView)
             }) else { return }
             // The cursor leaving a block restyles it, which replaces its fragment, and TextKit
-            // lays the viewport out only after this pass. Waiting a turn of the run loop showed
-            // a frame or two with the text below already moved down and the block's space
-            // empty. The viewport is laid out now instead, and the blocks placed on it. Laying
-            // it out can scroll the view, as when the block takes its height back below a
-            // selection that UIKit keeps in sight, so it is laid out once more where it went.
+            // lays the viewport out only after this pass; it is laid out now instead.
             if !placement.keysAwaitingLayout.isEmpty, !isPlacingOnViewportLaidOutNow {
                 isPlacingOnViewportLaidOutNow = true
                 defer { isPlacingOnViewportLaidOutNow = false }
-                for _ in 0..<2 {
-                    let offsetBeforeLayout = textView.contentOffset
-                    textLayoutManager.textViewportLayoutController.layoutViewport()
-                    if textView.contentOffset == offsetBeforeLayout { break }
-                }
+                RenderedBlockPlacementRetries.layOutViewport(of: textLayoutManager) { textView.contentOffset }
                 positionWidgets(in: textView)
                 return
             }
@@ -2012,21 +1999,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             // A height measured at a new width, or by another editor, is reserved in the text first.
             styling.restyleLater(placement.entriesToRestyle, in: textView)
             // After a jump (the keyboard closing, a scroll to a heading) or a restyle, TextKit
-            // can finish laying out the viewport after this pass; try again once it has.
-            // A placed view can change the height it reserves, and TextKit then moves the text
-            // after this pass; one more pass on the next turn of the run loop follows it.
-            if (placement.isMissingBlock || placement.didMoveView) && unsettledPlacementPasses < 6 {
-                unsettledPlacementPasses += 1
-                DispatchQueue.main.async { [weak textView] in textView?.setNeedsLayout() }
-            } else if placement.isMissingBlock && delayedPlacementTries < 3 {
-                // Still missing after the quick passes: try again once the view has settled,
-                // rather than leaving a gap until the next scroll.
-                delayedPlacementTries += 1
-                unsettledPlacementPasses = 0
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak textView] in textView?.setNeedsLayout() }
-            } else if !placement.isMissingBlock && !placement.didMoveView {
-                unsettledPlacementPasses = 0
-                delayedPlacementTries = 0
+            // can finish laying out the viewport after this pass, and a placed view can change
+            // the height it reserves; the passes `RenderedBlockPlacementRetries` gives follow.
+            if placementRetries.follow(placement, placeAgain: { [weak textView] in textView?.setNeedsLayout() }) {
                 makeViewsAheadOnceStill(in: textView)
             }
             keepPinnedHeadingAtTop(in: textView)
@@ -3431,6 +3406,10 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// Pastes and drops whose content is still loading or saving.
         private var pendingInsertionRequests = PendingInsertionRequests()
         private var isPlacementScheduled = false
+        /// The placement passes that follow one that could not place a rendered block, or moved one.
+        private var placementRetries = RenderedBlockPlacementRetries()
+        /// Set while blocks are placed again on a viewport laid out for them in the same pass.
+        private var isPlacingOnViewportLaidOutNow = false
         /// Set by "Edit Source": the YAML shows, and the cursor can be in it, until the
         /// cursor leaves it.
         private(set) var showsPropertiesSource: Bool {
@@ -3680,6 +3659,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             lookahead.stop()
             linkPreviews.closeCard()
+            // An edit moves the text again, so the blocks get a fresh set of placement passes.
+            placementRetries.reset()
             settleTextChange(in: textView)
             publish(textView)
             updateCompletion(in: textView)
@@ -3963,16 +3944,28 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             guard !textState.cachesDescribeOldText, !textView.hasMarkedText() else { return }
             let columnMinX = textView.textContainerOrigin.x + textContainer.lineFragmentPadding
             let column = RenderedBlockColumn(minX: columnMinX, textContainerTop: textView.textContainerOrigin.y, width: textView.renderedBlockColumnWidth)
-            // A paragraph a restyle changed waits for TextKit's next layout of the viewport,
-            // which places it then.
             guard let placement = renderedBlocks.placeViews(of: concealedEntries(in: textView), in: textView, textLayoutManager: textLayoutManager,
                                                             column: column, configuration: configuration, makeRootView: { entry in
                 blockRootView(for: entry, environment: environment, textView: textView)
             }) else { return }
+            // A paragraph a restyle changed has a new fragment, not laid out yet; waiting for
+            // TextKit's next layout left the block blank until the next scroll (HUNT-364).
+            if !placement.keysAwaitingLayout.isEmpty, !isPlacingOnViewportLaidOutNow {
+                isPlacingOnViewportLaidOutNow = true
+                defer { isPlacingOnViewportLaidOutNow = false }
+                RenderedBlockPlacementRetries.layOutViewport(of: textLayoutManager) { textView.visibleRect.origin }
+                placeBlockViews(in: textView)
+                return
+            }
             renderedBlocks.detachViews(except: placement.keysInUse, entries: textState.blockEntries)
             // A height measured at a new width, or by another editor, is reserved in the text first.
             styling.restyleLater(placement.entriesToRestyle, in: textView)
-            if !placement.isMissingBlock && !placement.didMoveView && placement.entriesToRestyle.isEmpty {
+            // A block still without its view, or a view that moved, is placed again, as on the iPad.
+            let isSettled = placementRetries.follow(placement) { [weak self, weak textView] in
+                guard let self, let textView else { return }
+                self.placeBlockViews(in: textView)
+            }
+            if isSettled && placement.entriesToRestyle.isEmpty {
                 lookahead.makeViewsOnceStill(viewportStart: RenderedBlockLookahead.viewportCharacters(of: textLayoutManager)?.location) {
                     [weak self, weak textView] in self?.makeNextViewAhead(in: textView) ?? false
                 }
