@@ -6,7 +6,7 @@
  *              boxes) at the screen's resolution, within a memory bound, on the Mac and the iPad.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 16/11/2026
  */
 import PDFKit
@@ -315,14 +315,18 @@ final class PDFAnnotationLayerResolution: NSObject {
         }
     }
 
-    #if canImport(UIKit)
     private static let annotationSelector = NSSelectorFromString("annotation")
 
+    /// The annotation a layer draws, which PDFKit's layer class answers by a selector of the same name.
+    private static func annotation(drawnBy layer: CALayer) -> PDFAnnotation? {
+        guard layer.responds(to: annotationSelector) else { return nil }
+        return layer.perform(annotationSelector)?.takeUnretainedValue() as? PDFAnnotation
+    }
+
+    #if canImport(UIKit)
     /// Whether the layer draws a picture placed on the page: a stamp, whose appearance is an image.
     static func showsAPicture(_ layer: CALayer) -> Bool {
-        guard layer.responds(to: annotationSelector),
-              let annotation = layer.perform(annotationSelector)?.takeUnretainedValue() as? PDFAnnotation else { return false }
-        return annotation.type == PDFPicture.annotationTypeName
+        annotation(drawnBy: layer)?.type == PDFPicture.annotationTypeName
     }
 
     /// How many of the screen's pixels one point of the layer covers, through every transform
@@ -350,7 +354,8 @@ final class PDFAnnotationLayerResolution: NSObject {
         func look(under layer: CALayer) {
             for sublayer in layer.sublayers ?? [] where !sublayer.isHidden {
                 if type(of: sublayer) == annotationLayerClass {
-                    found.append(sublayer)
+                    // A stroke whose page's ink layer draws it draws nothing in its own (`MacPDFPageInkLayers`).
+                    if annotation(drawnBy: sublayer)?.isDrawnByPageInkLayer != true { found.append(sublayer) }
                 } else if !isGraphitesOwnOverlay(sublayer) {
                     look(under: sublayer)
                 }

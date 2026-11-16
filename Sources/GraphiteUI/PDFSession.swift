@@ -64,6 +64,8 @@ private struct LoadedPDF: @unchecked Sendable {
     let baseline: PDFBaselineSnapshot
     let structureEntriesLostByPageChanges: [String]
     let hasDigitalSignatures: Bool
+    let formFieldPageNumbers: Set<Int>?
+    let originalFileData: Data?
 }
 
 /// A PDF that opens only with its password.
@@ -90,15 +92,19 @@ private actor PDFLoader {
             loaded = Result {
                 let baseline = PDFBaselineSnapshot(location: PDFBaselineSnapshot.makeLocation())
                 try FileManager.default.copyItem(at: source, to: baseline.location)
-                guard let document = PDFDocument(url: baseline.location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
+                guard let document = PDFShownDocument(url: baseline.location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
                 PDFPageManager.prepareForDisplay(document)
                 if document.isLocked {
                     guard let password else { throw PDFPasswordRequired(wasPasswordWrong: false) }
                     guard document.unlock(withPassword: password) else { throw PDFPasswordRequired(wasPasswordWrong: true) }
                 }
+                // A separate copy of an encrypted PDF would need its password to open.
+                let originalFileData = document.isEncrypted ? nil : try? Data(contentsOf: baseline.location, options: .alwaysMapped) // nil: PDFKit draws every stroke
                 return LoadedPDF(document: document, revision: try FileRevision.read(baseline.location), baseline: baseline,
                                  structureEntriesLostByPageChanges: PDFStructureInspection.entriesLostByPageChanges(in: baseline.location),
-                                 hasDigitalSignatures: PDFSignatureDetection.hasDigitalSignatures(at: baseline.location))
+                                 hasDigitalSignatures: PDFSignatureDetection.hasDigitalSignatures(at: baseline.location),
+                                 formFieldPageNumbers: PDFFormFieldPages.pageNumbers(at: baseline.location),
+                                 originalFileData: originalFileData)
             }
         }
         if let coordinationError { throw coordinationError }
@@ -378,6 +384,12 @@ final class PDFSession {
     /// Any save rewrites the whole file and breaks the signatures, so a signed PDF is shown
     /// without changes until the user accepts that.
     let hasDigitalSignatures: Bool
+    /// The pages of the file, as it was read, that hold form fields (`PDFFormFieldPages`); nil when unknown.
+    let formFieldPageNumbers: Set<Int>?
+    /// The file the document was read from, mapped into memory as it was read, which a save that replaces the snapshot
+    /// does not change; the Mac draws the pages' ink from a separate copy of it (`MacPDFPageInkLayers`). Nil for an
+    /// encrypted PDF or when it could not be mapped.
+    let originalFileData: Data?
     var acceptsSignatureInvalidation = false
     /// Why every edit is refused, or nil when the PDF takes edits. A password outranks a
     /// signature, because accepting the signature's loss does not unlock an encrypted PDF.
@@ -396,6 +408,8 @@ final class PDFSession {
         document = loaded.document
         isPasswordProtected = loaded.document.isEncrypted || !loaded.document.allowsCommenting || !loaded.document.allowsDocumentChanges
         hasDigitalSignatures = loaded.hasDigitalSignatures
+        formFieldPageNumbers = loaded.formFieldPageNumbers
+        originalFileData = loaded.originalFileData
         revision = loaded.revision
         baseline = loaded.baseline
         pageCount = loaded.document.pageCount

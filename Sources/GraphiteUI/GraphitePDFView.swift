@@ -195,8 +195,11 @@ final class PDFViewPageObserver: NSObject {
         if pageIndex != NSNotFound, session.currentPageIndex != pageIndex { session.currentPageIndex = pageIndex }
     }
 
+    /// Reads PDFKit's annotations only of the pages that hold form fields (`PDFFormFieldPages`): reading them makes
+    /// every annotation of the page, each stroke of a handwritten page among them.
     func makeFormFieldsReadOnlyOnVisiblePages() {
-        for page in view?.visiblePages ?? [] {
+        for page in view?.visiblePages ?? []
+        where PDFFormFieldPages.mayHaveFormField(page, in: session.document, pageNumbers: session.formFieldPageNumbers) {
             // PDFKit reports the subtype without the leading slash of `PDFAnnotationSubtype`.
             for annotation in page.annotations where annotation.type == "Widget" && !annotation.isReadOnly {
                 annotation.isReadOnly = true
@@ -2053,6 +2056,8 @@ struct GraphitePDFView: NSViewRepresentable {
         var pageObserver: PDFViewPageObserver?
         weak var session: PDFSession?
         var markupInteraction: MacPDFMarkupInteraction?
+        /// Draws each page's ink in one layer (`MacPDFPageInkLayers`); nil when PDFKit draws every stroke.
+        var pageInkLayers: MacPDFPageInkLayers?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -2061,6 +2066,11 @@ struct GraphitePDFView: NSViewRepresentable {
         let view = GraphiteMacPDFView()
         view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
         view.documentUndoManager = session.undoManager
+        // Before the document is shown, so PDFKit never draws the strokes of a page whose layer draws them.
+        let pageInkLayers = MacPDFPageInkLayers(session: session, view: view)
+        context.coordinator.pageInkLayers = pageInkLayers
+        view.pageInkLayers = pageInkLayers
+        view.pageOverlayViewProvider = pageInkLayers
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high
@@ -2103,6 +2113,7 @@ struct GraphitePDFView: NSViewRepresentable {
         }
         coordinator.pageObserver?.stop()
         coordinator.markupInteraction?.stopObservingSelection()
+        coordinator.pageInkLayers?.stop()
     }
 }
 
@@ -2118,6 +2129,8 @@ final class GraphiteMacPDFView: PDFView {
     weak var markupInteraction: MacPDFMarkupInteraction?
     /// Takes pictures dropped onto the pages; nil in a PDF embedded in a note.
     var pictureDrops: MacPDFPictureDropTarget?
+    /// Each page's ink drawn in one layer (`MacPDFPageInkLayers`); owned by the view's coordinator.
+    weak var pageInkLayers: MacPDFPageInkLayers?
     /// The PDF's own history (`PDFSession.undoManager`), which Edit › Undo and Redo, ⌘Z and
     /// ⇧⌘Z reach while the PDF is the first responder.
     weak var documentUndoManager: UndoManager?

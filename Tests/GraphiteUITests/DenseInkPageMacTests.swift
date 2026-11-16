@@ -2,12 +2,12 @@
  * File: DenseInkPageMacTests.swift
  * --------------------------------
  * Layer: Tests
- * Description: On the Mac, a page written as densely as a formula sheet (6,000 strokes) is shown, scrolled and zoomed
- *              with its main-thread work within budget; the annotation layers kept sharp are only those shown, and a
- *              look draws them again only for its share of a frame.
+ * Description: On the Mac, a page written as densely as a formula sheet (6,000 strokes) is shown sharp in its ink
+ *              layer and drawn again at a zoom; the annotation layers kept sharp are only those shown, and a look draws
+ *              them again only for its share of a frame.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 16/11/2026
  */
 import XCTest
@@ -26,7 +26,8 @@ import GraphiteTestSupport
 /// `PDFAnnotationLayerResolution` draws those layers at the screen's resolution. Measured 2026-11-12 (debug build, M5
 /// Max): shown sharp 1.5 s after opening, a look at the layers with nothing to draw 6 ms, the 6,000 layers drawn again
 /// at a new zoom in 0.39 s, all in one frame. Since 2026-11-16 a look draws for at most `drawingTimePerLook`, and the
-/// looks that follow draw the rest.
+/// looks that follow draw the rest; and a page of the file as read has its ink drawn in one layer, off the main thread
+/// (`MacPDFPageInkLayers`, HUNT-357), so the strokes' own layers draw nothing and are not looked into.
 @MainActor
 final class DenseInkPageMacTests: XCTestCase {
     private var vault: TemporaryVault!
@@ -49,35 +50,50 @@ final class DenseInkPageMacTests: XCTestCase {
         window.contentView = hostingView
         window.showInvisibly()
         hostingView.layoutSubtreeIfNeeded()
-        try await waitUntil("every stroke has its layer", timeoutSeconds: 60) { Self.annotationLayers(in: session.pdfView).count == strokeCount }
         let pdfView = try XCTUnwrap(session.pdfView as? GraphiteMacPDFView)
-        try await waitUntil("every stroke is drawn at the screen's resolution", timeoutSeconds: 60) {
-            Self.annotationLayers(in: pdfView).allSatisfy { layer in layer.contentsScale > 1.01 }
+        let pageBox = try XCTUnwrap(session.document.page(at: 0)).bounds(for: .cropBox)
+        func pictureIsAtTheScreensResolution() -> Bool {
+            guard let picture = Self.inkPicture(in: pdfView) else { return false }
+            return abs(CGFloat(picture.width) - pageBox.width * pdfView.scaleFactor * window.backingScaleFactor) <= 2
         }
+        try await waitUntil("the page's ink is drawn in its layer at the screen's resolution", timeoutSeconds: 60) { pictureIsAtTheScreensResolution() }
         let shownDuration = ContinuousClock.now - openStart
+        let strokes = try XCTUnwrap(session.document.page(at: 0)).annotations.filter { annotation in annotation.value(forAnnotationKey: PDFPageManager.groupKey) != nil }
+        XCTAssertEqual(strokes.count, strokeCount)
+        XCTAssertTrue(strokes.allSatisfy(\.isDrawnByPageInkLayer), "The strokes' own layers draw nothing.")
 
         var start = ContinuousClock.now
         pdfView.annotationLayerResolution.update()
         let lookDuration = ContinuousClock.now - start
 
-        let scaleBeforeZoom = try XCTUnwrap(Self.annotationLayers(in: pdfView).first).contentsScale
         pdfView.scaleFactor *= 2
+        let zoomedSize = CGSize(width: pageBox.width * pdfView.scaleFactor, height: pageBox.height * pdfView.scaleFactor)
+        let fitsInAPicture = MacPDFPageInkLayers.fitsInAPicture(MacPDFPageInkLayers.pixelSize(shownSize: zoomedSize, backingScale: window.backingScaleFactor))
         start = ContinuousClock.now
         pdfView.annotationLayerResolution.update()
         let zoomLookDuration = ContinuousClock.now - start
-        let layers = Self.annotationLayers(in: pdfView)
-        let redrawnInOneLook = layers.filter { layer in layer.contentsScale > scaleBeforeZoom * 1.5 }.count
-        try await waitUntil("every stroke is drawn again at the zoom by the looks that follow", timeoutSeconds: 60) {
-            Self.annotationLayers(in: pdfView).allSatisfy { layer in layer.contentsScale > scaleBeforeZoom * 1.5 }
+        if fitsInAPicture {
+            try await waitUntil("the page's ink is drawn again at the zoom", timeoutSeconds: 60) { pictureIsAtTheScreensResolution() }
+        } else {
+            // Zoomed in too far for one picture: PDFKit draws the strokes, and the looks sharpen them a share at a time.
+            try await waitUntil("PDFKit draws the zoomed page's strokes", timeoutSeconds: 60) { !strokes.contains { stroke in stroke.isDrawnByPageInkLayer } }
         }
         let redrawDuration = ContinuousClock.now - start
-        print("DenseInkPageMacTests timing: shown sharp \(shownDuration), a look \(lookDuration), a look after the zoom \(zoomLookDuration) "
-              + "drawing \(redrawnInOneLook) of \(layers.count) layers, all drawn again in \(redrawDuration)")
+        print("DenseInkPageMacTests timing: shown sharp \(shownDuration), a look \(lookDuration), a look after the zoom \(zoomLookDuration), "
+              + "drawn again at the zoom (\(fitsInAPicture ? "in its layer" : "by PDFKit")) in \(redrawDuration)")
         XCTAssertLessThan(shownDuration, .seconds(20), "A page of 6,000 strokes shows sharp soon after opening.")
         XCTAssertLessThan(lookDuration, .milliseconds(60), "A look at the layers, made at every scroll, stays a small part of a frame.")
-        XCTAssertLessThan(redrawnInOneLook, layers.count, "One look draws a share of the strokes, not all 6,000 in one frame.")
         XCTAssertLessThan(zoomLookDuration, .milliseconds(60), "A look after the zoom stays a small part of a frame.")
-        XCTAssertLessThan(redrawDuration, .seconds(30), "Every stroke is drawn again at the zoom within seconds.")
+        XCTAssertLessThan(redrawDuration, .seconds(30), "The page's ink is drawn again at the zoom within seconds.")
+    }
+
+    /// The picture of the page's ink its layer shows (`MacPDFPageInkLayers`).
+    private static func inkPicture(in view: NSView) -> CGImage? {
+        for subview in view.subviews {
+            if let inkView = subview as? MacPDFPageInkView, let picture = inkView.picture { return picture }
+            if let picture = inkPicture(in: subview) { return picture }
+        }
+        return nil
     }
 
     /// A look draws layers while it has time and stops when it has none, after the first, which it always draws.
@@ -115,15 +131,6 @@ final class DenseInkPageMacTests: XCTestCase {
         XCTAssertEqual(found.map(ObjectIdentifier.init), shownLayers.map(ObjectIdentifier.init))
     }
 
-    /// PDFKit's layer for each annotation (`PDFAnnotationLayerResolution`).
-    private static func annotationLayers(in view: PDFView?) -> [CALayer] {
-        guard let layer = view?.layer else { return [] }
-        func layers(under layer: CALayer) -> [CALayer] {
-            (NSStringFromClass(type(of: layer)) == PDFAnnotationLayerResolution.annotationLayerClassName ? [layer] : [])
-                + (layer.sublayers ?? []).flatMap(layers(under:))
-        }
-        return layers(under: layer)
-    }
 }
 
 /// Stands for PDFKit's annotation layer class, and counts its drawing.

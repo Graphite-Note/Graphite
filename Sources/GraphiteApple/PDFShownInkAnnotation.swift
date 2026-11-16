@@ -2,12 +2,12 @@
  * File: PDFShownInkAnnotation.swift
  * ---------------------------------
  * Layer: Apple
- * Description: The ink annotations of a PDF Graphite shows on the iPad, which draw nothing while a page's canvas
- *              hides them, and the drawing of hidden ink for thumbnails.
+ * Description: The ink annotations of a PDF Graphite shows, which draw nothing while a page's canvas hides them on the
+ *              iPad or while the page's ink layer draws them on the Mac, and the drawing of hidden ink for thumbnails.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -21,14 +21,15 @@ import PDFKit
 /// makes the page's view (as a zoom or a scroll shows the page again) or changes the layer's resolution, and it drew
 /// each hidden stroke from its saved appearance: decompressed, parsed and filled, for a layer nobody sees. On a page of
 /// 6,000 strokes, as Goodnotes' import of a formula sheet makes, that froze the iPad for one to two and a half seconds
-/// at each step of a zoom (`DenseInkPageSmoothnessHostedTests`). A shown annotation draws as PDFKit draws it, and the
-/// file is not changed: the class only says how the shown document draws what it read.
+/// at each step of a zoom (`DenseInkPageSmoothnessHostedTests`). On the Mac it draws nothing while its page's ink layer
+/// draws the page's ink (`PDFPageInkLayerState`). A shown annotation draws as PDFKit draws it, and the file is not
+/// changed: the class only says how the shown document draws what it read.
 final class PDFShownInkAnnotation: PDFAnnotation {
     /// The subtype PDFKit asks its document's delegate about, without its slash.
     static let annotationTypeName = "Ink"
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
-        guard shouldDisplay else { return }
+        guard shouldDisplay, !isDrawnByPageInkLayer else { return }
         super.draw(with: box, in: context)
     }
 

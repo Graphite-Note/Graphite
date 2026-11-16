@@ -166,9 +166,9 @@ final class PDFThumbnailRenderer {
         let pixelsPerPagePoint = CGFloat(pixelWidth) / displayedWidth
         context.scaleBy(x: pixelsPerPagePoint, y: pixelsPerPagePoint)
         page.draw(with: .cropBox, to: context)
-        // Ink under a live Pencil canvas, and text boxes over it, are hidden in the document;
-        // draw them here explicitly.
-        for annotation in page.annotations where !annotation.shouldDisplay && Self.isHiddenUnderLiveOverlay(annotation) {
+        // Ink under a live Pencil canvas or drawn by its page's ink layer on the Mac, and text
+        // boxes over it, are hidden in the document; draw them here explicitly.
+        for annotation in page.annotations where (!annotation.shouldDisplay || annotation.isDrawnByPageInkLayer) && Self.isHiddenUnderLiveOverlay(annotation) {
             annotation.drawAsShown(with: .cropBox, in: context)
         }
         guard let pageImage = context.makeImage() else { return page.thumbnail(of: outputSize, for: .cropBox) }
