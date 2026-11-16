@@ -6,12 +6,13 @@
  *              file and off the main thread, instead of PDFKit drawing every stroke in a layer of its own.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 16/11/2026
  */
 #if os(macOS)
 import AppKit
 import PDFKit
+import Synchronization
 import GraphiteApple
 
 /// Draws each shown page's Graphite ink in one layer over the page, on the Mac (HUNT-357).
@@ -283,21 +284,54 @@ enum PDFPageInkDrawing: Sendable {
 
 /// Draws one PDF's pages' Graphite ink from a separate copy of its file, one page at a time, off the main thread. The
 /// copy is opened again every few pages, so the strokes it read are let go as a scroll goes on.
+///
+/// PDFKit's annotations must be freed on the main thread: freed here, `PDFAKAnnotationAdaptor` said "Called from a
+/// background thread" for every stroke and the Mac test bundle stopped with signal 5 (HUNT-361). So the copy is kept in a
+/// `Mutex`, from which a copy let go is taken out whole and handed to a main-actor task, the last to hold it.
 actor PDFPageInkRenderer {
     private static let pagesPerSeparateDocument = 16
 
-    private var separateDocument: (document: PDFDocument?, drawnPageCount: Int)?
+    /// The copy of the file, with its annotations, and how many pages were drawn from it.
+    private final class SeparateCopy {
+        let document: PDFDocument?
+        var drawnPageCount = 0
+        init(_ document: PDFDocument?) { self.document = document }
+    }
+
+    private let separateCopy = Mutex<SeparateCopy?>(nil)
 
     func draw(_ request: PDFPageInkRequest) -> PDFPageInkDrawing {
         guard !Task.isCancelled else { return .unavailable }
-        if let separateDocument, separateDocument.drawnPageCount >= Self.pagesPerSeparateDocument {
-            self.separateDocument = nil
+        Self.freeOnTheMainThread(separateCopy.withLock { copy in
+            guard let current = copy, current.drawnPageCount >= Self.pagesPerSeparateDocument else { return nil }
+            let letGo = copy
+            copy = nil
+            return letGo
+        })
+        return separateCopy.withLock { copy in
+            if copy == nil { copy = SeparateCopy(PDFDocument(data: request.fileData)) }
+            copy?.drawnPageCount += 1
+            guard let document = copy?.document else { return .unavailable }
+            return Self.draw(request, from: document)
         }
-        if separateDocument == nil {
-            separateDocument = (PDFDocument(data: request.fileData), 0)
-        }
-        separateDocument?.drawnPageCount += 1
-        guard let document = separateDocument?.document, document.pageCount == request.filePageCount,
+    }
+
+    deinit {
+        Self.freeOnTheMainThread(separateCopy.withLock { copy in
+            let letGo = copy
+            copy = nil
+            return letGo
+        })
+    }
+
+    /// Frees a copy let go, and the annotations PDFKit made for it, on the main thread.
+    private static func freeOnTheMainThread(_ letGo: sending SeparateCopy?) {
+        guard let letGo else { return }
+        Task { @MainActor in withExtendedLifetime(letGo) {} }
+    }
+
+    private static func draw(_ request: PDFPageInkRequest, from document: PDFDocument) -> PDFPageInkDrawing {
+        guard document.pageCount == request.filePageCount,
               let page = document.page(at: request.pageNumber - 1), page.bounds(for: .cropBox) == request.cropBox,
               ((page.rotation % 360) + 360) % 360 == request.rotation else { return .unavailable }
         let strokes = page.annotations.filter { annotation in annotation.value(forAnnotationKey: PDFPageManager.groupKey) != nil && annotation.shouldDisplay }

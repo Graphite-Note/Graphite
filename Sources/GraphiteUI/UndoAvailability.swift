@@ -41,7 +41,10 @@ final class UndoAvailability {
             observers = Self.changeNotifications.map { name in
                 // Undo managers post on the thread that uses them, which here is the main
                 // thread; without a queue the state is current when the post returns.
-                NotificationCenter.default.addObserver(forName: name, object: undoManager, queue: nil) { [weak self] _ in
+                // The center matches `object` by its address, which an undo manager made later, on any thread, can take
+                // once this one is freed while still followed (HUNT-361): only this one, while it lives, is heard.
+                NotificationCenter.default.addObserver(forName: name, object: undoManager, queue: nil) { [weak self, weak undoManager] notification in
+                    guard let undoManager, notification.object as AnyObject? === undoManager else { return }
                     MainActor.assumeIsolated { self?.refresh() }
                 }
             }

@@ -147,9 +147,7 @@ final class DenseInkPageSmoothnessHostedTests: XCTestCase {
     private func openNotebook(pageCount: Int, strokesPerPage: Int) async throws -> (PDFSession, GraphitePDFDisplayView) {
         let location = hostedTemporaryLocation(named: "DenseInk").appendingPathExtension("pdf")
         temporaryLocations.append(location)
-        try await Task.detached(priority: .userInitiated) {
-            _ = try DenseHandwritingNotebook.write(pageCount: pageCount, strokesPerPage: strokesPerPage, to: location)
-        }.value
+        try DenseHandwritingNotebook.write(pageCount: pageCount, strokesPerPage: strokesPerPage, to: location)
         let session = try await PDFSession.open(location)
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)

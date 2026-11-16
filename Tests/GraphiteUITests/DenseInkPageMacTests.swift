@@ -39,7 +39,7 @@ final class DenseInkPageMacTests: XCTestCase {
     func testADensePageIsShownSharpAndLookedAtQuicklyAndDrawnAgainAtAZoomWithinBudget() async throws {
         let location = vault.location(of: "Dense.pdf")
         let strokeCount = DenseHandwritingNotebook.formulaSheetStrokeCount
-        _ = try await Task.detached { try DenseHandwritingNotebook.write(pageCount: 1, strokesPerPage: strokeCount, to: location) }.value
+        try DenseHandwritingNotebook.write(pageCount: 1, strokesPerPage: strokeCount, to: location)
         let openStart = ContinuousClock.now
         let session = try await PDFSession.open(location)
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1_400, height: 1_000), styleMask: [.titled], backing: .buffered, defer: false)

@@ -52,7 +52,10 @@ public enum DenseHandwritingNotebook {
 
     /// A PDF of `pageCount` such pages, each with `strokesPerPage` strokes, written to `destination` as Graphite writes a
     /// notebook's ink. Returns the seconds the ink took to be made into annotations and the seconds PDFKit took to write.
-    @discardableResult
+    /// On the main thread: as it writes, PDFKit makes and frees an AnnotationKit adaptor for every stroke, and one freed off
+    /// the main thread ("-[PDFAKAnnotationAdaptor dealloc]: Called from a background thread") stopped the Mac test bundle
+    /// with signal 5 in a later test (HUNT-361).
+    @MainActor @discardableResult
     public static func write(pageCount: Int, strokesPerPage: Int, to destination: URL, pageSize: CGSize = pageSize)
         throws -> (annotatingSeconds: Double, writingSeconds: Double) {
         guard let document = PDFDocument(data: try blankPages(count: pageCount, size: pageSize)) else {

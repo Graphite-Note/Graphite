@@ -235,7 +235,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             let vault = try makeTemporaryDirectory(named: "InkedEmbedsBenchmark")
             for pdfName in pdfNames {
                 let location = vault.appendingPathComponent(pdfName)
-                _ = try await Task.detached { try DenseHandwritingNotebook.write(pageCount: 5, strokesPerPage: 520, to: location, pageSize: letterPage) }.value
+                try DenseHandwritingNotebook.write(pageCount: 5, strokesPerPage: 520, to: location, pageSize: letterPage)
             }
             let notePath = try VaultPath("Homework.md")
             try Data(noteText.utf8).write(to: vault.appendingPathComponent(notePath.rawValue))

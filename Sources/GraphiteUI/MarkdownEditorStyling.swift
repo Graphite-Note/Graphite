@@ -5,8 +5,8 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.11
- * Date: 12/11/2026
+ * Version: 0.12
+ * Date: 16/11/2026
  */
 
 #if canImport(UIKit)
@@ -99,6 +99,12 @@ final class MarkdownEditorStyling {
         renderedBlocks = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: detachedViewsBudgetMegabytes)
     }
 
+    /// The notification center keeps a block's observer until it is removed, and it went on matching the freed text
+    /// storage's address after the editor closed (HUNT-361).
+    isolated deinit {
+        stopObservingCharacterEdits()
+    }
+
     /// Made once per configuration: it was made, its accent color parsed, on every use,
     /// several times for each keystroke and cursor move.
     private var styler: MarkdownTextStyler {
@@ -139,9 +145,14 @@ final class MarkdownEditorStyling {
     /// turn of the run loop for a change the text view did not report.
     func observeCharacterEdits(in textView: any MarkdownStyledTextView, settle: @escaping @MainActor @Sendable () -> Void) {
         stopObservingCharacterEdits()
+        // The notification center matches `object` by its address, which a text storage made later can take once this one
+        // is freed: PDFKit makes one for each annotation as it writes a PDF away from the main thread, and the assumption
+        // of the main actor below stopped the app there (HUNT-361). Only the storage observed, while it lives, is heard.
+        let observedTextStorage = textView.styledTextStorage
         characterEditObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
-                                                                       object: textView.styledTextStorage, queue: nil) { [weak self, weak textView] notification in
-            guard let textStorage = notification.object as? NSTextStorage, textStorage.editedMask.contains(.editedCharacters) else { return }
+                                                                       object: observedTextStorage, queue: nil) { [weak self, weak textView, weak observedTextStorage] notification in
+            guard let textStorage = notification.object as? NSTextStorage, let observedTextStorage, textStorage === observedTextStorage,
+                  textStorage.editedMask.contains(.editedCharacters) else { return }
             let edit = CharacterEdit(editedRange: textStorage.editedRange, changeInLength: textStorage.changeInLength)
             MainActor.assumeIsolated {
                 self?.renderedBlocks.moveBlockEditedInItsView(through: edit)
