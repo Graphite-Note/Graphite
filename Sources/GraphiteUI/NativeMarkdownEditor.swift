@@ -2815,6 +2815,23 @@ final class MarkdownMacTextView: NSTextView {
         if previousWidth <= 0, newSize.width > 0 { didBecomeMeasurable?(self) }
     }
 
+    /// The room below the last line that the view's height includes now.
+    private(set) var appliedRoomBelowText: CGFloat = 0
+
+    /// TextKit sizes the view to its text through here; the room below the last line is added
+    /// to that height (MarkdownMacTextViewRoomBelowText.swift). AppKit also passes the view's
+    /// present height through, which has its room already.
+    override func setConstrainedFrameSize(_ desiredSize: NSSize) {
+        guard desiredSize.height != frame.height else { return super.setConstrainedFrameSize(desiredSize) }
+        appliedRoomBelowText = roomBelowText
+        super.setConstrainedFrameSize(NSSize(width: desiredSize.width, height: desiredSize.height + appliedRoomBelowText))
+    }
+
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        updateRoomBelowTextForVisibleHeight()
+    }
+
     /// The readable column's width (Graphite's, or the vault theme's line width), or nil to
     /// use the whole width; as the iPad editor, the text is centered in it.
     var readableColumnWidth: CGFloat? { didSet { if readableColumnWidth != oldValue { updateReadableInset() } } }
