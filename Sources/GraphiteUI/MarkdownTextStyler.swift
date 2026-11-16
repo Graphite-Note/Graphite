@@ -5,8 +5,8 @@
  * Description: Styles Markdown source in place, with attributes only, for the editor.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.20
- * Date: 12/11/2026
+ * Version: 0.21
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -327,13 +327,16 @@ struct MarkdownTextStyler {
     /// `foldedRegions` are hidden, whatever the mode. `blockContextCheckpoints`, kept by the
     /// editor for its text storage, spares a restyle near the end of a long note from
     /// rescanning the note from its top; without it the scan starts at the top.
+    /// Returns the range whose attributes were set: the lines, with the blocks, folded
+    /// sections and spans they touch; empty for an empty text.
+    @discardableResult
     func applyStyles(to textStorage: NSTextStorage, editedRange range: NSRange, restyleEverything: Bool,
                      revealedMarkup: RevealedMarkup?, concealedBlocks: [ConcealedBlock], foldedRegions: [FoldableRegion] = [],
-                     inlinePictures: [InlinePicture] = [], blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) {
+                     inlinePictures: [InlinePicture] = [], blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) -> NSRange {
         // A whole-note pass reads an immutable copy: the storage's mutable string proxy is
         // several times slower to scan, and the text does not change while it is styled.
         let source: NSString = restyleEverything ? (textStorage.mutableString.copy() as? NSString ?? textStorage.mutableString) : textStorage.mutableString
-        guard source.length > 0 else { return }
+        guard source.length > 0 else { return NSRange(location: 0, length: 0) }
         // Blocks and folds come from the editor's last scan, which can describe a different
         // text than the storage holds now. One that no longer fits is left out: attributes
         // applied past the end of the storage raise an exception.
@@ -380,6 +383,7 @@ struct MarkdownTextStyler {
             hideFoldedSection(region, in: textStorage)
         }
         textStorage.endEditing()
+        return styledRange
     }
 
     /// Restyles the markup that starts or stops showing when the revealed markup goes from

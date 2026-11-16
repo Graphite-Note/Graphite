@@ -303,6 +303,48 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         XCTAssertTrue(blockViews(in: textView).first === tableView)
     }
 
+    /// Typing at the end of a heading restyles the line above it and the picture that line
+    /// touches, and TextKit takes a restyled line's height for an estimate until it lays it
+    /// out again, which leaves out a hidden line's reserved space. AppKit scrolls the cursor
+    /// into view inside the keystroke, so the note jumped up to where the estimates put the
+    /// heading, and settled somewhere else: the owner's note under two screenshots jumped at
+    /// each space typed.
+    func testTypingAtTheEndOfAHeadingUnderAPictureLeavesTheNoteWhereItIs() async throws {
+        let text = "## Gate\n\n![[first.png|399]]\n\n![[second.png]]\n\n## Flip-flop\n\n![[third.png]]\n![[fourth.png]]"
+        let (coordinator, textView, scrollView) = try await makeEditor(text: text, width: 700, height: 500)
+        let vault = try XCTUnwrap(coordinator.environment?.root)
+        for name in ["first.png", "second.png", "third.png", "fourth.png"] { try writePicture(named: name, in: vault) }
+        coordinator.environment = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 1,
+                                                         resolve: { target, _ in try? VaultPath(target) }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        coordinator.refreshBlockViews(in: textView)
+        let headingEnd = (text as NSString).range(of: "Flip-flop").upperBound
+        moveCursor(to: NSRange(location: headingEnd, length: 0), in: textView, coordinator)
+        textView.scrollRangeToVisible(NSRange(location: headingEnd, length: 0))
+        // The pictures on screen take their measured heights, and the heading is far enough
+        // down the note for a jump to show.
+        try await awaitConditionAfterLayout {
+            textView.scrollRangeToVisible(NSRange(location: headingEnd, length: 0))
+            let pictureViews = self.blockViews(in: textView)
+            return scrollView.contentView.bounds.minY > 600 && !pictureViews.isEmpty && pictureViews.allSatisfy { view in view.frame.height > 200 }
+        }
+        let clipView = scrollView.contentView
+        let scrolledOffset = clipView.bounds.minY
+        for typedText in [" ", "x", " "] {
+            textView.insertText(typedText, replacementRange: textView.selectedRange())
+            XCTAssertEqual(clipView.bounds.minY, scrolledOffset, accuracy: 1, "Typing \"\(typedText)\" left the note where it was")
+        }
+    }
+
+    private func writePicture(named name: String, in vault: URL) throws {
+        let width = 800, height = 600
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.8, green: 0.1, blue: 0.1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let picture = try XCTUnwrap(context.makeImage())
+        try XCTUnwrap(NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:])).write(to: vault.appendingPathComponent(name))
+    }
+
     private static let diagramCode = "flowchart TD\n  A[Start] --> B{Done?}\n  B -->|yes| C[End]"
     private static let diagramNote = "Intro line\n\n```mermaid\n\(diagramCode)\n```\n\nAfter the diagram\n"
     /// The fence, closing line and line break included.

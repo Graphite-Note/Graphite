@@ -27,6 +27,13 @@ final class StubStyledTextView: MarkdownStyledTextView {
         self.selection = selection
     }
 
+    /// The ranges styling asked to lay out, in order.
+    private(set) var rangesLaidOut: [NSRange] = []
+
+    func layOutRestyledText(in range: NSRange) {
+        rangesLaidOut.append(range)
+    }
+
     /// Moves the selection as a person does, without counting it as styling's doing.
     func moveSelection(to newSelection: NSRange) {
         selection = newSelection

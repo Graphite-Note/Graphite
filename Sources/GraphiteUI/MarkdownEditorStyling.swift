@@ -5,7 +5,7 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.12
+ * Version: 0.13
  * Date: 16/11/2026
  */
 
@@ -30,6 +30,10 @@ protocol MarkdownStyledTextView: AnyObject, Sendable {
     /// The width of the text column, which every rendered block's view takes.
     var renderedBlockColumnWidth: CGFloat { get }
     var typingAttributes: [NSAttributedString.Key: Any] { get set }
+    /// Lays out the characters of `range`, which styling has just restyled. TextKit takes a
+    /// restyled line's height for an estimate until it lays the line out again, and that
+    /// estimate leaves out the space a hidden block's line reserves under it.
+    func layOutRestyledText(in range: NSRange)
 }
 
 #if canImport(UIKit)
@@ -41,6 +45,9 @@ extension UITextView: MarkdownStyledTextView {
     }
     var isComposingText: Bool { markedTextRange != nil }
     var renderedBlockColumnWidth: CGFloat { (self as? MarkdownTextView)?.contentColumnWidth ?? bounds.width }
+    /// The iPad leaves the layout to UIKit: the jump the Mac made after a restyle was not
+    /// seen there.
+    func layOutRestyledText(in range: NSRange) {}
 }
 #else
 extension NSTextView: MarkdownStyledTextView {
@@ -55,6 +62,18 @@ extension NSTextView: MarkdownStyledTextView {
     var renderedBlockColumnWidth: CGFloat {
         guard let textContainer else { return 0 }
         return textContainer.size.width - 2 * textContainer.lineFragmentPadding
+    }
+    /// AppKit scrolls the cursor into view inside the keystroke, after the editor's restyle:
+    /// with the restyled lines left estimated, a picture's line above the cursor counted as
+    /// no height, and the note jumped up and settled elsewhere at each character typed under
+    /// a picture. The restyled lines are a few around the edit, which TextKit lays out for
+    /// the next frame anyway.
+    func layOutRestyledText(in range: NSRange) {
+        guard range.length > 0, let textLayoutManager, let contentManager = textLayoutManager.textContentManager,
+              let start = contentManager.location(contentManager.documentRange.location, offsetBy: range.location),
+              let end = contentManager.location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end) else { return }
+        textLayoutManager.ensureLayout(for: textRange)
     }
 }
 #endif
@@ -234,10 +253,11 @@ final class MarkdownEditorStyling {
         let textStorage = textView.styledTextStorage
         guard textStorage.length > 0 else { return }
         let selection = textView.styledSelection
-        styler.applyStyles(to: textStorage, editedRange: range, restyleEverything: false, revealedMarkup: revealedMarkup,
-                           concealedBlocks: concealedBlocks(in: textView, restyledRange: MarkdownTextStyler.linesRestyled(for: range, in: textStorage.mutableString)),
-                           foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
-                           blockContextCheckpoints: blockContextCheckpoints)
+        let restyledRange = styler.applyStyles(to: textStorage, editedRange: range, restyleEverything: false, revealedMarkup: revealedMarkup,
+                                               concealedBlocks: concealedBlocks(in: textView, restyledRange: MarkdownTextStyler.linesRestyled(for: range, in: textStorage.mutableString)),
+                                               foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
+                                               blockContextCheckpoints: blockContextCheckpoints)
+        textView.layOutRestyledText(in: restyledRange)
         // Set only when styling moved it: setting the selection costs UIKit tens of
         // milliseconds far down a long note.
         if textView.styledSelection != selection { textView.styledSelection = selection }
