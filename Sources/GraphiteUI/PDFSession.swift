@@ -5,8 +5,8 @@
  * Description: An open PDF: its pages, edits, saving and conflicts.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
- * Date: 04/11/2026
+ * Version: 0.20
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -771,65 +771,5 @@ final class PDFSession {
         guard let page = document.page(at: pageIndex) else { return }
         let pageLabel = page.label.flatMap { label in label.isEmpty ? nil : label } ?? "\(pageIndex + 1)"
         try apply(.bookmark(page: pageIndex, label: PDFOutlineEntry.bookmarkLabelPrefix + pageLabel))
-    }
-
-    // MARK: Text markup
-
-    // Undo and redo name the page through its history box, not its index: pages inserted,
-    // deleted, or moved in between would otherwise put the markup on another page.
-
-    func addMarkup(_ kind: PDFMarkupKind, color: PDFMarkupColor, for selection: PDFSelection) throws {
-        let linesByPage = selection.markupLinesByPage(in: document)
-        guard !linesByPage.isEmpty else { throw GraphiteError.unavailable("Select some PDF text first.") }
-        var added: [(page: PDFHistoryPage, markup: PDFMarkup)] = []
-        for (pageIndex, lineBounds) in linesByPage {
-            guard let page = document.page(at: pageIndex) else { throw GraphiteError.invalidFile("Page no longer exists.") }
-            let markup = PDFMarkup(kind: kind, color: color, lineBounds: lineBounds)
-            try apply(.addMarkup(page: pageIndex, markup: markup))
-            added.append((historyPage(for: page), markup))
-        }
-        registerStep(named: kind.title) { session in
-            for (page, markup) in added.reversed() { try session.removeMarkup(markup, on: page) }
-        } redo: { session in
-            for (page, markup) in added { try session.apply(.addMarkup(page: session.currentIndex(of: page), markup: markup)) }
-        }
-    }
-
-    func removeMarkup(_ annotation: PDFAnnotation, on page: PDFPage) throws {
-        let pageIndex = document.index(for: page)
-        guard pageIndex != NSNotFound, let markup = PDFMarkup(annotation: annotation) else { return }
-        try apply(.removeAnnotation(PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)))
-        let markedPage = historyPage(for: page)
-        registerStep(named: "Remove \(markup.kind.title)") { session in
-            try session.apply(.addMarkup(page: session.currentIndex(of: markedPage), markup: markup))
-        } redo: { session in
-            try session.removeMarkup(markup, on: markedPage)
-        }
-    }
-
-    func recolorMarkup(_ annotation: PDFAnnotation, on page: PDFPage, to color: PDFMarkupColor) throws {
-        let pageIndex = document.index(for: page)
-        guard pageIndex != NSNotFound, let previousMarkup = PDFMarkup(annotation: annotation) else { return }
-        let reference = PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)
-        try apply(.recolorMarkup(reference, color: color))
-        let markedPage = historyPage(for: page)
-        func currentReference(in session: PDFSession) throws -> PDFAnnotationReference {
-            PDFAnnotationReference(pageIndex: try session.currentIndex(of: markedPage), name: reference.name,
-                                   annotationType: reference.annotationType, bounds: reference.bounds)
-        }
-        registerStep(named: "Change Color") { session in
-            // The exact original color: `previousMarkup.color` is only the nearest palette color.
-            try session.apply(.restoreMarkupColor(currentReference(in: session), from: previousMarkup))
-        } redo: { session in
-            try session.apply(.recolorMarkup(currentReference(in: session), color: color))
-        }
-    }
-
-    /// The reference carries the bounds, so the markup is still found after an older
-    /// build's page change dropped its name from the file.
-    private func removeMarkup(_ markup: PDFMarkup, on page: PDFHistoryPage) throws {
-        let reference = PDFAnnotationReference(pageIndex: try currentIndex(of: page), name: markup.name,
-                                               annotationType: markup.kind.annotationTypeName, bounds: markup.bounds)
-        try apply(.removeAnnotation(reference))
     }
 }

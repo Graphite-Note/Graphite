@@ -6,8 +6,8 @@
  *              menus of selected text and of a mark, and Delete removing a selected mark, each one undo step.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 11/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -220,6 +220,75 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
         XCTAssertEqual(components.greenComponent, 0.5, accuracy: 0.01)
         XCTAssertEqual(components.blueComponent, 0, accuracy: 0.01)
         XCTAssertEqual(restored.contents, "Their note")
+    }
+
+    /// Clicks the mark on `word`, as the pointer does, with the row's model attached.
+    private func clickMark(on word: String, in fixture: Fixture, toolbar: PDFMarkupToolbar) throws {
+        fixture.interaction.toolbar = toolbar
+        XCTAssertTrue(fixture.interaction.handleMouseDown(try mouseEvent(.leftMouseDown, on: word, in: fixture)))
+        fixture.interaction.mouseUpFinished()
+    }
+
+    func testASelectedMarkShowsInTheRowAndASwatchRecoloursItWithoutASecondMark() async throws {
+        let fixture = try await makeFixture(tool: .highlight, style: .highlight(.yellow))
+        try select("bandwidth", in: fixture)
+        step(in: fixture.session) { fixture.interaction.mouseUpFinished() }
+        let toolbar = PDFMarkupToolbar()
+        toolbar.choose(.highlight)
+
+        try clickMark(on: "bandwidth", in: fixture, toolbar: toolbar)
+        XCTAssertEqual(toolbar.selectedMarkAppearance, PDFSelectedMarkAppearance(kind: .highlight, color: .yellow))
+
+        step(in: fixture.session) { toolbar.changeSelectedMark(.recolor(.green)) }
+        toolbar.selectedMarkMayHaveChanged()
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.green], "Recoloured, with no second mark.")
+        XCTAssertEqual(toolbar.selectedMarkAppearance?.color, .green, "The row ticks the new colour; the mark stays selected.")
+        XCTAssertEqual(fixture.session.undoAvailability.undoActionName, "Change Color")
+
+        // The row's way before (marking the mark's selected text again) recolours it too.
+        step(in: fixture.session) { PDFSelectionMarking.markSelection(of: fixture.view, in: fixture.session, as: .highlight(.blue)) }
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.blue])
+
+        fixture.session.undoAvailability.undo()
+        fixture.session.undoAvailability.undo()
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.yellow], "Each recolouring is one step.")
+    }
+
+    func testRemoveInTheRowDeletesTheSelectedMarkAndKeepsTheOtherChanges() async throws {
+        let fixture = try await makeFixture()
+        try select("gain", in: fixture)
+        step(in: fixture.session) { PDFSelectionMarking.markSelection(of: fixture.view, in: fixture.session, as: .highlight(.yellow)) }
+        try select("bandwidth", in: fixture)
+        step(in: fixture.session) { PDFSelectionMarking.markSelection(of: fixture.view, in: fixture.session, as: .underline) }
+        let toolbar = PDFMarkupToolbar()
+
+        try clickMark(on: "bandwidth", in: fixture, toolbar: toolbar)
+        XCTAssertEqual(toolbar.selectedMarkAppearance, PDFSelectedMarkAppearance(kind: .underline, color: .red))
+        step(in: fixture.session) { toolbar.changeSelectedMark(.recolor(.blue)) }
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.yellow, .blue], "An underline recolours as a highlight does.")
+
+        step(in: fixture.session) { toolbar.changeSelectedMark(.remove) }
+        XCTAssertEqual(marks(on: fixture.page).map(\.kind), [.highlight], "Only the selected mark goes.")
+        XCTAssertNil(toolbar.selectedMarkAppearance, "Nothing is selected any more.")
+        XCTAssertNil(fixture.view.currentSelection)
+        XCTAssertEqual(fixture.session.undoAvailability.undoActionName, "Remove Underline")
+        fixture.session.undoAvailability.undo()
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [.yellow, .blue])
+    }
+
+    func testARowLeftWithAMarkWhoseMakingWasUndoneLetsGoOfIt() async throws {
+        let fixture = try await makeFixture()
+        try select("bandwidth", in: fixture)
+        step(in: fixture.session) { PDFSelectionMarking.markSelection(of: fixture.view, in: fixture.session, as: .highlight(.yellow)) }
+        let toolbar = PDFMarkupToolbar()
+        try clickMark(on: "bandwidth", in: fixture, toolbar: toolbar)
+
+        fixture.session.undoAvailability.undo()
+        toolbar.selectedMarkMayHaveChanged()
+        XCTAssertNil(toolbar.selectedMarkAppearance, "The row no longer shows a mark that is gone.")
+        toolbar.changeSelectedMark(.recolor(.green))
+        XCTAssertNil(fixture.session.errorMessage)
+        XCTAssertEqual(marks(on: fixture.page), [])
     }
 
     func testAClickBesideTheMarksGoesOnToPDFKit() async throws {

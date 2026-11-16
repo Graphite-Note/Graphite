@@ -5,8 +5,8 @@
  * Description: Text markup (highlight, underline, strike-out) as standard PDF annotations.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 11/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -149,6 +149,26 @@ public struct PDFMarkupDetails: Sendable, Equatable {
                   note: annotation.contents, author: annotation.userName)
     }
 
+    /// How far apart two components read from a file may be and still be the same colour:
+    /// less than one step of eight bits.
+    static let sameColorTolerance = 0.5 / 255
+
+    /// Whether these are the components of `color`, as Graphite writes it.
+    public func hasColor(_ color: PDFMarkupColor) -> Bool {
+        abs(red - color.red) <= Self.sameColorTolerance && abs(green - color.green) <= Self.sameColorTolerance
+            && abs(blue - color.blue) <= Self.sameColorTolerance
+    }
+
+    /// What a mark joining `marks` keeps of them: their notes, one after another, with the
+    /// author of the first that has one, in `color`. Nil when none has a note, so the joined
+    /// mark is the current user's, as any new mark is.
+    public static func joiningNotes(of marks: [PDFMarkup], in color: PDFMarkupColor) -> PDFMarkupDetails? {
+        let annotatedMarks = marks.compactMap { mark in mark.originalDetails }.filter { details in !(details.note ?? "").isEmpty }
+        guard let firstAnnotated = annotatedMarks.first else { return nil }
+        return PDFMarkupDetails(red: color.red, green: color.green, blue: color.blue, alpha: 1,
+                                note: annotatedMarks.compactMap(\.note).joined(separator: "\n\n"), author: firstAnnotated.author)
+    }
+
     #if canImport(UIKit)
     var platformColor: UIColor {
         CGColor(colorSpace: CGColorSpaceCreateDeviceRGB(), components: [red, green, blue, alpha].map { component in CGFloat(component) })
@@ -216,6 +236,11 @@ public struct PDFMarkup: Sendable, Equatable {
             cornerIndex += 4
         }
         return lines.isEmpty ? [annotation.bounds] : lines
+    }
+
+    /// Whether the mark is drawn in `color`: its exact colour read from a file, or the colour it was made with.
+    public func hasColor(_ color: PDFMarkupColor) -> Bool {
+        originalDetails?.hasColor(color) ?? (self.color == color)
     }
 
     public var bounds: CGRect {

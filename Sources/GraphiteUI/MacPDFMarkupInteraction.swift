@@ -6,8 +6,8 @@
  *              highlighter, selecting, recolouring and removing a mark, and the markup items of the right-click menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 13/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -18,8 +18,9 @@ import GraphiteApple
 /// The Mac PDF view's handling of text markup. The view (`GraphiteMacPDFView`) hands it
 /// each mouse and key event first; an event it does not take goes on to PDFKit.
 ///
-/// - A click on a mark selects it: its text shows selected, Delete removes it, and the
-///   mouse let go does not mark the text again.
+/// - A click on a mark selects it: its text shows selected, the markup row shows its colour,
+///   recolours it and removes it, Delete removes it, and the mouse let go does not mark the
+///   text again.
 /// - With the highlighter chosen, letting go of the mouse after selecting text marks it.
 /// - A right-click on a mark offers its colours and Remove; on selected text, the
 ///   markup styles and the links to the page, before PDFKit's own items.
@@ -31,6 +32,8 @@ final class MacPDFMarkupInteraction: NSObject {
     weak var toolbar: PDFMarkupToolbar? {
         didSet {
             reportTextSelection()
+            toolbar?.selectedMarkChanged(selectedMark)
+            toolbar?.selectedMarkChangeRequested = { [weak self] change in self?.changeSelectedMark(change) }
             pageTools?.toolbar = toolbar
         }
     }
@@ -45,7 +48,10 @@ final class MacPDFMarkupInteraction: NSObject {
     /// The wall clock, read for the date PencilKit keeps with each stroke, as the iPad's canvas dates its strokes.
     var currentDate: () -> Date = Date.init
     var linkActions: PDFLinkActions?
-    private var selectedMark: (annotation: PDFAnnotation, page: PDFPage)?
+    /// The mark a click selected, until the next click or the end of the text selection.
+    private(set) var selectedMark: PDFSelectedMark? {
+        didSet { if selectedMark != oldValue { toolbar?.selectedMarkChanged(selectedMark) } }
+    }
     private var mouseDownChoseMark = false
 
     init(session: PDFSession, view: PDFView) {
@@ -75,7 +81,10 @@ final class MacPDFMarkupInteraction: NSObject {
         pageTools?.use(tool)
     }
 
-    @objc private func selectionChanged() { reportTextSelection() }
+    @objc private func selectionChanged() {
+        if view?.currentSelection == nil { selectedMark = nil }
+        reportTextSelection()
+    }
 
     private var selectionHasText: Bool { !(view?.currentSelection?.string ?? "").isEmpty }
 
@@ -91,9 +100,9 @@ final class MacPDFMarkupInteraction: NSObject {
         selectedMark = nil
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty, event.clickCount == 1,
               let view, let mark = mark(at: event) else { return false }
-        selectedMark = mark
         mouseDownChoseMark = true
         view.currentSelection = Self.textSelection(of: mark.annotation, on: mark.page)
+        selectedMark = mark
         return true
     }
 
@@ -108,12 +117,28 @@ final class MacPDFMarkupInteraction: NSObject {
     /// Takes Delete and Forward Delete while a mark is selected, which remove it.
     func handleKeyDown(_ event: NSEvent) -> Bool {
         if pageTools?.handleKeyDown(event) == true { return true }
-        guard let selectedMark, let session, let key = event.charactersIgnoringModifiers?.unicodeScalars.first,
+        guard selectedMark != nil, let key = event.charactersIgnoringModifiers?.unicodeScalars.first,
               Self.deletionKeys.contains(Int(key.value)) else { return false }
-        self.selectedMark = nil
-        view?.clearSelection()
-        PDFSelectionMarking.remove(selectedMark.annotation, on: selectedMark.page, in: session)
+        changeSelectedMark(.remove)
         return true
+    }
+
+    /// Recolours the selected mark, which stays selected, or removes it; a mark no longer on
+    /// its page (its making undone) is let go of instead.
+    func changeSelectedMark(_ change: PDFSelectedMarkChange) {
+        guard let selectedMark, let session else { return }
+        guard selectedMark.appearance != nil else {
+            self.selectedMark = nil
+            return
+        }
+        switch change {
+        case .recolor(let color):
+            PDFSelectionMarking.recolor(selectedMark.annotation, on: selectedMark.page, to: color, in: session)
+        case .remove:
+            self.selectedMark = nil
+            view?.clearSelection()
+            PDFSelectionMarking.remove(selectedMark.annotation, on: selectedMark.page, in: session)
+        }
     }
 
     private static let deletionKeys: Set<Int> = [NSBackspaceCharacter, NSDeleteCharacter, NSDeleteFunctionKey]
@@ -142,14 +167,14 @@ final class MacPDFMarkupInteraction: NSObject {
 
     // MARK: Marks
 
-    private func mark(at event: NSEvent) -> (annotation: PDFAnnotation, page: PDFPage)? {
+    private func mark(at event: NSEvent) -> PDFSelectedMark? {
         guard input.isEnabled, let view else { return nil }
         let viewPoint = view.convert(event.locationInWindow, from: nil)
         guard let page = view.page(for: viewPoint, nearest: false) else { return nil }
-        return page.markupAnnotation(at: view.convert(viewPoint, to: page)).map { annotation in (annotation, page) }
+        return page.markupAnnotation(at: view.convert(viewPoint, to: page)).map { annotation in PDFSelectedMark(annotation: annotation, page: page) }
     }
 
-    private func markMenu(for mark: (annotation: PDFAnnotation, page: PDFPage)) -> NSMenu? {
+    private func markMenu(for mark: PDFSelectedMark) -> NSMenu? {
         guard let kind = PDFMarkupKind(annotationType: mark.annotation.type), let session else { return nil }
         let menu = NSMenu()
         let currentColor = PDFMarkup(annotation: mark.annotation)?.color
@@ -163,8 +188,13 @@ final class MacPDFMarkupInteraction: NSObject {
         }
         menu.addItem(.separator())
         menu.addItem(MacPDFMarkupMenuItem(title: "Remove \(kind.title)", image: NSImage(systemSymbolName: "trash", accessibilityDescription: nil)) {
-            [weak session] in
+            [weak self, weak session] in
             guard let session else { return }
+            // A mark removed while it is selected leaves nothing selected.
+            if self?.selectedMark == mark {
+                self?.selectedMark = nil
+                self?.view?.clearSelection()
+            }
             PDFSelectionMarking.remove(mark.annotation, on: mark.page, in: session)
         })
         return menu

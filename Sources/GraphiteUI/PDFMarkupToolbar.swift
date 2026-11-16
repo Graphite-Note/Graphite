@@ -7,11 +7,13 @@
  *              selected, for the row and the menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 13/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import SwiftUI
+import PDFKit
+import GraphiteApple
 
 /// One PDF pane's markup row on the Mac. The row starts hidden in every pane; hiding it
 /// goes back to text selection, so a hidden row never leaves the highlighter on.
@@ -35,6 +37,14 @@ final class PDFMarkupToolbar {
     @ObservationIgnored var signaturePlacementRequested: (() -> Void)?
     /// Set by the PDF view's page tools: gives the selected shape a look chosen in the row.
     @ObservationIgnored var shapeStyleChosen: ((PDFMarkupShapeStyle) -> Void)?
+    /// The mark the PDF view has selected (a click on a highlight, underline or
+    /// strikethrough), which the row shows and changes; nil while none is.
+    private(set) var selectedMark: PDFSelectedMark?
+    /// The selected mark's kind and colour as the row shows them, read again after each
+    /// edit of the PDF (`selectedMarkMayHaveChanged`), so the row follows undo and redo.
+    private(set) var selectedMarkAppearance: PDFSelectedMarkAppearance?
+    /// Set by the PDF view's markup handling: recolours or removes the selected mark.
+    @ObservationIgnored var selectedMarkChangeRequested: ((PDFSelectedMarkChange) -> Void)?
 
     /// The tool the PDF view follows: text selection while the row is hidden.
     var tool: PDFMarkupTool { isRowShown ? chosenTool : .textSelection }
@@ -52,6 +62,22 @@ final class PDFMarkupToolbar {
 
     func textSelectionChanged(hasText: Bool) {
         if hasTextSelection != hasText { hasTextSelection = hasText }
+    }
+
+    func selectedMarkChanged(_ mark: PDFSelectedMark?) {
+        if selectedMark != mark { selectedMark = mark }
+        selectedMarkMayHaveChanged()
+    }
+
+    /// Reads the selected mark's kind and colour again, after an edit of the PDF.
+    func selectedMarkMayHaveChanged() {
+        let appearance = selectedMark?.appearance
+        if selectedMarkAppearance != appearance { selectedMarkAppearance = appearance }
+    }
+
+    /// A colour or Remove chosen in the row for the selected mark.
+    func changeSelectedMark(_ change: PDFSelectedMarkChange) {
+        selectedMarkChangeRequested?(change)
     }
 
     func useInkStyle(_ style: PDFMarkupInkStyle) {
@@ -86,6 +112,36 @@ final class PDFMarkupToolbar {
         defer { signatureToPlace = nil }
         return signatureToPlace
     }
+}
+
+/// A mark selected in a PDF view: the annotation and the page it is on.
+struct PDFSelectedMark: Equatable {
+    let annotation: PDFAnnotation
+    let page: PDFPage
+
+    /// Its kind and colour now, or nil once it is no longer on its page, as after it was
+    /// removed or its making was undone. Read again after every edit of the PDF.
+    var appearance: PDFSelectedMarkAppearance? {
+        guard page.annotations.contains(where: { annotation in annotation === self.annotation }),
+              let markup = PDFMarkup(annotation: annotation) else { return nil }
+        return PDFSelectedMarkAppearance(kind: markup.kind, color: markup.color)
+    }
+
+    static func == (leftMark: Self, rightMark: Self) -> Bool {
+        leftMark.annotation === rightMark.annotation && leftMark.page === rightMark.page
+    }
+}
+
+/// What the markup row shows of the selected mark.
+struct PDFSelectedMarkAppearance: Equatable {
+    let kind: PDFMarkupKind
+    let color: PDFMarkupColor
+}
+
+/// What the markup row does to the selected mark.
+enum PDFSelectedMarkChange: Equatable {
+    case recolor(PDFMarkupColor)
+    case remove
 }
 
 extension EnvironmentValues {
