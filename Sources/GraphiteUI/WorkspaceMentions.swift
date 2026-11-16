@@ -109,7 +109,7 @@ extension WorkspaceModel {
             refreshIndex(for: [source])
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             return false
         }
     }

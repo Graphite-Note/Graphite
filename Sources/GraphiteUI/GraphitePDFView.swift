@@ -1655,7 +1655,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
                 }
             }
         } catch {
-            session.errorMessage = error.localizedDescription
+            session.errorMessage.report(error)
         }
     }
 

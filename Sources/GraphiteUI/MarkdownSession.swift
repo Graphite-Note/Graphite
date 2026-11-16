@@ -309,7 +309,7 @@ final class MarkdownSession {
             await checkFileTooLargeToRead()
         } catch {
             guard !isSaving, revision == revisionBeforeRead else { return }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 

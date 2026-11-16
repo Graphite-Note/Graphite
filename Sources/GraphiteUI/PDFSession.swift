@@ -599,7 +599,7 @@ final class PDFSession {
             didSave?(location)
         } catch {
             if error as? GraphiteError == .conflict { hasExternalConflict = true } else { hasFailedSave = true }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             throw error
         }
     }
@@ -623,7 +623,7 @@ final class PDFSession {
             do {
                 try await self.save()
             } catch {
-                self.errorMessage = error.localizedDescription
+                self.errorMessage.report(error)
                 // A conflict waits for the user's choice; any other failure is retried, so
                 // the edits reach the file without waiting for another edit.
                 guard !self.hasExternalConflict, self.hasUnsavedChanges else { return }

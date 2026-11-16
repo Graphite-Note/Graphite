@@ -186,12 +186,12 @@ struct MarkdownPane: View {
             if let request = document.headingScrollRequest { session.unfold(toShow: request) }
         }
         .confirmationDialog("Replace your unsaved text with the version saved by the other app?", isPresented: $noteState.showsReloadConfirmation, titleVisibility: .visible) {
-            Button("Use Other Version", role: .destructive) { Task { do { try await session.reload() } catch { workspace.errorMessage = error.localizedDescription } } }
+            Button("Use Other Version", role: .destructive) { Task { do { try await session.reload() } catch { workspace.errorMessage.report(error) } } }
         }
         .fileImporter(isPresented: $noteState.showsAttachmentPicker, allowedContentTypes: [.item]) { result in
             switch result {
             case .success(let location): Task { await workspace.importAttachment(from: location, into: session) }
-            case .failure(let error): workspace.errorMessage = error.localizedDescription
+            case .failure(let error): workspace.errorMessage.report(error)
             }
         }
         .photosPicker(isPresented: $noteState.showsPhotoPicker, selection: $pickedPhotos, maxSelectionCount: 10, matching: .images,
@@ -721,13 +721,13 @@ struct MarkdownPane: View {
                 let type = item.supportedContentTypes.first { type in type.conforms(to: .image) }
                 let fileExtension = type.flatMap { type in type == .heic || type == .heif ? "jpg" : type.preferredFilenameExtension } ?? "jpg"
                 await workspace.saveAttachment(data, stem: WorkspaceModel.pastedImageStem(), fileExtension: fileExtension == "jpeg" ? "jpg" : fileExtension, into: session)
-            } catch { workspace.errorMessage = error.localizedDescription }
+            } catch { workspace.errorMessage.report(error) }
         }
     }
 
     private func saveCopy() async {
         do { let path = try await session.saveSeparateCopy(); await workspace.open(path); await workspace.showInListings(path) }
-        catch { workspace.errorMessage = error.localizedDescription }
+        catch { workspace.errorMessage.report(error) }
     }
 
 }
@@ -922,7 +922,7 @@ private struct LinkPicker: View {
                     try await Task.sleep(for: .milliseconds(150))
                     paths = try await workspace.index?.search(query).results.map(\.path).filter { path in DocumentKind(path: path) == .markdown } ?? []
                 } catch is CancellationError {
-                } catch { workspace.errorMessage = error.localizedDescription }
+                } catch { workspace.errorMessage.report(error) }
             }
         }
         .sheetMinimumSize(width: 340, height: 450)

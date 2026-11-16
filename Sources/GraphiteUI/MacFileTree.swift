@@ -289,7 +289,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
                 // A folder another app removed or renamed goes away with its parent's next
                 // listing; that is not an error to report.
                 guard let self, self.workspace.isDirectory(node.path) else { return }
-                self.workspace.errorMessage = error.localizedDescription
+                self.workspace.errorMessage.report(error)
             }
         }
     }

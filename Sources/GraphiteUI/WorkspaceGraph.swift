@@ -32,7 +32,7 @@ extension WorkspaceModel {
             // the query ran: nothing went wrong, and an alert saying so is not wanted (HUNT-332).
             return nil
         } catch {
-            if self.index === index { errorMessage = error.localizedDescription }
+            if self.index === index { errorMessage.report(error) }
             return nil
         }
     }

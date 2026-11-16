@@ -150,7 +150,7 @@ struct EmbeddedPDFViewer: View {
                         try await Self.withBackgroundTime { try await session.save() }
                     }
                 } catch {
-                    session.errorMessage = error.localizedDescription
+                    session.errorMessage.report(error)
                 }
             }
         }
@@ -161,7 +161,7 @@ struct EmbeddedPDFViewer: View {
                 do {
                     if try await session.hasChangedExternally(), !session.hasUnsavedChanges { reload() }
                 } catch {
-                    session.errorMessage = error.localizedDescription
+                    session.errorMessage.report(error)
                 }
             }
         }
@@ -466,7 +466,7 @@ struct EmbeddedPDFViewer: View {
                 stopAnnotating()
                 openInPane(session.currentPageIndex)
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
     }
@@ -480,7 +480,7 @@ struct EmbeddedPDFViewer: View {
                 let copyLocation = try await session.saveSeparateCopy()
                 conflictNotice = .savedCopy(fileName: copyLocation.lastPathComponent, changeVersion: copiedChangeVersion)
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
     }
@@ -516,7 +516,7 @@ struct EmbeddedPDFViewer: View {
                 }
                 isAnnotating = true
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
     }
@@ -598,7 +598,7 @@ struct EmbeddedPDFViewer: View {
         do {
             try await closingSession.saveBeforeClosing()
         } catch {
-            closingSession.errorMessage = error.localizedDescription
+            closingSession.errorMessage.report(error)
             // Shown again meanwhile: the banner offers a copy or reload.
             if isVisible, session === closingSession { return }
             // The note may be gone with this view. The session and its edits are kept

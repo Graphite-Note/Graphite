@@ -47,6 +47,6 @@ extension WorkspaceModel {
             #if canImport(UIKit)
             if let session = canvasSession, session.path == path { session.isWriting = true }
             #endif
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }

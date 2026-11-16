@@ -47,6 +47,38 @@ final class ReleaseVaultFindingsTests: XCTestCase {
         XCTAssertNil(workspace.errorMessage)
     }
 
+    /// HUNT-332, the open from a New Tab: the tab it replaces is saved and the file loaded, and
+    /// either one stopped by a cancelled task showed the CancellationError as an alert.
+    func testAFileOpenedByACancelledTaskShowsNoAlert() async throws {
+        let vault = try TemporaryVault.make(prefix: "OpenCancel", files: ["Note.md": "Text.", "Other.md": "More text."], for: self)
+        let workspace = device.makeWorkspace()
+        try await workspace.openFolderAsVault(vault.root)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        _ = await workspace.open(try VaultPath("Note.md"))
+        workspace.markdownSession?.text += " Typed."
+
+        let other = try VaultPath("Other.md")
+        let opening = Task { @MainActor in await workspace.open(other, placement: .newTab) }
+        opening.cancel()
+        _ = await opening.value
+
+        XCTAssertNil(workspace.errorMessage)
+    }
+
+    /// An alert's message takes any error but a cancellation, which leaves it as it was.
+    func testAnAlertsMessageLeavesOutCancellations() {
+        var message: String?
+        for cancellation: any Error in [CancellationError(), URLError(.cancelled), CocoaError(.userCancelled)] {
+            message.report(cancellation)
+            XCTAssertNil(message, "\(cancellation)")
+        }
+        message.report(CocoaError(.fileNoSuchFile))
+        let shown = message
+        XCTAssertNotNil(shown)
+        message.report(CancellationError())
+        XCTAssertEqual(message, shown, "A cancellation leaves an alert already shown as it was")
+    }
+
     /// HUNT-329: the row the "+" strip adds, `|  |  |`, had no text the parser kept, so the reading
     /// view and Live Preview drew the table without it until something was typed in it.
     func testATableRowOfEmptyCellsIsParsedForDrawing() throws {

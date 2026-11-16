@@ -96,6 +96,6 @@ extension WorkspaceModel {
             }
             refreshIndex(for: [path])
             await open(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }

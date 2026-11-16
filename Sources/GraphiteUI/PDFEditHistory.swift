@@ -129,7 +129,7 @@ extension PDFSession {
                 try undo(session)
                 session.registerStep(named: actionName, undo: redo, redo: undo)
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
         undoManager.setActionName(actionName)

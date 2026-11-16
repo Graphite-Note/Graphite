@@ -119,7 +119,7 @@ extension WorkspaceModel {
             // A file already open on the other side is shown there without taking focus.
             if let linkedPath, layout.tabID(showing: linkedPath) != nil { return linkedPath }
         } catch is CancellationError {
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
         return nil
     }
 
@@ -205,7 +205,7 @@ extension WorkspaceModel {
             }
             refreshIndex(for: [path])
             if opensNote { await open(path) }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Changes a note's text through its editor when it is open, so it can be undone, and

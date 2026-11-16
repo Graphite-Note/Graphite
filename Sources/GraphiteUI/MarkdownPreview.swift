@@ -1179,7 +1179,7 @@ struct MarkdownPreview: View {
                 show(cachedBuild)
                 blocksCache?.lastBuild = cachedBuild
             } catch is CancellationError {
-            } catch { errorMessage = error.localizedDescription }
+            } catch { errorMessage.report(error) }
         }
     }
 

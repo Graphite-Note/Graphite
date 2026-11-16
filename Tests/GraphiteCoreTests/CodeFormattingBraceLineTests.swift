@@ -3,11 +3,11 @@
  * ----------------------------------------
  * Layer: Tests
  * Description: HUNT-355: code with braces on lines of their own keeps its lines when a block is formatted, with either
- *              line ending, and formatting it again changes nothing, in C, Swift, Python and JavaScript.
+ *              line ending, formatting it again changes nothing, and a blank line between a head and its brace goes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -49,5 +49,24 @@ final class CodeFormattingBraceLineTests: XCTestCase {
                                "Every line ends as the code's lines do in \(sample.language)")
             }
         }
+    }
+
+    /// The owner's note of 2026-11-13 as saved: a blank line between `int main()` and its `{`. Format
+    /// Code Blocks kept it as written, so the block never lost it; the head and its brace now meet,
+    /// with either line ending, tabs or spaces, also for `else` and a class in Allman style.
+    func testABlankLineBetweenAHeadAndItsBraceIsDropped() throws {
+        XCTAssertEqual(try formatted("int main()\n\n{\n    return 0;\n}\n", "c"), "int main()\n{\n    return 0;\n}\n")
+        XCTAssertEqual(try formatted("int main()\r\n\r\n\r\n{\r\n\treturn 0;\r\n}\r\n", "c"), "int main()\r\n{\r\n\treturn 0;\r\n}\r\n")
+        let allman = "class Shape\n\n{\npublic:\n    void draw()\n\n    {\n        if (visible)\n\n        {\n            paint();\n        }\n        else\n\n        {\n            skip();\n        }\n    }\n};\n"
+        let formattedAllman = try formatted(allman, "cpp")
+        XCTAssertFalse(formattedAllman.contains("\n\n"), formattedAllman)
+    }
+
+    /// A `{` after a statement opens a block of its own, and the blank line before it stays as written.
+    func testABlankLineBeforeABlockOfItsOwnIsKept() throws {
+        let code = "int main()\n{\n    int total = 0;\n\n    {\n        int step = 1;\n        total += step;\n    }\n    return total;\n}\n"
+        XCTAssertEqual(try formatted(code, "c"), code)
+        let afterInclude = "#include <stdio.h>\n\n{\n}\n"
+        XCTAssertEqual(try formatted(afterInclude, "c"), afterInclude)
     }
 }

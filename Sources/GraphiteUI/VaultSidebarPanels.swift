@@ -168,7 +168,7 @@ final class VaultOverviewModel {
                 hasLoadedProperties = true
             }
         } catch is CancellationError {
-        } catch { workspace.errorMessage = error.localizedDescription }
+        } catch { workspace.errorMessage.report(error) }
     }
 }
 

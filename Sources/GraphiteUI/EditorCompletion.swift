@@ -113,7 +113,7 @@ final class CompletionModel {
             guard let workspace, let session else { return [] }
             return await CompletionProvider(workspace: workspace, session: session).items(for: context)
         }
-        reportError = { [weak workspace] error in workspace?.errorMessage = error.localizedDescription }
+        reportError = { [weak workspace] error in workspace?.errorMessage.report(error) }
         dismissPluginSuggestions = { [weak workspace] in workspace?.communityPlugins.closeSuggestions() }
     }
 }

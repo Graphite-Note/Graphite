@@ -97,7 +97,7 @@ struct AppIconSettingsSection: View {
         do {
             try await UIApplication.shared.setAlternateIconName(option.alternateIconName)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 }

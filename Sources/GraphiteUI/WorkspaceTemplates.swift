@@ -90,7 +90,7 @@ extension WorkspaceModel {
                 on: dailyNoteDay(of: session.path) ?? CalendarDay(.now, in: personalCalendar), note: session.path)
             let declaredTypes = await store.propertyTypes()
             session.apply(TemplateInsertion.edit(inserting: rendered, into: session.text, at: session.selection, declaredTypes: declaredTypes))
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Opens the daily note of `date`, creating it from the daily note template first when
@@ -127,7 +127,7 @@ extension WorkspaceModel {
                 return
             }
             await open(path, placement: placement)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     func dailyNotesFolder(of settings: DailyNoteSettings) -> VaultPath {
@@ -182,7 +182,7 @@ extension WorkspaceModel {
                 return
             }
             await open(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     func updateTemplateSettings(_ settings: TemplateSettings) async {
@@ -190,7 +190,7 @@ extension WorkspaceModel {
         do {
             try await store.saveTemplateSettings(settings)
             templateSettingsReading = .read(settings)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     func updateDailyNoteSettings(_ settings: DailyNoteSettings) async {
@@ -198,6 +198,6 @@ extension WorkspaceModel {
         do {
             try await store.saveDailyNoteSettings(settings)
             dailyNoteSettingsReading = .read(settings)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }

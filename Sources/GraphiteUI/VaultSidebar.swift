@@ -836,7 +836,7 @@ private struct VaultEntryRow: View, Equatable {
                 // A folder another app removed or renamed goes away with its parent's next
                 // listing; that is not an error to report.
                 guard !Task.isCancelled, workspace.isDirectory(entry.path) else { return }
-                workspace.errorMessage = error.localizedDescription
+                workspace.errorMessage.report(error)
             }
         }
     }

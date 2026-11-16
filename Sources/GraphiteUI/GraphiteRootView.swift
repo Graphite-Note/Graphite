@@ -679,7 +679,7 @@ struct GraphiteRootView: View {
 
     private func save() async {
         do { try await workspace.saveOpenDocuments() }
-        catch { workspace.errorMessage = error.localizedDescription }
+        catch { workspace.errorMessage.report(error) }
     }
 
     private func saveBeforeLeavingScreen() {

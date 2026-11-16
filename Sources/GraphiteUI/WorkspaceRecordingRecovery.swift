@@ -45,14 +45,14 @@ extension WorkspaceModel {
             await open(path)
             await showInListings(path)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             recordingsNotOfferedAgain.insert(unfinished.id)
         }
         checkForUnfinishedRecordings()
     }
 
     func discard(_ unfinished: RecoverableRecording) {
-        do { try RecordingRecoveryFolder.remove(unfinished) } catch { errorMessage = error.localizedDescription }
+        do { try RecordingRecoveryFolder.remove(unfinished) } catch { errorMessage.report(error) }
         checkForUnfinishedRecordings()
     }
 }

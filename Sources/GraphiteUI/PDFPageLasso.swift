@@ -164,7 +164,7 @@ extension PDFSession {
         let preferredWidth = LassoPasteboard.preferredWidth(ofImageData: imageData)
         Task {
             do { try await addPicture(imageData: imageData, placement: placement, preferredWidth: preferredWidth) }
-            catch { errorMessage = error.localizedDescription }
+            catch { errorMessage.report(error) }
         }
     }
 }

@@ -705,7 +705,7 @@ final class WorkspaceModel {
             vaultSettings = settings
             if sortOrderChanged { await refreshDirectory() }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 
@@ -769,7 +769,7 @@ final class WorkspaceModel {
             layout.focus(tabID: tabID)
         }
         if tabID != previousTabID, let previousDocument = tabDocuments[previousTabID] {
-            do { try await previousDocument.save() } catch { errorMessage = error.localizedDescription }
+            do { try await previousDocument.save() } catch { errorMessage.report(error) }
         }
         let didOpen = await load(path, into: tabID, pdfPageIndex: pdfPageIndex, recordsHistory: true)
         // A tab made for a file that could not be opened goes away again.
@@ -837,7 +837,7 @@ final class WorkspaceModel {
         case .scanCancelled:
             indexingMessage = "Indexing paused"; isIndexing = false
         case .scanFailed(let error):
-            indexingMessage = "Index needs attention"; errorMessage = error.localizedDescription; isIndexing = false
+            indexingMessage = "Index needs attention"; errorMessage.report(error); isIndexing = false
         case .emptied:
             // An index being emptied is not complete: a link followed meanwhile creates no note.
             hasCompletedIndexScan = false
@@ -952,7 +952,7 @@ final class WorkspaceModel {
             try await indexLease.rebuild()
         } catch {
             if self.indexLease === indexLease { hasCompletedIndexScan = wasIndexComplete }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 
@@ -1002,7 +1002,7 @@ final class WorkspaceModel {
             searchContinuation = page.continuation
         } catch is CancellationError {
             // The query changed while this search ran; the next search shows its results.
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Adds the next page of results, as the list scrolls to its end.
@@ -1019,7 +1019,7 @@ final class WorkspaceModel {
             searchContinuation = page.continuation
         } catch is CancellationError {
             // Scrolling away or a new query stopped this page; nothing went wrong.
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Opens a note at a search match: the match is shown and marked while editing, and
@@ -1095,7 +1095,7 @@ final class WorkspaceModel {
                     from: source, isWiki: isWiki, placement: placement) }
             }
             else { errorMessage = "No file matches “\(target)” yet. Graphite is still reading the vault; try again in a moment." }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     // MARK: Creation
@@ -1114,7 +1114,7 @@ final class WorkspaceModel {
             // Ready to type, as in Obsidian.
             openMarkdownSession(at: path)?.startsEditingWhenShown = true
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Shows the block with this `^id` in the tab's note and marks it.
@@ -1159,7 +1159,7 @@ final class WorkspaceModel {
             refreshIndex(for: [path])
             await open(path)
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Existing names may contain a backslash, but a folder typed or linked to must not:
@@ -1180,7 +1180,7 @@ final class WorkspaceModel {
             refreshIndex(for: [path])
             await open(path)
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// What bases inside `note` need to run; nil when Bases are turned off or no vault is open.
@@ -1225,7 +1225,7 @@ final class WorkspaceModel {
             refreshIndex(for: [path])
             await open(path)
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Imports an outside file into the note's attachment folder and embeds it at `range`
@@ -1246,7 +1246,7 @@ final class WorkspaceModel {
             insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Saves pasted, dropped, photographed, or picked data as an attachment, like
@@ -1264,7 +1264,7 @@ final class WorkspaceModel {
             insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen)
             refreshIndex(for: [path])
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Inserts the embed of an attachment just written into its note. Writing a large file
@@ -1431,7 +1431,7 @@ final class WorkspaceModel {
                 title: path.name, initialStrokeData: drawing.payload.strokes, canvasWidth: drawing.payload.width,
                 background: drawing.payload.background, format: drawing.format, backgroundImage: drawing.payload.backgroundImage,
                 pictures: drawing.payload.pictures, paper: drawing.payload.paper)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Saves the drawing file first, then inserts its embed. If the note cannot take the
@@ -1551,7 +1551,7 @@ final class WorkspaceModel {
             if recording.state == .recording {
                 for window in processServices.openWindows.all { window.stopReadingAloud() }
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Where a recording goes: the note's attachment folder, as Obsidian's recorder does,
@@ -1796,7 +1796,7 @@ final class WorkspaceModel {
                 let placeOnPage = pdfSession.placeToRemember()
                 reloadedSession.keptPlace = placeOnPage.pageIndex < reloadedSession.pageCount ? placeOnPage : nil
                 document.pdfSession = reloadedSession
-            } catch { pdfSession.errorMessage = error.localizedDescription }
+            } catch { pdfSession.errorMessage.report(error) }
         }
         await openAgainNotesThatChangedSize(limitedTo: changedPaths)
     }
@@ -1813,7 +1813,7 @@ final class WorkspaceModel {
             document.pdfSession = replacement; document.markdownSession = nil; document.loadedPath = path
             layout.show(path, inTab: tabID, recordsHistory: path != layout.tab(withID: tabID)?.path)
             await showInListings(path)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }
 

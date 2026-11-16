@@ -67,7 +67,7 @@ struct NoteLinksInspector: View {
             footnotes = listedFootnotes
             outline = headings
         } catch is CancellationError {
-        } catch { workspace.errorMessage = error.localizedDescription }
+        } catch { workspace.errorMessage.report(error) }
     }
 
     /// The outline of a note's body, each heading numbered among those that read the same,

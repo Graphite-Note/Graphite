@@ -433,7 +433,7 @@ private struct PDFPaneContent: View {
     private func saveSeparateCopy() {
         Task {
             do { resolveConflict(try await session.saveSeparateCopy()) }
-            catch { session.errorMessage = error.localizedDescription }
+            catch { session.errorMessage.report(error) }
         }
     }
 
@@ -512,13 +512,13 @@ private struct PDFPaneContent: View {
                 Divider()
                 Button("Set Reading Start") {
                     do { readingStart = try PDFReadAloudSource.endpoint(in: session, isEnd: false) }
-                    catch { session.errorMessage = error.localizedDescription }
+                    catch { session.errorMessage.report(error) }
                 }.disabled(session.readAloudSelection == nil)
                 if let readingStart {
                     Text("Start: page \(readingStart.pageIndex + 1)")
                     Button("Read Through Here") {
                         do { readAloud.readPDFRange(session, start: readingStart, end: try PDFReadAloudSource.endpoint(in: session, isEnd: true)) }
-                        catch { session.errorMessage = error.localizedDescription }
+                        catch { session.errorMessage.report(error) }
                     }.disabled(session.readAloudSelection == nil)
                     Button("Clear Reading Start") { self.readingStart = nil }
                 }
@@ -716,7 +716,7 @@ final class PDFPageCommands {
         changingPageStructure { [session] in
             Task {
                 do { try await session.insertPaper(GraphitePreferences.storedNotebookPaper(template: template), at: insertionIndex) }
-                catch { session.errorMessage = error.localizedDescription }
+                catch { session.errorMessage.report(error) }
             }
         }
     }
@@ -730,7 +730,7 @@ final class PDFPageCommands {
         let insertionIndex = importInsertionIndex
         Task {
             do { try await session.importPages(from: sourceLocation, at: insertionIndex) }
-            catch { session.errorMessage = error.localizedDescription }
+            catch { session.errorMessage.report(error) }
         }
     }
 
@@ -770,7 +770,7 @@ final class PDFPageCommands {
         changingPageStructure { [session] in
             Task {
                 do { try await session.deletePages(at: pageIndices) }
-                catch { session.errorMessage = error.localizedDescription }
+                catch { session.errorMessage.report(error) }
             }
         }
     }
@@ -796,7 +796,7 @@ final class PDFPageCommands {
                 exportDocument = PDFExportDocument(data: try await session.export(pages: sortedPages))
                 isExporting = true
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
     }
@@ -848,7 +848,7 @@ final class PDFPageCommands {
 
 @MainActor
 private func perform(_ session: PDFSession, _ operation: () throws -> Void) {
-    do { try operation() } catch { session.errorMessage = error.localizedDescription }
+    do { try operation() } catch { session.errorMessage.report(error) }
 }
 
 /// Confirmations, file import and export for page operations.
@@ -872,11 +872,11 @@ struct PDFPageCommandDialogs: ViewModifier {
             .fileImporter(isPresented: $commands.isImporting, allowedContentTypes: [.pdf]) { result in
                 switch result {
                 case .success(let location): commands.importPages(from: location)
-                case .failure(let error): commands.session.errorMessage = error.localizedDescription
+                case .failure(let error): commands.session.errorMessage.report(error)
                 }
             }
             .fileExporter(isPresented: $commands.isExporting, document: commands.exportDocument, contentType: .pdf, defaultFilename: commands.exportFilename) { result in
-                if case .failure(let error) = result { commands.session.errorMessage = error.localizedDescription }
+                if case .failure(let error) = result { commands.session.errorMessage.report(error) }
                 commands.exportDocument = nil
             }
     }

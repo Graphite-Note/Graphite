@@ -18,14 +18,14 @@ extension WorkspaceModel {
     func reloadBookmarks() async {
         guard let store else { bookmarks = BookmarkList(); return }
         do { bookmarks = try await store.bookmarks() }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     /// Changes the bookmarks as they are in the file now, then shows the result.
     func updateBookmarks(_ change: @escaping @Sendable (inout BookmarkList) -> Void) async {
         guard let store else { return }
         do { bookmarks = try await store.updateBookmarks(change) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     /// Whether a file or folder is bookmarked. Only the bookmarks are asked: a path is a file

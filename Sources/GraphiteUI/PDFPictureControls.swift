@@ -57,7 +57,7 @@ struct PDFPictureAdding: ViewModifier {
                     do {
                         let imageData = try await Task.detached(priority: .userInitiated) { try PickedImageFiles.imageData(at: location) }.value
                         Self.addPicture(imageData: imageData, to: session)
-                    } catch { session.errorMessage = error.localizedDescription }
+                    } catch { session.errorMessage.report(error) }
                 }
             }
             .onChange(of: pickedPhoto) { _, photo in
@@ -67,7 +67,7 @@ struct PDFPictureAdding: ViewModifier {
                     do {
                         guard let imageData = try await photo.loadTransferable(type: Data.self) else { throw GraphiteError.invalidFile("This photo could not be read.") }
                         Self.addPicture(imageData: imageData, to: session)
-                    } catch { session.errorMessage = error.localizedDescription }
+                    } catch { session.errorMessage.report(error) }
                 }
             }
     }
@@ -79,7 +79,7 @@ struct PDFPictureAdding: ViewModifier {
     static func addPicture(imageData: Data, to session: PDFSession) {
         Task {
             do { try await session.addPicture(imageData: imageData) }
-            catch { session.errorMessage = error.localizedDescription }
+            catch { session.errorMessage.report(error) }
         }
     }
 }
@@ -154,7 +154,7 @@ extension PDFPictureArrangementBar {
 
     private func run(_ change: @escaping () async throws -> Void) {
         Task {
-            do { try await change() } catch { session.errorMessage = error.localizedDescription }
+            do { try await change() } catch { session.errorMessage.report(error) }
         }
     }
 }
@@ -302,7 +302,7 @@ final class PDFPictureSelectionController {
             return
         }
         do { try session.movePicture(selection, to: pdfView.convert(frame, to: page)) }
-        catch { session.errorMessage = error.localizedDescription }
+        catch { session.errorMessage.report(error) }
         update()
     }
 
@@ -311,7 +311,7 @@ final class PDFPictureSelectionController {
     private func selectionRotationChangeDidEnd(_ rotation: CGFloat) {
         guard let selection = session.selectedPicture else { return }
         do { try session.rotatePicture(selection, to: Double(rotation)) }
-        catch { session.errorMessage = error.localizedDescription }
+        catch { session.errorMessage.report(error) }
         update()
     }
 

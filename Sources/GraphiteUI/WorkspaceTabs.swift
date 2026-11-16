@@ -370,7 +370,7 @@ extension WorkspaceModel {
             do {
                 try await document.save()
                 releaseHiddenPDFSessions()
-            } catch { errorMessage = error.localizedDescription }
+            } catch { errorMessage.report(error) }
         }
     }
 
@@ -519,9 +519,12 @@ extension WorkspaceModel {
                 if layout.tab(withID: tabID)?.path != path { layout.show(path, inTab: tabID, recordsHistory: recordsHistory) }
             }
             return false
+        } catch where error.isCancellation {
+            // A load stopped by its task's cancellation failed at nothing: no alert, and no tab saying it could not be opened (HUNT-332).
+            return false
         } catch {
             if document.requestIdentifier == requestIdentifier { document.loadFailure = LoadFailure(path: path, message: error.localizedDescription) }
-            if reportsFailure { errorMessage = error.localizedDescription }
+            if reportsFailure { errorMessage.report(error) }
             return false
         }
     }

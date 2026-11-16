@@ -247,7 +247,7 @@ final class CanvasSession {
             registerUndo(result.undoPatch, named: actionName)
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             return false
         }
     }
@@ -270,7 +270,7 @@ final class CanvasSession {
             adopt(result.file)
             registerUndo(result.undoPatch, named: actionName)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 
@@ -386,7 +386,7 @@ final class CanvasSession {
             didSave(path)
         } catch {
             if error as? GraphiteError == .conflict { hasExternalConflict = true }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             await keepUnsavedEditsInDraft()
             throw error
         }
@@ -421,7 +421,7 @@ final class CanvasSession {
             } else {
                 try adopt(snapshot)
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Replaces the open canvas with the file's version, discarding unsaved edits.
@@ -463,7 +463,7 @@ final class CanvasSession {
             savedVersion = changeVersion
             hasExternalConflict = false
             discardDraft()
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
         return separatePath
     }

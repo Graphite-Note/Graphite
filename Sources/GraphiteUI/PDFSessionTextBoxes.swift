@@ -79,7 +79,7 @@ extension PDFSession {
     /// Shows why a change of a text box or of the lasso's selection was not made, in the
     /// PDF's banner.
     func reportFailedChange(_ error: Error) {
-        errorMessage = error.localizedDescription
+        errorMessage.report(error)
     }
 
     func textBoxes(on page: PDFPage) -> [PDFTextBox] {

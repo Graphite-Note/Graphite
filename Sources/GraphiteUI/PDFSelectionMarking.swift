@@ -26,15 +26,15 @@ enum PDFSelectionMarking {
             try session.addMarkup(style.kind, color: style.color, for: selection)
             view.clearSelection()
         } catch {
-            session.errorMessage = error.localizedDescription
+            session.errorMessage.report(error)
         }
     }
 
     static func recolor(_ mark: PDFAnnotation, on page: PDFPage, to color: PDFMarkupColor, in session: PDFSession) {
-        do { try session.recolorMarkup(mark, on: page, to: color) } catch { session.errorMessage = error.localizedDescription }
+        do { try session.recolorMarkup(mark, on: page, to: color) } catch { session.errorMessage.report(error) }
     }
 
     static func remove(_ mark: PDFAnnotation, on page: PDFPage, in session: PDFSession) {
-        do { try session.removeMarkup(mark, on: page) } catch { session.errorMessage = error.localizedDescription }
+        do { try session.removeMarkup(mark, on: page) } catch { session.errorMessage.report(error) }
     }
 }

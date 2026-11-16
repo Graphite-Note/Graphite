@@ -751,7 +751,7 @@ final class CommunityPluginHost {
         do {
             enabledList = try await store.updateCommunityPluginList { @Sendable list in list.setEnabled(pluginIdentifier, isEnabled) }
         } catch {
-            workspace.errorMessage = error.localizedDescription
+            workspace.errorMessage.report(error)
             return
         }
         if isEnabled {
@@ -783,7 +783,7 @@ final class CommunityPluginHost {
             loadStates[plugin.id] = nil
             await reloadInventory()
         } catch {
-            workspace.errorMessage = error.localizedDescription
+            workspace.errorMessage.report(error)
         }
     }
 

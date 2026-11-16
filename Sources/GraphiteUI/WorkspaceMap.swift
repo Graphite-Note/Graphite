@@ -30,7 +30,7 @@ extension WorkspaceModel {
             placedNotesCache = (version, propertyNames, notes)
             return notes
         } catch {
-            if self.index === index { errorMessage = error.localizedDescription }
+            if self.index === index { errorMessage.report(error) }
             return nil
         }
     }

@@ -385,7 +385,7 @@ struct DrawingEditor: View {
         do {
             try await saveAsNewDrawing(content, format)
             close()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Removes the recovery copy only when the user closes the editor. Disappearing is not
@@ -400,7 +400,7 @@ struct DrawingEditor: View {
     private func shareCopy(as exportFormat: DrawingFormat) async {
         guard let content = currentContent else { return }
         do { sharedFile = SharedFile(location: try await exportCopy(content, exportFormat)) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     // MARK: Pictures
@@ -411,7 +411,7 @@ struct DrawingEditor: View {
                 throw GraphiteError.invalidFile("This photo could not be read.")
             }
             await addPicture(imageData: imageData)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     private func addPicture(fromFileAt location: URL) async {
@@ -420,20 +420,20 @@ struct DrawingEditor: View {
                 try PickedImageFiles.imageData(at: location)
             }.value
             await addPicture(imageData: imageData)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// At its own size where that fits, as ⌘V and the lasso's Paste place it.
     private func addPictureFromPasteboard() async {
         guard case .image(let imageData) = LassoPasteboard.content(ignoringInk: true) else { return }
         do { try await canvasController.pastePicture(imageData: imageData, centeredAt: nil) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     /// One picture change at a time: a second tap while one runs is ignored, because it would
     /// start from the picture the first is about to replace.
     private func runPictureChange(_ change: @escaping @MainActor () async throws -> Void) {
-        canvasController.pictureOperations.start(change, onFailure: { error in errorMessage = error.localizedDescription })
+        canvasController.pictureOperations.start(change, onFailure: { error in errorMessage.report(error) })
     }
 
     private func addPicture(imageData: Data) async {
@@ -444,7 +444,7 @@ struct DrawingEditor: View {
                 try DrawingPictures.picture(from: imageData, canvasWidth: canvasWidth)
             }.value
             try canvasController.addPicture(picture)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }
 
