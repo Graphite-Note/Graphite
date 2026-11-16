@@ -52,6 +52,8 @@ enum ReadingDiagram: Sendable {
     /// namespace, a sequence diagram's box, a Git graph's options, a Sankey diagram's circular links), or is of a type not
     /// drawn yet, is its source with a line that says why (`unreadable`), never a bare code block that looks as if nothing
     /// was meant to be drawn.
+    /// A diagram that declares nothing to draw, or whose layout is past `MermaidDiagramLimits.maximumDrawingSideLength`, is its
+    /// source with why too, never an empty or a giant view.
     init(source: String, typography: DiagramTypography) {
         let diagram: MermaidDiagram
         do {
@@ -60,7 +62,15 @@ enum ReadingDiagram: Sendable {
             self = .unreadable(source: source, failure: .reading(error))
             return
         }
-        self = Self.drawn(diagram, source: source, typography: typography)
+        let drawn = Self.drawn(diagram, source: source, typography: typography)
+        // A layout's own refusal says more than "nothing to draw", so it is kept.
+        if drawn.drawingSize != nil, diagram.hasNothingToDraw {
+            self = .unreadable(source: source, failure: .nothingToDraw)
+        } else if let size = drawn.drawingSize, !MermaidDiagramLimits.standard.allowsDrawing(size) {
+            self = .unreadable(source: source, failure: .tooLargeToDraw(maximumSideLength: MermaidDiagramLimits.standard.maximumDrawingSideLength))
+        } else {
+            self = drawn
+        }
     }
 
     /// `diagram` laid out in `typography`, or its source with why when its layout fails or holds what its type does not
@@ -73,7 +83,7 @@ enum ReadingDiagram: Sendable {
         case .sequence(let sequence): drawnSequence(sequence, source: source, typography: typography)
         case .entityRelationship(let entityRelationship): drawnEntityRelationship(entityRelationship, source: source, typography: typography)
         case .mindmap(let mindmap): .mindmap(ReadingMindmap(diagram: mindmap, layout: MindmapLayoutEngine.layout(mindmap, typography: typography)))
-        case .timeline(let timeline): .timeline(ReadingTimeline(diagram: timeline, layout: TimelineLayoutEngine.layout(timeline, typography: typography)))
+        case .timeline(let timeline): drawnTimeline(timeline, typography: typography)
         case .pieChart(let chart): .pieChart(ReadingPieChart(chart: chart, layout: PieChartLayoutEngine.layout(chart, typography: typography)))
         case .ganttChart(let chart):
             ReadingGanttChart.diagram(source: source, chart: chart, typography: typography, now: WallClock.currentDate(),
@@ -88,19 +98,52 @@ enum ReadingDiagram: Sendable {
         }
     }
 
+    /// A flowchart wider than the narrowest column is laid out a second time for a narrow one, as Pele lays out one that does not fit
+    /// its container: turned to run down where it runs across, its gaps tightened. The view shows that layout where the
+    /// column needs it (`ReadingDiagramVariant`).
     private static func drawnFlowchart(_ flowchart: FlowchartDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
+        let layout: FlowchartLayout
         do {
-            return .flowchart(ReadingFlowchart(diagram: flowchart, layout: try FlowchartLayoutEngine.layout(flowchart, typography: typography,
-                                                                                                          limits: .standard)))
+            layout = try FlowchartLayoutEngine.layout(flowchart, typography: typography, limits: .standard)
         } catch {
             return .unreadable(source: source, failure: .layout(error))
         }
+        let narrowLayout = narrowLayout(of: flowchart.turnedToRunDown ?? flowchart, regularSize: layout.size, size: \.size) { turned in
+            try FlowchartLayoutEngine.layout(turned, typography: typography, limits: .standard, spacing: .compact)
+        }
+        return .flowchart(ReadingFlowchart(diagram: flowchart, layout: layout, narrowLayout: narrowLayout))
+    }
+
+    /// Whether a layout for a narrow column is worth keeping: narrower than the regular one and within the drawing limit.
+    static func isNarrower(_ narrowSize: CGSize, than regularSize: CGSize) -> Bool {
+        narrowSize.width < regularSize.width && MermaidDiagramLimits.standard.allowsDrawing(narrowSize)
+    }
+
+    /// `turned` (a diagram turned to run down) laid out for a narrow column, when the regular layout is wider than the
+    /// narrowest column and the turned one is narrower than it; else nil, and nothing is laid out a second time.
+    static func narrowLayout<Diagram, Layout>(of turned: Diagram?, regularSize: CGSize, size: KeyPath<Layout, CGSize>,
+                                              laidOut: (Diagram) throws -> Layout) -> Layout? {
+        guard regularSize.width > ReadingDiagramVariant.narrowestColumnWidth, let turned,
+              let layout = try? laidOut(turned), // A turned diagram that cannot be laid out keeps its regular layout alone.
+              isNarrower(layout[keyPath: size], than: regularSize) else { return nil }
+        return layout
+    }
+
+    private static func drawnTimeline(_ timeline: TimelineDiagram, typography: DiagramTypography) -> ReadingDiagram {
+        let layout = TimelineLayoutEngine.layout(timeline, typography: typography)
+        let narrowLayout = narrowLayout(of: timeline.turnedToRunDown, regularSize: layout.size, size: \.size) { turned in
+            TimelineLayoutEngine.layout(turned, typography: typography)
+        }
+        return .timeline(ReadingTimeline(diagram: timeline, layout: layout, narrowLayout: narrowLayout))
     }
 
     private static func drawnStateDiagram(_ stateDiagram: StateDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try StateDiagramLayoutEngine.layout(stateDiagram, typography: typography, limits: .standard)
-            return .stateDiagram(ReadingStateDiagram(diagram: stateDiagram, layout: layout))
+            let narrowLayout = narrowLayout(of: stateDiagram.turnedToRunDown, regularSize: layout.size, size: \.size) { turned in
+                try StateDiagramLayoutEngine.layout(turned, typography: typography, limits: .standard)
+            }
+            return .stateDiagram(ReadingStateDiagram(diagram: stateDiagram, layout: layout, narrowLayout: narrowLayout))
         } catch {
             return .unreadable(source: source, failure: .stateLayout(error))
         }
@@ -109,7 +152,10 @@ enum ReadingDiagram: Sendable {
     private static func drawnClassDiagram(_ classDiagram: ClassDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try ClassDiagramLayoutEngine.layout(classDiagram, typography: typography, limits: .standard)
-            return .classDiagram(ReadingClassDiagram(diagram: classDiagram, layout: layout))
+            let narrowLayout = narrowLayout(of: classDiagram.turnedToRunDown, regularSize: layout.size, size: \.size) { turned in
+                try ClassDiagramLayoutEngine.layout(turned, typography: typography, limits: .standard)
+            }
+            return .classDiagram(ReadingClassDiagram(diagram: classDiagram, layout: layout, narrowLayout: narrowLayout))
         } catch {
             return .unreadable(source: source, failure: .classLayout(error))
         }
@@ -136,11 +182,36 @@ extension ReadingDiagram {
         case .pieChart, .ganttChart, .unreadable, .sequence, .mindmap, .timeline, .gitGraph, .userJourney, .quadrantChart, .xyChart, .sankey: 0
         }
     }
+
+    /// The size the diagram was laid out at for the width it was written for, or nil for a source shown with why.
+    var drawingSize: CGSize? {
+        switch self {
+        case .flowchart(let flowchart): flowchart.layout.size
+        case .pieChart(let chart): chart.layout.size
+        case .ganttChart(let chart): chart.layout.size
+        case .unreadable: nil
+        case .stateDiagram(let diagram): diagram.layout.size
+        case .classDiagram(let diagram): diagram.layout.size
+        case .sequence(let sequence): sequence.layout.size
+        case .entityRelationship(let diagram): diagram.layout.size
+        case .mindmap(let mindmap): mindmap.layout.size
+        case .timeline(let timeline): timeline.layout.size
+        case .gitGraph(let gitGraph): gitGraph.layout.size
+        case .userJourney(let journey): journey.layout.size
+        case .quadrantChart(let chart): chart.layout.size
+        case .xyChart(let chart): chart.layout.size
+        case .sankey(let diagram): diagram.layout.size
+        }
+    }
 }
 
 /// Why a diagram drawn natively was not drawn.
 enum ReadingDiagramFailure: Equatable, Sendable {
     case reading(MermaidDiagramReadError)
+    /// The diagram declares nothing that is drawn (`MermaidDiagram.hasNothingToDraw`).
+    case nothingToDraw
+    /// Its layout is longer than `maximumSideLength` points on a side.
+    case tooLargeToDraw(maximumSideLength: CGFloat)
     case layout(FlowchartLayoutError)
     case sequenceLayout(SequenceLayoutError)
     case gitGraphLayout(GitGraphLayoutError)
@@ -156,6 +227,8 @@ enum ReadingDiagramFailure: Equatable, Sendable {
 struct ReadingFlowchart: Sendable {
     let layout: FlowchartLayout
     let shapes: ReadingFlowchartShapes
+    /// The flowchart laid out for a narrow column, or nil when it is narrow enough already.
+    let narrow: ReadingNarrowLayout<FlowchartLayout, ReadingFlowchartShapes>?
     /// `accTitle`, else the front matter's title, else nil.
     let title: String?
     /// `accDescr`, or nil.
@@ -165,9 +238,13 @@ struct ReadingFlowchart: Sendable {
     /// Statements read and not applied (`FlowchartDiagram.unappliedStatementCount`).
     let unappliedStatementCount: Int
 
-    init(diagram: FlowchartDiagram, layout: FlowchartLayout) {
+    init(diagram: FlowchartDiagram, layout: FlowchartLayout, narrowLayout: FlowchartLayout? = nil) {
         self.layout = layout
         shapes = ReadingFlowchartShapes(parts: FlowchartDrawingParts(layout: layout), font: layout.font)
+        narrow = narrowLayout.map { narrowLayout in
+            ReadingNarrowLayout(layout: narrowLayout,
+                                shapes: ReadingFlowchartShapes(parts: FlowchartDrawingParts(layout: narrowLayout), font: narrowLayout.font))
+        }
         title = diagram.accessibilityTitle ?? diagram.title
         description = diagram.accessibilityDescription
         unappliedStatementCount = diagram.unappliedStatementCount

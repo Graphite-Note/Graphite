@@ -18,10 +18,11 @@ struct ReadingSequenceDrawing: View {
     let sequence: ReadingSequence
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: sequence.layout.size, layoutTextSize: sequence.layout.font.size, textSize: textSize) {
-            ReadingSequencePainting(shapes: sequence.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingSequencePainting(shapes: sequence.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -55,10 +56,10 @@ private struct ReadingSequencePainting: View {
                 shapes.activations[index].stroke(colors.border, style: Self.lineStyle)
             }
             blocks
-            shapes.solidMessageLines.stroke(colors.foreground, style: Self.lineStyle)
-            shapes.dottedMessageLines.stroke(colors.foreground, style: Self.dashedLineStyle)
-            shapes.filledHeads.fill(colors.foreground)
-            shapes.strokedHeads.stroke(colors.foreground, style: Self.lineStyle)
+            shapes.solidMessageLines.stroke(colors.line, style: Self.lineStyle)
+            shapes.dottedMessageLines.stroke(colors.line, style: Self.dashedLineStyle)
+            shapes.filledHeads.fill(colors.line)
+            shapes.strokedHeads.stroke(colors.line, style: Self.lineStyle)
             shapes.numberBadges.fill(colors.foreground)
             lines(shapes.numberTextLines, color: colors.background)
             shapes.messageTextPatches.fill(colors.background)

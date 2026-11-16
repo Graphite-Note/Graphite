@@ -219,7 +219,7 @@ What remains is the edges of thin strokes and lines (one or two pixels wide at t
 - Ink: one PencilKit stroke per curve, its points sampled along the Bézier chain, with width from the per-knot factors, and force, azimuth and altitude when they vary. PencilKit strokes take a size per point, so the varying width can be kept.
 - Shapes: straight and curved lines as strokes until Graphite has editable shapes; dashed lines need dashed ink, which Graphite lacks.
 - Pictures: separate pictures from the stored files (which may be JPEG copies of the originals), with their position, size, crop and rotation, under the ink as in Notability.
-- Typed text: needs text boxes on PDF pages in Graphite; the note's body text would become one text box the width of the page at its top, in the stored fonts, sizes and colours.
+- Typed text: the note's body text is text boxes on PDF pages (since 2026-11-12), from the top of the first page at the page's width less the inset on both sides, in the stored fonts, sizes and colours, cut in whole lines at each page's bottom and continued on pages added after the note's last. The typed-text sample, laid out at the Mac's 572 units, draws its first line within 0.25 point of its export.
 - Recordings: the `.m4a` beside the PDF, and each curve's time and duration for synchronised replay.
 
 ## Other readers

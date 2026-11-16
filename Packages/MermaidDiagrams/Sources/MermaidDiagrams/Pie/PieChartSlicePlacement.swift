@@ -12,6 +12,8 @@ struct PieChartSlicePlacement {
     /// Whether each slice's percentage goes outside the rim.
     let isOutsideRim: [Bool]
     let radius: CGFloat
+    /// How far out a percentage inside its slice stands, as a share of the radius (`PieChartOptions`).
+    let percentagePosition: CGFloat
     /// The room the pie takes beyond its radius on each side: some when a percentage goes outside the rim.
     let outsideLabelRoom: CGFloat
 
@@ -29,7 +31,8 @@ struct PieChartSlicePlacement {
     /// The smallest share drawn, in percent: Pele's.
     static let smallestDrawnPercent = 1.0
 
-    init(values: [Double], smallText: some DiagramTextMeasuring, radius: CGFloat) {
+    init(values: [Double], smallText: some DiagramTextMeasuring, radius: CGFloat, percentagePosition: CGFloat = Self.percentagePosition) {
+        self.percentagePosition = percentagePosition
         let sum = values.reduce(0, +)
         shares = values.map { value in
             let share = sum > 0 ? value / sum : 0
@@ -40,7 +43,7 @@ struct PieChartSlicePlacement {
         }
         isOutsideRim = zip(shares, percentages).map { share, percentage in
             guard let percentage, share < 0.5 else { return false }
-            let chord = 2 * radius * Self.percentagePosition * CGFloat(sin(share * .pi))
+            let chord = 2 * radius * percentagePosition * CGFloat(sin(share * .pi))
             return chord < percentage.size.width + Self.thinSliceMargin
         }
         self.radius = radius
@@ -67,7 +70,7 @@ struct PieChartSlicePlacement {
                 outsidePercentages.append(OutsidePercentage(middle: point, width: percentage.size.width))
                 placed.center = CGPoint(x: center.x + point.x, y: center.y + point.y)
             } else {
-                placed.center = Self.point(at: middle, distance: radius * Self.percentagePosition, from: center)
+                placed.center = Self.point(at: middle, distance: radius * percentagePosition, from: center)
             }
             slices.append(PieChartLayoutSlice(seriesIndex: index, startAngle: angle, endAngle: endAngle, percentage: placed,
                                               percentagePlacement: isOutsideRim[index] ? .outsideRim : .insideSlice))

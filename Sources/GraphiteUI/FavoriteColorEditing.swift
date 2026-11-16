@@ -2,12 +2,13 @@
  * File: FavoriteColorEditing.swift
  * --------------------------------
  * Layer: UI
- * Description: The changes the Pencil bar makes to the favorite colors of Settings › Colors: moving a color one place,
- *              adding the color in use, removing one. Pure: the bar stores what these return.
+ * Description: The changes the Pencil bar makes to the favorite colors of Settings › Colors: moving a color one place
+ *              (VoiceOver's actions) or to the place a drag left it, changing a color's hex, what the plus does and
+ *              adding a color, removing one and putting it back. Pure: the bar stores what these return.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import GraphiteCore
@@ -44,10 +45,61 @@ enum FavoriteColorEditing {
         return palette.indices.contains(index + direction.offset)
     }
 
+    /// The palette with the color taken out of its place and put at `destinationIndex`, the first or last place when
+    /// the index is past either end; unchanged for a color it does not have or a drop on its own place.
+    static func moving(_ colorIdentifier: PaletteColor.ID, toIndex destinationIndex: Int, in palette: [PaletteColor]) -> [PaletteColor] {
+        guard let index = palette.firstIndex(where: { color in color.id == colorIdentifier }) else { return palette }
+        let clampedDestination = max(0, min(destinationIndex, palette.count - 1))
+        guard clampedDestination != index else { return palette }
+        var moved = palette
+        let color = moved.remove(at: index)
+        moved.insert(color, at: clampedDestination)
+        return moved
+    }
+
+    /// The palette with the color's hex changed, as the color picker a second tap opens changes it; unchanged when the
+    /// hex is not a color or another color of the palette has it already.
+    static func changingHex(of colorIdentifier: PaletteColor.ID, to hex: String, in palette: [PaletteColor]) -> [PaletteColor] {
+        guard let canonicalHex = TextColorMarkup.canonicalHex(hex),
+              let index = palette.firstIndex(where: { color in color.id == colorIdentifier }),
+              !palette.contains(where: { color in color.id != colorIdentifier && TextColorMarkup.canonicalHex(color.hex) == canonicalHex })
+        else { return palette }
+        var changed = palette
+        changed[index].hex = canonicalHex
+        return changed
+    }
+
+    /// The palette with a removed color back at the place it had, or at the end when the palette is shorter now;
+    /// unchanged when the palette has that color, or one of its hex, again.
+    static func puttingBack(_ color: PaletteColor, at index: Int, in palette: [PaletteColor]) -> [PaletteColor] {
+        guard !palette.contains(where: { existing in existing.id == color.id }), !contains(hex: color.hex, in: palette) else { return palette }
+        var restored = palette
+        restored.insert(color, at: max(0, min(index, palette.count)))
+        return restored
+    }
+
     /// Whether the palette has a color of this hex already, however it is written.
     static func contains(hex: String, in palette: [PaletteColor]) -> Bool {
         guard let canonicalHex = TextColorMarkup.canonicalHex(hex) else { return false }
         return palette.contains { color in TextColorMarkup.canonicalHex(color.hex) == canonicalHex }
+    }
+
+    /// What the bar's plus does.
+    enum AdditionStep: Equatable {
+        /// Saves the color in use, which the strip does not have, as a swatch at its end.
+        case saveColorInUse
+        /// Opens the color picker for a new color, saved when it closes: the strip has the color in use already.
+        case chooseNewColor
+    }
+
+    /// What the plus does with the ink drawing in `colorInUseHex`, for a strip of `palette` after `fixedLeadingHex`
+    /// (black on a pen's bar, which is always there).
+    static func additionStep(colorInUseHex: String, palette: [PaletteColor], fixedLeadingHex: String?) -> AdditionStep {
+        let isFixedLeadingColor = fixedLeadingHex.map { hex in TextColorMarkup.canonicalHex(hex) == TextColorMarkup.canonicalHex(colorInUseHex) } ?? false
+        guard TextColorMarkup.canonicalHex(colorInUseHex) != nil, !isFixedLeadingColor, !contains(hex: colorInUseHex, in: palette) else {
+            return .chooseNewColor
+        }
+        return .saveColorInUse
     }
 
     /// The palette with the color added at its end under a name no color has (`PaletteColorNames.unusedName`), which

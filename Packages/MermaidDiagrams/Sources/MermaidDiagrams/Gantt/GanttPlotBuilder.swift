@@ -18,6 +18,7 @@ struct GanttPlotBuilder<Measurer: DiagramTextMeasuring> {
     private let zone: GanttTimeZone
     private let measurers: GanttMeasurers<Measurer>
     private let sections: GanttSectionRows
+    private let rows: GanttRowAssignment
 
     init(chart: GanttChart, schedule: [GanttSchedule.Entry], span: GanttTimeSpan, zone: GanttTimeZone, measurers: GanttMeasurers<Measurer>,
          top titleBottom: CGFloat) {
@@ -27,7 +28,8 @@ struct GanttPlotBuilder<Measurer: DiagramTextMeasuring> {
         self.zone = zone
         self.measurers = measurers
         metrics = GanttMetrics(rowFontSize: measurers.row.fontSize, axisFontSize: measurers.axis.fontSize)
-        sections = GanttSectionRows(tasks: chart.tasks, measurer: measurers.row)
+        rows = GanttRowAssignment(tasks: chart.tasks, schedule: schedule, isCompact: chart.isCompact)
+        sections = GanttSectionRows(rowSections: rows.rowSections, measurer: measurers.row)
         let axisFormat = chart.axisFormat.isEmpty ? (chart.dateFormat == "D" ? "%d" : "%Y-%m-%d") : chart.axisFormat
         let sampleWidth = [span.start, span.stop].map { time in measurers.axis.width(of: GanttAxisFormat.format(axisFormat, time, zone: zone)) }.max() ?? 0
         let left = GanttLayoutEngine.padding + max(sections.widestName > 0 ? sections.widestName + GanttLayoutEngine.sectionGap : 0, sampleWidth / 2)
@@ -35,17 +37,18 @@ struct GanttPlotBuilder<Measurer: DiagramTextMeasuring> {
         let plotWidth = max(GanttLayoutEngine.minimumPlotWidth, GanttLayoutEngine.pageWidth - left - rightPadding - GanttLayoutEngine.padding)
         scale = GanttTimeScale(span: span, left: left, width: plotWidth, rightPadding: rightPadding, axisFormat: axisFormat, sampleWidth: sampleWidth)
         top = titleBottom + (chart.showsTopAxis ? metrics.tickHeight : 0)
-        bottom = top + CGFloat(max(chart.tasks.count, 1)) * metrics.rowHeight
+        bottom = top + CGFloat(max(rows.rowSections.count, 1)) * metrics.rowHeight
         extent = scale.right + rightPadding
     }
 
     /// Each task's shape and text, in its row.
     mutating func placeTasks() {
-        for (row, task) in chart.tasks.enumerated() {
+        for (index, task) in chart.tasks.enumerated() {
+            let row = rows.rowOfTask[index]
             let name = DiagramLabelDecoder.label(from: task.name, form: .plain).lines.joined(separator: " ")
             var label = DiagramTextBlock(label: DiagramLabel(name), measurer: measurers.row, maximumWidth: GanttLayoutEngine.wrappingWidth)
             let rowMiddle = top + CGFloat(row) * metrics.rowHeight + metrics.rowHeight / 2
-            let placed = GanttBarPlacement(task: task, entry: schedule[row], labelWidth: label.size.width, scale: scale, barHeight: metrics.barHeight)
+            let placed = GanttBarPlacement(task: task, entry: schedule[index], labelWidth: label.size.width, scale: scale, barHeight: metrics.barHeight)
             label.center = CGPoint(x: placed.labelCenter, y: rowMiddle)
             if !placed.isLabelInside { extent = max(extent, placed.labelCenter + label.size.width / 2) }
             tasks.append(GanttLayoutTask(shape: placed.shape(rowMiddle: rowMiddle), paint: GanttTaskPaint(task: task), label: label,

@@ -5,8 +5,8 @@
  * Description: The picture of a PDF page that is selected for moving, resizing or removing.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 03/11/2026
+ * Version: 0.10
+ * Date: 16/11/2026
  */
 import Foundation
 import PDFKit
@@ -106,15 +106,19 @@ extension PDFSession {
         }
     }
 
-    /// Removes the picture; undo puts it back exactly, from the bytes its annotation kept.
+    /// Removes the picture; undo puts it back exactly, from the bytes its annotation kept, at
+    /// its place in the page's stacking order.
     func removePicture(_ selection: PDFPictureSelection) throws {
         guard let page = selection.page.page, let picture = pictures(on: page).first(where: { picture in picture.name == selection.pictureName }) else {
             throw GraphiteError.invalidFile("This image no longer exists.")
         }
         let historyPage = selection.page
+        let formerPosition = stackingPosition(ofObjectNamed: picture.name, annotationType: PDFPicture.annotationTypeName, on: page)
         try removePictureWithoutHistory(picture, on: historyPage)
         registerStep(named: "Delete Image") { session in
-            try session.apply(.addPicture(page: session.currentIndex(of: historyPage), picture: picture))
+            let pageIndex = try session.currentIndex(of: historyPage)
+            try session.apply(.addPicture(page: pageIndex, picture: picture))
+            try session.putBack(picture.reference(onPageAt: pageIndex), at: formerPosition)
         } redo: { session in
             try session.removePictureWithoutHistory(picture, on: historyPage)
         }
@@ -137,7 +141,7 @@ extension PDFSession {
         var turned = picture
         turned.rotationRadians = PictureRotation.normalized(rotationRadians)
         guard turned != picture else { return }
-        try replacePicture(picture, with: turned, order: .unchanged, on: selection.page, actionName: "Rotate Image")
+        try replacePicture(picture, with: turned, on: selection.page, actionName: "Rotate Image")
     }
 
     /// Rotates the picture a quarter turn clockwise as it is shown, about its middle, as
@@ -151,7 +155,7 @@ extension PDFSession {
                                                          width: bounds.height, height: bounds.width), inside: page.bounds(for: .cropBox))
         let turned = PDFPicture(name: picture.name, imageData: picture.imageData, bounds: turnedBounds, quarterTurns: picture.quarterTurns - 1,
                                 rotationRadians: picture.rotationRadians)
-        try replacePicture(picture, with: turned, order: .unchanged, on: selection.page, actionName: "Rotate Image Right")
+        try replacePicture(picture, with: turned, on: selection.page, actionName: "Rotate Image Right")
     }
 
     /// Keeps the part of the picture shown inside `pageBounds`, a rectangle of the page's
@@ -183,16 +187,19 @@ extension PDFSession {
         // clockwise turn is a negative angle.
         cropped.bounds = PictureRotation.rectangle(croppedBounds, withMiddleTurnedBy: -picture.rotationRadians,
                                                    about: CGPoint(x: pictureBounds.midX, y: pictureBounds.midY))
-        try replacePicture(picture, with: cropped, order: .unchanged, on: selection.page, actionName: "Crop Image")
+        try replacePicture(picture, with: cropped, on: selection.page, actionName: "Crop Image")
     }
 
-    /// Puts the picture over or under the page's other pictures; the ink stays over them all.
-    func movePictureInOrder(_ selection: PDFPictureSelection, toFront: Bool) throws {
-        let (page, picture) = try pageAndPicture(of: selection)
-        let names = pictures(on: page).map(\.name)
-        guard names.count > 1, names.last != picture.name || !toFront, names.first != picture.name || toFront else { return }
-        try replacePicture(picture, with: picture, order: toFront ? .front : .back, on: selection.page,
-                           actionName: toFront ? "Bring Image to Front" : "Send Image to Back")
+    /// Brings the picture forward or sends it back among the page's objects (`PDFSessionStacking`).
+    func arrangePicture(_ selection: PDFPictureSelection, _ arrangement: PDFArrangement) throws {
+        guard let (annotation, page) = annotation(of: selection) else { throw PDFStackingError.objectMissing }
+        try arrange(annotation, on: page, arrangement)
+    }
+
+    /// The arrangements that would move the picture.
+    func possibleArrangements(of selection: PDFPictureSelection) -> Set<PDFArrangement> {
+        guard let (annotation, page) = annotation(of: selection) else { return [] }
+        return possibleArrangements(of: annotation, on: page)
     }
 
     private func pageAndPicture(of selection: PDFPictureSelection) throws -> (PDFPage, PDFPicture) {
@@ -202,22 +209,18 @@ extension PDFSession {
         return (page, picture)
     }
 
-    /// One step: undo puts the former picture back at its former place among the pictures.
-    private func replacePicture(_ picture: PDFPicture, with replacement: PDFPicture, order: PDFPictureOrder, on historyPage: PDFHistoryPage, actionName: String) throws {
-        guard let page = historyPage.page else { throw GraphiteError.invalidFile("Page no longer exists.") }
-        let formerPosition = pictures(on: page).firstIndex { candidate in candidate.name == picture.name } ?? 0
-        func replace(in session: PDFSession, _ current: PDFPicture, with next: PDFPicture, order: PDFPictureOrder) throws {
-            try session.apply(.replacePicture(current.reference(onPageAt: try session.currentIndex(of: historyPage)), with: next, order: order))
-        }
-        func replaceAndTell(in session: PDFSession, _ current: PDFPicture, with next: PDFPicture, order: PDFPictureOrder) throws {
-            try replace(in: session, current, with: next, order: order)
+    /// One step: the replacement takes the picture's place in the page's stacking order, and undo
+    /// puts the former picture back in it.
+    private func replacePicture(_ picture: PDFPicture, with replacement: PDFPicture, on historyPage: PDFHistoryPage, actionName: String) throws {
+        func replaceAndTell(in session: PDFSession, _ current: PDFPicture, with next: PDFPicture) throws {
+            try session.apply(.replacePicture(current.reference(onPageAt: try session.currentIndex(of: historyPage)), with: next))
             NotificationCenter.default.post(name: PDFSession.picturesDidChange, object: session)
         }
-        try replaceAndTell(in: self, picture, with: replacement, order: order)
+        try replaceAndTell(in: self, picture, with: replacement)
         registerStep(named: actionName) { session in
-            try replaceAndTell(in: session, replacement, with: picture, order: .position(formerPosition))
+            try replaceAndTell(in: session, replacement, with: picture)
         } redo: { session in
-            try replaceAndTell(in: session, picture, with: replacement, order: order)
+            try replaceAndTell(in: session, picture, with: replacement)
         }
     }
 

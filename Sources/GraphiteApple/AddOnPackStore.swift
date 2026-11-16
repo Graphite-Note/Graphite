@@ -65,7 +65,10 @@ public struct AddOnPackStore: Sendable {
                     throw InstallError.unexpectedResponse(fileName: file.name, statusCode: response.statusCode)
                 }
                 guard Self.verify(downloadedFile, against: file) else { throw InstallError.fileDoesNotMatch(fileName: file.name) }
-                try fileManager.moveItem(at: downloadedFile, to: staging.appendingPathComponent(file.name))
+                // A pack of a folder (the Graphite Guide vault) names its files by their paths inside it.
+                let destination = staging.appendingPathComponent(file.name)
+                try fileManager.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fileManager.moveItem(at: downloadedFile, to: destination)
             }
             try pack.revision.write(to: staging.appendingPathComponent(Self.markerFileName), atomically: true, encoding: .utf8)
             let destination = folder(of: pack)

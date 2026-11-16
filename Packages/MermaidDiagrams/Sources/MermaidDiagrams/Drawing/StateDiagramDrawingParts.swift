@@ -2,9 +2,14 @@ import CoreGraphics
 
 /// A laid-out state diagram's geometry grouped by how it is painted, so that drawing it in any colors is a handful of
 /// fills and strokes, by Core Graphics (`StateDiagramRenderer`) or by a view's own shapes. Back to front, as Pele draws:
-/// the transitions, the dashed lines to the notes and the arrows; the patches behind transition text and that text; the
+/// the composite states' boxes and the dashed lines between their regions, as a flowchart's groups are drawn; the
+/// transitions, the dashed lines to the notes and the arrows; names of boxes transitions run through; the patches behind transition text and that text; the
 /// states and their text; the notes and their text; the title.
 public struct StateDiagramDrawingParts {
+    /// The composite states' boxes, painted as a flowchart's groups are (`FlowchartClusterDrawingParts`).
+    public let composites: FlowchartClusterDrawingParts
+    /// The lines between concurrent regions, stroked one point wide in the border color in dashes of 3 and gaps of 4.
+    public let regionDividers: CGPath
     /// The transitions' lines, stroked one point wide with round caps in the line color.
     public let transitionLines: CGPath
     /// The lines from states to their notes, stroked one point wide in dashes of 3 and gaps of 4 in the border color.
@@ -43,6 +48,10 @@ public struct StateDiagramDrawingParts {
     static let transitionTextPatchExtraWidth: CGFloat = 8
 
     public init(layout: StateDiagramLayout) {
+        composites = FlowchartClusterDrawingParts(clusters: layout.composites)
+        let dividers = CGMutablePath()
+        for divider in layout.regionDividers { dividers.addPath(DiagramEdgeDrawing.path(divider)) }
+        regionDividers = dividers
         let transitions = TransitionPaths(transitions: layout.transitions, notes: layout.notes)
         let states = StatePaths(states: layout.states)
         let notes = NotePaths(notes: layout.notes)

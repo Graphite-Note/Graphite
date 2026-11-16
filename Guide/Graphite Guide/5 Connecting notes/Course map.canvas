@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {"id": "group-course", "type": "group", "x": -40, "y": -60, "width": 1260, "height": 720, "label": "Everyday Electronics", "color": "5"},
+    {"id": "text-start", "type": "text", "x": 0, "y": 0, "width": 300, "height": 170, "text": "# Start here\nTwo evenings, one kettle and a torch. Read **week 1** first.", "color": "4"},
+    {"id": "note-course", "type": "file", "x": 0, "y": 230, "width": 300, "height": 360, "file": "6 Everyday examples/Everyday Electronics/Everyday Electronics.md"},
+    {"id": "note-week-1", "type": "file", "x": 380, "y": 0, "width": 380, "height": 300, "file": "6 Everyday examples/Everyday Electronics/Week 1 - Voltage and current.md"},
+    {"id": "note-week-2", "type": "file", "x": 380, "y": 350, "width": 380, "height": 260, "file": "6 Everyday examples/Everyday Electronics/Week 2 - Capacitors.md"},
+    {"id": "pdf-slides", "type": "file", "x": 820, "y": 0, "width": 360, "height": 300, "file": "6 Everyday examples/Everyday Electronics/Week 1 slides.pdf"},
+    {"id": "picture-circuit", "type": "file", "x": 820, "y": 380, "width": 360, "height": 160, "file": "Attachments/Circuit drawing.png"}
+  ],
+  "edges": [
+    {"id": "edge-start", "fromNode": "text-start", "fromSide": "right", "toNode": "note-week-1", "toSide": "left", "label": "read first"},
+    {"id": "edge-weeks", "fromNode": "note-week-1", "fromSide": "bottom", "toNode": "note-week-2", "toSide": "top", "label": "then"},
+    {"id": "edge-slides", "fromNode": "note-week-1", "fromSide": "right", "toNode": "pdf-slides", "toSide": "left", "color": "2"},
+    {"id": "edge-drawing", "fromNode": "note-week-2", "fromSide": "right", "toNode": "picture-circuit", "toSide": "left", "color": "2"}
+  ]
+}

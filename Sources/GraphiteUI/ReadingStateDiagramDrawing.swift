@@ -20,10 +20,13 @@ struct ReadingStateDiagramDrawing: View {
     let diagram: ReadingStateDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
-            ReadingStateDiagramPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme))
+        ReadingScaledDiagram(size: diagram.layout.size, narrowSize: diagram.narrow?.layout.size, layoutTextSize: diagram.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingStateDiagramPainting(shapes: variant == .narrow ? diagram.narrow?.shapes ?? diagram.shapes : diagram.shapes,
+                                        colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -40,17 +43,21 @@ private struct ReadingStateDiagramPainting: View {
     var body: some View {
         let lineStyle = StrokeStyle(lineWidth: StateDiagramDrawingParts.lineWidth, lineCap: .round, lineJoin: .round)
         ZStack(alignment: .topLeading) {
-            shapes.transitionLines.stroke(colors.foreground, style: lineStyle)
+            ReadingFlowchartClusterBoxes(clusters: shapes.composites, colors: colors)
+            shapes.regionDividers.stroke(colors.border, style: StrokeStyle(lineWidth: StateDiagramDrawingParts.lineWidth, lineCap: .round,
+                                                                           dash: StateDiagramDrawingParts.noteConnectorDashLengths))
+            shapes.transitionLines.stroke(colors.line, style: lineStyle)
             shapes.noteConnectors.stroke(colors.border, style: StrokeStyle(lineWidth: StateDiagramDrawingParts.lineWidth, lineCap: .round, lineJoin: .round,
                                                                            dash: StateDiagramDrawingParts.noteConnectorDashLengths))
-            shapes.arrows.fill(colors.foreground)
+            shapes.arrows.fill(colors.line)
+            ReadingFlowchartCrossedClusterTitles(clusters: shapes.composites, colors: colors)
             shapes.transitionTextPatches.fill(colors.background)
             lines(shapes.transitionTextLines, color: colors.foreground)
             shapes.stateFills.fill(colors.surface)
             shapes.stateOutlines.stroke(colors.border, style: lineStyle)
             shapes.endRings.fill(colors.background)
-            shapes.endRings.stroke(colors.foreground, style: lineStyle)
-            shapes.solidMarks.fill(colors.foreground)
+            shapes.endRings.stroke(colors.line, style: lineStyle)
+            shapes.solidMarks.fill(colors.line)
             lines(shapes.stateTextLines, color: colors.foreground)
             shapes.noteSheets.fill(colors.background)
             shapes.noteSheets.stroke(colors.border, style: lineStyle)

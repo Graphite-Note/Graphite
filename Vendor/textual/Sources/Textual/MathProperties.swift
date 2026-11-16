@@ -24,14 +24,28 @@ public struct MathProperties: Sendable, Hashable {
   /// The alignment applied to block math paragraphs.
   public var textAlignment: TextAlignment
 
+  /// Graphite patch: what block math wider than its column does.
+  public var wideDisplayMath: WideDisplayMath
+
+  /// Graphite patch: how block math wider than the column it is offered is shown.
+  public enum WideDisplayMath: Sendable, Hashable {
+    /// Broken into lines no wider than the column, as on screen.
+    case brokenIntoLines
+    /// Kept on one line and scaled down to the column's width, as a printed page shows a
+    /// picture wider than its text.
+    case scaledToFit
+  }
+
   public init(
     fontName: FontName = .latinModern,
     fontScale: CGFloat = 1.2,
-    textAlignment: TextAlignment = .center
+    textAlignment: TextAlignment = .center,
+    wideDisplayMath: WideDisplayMath = .brokenIntoLines
   ) {
     self.fontName = fontName
     self.fontScale = fontScale
     self.textAlignment = textAlignment
+    self.wideDisplayMath = wideDisplayMath
   }
 }
 

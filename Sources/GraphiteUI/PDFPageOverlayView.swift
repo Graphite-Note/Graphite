@@ -3,11 +3,11 @@
  * ------------------------------
  * Layer: UI
  * Description: What PDFKit places over a PDF page on the iPad: the page's Pencil canvas, drawn at the zoom
- *              over the whole page or the part of it on screen, the writing guides and the text boxes.
+ *              over the whole page or the part of it on screen, the writing guides and the objects over the ink.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -28,8 +28,8 @@ import GraphiteCore
 final class PDFPageOverlayView: UIView {
     let canvas: PDFPageCanvasView
     private let guideView = DrawingPaperView()
-    /// Graphite's text boxes of the page, over the ink (`PDFPageTextBoxesView`).
-    let textBoxesView = PDFPageTextBoxesView(frame: .zero)
+    /// The page's objects over the ink: text boxes, pictures and shapes (`PDFPageObjectsOverInkView`).
+    let objectsOverInkView = PDFPageObjectsOverInkView(frame: .zero)
     /// How many times the page's size the canvas draws at (`renderingScale(forZoom:)`).
     private(set) var renderingScale: CGFloat = 1
     /// The part of the page the canvas covers, in the page's points; null before the first layout.
@@ -64,7 +64,7 @@ final class PDFPageOverlayView: UIView {
         isOpaque = false
         addSubview(guideView)
         addSubview(canvas)
-        addSubview(textBoxesView)
+        addSubview(objectsOverInkView)
         canvas.placeIn(self)
     }
 
@@ -113,12 +113,12 @@ final class PDFPageOverlayView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // The guides and the text boxes start at the page's top-left corner, in its points.
+        // The guides and the objects over the ink start at the page's top-left corner, in its points.
         guideView.frame = bounds
         guideView.drawingRegion = bounds
-        textBoxesView.frame = bounds
-        // A box with emoji is a picture, drawn at the zoom's resolution once the zoom settles.
-        textBoxesView.screenPixelsPerPagePoint = renderingScale * (window?.screen.scale ?? traitCollection.displayScale)
+        objectsOverInkView.frame = bounds
+        // A box with emoji, a picture or a shape is drawn at the zoom's resolution once the zoom settles.
+        objectsOverInkView.screenPixelsPerPagePoint = renderingScale * (window?.screen.scale ?? traitCollection.displayScale)
         let scale = renderingScale
         let region = wantedRegion()
         shownRegion = region

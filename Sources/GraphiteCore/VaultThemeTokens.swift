@@ -194,8 +194,17 @@ public struct ThemeModeTokens: Codable, Hashable, Sendable {
     /// Syntax colors in code blocks by `CodeTokenKind` raw value, all of them when the theme
     /// changes any (its palette or its `--code-*` variables), so its colors stay together.
     public var codeTokenColors: [String: ThemeColor]?
+    /// The colors a theme or snippet gives Mermaid diagrams with Pele's variables, by the variable's name after
+    /// `--pele-` (`bg`, `accent`, `series-1` …, `diagramColorVariableNames`).
+    public var diagramColors: [String: ThemeColor] = [:]
 
     public init() {}
+
+    /// Pele's color variables (`--pele-bg` …), which an Obsidian theme or snippet sets to color diagrams: the page, the
+    /// text, lines, node fills and outlines, the accent, critical tasks, muted text, the second surface, and the eight
+    /// series colors charts take in turn.
+    public static let diagramColorVariableNames = ["bg", "fg", "line", "surface", "border", "accent", "critical", "muted", "surface-alt"]
+        + (1...8).map { series in "series-\(series)" }
 
     /// The Prism token class the theme probe reads each `CodeTokenKind`'s color from.
     public static let codeTokenProbeClasses: [String: String] = [
@@ -244,6 +253,8 @@ public struct ThemeModeTokens: Codable, Hashable, Sendable {
             horizontalRuleStyle != nil || horizontalRuleThickness != nil, codeBlockBackground != nil || codeBlockRadius != nil || codeBlockBorderColor != nil,
             highlightRadius != nil || highlightTextColor != nil,
             inlineTitle.color != nil || inlineTitle.sizeScale != nil || inlineTitle.weight != nil || inlineTitle.fontFamilies != nil,
+            // Mermaid diagrams.
+            !diagramColors.isEmpty,
         ]
     }
 
@@ -253,8 +264,8 @@ public struct ThemeModeTokens: Codable, Hashable, Sendable {
     /// The Phase 1 groups alone, to compare a theme's coverage before and after Phase 3.
     public var changedPhaseOneGroupCount: Int { changedGroups.prefix(Self.phaseOneGroupCount).filter { isChanged in isChanged }.count }
 
-    /// 19 groups through Phase 1, and 11 shape and ornament groups from Phase 3.
-    public static let groupCount = 30
+    /// 19 groups through Phase 1, 11 shape and ornament groups from Phase 3, and the diagrams' colors.
+    public static let groupCount = 31
     public static let phaseOneGroupCount = 19
 }
 
@@ -293,6 +304,9 @@ public enum ThemeProbeReading {
         tokens.background = color("body.background")
         tokens.textNormal = color("body.color")
         tokens.textMuted = color("muted.color")
+        for name in ThemeModeTokens.diagramColorVariableNames {
+            if let diagramColor = color("pele." + name) { tokens.diagramColors[name] = diagramColor }
+        }
         tokens.textFaint = color("faint.color")
         tokens.accent = color("accent.color")
         tokens.boldColor = color("strong.color")

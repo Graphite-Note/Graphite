@@ -304,7 +304,7 @@ struct ReadAloudSectionPicker: View {
                     isPreparing = false
                 } catch {
                     guard !Task.isCancelled else { return }
-                    errorMessage = error.localizedDescription
+                    errorMessage.report(error)
                     isPreparing = false
                 }
             }

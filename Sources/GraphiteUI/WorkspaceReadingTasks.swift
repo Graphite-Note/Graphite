@@ -12,7 +12,7 @@ extension WorkspaceModel {
             guard embeddedSession.toggleTask(at: location) else { return false }
             // Reading view draws an embedded note from its file, so the change is saved
             // before the note that embeds it is drawn again.
-            do { try await embeddedSession.save() } catch { errorMessage = error.localizedDescription }
+            do { try await embeddedSession.save() } catch { errorMessage.report(error) }
             return true
         }
         guard let store else { return false }
@@ -25,7 +25,7 @@ extension WorkspaceModel {
             refreshIndex(for: [note])
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             return false
         }
     }

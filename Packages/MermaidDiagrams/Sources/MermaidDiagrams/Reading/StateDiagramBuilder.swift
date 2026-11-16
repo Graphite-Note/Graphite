@@ -50,8 +50,9 @@ struct StateDiagramBuilder {
                 startOrEndIndexByScope[scope] = index
             }
         }
-        if let innermost = openBodies.last?.compositeIndex, diagram.composites[innermost].stateIndex != index {
-            diagram.states[index].compositeIndex = innermost
+        if let innermost = openBodies.last, diagram.composites[innermost.compositeIndex].stateIndex != index {
+            diagram.states[index].compositeIndex = innermost.compositeIndex
+            diagram.states[index].regionIndex = innermost.regionIndex
         }
         return index
     }

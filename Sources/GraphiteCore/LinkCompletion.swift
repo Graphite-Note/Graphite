@@ -5,8 +5,8 @@
  * Description: Suggestions for what is being typed as a link or tag, and finding the link around a character.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -384,6 +384,7 @@ public enum LinkLocator {
     private static let wikilinkPattern = LinkLocatorPattern.wikilinkPattern.compiled()
     private static let markdownLinkPattern = LinkLocatorPattern.markdownLinkPattern.compiled()
     private static let linkTitlePattern = LinkLocatorPattern.linkTitle.compiled()
+    private static let linkOrEmbedPattern = LinkLocatorPattern.linkOrEmbed.compiled()
 
     /// The link around a character of a line, if any. Embeds are not links.
     /// - Parameter includesEnd: Also counts the position right after the link's last
@@ -409,7 +410,11 @@ public enum LinkLocator {
             if let webLocation = URL(string: destination), webLocation.scheme != nil { return LocatedLinkInText(link: .web(webLocation), range: match.range) }
             return LocatedLinkInText(link: .note(target: destination, isWiki: false), range: match.range)
         }
-        return nil
+        // A bare web address, unless it is written inside a link or an embed (`![](https://…)`).
+        guard let address = WebAddressSyntax.addresses(in: line as NSString, range: wholeLine).first(where: { address in contains(address.range) }),
+              !linkOrEmbedPattern.matches(in: line, range: wholeLine).contains(where: { match in NSIntersectionRange(match.range, address.range).length > 0 })
+        else { return nil }
+        return LocatedLinkInText(link: .web(address.location), range: address.range)
     }
 
     /// What a Markdown link's parentheses hold, without what only the syntax needs: a title
@@ -438,4 +443,6 @@ enum LinkLocatorPattern: String, StaticPatternSet {
     case markdownLinkPattern = #"(?<!!)\[[^\]\n]*\]\(((?:[^()\n]|\([^()\n]*\))+)\)"#
     /// A quoted title after the address.
     case linkTitle = #"[ \t]+(?:"[^"\n]*"|'[^'\n]*')[ \t]*$"#
+    /// Any wikilink, Markdown link or embed, inside which an address is not a link of its own.
+    case linkOrEmbed = #"!?\[\[[^\]\n]+\]\]|!?\[[^\]\n]*\]\((?:[^()\n]|\([^()\n]*\))*\)"#
 }

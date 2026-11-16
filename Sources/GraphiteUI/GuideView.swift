@@ -43,7 +43,7 @@ struct GuideView: View {
                 }
         } detail: {
             if let selectedTopic {
-                GuideTopicView(topic: selectedTopic) { nextTopic in self.selectedTopic = nextTopic }
+                GuideTopicView(topic: selectedTopic, closeAfterOpeningVault: closeAfterOpeningVault) { nextTopic in self.selectedTopic = nextTopic }
             } else {
                 ContentUnavailableView("Choose a Topic", systemImage: "book", description: Text("Start with The Basics, or search for what you want to do."))
             }
@@ -52,8 +52,24 @@ struct GuideView: View {
         .onAppear { if horizontalSizeClass != .compact && selectedTopic == nil { selectedTopic = .vaults } }
     }
 
+    /// The sheet makes way for the vault it opened; the Mac's Guide window stays beside it.
+    private func closeAfterOpeningVault() {
+        if showsDoneButton { dismiss() }
+    }
+
     private var topicList: some View {
         List(selection: $selectedTopic) {
+            if query.isEmpty {
+                Section {
+                    GuideVaultButton(title: "Open the Guide Vault", note: nil, didOpen: closeAfterOpeningVault)
+                    GuideVaultButton(title: "Make a Fresh Copy", note: nil, freshCopy: true, didOpen: closeAfterOpeningVault)
+                } header: {
+                    Text("Graphite Guide Vault")
+                } footer: {
+                    Text("Notes that show every feature at work beside the Markdown that makes it, with recipes, restaurants, a course "
+                         + "and a trip to try things on. It is your own copy: change anything. A fresh copy goes beside the old one.")
+                }
+            }
             ForEach(GuideSection.allCases) { section in
                 let topics = section.topicsOnThisPlatform.filter { topic in topic.matches(query) }
                 if !topics.isEmpty {
@@ -77,6 +93,7 @@ struct GuideView: View {
 /// to the next topic so the Guide reads from start to end.
 private struct GuideTopicView: View {
     let topic: GuideTopic
+    let closeAfterOpeningVault: () -> Void
     let showTopic: (GuideTopic) -> Void
 
     private var content: GuideTopicContent { topic.content }
@@ -92,6 +109,10 @@ private struct GuideTopicView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                if let note = topic.guideVaultNote {
+                    GuideVaultButton(title: "See It in the Guide Vault", note: note, didOpen: closeAfterOpeningVault)
+                        .buttonStyle(.bordered)
+                }
                 VStack(alignment: .leading, spacing: 18) {
                     ForEach(Array(content.steps.enumerated()), id: \.offset) { stepIndex, step in
                         GuideStepRow(number: stepIndex + 1, step: step)

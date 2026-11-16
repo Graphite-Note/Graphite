@@ -29,6 +29,8 @@ struct MermaidDiagramsBenchmark {
             ("documentation examples with subgraphs", drawable.filter { source in source.contains("subgraph") }),
             ("groups, 4 pairs of nested boxes of 5 nodes", [FlowchartCorpus.groups(pairCount: 4, nodesPerGroup: 5)]),
             ("7-node flowchart", [FlowchartCorpus.sevenNodeFlowchart]),
+            ("fourteen shapes in a row", [FlowchartCorpus.fourteenShapesInARow]),
+            ("fourteen shapes in a row, written to run down", [FlowchartCorpus.fourteenShapesInARow.replacingOccurrences(of: "flowchart LR", with: "flowchart TD")]),
             ("tree, 50 nodes", [FlowchartCorpus.tree(nodeCount: 50)]),
             ("mesh, 50 nodes and 20 labelled edges", [FlowchartCorpus.mesh(nodeCount: 50, extraEdgeCount: 20)]),
             ("tree, 500 nodes", [FlowchartCorpus.tree(nodeCount: 500)]),

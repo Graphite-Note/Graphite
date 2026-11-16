@@ -66,8 +66,8 @@ public enum FlowchartRenderer {
     }
 
     /// The groups' boxes, behind everything: their fills depth by depth, their outlines and the titles no edge crosses.
-    private static func drawClusters(_ clusters: FlowchartClusterDrawingParts, text: inout DiagramTextDrawing, in context: CGContext,
-                                     palette: DiagramPalette) {
+    static func drawClusters(_ clusters: FlowchartClusterDrawingParts, text: inout DiagramTextDrawing, in context: CGContext,
+                             palette: DiagramPalette) {
         let boxFill = clusterFill(palette)
         for depthFill in clusters.fillsByDepth { fill(depthFill, color: boxFill, in: context) }
         stroke(clusters.outlines, width: FlowchartDrawingParts.lineWidth, color: palette.border, in: context)
@@ -75,8 +75,8 @@ public enum FlowchartRenderer {
     }
 
     /// The titles edges run through, over the edges, each on a patch painted as its box is where it sits.
-    private static func drawCrossedClusterTitles(_ clusters: FlowchartClusterDrawingParts, text: inout DiagramTextDrawing, in context: CGContext,
-                                                 palette: DiagramPalette) {
+    static func drawCrossedClusterTitles(_ clusters: FlowchartClusterDrawingParts, text: inout DiagramTextDrawing, in context: CGContext,
+                                         palette: DiagramPalette) {
         let boxFill = clusterFill(palette)
         for (depth, patches) in clusters.crossedTitlePatchesByDepth.enumerated() where !patches.isEmpty {
             fill(patches, color: palette.background, in: context)

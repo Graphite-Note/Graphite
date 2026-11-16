@@ -1,0 +1,12 @@
+{
+  "types": {
+    "servings": "number",
+    "minutes": "number",
+    "rating": "number",
+    "pages": "number",
+    "visited": "date",
+    "finished": "date",
+    "tags": "tags",
+    "aliases": "aliases"
+  }
+}

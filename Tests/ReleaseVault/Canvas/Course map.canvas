@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    {"id": "group-course", "type": "group", "x": -60, "y": -80, "width": 920, "height": 560, "label": "Signals course", "color": "4"},
+    {"id": "text-start", "type": "text", "x": 0, "y": 0, "width": 260, "height": 140, "text": "# Start\nThe course in **one** map, with $f_s > 2 f_{max}$ and a [[Link target|link]].", "color": "1"},
+    {"id": "file-lecture", "type": "file", "x": 340, "y": 0, "width": 420, "height": 300, "file": "Lectures/Long lecture.md"},
+    {"id": "file-section", "type": "file", "x": 0, "y": 200, "width": 260, "height": 160, "file": "Links/Link target.md", "subpath": "#Second section"},
+    {"id": "file-picture", "type": "file", "x": 340, "y": 330, "width": 200, "height": 120, "file": "Attachments/Sunset over hills.png"},
+    {"id": "file-pdf", "type": "file", "x": 980, "y": 0, "width": 320, "height": 260, "file": "PDFs/Lecture slides.pdf"},
+    {"id": "text-alone", "type": "text", "x": 980, "y": 320, "width": 320, "height": 120, "text": "- [ ] A task on the canvas\n- [x] A done one"}
+  ],
+  "edges": [
+    {"id": "edge-1", "fromNode": "text-start", "fromSide": "right", "toNode": "file-lecture", "toSide": "left", "label": "read first"},
+    {"id": "edge-2", "fromNode": "text-start", "fromSide": "bottom", "toNode": "file-section", "toSide": "top", "toEnd": "arrow", "color": "2"},
+    {"id": "edge-3", "fromNode": "file-lecture", "fromSide": "right", "toNode": "file-pdf", "toSide": "left", "fromEnd": "arrow", "toEnd": "arrow"},
+    {"id": "edge-4", "fromNode": "file-lecture", "fromSide": "bottom", "toNode": "file-picture", "toSide": "top", "toEnd": "none"}
+  ]
+}

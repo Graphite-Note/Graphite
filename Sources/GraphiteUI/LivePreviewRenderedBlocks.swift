@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.19
- * Date: 05/11/2026
+ * Version: 0.26
+ * Date: 16/11/2026
  */
 
 #if canImport(UIKit)
@@ -150,8 +150,19 @@ final class LivePreviewRenderedBlocks {
     private var reportedPropertiesHeight: CGFloat?
     /// Estimates, kept with the width they were made for: counting a table's lines for
     /// each placement pass would cost every scroll. A note styled before its text view has
-    /// a width estimates again once it has one.
-    private var estimatedHeights: [LivePreviewBlockKey: (columnWidth: CGFloat, height: CGFloat)] = [:]
+    /// a width estimates again once it has one, and a block estimates again once the blocks
+    /// of its kind measured have changed their correction (`BlockEstimateLearning`).
+    private var estimatedHeights: [LivePreviewBlockKey: BlockEstimate] = [:]
+
+    private struct BlockEstimate {
+        let columnWidth: CGFloat
+        let height: CGFloat
+        /// The estimate from the block's source alone, which its view's height is compared with.
+        let sourceEstimate: CGFloat
+        let learningKey: BlockEstimateLearning.Key?
+        /// The correction the blocks of its kind measured gave, when there was one.
+        let scale: CGFloat?
+    }
     /// The heights the concealed blocks reserve in the text now, which their views are given.
     private var heightsKeptInText: [LivePreviewBlockKey: CGFloat] = [:]
     /// Blocks whose measured height changed while the text could not be styled.
@@ -177,6 +188,10 @@ final class LivePreviewRenderedBlocks {
     private var keysAwaitingRootView: Set<LivePreviewBlockKey> = []
     /// Blocks whose view was just built and has not yet settled on its height.
     private var keysOfNewViews: Set<LivePreviewBlockKey> = []
+    /// Blocks below the screen whose view was just made ahead (`makeNextViewAhead`), with the
+    /// memory it is estimated to take: it stays in the text view, out of sight, until it has
+    /// laid out once, then joins the views kept off screen (`keepViewsMadeAhead`).
+    private var viewsMadeAhead: [LivePreviewBlockKey: Double] = [:]
 
     init(detachedViewsBudgetMegabytes: Int) {
         detachedHosts = DetachedWidgetPool(budgetMegabytes: detachedViewsBudgetMegabytes)
@@ -220,7 +235,8 @@ final class LivePreviewRenderedBlocks {
     /// The height a block's lines reserve: the one its view last reported in this editor,
     /// else one measured at this width by any editor, else, for the properties, the height
     /// their view last had (each edit gives them a new key, and their height rarely
-    /// changes), else an estimate. The view corrects the last two when it reports.
+    /// changes), else the one last measured at another width, else an estimate. The view
+    /// corrects the last three when it reports.
     func reservedHeight(of entry: LivePreviewBlockEntry, columnWidth: CGFloat, configuration: EditorConfiguration) -> CGFloat {
         adoptBlockEditedInItsView(entry)
         if let reportedHeight = reportedHeights[entry.key] { return reportedHeight }
@@ -229,10 +245,28 @@ final class LivePreviewRenderedBlocks {
             return measuredHeight
         }
         if entry.block.kind == .frontmatter, let reportedPropertiesHeight { return reportedPropertiesHeight }
-        if let estimate = estimatedHeights[entry.key], estimate.columnWidth == columnWidth { return estimate.height }
-        let estimatedHeight = LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth)
-        estimatedHeights[entry.key] = (columnWidth, estimatedHeight)
-        return estimatedHeight
+        // A note opening is styled before its view has a width, so with estimates that a restyle
+        // corrected a moment later, as the note might already scroll: the text above the screen
+        // then changed height and moved what was on it once scrolled back to the top.
+        let settings = MeasuredBlockHeightCache.Settings(blockKey: entry.key, textSize: configuration.textSize, typography: configuration.typography,
+                                                         themeFingerprint: configuration.theme?.tokens.fingerprint ?? "")
+        if let latestHeight = Self.measuredHeights.latestHeight(for: settings) { return latestHeight }
+        return estimate(of: entry, columnWidth: columnWidth, configuration: configuration).height
+    }
+
+    /// The block's estimate from its source, corrected by what the blocks of its kind measured.
+    private func estimate(of entry: LivePreviewBlockEntry, columnWidth: CGFloat, configuration: EditorConfiguration) -> BlockEstimate {
+        let kept = estimatedHeights[entry.key].flatMap { estimate in estimate.columnWidth == columnWidth ? estimate : nil }
+        let learningKey = kept?.learningKey
+            ?? BlockEstimateLearning.Key(blockKind: entry.block.kind, columnWidth: columnWidth, textSize: configuration.textSize,
+                                         typography: configuration.typography, themeFingerprint: configuration.theme?.tokens.fingerprint ?? "")
+        let scale = learningKey.flatMap { key in Self.measuredHeights.estimates.scale(for: key) }
+        if let kept, BlockEstimateLearning.isUnchanged(kept.scale, now: scale) { return kept }
+        let sourceEstimate = kept?.sourceEstimate ?? LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth)
+        let estimate = BlockEstimate(columnWidth: columnWidth, height: (sourceEstimate * (scale ?? 1)).rounded(), sourceEstimate: sourceEstimate,
+                                     learningKey: learningKey, scale: scale)
+        estimatedHeights[entry.key] = estimate
+        return estimate
     }
 
     private static func measuredHeightKey(for blockKey: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> MeasuredBlockHeightCache.Key? {
@@ -250,6 +284,9 @@ final class LivePreviewRenderedBlocks {
         let measuredWidth = (isFrontmatter ? propertiesHost : hosts[key])?.placedView.bounds.width ?? columnWidth
         if let measuredKey = Self.measuredHeightKey(for: key, columnWidth: measuredWidth, configuration: configuration) {
             Self.measuredHeights.record(height, for: measuredKey)
+        }
+        if let estimate = estimatedHeights[key], let learningKey = estimate.learningKey {
+            Self.measuredHeights.estimates.record(height, estimate: estimate.sourceEstimate, forBlockWithKey: key, under: learningKey)
         }
         if isFrontmatter { reportedPropertiesHeight = height }
         // Within a point of what the text reserves, the reserved height is kept, so the
@@ -296,7 +333,8 @@ final class LivePreviewRenderedBlocks {
 
     // MARK: Editing in a block's view
 
-    /// Keeps a table's view across the edits its view makes, until its editor, `owner`, ends.
+    /// Keeps a table's view, or a callout's whose body table is edited, across the edits its view
+    /// makes, until its editor, `owner`, ends.
     func beginEditingInView(blockWithKey key: LivePreviewBlockKey, at location: Int, owner: ObjectIdentifier) {
         editingInViewGeneration += 1
         blockEditedInItsView = (key, location, owner)
@@ -335,7 +373,7 @@ final class LivePreviewRenderedBlocks {
     /// its key.
     func entryEditedInItsView(by owner: ObjectIdentifier, in entries: [LivePreviewBlockEntry]) -> LivePreviewBlockEntry? {
         guard let edited = blockEditedInItsView, edited.owner == owner else { return nil }
-        return entries.first { entry in entry.range.location == edited.location && entry.block.kind == .table }
+        return entries.first { entry in entry.range.location == edited.location && entry.block.kind.editsTablesInItsView }
             ?? entries.first { entry in entry.key == edited.key }
     }
 
@@ -348,7 +386,7 @@ final class LivePreviewRenderedBlocks {
         let range: NSRange?
         if let location = locationEditedInItsView(by: editor) {
             range = entryEditedInItsView(by: editor, in: entries)?.range
-                ?? LivePreviewBlockScanner.blocks(in: source).first { block in block.kind == .table && block.range.location == location }?.range
+                ?? LivePreviewBlockScanner.blocks(in: source).first { block in block.kind.editsTablesInItsView && block.range.location == location }?.range
         } else {
             range = entries.first { entry in entry.key == key }?.range
         }
@@ -367,7 +405,7 @@ final class LivePreviewRenderedBlocks {
     /// being typed in) or jump to an estimated height.
     private func adoptBlockEditedInItsView(_ entry: LivePreviewBlockEntry) {
         guard let edited = blockEditedInItsView, edited.key != entry.key, edited.location == entry.range.location,
-              entry.block.kind == .table else { return }
+              entry.block.kind.editsTablesInItsView else { return }
         blockEditedInItsView = (entry.key, edited.location, edited.owner)
         if let height = reportedHeights.removeValue(forKey: edited.key) { reportedHeights[entry.key] = height }
         if let height = heightsKeptInText[edited.key] { heightsKeptInText[entry.key] = height }
@@ -402,6 +440,8 @@ final class LivePreviewRenderedBlocks {
             let entry = concealedEntries[index]
             guard !placement.keysInUse.contains(entry.key) else { return true }
             placement.keysInUse.insert(entry.key)
+            // A view made ahead that the block scrolled to in the meantime is simply shown.
+            viewsMadeAhead[entry.key] = nil
             // A paragraph a restyle changed has a new fragment, without a frame until
             // TextKit lays out the viewport again.
             guard fragment.state == .layoutAvailable else {
@@ -414,7 +454,10 @@ final class LivePreviewRenderedBlocks {
             let frame = CGRect(x: column.minX, y: fragment.layoutFragmentFrame.minY + column.textContainerTop,
                                width: column.width, height: heightsKeptInText[entry.key] ?? reservedHeight)
             let placedView = host(for: entry, makeRootView: makeRootView).placedView
-            if placedView.frame != frame {
+            // A frame set is read back with its last digits changed: compared exactly, every
+            // view counted as moved at every pass, which spent the passes that follow a real
+            // move, and a view then stayed where an earlier pass left it.
+            if !Self.isSameFrame(placedView.frame, frame) {
                 placedView.frame = frame
                 placement.didMoveView = true
             }
@@ -430,20 +473,39 @@ final class LivePreviewRenderedBlocks {
         return placement
     }
 
+    /// Whether a view's frame is the frame given, but for the hundredth of a point a view
+    /// rounds a frame it is given to.
+    static func isSameFrame(_ placedFrame: CGRect, _ frame: CGRect) -> Bool {
+        let tolerance: CGFloat = 0.01
+        return abs(placedFrame.minX - frame.minX) < tolerance && abs(placedFrame.minY - frame.minY) < tolerance
+            && abs(placedFrame.width - frame.width) < tolerance && abs(placedFrame.height - frame.height) < tolerance
+    }
+
     // MARK: Views
 
     /// Whether the block's view was just built and still lays its content out for the
     /// first time, reporting heights it then corrects, while the height it will settle on
-    /// is already known: measured by an earlier view of the block at this width.
+    /// is already known, or nearly: measured by an earlier view of the block at this width,
+    /// or estimated from what the blocks of its kind measured.
     func isNewViewOfMeasuredBlock(withKey key: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> Bool {
         guard keysOfNewViews.contains(key) else { return false }
-        guard let measuredKey = Self.measuredHeightKey(for: key, columnWidth: columnWidth, configuration: configuration),
-              Self.measuredHeights.height(for: measuredKey) != nil else {
+        guard knowsHeightBeforeItsView(ofBlockWithKey: key, columnWidth: columnWidth, configuration: configuration) else {
             // Never measured: each report is the best height there is, reserved at once.
             keysOfNewViews.remove(key)
             return false
         }
         return true
+    }
+
+    /// Whether the height the block reserves before its view reports comes from views: its own,
+    /// measured at this width, or those of its kind, which corrected its estimate.
+    func knowsHeightBeforeItsView(ofBlockWithKey key: LivePreviewBlockKey, columnWidth: CGFloat, configuration: EditorConfiguration) -> Bool {
+        if let measuredKey = Self.measuredHeightKey(for: key, columnWidth: columnWidth, configuration: configuration),
+           Self.measuredHeights.height(for: measuredKey) != nil {
+            return true
+        }
+        guard let estimate = estimatedHeights[key], estimate.columnWidth == columnWidth else { return false }
+        return estimate.scale != nil
     }
 
     func markViewSettled(forBlockWithKey key: LivePreviewBlockKey) {
@@ -493,7 +555,10 @@ final class LivePreviewRenderedBlocks {
         // Looked up by key: searching every block for each view leaving the screen was slow
         // for a note of many blocks.
         // The view editing its block stays while that edit gives the block a new key.
-        let leavingKeys = hosts.keys.filter { key in !keysInUse.contains(key) && key != blockEditedInItsView?.key }
+        // A view made ahead stays until it has laid out once (`keepViewsMadeAhead`).
+        let leavingKeys = hosts.keys.filter { key in
+            !keysInUse.contains(key) && key != blockEditedInItsView?.key && viewsMadeAhead[key] == nil
+        }
         guard !leavingKeys.isEmpty else { return }
         var entriesByKey: [LivePreviewBlockKey: LivePreviewBlockEntry] = [:]
         for entry in entries where entriesByKey[entry.key] == nil { entriesByKey[entry.key] = entry }
@@ -515,9 +580,58 @@ final class LivePreviewRenderedBlocks {
         for host in hosts.values { host.removeFromTextView() }
         blockEditedInItsView = nil
         keysAwaitingRootView.removeAll()
+        viewsMadeAhead.removeAll()
         hosts.removeAll()
         detachedHosts.removeAll()
     }
+
+    // MARK: Views made ahead
+
+    /// Makes the view of the next block below the screen that has none (`RenderedBlockLookahead`
+    /// says which and when), before it scrolls in, so the scroll that shows it does not build it
+    /// within a frame. The view goes into the text view left of the column, where nothing shows,
+    /// and lays out there; it reports its height as any new view does, so the block reserves it
+    /// before it is seen. False when no block near enough needs one.
+    func makeNextViewAhead(below viewport: NSRange, in concealedEntries: [LivePreviewBlockEntry], textView: RenderedBlockTextView,
+                           column: RenderedBlockColumn, configuration: EditorConfiguration,
+                           makeRootView: (LivePreviewBlockEntry) -> RenderedBlockRoot) -> Bool {
+        let candidates = RenderedBlockLookahead.blocksWorthMakingAhead(below: viewport, in: concealedEntries)
+        guard let (entry, estimatedMegabytes) = candidates.lazy.compactMap({ entry -> (LivePreviewBlockEntry, Double)? in
+            guard entry.block.kind != .frontmatter, self.hosts[entry.key] == nil, self.detachedHosts.host(for: entry.key) == nil,
+                  let megabytes = DetachedWidgetPool<RenderedBlockHost>.estimatedMegabytes(of: entry.block) else { return nil }
+            return (entry, megabytes)
+        }).first else { return false }
+        let host = RenderedBlockHost.makeRenderedBlockHost(root: makeRootView(entry))
+        keysOfNewViews.insert(entry.key)
+        hosts[entry.key] = host
+        viewsMadeAhead[entry.key] = estimatedMegabytes
+        host.placedView.frame = CGRect(x: column.minX - column.width - 1_000, y: column.textContainerTop, width: column.width,
+                                       height: reservedHeight(of: entry, columnWidth: column.width, configuration: configuration))
+        textView.addSubview(host.placedView)
+        #if canImport(UIKit)
+        host.placedView.layoutIfNeeded()
+        #else
+        host.placedView.layoutSubtreeIfNeeded()
+        #endif
+        return true
+    }
+
+    /// The views made ahead, which have laid out, leave the text view for the views kept off
+    /// screen, from which a block's view is taken when it scrolls in.
+    func keepViewsMadeAhead() {
+        for (key, estimatedMegabytes) in viewsMadeAhead {
+            guard let host = hosts.removeValue(forKey: key) else { continue }
+            host.removeFromTextView()
+            detachedHosts.keep(host, for: key, estimatedMegabytes: estimatedMegabytes)
+        }
+        viewsMadeAhead.removeAll()
+    }
+
+    /// Whether a view made ahead is still waiting to join the kept views.
+    var hasViewsMadeAhead: Bool { !viewsMadeAhead.isEmpty }
+
+    /// Whether the block's view is kept off screen, ready to show again.
+    func hasKeptView(forBlockWithKey key: LivePreviewBlockKey) -> Bool { detachedHosts.host(for: key) != nil }
 
     /// Lets go of the views kept off screen, as when the system runs low on memory.
     func dropDetachedViews() {
@@ -556,15 +670,16 @@ final class LivePreviewRenderedBlocks {
     /// block moves with edits elsewhere, so its actions find the block by key when they run.
     /// - Parameter colorScheme: Passed where the hosted view does not take the appearance
     ///   from the text view it is in, as on the iPad.
-    /// - Parameter sourceEditing: How a table's view edits its cells in the note; nil leaves
-    ///   the table to be edited as source, as one a comment runs out of always is.
+    /// - Parameter sourceEditing: How a table's view, or a callout's for the tables of its body,
+    ///   edits cells in the note; nil leaves the table to be edited as source, as one a comment
+    ///   runs out of always is.
     /// - Parameter currentLocation: Where the block starts in the note now, found by its key.
     static func rootView(for entry: LivePreviewBlockEntry, environment: LivePreviewEnvironment, accentHex: String, colorScheme: ColorScheme?,
                          revealSource: @escaping () -> Void, reportHeight: @escaping (CGFloat) -> Void,
                          sourceEditing: RenderedBlockSourceEditing? = nil, currentLocation: (@MainActor () -> Int?)? = nil) -> RenderedBlockRoot {
         let accent = Color.graphiteAccent(hex: accentHex) ?? .accentColor
         let widget = LivePreviewWidgetView(block: entry.block, environment: environment, revealSource: revealSource, reportHeight: reportHeight,
-                                           sourceEditing: entry.block.kind == .table && !entry.block.isCutByComment ? sourceEditing : nil,
+                                           sourceEditing: entry.block.editsSourceInItsView ? sourceEditing : nil,
                                            currentLocation: currentLocation)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
@@ -572,7 +687,7 @@ final class LivePreviewRenderedBlocks {
             .environment(\.readingImageActions, environment.viewImage.map { viewImage in
                 let providerIdentity = environment.embeddedPDFSessions.map(ObjectIdentifier.init) ?? ObjectIdentifier(LivePreviewWidgetView.self)
                 return ReadingImageActions(providerIdentity: providerIdentity, viewImage: viewImage, editDrawing: environment.editDrawing,
-                                           drawOnImage: environment.drawOnImage)
+                                           drawOnImage: environment.drawOnImage, tabOpening: environment.pictureTabOpening)
             })
             .environment(\.communityPluginCodeBlocks, environment.pluginCodeBlocks)
             .environment(\.communityPluginsTurnOnOffer, environment.pluginsTurnOnOffer)
@@ -597,6 +712,8 @@ struct RenderedBlockMenuItem {
     let title: String
     var symbolName: String? = nil
     var isEnabled = true
+    /// Shown with a checkmark, as a table column's alignment is.
+    var isChosen = false
     /// Shown as a submenu when not empty.
     var children: [RenderedBlockMenuItem] = []
     var action: (() -> Void)? = nil
@@ -608,6 +725,13 @@ struct RenderedBlockMenuItem {
 @MainActor
 final class RenderedBlockMenuContext {
     var itemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
+    /// The commands of a picture at the point, before the view's own (`RenderedBlockPictureMenu`).
+    var pictureItemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
+
+    /// Everything the view adds to its menu at `point`.
+    func items(at point: CGPoint) -> [RenderedBlockMenuItem] {
+        (pictureItemsAtPoint?(point) ?? []) + (itemsAtPoint?(point) ?? [])
+    }
 }
 
 extension EnvironmentValues {
@@ -650,9 +774,9 @@ final class RenderedBlockEditSourceMenu: NSObject {
         let menu = NSMenu()
         // Items say themselves whether they can be chosen (a header row cannot be deleted).
         menu.autoenablesItems = false
-        if let point, let itemsAtPoint = context.itemsAtPoint {
+        if let point {
             let topDownPoint = isFlipped ? point : CGPoint(x: point.x, y: height - point.y)
-            let items = itemsAtPoint(topDownPoint)
+            let items = context.items(at: topDownPoint)
             for item in items { menu.addItem(menuItem(for: item)) }
             if !items.isEmpty { menu.addItem(.separator()) }
         }
@@ -670,6 +794,7 @@ final class RenderedBlockEditSourceMenu: NSObject {
             nativeItem.representedObject = target
         }
         nativeItem.isEnabled = item.isEnabled
+        nativeItem.state = item.isChosen ? .on : .off
         if let symbolName = item.symbolName { nativeItem.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil) }
         if !item.children.isEmpty {
             let submenu = NSMenu(title: item.title)
@@ -699,7 +824,7 @@ extension RenderedBlockEditSourceMenu: UIContextMenuInteractionDelegate {
     }
 
     func makeMenu(at point: CGPoint? = nil) -> UIMenu {
-        let viewItems = point.flatMap { point in context.itemsAtPoint?(point) } ?? []
+        let viewItems = point.map { point in context.items(at: point) } ?? []
         let editSource = UIAction(title: Self.title, image: UIImage(systemName: Self.symbolName)) { [weak self] _ in self?.revealSource() }
         guard !viewItems.isEmpty else { return UIMenu(children: [editSource]) }
         return UIMenu(children: [UIMenu(options: .displayInline, children: viewItems.map(Self.menuElement(for:))), editSource])
@@ -709,7 +834,7 @@ extension RenderedBlockEditSourceMenu: UIContextMenuInteractionDelegate {
         let image = item.symbolName.flatMap { symbolName in UIImage(systemName: symbolName) }
         if !item.children.isEmpty { return UIMenu(title: item.title, image: image, children: item.children.map(menuElement(for:))) }
         let action = item.action
-        return UIAction(title: item.title, image: image, attributes: item.isEnabled ? [] : .disabled) { _ in action?() }
+        return UIAction(title: item.title, image: image, attributes: item.isEnabled ? [] : .disabled, state: item.isChosen ? .on : .off) { _ in action?() }
     }
 }
 #endif
@@ -753,7 +878,10 @@ struct LivePreviewWidgetSignature: Equatable {
         switch block.kind {
         case .embed, .baseDefinition, .imageLine: true
         case .callout: block.markdown.contains("![") || block.markdown.contains("base")
-        case .frontmatter, .table, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram: false
+        // A picture in a cell that the index has not read yet is looked up again once it has:
+        // a table of photos opened while the vault was indexing kept them as text.
+        case .table: block.markdown.contains("![")
+        case .frontmatter, .mathBlock, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame: false
         }
     }
 }
@@ -800,6 +928,9 @@ struct DetachedWidgetPool<Host> {
             return 0.15 + 0.12 * Double(max(1, rows.count - 1) * max(1, columns))
         case .baseDefinition: return 6
         case .frontmatter: return 4
+        // A frame's view holds a live page, which is never kept off screen; nor is a callout's that holds one.
+        case .webFrame: return nil
+        case .callout where WebFrameSyntax.mayHoldFrame(block.markdown): return nil
         case .mathBlock, .callout:
             return 0.15 + 0.05 * Double(block.markdown.split(separator: "\n", omittingEmptySubsequences: false).count)
         case .horizontalRule: return 0.1
@@ -808,6 +939,8 @@ struct DetachedWidgetPool<Host> {
         // Shapes and lines of text, as a formula's glyphs are; estimated as a formula of as many lines, not measured.
         case .mermaidDiagram: return 0.15 + 0.05 * Double(block.markdown.split(separator: "\n", omittingEmptySubsequences: false).count)
         case .embed(let embed):
+            // A video card's thumbnail, 640 by 360 pixels.
+            if WebVideo(embed: embed) != nil { return 1 }
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) || DocumentKind.audioFileExtensions.contains(fileExtension) { return nil }
             return 12
@@ -882,7 +1015,12 @@ enum LivePreviewBlockHeightEstimate {
         // A diagram's height comes from its layout, not from its lines: a few ranks of a flowchart, or a pie chart's
         // disc under its title.
         case .mermaidDiagram: return 300
+        // The tag gives the height, so the lines below are where they will stay before the page loads; the view's
+        // vertical padding is the rest.
+        case .webFrame(let frame): return CGFloat(frame.shownHeight) + 8
         case .embed(let embed):
+            // The picture at 16:9 and a line of title under it.
+            if WebVideo(embed: embed) != nil { return min(columnWidth, WebVideoCard.maximumWidth) * 9 / 16 + 44 }
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) { return columnWidth * 9 / 16 + 8 }
             if DocumentKind.audioFileExtensions.contains(fileExtension) { return 96 }
@@ -896,52 +1034,16 @@ enum LivePreviewBlockHeightEstimate {
     }
 }
 
-/// Heights rendered blocks measured, shared by every editor, so a note opened again lays
-/// its blocks out at their measured heights at once instead of at estimates that each
-/// block then corrects with a restyle and a visible jump. A height holds for one column
-/// width and text size. Past the capacity, the heights recorded longest ago go first.
-struct MeasuredBlockHeightCache {
-    struct Key: Hashable {
-        let blockKey: LivePreviewBlockKey
-        let columnWidth: Int
-        let textSize: Double
-        /// A block's height also changes with the fonts it is drawn in.
-        let typography: NoteTypography
-        /// And with the theme's sizes, spacing and borders.
-        let themeFingerprint: String
-
-        /// Nil for a width that is not a finite number of points, as before the first layout.
-        init?(blockKey: LivePreviewBlockKey, columnWidth: CGFloat, textSize: Double, typography: NoteTypography = .standard, themeFingerprint: String = "") {
-            guard let wholeColumnWidth = Int(exactly: columnWidth.rounded()), wholeColumnWidth > 0 else { return nil }
-            self.blockKey = blockKey
-            self.columnWidth = wholeColumnWidth
-            self.textSize = textSize
-            self.typography = typography
-            self.themeFingerprint = themeFingerprint
+private extension LivePreviewBlock {
+    /// Whether the block's view edits its source itself: table cells, its own or those of a
+    /// callout's body, and a picture's width when its corner is dragged, alone on its line or
+    /// beside others. A block a comment runs out of is edited as source.
+    var editsSourceInItsView: Bool {
+        guard !isCutByComment else { return false }
+        switch kind {
+        case .embed, .imageLine: return true
+        case .table, .callout, .frontmatter, .mathBlock, .baseDefinition, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame:
+            return kind.editsTablesInItsView
         }
-    }
-
-    private var heightsByKey: [Key: CGFloat] = [:]
-    /// Oldest first.
-    private var recordingOrder: [Key] = []
-    let capacity: Int
-
-    init(capacity: Int) {
-        self.capacity = capacity
-    }
-
-    var count: Int { heightsByKey.count }
-
-    func height(for key: Key) -> CGFloat? {
-        heightsByKey[key]
-    }
-
-    mutating func record(_ height: CGFloat, for key: Key) {
-        if heightsByKey.updateValue(height, forKey: key) == nil { recordingOrder.append(key) }
-        guard recordingOrder.count > capacity else { return }
-        // Dropping a quarter at a time keeps the cost of shifting the order off most records.
-        let droppedKeys = recordingOrder.prefix(max(1, capacity / 4))
-        for droppedKey in droppedKeys { heightsByKey[droppedKey] = nil }
-        recordingOrder.removeFirst(droppedKeys.count)
     }
 }

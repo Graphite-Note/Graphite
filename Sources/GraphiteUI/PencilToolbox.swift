@@ -5,12 +5,15 @@
  * Description: The state of the Pencil bar: ink presets, the tool in use, the eraser, and which style of bar shows.
  *
  * Authors: Bahey Shalash
- * Version: 0.21
- * Date: 04/11/2026
+ * Version: 0.22
+ * Date: 16/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Where the Pencil tools are shown while drawing.
 enum PencilToolbarStyle: String, CaseIterable, Identifiable {
@@ -36,6 +39,26 @@ enum PencilToolbarStyle: String, CaseIterable, Identifiable {
     /// - Parameter sharesWindowWithOtherSide: Whether the window shows two sides at once.
     func inEffect(sharesWindowWithOtherSide: Bool) -> PencilToolbarStyle {
         sharesWindowWithOtherSide ? .fixed : self
+    }
+
+    /// The style shown at a width. A phone's compact width always uses the system's palette, which docks at the
+    /// bottom of its screen. An iPad keeps the style in effect in a compact window, beside another app: the fixed bar
+    /// takes its narrow forms there, and its colors scroll sideways in their strip (owner, 2026-11-16); before, the
+    /// window showed Apple's palette, whose colors are not the bar's.
+    /// - Parameters:
+    ///   - horizontalSizeClass: The width class of the view showing the tools.
+    ///   - isPhone: Whether the device is a phone (`PencilToolbarStyle.isPhone`).
+    func shown(horizontalSizeClass: UserInterfaceSizeClass?, isPhone: Bool) -> PencilToolbarStyle {
+        horizontalSizeClass == .compact && isPhone ? .floating : self
+    }
+
+    /// Whether this device is a phone, whose compact width always uses the system's palette.
+    @MainActor static var isPhone: Bool {
+        #if canImport(UIKit)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
     }
 }
 
@@ -164,9 +187,12 @@ struct InkPreset: Codable, Equatable, Identifiable {
 }
 
 /// What the bar has in use: one of its inks, the eraser, the lasso, the laser pointer, the
-/// Read Aloud pen, or the text tool.
+/// Read Aloud pen, the text tool, or the text highlighter.
 enum PencilToolKind: String, Codable, CaseIterable, Identifiable {
     case ink, eraser, lasso, laser, readAloud, text
+    /// Marks the PDF text it selects, when the touch lifts, with the style chosen beside it
+    /// (`PDFTextHighlighterInteraction`). The Pencil's freehand highlighter is an ink.
+    case textHighlighter
 
     var id: String { rawValue }
     var title: String {
@@ -177,6 +203,7 @@ enum PencilToolKind: String, Codable, CaseIterable, Identifiable {
         case .laser: "Laser Pointer"
         case .readAloud: "Read Aloud Pen"
         case .text: "Text Box"
+        case .textHighlighter: "Text Highlighter"
         }
     }
     var symbolName: String {
@@ -189,15 +216,23 @@ enum PencilToolKind: String, Codable, CaseIterable, Identifiable {
         // Only a fallback, as for the laser (`ReadAloudPenGlyph`).
         case .readAloud: "speaker.wave.2"
         case .text: "character.textbox"
+        // A text cursor: the tool marks text, where the ink highlighter's symbol draws freely.
+        case .textHighlighter: "character.cursor.ibeam"
         }
     }
-    /// Whether the canvas draws with PencilKit's tool: the lasso and the laser pointer are
-    /// Graphite's own and draw nothing.
+    /// Whether the canvas draws with PencilKit's tool: the lasso, the laser pointer, the Read
+    /// Aloud pen, the text tool and the text highlighter are Graphite's own and draw nothing.
     var drawsInk: Bool { self == .ink || self == .eraser }
     /// Tools for the moment, put away with the app: the laser points while presenting, the
-    /// Read Aloud pen points at what to read, and the text tool places a box or two among the
-    /// ink. The tool before them is kept instead, which a build without them can read.
-    var isPutAwayWithApp: Bool { self == .laser || self == .readAloud || self == .text }
+    /// Read Aloud pen points at what to read, the text tool places a box or two among the
+    /// ink, and the text highlighter marks a PDF's text. The tool before them is kept instead,
+    /// which a build without them can read.
+    var isPutAwayWithApp: Bool {
+        switch self {
+        case .ink, .eraser, .lasso: false
+        case .laser, .readAloud, .text, .textHighlighter: true
+        }
+    }
 }
 
 /// The tool a canvas draws with, as a value, so a canvas is updated exactly when it changes.
@@ -544,7 +579,7 @@ extension PencilToolSelection {
         switch kind {
         case .ink: preset.inkingTool
         case .eraser: erasesWholeStrokes ? PKEraserTool(.vector) : PKEraserTool(.fixedWidthBitmap, width: CGFloat(eraserWidth))
-        case .lasso, .laser, .readAloud, .text: PKLassoTool()
+        case .lasso, .laser, .readAloud, .text, .textHighlighter: PKLassoTool()
         }
     }
 }

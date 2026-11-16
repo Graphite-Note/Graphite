@@ -4,11 +4,12 @@
  * Layer: UI
  * Description: A note's reading-view blocks as a PDF prints them: callouts printed open, lists, tables, code,
  *              callouts and embedded notes divided into the parts a page may end between, pictures and PDF pages
- *              loaded before drawing, bases run before drawing, and the headings and web links the finished PDF needs.
+ *              loaded before drawing, bases run before drawing (also inside callouts and embedded notes), and the headings and
+ *              web links the finished PDF needs.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -49,6 +50,8 @@ struct NotePDFBlock: Sendable {
     /// The heading's level and text, for the PDF's outline; nil for other blocks.
     var outlineHeading: (level: Int, title: String)?
     var webLinks: [NotePDFWebLink] = []
+    /// The bases inside its callouts and embedded notes, run before drawing.
+    var nestedBases: [PrintedBaseKey: PrintedBase] = [:]
 
     /// Parts a page may end between; 1 for a block printed whole.
     var unitCount: Int {
@@ -118,6 +121,7 @@ enum NotePDFBlocks {
             let scan = await NotePDFTextScan.scanning(markdownTexts(in: block), root: root)
             await scan.loadInlineImages()
             printedBlock.webLinks = scan.webLinks
+            printedBlock.nestedBases = await NotePDFBases.nested(in: block, note: note, vault: vault, layoutWidth: layoutWidth)
             if case .heading(_, let level, let text, _) = block {
                 printedBlock.outlineHeading = (level, await NotePDFTextScan.plainText(of: text, root: root))
             }
@@ -153,11 +157,14 @@ enum NotePDFBlocks {
             return NotePDFBlock(content: .fileName(location.lastPathComponent, systemImage: "film"))
         case .audio(_, _, let name):
             return NotePDFBlock(content: .fileName(name, systemImage: "waveform"))
+        case .webVideo(_, let video, let writtenTitle):
+            return NotePDFBlock(content: .fileName(writtenTitle.flatMap { title in title.isEmpty ? nil : title } ?? video.address.absoluteString,
+                                                   systemImage: "play.rectangle"))
         case .baseFile(_, let path, let viewName):
             return await printedBase(.file(path), viewName: viewName, name: path.name, vault: vault, note: note, layoutWidth: layoutWidth)
         case .base(_, let yaml):
             return await printedBase(.inline(yaml), viewName: nil, name: "Base", vault: vault, note: note, layoutWidth: layoutWidth)
-        case .properties, .displayMath, .heading, .callout, .missingEmbed, .missingSection, .footnotes, .pluginCodeBlock, .diagram:
+        case .properties, .displayMath, .heading, .callout, .missingEmbed, .missingSection, .footnotes, .pluginCodeBlock, .diagram, .webFrame:
             return NotePDFBlock(content: .reading(block))
         }
     }
@@ -187,7 +194,7 @@ enum NotePDFBlocks {
             case .transclusion(let id, let path, let heading, let body):
                 .transclusion(id: id, path: path, heading: heading, body: openedForPrinting(body))
             case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram:
+                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram, .webFrame, .webVideo:
                 block
             }
         }
@@ -200,6 +207,10 @@ enum NotePDFBlocks {
         case .callout(_, _, let title, _, let body): [title] + body.flatMap(markdownTexts(in:))
         case .transclusion(_, _, _, let body): body.flatMap(markdownTexts(in:))
         case .footnotes(_, let notes): notes.map(\.text)
+        // A frame's page cannot be printed: its box shows the address, which the finished PDF links to the page.
+        case .webFrame(_, let frame): ["<" + frame.address.absoluteString + ">"]
+        // A video card prints as its title, with the address the finished PDF links to the video.
+        case .webVideo(_, let video, _): ["<" + video.address.absoluteString + ">"]
         case .properties, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image, .pluginCodeBlock, .diagram: []
         }
     }

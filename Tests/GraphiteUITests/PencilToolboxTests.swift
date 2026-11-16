@@ -5,8 +5,8 @@
  * Description: The Pencil bar's state, presets, undo steps and where the document controls go.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 04/11/2026
+ * Version: 0.12
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -530,6 +530,22 @@ final class PencilToolboxTests: XCTestCase {
         let relaunched = PencilToolbox(defaults: defaults)
         relaunched.use(.laser)
         XCTAssertEqual(try JSONDecoder().decode(StoredStateWithoutLaser.self, from: try XCTUnwrap(defaults.data(forKey: PencilToolbox.storageKey))).toolInUse, .eraser)
+    }
+
+    /// The text highlighter, like the laser, is put away with the app: the tool before it is saved, so a build without
+    /// it reads the state and keeps the presets; it draws no ink and takes none of the bar's colours.
+    func testTheTextHighlighterIsNeverSavedAndDrawsNoInk() throws {
+        let toolbox = PencilToolbox(defaults: defaults)
+        toolbox.use(.lasso)
+        toolbox.use(.textHighlighter)
+        XCTAssertEqual(toolbox.toolInUse, .textHighlighter)
+        let saved = try XCTUnwrap(defaults.data(forKey: PencilToolbox.storageKey))
+        XCTAssertEqual(try JSONDecoder().decode(StoredStateWithoutLaser.self, from: saved).toolInUse, .lasso)
+        XCTAssertEqual(PencilToolbox(defaults: defaults).toolInUse, .lasso)
+        XCTAssertFalse(PencilToolKind.textHighlighter.drawsInk)
+        XCTAssertFalse(PencilToolRowLayout.offersColors(toolInUse: .textHighlighter))
+        XCTAssertNotEqual(PencilToolKind.textHighlighter.symbolName, PencilInk.highlighter.symbolName,
+                          "The text highlighter is told apart from the Pencil's freehand highlighter on the bar.")
     }
 
     /// The bar's size dots show the widths they stand for: a width changed in its popover

@@ -813,7 +813,7 @@ final class ReadAloudController {
         pdfContinuation = nil
         preparingPDFContinuation = nil
         playsCurrentPreparation = false
-        errorMessage = error.localizedDescription
+        errorMessage.report(error)
         showsReader = true
         // A PDF whose next page failed keeps no audio session or lock screen controls.
         if session.state == .finished { session.stop() }

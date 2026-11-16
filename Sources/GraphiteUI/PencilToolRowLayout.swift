@@ -3,12 +3,12 @@
  * -------------------------------
  * Layer: UI
  * Description: The Pencil bar's forms and how closely it sets its buttons: which tools, sizes, colors and toggles a bar
- *              of a given width shows, how wide each form is, and which controls move, least used first, into the one
- *              control that opens the rest, so a bar never has to scroll sideways past its colors.
+ *              of a given width shows, how wide each form is, how many colors its strip shows at once (more scroll
+ *              sideways inside it), and which controls move, least used first, into the one control that opens the rest.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 import GraphiteCore
@@ -19,14 +19,15 @@ enum PencilToolRowLayout {
     /// A tool of the bar's row: one of the ink presets by position, or one of the other tools.
     enum Tool: Hashable {
         case preset(index: Int)
-        case eraser, lasso, laser, text, readAloud
+        case eraser, lasso, laser, textHighlighter, text, readAloud
     }
 
     /// The tools of the row in the order the bar shows them: the presets, the eraser, the lasso, the laser pointer,
-    /// then the text tool and the Read Aloud pen where the page has them.
-    static func tools(presetCount: Int, offersTextBoxes: Bool, offersReadAloudPen: Bool) -> [Tool] {
+    /// then the text highlighter, the text tool and the Read Aloud pen where the page has them.
+    static func tools(presetCount: Int, offersTextMarking: Bool, offersTextBoxes: Bool, offersReadAloudPen: Bool) -> [Tool] {
         var tools = (0..<max(presetCount, 0)).map { presetIndex in Tool.preset(index: presetIndex) }
         tools += [.eraser, .lasso, .laser]
+        if offersTextMarking { tools.append(.textHighlighter) }
         if offersTextBoxes { tools.append(.text) }
         if offersReadAloudPen { tools.append(.readAloud) }
         return tools
@@ -51,13 +52,14 @@ enum PencilToolRowLayout {
     }
 
     /// The tools the folded forms keep on the bar: the ones a person writes with (every ink preset, the eraser and the
-    /// lasso), and the tool in use wherever it is, in the bar's order. The laser pointer, the text tool and the Read
-    /// Aloud pen, used now and then rather than while writing, go behind the More control.
+    /// lasso), and the tool in use wherever it is, in the bar's order. The laser pointer, the text highlighter, the text
+    /// tool and the Read Aloud pen, used now and then rather than while writing, go behind the More control, so a PDF's
+    /// folded bar is as wide as before the text highlighter and keeps every color upright beside the sidebar.
     static func compactSplit(_ tools: [Tool], toolInUse: Tool?) -> (shown: [Tool], folded: [Tool]) {
         let shown = tools.filter { tool in
             switch tool {
             case .preset, .eraser, .lasso: true
-            case .laser, .text, .readAloud: tool == toolInUse
+            case .laser, .textHighlighter, .text, .readAloud: tool == toolInUse
             }
         }
         return (shown, tools.filter { tool in !shown.contains(tool) })
@@ -97,7 +99,8 @@ enum PencilToolRowLayout {
     /// What a folded form puts behind the bar's More control, least used first: each stage folds everything the one
     /// before it folds, and more (HUNT-317's order).
     enum FoldStage: Int, Comparable, CaseIterable {
-        /// The laser pointer, the text tool and the Read Aloud pen: presenting, typing and listening, not writing.
+        /// The laser pointer, the text highlighter, the text tool and the Read Aloud pen: presenting, marking, typing and
+        /// listening, not writing.
         case occasionalTools
         /// Also the tool's own choices (the eraser's kind, the lasso's type), Other Color with its plus, and Shapes, which
         /// is switched once for a session.
@@ -116,8 +119,9 @@ enum PencilToolRowLayout {
         /// The whole row at the mini density with what `FoldStage` names behind one More control. The ink presets, the
         /// eraser, the lasso, the tool in use, the sizes, every color and the ruler stay on the bar at every stage.
         case folded(FoldStage)
-        /// The last stage with its colors in a strip that scrolls sideways, as wide as `visibleSwatchCount` whole colors,
-        /// so none is ever cut in half: only where every color does not fit even at the mini size.
+        /// The last stage with its colors in a strip narrower than `maximumVisibleSwatchCount`, as wide as
+        /// `visibleSwatchCount` whole colors, so none is ever cut in half: only where that many do not fit even at the
+        /// mini size.
         case compactWithScrollingColors(visibleSwatchCount: Int)
         /// Fewer tools, with the rest, the colors and the toggles behind one control: a window too narrow for any other.
         case condensed
@@ -137,10 +141,13 @@ enum PencilToolRowLayout {
         var foldedTools: [Tool]
         var showsToolChoices: Bool
         var showsSizes: Bool
-        /// Whether black and every favorite color, or the highlighter's colors, are on the bar.
+        /// Whether black and every favorite color, or the highlighter's colors, are on the bar, in their strip.
         var showsSwatches: Bool
-        /// How many colors a scrolling strip shows; nil where every color is on the bar.
+        /// How many colors the strip shows at once when it shows fewer than it holds (the rest scroll sideways inside
+        /// it); nil where every color shows.
         var scrollingSwatchCount: Int?
+        /// The plus that saves a color as a swatch, after the strip: on the bar in every form that shows the colors.
+        var showsAddColor: Bool
         var showsOtherColor: Bool
         var showsShapes: Bool
         var showsAddImage: Bool
@@ -164,28 +171,35 @@ enum PencilToolRowLayout {
         let tools = foldStage == nil ? (shown: contents.tools, folded: []) : compactSplit(contents.tools, toolInUse: contents.toolInUse)
         /// Whether the form keeps on the bar what `stage` folds.
         func keepsWhat(_ stage: FoldStage) -> Bool { foldStage.map { foldStage in foldStage < stage } ?? true }
+        let showsSwatches = contents.offersColors && contents.swatchCount > 0
+        if scrollingSwatchCount == nil, contents.swatchCount > maximumVisibleSwatchCount { scrollingSwatchCount = maximumVisibleSwatchCount }
         return Placement(density: density, shownTools: tools.shown, foldedTools: tools.folded, showsToolChoices: keepsWhat(.choicesAndShapes),
-                         showsSizes: contents.sizeCount > 0, showsSwatches: contents.offersColors && contents.swatchCount > 0,
-                         scrollingSwatchCount: scrollingSwatchCount, showsOtherColor: contents.offersColors && keepsWhat(.choicesAndShapes),
+                         showsSizes: contents.sizeCount > 0, showsSwatches: showsSwatches, scrollingSwatchCount: scrollingSwatchCount,
+                         showsAddColor: contents.offersColors && contents.showsAddColor, showsOtherColor: contents.offersColors && keepsWhat(.choicesAndShapes),
                          showsShapes: keepsWhat(.choicesAndShapes), showsAddImage: contents.offersImages && keepsWhat(.addImage),
                          hasMoreControl: foldStage != nil)
     }
 
     /// The fewest colors a scrolling strip shows; narrower than that the colors go behind the condensed form's control.
     static let minimumVisibleSwatchCount = 3
+    /// The most colors the strip shows at once: black and the eight default favorite colors, the owner's set on
+    /// 2026-11-14. A color saved past them scrolls inside the strip, so the bar stays as wide as it was (section 3 of
+    /// Docs/PDF-annotation-todo.md).
+    static let maximumVisibleSwatchCount = 9
 
     /// What a bar holds, counted for its widths.
     struct Contents: Equatable {
-        /// Every tool of the row, in order (`tools(presetCount:offersTextBoxes:offersReadAloudPen:)`).
+        /// Every tool of the row, in order (`tools(presetCount:offersTextMarking:offersTextBoxes:offersReadAloudPen:)`).
         var tools: [Tool]
         var toolInUse: Tool?
         /// Three for an ink or the eraser; none for the other tools, which have no width.
         var sizeCount: Int
-        /// Whether the tool in use takes a color: not the laser pointer, the text tool or the Read Aloud pen.
+        /// Whether the tool in use takes a color: not the laser pointer, the text tool, the text highlighter or the Read
+        /// Aloud pen.
         var offersColors: Bool
         /// Black and the favorite colors, or the highlighter's colors; none for a tool that takes no color.
         var swatchCount: Int
-        /// Whether the plus that adds the color in use to the colors shows.
+        /// Whether the plus that saves a color as a swatch shows: wherever the colors do.
         var showsAddColor: Bool
         /// Whether Add Image is on the bar.
         var offersImages: Bool
@@ -200,7 +214,7 @@ enum PencilToolRowLayout {
         let density = placement.density
         let swatchCount = placement.scrollingSwatchCount ?? contents.swatchCount
         let colors = (placement.showsSwatches ? Double(swatchCount) * density.swatchPitch : 0)
-            + (placement.showsOtherColor ? density.otherColorWidth + (contents.showsAddColor ? density.swatchPitch : 0) : 0)
+            + (placement.showsAddColor ? density.swatchPitch : 0) + (placement.showsOtherColor ? density.otherColorWidth : 0)
         let toggleCount = [placement.showsShapes, placement.showsRuler, placement.showsAddImage, placement.hasMoreControl].filter { isShown in isShown }.count
         let choicesAndSizes = (placement.showsToolChoices ? contents.toolChoicesWidth : 0) + Double(contents.sizeCount) * density.sizePitch
         return rowWidth([Double(placement.shownTools.count) * density.toolPitch, choicesAndSizes, colors, Double(toggleCount) * density.toolPitch],
@@ -214,14 +228,15 @@ enum PencilToolRowLayout {
     }
 
     /// The last fold stage with scrolling colors for a bar `availableWidth` wide: as many whole colors as fit beside the
-    /// rest. Nil where every color fits (a folded form without scrolling is then shown) or fewer than
+    /// rest. Nil where the strip's whole width fits (a folded form is then shown) or fewer than
     /// `minimumVisibleSwatchCount` would.
     static func scrollingColorsArrangement(forWidth availableWidth: Double, holding contents: Contents) -> Arrangement? {
         let density = Density.tightest
         guard contents.swatchCount > minimumVisibleSwatchCount else { return nil }
-        let widthWithoutColors = (width(of: .compactWithScrollingColors(visibleSwatchCount: 0), holding: contents) ?? .infinity) + density.separatorWidth
+        // One color shown, less its width: the section, its separator and the plus stay counted.
+        let widthWithoutColors = (width(of: .compactWithScrollingColors(visibleSwatchCount: 1), holding: contents) ?? .infinity) - density.swatchPitch
         let fittingCount = Int(((availableWidth - widthWithoutColors) / density.swatchPitch).rounded(.down))
-        guard fittingCount >= minimumVisibleSwatchCount, fittingCount < contents.swatchCount else { return nil }
+        guard fittingCount >= minimumVisibleSwatchCount, fittingCount < min(contents.swatchCount, maximumVisibleSwatchCount) else { return nil }
         return .compactWithScrollingColors(visibleSwatchCount: fittingCount)
     }
 
@@ -248,36 +263,38 @@ extension PencilToolRowLayout {
         case .laser: .laser
         case .text: .text
         case .readAloud: .readAloud
+        case .textHighlighter: .textHighlighter
         }
     }
 
     /// Whether the colors follow the tool's own controls: not for the laser pointer, which points in its own red, nor for
-    /// the Read Aloud pen or the text tool, which have their own.
-    static func offersColors(toolInUse: PencilToolKind) -> Bool { toolInUse != .laser && toolInUse != .readAloud && toolInUse != .text }
+    /// the Read Aloud pen, the text tool or the text highlighter, which have their own (the text highlighter's styles
+    /// stand beside it, `PDFTextHighlighterStyleChoices`).
+    static func offersColors(toolInUse: PencilToolKind) -> Bool {
+        switch toolInUse {
+        case .ink, .eraser, .lasso: true
+        case .laser, .readAloud, .text, .textHighlighter: false
+        }
+    }
 
     /// Whether the bar shows the highlighter's colors rather than black and the favorite colors.
     @MainActor static func editsHighlighterColors(_ toolbox: PencilToolbox) -> Bool { toolbox.presetInUse.ink == .highlighter }
 
-    /// Whether the plus that adds the color in use shows: only while an ink's color, as Other Color chose it, is not in
-    /// the list the bar shows (black is always on a pen's bar).
-    @MainActor static func showsAddColor(_ toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor]) -> Bool {
-        let colorInUse = toolbox.presetInUse.colorHex
-        let editsHighlighterColors = editsHighlighterColors(toolbox)
-        let isBlackOnAPensBar = !editsHighlighterColors
-            && TextColorMarkup.canonicalHex(colorInUse) == TextColorMarkup.canonicalHex(PencilInk.pen.defaultColorHex)
-        return toolbox.toolInUse == .ink && !isBlackOnAPensBar
-            && !FavoriteColorEditing.contains(hex: colorInUse, in: editsHighlighterColors ? highlighterColors : favorites)
-    }
+    /// Whether the plus that saves a color as a swatch shows: wherever the strip of colors does, so the bar keeps its
+    /// width as the tool changes. It saves the color in use when the strip does not have it, and otherwise opens the
+    /// color picker for a new one (`FavoriteColorEditing.additionStep`).
+    @MainActor static func showsAddColor(_ toolbox: PencilToolbox) -> Bool { offersColors(toolInUse: toolbox.toolInUse) }
 
     /// What the bar holds for `toolbox` with these colors from Settings › Colors: the row's tools, the tool in use, its
     /// sizes, black and the favorite colors (or the highlighter's) and the plus, and Add Image where `offersImages`.
     @MainActor static func contents(of toolbox: PencilToolbox, favorites: [PaletteColor], highlighterColors: [PaletteColor],
-                                    offersTextBoxes: Bool, offersReadAloudPen: Bool, offersImages: Bool) -> Contents {
+                                    offersTextMarking: Bool, offersTextBoxes: Bool, offersReadAloudPen: Bool, offersImages: Bool) -> Contents {
         let offersColors = offersColors(toolInUse: toolbox.toolInUse)
         let swatchCount = editsHighlighterColors(toolbox) ? highlighterColors.count : 1 + favorites.count
-        return Contents(tools: tools(presetCount: toolbox.presets.count, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen),
+        return Contents(tools: tools(presetCount: toolbox.presets.count, offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes,
+                                     offersReadAloudPen: offersReadAloudPen),
                         toolInUse: toolInUse(of: toolbox), sizeCount: toolbox.toolInUse == .ink || toolbox.toolInUse == .eraser ? 3 : 0,
                         offersColors: offersColors, swatchCount: offersColors ? swatchCount : 0,
-                        showsAddColor: showsAddColor(toolbox, favorites: favorites, highlighterColors: highlighterColors), offersImages: offersImages)
+                        showsAddColor: showsAddColor(toolbox), offersImages: offersImages)
     }
 }

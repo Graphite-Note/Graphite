@@ -5,8 +5,8 @@
  * Description: Renders and caches small page images for the pages sidebar.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -129,7 +129,7 @@ final class PDFThumbnailRenderer {
         context.draw(contentImage, in: CGRect(x: 0, y: 0, width: contentImage.width, height: contentImage.height))
         // A bitmap context already has the PDF's upward y axis.
         context.scaleBy(x: content.pixelsPerPagePoint, y: content.pixelsPerPagePoint)
-        for annotation in annotations { annotation.draw(with: .cropBox, in: context) }
+        for annotation in annotations { annotation.drawAsShown(with: .cropBox, in: context) }
         guard let compositeImage = context.makeImage() else { return Self.image(contentImage, pointSize: content.outputSize, scale: content.scale) }
         return Self.image(compositeImage, pointSize: content.outputSize, scale: content.scale)
     }
@@ -145,9 +145,11 @@ final class PDFThumbnailRenderer {
     /// Draws the whole page on the main actor, for a page without a Core Graphics page or
     /// one turned while its content was drawn. PDFKit's page and annotation drawing both
     /// apply the page rotation themselves, in a context with the PDF's upward y axis.
-    /// Graphite's ink and text boxes, which the document hides while a page's overlay shows them.
+    /// Graphite's ink, text boxes and pictures, and shapes, which the document hides while a
+    /// page's overlay shows them (the ink under its canvas, the objects over the ink in it).
     private static func isHiddenUnderLiveOverlay(_ annotation: PDFAnnotation) -> Bool {
         annotation.value(forAnnotationKey: PDFPageManager.groupKey) != nil || annotation.value(forAnnotationKey: PDFPageManager.textBoxRecordKey) != nil
+            || PDFPageManager.isPicture(annotation) || PDFShape.isShape(annotation)
     }
 
     private func render(_ page: PDFPage, fitting pointSize: CGSize, scale: CGFloat) -> PDFThumbnailImage {
@@ -164,10 +166,10 @@ final class PDFThumbnailRenderer {
         let pixelsPerPagePoint = CGFloat(pixelWidth) / displayedWidth
         context.scaleBy(x: pixelsPerPagePoint, y: pixelsPerPagePoint)
         page.draw(with: .cropBox, to: context)
-        // Ink under a live Pencil canvas, and text boxes over it, are hidden in the document;
-        // draw them here explicitly.
-        for annotation in page.annotations where !annotation.shouldDisplay && Self.isHiddenUnderLiveOverlay(annotation) {
-            annotation.draw(with: .cropBox, in: context)
+        // Ink under a live Pencil canvas or drawn by its page's ink layer on the Mac, and text
+        // boxes over it, are hidden in the document; draw them here explicitly.
+        for annotation in page.annotations where (!annotation.shouldDisplay || annotation.isDrawnByPageInkLayer) && Self.isHiddenUnderLiveOverlay(annotation) {
+            annotation.drawAsShown(with: .cropBox, in: context)
         }
         guard let pageImage = context.makeImage() else { return page.thumbnail(of: outputSize, for: .cropBox) }
         return Self.image(pageImage, pointSize: outputSize, scale: scale)

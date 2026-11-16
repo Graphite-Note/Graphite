@@ -26,6 +26,7 @@
         openURL: context.environment.openURL
       )
       view.linkHoverAction = context.environment.textLinkHoverAction
+      view.linkInteractions = context.environment.textLinkInteractions
       return view
     }
 
@@ -34,6 +35,7 @@
       uiView.exclusionRects = overflowFrames
       uiView.openURL = context.environment.openURL
       uiView.linkHoverAction = context.environment.textLinkHoverAction
+      uiView.linkInteractions = context.environment.textLinkInteractions
     }
   }
 #endif

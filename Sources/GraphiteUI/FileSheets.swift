@@ -2,11 +2,11 @@
  * File: FileSheets.swift
  * ----------------------
  * Layer: UI
- * Description: The Rename, New Folder and Move sheets of the file tree.
+ * Description: The Rename, New Folder and Move sheets of the file tree, and the file chooser of Import….
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.5
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -46,6 +46,12 @@ struct FileManagementPresentation: ViewModifier {
                     }
                 }
                 .tint(workspace.preferences.accentColor)
+            }
+            .fileImporter(isPresented: $workspace.isChoosingFilesToImport, allowedContentTypes: [.item, .folder], allowsMultipleSelection: true) { result in
+                // A cancelled chooser imports nothing; there is nothing to report. Notebooks and folders are converted
+                // or copied whole by the importers by file type (`importFiles(from:into:)`).
+                guard case .success(let sources) = result, !sources.isEmpty else { return }
+                Task { await workspace.importFiles(from: sources, into: workspace.newFileDirectory(nil)) }
             }
             .sheet(item: $workspace.conflictVersionsRequest) { request in
                 ConflictVersionsSheet(workspace: workspace, request: request)

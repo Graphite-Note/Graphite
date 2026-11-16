@@ -6,8 +6,8 @@
  *              break it, so a formula is drawn in pieces that wrap like words.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 24/10/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 @_spi(Textual) private import SwiftUIMath
@@ -31,19 +31,29 @@ enum InlineMathLineBreaks {
   /// could change how it is drawn (a style switch or an infix fraction at its outer level).
   static func pieces(of latex: String) -> [String]? {
     let characters = Array(latex)
-    var scanner = Scanner(characters: characters)
-    guard let breaks = scanner.lineBreaks(), !breaks.isEmpty else {
+    guard let cuts = cuts(of: characters) else {
       return nil
     }
     var pieces: [String] = []
     var pieceStart = 0
-    for lineBreak in breaks {
-      let space = lineBreak.isAfterRelation ? spaceAfterRelation : spaceAfterBinaryOperator
-      pieces.append(String(characters[pieceStart..<lineBreak.offset]) + space)
-      pieceStart = lineBreak.offset
+    for cut in cuts {
+      pieces.append(String(characters[pieceStart..<cut.offset]) + cut.spaceAfterOperator)
+      pieceStart = cut.offset
     }
     pieces.append(String(characters[pieceStart...]))
     return pieces
+  }
+
+  /// Graphite patch 26: where the formula is cut, as offsets in its characters, each with the
+  /// space TeX puts after the operator before it; nil as for `pieces(of:)`.
+  static func cuts(of characters: [Character]) -> [(offset: Int, spaceAfterOperator: String)]? {
+    var scanner = Scanner(characters: characters)
+    guard let breaks = scanner.lineBreaks(), !breaks.isEmpty else {
+      return nil
+    }
+    return breaks.map { lineBreak in
+      (lineBreak.offset, lineBreak.isAfterRelation ? spaceAfterRelation : spaceAfterBinaryOperator)
+    }
   }
 }
 

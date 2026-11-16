@@ -3,11 +3,11 @@
  * ----------------------------------------------
  * Layer: UI
  * Description: Draws what Live Preview shows over hidden markup: bullets, task boxes, quote bars,
- *              inline formulas.
+ *              inline formulas, and the pictures of an image line shown among its text.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.9
- * Date: 02/11/2026
+ * Version: 0.10
+ * Date: 12/11/2026
  */
 
 #if canImport(UIKit)
@@ -33,7 +33,8 @@ private extension NSBezierPath {
 #endif
 
 /// Draws Live Preview's replacements (bullets, task checkboxes, the " > " of
-/// `[[Note#Heading]]`, and inline math) over the invisible markup they stand for. The
+/// `[[Note#Heading]]`, inline math, and an image line's pictures while the cursor shows one
+/// embed's source, `LivePreviewInlinePictures`) over the invisible markup they stand for. The
 /// note's text is never changed, so saving and undo stay exact. Both editors install it.
 final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
     /// Whether the paragraph holds inline math. TextKit makes a new element and fragment
@@ -82,6 +83,7 @@ final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
         let wholeString = NSRange(location: 0, length: attributedString.length)
         attributedString.enumerateAttributes(in: wholeString) { attributes, _, _ in
             if attributes[ConcealedReplacement.mathAttributeKey] != nil { needs.containsInlineMath = true; needs.drawsOverText = true }
+            if attributes[ConcealedReplacement.pictureAttributeKey] != nil { needs.drawsOverText = true }
             if let replacement = attributes[ConcealedReplacement.attributeKey] as? String {
                 needs.drawsOverText = true
                 if replacement == ConcealedReplacement.quoteBar.rawValue { needs.containsQuoteBar = true }
@@ -223,6 +225,7 @@ final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
                 Self.draw(replacement, in: box, font: font, color: color)
             }
             drawInlineMath(in: lineFragment, lineOrigin: lineOrigin, baseline: baseline)
+            drawInlinePictures(in: lineFragment, lineOrigin: lineOrigin, baseline: baseline)
         }
         if let quoteBars, let firstLine = textLineFragments.first, let lastLine = textLineFragments.last {
             drawQuoteBars(at: quoteBars.offsets, color: quoteBars.color, from: point, firstLine: firstLine, lastLine: lastLine)
@@ -284,7 +287,7 @@ final class ConcealedReplacementLayoutFragment: NSTextLayoutFragment {
             let characterBeforeLastLocation = (attributedString.string as NSString).rangeOfComposedCharacterSequence(at: NSMaxRange(formulaRange) - 2).location
             guard NSLocationInRange(characterBeforeLastLocation, lineFragment.characterRange) else { return }
             let roomStartX = lineOrigin.x + lineFragment.locationForCharacter(at: characterBeforeLastLocation).x
-            Self.draw(layout, atX: roomStartX + InlineMathLayout.horizontalPadding, baseline: baseline)
+            Self.draw(layout, atX: roomStartX + layout.leadingPadding, baseline: baseline)
         }
     }
 

@@ -5,8 +5,8 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.18
- * Date: 02/11/2026
+ * Version: 0.19
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -50,41 +50,34 @@ final class MarkdownSession {
     /// editor has not applied yet, or an edit followed by an undo back to the same text.
     private(set) var editVersion = 0
     var selection = NSRange(location: 0, length: 0)
-    /// Reading view, Live Preview, or source mode, as for an Obsidian tab.
-    var viewMode: NoteViewMode = .livePreview {
-        didSet {
-            if viewMode != oldValue { didChangeViewMode?(viewMode) }
-            guard (oldValue == .reading) != (viewMode == .reading) else { return }
-            if viewMode == .reading {
-                // The editor records the line at its top as it goes off screen, after this.
-                readingStartsWhereEditorWas = true
-            } else {
-                let location = readingPosition.topLocation()
-                savedScrollLocation = location
-                pendingEditingLocation = location ?? 0
-            }
+    /// Reading view, Live Preview, or source mode, as for an Obsidian tab. The new mode is stored, and the switch made,
+    /// before observers hear of it: SwiftUI can draw the note's pane at once from inside that notice, which Observation
+    /// sends before a stored property changes, and a pane drawn there read the mode it was leaving and was not drawn again,
+    /// the reading view left on screen in source mode (Docs/Editor-scrolling-todo.md).
+    var viewMode: NoteViewMode {
+        get {
+            access(keyPath: \.viewMode)
+            return viewModeSwitch.mode
+        }
+        set {
+            let change = viewModeSwitch.switchMode(to: newValue) { readingPosition.topLocation() }
+            if case .leftReading(let topLocation) = change { savedScrollLocation = topLocation }
+            if change != .unchanged { didChangeViewMode?(newValue) }
+            withMutation(keyPath: \.viewMode) {}
         }
     }
+    @ObservationIgnored private var viewModeSwitch = NoteViewModeSwitch()
     /// Tells the workspace a switch to remember, after the note opened in its view.
     @ObservationIgnored var didChangeViewMode: ((NoteViewMode) -> Void)?
-    /// Whether the reading view, about to be shown, starts at the line that was at the top
-    /// of the editor rather than where it was itself.
-    @ObservationIgnored private var readingStartsWhereEditorWas = false
-    /// Where the editor, about to be shown, starts: the character that was at the top of
-    /// the reading view, in the note's text.
-    @ObservationIgnored private var pendingEditingLocation: Int?
 
     /// The character the reading view starts at, once, after the note switched from writing.
     func takeReadingStartLocation() -> Int? {
-        guard readingStartsWhereEditorWas else { return nil }
-        readingStartsWhereEditorWas = false
-        return savedScrollLocation ?? 0
+        viewModeSwitch.takeReadingStartsWhereEditorWas() ? savedScrollLocation ?? 0 : nil
     }
 
     /// The character the editor starts at, once, after the note switched from reading.
     func takeEditingStartLocation() -> Int? {
-        defer { pendingEditingLocation = nil }
-        return pendingEditingLocation
+        viewModeSwitch.takeEditingStartLocation()
     }
     /// Link and tag suggestions at the cursor.
     let completion = CompletionModel()
@@ -121,7 +114,7 @@ final class MarkdownSession {
         let topLocation = min(max(place.topLocation, 0), textLength)
         savedScrollLocation = topLocation > 0 ? topLocation : nil
         // The reading view starts at that line too, when the note opens in reading view.
-        readingStartsWhereEditorWas = topLocation > 0
+        viewModeSwitch.startsReadingWhereEditorWas(topLocation > 0)
         let selectionLocation = min(max(place.selectionLocation, 0), textLength)
         selection = NSRange(location: selectionLocation, length: min(max(place.selectionLength, 0), textLength - selectionLocation))
     }
@@ -316,7 +309,7 @@ final class MarkdownSession {
             await checkFileTooLargeToRead()
         } catch {
             guard !isSaving, revision == revisionBeforeRead else { return }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 
@@ -455,14 +448,13 @@ final class MarkdownSession {
     /// captures the text. Without an editor, the same work is applied to the model.
     @ObservationIgnored var applyPendingInsertionsBeforeSaving: (() -> Void)?
 
-    /// Writes what rendered blocks' views hold back into the text, by the view that holds it:
-    /// a table cell's draft waits for typing to pause, and a save right after the last key
-    /// (quitting, closing the tab, leaving the app) must not go without those characters.
-    @ObservationIgnored var draftCommitsOfViews: [ObjectIdentifier: () -> Void] = [:]
+    /// What the note's rendered blocks' views hold for it: the table cells' drafts a save writes
+    /// first, and the table cell whose commands the palette and the Edit menu offer.
+    let blockViews = RenderedBlockViewsOfNote()
 
     /// What a save must take in first: the views' drafts, then the insertions waiting.
     func bringWaitingTextIntoNote() {
-        for commit in draftCommitsOfViews.values { commit() }
+        for commit in blockViews.draftCommits.values { commit() }
         flushPendingInsertions()
     }
 

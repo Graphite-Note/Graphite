@@ -5,8 +5,8 @@
  * Description: The graphite:// and obsidian:// links Graphite reads and writes.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -31,6 +31,18 @@ final class VaultURITests: XCTestCase {
         XCTAssertEqual(uri("GRAPHITE://OPEN?Vault=Physics&FILE=Note"), VaultURI(vault: "Physics", action: .open(file: "Note", path: nil)), "Ignoring capitals.")
         XCTAssertEqual(uri("obsidian:open?vault=Physics&file=Note"), VaultURI(vault: "Physics", action: .open(file: "Note", path: nil)))
         XCTAssertEqual(uri("obsidian://vault/Physics/Course/Lecture%201"), VaultURI(vault: "Physics", action: .open(file: "Course/Lecture 1", path: nil)))
+    }
+
+    func testReadsAndWritesTheGuideLink() {
+        XCTAssertEqual(uri("graphite://guide"), VaultURI(vault: nil, action: .guide(file: nil, freshCopy: false)))
+        XCTAssertEqual(uri("graphite://guide?file=1%20New%20to%20files%2FWhat%20a%20vault%20is"),
+                       VaultURI(vault: nil, action: .guide(file: "1 New to files/What a vault is", freshCopy: false)))
+        XCTAssertEqual(uri("graphite://guide?fresh=true&vault=Physics"), VaultURI(vault: nil, action: .guide(file: nil, freshCopy: true)),
+                       "The guide is always its own vault, whatever a link names.")
+        for (file, freshCopy) in [(nil, false), ("Start here", false), ("4 Making notes look good/Math", true), ("Café #2", false)] as [(String?, Bool)] {
+            let link = try? XCTUnwrap(VaultURI.guideLink(to: file, freshCopy: freshCopy))
+            XCTAssertEqual(link.flatMap(VaultURI.init(url:)), VaultURI(vault: nil, action: .guide(file: file, freshCopy: freshCopy)), "\(String(describing: file))")
+        }
     }
 
     func testReadsNewNotes() {

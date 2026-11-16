@@ -229,7 +229,7 @@ extension PDFAnnotationCoordinator {
         do {
             try session.apply(.updateInk(update))
         } catch {
-            session.errorMessage = error.localizedDescription
+            session.errorMessage.report(error)
         }
     }
 }

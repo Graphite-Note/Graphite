@@ -2,19 +2,21 @@
  * File: UiFileTreeNativeMacTests.swift
  * ------------------------------------
  * Layer: Tests
- * Description: The Mac's file tree (AppKit outline view): many root files at once, folding, dragging and dropping,
- *              and each row's menu, Reveal in Finder included.
+ * Description: The Mac's file tree (AppKit outline view): many root files at once, folding, dragging and dropping
+ *              (notebooks and ZIP archives from the Finder included), and each row's menu, Reveal in Finder included.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.6
- * Date: 01/11/2026
+ * Version: 0.8
+ * Date: 13/11/2026
  */
 
 #if os(macOS)
 import AppKit
+import PDFKit
 import SwiftUI
 import XCTest
 import GraphiteApple
+import GraphiteFixtures
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -182,6 +184,59 @@ final class UiFileTreeNativeMacTests: XCTestCase {
 
         let webDrag = FakeDraggingInfo(webAddress: try XCTUnwrap(URL(string: "https://example.com")))
         XCTAssertEqual(controller.outlineView(outlineView, validateDrop: webDrag, proposedItem: course, proposedChildIndex: NSOutlineViewDropOnItemIndex), [])
+    }
+
+    /// A Goodnotes notebook dragged from the Finder onto a folder of the file list is converted into that folder, as
+    /// one dropped on the library is: the drop reaches the notebook import through the importers by file type.
+    func testANotebookFromTheFinderIsConvertedIntoTheFolderItLandsIn() async throws {
+        let workspace = try makeWorkspace(files: ["Course/Week 1.md", "Inbox.md"])
+        let vault = try XCTUnwrap(workspace.folderAccess?.root)
+        await workspace.refreshDirectory()
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 2 }
+        let controller = try XCTUnwrap((outlineView as? FileTreeOutlineView)?.controller)
+        let course = try XCTUnwrap(outlineView.item(atRow: 0))
+        let notebook = FixtureFolders.syntheticNotebooks.appendingPathComponent("Synthetic text boxes.goodnotes")
+
+        let finderDrag = FakeDraggingInfo(fileLocations: [notebook])
+        XCTAssertEqual(controller.outlineView(outlineView, validateDrop: finderDrag, proposedItem: course, proposedChildIndex: NSOutlineViewDropOnItemIndex), .copy)
+        XCTAssertTrue(controller.outlineView(outlineView, acceptDrop: finderDrag, item: course, childIndex: NSOutlineViewDropOnItemIndex))
+        try await waitUntil("the notebook import has ended", timeoutSeconds: 30) {
+            if case .finished = workspace.notebookImport?.state { true } else { false }
+        }
+        let pdf = vault.appendingPathComponent("Course/Synthetic text boxes.pdf")
+        XCTAssertEqual(PDFDocument(url: pdf)?.page(at: 0).map(PDFPageManager.textBoxes(on:))?.count, 4, "Converted, its text boxes and all.")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Course/Synthetic text boxes.goodnotes").path),
+                       "Not copied as the file it is.")
+        workspace.endNotebookImport()
+    }
+
+    /// A ZIP from the Finder, here a Goodnotes export of two notebooks, is unpacked where it lands, as Import unpacks it.
+    func testAZipFromTheFinderIsUnpackedAndItsNotebooksConvertedInTheFolderItLandsIn() async throws {
+        let workspace = try makeWorkspace(files: ["Course/Week 1.md", "Inbox.md"])
+        let vault = try XCTUnwrap(workspace.folderAccess?.root)
+        await workspace.refreshDirectory()
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 2 }
+        let controller = try XCTUnwrap((outlineView as? FileTreeOutlineView)?.controller)
+        let course = try XCTUnwrap(outlineView.item(atRow: 0))
+        let notebooks = FixtureFolders.syntheticNotebooks
+        let archive = try TemporaryVault.make(prefix: "FinderArchive", for: self).root.appendingPathComponent("Export.zip")
+        try StoredZipArchive.write([
+            ("Synthetic lecture.goodnotes", try Data(contentsOf: notebooks.appendingPathComponent("Synthetic lecture.goodnotes"))),
+            ("Typed/Synthetic typed note.note", try Data(contentsOf: notebooks.appendingPathComponent("Synthetic typed note.note"))),
+        ], to: archive)
+
+        let finderDrag = FakeDraggingInfo(fileLocations: [archive])
+        XCTAssertEqual(controller.outlineView(outlineView, validateDrop: finderDrag, proposedItem: course, proposedChildIndex: NSOutlineViewDropOnItemIndex), .copy)
+        XCTAssertTrue(controller.outlineView(outlineView, acceptDrop: finderDrag, item: course, childIndex: NSOutlineViewDropOnItemIndex))
+        try await waitUntil("the notebook import has ended", timeoutSeconds: 60) {
+            if case .finished = workspace.notebookImport?.state { true } else { false }
+        }
+        XCTAssertEqual(PDFDocument(url: vault.appendingPathComponent("Course/Export/Synthetic lecture.pdf"))?.pageCount, 3)
+        XCTAssertEqual(PDFDocument(url: vault.appendingPathComponent("Course/Export/Typed/Synthetic typed note.pdf"))?.pageCount, 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Course/Export.zip").path), "Not copied as the ZIP it is.")
+        workspace.endNotebookImport()
     }
 
     /// A row's menu is the sidebar's: the iPad's rows show it as their context menu.

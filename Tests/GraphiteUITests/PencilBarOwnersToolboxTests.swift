@@ -5,11 +5,11 @@
  * Description: The Pencil bar with the owner's own toolbox (a monoline, a pencil and a highlighter, no pen) and with the
  *              other toolboxes a person could set up: every favorite color, the ruler, the writing tools and Add Image
  *              stay buttons on the 11-inch iPad's bar upright and sideways, and only the least used controls fold
- *              (HUNT-317).
+ *              (HUNT-317); past nine colors the strip scrolls (Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 05/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -78,7 +78,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     /// What a PDF's bar holds with `toolbox` and the default colors: the text tool and, as on his iPad, the Read Aloud pen.
     private func barContents(of toolbox: PencilToolbox) -> Layout.Contents {
         var contents = Layout.contents(of: toolbox, favorites: PaletteColor.defaultPalette, highlighterColors: PaletteColor.defaultHighlighterPalette,
-                                       offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+                                       offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         switch toolbox.toolInUse {
         case .eraser: contents.toolChoicesWidth = Self.eraserChoicesWidth
         case .lasso: contents.toolChoicesWidth = Self.lassoChoicesWidth
@@ -122,7 +122,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         }
     }
 
-    func testTheOwnersBarFoldsNothingUprightOrSidewaysWhileWritingWithAnInk() throws {
+    func testTheOwnersBarFoldsNothingUprightOrSidewaysWhileWritingWithAnInkAndOnlyTheOccasionalToolsInFocus() throws {
         let toolbox = try ownersToolbox()
         for presetIndex in toolbox.presets.indices {
             toolbox.usePreset(at: presetIndex)
@@ -131,15 +131,18 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
             let upright = Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox))
             XCTAssertTrue([Layout.Arrangement.whole(.regular), .whole(.tight)].contains(upright), "\(ink) upright: at most the gaps are smaller (\(upright)).")
         }
-        XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.regular), "The highlighter's six colors fit sideways' spacing.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tight),
+                       "The highlighter's six colors, closer since the text highlighter joined a PDF's tools (2026-11-16).")
         toolbox.usePreset(at: 0)
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tight), "The monoline with black and eight favorites.")
         toolbox.use(.eraser)
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: barContents(of: toolbox)), .whole(.tightest),
                        "The eraser upright, with Strokes or Pixels beside it: smaller gaps and mini colors, nothing folded.")
         toolbox.usePreset(at: 0)
-        XCTAssertEqual(Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: barContents(of: toolbox)), .whole(.tightest),
-                       "Beside Undo, Redo and Write, the monoline's bar still folds nothing.")
+        // Since the text highlighter joined a PDF's tools (2026-11-16) the occasional tools go behind More here; every
+        // writing control, size and color stays on the bar.
+        XCTAssertEqual(Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: barContents(of: toolbox)), .folded(.occasionalTools),
+                       "Beside Undo, Redo and Write, the monoline's bar folds only the laser, text highlighter, text and Read Aloud tools.")
     }
 
     func testBesideUndoRedoAndWriteTheEraserFoldsOnlyTheLeastUsedControls() throws {
@@ -149,7 +152,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         let arrangement = Layout.arrangement(forWidth: Self.uprightBesideUndoRedoAndWrite, holding: contents)
         XCTAssertEqual(arrangement, .folded(.choicesAndShapes))
         let placement = try XCTUnwrap(Layout.placement(of: arrangement, holding: contents))
-        XCTAssertEqual(placement.foldedTools, [.laser, .text, .readAloud])
+        XCTAssertEqual(placement.foldedTools, [.laser, .textHighlighter, .text, .readAloud])
         XCTAssertFalse(placement.showsToolChoices, "Strokes or Pixels is in More.")
         XCTAssertFalse(placement.showsShapes)
         XCTAssertTrue(placement.showsAddImage, "Add Image stays on the bar.")
@@ -158,8 +161,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     // MARK: Toolboxes a person could set up
 
     /// Every count of pens, pencils and highlighters from none to four that the toolbox holds (one to six presets), with
-    /// none to twelve favorite colors, each ink, the eraser and the lasso in use, and the plus showing for an ink: at
-    /// 834 and 1,194 points every preset, the eraser, the lasso, the ruler, Add Image and every color are on the bar.
+    /// none to twelve favorite colors, each ink, the eraser and the lasso in use, and the plus showing with the colors: at
+    /// 834 and 1,194 points every preset, the eraser, the lasso, the ruler, Add Image, the plus and the strip of colors
+    /// (nine at most showing, the rest scrolling inside it) are on the bar.
     func testEveryToolboxAPersonCouldSetUpKeepsTheWritingControlsOnTheBarUprightAndSideways() throws {
         var checkedCount = 0
         for penCount in 0...4 { for pencilCount in 0...4 { for highlighterCount in 0...4 {
@@ -186,7 +190,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
 
     /// The bar's contents for `inks` with each of them, the eraser and the lasso in use.
     private func barContents(inks: [PencilInk], favoriteCount: Int) -> [(String, Layout.Contents)] {
-        let tools = Layout.tools(presetCount: inks.count, offersTextBoxes: true, offersReadAloudPen: true)
+        let tools = Layout.tools(presetCount: inks.count, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true)
         let highlighterColorCount = PaletteColor.defaultHighlighterPalette.count
         var contents = inks.enumerated().map { presetIndex, ink in
             ("\(ink.title) \(presetIndex)", Layout.Contents(tools: tools, toolInUse: .preset(index: presetIndex), sizeCount: 3, offersColors: true,
@@ -195,9 +199,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         }
         let swatchCountOfTheLastInk = inks.last == .highlighter ? highlighterColorCount : 1 + favoriteCount
         contents.append(("eraser", Layout.Contents(tools: tools, toolInUse: .eraser, sizeCount: 3, offersColors: true, swatchCount: swatchCountOfTheLastInk,
-                                                    showsAddColor: false, offersImages: true, toolChoicesWidth: Self.eraserChoicesWidth)))
+                                                    showsAddColor: true, offersImages: true, toolChoicesWidth: Self.eraserChoicesWidth)))
         contents.append(("lasso", Layout.Contents(tools: tools, toolInUse: .lasso, sizeCount: 0, offersColors: true, swatchCount: swatchCountOfTheLastInk,
-                                                   showsAddColor: false, offersImages: true, toolChoicesWidth: Self.lassoChoicesWidth)))
+                                                   showsAddColor: true, offersImages: true, toolChoicesWidth: Self.lassoChoicesWidth)))
         return contents
     }
 
@@ -209,7 +213,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
                       file: file, line: line)
         if let toolInUse = contents.toolInUse { XCTAssertTrue(placement.shownTools.contains(toolInUse), "\(label): the tool in use.", file: file, line: line) }
         XCTAssertTrue(placement.showsSwatches, "\(label): the colors are on the bar.", file: file, line: line)
-        XCTAssertNil(placement.scrollingSwatchCount, "\(label): every color is on the bar; none scrolls.", file: file, line: line)
+        XCTAssertEqual(placement.scrollingSwatchCount ?? contents.swatchCount, min(contents.swatchCount, Layout.maximumVisibleSwatchCount),
+                       "\(label): every color shows, or nine do and the rest scroll inside the strip.", file: file, line: line)
+        XCTAssertEqual(placement.showsAddColor, contents.showsAddColor, "\(label): the plus, where it shows, is on the bar.", file: file, line: line)
         XCTAssertTrue(placement.showsRuler, "\(label): the ruler.", file: file, line: line)
         XCTAssertTrue(placement.showsAddImage, "\(label): Add Image.", file: file, line: line)
         XCTAssertGreaterThanOrEqual(placement.density.swatchDiameter, 16, "\(label): dots no smaller than the mini ones.", file: file, line: line)

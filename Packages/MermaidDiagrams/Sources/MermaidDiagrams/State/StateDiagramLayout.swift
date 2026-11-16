@@ -14,6 +14,23 @@ public struct StateDiagramLayout: Equatable, Sendable {
     public let notes: [StateDiagramLayoutNote]
     /// The diagram's title above it, or nil.
     public let title: DiagramTextBlock?
+    /// The composite states' boxes, outer ones first, each with its name along its top, drawn as a flowchart's groups
+    /// are; a composite state is its box and is not in `states`.
+    public let composites: [FlowchartLayoutCluster]
+    /// The dashed lines between the concurrent regions of composite states' bodies.
+    public let regionDividers: [DiagramPath]
+
+    init(size: CGSize, font: DiagramFont, states: [StateDiagramLayoutState], transitions: [StateDiagramLayoutTransition],
+         notes: [StateDiagramLayoutNote], title: DiagramTextBlock?, composites: [FlowchartLayoutCluster] = [], regionDividers: [DiagramPath] = []) {
+        self.size = size
+        self.font = font
+        self.states = states
+        self.transitions = transitions
+        self.notes = notes
+        self.title = title
+        self.composites = composites
+        self.regionDividers = regionDividers
+    }
 }
 
 public struct StateDiagramLayoutState: Equatable, Sendable {

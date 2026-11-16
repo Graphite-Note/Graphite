@@ -12,10 +12,11 @@ enum GitGraphOptionsDetection {
         return false
     }
 
-    /// Whether the text before the diagram's keyword, which ends at `keywordStart`, sets options in its front matter
-    /// or in a directive: in any of its lines but `%%` comments.
-    static func setsOptions(inTextBefore keywordStart: Int, of bytes: [UInt8]) -> Bool {
-        var lineStart = 0
+    /// Whether the text before the diagram's keyword, which ends at `keywordStart`, sets options in its front matter or
+    /// in a directive: in any of its lines but `%%` comments; only in a directive when `skipsFrontMatter`, as
+    /// `GitGraphOptions` reads the front matter's block options.
+    static func setsOptions(inTextBefore keywordStart: Int, of bytes: [UInt8], skipsFrontMatter: Bool = false) -> Bool {
+        var lineStart = skipsFrontMatter ? endOfFrontMatter(in: bytes, before: keywordStart) : 0
         while lineStart < keywordStart {
             var lineEnd = lineStart
             while lineEnd < keywordStart, bytes[lineEnd] != MermaidByte.newline { lineEnd += 1 }
@@ -28,6 +29,29 @@ enum GitGraphOptionsDetection {
         }
         return false
     }
+
+    /// Where the text after the front matter's closing `---` line starts, or 0 when the text does not open with one.
+    private static func endOfFrontMatter(in bytes: [UInt8], before keywordStart: Int) -> Int {
+        var lineStart = 0
+        var isInside = false
+        while lineStart < keywordStart {
+            var lineEnd = lineStart
+            while lineEnd < keywordStart, bytes[lineEnd] != MermaidByte.newline { lineEnd += 1 }
+            let line = bytes[lineStart..<lineEnd].drop { byte in MermaidByte.isSpace(byte) }
+            let isFence = line.starts(with: fence) && line.dropFirst(fence.count).allSatisfy { byte in MermaidByte.isSpace(byte) || byte == carriageReturn }
+            if isFence {
+                if isInside { return lineEnd + 1 }
+                isInside = true
+            } else if !isInside, !line.allSatisfy({ byte in MermaidByte.isSpace(byte) || byte == carriageReturn }) {
+                return 0
+            }
+            lineStart = lineEnd + 1
+        }
+        return 0
+    }
+
+    private static let fence = Array("---".utf8)
+    private static let carriageReturn = UInt8(ascii: "\r")
 
     /// A colon after the key, past a closing quotation mark or apostrophe and spaces.
     private static func isFollowedByColon(_ bytes: ArraySlice<UInt8>, from start: Int) -> Bool {

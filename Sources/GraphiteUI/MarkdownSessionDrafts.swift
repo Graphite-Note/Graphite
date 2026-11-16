@@ -37,7 +37,7 @@ extension MarkdownSession {
             } catch is CancellationError {
                 return
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage.report(error)
                 guard !hasExternalConflict, hasUnsavedChanges else { return }
                 consecutiveFailures += 1
                 delay = AutosaveRetryPolicy.delay(afterConsecutiveFailures: consecutiveFailures)

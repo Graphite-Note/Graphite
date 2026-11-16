@@ -20,10 +20,13 @@ struct ReadingClassDiagramDrawing: View {
     let diagram: ReadingClassDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
-            ReadingClassDiagramPainting(shapes: diagram.shapes, colors: ReadingClassDiagramColors(diagram: ReadingDiagramColors(theme: theme)))
+        ReadingScaledDiagram(size: diagram.layout.size, narrowSize: diagram.narrow?.layout.size, layoutTextSize: diagram.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingClassDiagramPainting(shapes: variant == .narrow ? diagram.narrow?.shapes ?? diagram.shapes : diagram.shapes,
+                                        colors: ReadingClassDiagramColors(diagram: ReadingDiagramColors(theme: theme, colorScheme: colorScheme)))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)

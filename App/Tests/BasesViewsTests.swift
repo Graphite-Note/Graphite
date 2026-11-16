@@ -116,7 +116,8 @@ final class BasesViewsTests: XCTestCase {
             annotations: [BaseMapMarkerAnnotation(path: try VaultPath("Places/Paris.md"), coordinate: paris, title: "Paris")],
             cameraTarget: .region(MKCoordinateRegion(center: paris, latitudinalMeters: 40_000, longitudinalMeters: 40_000)),
             cameraConfiguration: 1, cameraLayout: 1, cameraDistances: 100...10_000_000,
-            selectedPath: .constant(nil), pinImage: { _, _ in Self.bluePin }, tileSession: URLSession(configuration: configuration))
+            selectedPath: .constant(nil), pinImage: { _, _ in Self.bluePin }, locationControl: MapUserLocationControl(), deviceLocation: nil,
+            tileSession: URLSession(configuration: configuration))
         let controller = try host(tiledMap)
         let mapView = try XCTUnwrap(Self.firstMapView(in: controller.view))
         return (controller, mapView)

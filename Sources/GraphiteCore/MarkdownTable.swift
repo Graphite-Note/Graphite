@@ -5,8 +5,8 @@
  * Description: A Markdown table read from its source, and the edits of its rows, columns and cells.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 02/11/2026
+ * Version: 0.8
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -329,7 +329,7 @@ public enum MarkdownTableEditing {
 
     // MARK: Column edits
 
-    private static func insertionReplacement(cellText: String, atColumn columnIndex: Int, in line: MarkdownTableLineLayout, isRequired: Bool) -> MarkdownTableReplacement? {
+    static func insertionReplacement(cellText: String, atColumn columnIndex: Int, in line: MarkdownTableLineLayout, isRequired: Bool) -> MarkdownTableReplacement? {
         let cellUnits = Array(cellText.utf16)
         if columnIndex < line.cells.count {
             if columnIndex == 0, !line.hasLeadingPipe {
@@ -386,7 +386,8 @@ public enum MarkdownTableEditing {
 
 // MARK: - Source layout
 
-private enum MarkdownTableUnit {
+/// The table syntax's UTF-16 units; internal so the edits in `MarkdownTableCopyingAndSorting.swift` read the same layout.
+enum MarkdownTableUnit {
     static let pipe = UInt16(UInt8(ascii: "|"))
     static let backslash = UInt16(UInt8(ascii: "\\"))
     static let space = UInt16(UInt8(ascii: " "))
@@ -398,12 +399,12 @@ private enum MarkdownTableUnit {
 }
 
 /// A change to the source, in UTF-16 offsets of the source as it was before any change.
-private struct MarkdownTableReplacement {
+struct MarkdownTableReplacement {
     let range: Range<Int>
     let units: [UInt16]
 }
 
-private struct MarkdownTableCellLayout {
+struct MarkdownTableCellLayout {
     /// Everything between the pipes around the cell, spaces included.
     let segmentRange: Range<Int>
     /// The trimmed text. For an empty cell, an empty range where text typed into it goes:
@@ -415,7 +416,7 @@ private struct MarkdownTableCellLayout {
     var isEmpty: Bool { textRange.isEmpty }
 }
 
-private struct MarkdownTableLineLayout {
+struct MarkdownTableLineLayout {
     /// The line without its line break: indentation, text and trailing spaces.
     let contentRange: Range<Int>
     let endingRange: Range<Int>
@@ -484,7 +485,7 @@ private struct MarkdownTableLineLayout {
 }
 
 /// A table's source split into lines and cells, as UTF-16 units so every position is exact.
-private struct MarkdownTableLayout {
+struct MarkdownTableLayout {
     let units: [UInt16]
     /// The header, the delimiter row, then the body rows.
     let lines: [MarkdownTableLineLayout]

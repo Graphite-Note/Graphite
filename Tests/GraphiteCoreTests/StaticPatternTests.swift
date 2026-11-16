@@ -5,8 +5,8 @@
  * Description: Compiles every constant regular expression of GraphiteCore, so a malformed pattern fails here.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 02/11/2026
+ * Version: 0.8
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -33,6 +33,8 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(HTMLToMarkdownPattern.self)
         assertEveryCaseCompiles(LaTeXCompatibilityPattern.self)
         assertEveryCaseCompiles(LinkLocatorPattern.self)
+        assertEveryCaseCompiles(WebAddressSyntaxPattern.self)
+        assertEveryCaseCompiles(WebLinkDetailsPattern.self)
         assertEveryCaseCompiles(MarkdownBlockIdentifierSyntaxPattern.self)
         assertEveryCaseCompiles(MarkdownHeadingSyntaxPattern.self)
         assertEveryCaseCompiles(MarkdownInlineMathPattern.self)
@@ -42,6 +44,7 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(MarkdownSemanticsPattern.self)
         assertEveryCaseCompiles(MarkdownStyleScannerPattern.self)
         assertEveryCaseCompiles(MarkdownTableEditingPattern.self)
+        assertEveryCaseCompiles(MarkdownTableSortPattern.self)
         assertEveryCaseCompiles(MentionsPattern.self)
         assertEveryCaseCompiles(NoteLinkScannerPattern.self)
         assertEveryCaseCompiles(NotePreviewDocumentPattern.self)
@@ -55,6 +58,8 @@ final class StaticPatternTests: XCTestCase {
         assertEveryCaseCompiles(ReferenceLinkDefinitionsPattern.self)
         assertEveryCaseCompiles(TagSyntaxPattern.self)
         assertEveryCaseCompiles(TemplateRendererPattern.self)
+        assertEveryCaseCompiles(CalendarTemplateVariablePattern.self)
+        assertEveryCaseCompiles(TaskReminderPattern.self)
         assertEveryCaseCompiles(TextColorMarkupPattern.self)
     }
 

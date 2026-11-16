@@ -6,8 +6,8 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.7
- * Date: 11/11/2026
+ * Version: 0.10
+ * Date: 12/11/2026
  */
 import Foundation
 import GraphiteCore
@@ -54,6 +54,7 @@ enum GraphiteCommand: String, CaseIterable {
     case closeTab = "workspace:close", reopenClosedTab = "workspace:undo-close-pane", save = "editor:save-file"
     case renameFile = "workspace:edit-file-title", moveFile = "file-explorer:move-file", duplicateFile = "file-explorer:duplicate-file"
     case deleteFile = "app:delete-file", revealFile = "file-explorer:reveal-active-file", collapseFolders = "graphite:collapse-all-folders"
+    case filterFiles = "graphite:filter-file-tree"
     case copyURL = "workspace:copy-url", reviewOtherVersions = "graphite:review-other-versions"
     case exportToPDF = "workspace:export-pdf", printNote = "graphite:print-file"
     case browseSnapshots = "file-recovery:open", openLocalHistory = "graphite:open-local-history"
@@ -67,6 +68,7 @@ enum GraphiteCommand: String, CaseIterable {
     case toggleFocusMode = "graphite:toggle-focus-mode"
     case increaseFontSize = "graphite:increase-font-size", decreaseFontSize = "graphite:decrease-font-size", resetFontSize = "graphite:reset-font-size"
     case showBookmarks = "bookmarks:open", bookmarkCurrentFile = "bookmarks:bookmark-current-view", bookmarkCurrentSearch = "bookmarks:bookmark-current-search"
+    case showCalendar = "graphite:calendar-show"
     // Go
     case searchAllFiles = "global-search:open", goBack = "app:go-back", goForward = "app:go-forward"
     case nextTab = "workspace:next-tab", previousTab = "workspace:previous-tab"
@@ -76,6 +78,7 @@ enum GraphiteCommand: String, CaseIterable {
     case moveTabToOtherSide = "graphite:move-tab-to-other-side", focusOtherSide = "graphite:focus-other-side"
     case toggleStackedTabs = "workspace:toggle-stacked-tabs", showTabOverview = "graphite:show-tab-overview"
     case todaysDailyNote = "daily-notes", previousDailyNote = "daily-notes:goto-prev", nextDailyNote = "daily-notes:goto-next"
+    case openCurrentEventNote = "graphite:calendar-open-event-note"
     // Editor
     case toggleBold = "editor:toggle-bold", toggleItalics = "editor:toggle-italics", toggleStrikethrough = "editor:toggle-strikethrough"
     case toggleHighlight = "editor:toggle-highlight", toggleCode = "editor:toggle-code", toggleComment = "editor:toggle-comments"
@@ -89,12 +92,28 @@ enum GraphiteCommand: String, CaseIterable {
     case insertTask = "graphite:insert-task", insertTable = "editor:insert-table", insertMathBlock = "editor:insert-mathblock"
     case insertCallout = "editor:insert-callout", insertTemplate = "insert-template", insertNotebook = "graphite:insert-notebook"
     case insertDrawing = "graphite:insert-drawing"
+    case insertCalendarEvents = "graphite:calendar-insert-events", sendTaskToReminders = "graphite:reminders-send-task"
+    case insertReminders = "graphite:reminders-insert"
+    // Tables: the commands of a Live Preview table's cell (`TableCellCommand`), with Obsidian's
+    // identifiers for its table commands; sorting is Graphite's own.
+    case tableAddRowAbove = "editor:table-row-before", tableAddRowBelow = "editor:table-row-after"
+    case tableMoveRowUp = "editor:table-row-up", tableMoveRowDown = "editor:table-row-down"
+    case tableDuplicateRow = "editor:table-row-copy", tableDeleteRow = "editor:table-row-delete"
+    case tableAddColumnToTheLeft = "editor:table-col-before", tableAddColumnToTheRight = "editor:table-col-after"
+    case tableMoveColumnLeft = "editor:table-col-left", tableMoveColumnRight = "editor:table-col-right"
+    case tableAlignLeft = "editor:table-col-align-left", tableAlignCenter = "editor:table-col-align-center"
+    case tableAlignRight = "editor:table-col-align-right"
+    case tableDuplicateColumn = "editor:table-col-copy", tableDeleteColumn = "editor:table-col-delete"
+    case tableSortAscending = "graphite:table-sort-ascending", tableSortDescending = "graphite:table-sort-descending"
     // Canvas
     case canvasSelectAll = "graphite:canvas-select-all", canvasDeleteSelection = "graphite:canvas-delete-selection"
     case canvasDuplicateSelection = "graphite:canvas-duplicate-selection"
     // PDF, the Mac's markup row and its Annotate commands
     case toggleMarkupToolbar = "graphite:pdf-toggle-markup-toolbar", highlightPDFText = "graphite:pdf-highlight-text"
     case underlinePDFText = "graphite:pdf-underline-text", strikethroughPDFText = "graphite:pdf-strikethrough-text"
+    // PDF, Tools › Arrange for the selected picture, text box or shape
+    case bringPDFObjectToFront = "graphite:pdf-bring-to-front", bringPDFObjectForward = "graphite:pdf-bring-forward"
+    case sendPDFObjectBackward = "graphite:pdf-send-backward", sendPDFObjectToBack = "graphite:pdf-send-to-back"
 
     var identifier: String { rawValue }
 
@@ -121,7 +140,8 @@ enum GraphiteCommand: String, CaseIterable {
 
     private static let iPadOnlyCommands: Set<GraphiteCommand> = [.openSettings, .followLink, .openLinkInNewTab, .openLinkOnOtherSide, .insertDrawing]
     /// The iPad marks a PDF's text from its selection menu and has no markup row.
-    private static let macOnlyCommands: Set<GraphiteCommand> = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText]
+    private static let macOnlyCommands: Set<GraphiteCommand> = [.toggleMarkupToolbar, .highlightPDFText, .underlinePDFText, .strikethroughPDFText,
+                                                                .bringPDFObjectToFront, .bringPDFObjectForward, .sendPDFObjectBackward, .sendPDFObjectToBack]
 
     /// The commands a platform offers.
     static func available(on platform: ShortcutPlatform) -> [GraphiteCommand] {
@@ -175,8 +195,13 @@ extension GraphiteCommand {
         case .deleteFile: return Descriptor(title: "Delete current file", group: .file)
         case .revealFile: return Descriptor(title: "Files: Reveal current file in navigation", group: .file)
         case .collapseFolders: return Descriptor(title: "Files: Collapse all folders", group: .file)
+        // Xcode's Filter in Navigator; Obsidian has no such command, and neither it nor Graphite uses ⌥⌘J.
+        case .filterFiles:
+            return Descriptor(title: "Files: Filter files and folders by name", group: .file, defaultCombinations: command("J", [.command, .option]),
+                              binding: .menuBar, macMenuTitles: ["Filter Files"])
         case .copyURL: return Descriptor(title: "Copy Graphite URL", group: .file)
-        case .exportToPDF: return Descriptor(title: "Export to PDF", group: .file, binding: .menuBar, macMenuTitles: ["Export as PDF…"])
+        case .exportToPDF: return Descriptor(title: "Export to PDF", group: .file, defaultCombinations: command("E", [.command, .shift]),
+                                             binding: .menuBar, macMenuTitles: ["Export as PDF…"]) // ⇧⌘E: free on the Mac and the iPad.
         case .printNote:
             // ⌘P prints on the Mac, as in its other apps; the iPad keeps it for the command palette, as Obsidian does.
             return Descriptor(title: "Print current file", group: .file, defaultCombinations: ShortcutPlatform.current == .macOS ? command("P") : [],
@@ -222,6 +247,7 @@ extension GraphiteCommand {
             return Descriptor(title: "Default text size", group: .view, defaultCombinations: command("0"),
                               binding: .menuBar, macMenuTitles: ["Default Text Size"])
         case .showBookmarks: return Descriptor(title: "Bookmarks: Show bookmarks", group: .view, corePlugin: .bookmarks)
+        case .showCalendar: return Descriptor(title: "Calendar: Show calendar", group: .view, corePlugin: .calendar)
         case .bookmarkCurrentFile: return Descriptor(title: "Bookmarks: Bookmark current file", group: .view, corePlugin: .bookmarks)
         case .bookmarkCurrentSearch: return Descriptor(title: "Bookmarks: Bookmark current search", group: .view, corePlugin: .bookmarks)
         case .searchAllFiles:
@@ -252,15 +278,15 @@ extension GraphiteCommand {
                               macMenuTitles: ["Show All Tabs"])
         case .focusOtherSide:
             return Descriptor(title: "Focus the other side of the split", group: .go, binding: .menuBar, macMenuTitles: ["Focus the Other Side"])
-        case .todaysDailyNote:
-            return Descriptor(title: "Daily notes: Open today's daily note", group: .go,
-                              binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Today's Daily Note"])
+        case .todaysDailyNote: return Descriptor(title: "Daily notes: Open today's daily note", group: .go,
+                                                 binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Today's Daily Note"])
         case .previousDailyNote:
             return Descriptor(title: "Daily notes: Open previous daily note", group: .go,
                               binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Previous Daily Note"])
         case .nextDailyNote:
             return Descriptor(title: "Daily notes: Open next daily note", group: .go,
                               binding: .menuBar, corePlugin: .dailyNotes, macMenuTitles: ["Next Daily Note"])
+        case .openCurrentEventNote: return Descriptor(title: "Calendar: Open note for current event", group: .go, corePlugin: .calendar)
         case .toggleBold: return Descriptor(title: "Toggle bold", group: .editor, defaultCombinations: command("B"), binding: .editor(.bold))
         case .toggleItalics: return Descriptor(title: "Toggle italics", group: .editor, defaultCombinations: command("I"), binding: .editor(.italic))
         case .toggleStrikethrough:
@@ -310,6 +336,12 @@ extension GraphiteCommand {
                               binding: .menuBar, corePlugin: .templates, macMenuTitles: ["Insert Template…"])
         case .insertNotebook: return Descriptor(title: "Notebooks: Insert new notebook", group: .editor)
         case .insertDrawing: return Descriptor(title: "Pencil drawings: Insert drawing", group: .editor, corePlugin: .drawings)
+        case .insertCalendarEvents: return Descriptor(title: "Calendar: Insert the day's events", group: .editor, corePlugin: .calendar)
+        case .sendTaskToReminders: return Descriptor(title: "Reminders: Send task to Reminders", group: .editor, corePlugin: .calendar)
+        case .insertReminders: return Descriptor(title: "Reminders: Insert open reminders", group: .editor, corePlugin: .calendar)
+        case .tableAddRowAbove, .tableAddRowBelow, .tableMoveRowUp, .tableMoveRowDown, .tableDuplicateRow, .tableDeleteRow, .tableAddColumnToTheLeft,
+             .tableAddColumnToTheRight, .tableMoveColumnLeft, .tableMoveColumnRight, .tableAlignLeft, .tableAlignCenter, .tableAlignRight,
+             .tableDuplicateColumn, .tableDeleteColumn, .tableSortAscending, .tableSortDescending: return tableCommandDescriptor
         case .canvasSelectAll: return Descriptor(title: "Select all", group: .canvas, defaultCombinations: command("A"), binding: .canvas, corePlugin: .canvas)
         case .canvasDeleteSelection:
             return Descriptor(title: "Delete selection", group: .canvas, defaultCombinations: named(.backspace, []), binding: .canvas, corePlugin: .canvas)
@@ -327,6 +359,15 @@ extension GraphiteCommand {
                               binding: .menuBar, macMenuTitles: ["Underline Text"])
         case .strikethroughPDFText:
             return Descriptor(title: "PDF: Strike through selected text", group: .pdf, binding: .menuBar, macMenuTitles: ["Strikethrough Text"])
+        // Preview has no Arrange commands, so no shortcut is given; Keynote's ⇧⌘F is Search in all files here.
+        case .bringPDFObjectToFront:
+            return Descriptor(title: "PDF: Bring the selected object to front", group: .pdf, binding: .menuBar, macMenuTitles: ["Bring to Front"])
+        case .bringPDFObjectForward:
+            return Descriptor(title: "PDF: Bring the selected object forward", group: .pdf, binding: .menuBar, macMenuTitles: ["Bring Forward"])
+        case .sendPDFObjectBackward:
+            return Descriptor(title: "PDF: Send the selected object backward", group: .pdf, binding: .menuBar, macMenuTitles: ["Send Backward"])
+        case .sendPDFObjectToBack:
+            return Descriptor(title: "PDF: Send the selected object to back", group: .pdf, binding: .menuBar, macMenuTitles: ["Send to Back"])
         }
     }
 
@@ -334,6 +375,18 @@ extension GraphiteCommand {
     var tabNumber: Int? {
         let tabCommands: [GraphiteCommand] = [.goToTab1, .goToTab2, .goToTab3, .goToTab4, .goToTab5, .goToTab6, .goToTab7, .goToTab8]
         return tabCommands.firstIndex(of: self).map { index in index + 1 }
+    }
+
+    /// A table command is an item of the Edit menu's Table submenu, there while a table's cell
+    /// is edited, with the cell menu's title and no default shortcut.
+    private var tableCommandDescriptor: GraphiteCommandDescriptor {
+        let title = tableCellCommand?.title ?? identifier
+        return GraphiteCommandDescriptor(title: title, group: .editor, binding: .menuBar, macMenuTitles: [title])
+    }
+
+    /// For the table commands, the cell command it runs.
+    var tableCellCommand: TableCellCommand? {
+        TableCellCommand.allCases.first { tableCommand in tableCommand.graphiteCommand == self }
     }
 
     /// For the heading commands, the heading's level.

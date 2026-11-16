@@ -35,7 +35,7 @@ extension WorkspaceModel {
                 target: .drawingOnImage(imagePath: imagePath, notePath: notePath), title: imagePath.name, initialStrokeData: Data(),
                 canvasWidth: canvasWidth, background: .white, format: preferences.drawingFormat, backgroundImage: picture)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
     }
 

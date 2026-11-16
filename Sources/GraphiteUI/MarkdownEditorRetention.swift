@@ -1,3 +1,15 @@
+/**
+ * File: MarkdownEditorRetention.swift
+ * -----------------------------------
+ * Layer: UI
+ * Description: Keeps the native editors of the notes most recently hidden, so their undo history returns with
+ *              them, within bounds, until their window closes.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.2
+ * Date: 12/11/2026
+ */
+
 import Foundation
 #if canImport(UIKit)
 import UIKit
@@ -47,6 +59,9 @@ final class MarkdownEditorRetention {
     }
 
     let limits: Limits
+    /// Whether an editor leaving the screen is kept: not once its window has closed
+    /// (`stopKeepingEditors`), as each kept editor holds the window's workspace.
+    private var keepsEditors = true
     /// Least recently hidden first.
     private var hiddenEditors: [HiddenEditor] = []
     /// Editors on screen, by the identity of their session, so a view that shows the same
@@ -112,7 +127,7 @@ final class MarkdownEditorRetention {
     func keepHiddenEditor(_ editor: any RetainableMarkdownEditor, owner: TabDocument?) -> Bool {
         let sessionIdentifier = ObjectIdentifier(editor.editedSession)
         if attachedEditors[sessionIdentifier]?.editor === editor { attachedEditors[sessionIdentifier] = nil }
-        guard let owner, owner.markdownSession === editor.editedSession,
+        guard keepsEditors, let owner, owner.markdownSession === editor.editedSession,
               limits.maximumHiddenEditorCount > 0, editor.retainedTextLength <= limits.maximumHiddenTextLength else { return false }
         discardHiddenEditors { hidden in hidden.editor.editedSession === editor.editedSession }
         hiddenEditors.append(HiddenEditor(owner: owner, editor: editor))
@@ -133,6 +148,16 @@ final class MarkdownEditorRetention {
     /// Lets go of every hidden editor, as on a memory warning or when another vault opens.
     func discardHiddenEditors() {
         discardHiddenEditors { _ in true }
+    }
+
+    /// The window closed: its hidden editors go, and so does every editor whose view leaves
+    /// the screen from now on, since SwiftUI takes a closed window's views apart after the
+    /// window reports it closed. Each editor holds the workspace through its actions, and the
+    /// workspace holds this, so a closed window's workspace, its notes and the views of their
+    /// blocks stayed until the app quit.
+    func stopKeepingEditors() {
+        keepsEditors = false
+        discardHiddenEditors()
     }
 
     private var hiddenTextLength: Int {

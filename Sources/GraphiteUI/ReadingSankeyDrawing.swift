@@ -8,10 +8,11 @@ struct ReadingSankeyDrawing: View {
     let diagram: ReadingSankeyDiagram
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: diagram.layout.size, layoutTextSize: diagram.layout.font.size, textSize: textSize) {
-            ReadingSankeyPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingSankeyPainting(shapes: diagram.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -30,13 +31,13 @@ private struct ReadingSankeyPainting: View {
         ZStack(alignment: .topLeading) {
             ForEach(shapes.bands.indices, id: \.self) { index in
                 let band = shapes.bands[index]
-                let gradientColors = [ReadingDiagramColors.seriesColor(band.sourceSeriesIndex), ReadingDiagramColors.seriesColor(band.targetSeriesIndex)]
+                let gradientColors = [colors.seriesColor(band.sourceSeriesIndex), colors.seriesColor(band.targetSeriesIndex)]
                 band.outline
                     .fill(LinearGradient(colors: gradientColors, startPoint: band.gradientStart, endPoint: band.gradientEnd))
                     .opacity(SankeyDrawingParts.bandOpacity)
             }
             ForEach(shapes.nodeFills.indices, id: \.self) { index in
-                shapes.nodeFills[index].fill(ReadingDiagramColors.seriesColor(index))
+                shapes.nodeFills[index].fill(colors.seriesColor(index))
             }
             lines(shapes.textLines, color: colors.foreground)
             lines(shapes.valueLines, color: colors.muted)

@@ -83,10 +83,13 @@ private struct ReadingFlowchartDrawing: View {
     let flowchart: ReadingFlowchart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: flowchart.layout.size, layoutTextSize: flowchart.layout.font.size, textSize: textSize) {
-            ReadingFlowchartPainting(shapes: flowchart.shapes, colors: ReadingDiagramColors(theme: theme))
+        ReadingScaledDiagram(size: flowchart.layout.size, narrowSize: flowchart.narrow?.layout.size, layoutTextSize: flowchart.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingFlowchartPainting(shapes: variant == .narrow ? flowchart.narrow?.shapes ?? flowchart.shapes : flowchart.shapes,
+                                     colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -103,12 +106,12 @@ private struct ReadingFlowchartPainting: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             ReadingFlowchartClusterBoxes(clusters: shapes.clusters, colors: colors)
-            shapes.solidEdges.stroke(colors.foreground, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
-            shapes.thickEdges.stroke(colors.foreground, style: Self.lineStyle(width: FlowchartDrawingParts.thickLineWidth))
-            shapes.dottedEdges.stroke(colors.foreground,
+            shapes.solidEdges.stroke(colors.line, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
+            shapes.thickEdges.stroke(colors.line, style: Self.lineStyle(width: FlowchartDrawingParts.thickLineWidth))
+            shapes.dottedEdges.stroke(colors.line,
                                       style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth, dash: FlowchartDrawingParts.dottedDashLengths))
-            shapes.filledMarks.fill(colors.foreground)
-            shapes.strokedMarks.stroke(colors.foreground, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
+            shapes.filledMarks.fill(colors.line)
+            shapes.strokedMarks.stroke(colors.line, style: Self.lineStyle(width: FlowchartDrawingParts.lineWidth))
             ForEach(shapes.styledEdges.indices, id: \.self) { index in styledEdge(shapes.styledEdges[index]) }
             ReadingFlowchartCrossedClusterTitles(clusters: shapes.clusters, colors: colors)
             shapes.edgeTextPatches.fill(colors.background)
@@ -126,7 +129,7 @@ private struct ReadingFlowchartPainting: View {
 
     /// An edge with its own stroke or colors: the line, then its marks, in its color or the usual line color.
     private func styledEdge(_ edge: ReadingFlowchartStyledEdge) -> some View {
-        let color = edge.color.map { color in Color(color) } ?? colors.foreground
+        let color = edge.color.map { color in Color(color) } ?? colors.line
         return ZStack(alignment: .topLeading) {
             edge.line.stroke(color, style: Self.lineStyle(width: edge.lineWidth, dash: edge.dashLengths))
             edge.filledMarks.fill(color)
@@ -152,9 +155,9 @@ private struct ReadingFlowchartPainting: View {
     }
 }
 
-/// The groups' boxes behind everything, as Pele paints them: the fills depth by depth, each half of the alternate
+/// The groups' boxes behind everything, as Pele paints them (a state diagram's composite states' too): the fills depth by depth, each half of the alternate
 /// surface over what is behind, the outlines, and the titles no edge crosses.
-private struct ReadingFlowchartClusterBoxes: View {
+struct ReadingFlowchartClusterBoxes: View {
     let clusters: ReadingFlowchartClusterShapes
     let colors: ReadingDiagramColors
 
@@ -171,7 +174,7 @@ private struct ReadingFlowchartClusterBoxes: View {
 
 /// The titles edges run through, over the edges, each on a patch painted as its box is where it sits: the background,
 /// then the alternate surface at half its opacity once for each box around it and its own.
-private struct ReadingFlowchartCrossedClusterTitles: View {
+struct ReadingFlowchartCrossedClusterTitles: View {
     let clusters: ReadingFlowchartClusterShapes
     let colors: ReadingDiagramColors
 

@@ -29,5 +29,6 @@ enum TagSyntaxPattern: String, StaticPatternSet {
     /// variation selectors, the skin-tone modifiers (U+1F3FB to U+1F3FF, which are modifier
     /// symbols like `^`, so not the whole category) and the tag characters of subdivision
     /// flags (U+E0020 to U+E007F).
-    case pattern = #"(?<![\p{L}\p{N}_/&#])#(?!\p{N}+(?![\p{L}\p{N}\p{M}\p{So}_/\-\x{200D}\x{FE0F}\x{1F3FB}-\x{1F3FF}\x{E0020}-\x{E007F}]))([\p{L}\p{N}\p{M}\p{So}_/\-\x{200D}\x{FE0F}\x{1F3FB}-\x{1F3FF}\x{E0020}-\x{E007F}]+)"#
+    /// The colour of the Colors plugin's `~={#e93147}text=~` is no tag either (HUNT-333).
+    case pattern = #"(?<![\p{L}\p{N}_/&#])(?<!~=\{)#(?!\p{N}+(?![\p{L}\p{N}\p{M}\p{So}_/\-\x{200D}\x{FE0F}\x{1F3FB}-\x{1F3FF}\x{E0020}-\x{E007F}]))([\p{L}\p{N}\p{M}\p{So}_/\-\x{200D}\x{FE0F}\x{1F3FB}-\x{1F3FF}\x{E0020}-\x{E007F}]+)"#
 }

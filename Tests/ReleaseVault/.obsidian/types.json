@@ -1,0 +1,18 @@
+{
+  "types": {
+    "rating": "number",
+    "finished": "date",
+    "due": "date",
+    "done": "checkbox",
+    "isbn": "text",
+    "score": "number",
+    "reviewed": "checkbox",
+    "lecture": "number",
+    "studied": "number",
+    "started": "datetime",
+    "topics": "multitext",
+    "related": "multitext",
+    "aliases": "aliases",
+    "tags": "tags"
+  }
+}

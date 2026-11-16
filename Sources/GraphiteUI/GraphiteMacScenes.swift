@@ -5,8 +5,8 @@
  * Description: The Mac's scenes, menus and the saving that quitting waits for.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.12
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -55,6 +55,7 @@ public struct GraphiteMacScenes: Scene {
         // The Guide in a window of its own, beside the notes it explains.
         Window("Graphite Guide", id: GraphiteMacScenes.guideWindowIdentifier) {
             GuideView(showsDoneButton: false)
+                .environment(processServices.addOns)
                 .environment(\.accent, processServices.preferences.accentColor)
                 .preferredColorScheme(processServices.preferences.appearanceMode.colorScheme)
         }

@@ -126,6 +126,8 @@ final class BugHuntMacViewsTests: XCTestCase {
     // MARK: HUNT-250: the Restore question on the Mac
 
     func testOnTheMacRestoringTheDefaultPaletteAsksInASheetFirst() async throws {
+        // The drawn text is read with Vision, which GitHub's virtual Macs cannot run.
+        try await TextRecognitionCapability.requireOnDeviceTextRecognition()
         let preferences = GraphitePreferences(defaults: try testBed.isolatedDevice().defaults)
         preferences.colorPalette.append(PaletteColor(name: "mine", hex: "#123456"))
         let size = CGSize(width: 600, height: 700)
@@ -203,6 +205,8 @@ final class BugHuntMacViewsTests: XCTestCase {
     // MARK: HUNT-290: the changed-file banner in a narrow window
 
     func testTheChangeBannerPutsItsButtonsUnderTheSentenceWhereTheyDoNotFitBesideIt() async throws {
+        // The drawn text is read with Vision, which GitHub's virtual Macs cannot run.
+        try await TextRecognitionCapability.requireOnDeviceTextRecognition()
         let message = "This note changed in another app. Your edits are still here."
         for (width, isStacked) in [(CGFloat(390), true), (1_000, false)] {
             let size = CGSize(width: width, height: 160)

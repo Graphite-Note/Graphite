@@ -128,7 +128,7 @@ final class PDFObjectCompactionTests: XCTestCase {
         }
         // Turning and cropping replace the picture with another one of the same size.
         let turned = PDFPicture(name: picture.name, imageData: jpegData, bounds: picture.bounds, quarterTurns: 1)
-        revision = try await save([.replacePicture(picture.reference(onPageAt: 0), with: turned, order: .unchanged)], to: location, revision: revision)
+        revision = try await save([.replacePicture(picture.reference(onPageAt: 0), with: turned)], to: location, revision: revision)
         XCTAssertLessThan(try fileSize(location), sizeWithPicture + 4_096, "Earlier copies of the picture are gone after five moves and a turn.")
 
         let savedPage = try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))

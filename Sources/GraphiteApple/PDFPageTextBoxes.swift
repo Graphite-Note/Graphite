@@ -5,8 +5,8 @@
  * Description: Adding, replacing and removing the text boxes on a PDF page.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 import Foundation
 import PDFKit
@@ -15,10 +15,9 @@ import GraphiteCore
 /// Text boxes on PDF pages, as edits (`PDFEdit.addTextBox`, `.replaceTextBox`,
 /// `.removeTextBox`) applied the same way to the shown document and to the one saving writes.
 ///
-/// A page's annotations are in this order: other applications' annotations, then Graphite's
-/// pictures, its ink, and its text boxes, each box followed by the links over its text. The
-/// boxes are over the ink in every reader, as they are on screen. A box another application
-/// made stays where it is among the page's annotations until Graphite writes it again.
+/// A new box goes on top of the page, followed by the links over its text, so it is over the
+/// ink in every reader, as it is on screen; a box changed or moved keeps its place in the
+/// page's stacking order (`PDFPageStacking`), and its links go with it.
 extension PDFPageManager {
     static func addTextBox(_ textBox: PDFTextBox, to page: PDFPage, isForWrittenDocument: Bool, authorName: String?) throws {
         try add(textBox, to: page, isForWrittenDocument: isForWrittenDocument, authorName: authorName)
@@ -29,9 +28,10 @@ extension PDFPageManager {
         var replacement = textBox
         // The box keeps the keys of the application that made it, whatever the edit says.
         replacement.preservedEntries = PDFTextBox(annotation: annotation)?.preservedEntries ?? textBox.preservedEntries
-        removeTextBox(annotation, from: page)
         // The box keeps its author, as it keeps the keys of the application that made it.
-        try add(replacement, to: page, isForWrittenDocument: isForWrittenDocument, authorName: annotation.userName)
+        try replaceKeepingItsPlace(annotation, on: page, removeFormer: { removeTextBox(annotation, from: page) }, addReplacement: {
+            try add(replacement, to: page, isForWrittenDocument: isForWrittenDocument, authorName: annotation.userName)
+        })
     }
 
     static func removeTextBox(_ reference: PDFAnnotationReference, from document: PDFDocument) throws {
@@ -70,32 +70,6 @@ extension PDFPageManager {
         }
         if let popup = annotation.popup, popup.page === page { page.removeAnnotation(popup) }
         page.removeAnnotation(annotation)
-    }
-
-    // MARK: Order
-
-    /// Whether the annotation is one of Graphite's text boxes or a link over one's text.
-    static func isTextBoxOnTop(_ annotation: PDFAnnotation) -> Bool {
-        PDFTextBox.hasRecord(annotation) || annotation.value(forAnnotationKey: textBoxLinkOwnerKey) != nil
-    }
-
-    /// Puts Graphite's text boxes and their links after everything else on the page, in the
-    /// order they had, after pictures or ink were put back under them.
-    static func moveTextBoxesToTop(of page: PDFPage) {
-        let onTop = page.annotations.filter(isTextBoxOnTop)
-        for annotation in onTop { page.removeAnnotation(annotation) }
-        for annotation in onTop { page.addAnnotation(annotation) }
-    }
-
-    /// Takes off the page the text boxes at the end of its annotations, to be added again
-    /// after new ink. Only the end is read, so a stroke costs the same on a full page (FR-104).
-    static func takeTextBoxesOffTop(of page: PDFPage) -> [PDFAnnotation] {
-        let annotations = page.annotations
-        var firstOnTop = annotations.endIndex
-        while firstOnTop > annotations.startIndex, isTextBoxOnTop(annotations[firstOnTop - 1]) { firstOnTop -= 1 }
-        let onTop = Array(annotations[firstOnTop...])
-        for annotation in onTop { page.removeAnnotation(annotation) }
-        return onTop
     }
 
     // MARK: Page tree rewrites

@@ -62,6 +62,8 @@ struct NotePDFFileMenuButton: View {
 /// The command palette's Export to PDF and Print, added to its commands while a note is in front.
 struct NotePDFPaletteCommands<Content: View>: View {
     let hasNoteInFront: Bool
+    /// The vault's shortcuts, shown beside the commands as the palette's own are.
+    let shortcuts: VaultKeyboardShortcuts
     @ViewBuilder let content: ([PaletteCommand]) -> Content
     @Environment(\.notePDFExport) private var notePDFExport
 
@@ -71,8 +73,9 @@ struct NotePDFPaletteCommands<Content: View>: View {
 
     private var commands: [PaletteCommand] {
         guard hasNoteInFront, let notePDFExport else { return [] }
-        return [PaletteCommand(id: "export-pdf", title: "Export to PDF", systemImage: "doc.richtext") { notePDFExport.start(nil, .save) },
-                PaletteCommand(id: "print-file", title: "Print current file", systemImage: "printer") { notePDFExport.start(nil, .print) }]
+        return [PaletteCommand(id: "export-pdf", command: .exportToPDF, systemImage: "doc.richtext") { notePDFExport.start(nil, .save) },
+                PaletteCommand(id: "print-file", command: .printNote, systemImage: "printer") { notePDFExport.start(nil, .print) }]
+            .map { command in command.showingShortcut(from: shortcuts.builtInTable) }
     }
 }
 

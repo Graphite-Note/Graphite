@@ -5,8 +5,8 @@
  * Description: Text boxes on PDF pages: adding, typing in, arranging and removing them as steps of the PDF's history.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 02/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -59,6 +59,9 @@ final class PDFTextBoxEditStep {
     fileprivate(set) var after: PDFTextBox?
     let page: PDFHistoryPage
     fileprivate var isRegistered = false
+    /// Where the box was among its page's layers when typing began, for Undo to put a box
+    /// emptied, and so deleted, back there.
+    fileprivate var formerStackingPosition: Int?
 
     init(before: PDFTextBox?, page: PDFHistoryPage) {
         self.before = before
@@ -76,7 +79,7 @@ extension PDFSession {
     /// Shows why a change of a text box or of the lasso's selection was not made, in the
     /// PDF's banner.
     func reportFailedChange(_ error: Error) {
-        errorMessage = error.localizedDescription
+        errorMessage.report(error)
     }
 
     func textBoxes(on page: PDFPage) -> [PDFTextBox] {
@@ -99,9 +102,10 @@ extension PDFSession {
     /// may be nil, for a box added or removed.
     func changeTextBox(from previous: PDFTextBox?, to next: PDFTextBox?, on page: PDFHistoryPage, actionName: String) throws {
         guard previous != next else { return }
+        let formerPosition = next == nil ? previous.flatMap { box in stackingPosition(of: box, on: page) } : nil
         try transitionTextBox(from: previous, to: next, on: page)
         registerStep(named: actionName) { session in
-            try session.transitionTextBox(from: next, to: previous, on: page)
+            try session.transitionTextBox(from: next, to: previous, on: page, putBackAt: formerPosition)
         } redo: { session in
             try session.transitionTextBox(from: previous, to: next, on: page)
         }
@@ -118,23 +122,28 @@ extension PDFSession {
         // a box with empty `/Contents`, was emptied by no one: it stays as it was.
         let next: PDFTextBox? = typed.isEmpty ? (step.before?.isEmpty == true ? step.before : nil) : typed
         guard next != step.after else { return }
+        if !step.isRegistered, let before = step.before { step.formerStackingPosition = stackingPosition(of: before, on: step.page) }
         try transitionTextBox(from: step.after, to: next, on: step.page)
         step.after = next
         guard !step.isRegistered else { return }
         step.isRegistered = true
         let actionName = step.before == nil ? "Add Text Box" : next == nil ? "Delete Text Box" : "Edit Text"
         registerStep(named: actionName) { session in
-            try session.transitionTextBox(from: step.after, to: step.before, on: step.page)
+            try session.transitionTextBox(from: step.after, to: step.before, on: step.page,
+                                          putBackAt: step.after == nil ? step.formerStackingPosition : nil)
         } redo: { session in
             try session.transitionTextBox(from: step.before, to: step.after, on: step.page)
         }
     }
 
-    private func transitionTextBox(from previous: PDFTextBox?, to next: PDFTextBox?, on historyPage: PDFHistoryPage) throws {
+    /// - Parameter position: For a box added back by Undo, where it was among its page's layers.
+    private func transitionTextBox(from previous: PDFTextBox?, to next: PDFTextBox?, on historyPage: PDFHistoryPage, putBackAt position: Int? = nil) throws {
         let pageIndex = try currentIndex(of: historyPage)
         switch (previous, next) {
         case (nil, nil): return
-        case (nil, let added?): try apply(.addTextBox(page: pageIndex, textBox: added))
+        case (nil, let added?):
+            try apply(.addTextBox(page: pageIndex, textBox: added))
+            try putBack(added.reference(onPageAt: pageIndex), at: position)
         case (let removed?, nil): try apply(.removeTextBox(removed.reference(onPageAt: pageIndex)))
         case (let replaced?, let replacement?): try apply(.replaceTextBox(replaced.reference(onPageAt: pageIndex), with: replacement))
         }
@@ -151,6 +160,22 @@ extension PDFSession {
         var changed = box
         change(&changed)
         try changeTextBox(from: box, to: PDFTextBoxLayout.fitted(changed), on: selection.page, actionName: actionName)
+    }
+
+    private func stackingPosition(of box: PDFTextBox, on historyPage: PDFHistoryPage) -> Int? {
+        historyPage.page.flatMap { page in stackingPosition(ofObjectNamed: box.name, annotationType: PDFTextBox.annotationTypeName, on: page) }
+    }
+
+    /// Brings the selected box forward or sends it back among its page's objects (`PDFSessionStacking`).
+    func arrangeSelectedTextBox(_ arrangement: PDFArrangement) throws {
+        guard let selection = textBoxActivity.selection, let (annotation, page) = annotation(of: selection) else { throw PDFTextBoxError.boxMissing }
+        try arrange(annotation, on: page, arrangement)
+    }
+
+    /// The arrangements that would move the selected box.
+    var possibleArrangementsOfSelectedTextBox: Set<PDFArrangement> {
+        guard let selection = textBoxActivity.selection, let (annotation, page) = annotation(of: selection) else { return [] }
+        return possibleArrangements(of: annotation, on: page)
     }
 
     func deleteSelectedTextBox() throws {

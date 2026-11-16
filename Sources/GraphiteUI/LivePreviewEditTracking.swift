@@ -5,8 +5,8 @@
  * Description: What Live Preview must restyle and scan again after an edit, and moving blocks past it.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.16
- * Date: 05/11/2026
+ * Version: 0.17
+ * Date: 12/11/2026
  */
 
 import Foundation
@@ -240,6 +240,7 @@ struct LivePreviewBlockKey: Hashable {
         case .callout: "callout"
         case .pluginCodeBlock(let language): "plugin-" + language
         case .mermaidDiagram: "mermaid"
+        case .webFrame: "web-frame"
         }
     }
 }

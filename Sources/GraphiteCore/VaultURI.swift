@@ -5,8 +5,8 @@
  * Description: graphite:// and obsidian:// links that open Graphite, with Obsidian's actions and parameters.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -36,6 +36,10 @@ public struct VaultURI: Equatable, Sendable {
         /// An action a community plugin registered (`registerObsidianProtocolHandler`), with
         /// the link's parameters as written, the vault's included, as Obsidian passes them.
         case plugin(action: String, parameters: [String: String])
+        /// Graphite's own: opens the Graphite Guide vault, Graphite's copy of the downloaded guide, made the first time or
+        /// again when `freshCopy` asks, at the note `file` resolves to (`Start here` when nil). It names no vault: the
+        /// guide is always its own.
+        case guide(file: String?, freshCopy: Bool)
     }
 
     /// What `new` does when the note exists already.
@@ -85,6 +89,8 @@ public struct VaultURI: Equatable, Sendable {
         case "read":
             guard let file = nonEmpty("file") else { return nil }
             self.init(vault: nonEmpty("vault"), action: .read(file: file))
+        case "guide":
+            self.init(vault: nil, action: .guide(file: nonEmpty("file"), freshCopy: flag("fresh")))
         case "vault":
             // `obsidian://vault/Physics/Course/Lecture 1`: the vault, then the file.
             let parts = components.path.split(separator: "/", maxSplits: 1, omittingEmptySubsequences: true).map(String.init)
@@ -106,6 +112,16 @@ public struct VaultURI: Equatable, Sendable {
     public static func openingLink(to path: VaultPath, inVaultNamed vaultName: String) -> String {
         let file = DocumentKind(path: path) == .markdown ? (path.rawValue as NSString).deletingPathExtension : path.rawValue
         return "\(scheme)://open?vault=\(encoded(vaultName))&file=\(encoded(file))"
+    }
+
+    /// The link that opens the Graphite Guide vault at `file`, or makes a fresh copy of it first.
+    public static func guideLink(to file: String?, freshCopy: Bool = false) -> URL? {
+        var link = "\(scheme)://guide"
+        var parameters: [String] = []
+        if let file { parameters.append("file=\(encoded(file))") }
+        if freshCopy { parameters.append("fresh=true") }
+        if !parameters.isEmpty { link += "?" + parameters.joined(separator: "&") }
+        return URL(string: link)
     }
 
     /// `content` added at the end of a note, on a line of its own, for `new` with `append`.

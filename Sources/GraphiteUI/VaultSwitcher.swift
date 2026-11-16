@@ -70,7 +70,7 @@ struct VaultSwitcherMenuItems: View {
                 guard let identifier, let vault = workspace.vaultLibrary.vault(withIdentifier: identifier) else { return }
                 Task {
                     do { try await workspace.openVault(vault) }
-                    catch { workspace.errorMessage = error.localizedDescription }
+                    catch { workspace.errorMessage.report(error) }
                 }
             })) {
                 ForEach(workspace.vaultLibrary.vaults) { vault in
@@ -113,7 +113,7 @@ struct VaultManagerView: View {
         .fileImporter(isPresented: $showsFolderPicker, allowedContentTypes: [.folder]) { pickedFolder in
             switch pickedFolder {
             case .success(let folder): Task { await open { try await workspace.openFolderAsVault(folder) } }
-            case .failure(let error): errorMessage = error.localizedDescription
+            case .failure(let error): errorMessage.report(error)
             }
         }
         .sheet(isPresented: $showsNewVaultForm) {
@@ -212,7 +212,7 @@ struct VaultManagerView: View {
         do {
             try await action()
             if closingSheetOnSuccess, isPresentedAsSheet { dismiss() }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 }
 
@@ -329,7 +329,7 @@ private struct NewVaultForm: View {
             .fileImporter(isPresented: $showsParentFolderPicker, allowedContentTypes: [.folder]) { pickedFolder in
                 switch pickedFolder {
                 case .success(let folder): parentFolder = folder
-                case .failure(let error): errorMessage = error.localizedDescription
+                case .failure(let error): errorMessage.report(error)
                 }
             }
             .errorAlert($errorMessage)
@@ -367,7 +367,7 @@ private struct NewVaultForm: View {
             do {
                 try await workspace.createVault(named: name, in: parentFolder)
                 dismiss(); didCreate()
-            } catch { errorMessage = error.localizedDescription }
+            } catch { errorMessage.report(error) }
         }
     }
 }

@@ -1,12 +1,18 @@
 import Foundation
 import GraphiteCore
 
-/// The welcome tour's screenshots, downloaded the first time the tour needs them rather than
-/// carried in the app (`AddOnPack`). iPad and iPhone get the iPad pictures
-/// (3142 KB), the Mac its own (1680 KB). The files are `AddOns/WelcomeTour` of the repository at
-/// `revision`; `scripts/check-add-on-packs.py` checks that this list matches them.
+/// The welcome tour's screenshots (`AddOnPack`), there when Graphite is first installed. iPad and
+/// iPhone get the iPad pictures (3142 KB) as the On-Demand Resources tag `onDemandResourcesTag`, one
+/// of the App Store's initial install tags, which the person can remove in Settings; the Mac gets its
+/// own (1680 KB) in the app's bundle, as macOS has no On-Demand Resources (`Docs/App-size-todo.md`,
+/// section 2). Where that copy is not there, as in a build run from Xcode without its host or once iOS
+/// took the space back and cannot download the tag again, the pack is downloaded from the repository.
+/// The files are `AddOns/WelcomeTour` of the repository at `revision`, and the project's resources;
+/// `scripts/check-add-on-packs.py` checks that this list matches both.
 enum WelcomeTourScreenshotPack {
     static let revision = "d10be4ca83e7dbc2bf74a0aa5528d549f83bd5e7"
+    /// The tag of the iPad and iPhone pictures in `Graphite.xcodeproj`, an initial install tag of the app target.
+    static let onDemandResourcesTag = "WelcomeTourPictures"
     private static let baseAddress = URL(string: "https://raw.githubusercontent.com/Graphite-Note/Graphite/\(revision)/AddOns/WelcomeTour")
 
     /// The pack this platform uses, or nil if its address could not be formed.
@@ -14,10 +20,10 @@ enum WelcomeTourScreenshotPack {
         guard let baseAddress else { return nil }
         #if os(macOS)
         return AddOnPack(id: "welcome-tour-screenshots-mac", title: "Welcome Tour Pictures", revision: revision,
-                          baseAddress: baseAddress, files: macFiles)
+                          baseAddress: baseAddress, files: macFiles, delivery: .inAppBundle)
         #else
         return AddOnPack(id: "welcome-tour-screenshots", title: "Welcome Tour Pictures", revision: revision,
-                          baseAddress: baseAddress, files: touchFiles)
+                          baseAddress: baseAddress, files: touchFiles, delivery: .onDemandResourcesTag(onDemandResourcesTag))
         #endif
     }
 

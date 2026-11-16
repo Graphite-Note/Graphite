@@ -6,8 +6,8 @@
  *              where they stand, and the phone's palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -21,40 +21,54 @@ import GraphiteTestSupport
 /// commands on a phone. Nothing here draws.
 @MainActor
 final class LayoutFitsNarrowWindowsTests: XCTestCase {
-    private let eightTools = PencilToolRowLayout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: true)
+    /// A PDF page's bar: three presets, the eraser, the lasso, the laser, the text highlighter, the text tool and the
+    /// Read Aloud pen.
+    private let pageTools = PencilToolRowLayout.tools(presetCount: 3, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true)
 
     // MARK: HUNT-262, HUNT-289, HUNT-265: the Pencil bar never scrolls
 
     func testTheToolsOfTheRowAreThePresetsThenTheOthersWhereThePageHasThem() {
-        XCTAssertEqual(PencilToolRowLayout.tools(presetCount: 3, offersTextBoxes: false, offersReadAloudPen: false),
+        XCTAssertEqual(PencilToolRowLayout.tools(presetCount: 3, offersTextMarking: false, offersTextBoxes: false, offersReadAloudPen: false),
                        [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .laser])
-        XCTAssertEqual(eightTools.suffix(2), [.text, .readAloud])
-        XCTAssertEqual(PencilToolRowLayout.tools(presetCount: 0, offersTextBoxes: false, offersReadAloudPen: false), [.eraser, .lasso, .laser])
+        XCTAssertEqual(pageTools.suffix(3), [.textHighlighter, .text, .readAloud])
+        XCTAssertEqual(PencilToolRowLayout.tools(presetCount: 0, offersTextMarking: false, offersTextBoxes: false, offersReadAloudPen: false),
+                       [.eraser, .lasso, .laser])
+    }
+
+    /// The folded forms put the text highlighter behind More with the laser, the text tool and the Read Aloud pen, and
+    /// keep it on the bar while it is in use; a drawing's bar has no text highlighter.
+    func testTheFoldedBarShowsTheTextHighlighterWhileItIsInUse() {
+        let split = PencilToolRowLayout.compactSplit(pageTools, toolInUse: .preset(index: 0))
+        XCTAssertEqual(split.folded, [.laser, .textHighlighter, .text, .readAloud])
+        XCTAssertEqual(PencilToolRowLayout.compactSplit(pageTools, toolInUse: .textHighlighter).shown,
+                       [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .textHighlighter])
+        XCTAssertFalse(PencilToolRowLayout.tools(presetCount: 3, offersTextMarking: false, offersTextBoxes: false, offersReadAloudPen: false)
+            .contains(.textHighlighter))
     }
 
     func testABarWithRoomForAllTheToolsFoldsNone() {
-        let split = PencilToolRowLayout.split(eightTools, showing: Int.max, toolInUse: .preset(index: 1))
-        XCTAssertEqual(split.shown, eightTools)
+        let split = PencilToolRowLayout.split(pageTools, showing: Int.max, toolInUse: .preset(index: 1))
+        XCTAssertEqual(split.shown, pageTools)
         XCTAssertTrue(split.folded.isEmpty)
     }
 
     func testANarrowBarShowsTheFirstToolsAndFoldsTheRestIntoItsControl() {
-        let split = PencilToolRowLayout.split(eightTools, showing: 4, toolInUse: .preset(index: 0))
-        XCTAssertEqual(split.shown, Array(eightTools.prefix(4)))
-        XCTAssertEqual(split.folded, Array(eightTools.suffix(4)), "Every tool is on the bar or behind its control, none is lost.")
+        let split = PencilToolRowLayout.split(pageTools, showing: 4, toolInUse: .preset(index: 0))
+        XCTAssertEqual(split.shown, Array(pageTools.prefix(4)))
+        XCTAssertEqual(split.folded, Array(pageTools.dropFirst(4)), "Every tool is on the bar or behind its control, none is lost.")
     }
 
     func testTheToolInUseIsAlwaysOnTheBarEvenWhenItWouldHaveBeenFolded() {
-        let split = PencilToolRowLayout.split(eightTools, showing: 3, toolInUse: .readAloud)
+        let split = PencilToolRowLayout.split(pageTools, showing: 3, toolInUse: .readAloud)
         XCTAssertTrue(split.shown.contains(.readAloud))
         XCTAssertEqual(split.shown.count, 3)
         XCTAssertEqual(split.shown, [.preset(index: 0), .preset(index: 1), .readAloud], "In the bar's order, the last place taken.")
-        XCTAssertEqual(Set(split.shown + split.folded), Set(eightTools))
+        XCTAssertEqual(Set(split.shown + split.folded), Set(pageTools))
     }
 
     func testABarKeepsAtLeastOneToolAndIgnoresAToolItDoesNotHave() {
-        XCTAssertEqual(PencilToolRowLayout.split(eightTools, showing: 0, toolInUse: .eraser).shown, [.eraser])
-        let withoutReadAloud = PencilToolRowLayout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: false)
+        XCTAssertEqual(PencilToolRowLayout.split(pageTools, showing: 0, toolInUse: .eraser).shown, [.eraser])
+        let withoutReadAloud = PencilToolRowLayout.tools(presetCount: 3, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: false)
         let split = PencilToolRowLayout.split(withoutReadAloud, showing: 2, toolInUse: .readAloud)
         XCTAssertEqual(split.shown, Array(withoutReadAloud.prefix(2)), "The Read Aloud pen is not on a page without text.")
     }
@@ -66,6 +80,19 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
         XCTAssertEqual(PencilToolbarStyle.fixed.inEffect(sharesWindowWithOtherSide: true), .fixed)
         XCTAssertEqual(PencilToolbarStyle.floating.inEffect(sharesWindowWithOtherSide: false), .floating)
         XCTAssertEqual(PencilToolbarStyle.fixed.inEffect(sharesWindowWithOtherSide: false), .fixed)
+    }
+
+    // Docs/PDF-annotation-todo.md section 3: side by side, the iPad keeps the fixed bar
+
+    func testAnIPadBesideAnotherAppKeepsTheFixedBarAndAPhoneUsesThePalette() {
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .compact, isPhone: false), .fixed,
+                       "An iPad window beside another app is compact and keeps the fixed bar, whose colors scroll in its strip.")
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .regular, isPhone: false), .fixed)
+        XCTAssertEqual(PencilToolbarStyle.floating.shown(horizontalSizeClass: .compact, isPhone: false), .floating)
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .compact, isPhone: true), .floating,
+                       "A phone's compact width uses the system's palette, docked at the bottom.")
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .regular, isPhone: true), .fixed,
+                       "A Max phone held sideways is regular in width and keeps the bar.")
     }
 
     // MARK: HUNT-274, HUNT-260: a phone held sideways

@@ -22,7 +22,9 @@ final class AddOnPackStoreTests: XCTestCase {
     /// Puts `contents` on the server under `name` and returns the file as a pack lists it.
     private func serve(_ name: String, _ contents: String) throws -> AddOnFile {
         let data = Data(contents.utf8)
-        try data.write(to: server.appendingPathComponent(name))
+        let location = server.appendingPathComponent(name)
+        try FileManager.default.createDirectory(at: location.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: location)
         let hash = SHA256.hash(data: data).map { byte in String(format: "%02x", byte) }.joined()
         return AddOnFile(name: name, byteCount: Int64(data.count), sha256: hash)
     }
@@ -42,6 +44,20 @@ final class AddOnPackStoreTests: XCTestCase {
         let location = try XCTUnwrap(store.location(of: pictures.files[1], in: pictures))
         XCTAssertEqual(try String(contentsOf: location, encoding: .utf8), "second picture")
         XCTAssertEqual(pictures.byteCount, Int64("first picture".utf8.count + "second picture".utf8.count))
+    }
+
+    /// The Graphite Guide is a pack of a whole vault: its files are named by their paths, with spaces and accents.
+    func testAPackOfAFolderKeepsItsFilesInTheirFolders() async throws {
+        let guide = pack(files: [try serve("Start here.md", "# Welcome"), try serve("1 New to files/What a vault is.md", "A folder."),
+                                 try serve(".obsidian/app.json", "{}"), try serve("6 Everyday examples/Restaurants/Green Door Café.md", "Soup.")])
+
+        try await store.install(guide, using: session)
+
+        XCTAssertTrue(store.isInstalled(guide))
+        let folder = store.folder(of: guide)
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("1 New to files/What a vault is.md"), encoding: .utf8), "A folder.")
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("6 Everyday examples/Restaurants/Green Door Café.md"), encoding: .utf8), "Soup.")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".obsidian/app.json").path))
     }
 
     func testAFileThatDoesNotMatchItsHashLeavesNothingInstalled() async throws {

@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "comment": "Import violations of Docs/solid/rewrite-foundations.md section 3.2 and 3.3 at today's module folders: one count of files per `<module> imports <name>`. They only go down. Lower them with `python3 scripts/check-imports.py --record`.",
-  "recordedOn": "2026-10-21",
-  "recordedAtRevision": "unknown plus the working tree",
+  "recordedOn": "2026-11-12",
+  "recordedAtRevision": "e3a67ff4 plus the working tree",
   "violations": {
     "GraphiteApple imports Compression": 1,
     "GraphiteApple imports CoreMedia": 4,
@@ -25,6 +25,6 @@
     "target-state: GraphiteUI files import GraphiteIndex (features never import the index (3.3 rule 3))": 17,
     "target-state: GraphiteUI files import MapKit (only GraphiteBases and GraphiteGraphAndMap (3.3 rule 5))": 3,
     "target-state: GraphiteUI files import Textual (only GraphiteMarkdownRendering and GraphiteMarkdownEditing (3.3 rule 5))": 9,
-    "target-state: GraphiteUI files import WebKit (only GraphitePlugins (3.3 rule 5))": 6
+    "target-state: GraphiteUI files import WebKit (only GraphitePlugins (3.3 rule 5))": 7
   }
 }

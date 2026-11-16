@@ -1,27 +1,53 @@
 import Foundation
 import GraphiteCore
 
-/// An importer for one kind of file dropped on the library or chosen with Import: it takes the
-/// files of its types instead of the plain copy into the folder. A new format (a notebook of
-/// another app, say) adds one entry to `DroppedFileImporters.registered`.
+/// An importer for one kind of file dropped on the library or the file list, or chosen with Import: it takes the files
+/// of its types, and folders when it says so, instead of the plain copy into the folder. A new format adds one entry to
+/// the importers `WorkspaceModel.importFiles` asks: Goodnotes and Notability notebooks are the workspace's own entry
+/// (`WorkspaceModel.notebookFileImporter`), and `DroppedFileImporters.registered` lists the others.
 struct FileTypeImporter {
     /// The lowercased file extensions this importer takes.
     let fileExtensions: Set<String>
-    /// Imports the files into the folder; reports a failure itself.
-    let importFiles: @MainActor ([URL], VaultPath) async -> Void
+    /// Whether it also takes folders, which have no extension to route by: a library export of notebooks.
+    let takesFolders: Bool
+    /// Imports the files into the folder and reports a failure itself. The batch holds the temporary copies of a drop
+    /// that the files point into: the importer returns the ones it is done with, which the caller removes at once, and
+    /// removes the others itself once it no longer reads them (a conversion that goes on after this returns).
+    let importFiles: @MainActor ([URL], VaultPath, DroppedFileBatch) async -> DroppedFileBatch
+
+    /// An importer that is done with its files when it returns.
+    init(fileExtensions: Set<String>, importFiles: @escaping @MainActor ([URL], VaultPath) async -> Void) {
+        self.fileExtensions = fileExtensions
+        takesFolders = false
+        self.importFiles = { files, folder, stagedCopies in
+            await importFiles(files, folder)
+            return stagedCopies
+        }
+    }
+
+    /// An importer that may go on reading its files after it returns, and so may keep their temporary copies.
+    init(fileExtensions: Set<String>, takesFolders: Bool,
+         importFilesKeepingCopies: @escaping @MainActor ([URL], VaultPath, DroppedFileBatch) async -> DroppedFileBatch) {
+        self.fileExtensions = fileExtensions
+        self.takesFolders = takesFolders
+        importFiles = importFilesKeepingCopies
+    }
+
+    func takes(_ source: URL) -> Bool {
+        source.hasDirectoryPath ? takesFolders : fileExtensions.contains(source.pathExtension.lowercased())
+    }
 }
 
 enum DroppedFileImporters {
-    /// The importers asked before the plain copy, in order; the first whose types include a file's takes it.
+    /// The importers asked before the plain copy after the workspace's own, in order; the first that takes a file takes it.
     static let registered: [FileTypeImporter] = []
 
-    /// Which files each importer takes, and the files left for the plain copy.
+    /// Which files and folders each importer takes, and those left for the plain copy.
     static func route(_ sources: [URL], through importers: [FileTypeImporter]) -> (routed: [(importer: FileTypeImporter, files: [URL])], remaining: [URL]) {
         var filesByImporter: [Int: [URL]] = [:]
         var remaining: [URL] = []
         for source in sources {
-            let fileExtension = source.pathExtension.lowercased()
-            if let position = importers.firstIndex(where: { importer in importer.fileExtensions.contains(fileExtension) }) {
+            if let position = importers.firstIndex(where: { importer in importer.takes(source) }) {
                 filesByImporter[position, default: []].append(source)
             } else {
                 remaining.append(source)

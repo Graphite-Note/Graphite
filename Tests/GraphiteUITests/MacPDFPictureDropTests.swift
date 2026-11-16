@@ -1,0 +1,172 @@
+/**
+ * File: MacPDFPictureDropTests.swift
+ * ----------------------------------
+ * Layer: Tests
+ * Description: Pictures dropped onto a Mac PDF view: the page point under the drop agrees with PDFKit at every quarter
+ *              turn and zoom; image data and a Finder file are placed where they landed, selected, one step each; a
+ *              PDF file and a protected PDF take no drop.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 16/11/2026
+ */
+
+#if os(macOS)
+import XCTest
+import AppKit
+import PDFKit
+import GraphiteCore
+import GraphiteApple
+@testable import GraphiteUI
+import GraphiteTestSupport
+
+@MainActor
+final class MacPDFPictureDropTests: XCTestCase {
+    private var openedHarness: MacPDFPageToolHarness?
+
+    override func setUp() async throws {
+        try await super.setUp()
+        openedHarness = try await MacPDFPageToolHarness.open(for: self, prefix: "MacPDFPictureDrop")
+    }
+
+    /// A PNG of `width` by `height` pixels that states no resolution, so it is placed at half its pixels in points.
+    static func pngData(width: Int = 200, height: Int = 100) throws -> Data {
+        let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(srgbRed: 0.1, green: 0.5, blue: 0.9, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        return try ImageEncoding.pngData(from: try XCTUnwrap(context.makeImage()))
+    }
+
+    private func pasteboard(_ write: (NSPasteboard) -> Void) -> NSPasteboard {
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("PDFPictureDrop-\(UUID().uuidString)"))
+        pasteboard.clearContents()
+        write(pasteboard)
+        addTeardownBlock { pasteboard.releaseGlobally() }
+        return pasteboard
+    }
+
+    private func pictures(_ fixture: MacPDFPageToolHarness) -> [PDFPicture] {
+        fixture.session.pictures(on: fixture.page)
+    }
+
+    private func assertPoint(_ actual: CGPoint?, _ expected: CGPoint, accuracy: CGFloat = 0.5, file: StaticString = #filePath, line: UInt = #line) {
+        guard let actual else { return XCTFail("No point.", file: file, line: line) }
+        XCTAssertEqual(actual.x, expected.x, accuracy: accuracy, "\(actual) is not \(expected)", file: file, line: line)
+        XCTAssertEqual(actual.y, expected.y, accuracy: accuracy, "\(actual) is not \(expected)", file: file, line: line)
+    }
+
+    func testTheDropsPagePointAgreesWithPDFKitAtEveryTurnAndZoom() throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        fixture.view.autoScales = false
+        for rotation in [0, 90, 180, 270] {
+            fixture.page.rotation = rotation
+            for scale in [0.5, 1.0, 1.75] {
+                fixture.view.scaleFactor = scale
+                fixture.view.layoutDocumentView()
+                fixture.view.go(to: fixture.page)
+                for pagePoint in [CGPoint(x: 120, y: 430), CGPoint(x: 310, y: 40)] {
+                    let viewPoint = fixture.view.convert(pagePoint, from: fixture.page)
+                    let location = try XCTUnwrap(fixture.view.dropLocation(atViewPoint: viewPoint))
+                    XCTAssertEqual(location.pageIndex, 0)
+                    assertPoint(location.pagePoint, pagePoint)
+                }
+            }
+        }
+    }
+
+    func testDroppedImageDataIsPlacedWhereItLandedAtItsOwnSizeSelectedAsOneStep() async throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let target = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        var placedReports = 0
+        target.picturesWerePlaced = { placedReports += 1 }
+        let imageData = try Self.pngData()
+        let carried = pasteboard { pasteboard in pasteboard.setData(imageData, forType: .png) }
+        XCTAssertEqual(MacPDFPictureDropTarget.kinds(on: carried), [.picture])
+        XCTAssertTrue(target.takesDrop(from: carried))
+
+        let location = try XCTUnwrap(fixture.view.dropLocation(atViewPoint: fixture.view.convert(CGPoint(x: 140, y: 420), from: fixture.page)))
+        fixture.session.undoManager.beginUndoGrouping()
+        let placedCount = await target.placePictures(from: carried, imageOnPasteboard: imageData, at: location)
+        fixture.session.undoManager.endUndoGrouping()
+
+        XCTAssertEqual(placedCount, 1)
+        XCTAssertEqual(placedReports, 1)
+        let picture = try XCTUnwrap(pictures(fixture).first)
+        XCTAssertEqual(pictures(fixture).count, 1)
+        assertPoint(CGPoint(x: picture.bounds.midX, y: picture.bounds.midY), CGPoint(x: 140, y: 420), accuracy: 1)
+        // 200 pixels with no resolution stated: 100 points, well under 60 % of the page.
+        XCTAssertEqual(picture.bounds.width, 100, accuracy: 1)
+        XCTAssertEqual(fixture.session.selectedPicture?.pictureName, picture.name)
+        XCTAssertEqual(fixture.session.undoManager.undoActionName, "Add Image")
+        fixture.session.undoManager.undo()
+        XCTAssertTrue(pictures(fixture).isEmpty, "The drop is one step of the history.")
+    }
+
+    func testSeveralDroppedFilesCascadeFromTheDropPointEachAStep() async throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let target = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        let folder = try TemporaryVault.make(prefix: "MacPDFPictureDropFiles", for: self).root
+        let first = folder.appendingPathComponent("Diagram one.png"), second = folder.appendingPathComponent("Diagram two.png")
+        try Self.pngData().write(to: first)
+        try Self.pngData(width: 100, height: 100).write(to: second)
+        let carried = pasteboard { pasteboard in pasteboard.writeObjects([first as NSURL, second as NSURL]) }
+        XCTAssertEqual(MacPDFPictureDropTarget.kinds(on: carried), [.picture, .picture])
+
+        let location = try XCTUnwrap(fixture.view.dropLocation(atViewPoint: fixture.view.convert(CGPoint(x: 200, y: 300), from: fixture.page)))
+        fixture.session.undoManager.beginUndoGrouping()
+        let placedCount = await target.placePictures(from: carried, imageOnPasteboard: nil, at: location)
+        fixture.session.undoManager.endUndoGrouping()
+
+        XCTAssertEqual(placedCount, 2)
+        let placed = pictures(fixture)
+        XCTAssertEqual(placed.count, 2)
+        assertPoint(placed.first.map { picture in CGPoint(x: picture.bounds.midX, y: picture.bounds.midY) }, CGPoint(x: 200, y: 300), accuracy: 1)
+        let step = PDFPictureDropPlan.cascadeStepPoints
+        assertPoint(placed.last.map { picture in CGPoint(x: picture.bounds.midX, y: picture.bounds.midY) }, CGPoint(x: 200 + step, y: 300 - step), accuracy: 1)
+        XCTAssertEqual(fixture.session.selectedPicture?.pictureName, placed.last?.name)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: first.path), "A Finder file is read where it is, never moved.")
+    }
+
+    func testAPDFFileIsRefusedAndSaysWhy() async throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let target = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        let carried = pasteboard { pasteboard in pasteboard.writeObjects([fixture.location as NSURL]) }
+        XCTAssertEqual(MacPDFPictureDropTarget.kinds(on: carried), [.pdfDocument])
+        XCTAssertFalse(target.takesDrop(from: carried))
+        let location = try XCTUnwrap(fixture.view.dropLocation(atViewPoint: fixture.view.convert(CGPoint(x: 200, y: 300), from: fixture.page)))
+        let placedCount = await target.placePictures(from: carried, imageOnPasteboard: nil, at: location)
+        XCTAssertEqual(placedCount, 0)
+        XCTAssertTrue(pictures(fixture).isEmpty)
+        XCTAssertEqual(fixture.session.errorMessage, "A PDF can't be placed on a page as an image. Drop a picture, such as a PNG or JPEG.")
+    }
+
+    func testTextAloneIsNotTaken() throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let target = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        let carried = pasteboard { pasteboard in pasteboard.setString("Some words", forType: .string) }
+        XCTAssertEqual(MacPDFPictureDropTarget.kinds(on: carried), [])
+        XCTAssertFalse(target.takesDrop(from: carried))
+    }
+
+    func testAPasswordProtectedPDFTakesNoDrop() async throws {
+        let directory = try TemporaryVault.make(prefix: "MacPDFPictureDropProtected", for: self).root
+        let location = directory.appendingPathComponent("Encrypted.pdf")
+        var mediaBox = CGRect(x: 0, y: 0, width: 400, height: 600)
+        let auxiliaryInfo = [kCGPDFContextOwnerPassword: "owner", kCGPDFContextUserPassword: ""] as CFDictionary
+        let context = try XCTUnwrap(CGContext(location as CFURL, mediaBox: &mediaBox, auxiliaryInfo))
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        let session = try await PDFSession.open(location)
+        XCTAssertTrue(session.isProtected)
+        let view = GraphiteMacPDFView(frame: CGRect(x: 0, y: 0, width: 400, height: 600))
+        view.document = session.document
+        let target = MacPDFPictureDropTarget(session: session, view: view)
+        let imageData = try Self.pngData()
+        let carried = pasteboard { pasteboard in pasteboard.setData(imageData, forType: .png) }
+        XCTAssertFalse(target.takesDrop(from: carried))
+    }
+}
+#endif

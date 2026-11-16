@@ -192,6 +192,25 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         XCTAssertTrue(blockViews(in: textView).first === tableView, "The view kept off screen comes back, not a new one")
     }
 
+    /// A restyle gives a block's lines new fragments, which TextKit has not laid out when the
+    /// views are placed. The Mac waited for TextKit's next layout of the viewport, which could
+    /// come only with the next scroll: the owner's pictures stayed blank over their space until
+    /// then (HUNT-364). No layout or drawing of the window runs between the placement and
+    /// the check here, so the view is back only if the editor lays out the viewport itself.
+    func testABlockWhoseLinesAreNotLaidOutGetsItsViewWithoutWaitingForAScroll() async throws {
+        let (coordinator, textView, _) = try await makeEditor(text: Self.tableNote)
+        try await awaitConditionAfterLayout { self.blockViews(in: textView).count == 1 }
+        let textLayoutManager = try XCTUnwrap(textView.textLayoutManager)
+        let contentManager = try XCTUnwrap(textLayoutManager.textContentManager)
+        coordinator.removeAllBlockViews()
+        let start = try XCTUnwrap(contentManager.location(contentManager.documentRange.location, offsetBy: Self.tableRange.location))
+        let end = try XCTUnwrap(contentManager.location(start, offsetBy: Self.tableRange.length))
+        textLayoutManager.invalidateLayout(for: try XCTUnwrap(NSTextRange(location: start, end: end)))
+        XCTAssertNotEqual(textLayoutManager.textLayoutFragment(for: start)?.state, .layoutAvailable, "The table's lines wait for layout")
+        coordinator.placeBlockViews(in: textView)
+        XCTAssertEqual(blockViews(in: textView).count, 1, "The table's view is placed by this pass, not by a later layout")
+    }
+
     /// A note opened from the file list keeps its cursor at the start without keyboard focus:
     /// a block there is drawn, and shows its source only once the note has focus.
     func testABlockAtTheCursorShowsItsSourceOnlyWhileTheNoteHasKeyboardFocus() async throws {
@@ -236,6 +255,36 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         XCTAssertLessThan(blockViews(in: textView).count, 10, "The blocks scrolled away gave up their place on screen")
     }
 
+    /// Left still, the note makes the views of the blocks just below the screen and keeps them, so
+    /// the scroll that shows them takes them from the kept views instead of building each within
+    /// a frame; no view made ahead stays beside the column, and blocks far below get none.
+    func testTheBlocksJustBelowTheScreenHaveViewsReadyOnceTheNoteIsStill() async throws {
+        let paragraph = (0..<6).map { lineIndex in "Paragraph line \(lineIndex)." }.joined(separator: "\n")
+        let text = (0..<40).map { blockIndex in "\(paragraph)\n\n$$x_{\(blockIndex)} = \(blockIndex)$$\n" }.joined(separator: "\n")
+        let (coordinator, textView, scrollView) = try await makeEditor(text: text, height: 500)
+        defer { withExtendedLifetime(coordinator) {} }
+        try await awaitConditionAfterLayout { !self.blockViews(in: textView).isEmpty }
+        let renderedBlocks = coordinator.styling.renderedBlocks
+        let entries = coordinator.styling.textState.blockEntries
+        var keptEntries: [LivePreviewBlockEntry] = []
+        try await awaitConditionAfterLayout {
+            keptEntries = entries.filter { entry in renderedBlocks.hasKeptView(forBlockWithKey: entry.key) }
+            return keptEntries.count >= 2 && !renderedBlocks.hasViewsMadeAhead
+        }
+        let lastEntry = try XCTUnwrap(entries.last)
+        XCTAssertFalse(renderedBlocks.hasKeptView(forBlockWithKey: lastEntry.key), "A block far below gets no view ahead of time")
+        XCTAssertTrue(blockViews(in: textView).allSatisfy { view in view.frame.minX >= 0 }, "No view made ahead stays beside the column")
+
+        // A screen down: a block whose view was made ahead shows with that view, taken from the kept ones.
+        let firstKept = try XCTUnwrap(keptEntries.first)
+        textView.scrollRangeToVisible(NSRange(location: firstKept.range.location, length: 0))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        // The window is never shown, so the viewport is laid out here as a shown window's display lays it out.
+        textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
+        try await awaitConditionAfterLayout { !renderedBlocks.hasKeptView(forBlockWithKey: firstKept.key) }
+        XCTAssertTrue(blockViews(in: textView).contains { view in view.frame.intersects(textView.visibleRect) && view.frame.minX >= 0 })
+    }
+
     /// Typing in a paragraph moves the blocks after it; their views stay, not built again.
     func testTypingElsewhereKeepsTheBlocksViews() async throws {
         let (coordinator, textView, _) = try await makeEditor(text: Self.tableNote)
@@ -252,6 +301,48 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         type("New first line\n", in: textView, coordinator)
         try await awaitConditionAfterLayout { (self.blockViews(in: textView).first?.frame.minY ?? 0) > tableTop + 5 }
         XCTAssertTrue(blockViews(in: textView).first === tableView)
+    }
+
+    /// Typing at the end of a heading restyles the line above it and the picture that line
+    /// touches, and TextKit takes a restyled line's height for an estimate until it lays it
+    /// out again, which leaves out a hidden line's reserved space. AppKit scrolls the cursor
+    /// into view inside the keystroke, so the note jumped up to where the estimates put the
+    /// heading, and settled somewhere else: the owner's note under two screenshots jumped at
+    /// each space typed.
+    func testTypingAtTheEndOfAHeadingUnderAPictureLeavesTheNoteWhereItIs() async throws {
+        let text = "## Gate\n\n![[first.png|399]]\n\n![[second.png]]\n\n## Flip-flop\n\n![[third.png]]\n![[fourth.png]]"
+        let (coordinator, textView, scrollView) = try await makeEditor(text: text, width: 700, height: 500)
+        let vault = try XCTUnwrap(coordinator.environment?.root)
+        for name in ["first.png", "second.png", "third.png", "fourth.png"] { try writePicture(named: name, in: vault) }
+        coordinator.environment = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 1,
+                                                         resolve: { target, _ in try? VaultPath(target) }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        coordinator.refreshBlockViews(in: textView)
+        let headingEnd = (text as NSString).range(of: "Flip-flop").upperBound
+        moveCursor(to: NSRange(location: headingEnd, length: 0), in: textView, coordinator)
+        textView.scrollRangeToVisible(NSRange(location: headingEnd, length: 0))
+        // The pictures on screen take their measured heights, and the heading is far enough
+        // down the note for a jump to show.
+        try await awaitConditionAfterLayout {
+            textView.scrollRangeToVisible(NSRange(location: headingEnd, length: 0))
+            let pictureViews = self.blockViews(in: textView)
+            return scrollView.contentView.bounds.minY > 600 && !pictureViews.isEmpty && pictureViews.allSatisfy { view in view.frame.height > 200 }
+        }
+        let clipView = scrollView.contentView
+        let scrolledOffset = clipView.bounds.minY
+        for typedText in [" ", "x", " "] {
+            textView.insertText(typedText, replacementRange: textView.selectedRange())
+            XCTAssertEqual(clipView.bounds.minY, scrolledOffset, accuracy: 1, "Typing \"\(typedText)\" left the note where it was")
+        }
+    }
+
+    private func writePicture(named name: String, in vault: URL) throws {
+        let width = 800, height = 600
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(red: 0.8, green: 0.1, blue: 0.1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let picture = try XCTUnwrap(context.makeImage())
+        try XCTUnwrap(NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:])).write(to: vault.appendingPathComponent(name))
     }
 
     private static let diagramCode = "flowchart TD\n  A[Start] --> B{Done?}\n  B -->|yes| C[End]"

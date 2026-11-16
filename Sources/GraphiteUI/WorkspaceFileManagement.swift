@@ -5,8 +5,8 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.25
- * Date: 02/11/2026
+ * Version: 0.26
+ * Date: 11/11/2026
  */
 
 import Foundation
@@ -118,7 +118,7 @@ extension WorkspaceModel {
             if !directory.rawValue.isEmpty { expandedFolders.insert(directory) }
             expandedFolders.insert(folder)
             await refreshDirectory()
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Renames a file (keeping its extension) or a folder.
@@ -133,14 +133,14 @@ extension WorkspaceModel {
         let fileName = isFolder || fileExtension.isEmpty ? trimmedName : trimmedName + "." + fileExtension
         guard fileName != path.name else { return }
         do { await move(path, to: try path.parent.appending(fileName)) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     /// Moves a file or folder into `folder`, keeping its name.
     func move(_ path: VaultPath, into folder: VaultPath) async {
         guard !folder.isInside(path), folder != path.parent else { return }
         do { await move(path, to: try folder.appending(path.name)) }
-        catch { errorMessage = error.localizedDescription }
+        catch { errorMessage.report(error) }
     }
 
     /// Plans the link updates; asks first unless "Automatically update internal links" is on.
@@ -239,7 +239,7 @@ extension WorkspaceModel {
             tellAbout(report, problems: editProblems + pdfProblems, movedItemName: destination.name, updatesLinks: updatesLinks)
             return .moved
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             return .refused(.failed(message: error.localizedDescription))
         }
     }
@@ -322,7 +322,7 @@ extension WorkspaceModel {
                 return await completeMove(path, to: destination, plan: plan, updatesLinks: true, through: fileOperations)
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             return .refused(.failed(message: error.localizedDescription))
         }
     }
@@ -416,7 +416,7 @@ extension WorkspaceModel {
             refreshIndexAfterFileChanges(copiedFiles)
             if !isDirectory(copy) { await open(copy) }
             await showInListings(copy)
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Makes a copy of each item beside it, as Make a Copy does for one, without opening any of
@@ -474,7 +474,7 @@ extension WorkspaceModel {
                 notice = "File recovery kept copies of \(Self.maximumNotesCopiedBeforeDeletion) of the notes in “\(path.name)”, the most it copies at once; "
                     + "\(notesWithoutCopy.formatted()) more have none."
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Shows the current file in the sidebar's file list, wherever this is asked from: the
@@ -485,6 +485,9 @@ extension WorkspaceModel {
         deviceDefaults.set(SidebarPanel.files.rawValue, forKey: SidebarPanelSettingKey.panel)
         searchQuery = ""
         communityPlugins.shownSidebarViewIdentifier = nil
+        // The file shows in the tree as it is, not among a filter's matches.
+        fileTreeContents.filter.clear()
+        fileTreeContents.revealedFolder = nil
         var folder = path.parent
         while !folder.rawValue.isEmpty {
             expandedFolders.insert(folder)

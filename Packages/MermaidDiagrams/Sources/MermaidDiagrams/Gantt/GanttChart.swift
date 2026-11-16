@@ -34,6 +34,9 @@ public struct GanttChart: Equatable, Sendable {
     public internal(set) var tasks: [GanttTask]
     /// Statements read that the chart is not drawn with yet, in the order first written.
     public internal(set) var statementsNotDrawn: [GanttStatementNotDrawn]
+    /// `displayMode: compact` under the front matter's `config:` and `gantt:`: tasks of a section that follow each other
+    /// share a row.
+    public internal(set) var isCompact = false
 
     init() {
         title = nil

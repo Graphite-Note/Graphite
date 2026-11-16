@@ -101,6 +101,8 @@ extension PDFPageCanvasView: LassoCanvasContent {
         setLassoTextBoxesHidden(identifiers)
         let hiddenBounds = pagePictures().filter { picture in identifiers.contains(picture.name) }.map(\.annotationBounds)
         for annotation in page.annotations where annotation.type == PDFPicture.annotationTypeName {
+            // A picture over the ink stays hidden: the view that draws it there leaves out what the frame carries.
+            if overlayView?.objectsOverInkView.draws(annotation) == true { continue }
             if let name = annotation.persistentName {
                 let isHidden = identifiers.contains(name)
                 if annotation.shouldDisplay == isHidden { annotation.shouldDisplay = !isHidden }
@@ -131,7 +133,7 @@ extension PDFPageCanvasView: LassoCanvasContent {
         context.concatenate(page.transform(for: .cropBox).inverted().concatenating(pageToDrawing))
         page.draw(with: .cropBox, to: context)
         context.restoreGState()
-        drawTextBoxes(in: context, coordinates: coordinates)
+        drawObjectsOverInk(in: context, coordinates: coordinates)
     }
 
     var lassoDisplayQuarterTurns: Int { ((page?.rotation ?? 0) / 90 % 4 + 4) % 4 }
@@ -162,7 +164,7 @@ extension PDFSession {
         let preferredWidth = LassoPasteboard.preferredWidth(ofImageData: imageData)
         Task {
             do { try await addPicture(imageData: imageData, placement: placement, preferredWidth: preferredWidth) }
-            catch { errorMessage = error.localizedDescription }
+            catch { errorMessage.report(error) }
         }
     }
 }

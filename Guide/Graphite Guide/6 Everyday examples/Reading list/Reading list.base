@@ -1,0 +1,46 @@
+filters:
+  and:
+    - file.hasTag("book")
+properties:
+  file.name:
+    displayName: Title
+  note.author:
+    displayName: Author
+  note.status:
+    displayName: Status
+  note.rating:
+    displayName: Rating
+  note.pages:
+    displayName: Pages
+views:
+  - type: cards
+    name: Covers
+    image: note.cover
+    imageFit: contain
+    imageAspectRatio: 1.5
+    cardSize: 160
+    order:
+      - file.name
+      - author
+      - status
+  - type: table
+    name: By status
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - author
+      - pages
+      - rating
+      - finished
+    summaries:
+      pages: Sum
+  - type: list
+    name: Next to read
+    filters:
+      and:
+        - 'status == "to read"'
+    order:
+      - file.name
+      - author

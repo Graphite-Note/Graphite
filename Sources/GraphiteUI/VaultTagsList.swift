@@ -12,7 +12,6 @@
 
 import SwiftUI
 import GraphiteCore
-import GraphiteIndex
 
 /// Obsidian's Tags view: every tag in the vault with the notes using it. Tapping a tag
 /// searches for it, nested tags included.

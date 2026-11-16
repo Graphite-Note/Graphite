@@ -6,8 +6,8 @@
  *              sideways, the smallest zoom, a split PDF turned to landscape and back, and the three-dot menu's icons.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 05/11/2026
+ * Version: 0.7
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -163,14 +163,15 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
     }
 
     /// HUNT-262, HUNT-289: the tool row is whole, compact or condensed in any width, never wider than its room. Only its
-    /// colors may scroll, in a strip of whole colors, where they do not all fit even at the mini size (HUNT-317).
+    /// colors scroll, sideways, in their strip of whole colors, at most nine in view (HUNT-317; Docs/PDF-annotation-todo.md
+    /// section 3, 2026-11-16: the strip is there in every form, so a swipe on the colors never moves one).
     func testThePencilToolRowFitsAnyWidthWithoutScrolling() async throws {
         let scene = try scene
         var formsByWidth: [CGFloat: PencilToolRowForm] = [:]
         for width in [140, 180, 245, 320, 400, 640, 1_100] as [CGFloat] {
             PencilToolRowForm.lastShown = nil
             let controller = UIHostingController(rootView: PencilToolRow(toolbox: PencilToolbox.shared, drawsShapes: .constant(false), addImage: {},
-                                                                         offersReadAloudPen: true, offersTextBoxes: true)
+                                                                         offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                 .frame(width: width, height: PencilToolbarMetrics.height)
                 .background(Color(uiColor: .systemBackground)))
             let window = UIWindow(windowScene: scene)
@@ -183,14 +184,17 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
             XCTAssertLessThanOrEqual(shownRow.frameInWindow.width, width + 0.5, "At \(Int(width)) points the row is no wider than its room.")
             XCTAssertGreaterThanOrEqual(shownRow.frameInWindow.minX, -0.5)
             let scrollViews = descendants(of: controller.view, matching: UIScrollView.self)
-            if case .compactWithScrollingColors(let visibleSwatchCount) = shownRow.arrangement {
-                let stripWidth = CGFloat(Double(visibleSwatchCount) * PencilToolRowLayout.Density.tightest.swatchPitch)
-                XCTAssertFalse(scrollViews.isEmpty, "At \(Int(width)) points the colors scroll in their strip.")
-                for scrollView in scrollViews {
-                    XCTAssertEqual(scrollView.bounds.width, stripWidth, accuracy: 0.5, "At \(Int(width)) points only the strip of whole colors scrolls.")
-                }
-            } else {
-                XCTAssertTrue(scrollViews.isEmpty, "At \(Int(width)) points nothing scrolls sideways.")
+            for scrollView in scrollViews {
+                XCTAssertFalse(descendants(of: scrollView, matching: PencilColorRowTouchView.self).isEmpty,
+                               "At \(Int(width)) points the only thing that scrolls is the strip of colors.")
+                XCTAssertLessThanOrEqual(scrollView.contentSize.height, scrollView.bounds.height + 0.5, "At \(Int(width)) points the strip never scrolls up or down.")
+                let pitch = try XCTUnwrap(descendants(of: scrollView, matching: PencilColorRowTouchView.self).first?.touches?.swatchPitch)
+                let visibleColors = scrollView.bounds.width / pitch
+                XCTAssertEqual(visibleColors, visibleColors.rounded(), accuracy: 0.05, "At \(Int(width)) points the strip shows whole colors.")
+                XCTAssertLessThanOrEqual(visibleColors.rounded(), CGFloat(PencilToolRowLayout.maximumVisibleSwatchCount))
+            }
+            if shownRow.form != .condensed, PencilToolRowLayout.offersColors(toolInUse: PencilToolbox.shared.toolInUse) {
+                XCTAssertEqual(scrollViews.count, 1, "At \(Int(width)) points the colors sit in their strip.")
             }
             formsByWidth[width] = shownRow.form
             window.isHidden = true
@@ -482,12 +486,14 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         return (symbolNames, titles, buttons)
     }
 
-    /// HUNT-146: a portrait iPad with the sidebar open, the documents about 430 points wide: pages and find are on the
-    /// bar beside the title and More, adding pages is in More, and nothing covers the title.
+    /// HUNT-146: the sidebar open beside a PDF about 430 points wide: pages and find are on the bar beside the title
+    /// and More, adding pages is in More, and nothing covers the title. Reported on a portrait iPad; since HUNT-317 an
+    /// upright window shows its sidebar over the documents, so the documents are this narrow beside the sidebar in a
+    /// window wider than tall, as Stage Manager or Split View gives one.
     func testAPDFsBarKeepsPagesAndFindWithTheSidebarOpenInPortrait() async throws {
         let directory = try makeDirectory("PortraitSidebar")
         let (workspace, session) = try await pdfWorkspace(in: directory)
-        let (window, _) = try host(workspace, size: CGSize(width: 750, height: 1000), horizontalSizeClass: .regular)
+        let (window, _) = try host(workspace, size: CGSize(width: 750, height: 600), horizontalSizeClass: .regular)
         defer { window.isHidden = true; window.rootViewController = nil }
         try await waitUntil { (session.pdfView as? GraphitePDFDisplayView)?.window === window }
         workspace.searchResultsRevealRequest += 1

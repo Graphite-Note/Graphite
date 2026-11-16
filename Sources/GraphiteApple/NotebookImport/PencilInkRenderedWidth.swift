@@ -6,8 +6,8 @@
  *              uses.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 02/11/2026
+ * Version: 0.6
+ * Date: 13/11/2026
  */
 import Foundation
 import PencilKit
@@ -143,6 +143,13 @@ enum PencilInkRenderedWidth {
         let drawnWidth = interpolatedWidth(forPointSize: pointSize, in: table)
         guard drawnWidth > 0 else { return pointSize * scale }
         return Self.pointSize(forRenderedWidth: drawnWidth * scale, in: table)
+    }
+
+    /// The point size PencilKit draws `drawnWidth` points wide across the stroke in this ink type, for ink made from a
+    /// width rather than a Pencil, as the Mac's pointer draws it; the width itself for an ink not measured.
+    static func pointSize(forDrawnWidth drawnWidth: Double, inkType: PKInkingTool.InkType) -> Double {
+        guard drawnWidth.isFinite, drawnWidth > 0, let table = acrossMeasurements(forInkType: inkType) else { return drawnWidth }
+        return pointSize(forRenderedWidth: drawnWidth, in: table)
     }
 
     /// The point size PencilKit draws `renderedWidth` points wide in this ink: interpolated between the two nearest

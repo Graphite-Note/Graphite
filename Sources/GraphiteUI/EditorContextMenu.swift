@@ -5,8 +5,8 @@
  * Description: The editor's context menu, and the Format and Insert menus of the toolbar and the Mac menu bar, drawn from the same entries.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -45,7 +45,7 @@ struct EditorContextMenuActions {
 /// so the Mac and the iPad show the same items.
 struct EditorContextMenuEntry {
     enum Content {
-        case action(isEnabled: Bool, perform: () -> Void)
+        case action(isEnabled: Bool, perform: @MainActor () -> Void)
         case submenu([EditorContextMenuEntry])
         /// Entries set apart from their neighbors by a separator (a Mac menu) or an inline
         /// section (an iPad menu).
@@ -56,7 +56,8 @@ struct EditorContextMenuEntry {
     let systemImage: String?
     let content: Content
 
-    static func action(_ title: String, _ systemImage: String? = nil, isEnabled: Bool = true, perform: @escaping () -> Void) -> EditorContextMenuEntry {
+    static func action(_ title: String, _ systemImage: String? = nil, isEnabled: Bool = true,
+                       perform: @escaping @MainActor () -> Void) -> EditorContextMenuEntry {
         EditorContextMenuEntry(title: title, systemImage: systemImage, content: .action(isEnabled: isEnabled, perform: perform))
     }
 
@@ -78,6 +79,7 @@ struct EditorContextMenuEntry {
 /// Format › Clear Formatting. Color › Custom… is left out too: the Mac's color panel reports
 /// every change while a color is dragged and never that the person has chosen, so it would
 /// rewrite the note at each change; the menus keep to the same items on both platforms.
+@MainActor
 enum EditorContextMenuContent {
     /// The blocks the toolbar's Format menu and this menu insert.
     static let tableBlock = "| Column | Column |\n| --- | --- |\n|  |  |"
@@ -104,13 +106,35 @@ enum EditorContextMenuContent {
         submenus.append(.submenu("Format", "textformat", formatEntries(actions: actions)))
         submenus.append(paragraphMenu(actions: actions))
         submenus.append(.submenu("Insert", "paperclip", insertEntries(actions: actions, editorActions: editorActions)))
-        return [
+        return webAddressEntries(actions: actions) + [
             .group([
                 .action("Add Link", "link") { actions.run(.insertWikilink) },
                 .action("Add External Link", "link.badge.plus") { actions.run(.insertMarkdownLink) },
             ]),
             .group(submenus),
         ]
+    }
+
+    /// On a bare web address: Use Page Title writes `[title](address)`, and on a YouTube
+    /// address Show Preview writes `![title](address)` on a line of its own, drawn as a card.
+    /// The page is fetched only when one is chosen; a title that cannot be fetched writes no
+    /// link, and a preview is written without its title.
+    private static func webAddressEntries(actions: EditorContextMenuActions) -> [EditorContextMenuEntry] {
+        let noteState = actions.noteState()
+        guard let address = WebLinkEditing.bareAddress(at: noteState.selection.location, in: noteState.text) else { return [] }
+        var entries: [EditorContextMenuEntry] = [
+            .action("Use Page Title", "textformat") {
+                applyingAfterFetching(address, actions) { details, text in
+                    details?.title.flatMap { title in WebLinkEditing.titledLink(address, title: title, in: text) }
+                }
+            },
+        ]
+        if WebVideo(address: address.location) != nil {
+            entries.append(.action("Show Preview", "play.rectangle") {
+                applyingAfterFetching(address, actions) { details, text in WebLinkEditing.preview(address, title: details?.title ?? "", in: text) }
+            })
+        }
+        return [.group(entries)]
     }
 
     /// The Format menu of the menu bar and the toolbar: the Format submenu's items, then the Color
@@ -195,6 +219,16 @@ enum EditorContextMenuContent {
         if let draw = editorActions.draw { attachmentEntries.append(.action("Draw", "pencil.tip.crop.circle.badge.plus") { draw() }) }
         if let template = actions.template { attachmentEntries.append(.action("Template…", "doc.on.doc") { template() }) }
         return [.group(blockEntries), .group(attachmentEntries)]
+    }
+
+    /// Fetches the address's page, then computes an edit on the note as it is when the page
+    /// answers, and applies it; nothing when the edit cannot be made.
+    private static func applyingAfterFetching(_ address: BareWebAddress, _ actions: EditorContextMenuActions,
+                                              makeEdit: @escaping (WebLinkDetails?, NSString) -> MarkdownTextEdit?) {
+        Task {
+            let details = await WebLinkDetailsFetching.details(for: address.location)
+            applying(actions) { text, _ in makeEdit(details, text) }
+        }
     }
 
     /// Computes an edit on the note as it is when the item is chosen, and applies it.
@@ -349,12 +383,12 @@ private extension EditorContextMenuEntry {
 #elseif canImport(AppKit)
 /// A menu item that runs a closure. A menu item holds its target weakly, so it is its own.
 private final class EditorContextMenuActionItem: NSMenuItem, NSMenuItemValidation {
-    private let perform: () -> Void
+    private let perform: @MainActor () -> Void
     /// Kept apart from `isEnabled`: a menu that enables its items automatically asks the
     /// target, and would otherwise enable every item.
     private let isActionEnabled: Bool
 
-    init(title: String, isEnabled: Bool, perform: @escaping () -> Void) {
+    init(title: String, isEnabled: Bool, perform: @escaping @MainActor () -> Void) {
         self.perform = perform
         isActionEnabled = isEnabled
         super.init(title: title, action: #selector(EditorContextMenuActionItem.performAction), keyEquivalent: "")
@@ -367,7 +401,7 @@ private final class EditorContextMenuActionItem: NSMenuItem, NSMenuItemValidatio
         super.init(coder: coder)
     }
 
-    @objc private func performAction() { perform() }
+    @MainActor @objc private func performAction() { perform() }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool { isActionEnabled }
 }

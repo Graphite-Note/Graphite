@@ -6,8 +6,8 @@
  *              palette.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 05/11/2026
+ * Version: 0.10
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -85,27 +85,38 @@ struct PencilToolButtons {
     }
 
     func colorButton(name: String, hex: String) -> some View {
-        let isInUse = toolbox.toolInUse == .ink && TextColorMarkup.canonicalHex(hex) == toolbox.presetInUse.colorHex
+        let isInUse = isColorInUse(hex: hex)
         return Button {
             toolbox.chooseColor(hex: hex)
         } label: {
-            Circle()
-                .fill(Color(graphiteHex: hex) ?? .black)
-                // A ring in the text color, so a black ink shows on the dark bar of dark mode: at 60 % it reads at more
-                // than 3 to 1 on the bar's darkest gray (WCAG 1.4.11) at every density, the 16-point dots too; at 40 %
-                // the owner's iPad measured 2.65 to 1.
-                .overlay { Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1) }
-                .frame(width: density.swatchDiameter, height: density.swatchDiameter)
-                // A ring, so the color in use is marked by shape as well.
-                .overlay {
-                    if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: density.swatchRingDiameter, height: density.swatchRingDiameter) }
-                }
-                .frame(width: density.swatchPitch, height: rowHeight)
-                .contentShape(Rectangle())
+            colorSwatch(hex: hex, isInUse: isInUse)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(name)
         .accessibilityAddTraits(isInUse ? .isSelected : [])
+    }
+
+    /// Whether the ink in use draws in this color.
+    func isColorInUse(hex: String) -> Bool {
+        toolbox.toolInUse == .ink && TextColorMarkup.canonicalHex(hex) == toolbox.presetInUse.colorHex
+    }
+
+    /// A color as the bar draws it, ringed when the ink in use draws in it, touched over the swatch's pitch and the
+    /// row's height: the squeeze palette's buttons and the bar's arrangeable colors (`PencilColorSwatchRow`).
+    func colorSwatch(hex: String, isInUse: Bool) -> some View {
+        Circle()
+            .fill(Color(graphiteHex: hex) ?? .black)
+            // A ring in the text color, so a black ink shows on the dark bar of dark mode: at 60 % it reads at more
+            // than 3 to 1 on the bar's darkest gray (WCAG 1.4.11) at every density, the 16-point dots too; at 40 %
+            // the owner's iPad measured 2.65 to 1.
+            .overlay { Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1) }
+            .frame(width: density.swatchDiameter, height: density.swatchDiameter)
+            // A ring, so the color in use is marked by shape as well.
+            .overlay {
+                if isInUse { Circle().strokeBorder(.primary, lineWidth: 2).frame(width: density.swatchRingDiameter, height: density.swatchRingDiameter) }
+            }
+            .frame(width: density.swatchPitch, height: rowHeight)
+            .contentShape(Rectangle())
     }
 }
 
@@ -128,6 +139,7 @@ struct PencilToolGlyph: View {
         case laser
         case readAloud
         case text
+        case textHighlighter
 
         /// The glyph of a tool other than an ink.
         init(kind: PencilToolKind) {
@@ -137,6 +149,7 @@ struct PencilToolGlyph: View {
             case .laser: self = .laser
             case .readAloud: self = .readAloud
             case .text: self = .text
+            case .textHighlighter: self = .textHighlighter
             }
         }
     }
@@ -156,6 +169,7 @@ struct PencilToolGlyph: View {
         case .laser: PencilToolKind.laser.symbolName
         case .readAloud: PencilToolKind.readAloud.symbolName
         case .text: PencilToolKind.text.symbolName
+        case .textHighlighter: PencilToolKind.textHighlighter.symbolName
         }
     }
 

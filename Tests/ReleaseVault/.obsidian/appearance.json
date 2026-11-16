@@ -1,0 +1,9 @@
+{
+  "accentColor": "#1b7f79",
+  "theme": "system",
+  "cssTheme": "Release Paper",
+  "enabledCssSnippets": [
+    "Ruled headings"
+  ],
+  "baseFontSize": 16
+}

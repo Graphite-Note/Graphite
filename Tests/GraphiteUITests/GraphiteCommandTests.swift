@@ -6,7 +6,7 @@
  *              shortcuts, where each is listened for, and on which platform it exists.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.4
+ * Version: 0.5
  * Date: 11/11/2026
  */
 import XCTest
@@ -39,7 +39,7 @@ final class GraphiteCommandTests: XCTestCase {
         func symbols(_ command: GraphiteCommand) -> [String] { table.combinations(for: command.identifier).map(\.symbols) }
         let expected: [GraphiteCommand: String] = [
             .newNote: "⌘N", .newTab: "⌘T", .quickSwitcher: "⌘O", .closeTab: "⌘W", .reopenClosedTab: "⇧⌘T", .save: "⌘S", .openSettings: "⌘,",
-            .searchAllFiles: "⇧⌘F", .toggleReadingView: "⌘E", .goBack: "⌘[", .goForward: "⌘]", .nextTab: "⌃⇥",
+            .searchAllFiles: "⇧⌘F", .filterFiles: "⌥⌘J", .toggleReadingView: "⌘E", .goBack: "⌘[", .goForward: "⌘]", .nextTab: "⌃⇥",
             .previousTab: "⌃⇧⇥", .goToTab1: "⌘1", .goToTab8: "⌘8", .goToLastTab: "⌘9", .increaseFontSize: "⌘+", .decreaseFontSize: "⌘-",
             .resetFontSize: "⌘0", .toggleBold: "⌘B", .toggleItalics: "⌘I", .toggleChecklist: "⌘L", .insertLink: "⌘K", .toggleHighlight: "⇧⌘H",
             .toggleStrikethrough: "⇧⌘X", .toggleCode: "⌃⌘C", .toggleComment: "⌘/", .findInNote: "⌘F", .findAndReplaceInNote: "⌥⌘F",
@@ -63,6 +63,23 @@ final class GraphiteCommandTests: XCTestCase {
         XCTAssertEqual(GraphiteCommand.exportToPDF.identifier, "workspace:export-pdf", "Obsidian's identifier, so its hotkeys.json entry applies.")
         XCTAssertEqual(GraphiteCommand.exportToPDF.macMenuTitles, ["Export as PDF…"])
         XCTAssertEqual(GraphiteCommand.printNote.macMenuTitles, ["Print…"])
+    }
+
+    func testExportAsPDFIsShiftCommandEOnBothPlatformsWhichNothingElseTakesAndAVaultCanChange() {
+        let exportShortcut = KeyCombination([.command, .shift], .character("E"))
+        XCTAssertEqual(GraphiteCommand.exportToPDF.defaults.defaultCombinations, [exportShortcut])
+        XCTAssertEqual(exportShortcut.keyboardShortcut, KeyboardShortcut("e", modifiers: [.command, .shift]), "File › Export as PDF… answers it.")
+        for platform in [ShortcutPlatform.macOS, .iPadOS] {
+            XCTAssertTrue(GraphiteCommand.exportToPDF.isAvailable(on: platform))
+            let others = GraphiteCommand.available(on: platform).filter { command in command != .exportToPDF }
+            XCTAssertFalse(others.contains { command in command.defaults.defaultCombinations.contains(exportShortcut) }, "\(platform)")
+            XCTAssertNil(SystemKeyboardShortcuts(platform: platform).shortcut(matching: exportShortcut), "\(platform)")
+        }
+        var file = HotkeyFile()
+        let chosen = KeyCombination([.command, .option], .character("E"))
+        file.assign([chosen], to: GraphiteCommand.exportToPDF.identifier)
+        let table = KeyboardShortcutTable(commands: GraphiteCommand.allCases.map(\.defaults), file: file)
+        XCTAssertEqual(table.combinations(for: GraphiteCommand.exportToPDF.identifier), [chosen], "Settings › Keyboard Shortcuts can change it.")
     }
 
     func testEveryCommandIsBoundWhereItsShortcutIsListenedFor() {

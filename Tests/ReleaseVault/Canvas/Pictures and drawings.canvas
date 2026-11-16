@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    {"id": "group-pictures", "type": "group", "x": -40, "y": -60, "width": 1000, "height": 420, "label": "Pictures", "color": "5"},
+    {"id": "file-png", "type": "file", "x": 0, "y": 0, "width": 240, "height": 140, "file": "Attachments/Sunset over hills.png"},
+    {"id": "file-jpeg", "type": "file", "x": 280, "y": 0, "width": 160, "height": 160, "file": "Attachments/Rings.jpg"},
+    {"id": "file-gif", "type": "file", "x": 480, "y": 0, "width": 160, "height": 160, "file": "Attachments/Rings.gif"},
+    {"id": "file-webp", "type": "file", "x": 680, "y": 0, "width": 160, "height": 160, "file": "Attachments/Checkers.webp"},
+    {"id": "file-svg", "type": "file", "x": 0, "y": 180, "width": 300, "height": 160, "file": "Drawings/Every tool.svg"},
+    {"id": "file-logo", "type": "file", "x": 340, "y": 180, "width": 160, "height": 160, "file": "Attachments/Logo.svg"},
+    {"id": "text-picture", "type": "text", "x": 540, "y": 200, "width": 380, "height": 140, "text": "A text card with a picture in it:\n\n![[Square badge.png|60]] and a [[Pictures in every form|link]]."},
+    {"id": "group-drawings", "type": "group", "x": -40, "y": 400, "width": 1000, "height": 420, "label": "Drawings and PDFs", "color": "3"},
+    {"id": "file-drawing", "type": "file", "x": 0, "y": 440, "width": 420, "height": 262, "file": "Drawings/Every tool.png"},
+    {"id": "file-drawing-pdf", "type": "file", "x": 460, "y": 440, "width": 240, "height": 150, "file": "Drawings/Every tool.pdf"},
+    {"id": "file-circuit", "type": "file", "x": 740, "y": 440, "width": 200, "height": 87, "file": "Drawings/Circuit drawing.png"},
+    {"id": "file-written-pdf", "type": "file", "x": 0, "y": 720, "width": 300, "height": 80, "file": "PDFs/Written in Graphite.pdf", "subpath": "#page=3"},
+    {"id": "file-notebook", "type": "file", "x": 460, "y": 620, "width": 200, "height": 180, "file": "Notebooks/Papers/Cornell.pdf"},
+    {"id": "file-embedded-note", "type": "file", "x": 1000, "y": 0, "width": 360, "height": 480, "file": "Embeds/Embedded note with pictures.md"}
+  ],
+  "edges": [
+    {"id": "edge-png-svg", "fromNode": "file-png", "fromSide": "bottom", "toNode": "file-svg", "toSide": "top", "label": "same canvas", "toEnd": "arrow"},
+    {"id": "edge-drawing-pdf", "fromNode": "file-drawing", "fromSide": "right", "toNode": "file-drawing-pdf", "toSide": "left", "label": "saved as PDF", "color": "4"},
+    {"id": "edge-note", "fromNode": "text-picture", "fromSide": "right", "toNode": "file-embedded-note", "toSide": "left", "fromEnd": "arrow", "toEnd": "arrow"}
+  ]
+}

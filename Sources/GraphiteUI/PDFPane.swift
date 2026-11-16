@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.31
- * Date: 11/11/2026
+ * Version: 0.34
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -25,8 +25,14 @@ enum PDFAnnotationPreferenceKey {
     /// Lines or dots shown on PDF pages while writing, and their spacing; never saved.
     static let writingGuidePattern = "GraphitePDFWritingGuidePattern"
     static let writingGuideSpacing = "GraphitePDFWritingGuideSpacing"
-    /// The mark the Mac's highlight button makes (`PDFMarkupStyle`).
+    /// The mark the Mac's highlight button and the iPad's text highlighter make (`PDFMarkupStyle`), kept on each device.
     static let markupStyle = "GraphitePDFMarkupStyle"
+    /// The colours saved for highlights, underlines and strikethroughs (`PDFTextMarkColors`).
+    static let textMarkColors = "GraphitePDFTextMarkColors"
+    /// The colour and width of the Mac's Draw tool (`PDFMarkupInkStyle`).
+    static let markupInkStyle = "GraphitePDFMarkupInkStyle"
+    /// The shape, colours and width of the Mac's Shapes tool (`PDFMarkupShapeStyle`).
+    static let markupShapeStyle = "GraphitePDFMarkupShapeStyle"
 
     /// Light gray, so the guides stay behind the page's own content.
     static func writingGuides(pattern: DrawingPaperPattern, spacing: DrawingPaperSpacing) -> DrawingPaper {
@@ -95,8 +101,8 @@ private struct PDFPaneContent: View {
     @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
     /// The style that shows: the one chosen in Settings, except in a split (`PencilToolbarStyle.inEffect`).
     private var toolbarStyle: PencilToolbarStyle { chosenToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) }
-    /// The fixed bar takes the place of the floating palette; compact layouts keep the palette.
-    private var usesFixedToolbar: Bool { toolbarStyle == .fixed && horizontalSizeClass != .compact }
+    /// The fixed bar takes the place of the floating palette; a phone's compact layout keeps the palette.
+    private var usesFixedToolbar: Bool { toolbarStyle.shown(horizontalSizeClass: horizontalSizeClass, isPhone: PencilToolbarStyle.isPhone) == .fixed }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.foldsSecondaryToolbarActions) private var foldsSecondaryToolbarActions
@@ -110,9 +116,11 @@ private struct PDFPaneContent: View {
     /// bar gives way to the palette while writing.
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
     #endif
+    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
     #if os(macOS)
     @State private var markupToolbar = PDFMarkupToolbar()
-    @AppStorage(PDFAnnotationPreferenceKey.markupStyle) private var markupStyle = PDFMarkupStyle.default
+    @AppStorage(PDFAnnotationPreferenceKey.markupInkStyle) private var markupInkStyle = PDFMarkupInkStyle.default
+    @AppStorage(PDFAnnotationPreferenceKey.markupShapeStyle) private var markupShapeStyle = PDFMarkupShapeStyle.default
     #endif
 
     init(session: PDFSession, isFocused: Bool, focus: @escaping () -> Void, linkActions: PDFLinkActions?,
@@ -235,7 +243,8 @@ private struct PDFPaneContent: View {
             }
         }
         #if os(macOS)
-        .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, isFocused: isFocused))
+        .modifier(PDFMarkupControls(session: session, toolbar: markupToolbar, style: $markupStyle, inkStyle: $markupInkStyle,
+                                     shapeStyle: $markupShapeStyle, isFocused: isFocused))
         #endif
         #if canImport(UIKit)
         // The iPad's bars above the page. The Mac has none: an inset with no content takes
@@ -254,7 +263,7 @@ private struct PDFPaneContent: View {
                     // One row for both, as in Focus, where no tab bar holds the controls.
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar) {
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, offersTextMarking: true, beginWriting: beginWritingFromBar) {
                         EmptyView()
                     } trailingControls: {
                         HStack(spacing: 12) {
@@ -271,7 +280,7 @@ private struct PDFPaneContent: View {
                 } else if showsFixedToolbar {
                     PencilToolbar(toolbox: toolbox, drawsShapes: $drawsShapes,
                                   addImage: { pictureSource = .photoLibrary }, undoAvailability: session.undoAvailability,
-                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, beginWriting: beginWritingFromBar)
+                                  offersReadAloudPen: readAloud != nil, offersTextBoxes: true, offersTextMarking: true, beginWriting: beginWritingFromBar)
                 }
             }
         }
@@ -372,7 +381,8 @@ private struct PDFPaneContent: View {
                                       && session.textBoxActivity == .idle,
                                   drawsShapes: drawsShapes, isFocused: isFocused && isAnnotating,
                                   fixedTool: usesFixedToolbar ? toolbox.selection : nil,
-                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing))
+                                  writingGuides: PDFAnnotationPreferenceKey.writingGuides(pattern: writingGuidePattern, spacing: writingGuideSpacing),
+                                  markupStyle: markupStyle)
         #else
         return PDFAnnotationInput(isEnabled: isAnnotating, drawsWithFinger: drawsWithFinger, showsToolPicker: false,
                                   markupTool: markupToolbar.tool, markupStyle: markupStyle)
@@ -423,7 +433,7 @@ private struct PDFPaneContent: View {
     private func saveSeparateCopy() {
         Task {
             do { resolveConflict(try await session.saveSeparateCopy()) }
-            catch { session.errorMessage = error.localizedDescription }
+            catch { session.errorMessage.report(error) }
         }
     }
 
@@ -474,7 +484,9 @@ private struct PDFPaneContent: View {
         #if os(iOS)
         // The system's overflow menu (•••) holds the More commands together with whatever the
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
-        ToolbarOverflowMenu { moreMenuItems }
+        // Its icons take the tint of the items themselves: the column's accent, faint on the menu's
+        // material in the dark, reached them past the bar's own (HUNT-280).
+        ToolbarOverflowMenu { moreMenuItems.tint(.primary) }
         #endif
     }
 
@@ -500,13 +512,13 @@ private struct PDFPaneContent: View {
                 Divider()
                 Button("Set Reading Start") {
                     do { readingStart = try PDFReadAloudSource.endpoint(in: session, isEnd: false) }
-                    catch { session.errorMessage = error.localizedDescription }
+                    catch { session.errorMessage.report(error) }
                 }.disabled(session.readAloudSelection == nil)
                 if let readingStart {
                     Text("Start: page \(readingStart.pageIndex + 1)")
                     Button("Read Through Here") {
                         do { readAloud.readPDFRange(session, start: readingStart, end: try PDFReadAloudSource.endpoint(in: session, isEnd: true)) }
-                        catch { session.errorMessage = error.localizedDescription }
+                        catch { session.errorMessage.report(error) }
                     }.disabled(session.readAloudSelection == nil)
                     Button("Clear Reading Start") { self.readingStart = nil }
                 }
@@ -704,7 +716,7 @@ final class PDFPageCommands {
         changingPageStructure { [session] in
             Task {
                 do { try await session.insertPaper(GraphitePreferences.storedNotebookPaper(template: template), at: insertionIndex) }
-                catch { session.errorMessage = error.localizedDescription }
+                catch { session.errorMessage.report(error) }
             }
         }
     }
@@ -718,7 +730,7 @@ final class PDFPageCommands {
         let insertionIndex = importInsertionIndex
         Task {
             do { try await session.importPages(from: sourceLocation, at: insertionIndex) }
-            catch { session.errorMessage = error.localizedDescription }
+            catch { session.errorMessage.report(error) }
         }
     }
 
@@ -758,7 +770,7 @@ final class PDFPageCommands {
         changingPageStructure { [session] in
             Task {
                 do { try await session.deletePages(at: pageIndices) }
-                catch { session.errorMessage = error.localizedDescription }
+                catch { session.errorMessage.report(error) }
             }
         }
     }
@@ -784,7 +796,7 @@ final class PDFPageCommands {
                 exportDocument = PDFExportDocument(data: try await session.export(pages: sortedPages))
                 isExporting = true
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.errorMessage.report(error)
             }
         }
     }
@@ -836,7 +848,7 @@ final class PDFPageCommands {
 
 @MainActor
 private func perform(_ session: PDFSession, _ operation: () throws -> Void) {
-    do { try operation() } catch { session.errorMessage = error.localizedDescription }
+    do { try operation() } catch { session.errorMessage.report(error) }
 }
 
 /// Confirmations, file import and export for page operations.
@@ -860,11 +872,11 @@ struct PDFPageCommandDialogs: ViewModifier {
             .fileImporter(isPresented: $commands.isImporting, allowedContentTypes: [.pdf]) { result in
                 switch result {
                 case .success(let location): commands.importPages(from: location)
-                case .failure(let error): commands.session.errorMessage = error.localizedDescription
+                case .failure(let error): commands.session.errorMessage.report(error)
                 }
             }
             .fileExporter(isPresented: $commands.isExporting, document: commands.exportDocument, contentType: .pdf, defaultFilename: commands.exportFilename) { result in
-                if case .failure(let error) = result { commands.session.errorMessage = error.localizedDescription }
+                if case .failure(let error) = result { commands.session.errorMessage.report(error) }
                 commands.exportDocument = nil
             }
     }

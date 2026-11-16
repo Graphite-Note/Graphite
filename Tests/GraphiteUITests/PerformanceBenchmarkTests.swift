@@ -3,12 +3,13 @@
  * -------------------------------------
  * Layer: Tests
  * Description: Time, processor and memory use of opening, scrolling and typing in a long note (in a paragraph, a
- *              list item and a callout), of switching between open tabs, of opening and scrolling a long PDF with
- *              its pages sidebar, of an embedded PDF while other files change, and of the map's updates.
+ *              list item and a callout), of scrolling a note of handwritten PDFs, of switching between open tabs, of
+ *              opening and scrolling a long PDF with its pages sidebar, of an embedded PDF while other files change,
+ *              and of the map's updates.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.8
- * Date: 04/11/2026
+ * Version: 0.10
+ * Date: 16/11/2026
  */
 import XCTest
 import SwiftUI
@@ -18,6 +19,9 @@ import CoreText
 import GraphiteIndex
 import GraphiteApple
 @testable import GraphiteUI
+#if canImport(GraphiteTestSupport)
+import GraphiteTestSupport
+#endif
 #if canImport(UIKit)
 import UIKit
 #else
@@ -25,10 +29,10 @@ import AppKit
 #endif
 
 /// Time, processor and memory use of opening, scrolling and typing in a long note (in a
-/// paragraph, a list item and a callout), of switching between open tabs, of opening and
-/// scrolling a long PDF with its pages sidebar, of an embedded PDF while other files change,
-/// and of the map's updates. The same
-/// file runs on the Mac (`swift test`) and in the hosted iPad tests, so both platforms are
+/// paragraph, a list item and a callout), of scrolling a note of handwritten PDFs, of
+/// switching between open tabs, of opening and scrolling a long PDF with its pages sidebar,
+/// of an embedded PDF while other files change, and of the map's updates. The same file
+/// runs on the Mac (`swift test`) and in the hosted iPad tests, so both platforms are
 /// measured the same way.
 ///
 /// The benchmarks run only when asked for, as they take minutes:
@@ -44,11 +48,13 @@ final class PerformanceBenchmarkTests: XCTestCase {
     private static let runCount = 3
     nonisolated private static let frameInterval = Duration.milliseconds(16)
     #if canImport(UIKit)
-    nonisolated private static let platformName = "iPad"
+    /// The iPhone runs the same benchmarks in a window of its own screen's size; the simulator names it.
+    nonisolated private static let platformName =
+        ProcessInfo.processInfo.environment["SIMULATOR_MODEL_IDENTIFIER"]?.hasPrefix("iPhone") == true ? "iPhone" : "iPad"
     #else
     nonisolated private static let platformName = "Mac"
     #endif
-    /// The iPad Pro 11-inch's portrait window, used on the Mac too.
+    /// The iPad Pro 11-inch's portrait window, used on the Mac too; an iPhone takes its screen.
     private static let windowSize = CGSize(width: 834, height: 1210)
 
     private var temporaryDirectories: [URL] = []
@@ -163,8 +169,116 @@ final class PerformanceBenchmarkTests: XCTestCase {
             }
             quoteTyping.finish()
             try? await workspace.document(for: tab).saveAllChanges()
-            close(window)
+            close(window, of: workspace)
             try await reportMemoryKept(scenario: "note-memory-kept-after-close", run: run, since: footprintBeforeOpening)
+        }
+    }
+
+    /// Reading a long note: a step of 80 % of the window at a time, with a pause of 0.8 s after
+    /// each, as a person reads a screen and then scrolls on. The first time down, so every block's
+    /// view is new; the pauses are not measured, only the steps.
+    func testReadingALongNoteAScreenAtATime() async throws {
+        let noteText = Self.longLectureNote(sectionCount: 40)
+        for run in 1...Self.runCount {
+            let vault = try makeTemporaryDirectory(named: "ReadingBenchmark")
+            let notePath = try VaultPath("Lecture.md")
+            try Data(noteText.utf8).write(to: vault.appendingPathComponent(notePath.rawValue))
+            let workspace = WorkspaceModel()
+            workspace.folderAccess = FolderAccess(root: vault)
+            workspace.store = VaultStore(root: vault)
+            let index = try VaultIndex(databaseURL: vault.appendingPathComponent("index.sqlite"))
+            workspace.index = index
+            _ = try await index.reconcile(root: vault)
+            await workspace.open(notePath, placement: .currentTab)
+            let tab = try XCTUnwrap(workspace.layout.tabID(showing: notePath))
+            let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
+            session.viewMode = .livePreview
+            let window = try host(NavigationStack {
+                WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
+            })
+            let editor = try await waitForValue(timeout: .seconds(20)) { () -> BenchmarkTextView? in
+                self.layOut(window)
+                guard let editor = self.descendants(of: self.contentView(of: window), matching: BenchmarkTextView.self).first,
+                      self.text(of: editor) == session.text, self.visibleBounds(of: editor).width > 0,
+                      !self.blockViews(in: editor).isEmpty else { return nil }
+                return editor
+            }
+            let reading = BenchmarkMeasurement(scenario: "note-reading-down", run: run)
+            for _ in 0..<24 {
+                // A person reading the screen; the editor's own waits run meanwhile.
+                let pauseEnd = ContinuousClock.now + .milliseconds(800)
+                _ = try await waitForValue(timeout: .seconds(5)) { ContinuousClock.now >= pauseEnd ? true : nil }
+                let viewportHeight = visibleBounds(of: editor).height
+                let currentOffset = scrollOffset(of: editor)
+                let nextOffset = min(max(0, documentHeight(of: editor) - viewportHeight), currentOffset + viewportHeight * 0.8)
+                if abs(nextOffset - currentOffset) < 1 { break }
+                await reading.measureFrame { self.scroll(editor, to: nextOffset) }
+            }
+            reading.finish()
+            close(window, of: workspace)
+        }
+    }
+
+    // MARK: A note of handwritten PDFs
+
+    /// Scrolling down a homework note that embeds seven PDFs of five pages, each page written with 520 strokes, at about the
+    /// speed the owner scrolled such a note on the Mac on 2026-11-15 (a step of 20 points every 16 ms), then back up. On the
+    /// Mac every stroke is an annotation PDFKit draws in a layer of its own, so a PDF coming into view brings thousands of them.
+    /// Every frame counts the main thread's work, including what the embeds set off after they appear.
+    func testScrollingANoteOfHandwrittenPDFs() async throws {
+        let pdfNames = (2...8).map { number in "Q\(number).pdf" }
+        let noteText = "# Homework\n\nThe questions of this week, with the answers written on them.\n\n" + pdfNames.map { pdfName in
+            "## \(pdfName.dropLast(4))\n\n> [!note]+ Reading for this question\n> - The chapter on refresh.\n> - Bank-level parallelism.\n\n![[\(pdfName)]]\n\n"
+        }.joined()
+        let letterPage = CGSize(width: 612, height: 792)
+        for run in 1...2 {
+            let vault = try makeTemporaryDirectory(named: "InkedEmbedsBenchmark")
+            for pdfName in pdfNames {
+                let location = vault.appendingPathComponent(pdfName)
+                try DenseHandwritingNotebook.write(pageCount: 5, strokesPerPage: 520, to: location, pageSize: letterPage)
+            }
+            let notePath = try VaultPath("Homework.md")
+            try Data(noteText.utf8).write(to: vault.appendingPathComponent(notePath.rawValue))
+            let workspace = WorkspaceModel()
+            workspace.folderAccess = FolderAccess(root: vault)
+            workspace.store = VaultStore(root: vault)
+            let index = try VaultIndex(databaseURL: vault.appendingPathComponent("index.sqlite"))
+            workspace.index = index
+            _ = try await index.reconcile(root: vault)
+            await workspace.open(notePath, placement: .currentTab)
+            let tab = try XCTUnwrap(workspace.layout.tabID(showing: notePath))
+            let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
+            session.viewMode = .livePreview
+            let window = try host(NavigationStack {
+                WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
+            })
+            #if os(macOS)
+            window.showInvisibly()
+            #endif
+            let editor = try await waitForValue(timeout: .seconds(20)) { () -> BenchmarkTextView? in
+                self.layOut(window)
+                guard let editor = self.descendants(of: self.contentView(of: window), matching: BenchmarkTextView.self).first,
+                      self.text(of: editor) == session.text, self.visibleBounds(of: editor).width > 0,
+                      !self.blockViews(in: editor).isEmpty else { return nil }
+                return editor
+            }
+            for direction in [1.0, -1.0] {
+                // The note settles first, as when a person opens it and starts to read; the editor's own waits run meanwhile.
+                let pauseEnd = ContinuousClock.now + .seconds(2)
+                _ = try await waitForValue(timeout: .seconds(5)) { ContinuousClock.now >= pauseEnd ? true : nil }
+                let scrolling = BenchmarkMeasurement(scenario: direction > 0 ? "inked-embeds-scroll-down" : "inked-embeds-scroll-up", run: run)
+                var stepCount = 0
+                while stepCount < 3_000 {
+                    let currentOffset = scrollOffset(of: editor)
+                    let lastOffset = max(0, documentHeight(of: editor) - visibleBounds(of: editor).height)
+                    let nextOffset = min(lastOffset, max(0, currentOffset + direction * 20))
+                    if abs(nextOffset - currentOffset) < 1 { break }
+                    await scrolling.measureFrame { self.scroll(editor, to: nextOffset) }
+                    stepCount += 1
+                }
+                scrolling.finish()
+            }
+            close(window, of: workspace)
         }
     }
 
@@ -224,7 +338,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
                 try await measureSwitch(to: switchNumber % 2 == 0 ? pdfTab : noteTabs[0], in: window, workspace: workspace, measurement: withPDF)
             }
             withPDF.finish()
-            close(window)
+            close(window, of: workspace)
         }
     }
 
@@ -484,6 +598,13 @@ final class PerformanceBenchmarkTests: XCTestCase {
         return location
     }
 
+    /// Closes the window as the app does: its views go, then its workspace hears that it closed
+    /// and lets go of the editors it kept for its tabs.
+    private func close(_ window: BenchmarkWindow, of workspace: WorkspaceModel) {
+        close(window)
+        workspace.windowDidClose()
+    }
+
     /// The memory still taken a moment after a document's window closed, against before it opened.
     private func reportMemoryKept(scenario: String, run: Int, since footprintBeforeOpening: UInt64) async throws {
         try await Task.sleep(for: .seconds(1.5))
@@ -519,7 +640,8 @@ final class PerformanceBenchmarkTests: XCTestCase {
     private func host(_ view: some View) throws -> UIWindow {
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
-        window.frame = CGRect(origin: .zero, size: Self.windowSize)
+        let isPhone = UIDevice.current.userInterfaceIdiom == .phone
+        window.frame = CGRect(origin: .zero, size: isPhone ? scene.effectiveGeometry.coordinateSpace.bounds.size : Self.windowSize)
         window.overrideUserInterfaceStyle = .light
         window.rootViewController = UIHostingController(rootView: AnyView(view))
         window.makeKeyAndVisible()
@@ -804,11 +926,13 @@ private final class MapBenchmarkModel {
 private struct MapBenchmarkContainer: View {
     let model: MapBenchmarkModel
     let notes: [PlacedNote]
+    @State private var locationControl = MapUserLocationControl()
 
     var body: some View {
         VStack(spacing: 0) {
             Text("\(model.unrelatedCounter) updates")
-            NotesMapView(notes: notes, title: { path in path.stem }, highlightedPath: notes.first?.path, accent: .blue, open: { _ in }, fitRequest: 0)
+            NotesMapView(notes: notes, title: { path in path.stem }, highlightedPath: notes.first?.path, accent: .blue, open: { _ in }, fitRequest: 0,
+                         locationControl: locationControl, deviceLocation: nil)
         }
     }
 }

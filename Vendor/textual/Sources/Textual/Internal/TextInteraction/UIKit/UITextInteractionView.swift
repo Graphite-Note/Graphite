@@ -25,7 +25,15 @@
     var linkHoverAction: TextLinkHoverAction? {
       didSet {
         linkHoverGesture.isEnabled = linkHoverAction != nil
-        linkPressGesture.isEnabled = linkHoverAction != nil
+        linkPressGesture.isEnabled = linkHoverAction != nil || linkInteractions != nil
+      }
+    }
+    /// Graphite addition: a host's own menu for some links, shown by a long press or a
+    /// secondary click on them, and what a tap with modifier keys on a link does.
+    var linkInteractions: TextLinkInteractions? {
+      didSet {
+        linkPressGesture.isEnabled = linkHoverAction != nil || linkInteractions != nil
+        linkSecondaryClickGesture.isEnabled = linkInteractions != nil
       }
     }
 
@@ -37,6 +45,15 @@
     private let selectionInteraction: UITextInteraction
     private lazy var linkHoverGesture = UIHoverGestureRecognizer(target: self, action: #selector(handleLinkHover(_:)))
     private lazy var linkPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLinkPress(_:)))
+    private lazy var linkSecondaryClickGesture: UITapGestureRecognizer = {
+      let gesture = UITapGestureRecognizer(target: self, action: #selector(handleLinkSecondaryClick(_:)))
+      gesture.buttonMaskRequired = .secondary
+      return gesture
+    }()
+    /// Shows a link's own menu; made the first time one is shown.
+    private var linkMenuInteraction: UIEditMenuInteraction?
+    /// The items of the link menu being shown.
+    private var shownLinkMenuItems: [TextLinkMenuItem] = []
     private var hoveredLinkURL: URL?
 
     init(
@@ -127,6 +144,9 @@
         gesture.require(toFail: linkPressGesture)
       }
       addGestureRecognizer(linkPressGesture)
+      linkSecondaryClickGesture.isEnabled = false
+      linkSecondaryClickGesture.delegate = self
+      addGestureRecognizer(linkSecondaryClickGesture)
     }
 
     /// Reports the link under the pointer when the pointer came onto it, and the link it left;
@@ -146,8 +166,29 @@
     }
 
     @objc private func handleLinkPress(_ gesture: UILongPressGestureRecognizer) {
-      guard gesture.state == .began, let linkHoverAction, let link = model.link(for: gesture.location(in: self)) else { return }
-      linkHoverAction(.pressed(link.url, frame: convert(link.frame, to: nil)))
+      guard gesture.state == .began, let link = model.link(for: gesture.location(in: self)) else { return }
+      if showLinkMenu(for: link.url, at: gesture.location(in: self)) { return }
+      linkHoverAction?(.pressed(link.url, frame: convert(link.frame, to: nil)))
+    }
+
+    @objc private func handleLinkSecondaryClick(_ gesture: UITapGestureRecognizer) {
+      let location = gesture.location(in: self)
+      guard let url = model.url(for: location) else { return }
+      _ = showLinkMenu(for: url, at: location)
+    }
+
+    /// Shows the host's own menu for the link to `url`, as the system's edit menu at
+    /// `location`; false when the host has none for it.
+    private func showLinkMenu(for url: URL, at location: CGPoint) -> Bool {
+      guard let items = linkInteractions?.menuItems(url), !items.isEmpty else { return false }
+      shownLinkMenuItems = items
+      let interaction = linkMenuInteraction ?? UIEditMenuInteraction(delegate: self)
+      if linkMenuInteraction == nil {
+        addInteraction(interaction)
+        linkMenuInteraction = interaction
+      }
+      interaction.presentEditMenu(with: UIEditMenuConfiguration(identifier: nil, sourcePoint: location))
+      return true
     }
 
     @objc private func handleTap(_ gesture: UITapGestureRecognizer) {
@@ -156,6 +197,8 @@
         model.selectedRange = nil
         return
       }
+      let modifiers = gesture.modifierFlags.eventModifiers
+      if !modifiers.isEmpty, linkInteractions?.openWithModifiers(url, modifiers) == true { return }
       openURL(url)
     }
 
@@ -192,8 +235,30 @@
     /// The press on links takes only touches that start on a link, so elsewhere the selection
     /// does not wait for it.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+      if gestureRecognizer === linkSecondaryClickGesture {
+        return hasLinkMenu(at: touch.location(in: self))
+      }
       guard gestureRecognizer === linkPressGesture else { return true }
-      return linkHoverAction != nil && model.link(for: touch.location(in: self)) != nil
+      guard let link = model.link(for: touch.location(in: self)) else { return false }
+      return linkHoverAction != nil || !(linkInteractions?.menuItems(link.url).isEmpty ?? true)
+    }
+
+    private func hasLinkMenu(at location: CGPoint) -> Bool {
+      guard let linkInteractions, let url = model.url(for: location) else { return false }
+      return !linkInteractions.menuItems(url).isEmpty
+    }
+  }
+
+  extension UITextInteractionView: @MainActor UIEditMenuInteractionDelegate {
+    /// Graphite addition: a link's own menu holds only the host's items.
+    func editMenuInteraction(
+      _ interaction: UIEditMenuInteraction,
+      menuFor configuration: UIEditMenuConfiguration,
+      suggestedActions: [UIMenuElement]
+    ) -> UIMenu? {
+      UIMenu(children: shownLinkMenuItems.map { item in
+        UIAction(title: item.title, image: UIImage(systemName: item.systemImage)) { _ in item.action() }
+      })
     }
   }
 

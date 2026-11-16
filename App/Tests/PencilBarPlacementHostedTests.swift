@@ -8,8 +8,8 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 05/11/2026
+ * Version: 0.8
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -223,7 +223,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
                 try await waitUntil("the row of the width before is let go") { previousController == nil }
                 PencilToolRowForm.lastShown = nil
                 let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
-                                                                             offersReadAloudPen: true, offersTextBoxes: true)
+                                                                             offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                     .frame(width: width, height: PencilToolbarMetrics.height)
                     .background(Color(uiColor: .systemBackground)))
                 previousController = controller
@@ -263,14 +263,14 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         XCTAssertEqual(toolbox.presetInUse.ink, .pen)
         let favorites = PaletteColor.defaultPalette
         let contents = PencilToolRowLayout.contents(of: toolbox, favorites: favorites, highlighterColors: PaletteColor.defaultHighlighterPalette,
-                                                    offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+                                                    offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         let scene = try scene
         weak var previousController: UIViewController?
         for width in [514, 834, 1_194] as [CGFloat] {
             try await waitUntil("the row of the width before is let go") { previousController == nil }
             PencilToolRowForm.lastShown = nil
             let controller = UIHostingController(rootView: PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {},
-                                                                         offersReadAloudPen: true, offersTextBoxes: true)
+                                                                         offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                 .frame(width: width, height: PencilToolbarMetrics.height)
                 .background(Color(uiColor: .systemBackground))
                 .defaultAppStorage(isolatedDefaults))
@@ -285,7 +285,12 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
             attachScreenshot(of: window, named: "Pencil row with the pen, \(Int(width)) points: \(shownRow.arrangement)")
             XCTAssertNotEqual(shownRow.form, .condensed, "\(Int(width)) points: the colors are on the bar, not behind a control.")
-            if case .compactWithScrollingColors = expected { XCTFail("\(Int(width)) points: the default colors all fit; none scrolls.") }
+            // Beside the sidebar upright (514 points) the plus that saves a color takes one color's room: eight of the nine
+            // show and the last scrolls into the strip (Docs/PDF-annotation-todo.md section 3).
+            if case .compactWithScrollingColors(let visibleSwatchCount) = expected {
+                XCTAssertGreaterThanOrEqual(visibleSwatchCount, PencilToolRowLayout.maximumVisibleSwatchCount - 1,
+                                            "\(Int(width)) points: at most one of the default colors scrolls.")
+            }
             // The bar is built at the layout's widths: the row measured here is as wide as the layout says.
             let expectedWidth = try XCTUnwrap(PencilToolRowLayout.width(of: expected, holding: contents))
             XCTAssertEqual(Double(shownRow.frameInWindow.width), expectedWidth, accuracy: 1, "\(Int(width)) points: the row's measured width.")
@@ -294,7 +299,9 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             var elements: [NSObject] = []
             try await waitUntil("the row's buttons are accessible at \(Int(width)) points", pollingIntervalSeconds: 0.25) {
                 elements = Self.accessibilityElements(in: controller.view)
+                // The colors sit in their strip, a scroll view, whose elements come a moment after the bar's own.
                 return elements.contains { element in element.accessibilityLabel == "Ruler" }
+                    && elements.contains { element in element.accessibilityLabel == "black" }
             }
             let windowFrame = window.frame
             /// Whether an element with `label` stands wholly inside the window, at least as wide as a mini color.

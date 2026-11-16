@@ -2,11 +2,11 @@
  * File: WorkspaceDeepLinks.swift
  * ------------------------------
  * Layer: UI
- * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
+ * Description: `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`), and files other apps open.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 02/11/2026
+ * Version: 0.12
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -15,10 +15,14 @@ import GraphiteCore
 /// `graphite://` links from other apps, with Obsidian's actions (see `VaultURI`).
 extension WorkspaceModel {
     func handle(_ url: URL) async {
+        // A file another app opened in Graphite, which arrives the way a link does.
+        if url.isFileURL { return await importOpenedFile(url) }
         guard let link = VaultURI(url: url) else {
             errorMessage = "Graphite can't open this link: \(url.absoluteString)"
             return
         }
+        // The guide is a vault of its own, opened with or without a vault open.
+        if case .guide(let file, let freshCopy) = link.action { return await openGuideVault(at: file, freshCopy: freshCopy) }
         if case .open(_, let path?) = link.action {
             if let vaultPath = await vaultPathShowingFileSystemPath(path) { await open(vaultPath) }
             return
@@ -54,6 +58,8 @@ extension WorkspaceModel {
             // Only the file the link named is read, never the note that happened to be open.
             guard let openedPath else { return }
             await startReadingAloud(openedPath, resumeLocation: nil)
+        case .guide:
+            break
         case .plugin(let action, let parameters):
             if !(await communityPlugins.openPluginLink(action: action, parameters: parameters)) {
                 errorMessage = "No community plugin in this vault opens “\(action)” links."
@@ -93,7 +99,7 @@ extension WorkspaceModel {
     /// path, with a heading or block. It is never created, unlike following a link. Returns
     /// the file the link opened, now shown in a tab on either side, or nil when it opened nothing.
     @discardableResult
-    private func openLinkedFile(_ file: String) async -> VaultPath? {
+    func openLinkedFile(_ file: String) async -> VaultPath? {
         guard let index, let topLevelSource = try? VaultPath("Link.md") else { return nil }
         do {
             var matches = try await index.resolve(file, from: topLevelSource)
@@ -113,7 +119,7 @@ extension WorkspaceModel {
             // A file already open on the other side is shown there without taking focus.
             if let linkedPath, layout.tabID(showing: linkedPath) != nil { return linkedPath }
         } catch is CancellationError {
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
         return nil
     }
 
@@ -199,7 +205,7 @@ extension WorkspaceModel {
             }
             refreshIndex(for: [path])
             if opensNote { await open(path) }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Changes a note's text through its editor when it is open, so it can be undone, and

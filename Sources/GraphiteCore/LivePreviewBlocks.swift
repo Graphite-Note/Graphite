@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.15
- * Date: 05/11/2026
+ * Version: 0.19
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -32,6 +32,18 @@ public struct LivePreviewBlock: Equatable, Sendable {
         /// A fenced block whose whole info text is `mermaid`, in any case, that no community plugin draws: a diagram,
         /// as reading view finds it (`NotePreviewBlock.mermaidDiagram`), with the code between its fences in `markdown`.
         case mermaidDiagram
+        /// An `<iframe>` on lines of its own, or alone in a list item, as reading view finds it (`NotePreviewBlock.webFrame`):
+        /// the page shown over its lines, its tag in `markdown`.
+        case webFrame(WebFrameEmbed)
+
+        /// Whether the block's view edits table cells in place, a table's own or those of a
+        /// callout's body, and so is kept across the new keys its edits give the block.
+        public var editsTablesInItsView: Bool {
+            switch self {
+            case .table, .callout: true
+            case .frontmatter, .mathBlock, .embed, .imageLine, .baseDefinition, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame: false
+            }
+        }
     }
     public let kind: Kind
     /// Whole lines, including the final line break when there is one.
@@ -111,6 +123,9 @@ public enum LivePreviewBlockScanner {
         while lineIndex < lines.count {
             let content = lines[lineIndex].content
             let trimmedContent = content.trimmingCharacters(in: .whitespaces)
+            // Whether the line comes after a list item's text, where an item indented four
+            // columns or more is a nested item and not indented code.
+            let followsListItem = listItems.innermostContentColumn > 0
             if let (fence, info, _) = listItems.fenceOpening(of: content) {
                 let language = info.lowercased()
                 var closingIndex = lineIndex + 1
@@ -134,25 +149,11 @@ public enum LivePreviewBlockScanner {
                 lineIndexAfterBlock = lineIndex
                 continue
             }
-            // Display math is a block of its own, found as reading view finds it, so a
-            // closing `$$` is never taken for a new opener.
-            if trimmedContent.hasPrefix("$$") {
-                let opening = mathLines.opening(at: lineIndex)
-                if let opening, opening.isAtLineStart {
-                    let lastIndex = opening.closingLineIndex ?? lines.count - 1
-                    blocks.append(LivePreviewBlock(kind: .mathBlock, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
-                    lineIndex = lastIndex + 1
-                    lineIndexAfterBlock = lineIndex
-                    continue
-                }
-                // A closed `$$…$$` alone on its line is display math too. With text after
-                // it (`$$E=mc^2$$ where…`) it is inline math in a paragraph.
-                if opening == nil, trimmedContent.hasSuffix("$$") {
-                    blocks.append(LivePreviewBlock(kind: .mathBlock, range: lines[lineIndex].range, markdown: content))
-                    lineIndex += 1
-                    lineIndexAfterBlock = lineIndex
-                    continue
-                }
+            if let (kind, lastIndex) = wholeLinesBlock(startingAt: lineIndex, of: lines, mathLines: mathLines) {
+                blocks.append(LivePreviewBlock(kind: kind, range: span(lineIndex, lastIndex), markdown: markdown(lineIndex, lastIndex)))
+                lineIndex = lastIndex + 1
+                lineIndexAfterBlock = lineIndex
+                continue
             }
             // A callout may sit in a list item, indented with the item's text.
             let containerColumn = listItems.innermostContentColumn
@@ -182,11 +183,11 @@ public enum LivePreviewBlockScanner {
             }
             if let embed = EmbedLocator.standaloneEmbed(onLine: content) {
                 // A web image is not a vault file, so it gets no embed widget and stays
-                // Markdown, as reading view leaves it.
-                if !embed.isRemoteImage {
+                // Markdown, as reading view leaves it. A YouTube address is a video card.
+                if embed.isBlockOfItsOwn {
                     blocks.append(LivePreviewBlock(kind: .embed(embed), range: lines[lineIndex].range, markdown: content))
                 }
-            } else if let pieces = imageLinePieces(ofParagraphLine: content) {
+            } else if let pieces = imageLinePieces(ofParagraphLine: content) ?? imageLinePieces(ofListItem: content, followsListItem: followsListItem) {
                 blocks.append(LivePreviewBlock(kind: .imageLine(pieces), range: lines[lineIndex].range, markdown: content))
             } else if MarkdownHeadingSyntax.level(of: content) == nil,
                       let opening = mathLines.opening(at: lineIndex), let closingLineIndex = opening.closingLineIndex {
@@ -206,9 +207,29 @@ public enum LivePreviewBlockScanner {
         return blocks
     }
 
+    /// A display math block or a web frame that starts at `lineIndex`, and the last line it takes: blocks of whole lines,
+    /// found as reading view finds them.
+    private static func wholeLinesBlock(startingAt lineIndex: Int, of lines: [(range: NSRange, content: String)],
+                                        mathLines: DisplayMathLines) -> (kind: LivePreviewBlock.Kind, lastIndex: Int)? {
+        let trimmedContent = lines[lineIndex].content.trimmingCharacters(in: .whitespaces)
+        // Display math is a block of its own, found as reading view finds it, so a
+        // closing `$$` is never taken for a new opener.
+        if trimmedContent.hasPrefix("$$") {
+            let opening = mathLines.opening(at: lineIndex)
+            if let opening, opening.isAtLineStart { return (.mathBlock, opening.closingLineIndex ?? lines.count - 1) }
+            // A closed `$$…$$` alone on its line is display math too. With text after
+            // it (`$$E=mc^2$$ where…`) it is inline math in a paragraph.
+            if opening == nil, trimmedContent.hasSuffix("$$") { return (.mathBlock, lineIndex) }
+        }
+        // An `<iframe>` on lines of its own is HTML, never a callout's or a table's text.
+        return WebFrameSyntax.frame(startingAt: lineIndex, lineCount: lines.count, line: { index in lines[index].content })
+            .map { found in (.webFrame(found.frame), found.lastLineIndex) }
+    }
+
     /// The pieces of a paragraph line that embeds images among its text. A heading, a list
-    /// item, a quote, a table row or indented code keeps its own drawing, its images inline.
-    private static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
+    /// item (`imageLinePieces(ofListItem:followsListItem:)`), a quote, a table row or indented
+    /// code keeps its own drawing, its images inline.
+    static func imageLinePieces(ofParagraphLine line: String) -> [ImageLinePiece]? {
         guard line.contains("!["), MarkdownHeadingSyntax.level(of: line) == nil, !MarkdownListSyntax.isListItem(line) else { return nil }
         var indentationColumns = 0
         for character in line {
@@ -218,6 +239,22 @@ public enum LivePreviewBlockScanner {
         guard indentationColumns < 4, let first = line.first(where: { character in character != " " && character != "\t" }),
               first != ">", first != "|" else { return nil }
         return EmbedLocator.imageLinePieces(onLine: line)
+    }
+
+    /// The pieces of a list item whose text embeds images, as `- ![[a.jpg|200]] ![[b.jpg|200]]`:
+    /// its marker, then its text and images as a paragraph line's. Obsidian draws the bullet or
+    /// number with the pictures beside it. A task keeps its text, so its checkbox can still be
+    /// ticked there, and so does an item in a quote, which a callout draws.
+    private static func imageLinePieces(ofListItem line: String, followsListItem: Bool) -> [ImageLinePiece]? {
+        guard line.contains("!["), let listLine = MarkdownListSyntax.listLine(line), listLine.isListItem,
+              listLine.quotePrefix.isEmpty, listLine.taskStatus == nil else { return nil }
+        let indentationColumns = listLine.indentation.reduce(0) { columns, character in character == "\t" ? columns + 4 - columns % 4 : columns + 1 }
+        guard indentationColumns < 4 || followsListItem else { return nil }
+        // The marker written over by spaces, so the embeds keep their places in the line.
+        let markerLength = listLine.prefixLength
+        let itemText = String(repeating: " ", count: markerLength) + (line as NSString).substring(from: markerLength)
+        guard let pieces = EmbedLocator.imageLinePieces(onLine: itemText) else { return nil }
+        return [.listMarker(ImageLineListMarker(indentation: listLine.indentation, marker: listLine.marker, spacing: listLine.spacing))] + pieces
     }
 
     /// `text` with its `%%` comments written over by spaces, line breaks kept, so every offset

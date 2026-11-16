@@ -16,6 +16,8 @@ import MermaidDiagrams
 struct ReadingEntityRelationshipDiagram: Sendable {
     let layout: EntityRelationshipLayout
     let shapes: ReadingEntityRelationshipShapes
+    /// The diagram laid out for a narrow column, turned to run down, or nil when it is narrow enough already or runs down.
+    let narrow: ReadingNarrowLayout<EntityRelationshipLayout, ReadingEntityRelationshipShapes>?
     /// `accTitle`, else the front matter's title, else nil.
     let title: String?
     /// `accDescr`, or nil.
@@ -26,9 +28,13 @@ struct ReadingEntityRelationshipDiagram: Sendable {
     /// Statements read and not applied (`EntityRelationshipDiagram.unappliedStatementCount`): its styling is not drawn yet.
     let unappliedStatementCount: Int
 
-    init(diagram: EntityRelationshipDiagram, layout: EntityRelationshipLayout) {
+    init(diagram: EntityRelationshipDiagram, layout: EntityRelationshipLayout, narrowLayout: EntityRelationshipLayout? = nil) {
         self.layout = layout
         shapes = ReadingEntityRelationshipShapes(parts: EntityRelationshipDrawingParts(layout: layout), font: layout.font)
+        narrow = narrowLayout.map { narrowLayout in
+            ReadingNarrowLayout(layout: narrowLayout,
+                                shapes: ReadingEntityRelationshipShapes(parts: EntityRelationshipDrawingParts(layout: narrowLayout), font: narrowLayout.font))
+        }
         title = diagram.accessibilityTitle ?? diagram.title
         description = diagram.accessibilityDescription
         unappliedStatementCount = diagram.unappliedStatementCount
@@ -46,7 +52,10 @@ extension ReadingDiagram {
     static func drawnEntityRelationship(_ diagram: EntityRelationshipDiagram, source: String, typography: DiagramTypography) -> ReadingDiagram {
         do {
             let layout = try EntityRelationshipLayoutEngine.layout(diagram, typography: typography, limits: .standard)
-            return .entityRelationship(ReadingEntityRelationshipDiagram(diagram: diagram, layout: layout))
+            let narrowLayout = narrowLayout(of: diagram.turnedToRunDown, regularSize: layout.size, size: \.size) { turned in
+                try EntityRelationshipLayoutEngine.layout(turned, typography: typography, limits: .standard)
+            }
+            return .entityRelationship(ReadingEntityRelationshipDiagram(diagram: diagram, layout: layout, narrowLayout: narrowLayout))
         } catch {
             return .unreadable(source: source, failure: .entityRelationshipLayout(error))
         }

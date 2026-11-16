@@ -216,6 +216,7 @@ private struct LineFormatter {
             if pendingBlankLines > 0 {
                 // No blank line just inside a block's opening or closing line.
                 let dropsBlankLines = output.isEmpty || (style.structure != .none && (lastLineOpened || closesBlock))
+                    || (style.structure == .brackets && content == "{" && output.last.map(Self.isHeaderOfBraceBelow) == true)
                 if !dropsBlankLines { output.append(contentsOf: Array(repeating: "", count: min(pendingBlankLines, style.maximumBlankLines))) }
                 pendingBlankLines = 0
             }
@@ -224,6 +225,16 @@ private struct LineFormatter {
             lastLineOpened = keywords.depth > depthBefore
         }
         return output
+    }
+
+    /// Whether a line written is the head of a block whose `{` is on a line of its own below it, as
+    /// `int main()`, `else` or `class Shape` in Allman style: a blank line between the two is dropped,
+    /// as clang-format drops it (HUNT-355). A line ending a statement or a block, or a `#` line, is no
+    /// head: a `{` after it opens a block of its own, and a blank line before that is kept as written.
+    private static func isHeaderOfBraceBelow(_ line: String) -> Bool {
+        let code = line.trimmingCharacters(in: .whitespaces)
+        guard let lastCharacter = code.last, !code.hasPrefix("#"), !code.hasPrefix("//") else { return false }
+        return !";{}*/".contains(lastCharacter)
     }
 
     private func leadingWhitespace(of line: ScannedLine) -> String {

@@ -6,8 +6,8 @@
  *              on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.49
- * Date: 05/11/2026
+ * Version: 0.50
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -338,6 +338,12 @@ private struct TabBar: View {
             .task(id: group.id) {
                 await Task.yield()
                 scrollProxy.scrollTo(group.activeTabID, anchor: .center)
+            }
+            // The row narrows when a split, the right sidebar or the document's Undo, Redo and
+            // Write buttons take room beside it: the active tab is brought back into view, else
+            // its title and close button stayed hidden past the row's new end (HUNT-336).
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { _ in
+                scrollProxy.scrollTo(group.activeTabID)
             }
         }
     }
@@ -671,6 +677,7 @@ struct TabDocumentView: View {
                     isRecording: workspace.recording.state.isActive) { location in
                 Task { await workspace.resolvePDFConflict(opening: location, inTab: tab.id) }
             }
+            .environment(\.pdfSignatureStore, workspace.processServices.pdfSignatures)
             // A PDF's pane keeps state of its own (pages shown, a reading start), which
             // another PDF must not take over.
             .id(ObjectIdentifier(session))
@@ -746,42 +753,6 @@ extension TabDocumentView {
             addImageToNote: note.map { note in
                 { pngData, name in Task { await workspace.addLassoPicture(pngData, named: name, to: note) } }
             })
-    }
-}
-
-/// Asks for the password of a protected PDF. The password stays in memory until Graphite quits.
-private struct PDFPasswordPrompt: View {
-    let fileName: String
-    let message: String
-    let unlock: (String) -> Void
-    @State private var password = ""
-    @FocusState private var isFieldFocused: Bool
-
-    var body: some View {
-        ContentUnavailableView {
-            Label("“\(fileName)” Is Locked", systemImage: "lock.doc")
-        } description: {
-            Text(message + " Graphite shows protected PDFs without changing them.")
-        } actions: {
-            HStack {
-                SecureField("Password", text: $password)
-                    .textContentType(.password)
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 240)
-                    .focused($isFieldFocused)
-                    .onSubmit(submit)
-                Button("Unlock", action: submit)
-                    .buttonStyle(.borderedProminent)
-                    .disabled(password.isEmpty)
-            }
-        }
-        .onAppear { isFieldFocused = true }
-    }
-
-    private func submit() {
-        guard !password.isEmpty else { return }
-        unlock(password)
-        password = ""
     }
 }
 

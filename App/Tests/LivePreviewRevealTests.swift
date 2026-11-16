@@ -2,11 +2,12 @@
  * File: LivePreviewRevealTests.swift
  * ----------------------------------
  * Layer: Tests
- * Description: Live Preview showing markup one element at a time, in the hosted workspace's own text view.
+ * Description: Live Preview showing markup one element at a time, in the hosted workspace's own text view, and a
+ *              long inline formula of a paragraph wrapping after its operators.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 12/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -452,6 +453,57 @@ final class LivePreviewRevealTests: XCTestCase {
         print("Live Preview cursor move in the hosted editor, \(source.length)-unit note: Graphite \(String(format: "%.3f", editorMillisecondsPerMove)) ms, "
               + "UIKit setting the selection \(String(format: "%.3f", uikitSeconds * 1_000 / Double(moveCount))) ms each")
         assertShownMarkupMatchesSelection(in: editor, within: farLine)
+    }
+
+    // MARK: Long formulas
+
+    /// A paragraph's long formula wraps after its operators, as in the reading view and in Obsidian (issue #109): it was
+    /// one image whose room the line kept whole, and ran past the column's edge. A short formula beside it is one line.
+    func testALongFormulaInAParagraphWrapsAfterItsOperators() async throws {
+        // Wider than the iPad's column even on a line of its own.
+        let longFormula = #"$(C_{jb} \cdot L_A + C_{jsw})W + C_j \cdot W \cdot L/2 + C_{ox} \cdot W \cdot L + C_{sb} \cdot A_S + C_{db} \cdot A_D"#
+            + #" + C_{gs}W + C_{gd}W + C_{wire} \cdot L_{wire} = C_{total}$"#
+        let note = "# Capacitances by region\n\nSummed over the junction's bottom, its sidewalls and the gate's overlap, the drain's capacitance is "
+            + longFormula + " in this region, and $E = mc^2$ beside it.\n\nAfter.\n"
+        let (editor, _) = try await openNote(note)
+        let source = editor.text as NSString
+        let formula = source.range(of: longFormula)
+        var pieces: [NSRange] = []
+        try await waitUntil("the formula is drawn") {
+            pieces = []
+            editor.textStorage.enumerateAttribute(ConcealedReplacement.mathAttributeKey, in: formula) { value, range, _ in
+                if value != nil { pieces.append(range) }
+            }
+            return pieces.count > 5
+        }
+        XCTAssertEqual(pieces.first?.location, formula.location)
+        XCTAssertEqual(pieces.last.map(NSMaxRange), NSMaxRange(formula))
+        editor.layoutIfNeeded()
+        // Each piece's room is after the character before its last, on the line that character is on.
+        let textLayoutManager = try XCTUnwrap(editor.textLayoutManager)
+        let contentManager = try XCTUnwrap(textLayoutManager.textContentManager)
+        let paragraphStart = source.lineRange(for: formula).location
+        let paragraphLocation = try XCTUnwrap(contentManager.location(contentManager.documentRange.location, offsetBy: paragraphStart))
+        textLayoutManager.ensureLayout(for: try XCTUnwrap(NSTextRange(location: paragraphLocation, end: contentManager.documentRange.endLocation)))
+        let fragment = try XCTUnwrap(textLayoutManager.textLayoutFragment(for: paragraphLocation))
+        let containerWidth = try XCTUnwrap(textLayoutManager.textContainer).size.width
+        var lineOfPiece: [Int] = []
+        for piece in pieces {
+            let roomCharacter = NSMaxRange(piece) - 2 - paragraphStart
+            let lineIndex = try XCTUnwrap(fragment.textLineFragments.firstIndex { line in NSLocationInRange(roomCharacter, line.characterRange) })
+            let line = fragment.textLineFragments[lineIndex]
+            let layout = try XCTUnwrap(editor.textStorage.attribute(ConcealedReplacement.mathAttributeKey, at: piece.location, effectiveRange: nil)
+                                       as? InlineMathLayout)
+            let roomEnd = fragment.layoutFragmentFrame.minX + line.typographicBounds.minX + line.locationForCharacter(at: roomCharacter).x + layout.roomWidth
+            XCTAssertLessThanOrEqual(roomEnd, containerWidth + 0.5, "\(source.substring(with: piece)) fits the text container.")
+            lineOfPiece.append(lineIndex)
+        }
+        XCTAssertGreaterThanOrEqual(Set(lineOfPiece).count, 2, "The formula takes more than one line: \(lineOfPiece)")
+        // The line breaks between pieces, after an operator and its space.
+        let lastPieceOfFirstLine = try XCTUnwrap(Array(zip(pieces, lineOfPiece)).last { _, lineIndex in lineIndex == lineOfPiece[0] }?.0)
+        let endOfFirstLine = source.substring(with: lastPieceOfFirstLine)
+        XCTAssertTrue(endOfFirstLine.hasSuffix("+ ") || endOfFirstLine.hasSuffix("= ") || endOfFirstLine.hasSuffix("\\cdot "), endOfFirstLine)
+        attachScreenshot(named: "A long formula wrapping after its operators")
     }
 
     // MARK: Helpers

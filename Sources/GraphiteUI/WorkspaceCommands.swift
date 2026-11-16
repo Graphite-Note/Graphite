@@ -5,8 +5,8 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.16
- * Date: 01/11/2026
+ * Version: 0.19
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -56,6 +56,7 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "settings", command: .openSettings, systemImage: "gearshape", run: window.showSettings),
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
             PaletteCommand(id: "collapse-folders", command: .collapseFolders, systemImage: "arrow.down.right.and.arrow.up.left") { workspace.collapseAllFolders() },
+            PaletteCommand(id: "filter-files", command: .filterFiles, systemImage: "line.3.horizontal.decrease.circle") { workspace.requestFileTreeFilter() },
         ]
         // The Mac cannot write in a notebook, so it does not offer to make one (`CreationKind.canBeEditedOnThisDevice`).
         if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }
@@ -137,6 +138,18 @@ enum WorkspaceCommandList {
                 },
             ]
         }
+        if workspace.preferences.isEnabled(.calendar) {
+            commands.append(PaletteCommand(id: "calendar-show", command: .showCalendar, systemImage: "calendar") {
+                workspace.deviceDefaults.set(SidebarPanel.calendar.rawValue, forKey: SidebarPanelSettingKey.panel)
+                workspace.searchQuery = ""
+                window.showSidebar()
+            })
+            if workspace.store != nil {
+                commands.append(PaletteCommand(id: "calendar-event-note", command: .openCurrentEventNote, systemImage: "calendar.badge.clock") {
+                    Task { await workspace.openNoteForCurrentEvent(at: .now) }
+                })
+            }
+        }
         if let path = workspace.selection {
             commands += [
                 PaletteCommand(id: "rename", command: .renameFile, systemImage: "pencil") { workspace.fileSheet = .rename(path) },
@@ -152,7 +165,7 @@ enum WorkspaceCommandList {
             }
         }
         if let session = workspace.markdownSession {
-            commands += noteCommands(session: session, workspace: workspace, window: window)
+            commands += noteCommands(session: session, workspace: workspace, window: window) + workspace.calendarNoteCommands(session: session)
         }
         if workspace.preferences.isEnabled(.audioRecorder) {
             if workspace.recording.canStartRecording {
@@ -239,6 +252,17 @@ enum WorkspaceCommandList {
         return commands
     }
 
+    /// The commands of the table cell being edited, or last edited (`TableCellCommandTarget`),
+    /// that apply to it; none while no table's cell has been edited since the note's text had the keyboard.
+    private static func tableCellCommands(session: MarkdownSession) -> [PaletteCommand] {
+        guard let target = session.blockViews.tableCellCommandTarget else { return [] }
+        return TableCellCommand.allCases.filter(target.isAvailable).map { command in
+            PaletteCommand(id: command.graphiteCommand.identifier, command: command.graphiteCommand, systemImage: command.symbolName) {
+                target.perform(command)
+            }
+        }
+    }
+
     private static func noteCommands(session: MarkdownSession, workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
         let editingMode = workspace.defaultEditingMode
         var commands = [
@@ -269,7 +293,7 @@ enum WorkspaceCommandList {
                 session.apply(MarkdownEditing.settingHeading(level: level, in: text(), selection: session.selection))
             }
         }
-        commands += [
+        commands += tableCellCommands(session: session) + [
             PaletteCommand(id: "task", command: .insertTask, systemImage: "checklist") { session.insertBlock("- [ ] ") },
             PaletteCommand(id: "table", command: .insertTable, systemImage: "tablecells") { session.insertBlockFromMenu(EditorContextMenuContent.tableBlock) },
             PaletteCommand(id: "math", command: .insertMathBlock, systemImage: "function") { session.insertBlockFromMenu(EditorContextMenuContent.mathBlock) },

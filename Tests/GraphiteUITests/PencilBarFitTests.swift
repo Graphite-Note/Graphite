@@ -3,11 +3,12 @@
  * -----------------------------
  * Layer: Tests
  * Description: Which form the Pencil bar takes at each width of the 11-inch iPad: every favorite color and the ruler on
- *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317).
+ *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317), and
+ *              colors past nine scrolling inside a strip that keeps the bar's width (Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 05/11/2026
+ * Version: 0.5
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -21,10 +22,10 @@ import XCTest
 final class PencilBarFitTests: XCTestCase {
     private typealias Layout = PencilToolRowLayout
 
-    /// A PDF's bar with the pen in use: three presets, the eraser, the lasso, the laser pointer, the text tool and the
-    /// Read Aloud pen; three sizes; black and the eight default favorite colors.
+    /// A PDF's bar with the pen in use: three presets, the eraser, the lasso, the laser pointer, the text highlighter, the
+    /// text tool and the Read Aloud pen; three sizes; black and the eight default favorite colors.
     private func pensBar(presetCount: Int = 3, favoriteCount: Int = PaletteColor.defaultPalette.count, showsAddColor: Bool = false) -> Layout.Contents {
-        Layout.Contents(tools: Layout.tools(presetCount: presetCount, offersTextBoxes: true, offersReadAloudPen: true), toolInUse: .preset(index: 0),
+        Layout.Contents(tools: Layout.tools(presetCount: presetCount, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true), toolInUse: .preset(index: 0),
                         sizeCount: 3, offersColors: true, swatchCount: 1 + favoriteCount, showsAddColor: showsAddColor, offersImages: true)
     }
 
@@ -40,14 +41,14 @@ final class PencilBarFitTests: XCTestCase {
         XCTAssertEqual(Layout.arrangement(forWidth: 874, holding: contents), .whole(.tight), "Sideways beside the sidebar: everything, closer.")
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: contents), .whole(.tight), "Upright: everything, closer.")
         XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: contents), .folded(.addImage),
-                       "Upright beside the sidebar: every color and the ruler stay; the laser, text, Read Aloud, Shapes and Add Image go behind More.")
+                       "Upright beside the sidebar: every color and the ruler stay; the laser, text highlighter, text, Read Aloud, Shapes and Add Image go behind More.")
         XCTAssertEqual(Layout.arrangement(forWidth: 590, holding: contents), .folded(.occasionalTools),
-                       "Sideways in half the screen: only the laser, text and Read Aloud tools go behind More.")
+                       "Sideways in half the screen: only the laser, text highlighter, text and Read Aloud tools go behind More.")
         XCTAssertEqual(Layout.arrangement(forWidth: 540, holding: contents), .folded(.choicesAndShapes), "Then Other Color and Shapes; Add Image stays.")
         // The widths the bar is built at, which the hosted tests measure on the bar itself.
-        XCTAssertEqual(try width(.whole(.regular), contents), 883)
-        XCTAssertEqual(try width(.whole(.tight), contents), 761)
-        XCTAssertEqual(try width(.whole(.tightest), contents), 635)
+        XCTAssertEqual(try width(.whole(.regular), contents), 919)
+        XCTAssertEqual(try width(.whole(.tight), contents), 793)
+        XCTAssertEqual(try width(.whole(.tightest), contents), 663)
         XCTAssertEqual(try width(.folded(.occasionalTools), contents), 579)
         XCTAssertEqual(try width(.folded(.choicesAndShapes), contents), 523)
         XCTAssertEqual(try width(.folded(.addImage), contents), 495)
@@ -55,7 +56,7 @@ final class PencilBarFitTests: XCTestCase {
 
     func testTheBarStaysWholeUprightWithThePlusThatAddsTheColorInUse() throws {
         let contents = pensBar(showsAddColor: true)
-        XCTAssertEqual(try width(.whole(.tight), contents), 789)
+        XCTAssertEqual(try width(.whole(.tight), contents), 821)
         XCTAssertEqual(Layout.arrangement(forWidth: 834, holding: contents), .whole(.tight))
     }
 
@@ -77,7 +78,7 @@ final class PencilBarFitTests: XCTestCase {
     func testEachFoldStageMovesTheLeastUsedControlsFirstAndKeepsTheWritingOnesOnTheBar() throws {
         let contents = pensBar()
         let occasional = try XCTUnwrap(Layout.placement(of: .folded(.occasionalTools), holding: contents))
-        XCTAssertEqual(occasional.foldedTools, [.laser, .text, .readAloud])
+        XCTAssertEqual(occasional.foldedTools, [.laser, .textHighlighter, .text, .readAloud])
         XCTAssertTrue(occasional.showsToolChoices && occasional.showsOtherColor && occasional.showsShapes && occasional.showsAddImage)
         let choices = try XCTUnwrap(Layout.placement(of: .folded(.choicesAndShapes), holding: contents))
         XCTAssertFalse(choices.showsToolChoices || choices.showsOtherColor || choices.showsShapes)
@@ -96,11 +97,12 @@ final class PencilBarFitTests: XCTestCase {
     }
 
     func testTheCompactBarKeepsTheToolsAPersonWritesWithAndTheToolInUse() {
-        let tools = Layout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: true)
+        let tools = Layout.tools(presetCount: 3, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true)
         let split = Layout.compactSplit(tools, toolInUse: .preset(index: 1))
         XCTAssertEqual(split.shown, [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso])
-        XCTAssertEqual(split.folded, [.laser, .text, .readAloud], "Used now and then: behind More, never lost.")
-        XCTAssertEqual(Layout.compactSplit(tools, toolInUse: .laser).shown, [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .laser],
+        XCTAssertEqual(split.folded, [.laser, .textHighlighter, .text, .readAloud], "Used now and then: behind More, never lost.")
+        XCTAssertEqual(Layout.compactSplit(tools, toolInUse: .laser).shown,
+                       [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .laser],
                        "The tool in use is always on the bar, in the bar's order.")
     }
 
@@ -111,7 +113,8 @@ final class PencilBarFitTests: XCTestCase {
         laserBar.offersColors = false
         laserBar.swatchCount = 0
         laserBar.toolChoicesWidth = 110
-        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: laserBar), .whole(.tight))
+        // At the closest spacing since the text highlighter joined a PDF's tools (2026-11-16): still nothing behind More.
+        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: laserBar), .whole(.tightest))
     }
 
     func testTheEraserAndItsKindStayOnTheWholeBarUpright() {
@@ -126,13 +129,15 @@ final class PencilBarFitTests: XCTestCase {
     func testOnlyMoreFavoritesThanFitEvenAsMiniDotsScrollAndThenInWholeColors() throws {
         XCTAssertNil(Layout.scrollingColorsArrangement(forWidth: 514, holding: pensBar()), "The default colors all fit: nothing scrolls.")
         let manyColors = pensBar(favoriteCount: 16)
-        let arrangement = Layout.arrangement(forWidth: 514, holding: manyColors)
-        XCTAssertEqual(arrangement, .compactWithScrollingColors(visibleSwatchCount: 9))
-        XCTAssertLessThanOrEqual(try width(arrangement, manyColors), 514)
-        let widthWithoutColors = try width(.compactWithScrollingColors(visibleSwatchCount: 0), manyColors)
-        let stripWidth = try width(arrangement, manyColors) - widthWithoutColors - Layout.Density.tightest.separatorWidth
-        XCTAssertEqual(stripWidth.truncatingRemainder(dividingBy: Layout.Density.tightest.swatchPitch), 0, "The strip shows whole colors, none cut in half.")
-        XCTAssertEqual(Layout.arrangement(forWidth: 1_194, holding: manyColors), .whole(.regular), "Sideways, seventeen colors still all fit.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: manyColors), .folded(.addImage), "Nine of seventeen show, as the default nine do.")
+        XCTAssertEqual(Layout.placement(of: .folded(.addImage), holding: manyColors)?.scrollingSwatchCount, 9)
+        let arrangement = Layout.arrangement(forWidth: 470, holding: manyColors)
+        XCTAssertEqual(arrangement, .compactWithScrollingColors(visibleSwatchCount: 7), "Narrower, fewer show.")
+        XCTAssertLessThanOrEqual(try width(arrangement, manyColors), 470)
+        let pitch = Layout.Density.tightest.swatchPitch
+        let stripWidth = try width(arrangement, manyColors) - (try width(.compactWithScrollingColors(visibleSwatchCount: 1), manyColors) - pitch)
+        XCTAssertEqual(stripWidth.truncatingRemainder(dividingBy: pitch), 0, "The strip shows whole colors, none cut in half.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 1_194, holding: manyColors), .whole(.regular), "Sideways, seventeen colors still fit their strip.")
     }
 
     func testSixPresetsBesideTheSidebarScrollTheColorsRatherThanHideThem() {

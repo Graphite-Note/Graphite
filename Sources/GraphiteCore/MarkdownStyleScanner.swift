@@ -5,8 +5,8 @@
  * Description: The line-oriented scanner that finds what the editor styles, and the block state from line to line.
  *
  * Authors: Bahey Shalash
- * Version: 0.13
- * Date: 01/11/2026
+ * Version: 0.15
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -597,6 +597,12 @@ public enum MarkdownStyleScanner {
             add(NSRange(location: NSMaxRange(labelRange), length: NSMaxRange(match.range) - NSMaxRange(labelRange)), .concealableMarker, in: match.range)
             claimedRanges.insert(match.range)
         }
+        // A bare web address is a link, as the reading view shows it; its `_`, `*` and `#`
+        // are part of the address, not emphasis or a tag.
+        for address in WebAddressSyntax.addresses(in: line, range: range) where isUnclaimed(address.range) {
+            add(address.range, .link, in: address.range)
+            claimedRanges.insert(address.range)
+        }
         // Emphasis can hold any of the elements above (`**bold with a [[link]]**`), and a
         // delimiter inside one is that element's text. With each element replaced by
         // placeholders of the same length, a match can only contain elements whole.
@@ -620,7 +626,10 @@ public enum MarkdownStyleScanner {
         for match in Patterns.highlight.matches(in: emphasisLine, range: range) {
             addDelimited(match.range, style: .highlight, delimiterLength: 2)
         }
-        for match in TagSyntax.pattern.matches(in: lineString, range: range) where isUnclaimed(match.range) {
+        // A `#ccc` in an HTML tag's attributes (`<iframe style="border:1px solid #ccc">`) is the tag's text, not a tag.
+        let htmlTagRanges = line.range(of: "<", options: .literal, range: range).location == NSNotFound ? SortedRangeSet()
+            : SortedRangeSet(Patterns.htmlTag.matches(in: lineString, range: range).map(\.range))
+        for match in TagSyntax.pattern.matches(in: lineString, range: range) where isUnclaimed(match.range) && !htmlTagRanges.intersects(match.range) {
             add(match.range, .tag, in: match.range)
         }
         // `\*` reads as a star: only the backslash is markup.
@@ -655,6 +664,7 @@ public enum MarkdownStyleScanner {
         static let strikethrough = MarkdownStyleScannerPattern.strikethrough.compiled()
         static let highlight = MarkdownStyleScannerPattern.highlight.compiled()
         static let backslashEscape = MarkdownStyleScannerPattern.backslashEscape.compiled()
+        static let htmlTag = MarkdownStyleScannerPattern.htmlTag.compiled()
     }
 }
 
@@ -673,6 +683,8 @@ enum MarkdownStyleScannerPattern: String, StaticPatternSet {
     case highlight = #"(?<!(?<!\\)(?:\\\\){0,8}\\)==(?!\s)[^=\n]+?(?<!\s)(?<!(?<!\\)(?:\\\\){0,8}\\)=="#
     /// A backslash before ASCII punctuation: the backslash hides, as Markdown reads it.
     case backslashEscape = #"\\[!-/:-@\[-`{-~]"#
+    /// An HTML opening or closing tag with its attributes, whose quoted values may hold `<`, `>` and `#`.
+    case htmlTag = #"</?[A-Za-z][A-Za-z0-9-]*(?:\s(?:[^<>"']|"[^"]*"|'[^']*')*)?/?>"#
 
     /// Every pattern reads one line at a time, so `^` and `$` match at each line's ends.
     var options: NSRegularExpression.Options { [.anchorsMatchLines] }

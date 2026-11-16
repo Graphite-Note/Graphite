@@ -22,6 +22,10 @@
       }
     }
 
+    /// Graphite addition: a host's own menu for some links, and what a click with modifier
+    /// keys on a link does.
+    var linkInteractions: TextLinkInteractions?
+
     private var hoveredLinkURL: URL?
     private var linkTrackingArea: NSTrackingArea?
 
@@ -69,7 +73,10 @@
       switch event.clickCount {
       case 1:
         if let url = model.url(for: location) {
-          openURL(url)
+          let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask).eventModifiers
+          if modifiers.isEmpty || linkInteractions?.openWithModifiers(url, modifiers) != true {
+            openURL(url)
+          }
         } else {
           resetSelection()
         }
@@ -152,16 +159,24 @@
 
     override func rightMouseDown(with event: NSEvent) {
       let location = convert(event.locationInWindow, from: nil)
-      updateSelectionForContextMenu(at: location)
+      let linkItems = hostMenuItems(at: location)
+      if linkItems.isEmpty { updateSelectionForContextMenu(at: location) }
 
-      NSMenu.popUpContextMenu(makeContextMenu(), with: event, for: self)
+      NSMenu.popUpContextMenu(makeContextMenu(linkItems: linkItems), with: event, for: self)
     }
 
     override func menu(for event: NSEvent) -> NSMenu? {
       let location = convert(event.locationInWindow, from: nil)
-      updateSelectionForContextMenu(at: location)
+      let linkItems = hostMenuItems(at: location)
+      if linkItems.isEmpty { updateSelectionForContextMenu(at: location) }
 
-      return makeContextMenu()
+      return makeContextMenu(linkItems: linkItems)
+    }
+
+    /// The host's own items for the link under `location`; none elsewhere.
+    private func hostMenuItems(at location: CGPoint) -> [TextLinkMenuItem] {
+      guard let linkInteractions, let url = model.url(for: location) else { return [] }
+      return linkInteractions.menuItems(url)
     }
 
     override func selectAll(_ sender: Any?) {
@@ -234,12 +249,18 @@
       model.selectedRange = model.wordRange(for: position)
     }
 
-    private func makeContextMenu() -> NSMenu {
+    private func makeContextMenu(linkItems: [TextLinkMenuItem] = []) -> NSMenu {
       let contextMenu = NSMenu()
+      // Graphite addition: a link's own items come first, and with them the menu is only
+      // theirs while no text is selected.
+      for linkItem in linkItems {
+        contextMenu.addItem(TextLinkMenuItemTarget.menuItem(for: linkItem))
+      }
 
       guard let selectedRange = model.selectedRange, !selectedRange.isCollapsed else {
         return contextMenu
       }
+      if !linkItems.isEmpty { contextMenu.addItem(.separator()) }
 
       // Get the localized title for the share action
       let sharingPicker = NSSharingServicePicker(items: [])
@@ -339,6 +360,29 @@
       let formatter = Formatter(attributedText)
       pasteboard.setString(formatter.plainText(), forType: .string)
       pasteboard.setString(formatter.html(), forType: .html)
+    }
+  }
+
+  /// Graphite addition: runs a host's link menu item, which AppKit calls through a target.
+  @MainActor final class TextLinkMenuItemTarget: NSObject {
+    private let action: @MainActor () -> Void
+
+    private init(action: @escaping @MainActor () -> Void) {
+      self.action = action
+    }
+
+    @objc func perform(_ sender: Any?) {
+      action()
+    }
+
+    /// A menu item that keeps its own target alive.
+    static func menuItem(for item: TextLinkMenuItem) -> NSMenuItem {
+      let target = TextLinkMenuItemTarget(action: item.action)
+      let menuItem = NSMenuItem(title: item.title, action: #selector(perform(_:)), keyEquivalent: "")
+      menuItem.target = target
+      menuItem.representedObject = target
+      menuItem.image = NSImage(systemSymbolName: item.systemImage, accessibilityDescription: nil)
+      return menuItem
     }
   }
 

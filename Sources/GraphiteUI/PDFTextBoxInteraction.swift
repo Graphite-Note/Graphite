@@ -5,7 +5,7 @@ import GraphiteCore
 import GraphiteApple
 
 /// The text boxes of one PDF view while it is shown: draws Graphite's boxes over each page's
-/// ink (`PDFPageTextBoxesView`), answers taps of the text tool and of a finger on a box, keeps
+/// ink (`PDFPageObjectsOverInkView`), answers taps of the text tool and of a finger on a box, keeps
 /// the selected box's frame (`PDFTextBoxSelectionFrame`) and the box being typed in
 /// (`PDFTextBoxEditor`) over the page as it scrolls and zooms, and follows the session's
 /// `textBoxActivity`, which the bar under the page changes too.
@@ -41,6 +41,8 @@ final class PDFTextBoxInteraction {
         let center = NotificationCenter.default
         // Every page shown is drawn again after a change of a box, a few pages at most.
         session.registerTextBoxChangeObserver(for: self) { [weak self] in self?.textBoxesDidChange() }
+        // A picture or a shape added, changed or arranged may go over or under the ink.
+        session.registerPageObjectsChangeObserver(for: self) { [weak self] in self?.refreshShownPages() }
         for name in [Notification.Name.PDFViewScaleChanged, .PDFViewVisiblePagesChanged] {
             observers.append(center.addObserver(forName: name, object: pdfView, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.placeOverPages() } // Delivered on the main queue, as asked.
@@ -61,6 +63,7 @@ final class PDFTextBoxInteraction {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers = []
         session.unregisterTextBoxChangeObserver(for: self)
+        session.unregisterPageObjectsChangeObserver(for: self)
         scrollObservation = nil
         selectionFrame.stop()
         session.applyTextBoxFormat = nil
@@ -85,21 +88,35 @@ final class PDFTextBoxInteraction {
     }
 
     private func textBoxesDidChange() {
-        for entry in overlays.values { if let page = entry.page { refresh(page) } }
+        refreshShownPages()
         syncWithActivity()
     }
 
-    /// Draws the page's boxes over its ink, and hides their annotations so they are not drawn twice.
-    private func refresh(_ page: PDFPage) {
-        guard let overlay = overlays[ObjectIdentifier(page)]?.overlay else { return }
-        let boxes = page.annotations.filter(PDFPageTextBoxesView.drawsAnnotation).compactMap(PDFTextBox.init(annotation:))
-        let editedName = editor.flatMap { editor in editor.step.page.page === page ? editor.box.name : nil }
-        overlay.textBoxesView.show(boxes, cropBox: page.bounds(for: .cropBox), hiding: editedName)
-        setBoxAnnotationsHidden(true, on: page)
+    private func refreshShownPages() {
+        for entry in overlays.values { if let page = entry.page { refresh(page) } }
     }
 
+    /// Draws the page's objects over its ink, and hides their annotations so they are not drawn
+    /// twice; those under the ink PDFKit draws, under the canvas.
+    private func refresh(_ page: PDFPage) {
+        guard let overlay = overlays[ObjectIdentifier(page)]?.overlay else { return }
+        let objects = PDFPageObjectsOverInkView.objectsOverInk(on: page)
+        let editedName = editor.flatMap { editor in editor.step.page.page === page ? editor.box.name : nil }
+        overlay.objectsOverInkView.show(objects, cropBox: page.bounds(for: .cropBox), hiding: editedName)
+        let objectsView = overlay.objectsOverInkView
+        for annotation in page.annotations where PDFPageObjectsOverInkView.drawsKind(of: annotation) {
+            let name = annotation.persistentName
+            // Hidden: what the view draws over the ink, the box the text editor shows, and what
+            // the lasso's frame carries; PDFKit draws the rest, under the ink.
+            let isHidden = objectsView.draws(annotation) || PDFTextBox.hasRecord(annotation) && (name == editedName || objectsView.drawsBox(named: name))
+                || name.map(objectsView.isCarried) == true
+            if annotation.shouldDisplay == isHidden { annotation.shouldDisplay = !isHidden }
+        }
+    }
+
+    /// Shows again, through PDFKit, the objects the page's overlay drew over the ink.
     private func setBoxAnnotationsHidden(_ isHidden: Bool, on page: PDFPage) {
-        for annotation in page.annotations where PDFPageTextBoxesView.drawsAnnotation(annotation) {
+        for annotation in page.annotations where PDFPageObjectsOverInkView.drawsKind(of: annotation) {
             if annotation.shouldDisplay == isHidden { annotation.shouldDisplay = !isHidden }
         }
     }

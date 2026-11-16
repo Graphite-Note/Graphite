@@ -120,4 +120,28 @@ final class MarkdownEditorStylingCharacterEditTests: XCTestCase {
         textView.styledTextStorage.replaceCharacters(in: NSRange(location: 0, length: 0), with: "a")
         XCTAssertEqual(styling.textState.history.revision, 0)
     }
+
+    /// HUNT-361: the observer matched the observed text storage by its address. Once the storage was freed, a text storage
+    /// PDFKit made away from the main thread as it wrote a PDF could take that address, and the observer's assumption of
+    /// the main actor stopped the process (signal 5). Many storages are made off the main thread after the observed one
+    /// went, with the styling kept, as an editor's coordinator keeps it; then again after the styling went too.
+    func testATextStorageMadeAwayFromTheMainThreadAfterTheObservedOneWentIsNotHeard() async {
+        var styling: MarkdownEditorStyling? = makeStyling()
+        do {
+            let textView = StubStyledTextView(text: "Hello world")
+            styling?.observeCharacterEdits(in: textView, settle: {})
+        }
+        await Self.makeTextStoragesAwayFromTheMainThread()
+        XCTAssertEqual(styling?.textState.history.revision, 0, "No other storage's edit is the editor's.")
+        styling = nil
+        await Self.makeTextStoragesAwayFromTheMainThread()
+    }
+
+    /// As PDFKit does for each annotation it writes: a text storage made with its string, which posts its edit.
+    @concurrent private static func makeTextStoragesAwayFromTheMainThread() async {
+        for index in 0..<20_000 {
+            let textStorage = NSTextStorage(string: "Annotation \(index)")
+            textStorage.replaceCharacters(in: NSRange(location: 0, length: 1), with: "a")
+        }
+    }
 }

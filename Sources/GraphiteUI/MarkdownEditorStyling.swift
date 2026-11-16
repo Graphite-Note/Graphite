@@ -5,8 +5,8 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.10
- * Date: 05/11/2026
+ * Version: 0.13
+ * Date: 16/11/2026
  */
 
 #if canImport(UIKit)
@@ -30,6 +30,10 @@ protocol MarkdownStyledTextView: AnyObject, Sendable {
     /// The width of the text column, which every rendered block's view takes.
     var renderedBlockColumnWidth: CGFloat { get }
     var typingAttributes: [NSAttributedString.Key: Any] { get set }
+    /// Lays out the characters of `range`, which styling has just restyled. TextKit takes a
+    /// restyled line's height for an estimate until it lays the line out again, and that
+    /// estimate leaves out the space a hidden block's line reserves under it.
+    func layOutRestyledText(in range: NSRange)
 }
 
 #if canImport(UIKit)
@@ -41,6 +45,9 @@ extension UITextView: MarkdownStyledTextView {
     }
     var isComposingText: Bool { markedTextRange != nil }
     var renderedBlockColumnWidth: CGFloat { (self as? MarkdownTextView)?.contentColumnWidth ?? bounds.width }
+    /// The iPad leaves the layout to UIKit: the jump the Mac made after a restyle was not
+    /// seen there.
+    func layOutRestyledText(in range: NSRange) {}
 }
 #else
 extension NSTextView: MarkdownStyledTextView {
@@ -55,6 +62,18 @@ extension NSTextView: MarkdownStyledTextView {
     var renderedBlockColumnWidth: CGFloat {
         guard let textContainer else { return 0 }
         return textContainer.size.width - 2 * textContainer.lineFragmentPadding
+    }
+    /// AppKit scrolls the cursor into view inside the keystroke, after the editor's restyle:
+    /// with the restyled lines left estimated, a picture's line above the cursor counted as
+    /// no height, and the note jumped up and settled elsewhere at each character typed under
+    /// a picture. The restyled lines are a few around the edit, which TextKit lays out for
+    /// the next frame anyway.
+    func layOutRestyledText(in range: NSRange) {
+        guard range.length > 0, let textLayoutManager, let contentManager = textLayoutManager.textContentManager,
+              let start = contentManager.location(contentManager.documentRange.location, offsetBy: range.location),
+              let end = contentManager.location(start, offsetBy: range.length),
+              let textRange = NSTextRange(location: start, end: end) else { return }
+        textLayoutManager.ensureLayout(for: textRange)
     }
 }
 #endif
@@ -92,11 +111,19 @@ final class MarkdownEditorStyling {
     let blockContextCheckpoints = MarkdownBlockContextCheckpoints()
     let renderedBlocks: LivePreviewRenderedBlocks
     private var characterEditObserver: NSObjectProtocol?
+    /// The text storage whose edits `characterEditObserver` hears, while it lives.
+    private weak var observedTextStorage: NSTextStorage?
 
     init(configuration: EditorConfiguration, propertiesSource: PropertiesSourceVisibility, detachedViewsBudgetMegabytes: Int) {
         self.configuration = configuration
         self.propertiesSource = propertiesSource
         renderedBlocks = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: detachedViewsBudgetMegabytes)
+    }
+
+    /// The notification center keeps a block's observer until it is removed, and it went on matching the freed text
+    /// storage's address after the editor closed (HUNT-361).
+    isolated deinit {
+        stopObservingCharacterEdits()
     }
 
     /// Made once per configuration: it was made, its accent color parsed, on every use,
@@ -139,11 +166,21 @@ final class MarkdownEditorStyling {
     /// turn of the run loop for a change the text view did not report.
     func observeCharacterEdits(in textView: any MarkdownStyledTextView, settle: @escaping @MainActor @Sendable () -> Void) {
         stopObservingCharacterEdits()
+        // The notification center matches `object` by its address, which a text storage made later can take once this one
+        // is freed: PDFKit makes one for each annotation as it writes a PDF away from the main thread, and the assumption
+        // of the main actor below stopped the app there (HUNT-361). Only the storage observed, while it lives, is heard: an
+        // editor's storage is edited on the main thread, so an edit away from it is another storage's, and on the main
+        // thread the storage is compared with the one observed, which `self` holds weakly.
+        observedTextStorage = textView.styledTextStorage
         characterEditObserver = NotificationCenter.default.addObserver(forName: NSTextStorage.didProcessEditingNotification,
                                                                        object: textView.styledTextStorage, queue: nil) { [weak self, weak textView] notification in
-            guard let textStorage = notification.object as? NSTextStorage, textStorage.editedMask.contains(.editedCharacters) else { return }
+            guard Thread.isMainThread, let textStorage = notification.object as? NSTextStorage,
+                  textStorage.editedMask.contains(.editedCharacters) else { return }
             let edit = CharacterEdit(editedRange: textStorage.editedRange, changeInLength: textStorage.changeInLength)
+            let editedTextStorage = ObjectIdentifier(textStorage)
             MainActor.assumeIsolated {
+                // While the observed storage lives, no other object has its identifier.
+                guard let observedTextStorage = self?.observedTextStorage, ObjectIdentifier(observedTextStorage) == editedTextStorage else { return }
                 self?.renderedBlocks.moveBlockEditedInItsView(through: edit)
                 guard let self, let textView,
                       self.textState.recordCharacterEdit(edit, revealedRange: self.revealedMarkup?.shownLineRange) else { return }
@@ -158,6 +195,7 @@ final class MarkdownEditorStyling {
     func stopObservingCharacterEdits() {
         if let characterEditObserver { NotificationCenter.default.removeObserver(characterEditObserver) }
         characterEditObserver = nil
+        observedTextStorage = nil
     }
 
     /// The text as an immutable snapshot: the one last styled while it is current, a fresh
@@ -211,7 +249,8 @@ final class MarkdownEditorStyling {
         let textStorage = textView.styledTextStorage
         styler.applyStyles(to: textStorage, editedRange: NSRange(location: 0, length: 0), restyleEverything: true, revealedMarkup: revealedMarkup,
                            concealedBlocks: concealedBlocks(in: textView, restyledRange: NSRange(location: 0, length: textStorage.length)),
-                           foldedRegions: foldedRegions(), blockContextCheckpoints: blockContextCheckpoints)
+                           foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
+                           blockContextCheckpoints: blockContextCheckpoints)
         textView.typingAttributes = styler.baseAttributes
         didRestyle(textView)
     }
@@ -222,9 +261,11 @@ final class MarkdownEditorStyling {
         let textStorage = textView.styledTextStorage
         guard textStorage.length > 0 else { return }
         let selection = textView.styledSelection
-        styler.applyStyles(to: textStorage, editedRange: range, restyleEverything: false, revealedMarkup: revealedMarkup,
-                           concealedBlocks: concealedBlocks(in: textView, restyledRange: MarkdownTextStyler.linesRestyled(for: range, in: textStorage.mutableString)),
-                           foldedRegions: foldedRegions(), blockContextCheckpoints: blockContextCheckpoints)
+        let restyledRange = styler.applyStyles(to: textStorage, editedRange: range, restyleEverything: false, revealedMarkup: revealedMarkup,
+                                               concealedBlocks: concealedBlocks(in: textView, restyledRange: MarkdownTextStyler.linesRestyled(for: range, in: textStorage.mutableString)),
+                                               foldedRegions: foldedRegions(), inlinePictures: inlinePictures(revealedBy: revealedMarkup, in: textView),
+                                               blockContextCheckpoints: blockContextCheckpoints)
+        textView.layOutRestyledText(in: restyledRange)
         // Set only when styling moved it: setting the selection costs UIKit tens of
         // milliseconds far down a long note.
         if textView.styledSelection != selection { textView.styledSelection = selection }
@@ -273,7 +314,12 @@ final class MarkdownEditorStyling {
                                                               concealedBlocks: concealedBlocks(in: textView, restyledRange: nil), foldedRegions: foldedRegions(),
                                                               blockContextCheckpoints: blockContextCheckpoints)
         codeBlockShowingFences = codeBlockTouchedBySelection(in: textView)
-        guard !restyledBlockIndices.isEmpty || !restyledRanges.isEmpty else { return false }
+        // An image line's embed shows its source or its picture as a unit: its line is restyled whole when that changes.
+        let source = currentSource(of: textView)
+        let linesChangingPictures = LivePreviewInlinePictures.linesChanging(from: inlinePictures(revealedBy: previousMarkup, in: textView),
+                                                                            to: inlinePictures(revealedBy: newMarkup, in: textView), in: source)
+        for line in linesChangingPictures { restyle(line, in: textView) }
+        guard !restyledBlockIndices.isEmpty || !restyledRanges.isEmpty || !linesChangingPictures.isEmpty else { return false }
         if textView.styledSelection != selection { textView.styledSelection = selection }
         textView.typingAttributes = styler.baseAttributes
         didRestyle(textView)
@@ -385,6 +431,16 @@ final class MarkdownEditorStyling {
     }
 
     // MARK: Rendered blocks
+
+    /// The pictures of the image lines `markup`'s selection is on, but for the embeds whose
+    /// source it shows; none while the selection reveals nothing or the blocks describe older text.
+    private func inlinePictures(revealedBy markup: RevealedMarkup?, in textView: any MarkdownStyledTextView) -> [InlinePicture] {
+        guard rendersBlocks, let markup, let root = environment?.root, !textState.cachesDescribeOldText else { return [] }
+        return LivePreviewInlinePictures.pictures(in: textState.blockEntries, revealedMarkup: markup, source: currentSource(of: textView),
+                                                  columnWidth: textView.renderedBlockColumnWidth) { embed in
+            LivePreviewInlinePictures.lastDecodedThumbnail(of: embed, in: root)
+        }
+    }
 
     /// The blocks whose source is concealed under their views, in note order: every block
     /// the selection is not in (all of them while the selection reveals nothing), none that

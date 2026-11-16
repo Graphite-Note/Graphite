@@ -5,8 +5,8 @@
  * Description: An open PDF: its pages, edits, saving and conflicts.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
- * Date: 04/11/2026
+ * Version: 0.21
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -64,6 +64,8 @@ private struct LoadedPDF: @unchecked Sendable {
     let baseline: PDFBaselineSnapshot
     let structureEntriesLostByPageChanges: [String]
     let hasDigitalSignatures: Bool
+    let formFieldPageNumbers: Set<Int>?
+    let originalFileData: Data?
 }
 
 /// A PDF that opens only with its password.
@@ -90,15 +92,19 @@ private actor PDFLoader {
             loaded = Result {
                 let baseline = PDFBaselineSnapshot(location: PDFBaselineSnapshot.makeLocation())
                 try FileManager.default.copyItem(at: source, to: baseline.location)
-                guard let document = PDFDocument(url: baseline.location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
+                guard let document = PDFShownDocument(url: baseline.location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
                 PDFPageManager.prepareForDisplay(document)
                 if document.isLocked {
                     guard let password else { throw PDFPasswordRequired(wasPasswordWrong: false) }
                     guard document.unlock(withPassword: password) else { throw PDFPasswordRequired(wasPasswordWrong: true) }
                 }
+                // A separate copy of an encrypted PDF would need its password to open.
+                let originalFileData = document.isEncrypted ? nil : try? Data(contentsOf: baseline.location, options: .alwaysMapped) // nil: PDFKit draws every stroke
                 return LoadedPDF(document: document, revision: try FileRevision.read(baseline.location), baseline: baseline,
                                  structureEntriesLostByPageChanges: PDFStructureInspection.entriesLostByPageChanges(in: baseline.location),
-                                 hasDigitalSignatures: PDFSignatureDetection.hasDigitalSignatures(at: baseline.location))
+                                 hasDigitalSignatures: PDFSignatureDetection.hasDigitalSignatures(at: baseline.location),
+                                 formFieldPageNumbers: PDFFormFieldPages.pageNumbers(at: baseline.location),
+                                 originalFileData: originalFileData)
             }
         }
         if let coordinationError { throw coordinationError }
@@ -265,6 +271,10 @@ final class PDFSession {
     /// Told when a page's text boxes change, keyed by the view drawing them
     /// (`registerTextBoxChangeObserver`).
     @ObservationIgnored private var textBoxChangeObservers: [ObjectIdentifier: () -> Void] = [:]
+    /// Told after an edit adds, changes, removes or reorders a page's pictures, text boxes or
+    /// shapes (`PDFEdit.changesPageObjects`), keyed by the view that draws or arranges them
+    /// (`registerPageObjectsChangeObserver`).
+    @ObservationIgnored private var pageObjectsChangeObservers: [ObjectIdentifier: () -> Void] = [:]
     /// Identifies this session's page drags, so a page dragged from another PDF is refused.
     let identifier = UUID()
 
@@ -374,6 +384,12 @@ final class PDFSession {
     /// Any save rewrites the whole file and breaks the signatures, so a signed PDF is shown
     /// without changes until the user accepts that.
     let hasDigitalSignatures: Bool
+    /// The pages of the file, as it was read, that hold form fields (`PDFFormFieldPages`); nil when unknown.
+    let formFieldPageNumbers: Set<Int>?
+    /// The file the document was read from, mapped into memory as it was read, which a save that replaces the snapshot
+    /// does not change; the Mac draws the pages' ink from a separate copy of it (`MacPDFPageInkLayers`). Nil for an
+    /// encrypted PDF or when it could not be mapped.
+    let originalFileData: Data?
     var acceptsSignatureInvalidation = false
     /// Why every edit is refused, or nil when the PDF takes edits. A password outranks a
     /// signature, because accepting the signature's loss does not unlock an encrypted PDF.
@@ -392,6 +408,8 @@ final class PDFSession {
         document = loaded.document
         isPasswordProtected = loaded.document.isEncrypted || !loaded.document.allowsCommenting || !loaded.document.allowsDocumentChanges
         hasDigitalSignatures = loaded.hasDigitalSignatures
+        formFieldPageNumbers = loaded.formFieldPageNumbers
+        originalFileData = loaded.originalFileData
         revision = loaded.revision
         baseline = loaded.baseline
         pageCount = loaded.document.pageCount
@@ -434,6 +452,7 @@ final class PDFSession {
         // Assigned only when they change: every view showing the page count or the current
         // page would otherwise be redrawn after each stroke.
         if pageCount != document.pageCount { pageCount = document.pageCount }
+        if edit.changesPageObjects { for changed in pageObjectsChangeObservers.values { changed() } }
         let currentPageIndexInRange = min(currentPageIndex, max(0, pageCount - 1))
         if currentPageIndex != currentPageIndexInRange { currentPageIndex = currentPageIndexInRange }
         changeVersion += 1
@@ -482,6 +501,15 @@ final class PDFSession {
 
     func unregisterTextBoxChangeObserver(for owner: AnyObject) {
         textBoxChangeObservers[ObjectIdentifier(owner)] = nil
+    }
+
+    /// Registers a view that draws a page's objects over the ink or arranges them, told after each edit of them.
+    func registerPageObjectsChangeObserver(for owner: AnyObject, _ changed: @escaping () -> Void) {
+        pageObjectsChangeObservers[ObjectIdentifier(owner)] = changed
+    }
+
+    func unregisterPageObjectsChangeObserver(for owner: AnyObject) {
+        pageObjectsChangeObservers[ObjectIdentifier(owner)] = nil
     }
 
     func textBoxesDidChange() {
@@ -571,7 +599,7 @@ final class PDFSession {
             didSave?(location)
         } catch {
             if error as? GraphiteError == .conflict { hasExternalConflict = true } else { hasFailedSave = true }
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
             throw error
         }
     }
@@ -595,7 +623,7 @@ final class PDFSession {
             do {
                 try await self.save()
             } catch {
-                self.errorMessage = error.localizedDescription
+                self.errorMessage.report(error)
                 // A conflict waits for the user's choice; any other failure is retried, so
                 // the edits reach the file without waiting for another edit.
                 guard !self.hasExternalConflict, self.hasUnsavedChanges else { return }
@@ -771,65 +799,5 @@ final class PDFSession {
         guard let page = document.page(at: pageIndex) else { return }
         let pageLabel = page.label.flatMap { label in label.isEmpty ? nil : label } ?? "\(pageIndex + 1)"
         try apply(.bookmark(page: pageIndex, label: PDFOutlineEntry.bookmarkLabelPrefix + pageLabel))
-    }
-
-    // MARK: Text markup
-
-    // Undo and redo name the page through its history box, not its index: pages inserted,
-    // deleted, or moved in between would otherwise put the markup on another page.
-
-    func addMarkup(_ kind: PDFMarkupKind, color: PDFMarkupColor, for selection: PDFSelection) throws {
-        let linesByPage = selection.markupLinesByPage(in: document)
-        guard !linesByPage.isEmpty else { throw GraphiteError.unavailable("Select some PDF text first.") }
-        var added: [(page: PDFHistoryPage, markup: PDFMarkup)] = []
-        for (pageIndex, lineBounds) in linesByPage {
-            guard let page = document.page(at: pageIndex) else { throw GraphiteError.invalidFile("Page no longer exists.") }
-            let markup = PDFMarkup(kind: kind, color: color, lineBounds: lineBounds)
-            try apply(.addMarkup(page: pageIndex, markup: markup))
-            added.append((historyPage(for: page), markup))
-        }
-        registerStep(named: kind.title) { session in
-            for (page, markup) in added.reversed() { try session.removeMarkup(markup, on: page) }
-        } redo: { session in
-            for (page, markup) in added { try session.apply(.addMarkup(page: session.currentIndex(of: page), markup: markup)) }
-        }
-    }
-
-    func removeMarkup(_ annotation: PDFAnnotation, on page: PDFPage) throws {
-        let pageIndex = document.index(for: page)
-        guard pageIndex != NSNotFound, let markup = PDFMarkup(annotation: annotation) else { return }
-        try apply(.removeAnnotation(PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)))
-        let markedPage = historyPage(for: page)
-        registerStep(named: "Remove \(markup.kind.title)") { session in
-            try session.apply(.addMarkup(page: session.currentIndex(of: markedPage), markup: markup))
-        } redo: { session in
-            try session.removeMarkup(markup, on: markedPage)
-        }
-    }
-
-    func recolorMarkup(_ annotation: PDFAnnotation, on page: PDFPage, to color: PDFMarkupColor) throws {
-        let pageIndex = document.index(for: page)
-        guard pageIndex != NSNotFound, let previousMarkup = PDFMarkup(annotation: annotation) else { return }
-        let reference = PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)
-        try apply(.recolorMarkup(reference, color: color))
-        let markedPage = historyPage(for: page)
-        func currentReference(in session: PDFSession) throws -> PDFAnnotationReference {
-            PDFAnnotationReference(pageIndex: try session.currentIndex(of: markedPage), name: reference.name,
-                                   annotationType: reference.annotationType, bounds: reference.bounds)
-        }
-        registerStep(named: "Change Color") { session in
-            // The exact original color: `previousMarkup.color` is only the nearest palette color.
-            try session.apply(.restoreMarkupColor(currentReference(in: session), from: previousMarkup))
-        } redo: { session in
-            try session.apply(.recolorMarkup(currentReference(in: session), color: color))
-        }
-    }
-
-    /// The reference carries the bounds, so the markup is still found after an older
-    /// build's page change dropped its name from the file.
-    private func removeMarkup(_ markup: PDFMarkup, on page: PDFHistoryPage) throws {
-        let reference = PDFAnnotationReference(pageIndex: try currentIndex(of: page), name: markup.name,
-                                               annotationType: markup.kind.annotationTypeName, bounds: markup.bounds)
-        try apply(.removeAnnotation(reference))
     }
 }

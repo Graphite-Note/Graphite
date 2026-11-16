@@ -115,6 +115,17 @@ final class CoreAreaHandoffTests: XCTestCase {
                        "A few ordinary aliases still read.")
     }
 
+    /// Found by the Graphite Guide's pass on 2026-11-16: a template's unquoted `{{date:YYYY-MM-DD}}` in a property is a
+    /// flow mapping with a mapping for its key, and Yams stopped the app turning it into values.
+    func testAMappingUsedAsAKeyInFrontmatterIsRefusedWithoutCrashing() throws {
+        let frontmatter = "course: \ndate: {{date:YYYY-MM-DD}}\ntags:\n  - lecture"
+        XCTAssertEqual(try MarkdownSemantics.parse("---\n" + frontmatter + "\n---\n# {{title}}").aliases, [], "The note still parses.")
+        _ = NoteProperties.parse(frontmatter)
+        XCTAssertNil(BoundedYAML.load("? [a, b]\n: value"), "A sequence as a key is refused too.")
+        XCTAssertEqual((BoundedYAML.load("date: \"{{date:YYYY-MM-DD}}\"") as? [String: Any])?["date"] as? String, "{{date:YYYY-MM-DD}}",
+                       "Quoted, the placeholder is text.")
+    }
+
     // MARK: Explicit tags in frontmatter (F115)
 
     func testExplicitScalarTagsDecideThePropertyType() throws {

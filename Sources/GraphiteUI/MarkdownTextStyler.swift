@@ -5,8 +5,8 @@
  * Description: Styles Markdown source in place, with attributes only, for the editor.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 02/11/2026
+ * Version: 0.21
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -134,6 +134,8 @@ enum ConcealedReplacement: String {
     static let colorAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementColor")
     /// Holds the `InlineMathLayout` of an `inlineMath` replacement.
     static let mathAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementMath")
+    /// Holds the `InlinePictureLayout` of a picture an image line draws among its text.
+    static let pictureAttributeKey = NSAttributedString.Key("GraphiteConcealedReplacementPicture")
     static let subpathSeparatorText = " > "
     /// A theme's shapes Live Preview draws behind or around text (theme Phase 3):
     /// a `ThemedTextShape` for tag pills and highlights, a `ThemedCheckboxStyle` for task
@@ -228,19 +230,30 @@ final class ThemedHeadingOrnament: NSObject {
     }
 }
 
-/// A `$…$` formula Live Preview draws in place of its source.
+/// A `$…$` formula Live Preview draws in place of its source, or one piece of a long formula
+/// drawn in pieces a line can break between (`LivePreviewInlineMathPieces`).
 final class InlineMathLayout: NSObject, Sendable {
     let latex: String
     let fontSize: CGFloat
     let metrics: InlineMathRendering.Metrics
+    /// Room left before and after the drawing: on each side of a formula drawn whole, and only at
+    /// the formula's two ends for its pieces, which meet as the formula drawn whole does.
+    let leadingPadding: CGFloat
+    let trailingPadding: CGFloat
     /// Room left on each side of the formula.
     static let horizontalPadding: CGFloat = 1
 
-    init(latex: String, fontSize: CGFloat, metrics: InlineMathRendering.Metrics) {
+    init(latex: String, fontSize: CGFloat, metrics: InlineMathRendering.Metrics,
+         leadingPadding: CGFloat = horizontalPadding, trailingPadding: CGFloat = horizontalPadding) {
         self.latex = latex
         self.fontSize = fontSize
         self.metrics = metrics
+        self.leadingPadding = leadingPadding
+        self.trailingPadding = trailingPadding
     }
+
+    /// The width the line keeps for the drawing.
+    var roomWidth: CGFloat { metrics.width + leadingPadding + trailingPadding }
 }
 
 /// Styles Markdown source in place. Only attributes change; the text is untouched, so
@@ -310,17 +323,20 @@ struct MarkdownTextStyler {
     /// Restyles whole lines touched by `range`, or the whole document. In Live Preview,
     /// `revealedMarkup` says which markup stays visible around the selection (nil while the
     /// note is only being read, so no markup shows), and `concealedBlocks` are drawn as
-    /// views. Source mode shows all markup.
+    /// views, and `inlinePictures` drawn in place of their embeds. Source mode shows all markup.
     /// `foldedRegions` are hidden, whatever the mode. `blockContextCheckpoints`, kept by the
     /// editor for its text storage, spares a restyle near the end of a long note from
     /// rescanning the note from its top; without it the scan starts at the top.
+    /// Returns the range whose attributes were set: the lines, with the blocks, folded
+    /// sections and spans they touch; empty for an empty text.
+    @discardableResult
     func applyStyles(to textStorage: NSTextStorage, editedRange range: NSRange, restyleEverything: Bool,
                      revealedMarkup: RevealedMarkup?, concealedBlocks: [ConcealedBlock], foldedRegions: [FoldableRegion] = [],
-                     blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) {
+                     inlinePictures: [InlinePicture] = [], blockContextCheckpoints: MarkdownBlockContextCheckpoints? = nil) -> NSRange {
         // A whole-note pass reads an immutable copy: the storage's mutable string proxy is
         // several times slower to scan, and the text does not change while it is styled.
         let source: NSString = restyleEverything ? (textStorage.mutableString.copy() as? NSString ?? textStorage.mutableString) : textStorage.mutableString
-        guard source.length > 0 else { return }
+        guard source.length > 0 else { return NSRange(location: 0, length: 0) }
         // Blocks and folds come from the editor's last scan, which can describe a different
         // text than the storage holds now. One that no longer fits is left out: attributes
         // applied past the end of the storage raise an exception.
@@ -356,6 +372,7 @@ struct MarkdownTextStyler {
             drawCodeBlocksAsBoxes(in: spans, to: textStorage, source: source, revealedMarkup: revealedMarkup, fonts: fonts, blockContextCheckpoints: blockContextCheckpoints)
         }
         highlightCode(in: spans, to: textStorage, source: source, hiddenRanges: hiddenRanges)
+        drawInlinePictures(inlinePictures, within: styledRange, in: textStorage)
         if configuration.mode == .livePreview {
             for block in concealedBlocks where NSIntersectionRange(block.range, styledRange).length > 0 {
                 concealBlock(block, source: source, in: textStorage)
@@ -366,6 +383,7 @@ struct MarkdownTextStyler {
             hideFoldedSection(region, in: textStorage)
         }
         textStorage.endEditing()
+        return styledRange
     }
 
     /// Restyles the markup that starts or stops showing when the revealed markup goes from
@@ -530,8 +548,7 @@ struct MarkdownTextStyler {
                     continue
                 }
                 if span.style == .math && isLivePreview && !isSpanShown && drawsConcealedReplacements && isWholeSpan,
-                   let layout = inlineMathLayout(for: source.substring(with: span.range), baseFont: fonts.baseFont) {
-                    drawInlineMath(layout, over: span.range, in: textStorage)
+                   drawsInlineMath(over: span.range, source: source, baseFont: fonts.baseFont, in: textStorage) {
                     continue
                 }
                 apply(span.style, to: textStorage, range: piece, fonts: fonts)
@@ -556,6 +573,7 @@ struct MarkdownTextStyler {
         textStorage.removeAttribute(.backgroundColor, range: hiddenRange)
         textStorage.removeAttribute(ConcealedReplacement.attributeKey, range: hiddenRange)
         textStorage.removeAttribute(ConcealedReplacement.mathAttributeKey, range: hiddenRange)
+        textStorage.removeAttribute(ConcealedReplacement.pictureAttributeKey, range: hiddenRange)
         textStorage.removeAttribute(.baselineOffset, range: hiddenRange)
         conceal(hiddenRange, in: textStorage)
         // The header's own line break stays in its paragraph; the lines after it collapse.
@@ -780,9 +798,20 @@ struct MarkdownTextStyler {
     /// which stays visible as source.
     private static var inlineMathMetricsByKey: [String: InlineMathRendering.Metrics?] = [:]
 
-    private func inlineMathLayout(for source: String, baseFont: PlatformFont) -> InlineMathLayout? {
+    func inlineMathLayout(for source: String, baseFont: PlatformFont) -> InlineMathLayout? {
         guard source.hasPrefix("$"), !source.hasPrefix("$$"), source.count > 2 else { return nil }
-        let latex = LaTeXCompatibility.normalized(String(source.dropFirst().dropLast()))
+        return inlineMathLayout(forLaTeX: LaTeXCompatibility.normalized(String(source.dropFirst().dropLast())), baseFont: baseFont)
+    }
+
+    /// Where inline math may break, as the reading view breaks it (Textual's `InlineMathPieces`, patch 26): each
+    /// piece's characters in `latex` and the space after the operator that ends it; nil when it stays whole.
+    nonisolated static func inlineMathCuts(of latex: String) -> [(range: Range<String.Index>, spaceAfterOperator: String)]? {
+        InlineMathPieces.pieces(of: latex)?.map { piece in (piece.range, piece.spaceAfterOperator) }
+    }
+
+    /// The layout of LaTeX already made readable by the typesetter (`LaTeXCompatibility.normalized`).
+    func inlineMathLayout(forLaTeX latex: String, baseFont: PlatformFont, leadingPadding: CGFloat = InlineMathLayout.horizontalPadding,
+                          trailingPadding: CGFloat = InlineMathLayout.horizontalPadding) -> InlineMathLayout? {
         // Formulas are set a little larger than text, as in reading view.
         let fontSize = baseFont.pointSize * 1.2
         let key = "\(fontSize)|\(latex)"
@@ -794,12 +823,14 @@ struct MarkdownTextStyler {
             if Self.inlineMathMetricsByKey.count > 5000 { Self.inlineMathMetricsByKey.removeAll() }
             Self.inlineMathMetricsByKey[key] = metrics
         }
-        return metrics.map { metrics in InlineMathLayout(latex: latex, fontSize: fontSize, metrics: metrics) }
+        return metrics.map { metrics in
+            InlineMathLayout(latex: latex, fontSize: fontSize, metrics: metrics, leadingPadding: leadingPadding, trailingPadding: trailingPadding)
+        }
     }
 
     /// Hides the source and makes room for the formula before its last character:
     /// `ConcealedReplacementLayoutFragment` draws the formula in that room.
-    private func drawInlineMath(_ layout: InlineMathLayout, over range: NSRange, in textStorage: NSTextStorage) {
+    func drawInlineMath(_ layout: InlineMathLayout, over range: NSRange, in textStorage: NSTextStorage) {
         conceal(range, in: textStorage)
         textStorage.addAttribute(ConcealedReplacement.attributeKey, value: ConcealedReplacement.inlineMath.rawValue, range: range)
         textStorage.addAttribute(ConcealedReplacement.mathAttributeKey, value: layout, range: range)
@@ -808,7 +839,7 @@ struct MarkdownTextStyler {
         // The room follows the character before the last. After the last, it could not fit at the
         // end of a line and would move the closing `$` alone to the next, as a line may break
         // between `}` and `$`, and the two characters below must stay on one line.
-        textStorage.addAttribute(.kern, value: layout.metrics.width + 2 * InlineMathLayout.horizontalPadding, range: characterBeforeLast)
+        textStorage.addAttribute(.kern, value: layout.roomWidth, range: characterBeforeLast)
         // TextKit sizes a line from the ascent and descent of its characters, moved by their
         // baseline offsets. Raising the hidden last character by the formula's ascent, and
         // lowering the one before it by its descent, makes a tall formula's line tall enough

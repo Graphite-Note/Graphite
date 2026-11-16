@@ -3,12 +3,12 @@
  * -------------------------
  * Layer: UI
  * Description: The fixed Pencil bar and its tool row: the whole row, closer and with smaller colors as the bar narrows,
- *              then the least used controls folded into a More control a stage at a time, the writing tools, every color,
- *              the ruler and Add Image staying on the bar, then a condensed form.
+ *              then the least used controls folded into a More control a stage at a time, the writing tools, the strip of
+ *              colors with its plus, the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 05/11/2026
+ * Version: 0.16
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -65,6 +65,8 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
     var offersReadAloudPen = false
     /// The text tool, on PDF pages.
     var offersTextBoxes = false
+    /// The text highlighter, on PDF pages with text to mark.
+    var offersTextMarking = false
     /// Called by a tap on the tools while the document is read, which starts writing with
     /// the tool tapped; nil where the bar shows only while writing.
     var beginWriting: (() -> Void)? = nil
@@ -77,7 +79,8 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
         HStack(spacing: 12) {
             leadingControls.padding(.leading, 16)
             PencilToolRow(toolbox: toolbox, drawsShapes: $drawsShapes, addImage: addImage,
-                          undoAvailability: undoAvailability, offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes)
+                          undoAvailability: undoAvailability, offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes,
+                          offersTextMarking: offersTextMarking)
                 // With the tool's own action: the tool tapped is the one written with.
                 .simultaneousGesture(TapGesture().onEnded { beginWriting?() }, isEnabled: beginWriting != nil)
                 .frame(maxWidth: .infinity)
@@ -95,19 +98,20 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
 /// The fixed bar's tools in one row: the ink presets, the eraser, the lasso, the laser pointer,
 /// and on PDF pages the text tool and the Read Aloud pen; the tool's own choices and the three
 /// sizes of the ink or eraser in use; black and every favorite color, or for a highlighter its own
-/// lighter colors, from Settings › Colors, with Other Color and its plus; then Shapes, the Ruler
-/// and Add Image. The row takes the first form that fits (`PencilToolRowLayout`): the whole row,
+/// lighter colors, from Settings › Colors, in a strip that scrolls sideways only past nine of them,
+/// with the plus that saves a color and Other Color; then Shapes, the Ruler and Add Image. The
+/// row takes the first form that fits (`PencilToolRowLayout`): the whole row,
 /// closer and with smaller colors as the bar narrows; then, at the mini size, the least used
 /// controls behind one More control a stage at a time (`PencilToolRowLayout.FoldStage`: the
 /// laser, text and Read Aloud tools; then the tool's choices, Other Color and Shapes; then Add
-/// Image), the tools a person writes with, the sizes, every color and the ruler staying on the
-/// bar; then that row with its colors in a strip that scrolls, only where they do not all fit
-/// even at the mini size; then fewer tools. Nothing is cut off.
+/// Image), the tools a person writes with, the sizes, the strip of colors with its plus and the
+/// ruler staying on the bar; then that row with a narrower strip, only where nine colors do not
+/// fit even at the mini size; then fewer tools. Nothing is cut off.
 ///
 /// A second tap on the ink in use opens its options: every ink PencilKit has, any width and
 /// opacity, and adding or removing a preset. A second tap on the size in use, of an ink or
-/// of the eraser, opens its width, to change it. A long press on a favorite color moves or
-/// removes it, and the plus beside Other Color adds the color in use.
+/// of the eraser, opens its width, to change it. A favorite color held a moment is dragged to its
+/// place or off the strip, and the plus saves the color in use or a new one as a swatch.
 ///
 /// Each tool is its SF Symbol (`PencilToolGlyph`); the tool in use stands on a faint fill and has
 /// the selected trait, so it is not told apart by color alone.
@@ -123,6 +127,8 @@ struct PencilToolRow: View {
     var offersReadAloudPen = false
     /// The text tool, on PDF pages.
     var offersTextBoxes = false
+    /// The text highlighter, on PDF pages.
+    var offersTextMarking = false
     @State private var showsInkOptions = false
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
@@ -164,7 +170,8 @@ struct PencilToolRow: View {
     private var layoutContents: PencilToolRowLayout.Contents {
         PencilToolRowLayout.contents(of: toolbox, favorites: GraphitePreferences.colorPalette(decoding: storedColorPalette),
                                      highlighterColors: GraphitePreferences.highlighterPalette(decoding: storedHighlighterPalette),
-                                     offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen, offersImages: addImage != nil)
+                                     offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen,
+                                     offersImages: addImage != nil)
     }
 
     @ViewBuilder private func row(_ arrangement: PencilToolRowLayout.Arrangement, holding contents: PencilToolRowLayout.Contents) -> some View {
@@ -188,7 +195,7 @@ struct PencilToolRow: View {
                 if placement.showsToolChoices { toolChoices }
                 if placement.showsSizes { sizeButtons(opensWidth: true, density: density) }
             }
-            if placement.showsSwatches || placement.showsOtherColor {
+            if placement.showsSwatches || placement.showsAddColor || placement.showsOtherColor {
                 separator(density)
                 colorControls(placement)
             }
@@ -201,20 +208,16 @@ struct PencilToolRow: View {
         .padding(.horizontal, density.edgeInset)
     }
 
-    /// The colors the form keeps on the bar: every one, or a strip of whole colors that scrolls, with Other Color and
-    /// its plus where the form keeps them.
-    @ViewBuilder private func colorControls(_ placement: PencilToolRowLayout.Placement) -> some View {
-        if let scrollingSwatchCount = placement.scrollingSwatchCount {
-            PencilColorStrip(toolbox: toolbox, rowHeight: rowHeight, visibleSwatchCount: scrollingSwatchCount)
-        } else {
-            let controls: PencilColorControls = !placement.showsSwatches ? .otherColorAndAdd : placement.showsOtherColor ? .all : .swatches
-            PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: placement.density, controls: controls)
-        }
+    /// The colors the form keeps on the bar: their strip of whole colors, which scrolls sideways where it holds more than
+    /// it shows, the plus, and Other Color where the form keeps it.
+    private func colorControls(_ placement: PencilToolRowLayout.Placement) -> some View {
+        PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: placement.density,
+                           controls: placement.showsOtherColor ? .all : .stripAndAdd, visibleSwatchCount: placement.scrollingSwatchCount)
     }
 
     /// The folded row's More control: what the form's fold stage moved off the bar, in the bar's order: the tools used
     /// now and then (the laser pointer, the text tool, the Read Aloud pen), the tool's own choices (the eraser's kind,
-    /// the lasso's type), Other Color with its plus, Shapes, and Add Image.
+    /// the lasso's type), Other Color, Shapes, and Add Image.
     private func moreToolsButton(_ placement: PencilToolRowLayout.Placement) -> some View {
         PencilBarMoreButton(accessibilityLabel: "More Tools", width: placement.density.toolPitch, rowHeight: rowHeight) { isPresented in
             Image(systemName: drawsShapes || isPresented ? "ellipsis.circle.fill" : "ellipsis.circle")
@@ -224,7 +227,7 @@ struct PencilToolRow: View {
             if !placement.showsToolChoices { HStack(spacing: 2) { toolChoices } }
             HStack(spacing: 2) {
                 if !placement.showsOtherColor, Self.offersColors(toolInUse: toolbox.toolInUse) {
-                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColorAndAdd)
+                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColor)
                 }
                 if !placement.showsShapes { shapesToggle(density: .regular) }
                 if !placement.showsAddImage { addImageButton(density: .regular) }
@@ -256,7 +259,8 @@ struct PencilToolRow: View {
 
     /// Every tool of the row, in order.
     private var allTools: [PencilToolRowLayout.Tool] {
-        PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextBoxes: offersTextBoxes, offersReadAloudPen: offersReadAloudPen)
+        PencilToolRowLayout.tools(presetCount: toolbox.presets.count, offersTextMarking: offersTextMarking, offersTextBoxes: offersTextBoxes,
+                                  offersReadAloudPen: offersReadAloudPen)
     }
 
     /// The tool in use as a tool of the row.
@@ -285,6 +289,7 @@ struct PencilToolRow: View {
         case .lasso: buttons.toolButton(.lasso)
         case .laser: buttons.toolButton(.laser)
         case .text: buttons.toolButton(.text)
+        case .textHighlighter: buttons.toolButton(.textHighlighter)
         case .readAloud: buttons.toolButton(.readAloud)
         }
     }
@@ -311,7 +316,7 @@ struct PencilToolRow: View {
                 .opacity(toolbox.erasesWholeStrokes ? 0.55 : 1)
                 .accessibilityHint(toolbox.erasesWholeStrokes ? "Erases pixels at this width" : "")
             }
-        case .lasso, .laser, .text, .readAloud:
+        case .lasso, .laser, .text, .readAloud, .textHighlighter:
             EmptyView()
         }
     }
@@ -449,21 +454,38 @@ struct PencilToolRow: View {
 enum PencilToolRowForm: Equatable {
     case full, compact, condensed
 
-    /// For tests, which cannot see SwiftUI's views: the form last shown, its arrangement, and
-    /// where it is, in its window's coordinates.
-    @MainActor static var lastShown: (form: PencilToolRowForm, arrangement: PencilToolRowLayout.Arrangement, frameInWindow: CGRect)?
+    /// A row on screen: its form, its arrangement, and where it is, in its window's coordinates.
+    struct ShownRow {
+        let form: PencilToolRowForm
+        let arrangement: PencilToolRowLayout.Arrangement
+        let frameInWindow: CGRect
+        /// Which row reported it, so a row that goes withdraws only its own report.
+        fileprivate let reporter: UUID
+    }
+
+    /// For tests, which cannot see SwiftUI's views: the row last shown of those still on screen. Setting it to nil
+    /// forgets every report, so a test can wait for the next row to show.
+    @MainActor static var lastShown: ShownRow? {
+        get { shownRows.last }
+        set { shownRows = newValue.map { row in [row] } ?? [] }
+    }
+
+    /// The rows on screen, the latest report last.
+    @MainActor fileprivate static var shownRows: [ShownRow] = []
 }
 
 /// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`): a reader behind the row
 /// reports its frame when the row appears and whenever the frame changes, and takes it back when the row goes. A change
 /// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another, and on the owner's
 /// iPad (2026-11-05) a folded row that had left the screen stayed in `lastShown` while the screen showed the whole row
-/// (HUNT-317).
+/// (HUNT-317). A row that goes withdraws only its own report, and the latest report of a row still shown takes its
+/// place: SwiftUI shows a new row before the one it replaces disappears, and a window of 507 points (2026-11-11) showed
+/// two at once, so the row that went took the report of the row left on screen with it.
 private struct PencilToolRowLayoutReport: ViewModifier {
     let form: PencilToolRowForm
     let arrangement: PencilToolRowLayout.Arrangement
-    /// The frame this row reported last, nil while it is not on screen.
-    @State private var reportedFrame: CGRect?
+    /// Which row this is, to tell its report from another's.
+    @State private var reporterIdentifier = UUID()
 
     func body(content: Content) -> some View {
         content.background {
@@ -478,16 +500,12 @@ private struct PencilToolRowLayoutReport: ViewModifier {
     }
 
     private func report(_ frame: CGRect) {
-        PencilToolRowForm.lastShown = (form, arrangement, frame)
-        reportedFrame = frame
+        PencilToolRowForm.shownRows.removeAll { row in row.reporter == reporterIdentifier }
+        PencilToolRowForm.shownRows.append(PencilToolRowForm.ShownRow(form: form, arrangement: arrangement, frameInWindow: frame, reporter: reporterIdentifier))
     }
 
     private func withdraw() {
-        guard let reportedFrame else { return }
-        self.reportedFrame = nil
-        if let lastShown = PencilToolRowForm.lastShown, lastShown.frameInWindow == reportedFrame, lastShown.arrangement == arrangement {
-            PencilToolRowForm.lastShown = nil
-        }
+        PencilToolRowForm.shownRows.removeAll { row in row.reporter == reporterIdentifier }
     }
 }
 
@@ -499,9 +517,9 @@ private extension View {
 
 extension PencilToolbar where LeadingControls == EmptyView, TrailingControls == EmptyView {
     init(toolbox: PencilToolbox, drawsShapes: Binding<Bool>, addImage: (() -> Void)? = nil, undoAvailability: UndoAvailability? = nil,
-         offersReadAloudPen: Bool = false, offersTextBoxes: Bool = false, beginWriting: (() -> Void)? = nil) {
+         offersReadAloudPen: Bool = false, offersTextBoxes: Bool = false, offersTextMarking: Bool = false, beginWriting: (() -> Void)? = nil) {
         self.init(toolbox: toolbox, drawsShapes: drawsShapes, addImage: addImage, undoAvailability: undoAvailability,
-                  offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes, beginWriting: beginWriting,
+                  offersReadAloudPen: offersReadAloudPen, offersTextBoxes: offersTextBoxes, offersTextMarking: offersTextMarking, beginWriting: beginWriting,
                   leadingControls: { EmptyView() }, trailingControls: { EmptyView() })
     }
 }

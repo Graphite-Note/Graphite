@@ -5,8 +5,8 @@
  * Description: Text markup (highlight, underline, strike-out) as standard PDF annotations.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 11/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -56,66 +56,109 @@ public enum PDFMarkupKind: String, Sendable, CaseIterable, Identifiable {
     }
 }
 
-/// Markup colors. Highlights are opaque and readers draw them with multiply blending,
-/// so light tints keep the text underneath readable.
-public enum PDFMarkupColor: String, Sendable, CaseIterable, Identifiable {
-    case yellow, green, blue, pink, purple, red
-    public var id: String { rawValue }
+/// The colour of a highlight, underline or strikethrough: any colour, kept as eight bits a
+/// component in device RGB, which is how PDFKit writes `/C`. Eight bits make a colour read
+/// back from a file equal to the one written, and give the hex text it is kept under.
+/// Highlights are opaque and readers draw them with multiply blending, so light tints keep
+/// the text underneath readable.
+public struct PDFMarkupColor: Hashable, Sendable, Identifiable {
+    public let redLevel: UInt8
+    public let greenLevel: UInt8
+    public let blueLevel: UInt8
 
+    private static let maximumLevel = 255.0
+
+    public init(redLevel: UInt8, greenLevel: UInt8, blueLevel: UInt8) {
+        self.redLevel = redLevel
+        self.greenLevel = greenLevel
+        self.blueLevel = blueLevel
+    }
+
+    /// The colour nearest to components between 0 and 1; others are taken to the nearest end.
+    public init(red: Double, green: Double, blue: Double) {
+        func level(_ component: Double) -> UInt8 {
+            guard component.isFinite else { return 0 }
+            return UInt8((min(max(component, 0), 1) * Self.maximumLevel).rounded())
+        }
+        self.init(redLevel: level(red), greenLevel: level(green), blueLevel: level(blue))
+    }
+
+    public static let yellow = PDFMarkupColor(red: 1.0, green: 0.91, blue: 0.26)
+    public static let green = PDFMarkupColor(red: 0.56, green: 0.89, blue: 0.47)
+    public static let blue = PDFMarkupColor(red: 0.52, green: 0.78, blue: 1.0)
+    public static let pink = PDFMarkupColor(red: 1.0, green: 0.62, blue: 0.79)
+    public static let purple = PDFMarkupColor(red: 0.78, green: 0.64, blue: 1.0)
+    public static let red = PDFMarkupColor(red: 0.89, green: 0.18, blue: 0.18)
+
+    /// The colours highlights start with, before any is saved or removed (`PDFTextMarkColors`).
     public static let highlightColors: [PDFMarkupColor] = [.yellow, .green, .blue, .pink, .purple]
+    /// Graphite's named colours, in their order, with their names.
+    private static let namedColors: [(color: PDFMarkupColor, name: String)] = [
+        (.yellow, "yellow"), (.green, "green"), (.blue, "blue"), (.pink, "pink"), (.purple, "purple"), (.red, "red"),
+    ]
 
-    public var title: String { rawValue.capitalized }
+    public var red: Double { Double(redLevel) / Self.maximumLevel }
+    public var green: Double { Double(greenLevel) / Self.maximumLevel }
+    public var blue: Double { Double(blueLevel) / Self.maximumLevel }
 
-    public var red: Double {
-        switch self {
-        case .yellow: 1.0
-        case .green: 0.56
-        case .blue: 0.52
-        case .pink: 1.0
-        case .purple: 0.78
-        case .red: 0.89
+    /// The name of one of Graphite's colours, such as `yellow`; nil for any other colour.
+    public var name: String? { Self.namedColors.first { named in named.color == self }?.name }
+
+    /// The colour's name for a menu: "Yellow", or its hex text, "#FF8000".
+    public var title: String { name?.capitalized ?? hex }
+
+    /// `#RRGGBB`, upper case.
+    public var hex: String { String(format: "#%02X%02X%02X", redLevel, greenLevel, blueLevel) }
+
+    public var id: String { hex }
+
+    /// The colour of `#RRGGBB` (the `#` may be left out), or nil for other text.
+    public init?(hex: String) {
+        let digits = hex.hasPrefix("#") ? hex.dropFirst() : Substring(hex)
+        guard digits.count == 6, digits.allSatisfy(\.isHexDigit), let value = UInt32(digits, radix: 16) else { return nil }
+        self.init(redLevel: UInt8(value >> 16 & 0xFF), greenLevel: UInt8(value >> 8 & 0xFF), blueLevel: UInt8(value & 0xFF))
+    }
+
+    /// The colour kept under a name: one of Graphite's names, such as `yellow`, or hex text.
+    public init?(storedName: String) {
+        if let named = Self.namedColors.first(where: { named in named.name == storedName }) {
+            self = named.color
+            return
         }
+        self.init(hex: storedName)
     }
 
-    public var green: Double {
-        switch self {
-        case .yellow: 0.91
-        case .green: 0.89
-        case .blue: 0.78
-        case .pink: 0.62
-        case .purple: 0.64
-        case .red: 0.18
-        }
-    }
-
-    public var blue: Double {
-        switch self {
-        case .yellow: 0.26
-        case .green: 0.47
-        case .blue: 1.0
-        case .pink: 0.79
-        case .purple: 1.0
-        case .red: 0.18
-        }
-    }
-
-    /// The closest markup color to an annotation color read from a file.
-    public static func nearest(red: Double, green: Double, blue: Double) -> PDFMarkupColor {
-        allCases.min { firstColor, secondColor in
-            firstColor.squaredDistance(red: red, green: green, blue: blue) < secondColor.squaredDistance(red: red, green: green, blue: blue)
-        } ?? .yellow
-    }
-
-    private func squaredDistance(red otherRed: Double, green otherGreen: Double, blue otherBlue: Double) -> Double {
-        let redDifference = red - otherRed, greenDifference = green - otherGreen, blueDifference = blue - otherBlue
-        return redDifference * redDifference + greenDifference * greenDifference + blueDifference * blueDifference
-    }
+    /// The name the colour is kept under: Graphite's name for one of its colours, so a
+    /// style kept by an older build reads the same, and hex text for any other.
+    public var storedName: String { name ?? hex }
 
     #if canImport(UIKit)
-    public var platformColor: UIColor { UIColor(red: red, green: green, blue: blue, alpha: 1) }
+    public var platformColor: UIColor {
+        CGColor(colorSpace: CGColorSpaceCreateDeviceRGB(), components: [red, green, blue, 1].map { component in CGFloat(component) })
+            .map { color in UIColor(cgColor: color) } ?? UIColor(red: red, green: green, blue: blue, alpha: 1)
+    }
+
+    /// The colour a colour picker chose, as PDFKit writes it.
+    public init(platformColor: UIColor) {
+        self.init(cgColor: platformColor.cgColor)
+    }
     #else
-    public var platformColor: NSColor { NSColor(srgbRed: red, green: green, blue: blue, alpha: 1) }
+    public var platformColor: NSColor {
+        CGColor(colorSpace: CGColorSpaceCreateDeviceRGB(), components: [red, green, blue, 1].map { component in CGFloat(component) })
+            .flatMap { color in NSColor(cgColor: color) } ?? NSColor(deviceRed: red, green: green, blue: blue, alpha: 1)
+    }
+
+    /// The colour a colour panel chose, as PDFKit writes it.
+    public init(platformColor: NSColor) {
+        self.init(cgColor: platformColor.cgColor)
+    }
     #endif
+
+    /// A colour in any colour space, in device RGB.
+    public init(cgColor: CGColor) {
+        let components = PDFMarkupDetails.deviceRGBComponents(of: cgColor)
+        self.init(red: components[0], green: components[1], blue: components[2])
+    }
 }
 
 /// What a reader shows of markup read from a file beyond its kind and lines: its exact
@@ -136,17 +179,35 @@ public struct PDFMarkupDetails: Sendable, Equatable {
     }
 
     init(annotation: PDFAnnotation) {
-        let annotationColor = annotation.color.cgColor
-        var components = annotationColor.components ?? []
-        if annotationColor.colorSpace?.model != .rgb || components.count != 4 {
-            // Gray, CMYK and other colors are converted; RGB components are kept exactly.
-            components = CGColorSpace(name: CGColorSpace.sRGB)
-                .flatMap { sRGB in annotationColor.converted(to: sRGB, intent: .defaultIntent, options: nil) }?.components ?? []
-        }
-        // Yellow, the usual highlight color, when the color cannot be read at all.
-        if components.count != 4 { components = [1, 1, 0, 1] }
-        self.init(red: Double(components[0]), green: Double(components[1]), blue: Double(components[2]), alpha: Double(components[3]),
+        let components = Self.deviceRGBComponents(of: annotation.color.cgColor)
+        self.init(red: components[0], green: components[1], blue: components[2], alpha: components[3],
                   note: annotation.contents, author: annotation.userName)
+    }
+
+    /// Red, green, blue and alpha of a colour. Gray, CMYK and other colours are converted;
+    /// RGB components are kept exactly. Yellow, the usual highlight colour, when the colour
+    /// cannot be read at all.
+    static func deviceRGBComponents(of color: CGColor) -> [Double] {
+        var components = color.components ?? []
+        if color.colorSpace?.model != .rgb || components.count != 4 {
+            components = CGColorSpace(name: CGColorSpace.sRGB)
+                .flatMap { sRGB in color.converted(to: sRGB, intent: .defaultIntent, options: nil) }?.components ?? []
+        }
+        if components.count != 4 { components = [1, 1, 0, 1] }
+        return components.map { component in Double(component) }
+    }
+
+    /// The colour as Graphite's colours are kept, eight bits a component.
+    public var color: PDFMarkupColor { PDFMarkupColor(red: red, green: green, blue: blue) }
+
+    /// What a mark joining `marks` keeps of them: their notes, one after another, with the
+    /// author of the first that has one, in `color`. Nil when none has a note, so the joined
+    /// mark is the current user's, as any new mark is.
+    public static func joiningNotes(of marks: [PDFMarkup], in color: PDFMarkupColor) -> PDFMarkupDetails? {
+        let annotatedMarks = marks.compactMap { mark in mark.originalDetails }.filter { details in !(details.note ?? "").isEmpty }
+        guard let firstAnnotated = annotatedMarks.first else { return nil }
+        return PDFMarkupDetails(red: color.red, green: color.green, blue: color.blue, alpha: 1,
+                                note: annotatedMarks.compactMap(\.note).joined(separator: "\n\n"), author: firstAnnotated.author)
     }
 
     #if canImport(UIKit)
@@ -192,7 +253,7 @@ public struct PDFMarkup: Sendable, Equatable {
         guard let kind = PDFMarkupKind(annotationType: annotation.type) else { return nil }
         let details = PDFMarkupDetails(annotation: annotation)
         self.init(name: annotation.persistentName ?? UUID().uuidString,
-                  kind: kind, color: PDFMarkupColor.nearest(red: details.red, green: details.green, blue: details.blue),
+                  kind: kind, color: details.color,
                   lineBounds: Self.lineRectangles(of: annotation), originalDetails: details)
     }
 
@@ -217,6 +278,9 @@ public struct PDFMarkup: Sendable, Equatable {
         }
         return lines.isEmpty ? [annotation.bounds] : lines
     }
+
+    /// Whether the mark is drawn in `color`, to eight bits a component.
+    public func hasColor(_ color: PDFMarkupColor) -> Bool { self.color == color }
 
     public var bounds: CGRect {
         lineBounds.reduce(CGRect.null) { unionSoFar, lineRectangle in unionSoFar.union(lineRectangle) }

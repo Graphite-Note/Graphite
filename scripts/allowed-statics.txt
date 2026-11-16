@@ -21,6 +21,7 @@ Sources/GraphiteApple/DrawingFileService.swift      ImageDecodingLimiter.shared 
 Sources/GraphiteUI/MarkdownPreview.swift            ReadingImageCache.shared           # bounded NSCache; owner and memory release in Phase 6
 Sources/GraphiteUI/PencilToolbox.swift              PencilToolbox.shared               # per-device Pencil tool state, one for every window: the same pens everywhere (decision 12, owner 2026-10-21); injected in Phase 2 (T-18)
 Sources/GraphiteUI/CanvasCardViews.swift            CanvasPDFPageRenderer.shared       # bounded renderer for canvas PDF cards
+Sources/GraphiteUI/MacMarkupColorPanel.swift        MacMarkupColorPanel.shared         # the one target of AppKit's one NSColorPanel, which does not retain it: process-wide like the panel, so the target is never a released object (FR-52, platform singleton at the edge)
 
 # --- stored mutable statics, locks and caches (DIP-ARCH-02 and architecture.md 8.4) ---
 # Locks and caches that guard themselves.
@@ -47,7 +48,7 @@ Sources/GraphiteUI/PalmRejection.swift              PencilActivity.state        
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.pencilTouch          # weak: the current Pencil touch
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.hoveringRecognizers  # hover recognizers by number
 Sources/GraphiteUI/PalmRejection.swift              PencilActivity.lastHoverRecognizerNumber # hover recognizer counter
-Sources/GraphiteUI/PencilToolbar.swift              PencilToolRowForm.lastShown         # last shown row form, for animation continuity
+Sources/GraphiteUI/PencilToolbar.swift              PencilToolRowForm.shownRows         # the Pencil rows on screen, for hosted tests (lastShown reads it)
 Sources/GraphiteUI/ReadAloudNowPlaying.swift        ReadAloudNowPlaying.queueCommands   # set by whichever navigator was built last (DIP-ARCH-02)
 Sources/GraphiteUI/TableCellTextField.swift         TableCellTextField.focusedField     # weak: the focused table cell
 Sources/GraphiteUI/GraphiteMacScenes.swift          GraphiteApplicationDelegate.openWindows # weak: every window's saves for quitting (platform edge; BUG-SHELL-03, decision 12)

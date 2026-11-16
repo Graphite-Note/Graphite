@@ -3,11 +3,11 @@
  * ------------------------
  * Layer: Core
  * Description: Finds the embeds in note source, the one that is all of a line or of a list item, and
- *              the pictures of a line that shows images among its text.
+ *              the pictures of a line or list item that shows images among its text.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 05/11/2026
+ * Version: 0.8
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -40,12 +40,13 @@ public enum EmbedLocator {
         return DocumentKind(fileExtension: (path as NSString).pathExtension) == .image ? nil : embedInItem
     }
 
-    /// The pieces of `line` when it embeds at least one image of the vault and is not that
-    /// image alone: its text between the images, trimmed, and the images in order, as in
+    /// The pieces of `line` when it embeds at least one image or PDF of the vault and is not
+    /// that embed alone: its text between the embeds, trimmed, and the embeds in order, as in
     /// `![[a.jpg|200]] ![[b.jpg|200]]` or `See ![alt|120](a.png) here`. Obsidian draws such
-    /// a line as its text with the pictures side by side at their sizes. A web image, a
-    /// note or any other file embedded in the line stays text, and so does an embed in code.
-    /// Nil when the line embeds no image.
+    /// a line as its text with the pictures side by side at their sizes, and a PDF as its
+    /// viewer: two PDFs on one line were left as link text (HUNT-351). A web image, a note or
+    /// any other file embedded in the line stays text, and so does an embed in code. Nil when
+    /// the line embeds no image or PDF.
     static func imageLinePieces(onLine line: String) -> [ImageLinePiece]? {
         guard line.contains("![") else { return nil }
         let source = line as NSString
@@ -61,7 +62,7 @@ public enum EmbedLocator {
         }
         for embedRange in embedRanges where embedRange.location >= textStart {
             guard let embed = embed(at: embedRange.location + 1, in: source), embed.range == embedRange, !embed.isRemoteImage,
-                  DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension) == .image else { continue }
+                  [.image, .pdf].contains(DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension)) else { continue }
             appendText(upTo: embedRange.location)
             pieces.append(.image(embed))
             textStart = NSMaxRange(embedRange)
@@ -69,6 +70,24 @@ public enum EmbedLocator {
         guard textStart > 0 else { return nil }
         appendText(upTo: source.length)
         return pieces
+    }
+
+    /// The Markdown embeds of vault files in `text` (`![alt|200](Photos/a.png)`), outside code,
+    /// in order, their ranges counted in `text`; a web image is no vault file and is left out.
+    /// A table or callout drawn by the reading view's renderer finds its images with this and
+    /// the Wikilink embeds, as the reading view does.
+    public static func markdownEmbeds(in text: String) -> [EmbedReference] {
+        guard text.contains("![") else { return [] }
+        let source = text as NSString
+        let codeRanges = MarkdownCodeRanges.rangeSet(in: source)
+        return markdownEmbedPattern.matches(in: text, range: NSRange(location: 0, length: source.length)).compactMap { match in
+            guard !codeRanges.intersects(match.range) else { return nil }
+            let destination = linkDestination(in: source.substring(with: match.range(at: 2)))
+            guard !destination.isEmpty else { return nil }
+            let embed = EmbedReference(target: destination, isWiki: false, displaySize: EmbedDisplaySize.parse(label: source.substring(with: match.range(at: 1))),
+                                       range: match.range)
+            return embed.isRemoteImage ? nil : embed
+        }
     }
 
     /// The embed whose source text contains `location` (or ends exactly there).
@@ -93,7 +112,7 @@ public enum EmbedLocator {
             let destination = linkDestination(in: (line as NSString).substring(with: match.range(at: 2)))
             guard !destination.isEmpty else { return nil }
             return EmbedReference(target: destination, isWiki: false, displaySize: EmbedDisplaySize.parse(label: label),
-                                  range: NSRange(location: lineRange.location + match.range.location, length: match.range.length))
+                                  range: NSRange(location: lineRange.location + match.range.location, length: match.range.length), label: label)
         }
         return nil
     }
@@ -112,10 +131,33 @@ public enum EmbedLocator {
 
 /// A piece of a line that shows images among its text (`EmbedLocator.imageLinePieces(onLine:)`).
 public enum ImageLinePiece: Equatable, Sendable {
+    /// The bullet or number of a list item whose text shows images; when there is one, it is
+    /// the first piece.
+    case listMarker(ImageLineListMarker)
     /// Text between pictures, drawn as Markdown.
     case text(String)
-    /// An image of the vault, its range counted in the line.
+    /// An image of the vault, or a PDF, which is shown as its viewer; its range counted in the line.
     case image(EmbedReference)
+}
+
+/// The marker of a list item whose text shows images, with the whitespace around it as the
+/// line has it, so the item is drawn as indented as the editor draws its other items.
+public struct ImageLineListMarker: Equatable, Sendable {
+    /// The spaces and tabs before the marker.
+    public let indentation: String
+    /// `-`, `*`, `+`, or a number with `.` or `)`.
+    public let marker: String
+    /// The whitespace between the marker and the item's text.
+    public let spacing: String
+
+    public init(indentation: String, marker: String, spacing: String) {
+        self.indentation = indentation
+        self.marker = marker
+        self.spacing = spacing
+    }
+
+    /// Whether the item is a bullet, drawn as a dot, rather than a number, drawn as written.
+    public var isBullet: Bool { marker == "-" || marker == "*" || marker == "+" }
 }
 
 /// The constant patterns of `EmbedLocator`; `StaticPatternTests` compiles every case.

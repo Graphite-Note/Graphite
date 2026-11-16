@@ -53,8 +53,15 @@ final class ReadingGitGraphTests: XCTestCase {
         XCTAssertEqual(failure, .reading(.invalidSyntax(line: 3, problem: .gitGraph(.unknownBranch(name: "nope")))))
     }
 
-    func testAGitGraphThatSetsItsOptionsShowsTheSourceAndWhy() {
-        for source in ["---\nconfig:\n  gitGraph:\n    showBranches: false\n---\ngitGraph\n commit",
+    func testAGitGraphWithFrontMatterOptionsIsDrawnWithThem() throws {
+        let source = "---\nconfig:\n  gitGraph:\n    showBranches: false\n    mainBranchName: trunk\n---\ngitGraph\n commit\n checkout trunk\n commit"
+        guard case .gitGraph(let gitGraph) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Drawn") }
+        XCTAssertTrue(gitGraph.layout.lanes.isEmpty, "Branches hidden.")
+        XCTAssertEqual(gitGraph.layout.commits.count, 2)
+    }
+
+    func testAGitGraphThatSetsOptionsNotAppliedShowsTheSourceAndWhy() {
+        for source in ["---\nconfig:\n  gitGraph:\n    nodeLabel: x\n---\ngitGraph\n commit",
                        "%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk",
                        "%%{\n  init: {'gitGraph': {'mainBranchName': 'trunk'}}\n}%%\ngitGraph\n commit"] {
             guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {

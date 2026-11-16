@@ -4,11 +4,11 @@
  * Layer: Tests
  * Description: The Mac's PDF view draws a placed picture and saved Pencil ink at the screen's
  *              resolution, as sharp as PDFKit's own drawing of the page, at fit and zoomed in,
- *              and within its memory bound.
+ *              and within its memory bound; saved ink in its page's ink layer since HUNT-357.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 import XCTest
 import PDFKit
@@ -66,31 +66,56 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
 
     // MARK: The ink
 
-    /// Ink read back from the saved file: PDFKit's own ink annotation, drawn from the outline
-    /// appearance Graphite wrote, with no Pencil canvas on the Mac.
+    /// Ink read back from the saved file, drawn from the outline appearance Graphite wrote, in the
+    /// page's ink layer since HUNT-357 (`MacPDFPageInkLayers`): its picture holds as many pixels per
+    /// point as the screen shows, and a hard edge is as clean as in PDFKit's drawing of the page.
     func testSavedInkIsDrawnAtTheScreensResolutionAtFitAndZoomedIn() async throws {
         let location = try await makeSavedPDF(withPicture: false, withInk: true)
         let (window, pdfView) = try await show(location)
         defer { window.close() }
-        let ink = try XCTUnwrap(pdfView.document?.page(at: 0)?.annotations.first { annotation in annotation.type == "Ink" })
+        let page = try XCTUnwrap(pdfView.document?.page(at: 0))
+        let pageBox = page.bounds(for: .cropBox)
 
         for zoom in [1.0, 2.0] {
             if zoom != 1 { pdfView.scaleFactor = pdfView.scaleFactor * zoom }
-            let measurement = try await settledMeasurement(of: ink, in: pdfView)
-            let reference = try referenceEdgeWidth(of: ink, in: pdfView, screenPixelsPerPoint: measurement.screenPixelsPerPoint)
-            print("HUNT-314 ink at \(zoom)x fit: layer \(format(measurement.layerPixelsPerPoint)) px/pt, screen \(format(measurement.screenPixelsPerPoint)) px/pt, edge \(format(measurement.edgeWidthOnScreen)) screen px, PDFPage.draw \(format(reference)) screen px")
-            XCTAssertGreaterThanOrEqual(measurement.layerPixelsPerPoint, measurement.screenPixelsPerPoint * 0.97,
-                                        "At \(zoom)x fit the ink is drawn at the screen's resolution.")
-            XCTAssertLessThanOrEqual(measurement.edgeWidthOnScreen, reference + 0.75,
-                                     "At \(zoom)x fit the ink's edge is as clean as in PDFKit's own drawing of the page.")
+            let screenPixelsPerPoint = pdfView.scaleFactor * (window.backingScaleFactor)
+            let shownSize = CGSize(width: pageBox.width * pdfView.scaleFactor, height: pageBox.height * pdfView.scaleFactor)
+            guard MacPDFPageInkLayers.fitsInAPicture(MacPDFPageInkLayers.pixelSize(shownSize: shownSize, backingScale: window.backingScaleFactor)) else {
+                // Zoomed in too far for one picture: PDFKit draws the stroke in its own layer, sharpened as before HUNT-357.
+                let ink = try XCTUnwrap(page.annotations.first { annotation in annotation.type == "Ink" })
+                try await waitUntil("PDFKit draws the zoomed page's ink") { !ink.isDrawnByPageInkLayer }
+                let measurement = try await settledMeasurement(of: ink, in: pdfView)
+                let reference = try referenceEdgeWidth(of: ink, in: pdfView, screenPixelsPerPoint: measurement.screenPixelsPerPoint)
+                print("HUNT-314 ink at \(zoom)x fit, drawn by PDFKit: layer \(format(measurement.layerPixelsPerPoint)) px/pt, screen \(format(measurement.screenPixelsPerPoint)) px/pt, edge \(format(measurement.edgeWidthOnScreen)) screen px, PDFPage.draw \(format(reference)) screen px")
+                XCTAssertGreaterThanOrEqual(measurement.layerPixelsPerPoint, measurement.screenPixelsPerPoint * 0.97,
+                                            "At \(zoom)x fit the ink is drawn at the screen's resolution.")
+                XCTAssertLessThanOrEqual(measurement.edgeWidthOnScreen, reference + 0.75,
+                                         "At \(zoom)x fit the ink's edge is as clean as in PDFKit's own drawing of the page.")
+                continue
+            }
+            var picture: CGImage?
+            try await waitUntil("the page's ink is drawn for the zoom") {
+                picture = Self.inkPicture(in: pdfView)
+                return picture.map { picture in abs(CGFloat(picture.width) - pageBox.width * screenPixelsPerPoint) <= 2 } ?? false
+            }
+            let shownPicture = try XCTUnwrap(picture)
+            let pixelsPerPoint = CGFloat(shownPicture.width) / pageBox.width
+            // The stroke's middle, 240 points up the page, in rows from the picture's top.
+            let row = Int(((pageBox.maxY - 240) * pixelsPerPoint).rounded())
+            let edgeWidth = try Self.averageEdgeWidth(Self.levels(ofRow: row, in: shownPicture))
+            // The file's page drawn by PDFKit; the shown page's strokes are drawn by its ink layer.
+            let filePage = try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))
+            let reference = try referenceEdgeWidth(ofRowAt: 240, on: filePage, screenPixelsPerPoint: screenPixelsPerPoint)
+            print("HUNT-314 ink at \(zoom)x fit: page layer \(format(pixelsPerPoint)) px/pt, screen \(format(screenPixelsPerPoint)) px/pt, edge \(format(edgeWidth)) screen px, PDFPage.draw \(format(reference)) screen px")
+            XCTAssertGreaterThanOrEqual(pixelsPerPoint, screenPixelsPerPoint * 0.97, "At \(zoom)x fit the ink is drawn at the screen's resolution.")
+            XCTAssertLessThanOrEqual(edgeWidth, reference + 0.75, "At \(zoom)x fit the ink's edge is as clean as in PDFKit's own drawing of the page.")
         }
     }
 
     // MARK: Cost
 
-    /// A page written full, as a lecture's worked answer is: 1,500 strokes, each its own layer.
-    /// Drawing all of them again at the zoom's resolution, which happens once when a zoom ends,
-    /// is measured on the main thread.
+    /// A page written full, as a lecture's worked answer is: 1,500 strokes. Its ink layer draws them
+    /// all again at a zoom's resolution off the main thread, once when a zoom ends, quickly.
     func testAPageOfManyStrokesIsDrawnAgainQuickly() async throws {
         let location = vault.location(of: "Written.pdf")
         let revision = try await PDFFileService().create(documentData: PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank), pageCount: 1), at: location)
@@ -106,21 +131,20 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
         _ = try await PDFFileService().save(url: location, revision: revision, edits: [
             .updateInk(PDFInkUpdate(pageIndex: 0, group: PDFInkGroups.defaultGroup, removal: .strokes([]), addedStrokes: strokes, editableRecord: nil)),
         ])
-        let (window, pdfView) = try await show(location)
-        defer { window.close() }
-        try await waitUntil("every stroke is shown at the screen's resolution") {
-            let layers = Self.annotationLayers(in: pdfView)
-            return layers.count == strokes.count && layers.allSatisfy { layer in layer.contentsScale > 3 }
-        }
-        let layers = Self.annotationLayers(in: pdfView)
+        let fileData = try Data(contentsOf: location, options: .alwaysMapped)
+        let pageBox = try XCTUnwrap(PDFDocument(url: location)?.page(at: 0)).bounds(for: .cropBox)
+        // Twice fit width on a Retina screen, about 4.6 pixels per point.
+        let pixelsPerPoint: CGFloat = 4.6
+        let request = PDFPageInkRequest(fileData: fileData, pageNumber: 1, filePageCount: 1, cropBox: pageBox, rotation: 0,
+                                        pixelWidth: Int(pageBox.width * pixelsPerPoint), pixelHeight: Int(pageBox.height * pixelsPerPoint))
+        let renderer = PDFPageInkRenderer()
+        _ = await renderer.draw(request)
         let start = ContinuousClock.now
-        for layer in layers {
-            layer.contentsScale *= 2
-            layer.display()
-        }
+        let drawing = await renderer.draw(request)
         let duration = ContinuousClock.now - start
-        print("HUNT-314 \(layers.count) strokes drawn again at \(format(layers[0].contentsScale)) px/pt in \(duration)")
-        XCTAssertLessThan(duration, .milliseconds(500), "Drawing a full page's ink again stays well under a second.")
+        guard case .picture = drawing else { return XCTFail("The page's ink is drawn.") }
+        print("HUNT-314 \(strokes.count) strokes drawn again in the page's ink layer at \(format(pixelsPerPoint)) px/pt in \(duration)")
+        XCTAssertLessThan(duration, .milliseconds(500), "Drawing a full page's ink again stays well under a second, off the main thread.")
     }
 
     // MARK: Memory
@@ -320,6 +344,44 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
         let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
         let levels = (0..<width).map { column in Double(pixels[column * 4 + 1]) / 255 }
         return Self.averageEdgeWidth(levels)
+    }
+
+    /// The picture of page 0's ink its layer shows (`MacPDFPageInkLayers`).
+    private static func inkPicture(in view: NSView) -> CGImage? {
+        for subview in view.subviews {
+            if let inkView = subview as? MacPDFPageInkView, let picture = inkView.picture { return picture }
+            if let picture = inkPicture(in: subview) { return picture }
+        }
+        return nil
+    }
+
+    /// How light each pixel of a row of the picture is over white paper, from 0 to 1.
+    private static func levels(ofRow row: Int, in picture: CGImage) throws -> [Double] {
+        let width = picture.width, height = picture.height
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                              space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.draw(picture, in: CGRect(x: 0, y: 0, width: width, height: height))
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        let clampedRow = min(max(0, row), height - 1)
+        return (0..<width).map { column in Double(pixels[(clampedRow * width + column) * 4 + 1]) / 255 }
+    }
+
+    /// PDFKit's own drawing of the page's row `pageY` points up, at the screen's resolution.
+    private func referenceEdgeWidth(ofRowAt pageY: CGFloat, on page: PDFPage, screenPixelsPerPoint: CGFloat) throws -> CGFloat {
+        let pageBox = page.bounds(for: .cropBox)
+        let width = Int((pageBox.width * screenPixelsPerPoint).rounded(.up)), height = max(1, Int(screenPixelsPerPoint.rounded(.up)))
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                              space: try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB)), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        context.scaleBy(x: screenPixelsPerPoint, y: screenPixelsPerPoint)
+        context.translateBy(x: -pageBox.minX, y: -(pageBox.minY + pageY))
+        context.interpolationQuality = .high
+        page.draw(with: .cropBox, to: context)
+        let pixels = try XCTUnwrap(context.data).assumingMemoryBound(to: UInt8.self)
+        return Self.averageEdgeWidth((0..<width).map { column in Double(pixels[column * 4 + 1]) / 255 })
     }
 
     /// Pixels between 15% and 85% of the way from dark to light, per edge crossed.

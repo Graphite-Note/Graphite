@@ -8,8 +8,8 @@
  *              them (HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 05/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -118,7 +118,7 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
         if place.sharesRowWithUndoRedoAndWrite {
             let undoAvailability = UndoAvailability()
             PencilToolbar(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, undoAvailability: undoAvailability,
-                          offersReadAloudPen: true, offersTextBoxes: true) {
+                          offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true) {
                 EmptyView()
             } trailingControls: {
                 HStack(spacing: 12) {
@@ -129,7 +129,7 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
                 }
             }
         } else {
-            PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true)
+            PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
         }
     }
 

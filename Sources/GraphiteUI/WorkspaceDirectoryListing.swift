@@ -55,7 +55,7 @@ extension WorkspaceModel {
         } catch {
             guard store === self.store, listingNumber == rootListingNumber else { return }
             hasListedRoot = true
-            errorMessage = error.localizedDescription
+            errorMessage.report(error)
         }
         // The vault's settings arrived with another order while this one was being sorted.
         if store === self.store, listingNumber == rootListingNumber, vaultSettings.fileSortOrder != sortOrder { await listRoot() }

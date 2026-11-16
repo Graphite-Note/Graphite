@@ -68,7 +68,7 @@ struct CanvasPane: View {
         #endif
         .toolbar { if isFocused { toolbarContent } }
         .confirmationDialog("Replace your unsaved changes with the version saved by the other app?", isPresented: $showsReloadConfirmation, titleVisibility: .visible) {
-            Button("Use Other Version", role: .destructive) { Task { do { try await session.reload() } catch { workspace.errorMessage = error.localizedDescription } } }
+            Button("Use Other Version", role: .destructive) { Task { do { try await session.reload() } catch { workspace.errorMessage.report(error) } } }
         }
         .sheet(item: $filePicker) { kind in
             CanvasFilePicker(workspace: workspace, kind: kind) { path in Task { await addFileCard(path) } }
@@ -96,7 +96,7 @@ struct CanvasPane: View {
             imageActions: ReadingImageActions(providerIdentity: ObjectIdentifier(workspace), viewImage: { [workspace] path in
                 workspace.viewedImageNote = nil
                 workspace.viewedImage = path
-            }, editDrawing: nil),
+            }, editDrawing: nil, tabOpening: workspace.pictureTabOpening),
             pluginHost: workspace.communityPlugins.hostWhilePluginsAreOn,
             pluginsTurnOnOffer: workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
     }
@@ -168,7 +168,9 @@ struct CanvasPane: View {
         #if os(iOS)
         // The system's overflow menu (•••) holds the More commands together with whatever the
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
-        ToolbarOverflowMenu { moreMenuItems }
+        // Its icons take the tint of the items themselves: the column's accent, faint on the menu's
+        // material in the dark, reached them past the bar's own (HUNT-280).
+        ToolbarOverflowMenu { moreMenuItems.tint(.primary) }
         #endif
     }
 
@@ -200,7 +202,7 @@ struct CanvasPane: View {
             let path = try await session.saveSeparateCopy()
             await workspace.open(path)
             await workspace.showInListings(path)
-        } catch { workspace.errorMessage = error.localizedDescription }
+        } catch { workspace.errorMessage.report(error) }
     }
 }
 
@@ -603,7 +605,7 @@ struct CanvasFilePicker: View {
                     var seenPaths: Set<VaultPath> = []
                     paths = matches.map(\.path).filter { path in kind.includes(path) && seenPaths.insert(path).inserted }
                 } catch is CancellationError {
-                } catch { workspace.errorMessage = error.localizedDescription }
+                } catch { workspace.errorMessage.report(error) }
             }
         }
         .sheetMinimumSize(width: 340, height: 450)

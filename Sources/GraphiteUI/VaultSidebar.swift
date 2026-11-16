@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.48
- * Date: 05/11/2026
+ * Version: 0.51
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -84,7 +84,11 @@ struct VaultSidebar: View {
     @Environment(\.noteTypography) private var typography
     @AppStorage(SidebarPanelSettingKey.panel) private var storedPanel = SidebarPanel.files
     @State private var overview = VaultOverviewModel()
+    /// The calendar panel's month and chosen day, kept while the sidebar lives.
+    @State private var calendarPanel = CalendarPanelModel(today: CalendarDay(.now, in: .autoupdatingCurrent))
     @Environment(LibraryModel.self) private var library: LibraryModel?
+    /// Read rather than the library's presentation, which changes one update before the column folds (`SidebarFilesPlace`).
+    @Environment(\.sidebarFilesPlace) private var filesPlace
     @AppStorage(SidebarPanelSettingKey.tagSortOrder) private var tagSortOrder = VaultListSortOrder.frequencyDescending
     @AppStorage(SidebarPanelSettingKey.showsNestedTags) private var showsNestedTags = true
     @AppStorage(SidebarPanelSettingKey.propertySortOrder) private var propertySortOrder = VaultListSortOrder.frequencyDescending
@@ -92,16 +96,16 @@ struct VaultSidebar: View {
     /// In Library mode on a wide window the library is the file browser, so the sidebar
     /// keeps search, bookmarks, tags and properties but not a second file tree.
     private var availablePanels: [SidebarPanel] {
-        let showsFileTree = workspace.preferences.library.presentation == .list || isWindowCompact
-        return SidebarPanel.allCases.filter { panel in
-            (panel.plugin.map(workspace.preferences.isEnabled) ?? true) && (panel != .files || showsFileTree)
+        SidebarPanel.allCases.filter { panel in
+            (panel.plugin.map(workspace.preferences.isEnabled) ?? true) && (panel != .files || filesPlace != .besideLibrary)
         }
     }
 
     /// The chosen panel, or the first offered when its plugin was turned off or the library
     /// replaces the file list.
     private var panel: SidebarPanel {
-        availablePanels.contains(storedPanel) ? storedPanel : (availablePanels.first ?? .files)
+        if filesPlace == .foldedByLibrary { return .files }
+        return availablePanels.contains(storedPanel) ? storedPanel : (availablePanels.first ?? .files)
     }
     /// A community plugin's view chosen in the picker, shown in place of Graphite's panels,
     /// kept by the plugin host so it is saved with the layout and shown again after a restart.
@@ -221,7 +225,7 @@ struct VaultSidebar: View {
                 Button("Settings", systemImage: "gearshape") { showsSettings = true }.tint(.primary)
             }
             #endif
-            if workspace.store != nil, workspace.preferences.isEnabled(.graph) {
+            if workspace.store != nil, workspace.preferences.isEnabled(.graph), !showsGraphButtonBesidePanels {
                 // An item of its own, kept in view when the narrow sidebar folds New and the
                 // list's options into one menu.
                 ToolbarItem(placement: .primaryAction) { graphButton }
@@ -251,25 +255,50 @@ struct VaultSidebar: View {
                 }
             }
         }
-        .sidebarBar(edge: .top) {
-            if showsPanelPicker || showsPresentationSwitch {
-                HStack(spacing: 10) {
-                    if showsPanelPicker { panelPicker }
-                    // The same switch as the library's top row, beside the panels rather than
-                    // in the bar, whose narrow width hides its last buttons.
-                    if showsPresentationSwitch {
-                        LibraryPresentationSwitch(presentation: workspace.preferences.library.presentation) { presentation in
-                            workspace.preferences.library.presentation = presentation
-                        }
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 6)
-            }
-        }
+        .sidebarBar(edge: .top) { topBar }
         .sidebarBar(edge: .bottom) {
             // A phone switches vaults from the title, and its search field is at the bottom.
             if !isCompactWidth { VaultSwitcherBar(workspace: workspace) { showsVaultManager = true } }
         }
+    }
+
+    /// The panels' picker, the List/Library switch and on the iPad the graph's button, then the Files panel's filter
+    /// field under them.
+    @ViewBuilder private var topBar: some View {
+        if showsPanelPicker || showsPresentationSwitch || showsFileTreeFilter {
+            VStack(spacing: 0) {
+                if showsPanelPicker || showsPresentationSwitch {
+                    HStack(spacing: 10) {
+                        if showsPanelPicker { panelPicker }
+                        // The same switch as the library's top row, beside the panels rather than
+                        // in the bar, whose narrow width hides its last buttons.
+                        if showsPresentationSwitch {
+                            LibraryPresentationSwitch(presentation: workspace.preferences.library.presentation) { presentation in
+                                workspace.preferences.library.presentation = presentation
+                            }
+                        }
+                        if showsGraphButtonBesidePanels {
+                            graphButton
+                                .labelStyle(.iconOnly)
+                                .buttonStyle(.bordered)
+                                .buttonBorderShape(.circle)
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 6)
+                }
+                if showsFileTreeFilter {
+                    FileTreeFilterField(filter: workspace.fileTreeContents.filter)
+                        .padding(.horizontal, 12).padding(.bottom, 6).padding(.top, showsPanelPicker || showsPresentationSwitch ? 0 : 6)
+                }
+            }
+        }
+    }
+
+    /// The filter field shows with the file tree: the Files panel, no search, no plugin's view, no picking of files, and
+    /// not where the library takes the tree's place.
+    private var showsFileTreeFilter: Bool {
+        workspace.store != nil && panel == .files && workspace.searchQuery.isEmpty && shownPluginView == nil
+            && workspace.pickedSidebarFiles == nil && !showsLibrary
     }
 
     private var showsPanelPicker: Bool {
@@ -295,6 +324,18 @@ struct VaultSidebar: View {
     }
 
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
+
+    /// Whether the graph's button is in the row of the panels rather than in the sidebar's bar: on the iPad, whose
+    /// narrow sidebar's bar has room for one control on its right and folded the graph into its "…" menu with New,
+    /// two taps away; beside Settings, it cut the vault's name, which switches vaults, to its first letters. The Mac's
+    /// bar and the phone's have room beside New.
+    private var showsGraphButtonBesidePanels: Bool {
+        #if canImport(UIKit)
+        showsPresentationSwitch && workspace.preferences.isEnabled(.graph)
+        #else
+        false
+        #endif
+    }
 
     /// One click from the file list to the whole vault's graph, in a tab of its own.
     private var graphButton: some View {
@@ -324,6 +365,10 @@ struct VaultSidebar: View {
             }
         case .files:
             FileExplorerMenuItems(workspace: workspace)
+        case .calendar:
+            Button("Today", systemImage: "calendar.circle") {
+                Task { await calendarPanel.showToday(CalendarDay(.now, in: .autoupdatingCurrent), actions: workspace.calendarPanelActions()) }
+            }
         }
     }
 
@@ -348,6 +393,8 @@ struct VaultSidebar: View {
         }
         Divider()
         Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(nil)) }
+        // As the iPad's New offers: PDFs, pictures, notebooks and folders copied into the vault, converted where they need to be.
+        Button("Import…", systemImage: "square.and.arrow.down") { workspace.isChoosingFilesToImport = true }
     }
 
     /// The chosen list, or a community plugin's view, which fills the sidebar below the picker
@@ -383,6 +430,12 @@ struct VaultSidebar: View {
             }
             #endif
         }
+        .modifier(FileTreeFilterLoading(
+            filter: workspace.fileTreeContents.filter, isTreeShown: showsFileTreeFilter,
+            namesVersion: "\(workspace.currentVaultIdentifier?.uuidString ?? "")|\(workspace.structureVersion)|\(workspace.directoryVersion)",
+            fileEntries: { [index = workspace.index] in try await index?.fileEntries() ?? [] },
+            listedEntries: { [workspace] in workspace.rootEntries + workspace.fileTreeContents.listedEntries },
+            sortOrder: workspace.vaultSettings.fileSortOrder, revealFolder: { folder in workspace.revealFolder(folder) }))
         // Folders expanded in one vault must not stay expanded, with stale contents, in the next.
         .id(workspace.currentVaultIdentifier)
     }
@@ -457,6 +510,7 @@ struct VaultSidebar: View {
             // becomes the selection (`GraphiteRootView`), so a phone does not slide in the
             // note it had before and swap it for the new one after the slide.
             if let newSelection, newSelection == workspace.selection { showDocument() }
+            if newSelection != nil { workspace.fileTreeContents.revealedFolder = nil }
             if let newSelection, newSelection != workspace.selection {
                 #if canImport(UIKit)
                 // The search field keeps its results but lets go of the keyboard, or focus
@@ -480,6 +534,9 @@ struct VaultSidebar: View {
                 VaultPropertiesList(workspace: workspace, overview: overview)
             } else if panel == .bookmarks {
                 VaultBookmarksList(workspace: workspace, overview: overview)
+            } else if panel == .calendar {
+                CalendarPanel(model: calendarPanel, actions: workspace.calendarPanelActions(),
+                              filesVersion: "\(workspace.currentVaultIdentifier?.uuidString ?? "")|\(workspace.structureVersion)")
             } else if !workspace.hasListedRoot {
                 // The vault is open and its documents show; its root is being listed.
                 ProgressView().frame(maxWidth: .infinity)
@@ -492,7 +549,9 @@ struct VaultSidebar: View {
 
     @ViewBuilder private var searchResults: some View {
         Section {
-            ForEach(workspace.searchResults) { result in
+            // Folders that `folder:` found lead, as results of their own.
+            ForEach(workspace.searchResults.filter { result in result.kind == .folder }) { result in folderResult(result.path) }
+            ForEach(workspace.searchResults.filter { result in result.kind == .file }) { result in
                 SearchResultRow(result: result, workspace: workspace)
                     .tag(result.path)
                     .contextMenu {
@@ -535,21 +594,32 @@ struct VaultSidebar: View {
         }
     }
 
+    /// A folder `folder:` found: choosing it reveals it in the file tree; its menu is the folder's menu in the tree.
+    private func folderResult(_ folder: VaultPath) -> some View {
+        FolderSearchResultRow(folder: folder) {
+            // The field gives up the keyboard, whose suggestions covered the folder shown in the tree (HUNT-335).
+            isSearchFocused = false
+            workspace.revealFolder(folder)
+        } menu: {
+            VaultEntryMenu(entry: VaultEntry(path: folder, isDirectory: true, size: 0, modified: .distantPast), workspace: workspace) { kind, directory in
+                creation = CreationRequest(kind: kind, directory: directory)
+            }
+        }
+    }
+
     /// Obsidian's search operators, offered while the query does not use one yet.
     @ViewBuilder private var searchSuggestions: some View {
         let query = workspace.searchQuery
-        if query.isEmpty || query.hasSuffix(" ") {
-            ForEach(SearchOperatorSuggestion.all) { suggestion in
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(suggestion.syntax).font(.body.monospaced())
-                        Text(suggestion.summary).font(.caption).foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    Image(systemName: "magnifyingglass")
+        ForEach(SearchOperatorSuggestion.offered(after: query)) { suggestion in
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(suggestion.syntax).font(.body.monospaced())
+                    Text(suggestion.summary).font(.caption).foregroundStyle(.secondary)
                 }
-                .searchCompletion(query + suggestion.syntax)
+            } icon: {
+                Image(systemName: "magnifyingglass")
             }
+            .searchCompletion(suggestion.completion(after: query))
         }
     }
 }
@@ -581,26 +651,6 @@ private struct FileExplorerMenuItems: View {
             }
         }
     }
-}
-
-/// An operator the search field suggests, with what it finds.
-private struct SearchOperatorSuggestion: Identifiable {
-    let syntax: String
-    let summary: String
-    var id: String { syntax }
-
-    static let all = [
-        SearchOperatorSuggestion(syntax: "path:", summary: "Find text in the file path"),
-        SearchOperatorSuggestion(syntax: "file:", summary: "Find text in the file name"),
-        SearchOperatorSuggestion(syntax: "tag:", summary: "Find notes with a tag"),
-        SearchOperatorSuggestion(syntax: "line:", summary: "Find words on the same line"),
-        SearchOperatorSuggestion(syntax: "section:", summary: "Find words under the same heading"),
-        SearchOperatorSuggestion(syntax: "task-todo:", summary: "Find open tasks"),
-        SearchOperatorSuggestion(syntax: "task-done:", summary: "Find completed tasks"),
-        SearchOperatorSuggestion(syntax: "content:", summary: "Find text in note content only"),
-        SearchOperatorSuggestion(syntax: "match-case:", summary: "Find text with the same capitals"),
-        SearchOperatorSuggestion(syntax: "[", summary: "Find notes by property, as in [status:draft]"),
-    ]
 }
 
 /// A search result: the file, then the lines that matched, each opening the note there.
@@ -678,17 +728,23 @@ private struct FileTreeRows: View, Equatable {
     }
 
     var body: some View {
-        ForEach(contents.rows) { row in
+        ForEach(contents.shownRows) { row in
             VaultEntryRow(entry: row.entry, depth: row.depth, workspace: workspace, contents: contents, requestCreation: requestCreation)
                 .equatable()
                 // Only files can be selected; a folder just folds.
                 .tag(row.entry.path)
                 .selectionDisabled(row.entry.isDirectory)
                 .fileTreeRow()
-                .listRowBackground(contents.dropTargetFolder == row.entry.path ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil)
+                .listRowBackground(rowBackground(of: row.entry.path))
                 .draggableVaultEntry(row.entry, inVault: workspace.currentVaultIdentifier,
                                      atRoot: workspace.folderAccess?.root) { VaultItemDragPreview(entry: row.entry, workspace: workspace) }
         }
+    }
+
+    /// The folder a drag is over, or a folder revealed, which is marked as a selected row is.
+    private func rowBackground(of path: VaultPath) -> (some View)? {
+        let isMarked = contents.dropTargetFolder == path || contents.revealedFolder == path
+        return isMarked ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil
     }
 }
 
@@ -713,10 +769,21 @@ private struct VaultEntryRow: View, Equatable {
         leftRow.entry == rightRow.entry && leftRow.depth == rightRow.depth
     }
 
+    /// The folder's expansion: the filter's own while it filters, so the tree's comes back as it was.
     private var isExpanded: Binding<Bool> {
-        Binding(get: { workspace.expandedFolders.contains(entry.path) }, set: { expands in
+        Binding(get: { filter.isFiltering ? filter.expandedFolders.contains(entry.path) : workspace.expandedFolders.contains(entry.path) }, set: { expands in
+            contents.revealedFolder = nil
+            if filter.isFiltering { return filter.setExpanded(entry.path, expands) }
             if expands { workspace.expandedFolders.insert(entry.path) } else { workspace.expandedFolders.remove(entry.path) }
         })
+    }
+
+    private var filter: FileTreeFilter { contents.filter }
+
+    /// A name with the part the filter matched marked.
+    private func title(_ name: String) -> Text {
+        guard filter.isFiltering else { return Text(name) }
+        return Text(FileTreeFilterHighlight.highlighted(name, matching: filter.text, accent: accent))
     }
 
     private var isDropTargeted: Bool { contents.dropTargetFolder == entry.path }
@@ -738,7 +805,7 @@ private struct VaultEntryRow: View, Equatable {
                     .foregroundStyle(isDropTargeted ? AnyShapeStyle(accent) : AnyShapeStyle(.tertiary))
                     .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
             } title: {
-                Text(entry.path.name).lineLimit(1)
+                title(entry.path.name).lineLimit(1)
             }
         }
         .buttonStyle(.plain)
@@ -756,8 +823,10 @@ private struct VaultEntryRow: View, Equatable {
                 contents.dropTargetFolder = nil
             }
         }))
-        .task(id: "\(isExpanded.wrappedValue)-\(workspace.directoryVersion)-\(workspace.folderListingVersions[entry.path] ?? 0)-\(workspace.vaultSettings.fileSortOrder.rawValue)") {
-            guard isExpanded.wrappedValue, let store = workspace.store else { return }
+        // Lists again once the filter is cleared, for a folder opened while filtering, which listed nothing.
+        .task(id: "\(isExpanded.wrappedValue)-\(filter.isFiltering)-\(workspace.directoryVersion)-\(workspace.folderListingVersions[entry.path] ?? 0)-\(workspace.vaultSettings.fileSortOrder.rawValue)") {
+            // While filtering, a folder shows what the vault's names hold (`FileTreeNameIndex`): nothing is listed.
+            guard isExpanded.wrappedValue, !filter.isFiltering, let store = workspace.store else { return }
             do {
                 let listedChildren = try await store.children(of: entry.path, sortedBy: workspace.vaultSettings.fileSortOrder)
                 // Every directory refresh lists the folder again; unchanged rows are left alone.
@@ -767,7 +836,7 @@ private struct VaultEntryRow: View, Equatable {
                 // A folder another app removed or renamed goes away with its parent's next
                 // listing; that is not an error to report.
                 guard !Task.isCancelled, workspace.isDirectory(entry.path) else { return }
-                workspace.errorMessage = error.localizedDescription
+                workspace.errorMessage.report(error)
             }
         }
     }
@@ -778,9 +847,9 @@ private struct VaultEntryRow: View, Equatable {
             Color.clear.frame(height: 1)
         } title: {
             HStack(spacing: 0) {
-                Text(entry.path.stem).lineLimit(1)
+                title(entry.path.stem).lineLimit(1)
                 if let extensionSuffix {
-                    Text(extensionSuffix).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
+                    title(extensionSuffix).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
                 }
             }
             if workspace.conflictedPaths.contains(entry.path) { ConflictVersionsMarker() }

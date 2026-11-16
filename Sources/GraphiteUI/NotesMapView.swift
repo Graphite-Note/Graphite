@@ -1,6 +1,19 @@
+/**
+ * File: NotesMapView.swift
+ * ------------------------
+ * Layer: UI
+ * Description: Notes on MapKit's map view, grouped into numbered markers as the map zooms out, with MapKit's own
+ *              location control while the device's location is available.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 11/11/2026
+ */
+
 import SwiftUI
 import MapKit
 import GraphiteCore
+import GraphiteApple
 
 /// One note on the map.
 final class PlacedNoteAnnotation: NSObject, MKAnnotation {
@@ -29,6 +42,10 @@ struct NotesMapView {
     let open: (VaultPath) -> Void
     /// Changes to place the camera around every note again.
     let fitRequest: Int
+    /// What the location control decided, for the notice the map's screen shows.
+    let locationControl: MapUserLocationControl
+    /// Nil shows no location control.
+    let deviceLocation: (any DeviceLocation)?
 
     private static let noteReuseIdentifier = "PlacedNote"
     private static let groupReuseIdentifier = "PlacedNoteGroup"
@@ -78,6 +95,10 @@ struct NotesMapView {
             }
         }
 
+        func mapView(_ mapView: MKMapView, didChange mode: MKUserTrackingMode, animated: Bool) {
+            MapUserTracking.trackingModeChanged(on: mapView, to: mode, control: parent.locationControl, location: parent.deviceLocation)
+        }
+
         /// The open note stands out, and is never hidden in a group.
         func style(_ noteView: MKMarkerAnnotationView, for note: PlacedNoteAnnotation) {
             let isHighlighted = note.path == parent.highlightedPath
@@ -111,14 +132,16 @@ struct NotesMapView {
         #if canImport(UIKit)
         mapView.showsScale = true
         #endif
+        MapUserTracking.offerControl(on: mapView, isOffered: deviceLocation != nil)
         return mapView
     }
 
     private func update(_ mapView: BaseLaidOutMapView, context: Context) {
         let coordinator = context.coordinator
         coordinator.parent = self
+        MapUserTracking.offerControl(on: mapView, isOffered: deviceLocation != nil)
         if coordinator.shownNotes != notes {
-            mapView.removeAnnotations(mapView.annotations)
+            mapView.removeAnnotations(MapUserTracking.annotationsBesidesThePerson(on: mapView))
             mapView.addAnnotations(notes.map { note in PlacedNoteAnnotation(note: note, title: title(note.path)) })
             // Other notes, such as another note's neighbors or a new filter, are framed again.
             coordinator.placedFitRequest = nil
@@ -137,12 +160,13 @@ struct NotesMapView {
         placeCamera(on: mapView, coordinator: coordinator)
     }
 
-    /// Frames every note once the map has a size, again on each request, and leaves the
-    /// camera where the person put it otherwise.
+    /// Frames every note once the map has a size, again on each request (Show All, which also
+    /// stops following the person), and leaves the camera where the person put it otherwise.
     fileprivate func placeCamera(on mapView: MKMapView, coordinator: Coordinator) {
         guard mapView.bounds.width > 0, mapView.bounds.height > 0, coordinator.placedFitRequest != fitRequest else { return }
         let noteAnnotations = mapView.annotations.filter { annotation in annotation is PlacedNoteAnnotation }
         guard !noteAnnotations.isEmpty else { return }
+        MapUserTracking.stopFollowingThePerson(on: mapView)
         if noteAnnotations.count == 1, let onlyNote = noteAnnotations.first {
             mapView.setRegion(MKCoordinateRegion(center: onlyNote.coordinate, latitudinalMeters: Self.singleNoteSpan, longitudinalMeters: Self.singleNoteSpan), animated: false)
         } else {

@@ -16,6 +16,8 @@ import MermaidDiagrams
 struct ReadingClassDiagram: Sendable {
     let layout: ClassDiagramLayout
     let shapes: ReadingClassDiagramShapes
+    /// The diagram laid out for a narrow column, turned to run down, or nil when it is narrow enough already or runs down.
+    let narrow: ReadingNarrowLayout<ClassDiagramLayout, ReadingClassDiagramShapes>?
     /// `accTitle`, else the front matter's title, else nil.
     let title: String?
     /// `accDescr`, or nil.
@@ -25,9 +27,13 @@ struct ReadingClassDiagram: Sendable {
     /// Statements read and not applied (`ClassDiagram.unappliedStatementCount`): its styling is not drawn yet.
     let unappliedStatementCount: Int
 
-    init(diagram: ClassDiagram, layout: ClassDiagramLayout) {
+    init(diagram: ClassDiagram, layout: ClassDiagramLayout, narrowLayout: ClassDiagramLayout? = nil) {
         self.layout = layout
         shapes = ReadingClassDiagramShapes(parts: ClassDiagramDrawingParts(layout: layout), font: layout.font)
+        narrow = narrowLayout.map { narrowLayout in
+            ReadingNarrowLayout(layout: narrowLayout,
+                                shapes: ReadingClassDiagramShapes(parts: ClassDiagramDrawingParts(layout: narrowLayout), font: narrowLayout.font))
+        }
         title = diagram.accessibilityTitle ?? diagram.title
         description = diagram.accessibilityDescription
         unappliedStatementCount = diagram.unappliedStatementCount

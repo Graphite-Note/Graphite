@@ -3,11 +3,11 @@
  * -----------------------------
  * Layer: UI
  * Description: The Pencil bar's choices of the tool in use apart from its sizes: the eraser's kind, the lasso's type,
- *              the laser's style, the text box's look and the Read Aloud pen's hint.
+ *              the laser's style, the text box's look, the text highlighter's style and the Read Aloud pen's hint.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -15,7 +15,7 @@ import GraphiteCore
 
 #if canImport(UIKit)
 /// The tool in use's own choices apart from its sizes: the eraser's kind, the lasso's
-/// shape, the laser's style, the text box's look, the Read Aloud pen's hint. An ink has
+/// shape, the laser's style, the text box's look, the text highlighter's style, the Read Aloud pen's hint. An ink has
 /// none here; its options open with a second tap on it. On the whole bar they stand beside
 /// the tools; on a narrower one they are in its More control.
 struct PencilToolChoices: View {
@@ -51,6 +51,8 @@ struct PencilToolChoices: View {
             .fixedSize()
         case .text:
             PencilTextToolOptions(offersTextBoxes: offersTextBoxes)
+        case .textHighlighter:
+            PDFTextHighlighterStyleChoices()
         case .readAloud:
             Text(offersReadAloudPen ? "Tap a word to read; tap another to stop there" : "Nothing to read here")
                 .font(.footnote)

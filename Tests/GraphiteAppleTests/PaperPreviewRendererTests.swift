@@ -53,6 +53,23 @@ final class PaperPreviewRendererTests: XCTestCase {
         XCTAssertGreaterThan(colors.count, 1)
     }
 
+    /// HUNT-212, seen 2026-11-12 in the iPad simulator: the tile of a new dotted notebook looked blank. Its dots are
+    /// there in the thumbnail, but they must be dark enough to be seen: the darkest pixel at least a tenth darker
+    /// than the paper.
+    func testTheLibraryThumbnailOfADottedNotebookShowsItsDotsDarkEnoughToSee() throws {
+        let data = try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .dotted), pageCount: 1)
+        let page = try XCTUnwrap(PDFDocument(data: data)?.page(at: 0))
+        let thumbnail = try XCTUnwrap(LibraryPreviewLoader.thumbnail(of: page, longerSidePixels: 540))
+        let bytes = try pixels(of: thumbnail)
+        var darkest = 255, lightest = 0
+        for pixelStart in stride(from: 0, to: bytes.count, by: 4) {
+            let gray = (Int(bytes[pixelStart]) + Int(bytes[pixelStart + 1]) + Int(bytes[pixelStart + 2])) / 3
+            darkest = min(darkest, gray)
+            lightest = max(lightest, gray)
+        }
+        XCTAssertLessThanOrEqual(darkest, lightest * 9 / 10, "The darkest pixel \(darkest) against the paper's \(lightest)")
+    }
+
     func testPaperColorIsDrawn() throws {
         let ivory = PaperSpecification(template: .blank, paperColorHex: "#fbf7ea")
         let pixel = try cornerPixel(of: try PaperPreviewRenderer.image(of: ivory, longerSidePixels: 64))

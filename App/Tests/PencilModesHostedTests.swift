@@ -7,8 +7,8 @@
  *              the palette Add Image and Graphite's tools are buttons of the PDF's toolbar (HUNT-309).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 05/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -79,14 +79,14 @@ final class PencilModesHostedTests: XCTestCase {
     }
 
     /// The fixed bar has the palette's tools as Graphite's own: the inks, the eraser, the lasso, the laser pointer, the
-    /// text box and the Read Aloud pen, each a button; shapes, the ruler and adding an image are on it too.
+    /// text highlighter, the text box and the Read Aloud pen, each a button; shapes, the ruler and adding an image are on it too.
     func testTheBarOffersThePalettesTools() async throws {
-        let tools = PencilToolRowLayout.tools(presetCount: 3, offersTextBoxes: true, offersReadAloudPen: true)
-        XCTAssertEqual(tools, [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .laser, .text, .readAloud])
+        let tools = PencilToolRowLayout.tools(presetCount: 3, offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true)
+        XCTAssertEqual(tools, [.preset(index: 0), .preset(index: 1), .preset(index: 2), .eraser, .lasso, .laser, .textHighlighter, .text, .readAloud])
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         PencilToolRowForm.lastShown = nil
         let controller = UIHostingController(rootView: PencilToolRow(toolbox: PencilToolbox.shared, drawsShapes: .constant(false), addImage: {},
-                                                                     offersReadAloudPen: true, offersTextBoxes: true)
+                                                                     offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
             .frame(width: 1_100, height: PencilToolbarMetrics.height)
             .background(Color(uiColor: .systemBackground)))
         let window = UIWindow(windowScene: scene)

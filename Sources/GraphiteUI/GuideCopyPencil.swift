@@ -39,13 +39,14 @@ enum GuidePencilCopy {
         ],
         tips: ["The palette's **More** (…) menu has **Select Ink**, to move, resize or recolor strokes, the **Laser Pointer** and **Draw Shapes**."])
 
-    /// The Mac reads PDFs and changes their pages; writing on them is on iPad and iPhone.
+    /// The iPad and iPhone write on PDFs with the Pencil tools; the Mac marks them up from its markup row.
     static var annotatingPDFs: GuideTopicContent {
         GuideTopicContent(
             systemImage: "doc.richtext",
-            title: forPlatform(touch: "Annotate PDFs", mac: "PDFs"),
+            title: forPlatform(touch: "Annotate PDFs", mac: "Mark Up PDFs"),
             summary: forPlatform(touch: "Write on slides, papers and textbooks. Your ink is saved inside the PDF, so every PDF app shows it.",
-                                 mac: "Read PDFs, bookmark them, and add, move or remove their pages."),
+                                 mac: "Highlight, draw, type, sign and add shapes on slides and papers. Everything is saved inside the PDF, " +
+                                      "so every PDF app shows it."),
             steps: forPlatform(touch: [
                 GuideStep("Bring a PDF in with **New** › **Import**, or put it in the vault's folder with the Files app."),
                 GuideStep("Open it and tap the **pencil** button at the top right to write. To write with a finger, choose **More** › **Draw with Finger**."),
@@ -53,12 +54,18 @@ enum GuidePencilCopy {
                 GuideStep("**Show Pages** (the grid button) lists the pages. A page's menu bookmarks, rotates, duplicates, exports or deletes it."),
                 GuideStep("**Add Page** inserts blank, dotted, grid, ruled, Cornell and other paper, or pages from another PDF.")
             ], mac: [
-                GuideStep("Put a PDF in the vault's folder with the Finder. It appears in the sidebar."),
-                GuideStep("**Show Pages** lists the pages. A page's menu bookmarks, rotates, duplicates, exports or deletes it."),
-                GuideStep("**Add Page** inserts blank, dotted, grid, ruled, Cornell and other paper, or pages from another PDF."),
-                GuideStep("Writing and highlighting on PDFs is on iPad and iPhone. Ink written there shows here, as in any PDF app.")
+                GuideStep("Bring a PDF in with File › **Import…**, or put it in the vault's folder with the Finder."),
+                GuideStep("Open it and choose View › **Show Markup Toolbar**, or the **Show Markup Toolbar** button in the PDF's toolbar."),
+                GuideStep("Pick a tool in the row: **Highlight** marks each text selection as you let go, **Draw** draws ink, **Eraser** removes " +
+                          "strokes, **Text Box** types on the page, **Shapes** draws rectangles, ovals, lines and arrows, and **Sign** places a " +
+                          "signature you drew once."),
+                GuideStep("With **Text Selection**, right-click selected text to mark it, or press ⌃⌘H to highlight and ⌃⌘U to underline."),
+                GuideStep("**Show Pages** lists the pages. A page's menu bookmarks, rotates, duplicates, exports or deletes it; **Add Page** inserts paper " +
+                          "or pages from another PDF.")
             ]),
-            tips: ["Show one page of a PDF inside a note with ![[Slides.pdf#page=3]]."])
+            tips: [forPlatform(touch: "Show one page of a PDF inside a note with ![[Slides.pdf#page=3]].",
+                               mac: "Ink drawn on the Mac stays editable with Apple Pencil on the iPad. Show one page of a PDF inside a note " +
+                                    "with ![[Slides.pdf#page=3]].")])
     }
 
     static let notebooks = GuideTopicContent(

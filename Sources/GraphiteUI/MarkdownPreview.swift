@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.50
- * Date: 05/11/2026
+ * Version: 0.54
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -72,6 +72,8 @@ indirect enum RenderedBlock: Identifiable, Sendable {
     case heading(id: Int, level: Int, text: String, anchor: String?)
     case callout(id: Int, type: String, title: String, folding: CalloutFolding, body: [RenderedBlock])
     case video(id: Int, location: URL)
+    /// A YouTube video or playlist, drawn as a card that opens it.
+    case webVideo(id: Int, video: WebVideo, writtenTitle: String?)
     case audio(id: Int, location: URL, name: String)
     case pdf(id: Int, path: VaultPath, location: URL, options: PDFEmbedOptions)
     case transclusion(id: Int, path: VaultPath, heading: String?, body: [RenderedBlock])
@@ -93,13 +95,17 @@ indirect enum RenderedBlock: Identifiable, Sendable {
     case pluginSection(id: Int, text: String, request: CommunityPluginReadingBlockRequest)
     /// A ```` ```mermaid ```` block of a type drawn natively, read and laid out.
     case diagram(id: Int, diagram: ReadingDiagram)
+    /// A web page in a frame of its own (`<iframe>`), shown live near the screen (`WebFrameBlock`).
+    case webFrame(id: Int, frame: WebFrameEmbed)
 
     var id: String {
         switch self {
         case .properties: "properties"
-        case .markdown(let id, _), .displayMath(let id, _), .heading(let id, _, _, _), .callout(let id, _, _, _, _), .video(let id, _), .audio(let id, _, _),
+        case .markdown(let id, _), .displayMath(let id, _), .heading(let id, _, _, _), .callout(let id, _, _, _, _), .video(let id, _),
+             .webVideo(let id, _, _), .audio(let id, _, _),
              .pdf(let id, _, _, _), .transclusion(let id, _, _, _), .base(let id, _), .baseFile(let id, _, _), .missingEmbed(let id, _), .missingSection(let id, _, _), .image(let id, _, _, _, _),
-             .footnotes(let id, _), .pluginCodeBlock(let id, _, _, _, _, _), .pluginSection(let id, _, _), .diagram(let id, _): "block-\(id)"
+             .footnotes(let id, _), .pluginCodeBlock(let id, _, _, _, _, _), .pluginSection(let id, _, _), .diagram(let id, _),
+             .webFrame(let id, _): "block-\(id)"
         }
     }
 }
@@ -500,6 +506,8 @@ actor ReadingViewBuilder {
             case .mermaidDiagram(let source):
                 // A type or a feature not drawn natively yet is the source with a line saying so (`ReadingDiagram.unreadable`).
                 rendered.append(.diagram(id: identifier(), diagram: ReadingDiagram(source: source, typography: typography(for: configuration))))
+            case .webFrame(let frame):
+                rendered.append(.webFrame(id: identifier(), frame: frame))
             }
         }
         return rendered
@@ -535,6 +543,7 @@ actor ReadingViewBuilder {
     }
 
     private func renderEmbed(_ embed: EmbedReference, note: VaultPath, root: URL, index: VaultIndex, configuration: ReadingConfiguration, allowsTransclusion: Bool) async throws -> RenderedBlock {
+        if let video = WebVideo(embed: embed) { return .webVideo(id: identifier(), video: video, writtenTitle: embed.label) }
         guard let path = await resolve(embed.target, isWiki: embed.isWiki, note: note, root: root, index: index),
               let location = try? path.url(in: root) else {
             return .missingEmbed(id: identifier(), target: embed.target)
@@ -658,8 +667,9 @@ actor ReadingViewBuilder {
         var keepsLines = true
         // A link whose place in the text could not be found has an empty range; replacing
         // it would insert a second copy instead of replacing the one written.
-        for link in semantics.links.reversed() where link.length > 0 {
-            let linkRange = NSRange(location: link.location - paddingLength, length: link.length)
+        for link in semantics.links.reversed() {
+            guard let linkRange = link.length > 0 ? NSRange(location: link.location - paddingLength, length: link.length)
+                : Self.writtenImageRange(of: link, at: link.location - paddingLength, in: markdown) else { continue }
             if !link.isWiki, !link.isEmbed {
                 if NSMaxRange(linkRange) <= earliestReplacedLocation, let destinationRange = ReadingBlockText.notePathDestinationRange(of: link,
                     in: projected, linkRange: linkRange) {
@@ -704,6 +714,15 @@ actor ReadingViewBuilder {
             earliestReplacedLocation = linkRange.location
         }
         return readingText(projected as String, configuration: configuration, taskLocation: keepsLines ? taskLocation : nil)
+    }
+
+    /// Where a Markdown image whose range the parser could not give is written, found from where it
+    /// starts: in a table cell, `![Photo\|200](a.png)` escapes its pipe, and the parser's columns after
+    /// the escape are one short, so the photo stayed its alt text. Nil for anything else.
+    private static func writtenImageRange(of link: NoteLink, at location: Int, in markdown: String) -> NSRange? {
+        guard link.isEmbed, !link.isWiki, let written = EmbedLocator.embed(at: location + 1, in: markdown as NSString),
+              !written.isWiki, written.range.location == location, written.target == link.target else { return nil }
+        return written.range
     }
 
     private func readingText(_ markdown: String, configuration: ReadingConfiguration, taskLocation: TaskLocation? = nil) -> String {
@@ -834,7 +853,7 @@ extension RenderedBlock {
         case .callout(_, _, _, _, let body), .transclusion(_, _, _, let body): body.contains { block in block.holdsReadingScrollTarget(target) }
         case .footnotes(_, let notes): notes.contains { footnote in RenderedFootnote.anchor(for: footnote.number) == target }
         case .properties, .markdown, .displayMath, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-             .pluginCodeBlock, .pluginSection, .diagram: false
+             .pluginCodeBlock, .pluginSection, .diagram, .webFrame, .webVideo: false
         }
     }
 }
@@ -972,6 +991,9 @@ struct MarkdownPreview: View {
     /// The window's link cards, while Page Preview is on.
     @Environment(\.linkPreviews) private var linkPreviews
     @State private var readingLinkPreviews = ReadingLinkPreviews()
+    /// The picture inside the text the pointer rests on, whose buttons show over it.
+    @State private var pictureHover = ReadingPictureHover()
+    @Environment(\.readingImageActions) private var imageActions
     /// The readable column: Graphite's, or the vault theme's line width at this text size.
     private var readableColumnWidth: CGFloat { theme?.readableColumnWidth(forTextSize: configuration.textSize) ?? ReadingConfiguration.readableColumnWidth }
     @State private var hasRestoredPosition = false
@@ -998,6 +1020,8 @@ struct MarkdownPreview: View {
     /// The word read, one cell per text, so a word changes only the texts it leaves and enters.
     @State private var wordCells = ReadingWordCells()
     @State private var mediaPlayers = ReadingMediaPlayers()
+    /// Which of the note's web frames hold their page, the few nearest the screen.
+    @State private var webFrameLiveViews = WebFrameLiveViews()
     /// Counts the tasks ticked in embedded notes. Their text is read from their files, so
     /// the note is built again although its own text is the same.
     @State private var embeddedNoteTaskEditCount = 0
@@ -1032,7 +1056,9 @@ struct MarkdownPreview: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollPosition($scrollPosition)
-            .textual.linkHoverAction(linkPreviews.map(linkHoverAction(for:)))
+            .textual.linkHoverAction(ReadingPictureHover.linkHoverAction(pictures: imageActions == nil ? nil : pictureHover,
+                                                                       previews: linkPreviews.map { model in (readingLinkPreviews, model) }, sourceNote: path))
+            .overlay { if let imageActions { ReadingPictureHoverLayer(hover: pictureHover, actions: imageActions) } }
             .coordinateSpace(.named(ReadingCoordinateSpace.name))
             .onScrollGeometryChange(for: ReadingViewport.self) { geometry in
                 ReadingViewport(verticalOffset: max(0, geometry.contentOffset.y + geometry.contentInsets.top),
@@ -1066,6 +1092,7 @@ struct MarkdownPreview: View {
                     readingFollow.handScrollCount += 1
                     suspendReadingFollow?()
                     linkPreviews?.close()
+                    pictureHover.hide()
                 }
             }
             .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
@@ -1092,6 +1119,8 @@ struct MarkdownPreview: View {
             .environment(\.readingWordCells, wordCells)
             .environment(\.readingFollowsSource, followsReading)
             .environment(\.readingMediaPlayers, mediaPlayers)
+            .environment(\.webFramePresentation, .live)
+            .environment(\.webFrameLiveViews, webFrameLiveViews)
             .environment(\.readingTaskContext, toggleTask.map { toggleTask in
                 ReadingTaskContext(note: path) { note, location in await toggle(location, in: note, with: toggleTask) }
             })
@@ -1150,19 +1179,7 @@ struct MarkdownPreview: View {
                 show(cachedBuild)
                 blocksCache?.lastBuild = cachedBuild
             } catch is CancellationError {
-            } catch { errorMessage = error.localizedDescription }
-        }
-    }
-
-    /// What the note's text does with the pointer on its links: shows `model`'s cards.
-    private func linkHoverAction(for model: LinkPreviewModel) -> TextLinkHoverAction {
-        TextLinkHoverAction { [readingLinkPreviews, path, weak model] hover in
-            guard let model else { return }
-            switch hover {
-            case .entered(let location, let frame): readingLinkPreviews.pointerEntered(location, frame: frame, sourceNote: path, model: model)
-            case .exited: readingLinkPreviews.pointerLeft(model: model)
-            case .pressed(let location, let frame): readingLinkPreviews.press(location, frame: frame, sourceNote: path, model: model)
-            }
+            } catch { errorMessage.report(error) }
         }
     }
 
@@ -1607,7 +1624,6 @@ struct ReadingBlocksView: View {
     var declaredPropertyTypes: [String: PropertyType] = [:]
     /// Follows where the note's own blocks are as the view scrolls; nil for embedded notes.
     var blockPositions: ReadingPosition? = nil
-    @Environment(\.readingTaskContext) private var taskContext
     // The word being read is not read here: it changes with every word, and this view's body
     // goes over every block of the note. Only the views that show the word, and callouts
     // (`ReadingCallout`), read it.
@@ -1703,23 +1719,16 @@ struct ReadingBlocksView: View {
                 }
             case .video(_, let location):
                 EmbeddedMediaPlayer(location: location)
+            case .webVideo(_, let video, let writtenTitle):
+                WebVideoCard(video: video, writtenTitle: writtenTitle)
             case .audio(_, let location, let name):
                 EmbeddedAudioPlayer(location: location, name: name)
             case .pdf(_, let path, let location, let options):
                 EmbeddedPDFViewer(location: location, startPageNumber: options.startPageNumber, height: options.height.map { height in CGFloat(height) },
                                   openInPane: { pageIndex in openPDF(path, pageIndex) })
             case .transclusion(_, let path, let heading, let body):
-                VStack(alignment: .leading, spacing: 10) {
-                    Button { navigate(path.rawValue + (heading.map { "#" + $0 } ?? ""), true) } label: {
-                        Label(path.stem + (heading.map { " > " + $0 } ?? ""), systemImage: "doc.text").font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(.borderless)
-                    ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading, openPDF: openPDF, updateProperties: nil)
-                        // The embedded note's tasks are ticked in that note.
-                        .environment(\.readingTaskContext, taskContext.map { context in ReadingTaskContext(note: path, toggle: context.toggle) })
-                }
-                .padding(.leading, 16)
-                .overlay(alignment: .leading) { Rectangle().fill(.tint.opacity(0.6)).frame(width: 3) }
+                ReadingTransclusionBlock(path: path, heading: heading, blocks: body, root: root, textSize: textSize, navigate: navigate,
+                                         scrollToHeading: scrollToHeading, openPDF: openPDF)
             case .base(_, let yaml):
                 BaseCodeBlockView(yaml: yaml)
             case .baseFile(_, let path, let viewName):
@@ -1753,6 +1762,8 @@ struct ReadingBlocksView: View {
                 }
             case .diagram(_, let diagram):
                 ReadingDiagramView(diagram: diagram, textSize: textSize, root: root, navigate: navigate, scrollToHeading: scrollToHeading)
+            case .webFrame(_, let frame):
+                WebFrameBlock(frame: frame)
             case .missingSection(_, let path, let subpath):
                 Button { navigate(path.rawValue, true) } label: {
                     Label(NoteBlocks.missingSectionMessage(subpath: subpath, noteName: path.stem), systemImage: "questionmark.square.dashed")
@@ -1962,6 +1973,7 @@ private struct WordEnvironmentText: View {
 /// word read aloud reaches it only while the word is inside it.
 private struct ObsidianMarkdownTextContent: View, Equatable {
     let markdown: String
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -1977,6 +1989,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     @Environment(\.readingIsPrinted) private var isPrinted
     @Environment(\.readingTagSearch) private var tagSearch
     @Environment(\.readingImageActions) private var imageActions
+    @Environment(\.renderedBlockMenuContext) private var renderedBlockMenu
 
     /// The same text, read at the same word. The closures are left out: their owners make
     /// new ones at every update, which do the same.
@@ -2022,7 +2035,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))
                 .textual.thematicBreakStyle(ObsidianThematicBreakStyle(theme: theme))
@@ -2031,8 +2044,20 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .tint(accent)
                 .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading,
                                                                         searchTag: tagSearch?.search, zoomImage: imageActions?.viewImage))
+                .textual.linkInteractions(pictureLinkInteractions)
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
+    }
+
+    /// The menu and ⌘-click of the pictures in the text. On the iPad a rendered block of Live
+    /// Preview has its own menu, which offers them; a second menu on the same long press would
+    /// compete with it. On the Mac the text's menu is the one a secondary click on text shows.
+    private var pictureLinkInteractions: TextLinkInteractions? {
+        #if canImport(UIKit)
+        imageActions?.textLinkInteractions(offersMenu: renderedBlockMenu == nil)
+        #else
+        imageActions?.textLinkInteractions()
+        #endif
     }
 
     /// Links in the accent, and inline code in the monospace font. SF Mono keeps Textual's
@@ -2091,13 +2116,17 @@ extension EnvironmentValues {
 
 /// A reading text on screen (selectable, wide content scrolling) or printed. The choice is
 /// made once for a whole view hierarchy and never changes in it, so the two branches never
-/// replace each other's text.
+/// replace each other's text. On paper a display formula wider than the column keeps its
+/// line and is scaled down to the column, as a wide picture is: broken into lines, a long
+/// derivation came apart at odd places, and measured again at the width it had been broken
+/// to, it narrowed into a column of fragments.
 private struct ReadingTextPrinting: ViewModifier {
     let isPrinted: Bool
 
     func body(content: Content) -> some View {
         if isPrinted {
             content.textual.textSelection(.disabled).textual.overflowMode(.wrap)
+                .textual.mathProperties(MathProperties(wideDisplayMath: .scaledToFit))
         } else {
             content.textual.textSelection(.enabled)
         }
@@ -2160,7 +2189,8 @@ struct ObsidianMarkdownParser: MarkupParser {
         if MarkdownNesting.exceedsSafeDepth(input) { return AttributedString(input) }
         // A numbered formula that is a block of its own is drawn by `NumberedEquationView`;
         // one that reaches here is among other text, and takes its numbers after its rows.
-        let markdown = ReadingMathPreparation.inliningEquationNumbers(in: input)
+        // A table row of empty cells, as the "+" strip adds, is drawn too (`MarkdownTableEmptyRows`).
+        let markdown = MarkdownTableEmptyRows.keepingEmptyRows(in: ReadingMathPreparation.inliningEquationNumbers(in: input))
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
         Self.applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
             if let color = Color(graphiteHex: hex) { text[range].foregroundColor = color }
@@ -2239,6 +2269,12 @@ struct ObsidianMarkdownParser: MarkupParser {
         for (range, color) in linkRuns { text[range].foregroundColor = color }
     }
 
+    /// Whether a run is HTML, a tag in a sentence or a block of it. Its text is the tag as written, so a `#ccc` in a
+    /// frame's `style` is not a tag, as in Obsidian, where the HTML is drawn and never read for tags.
+    private static func isHTML(_ run: AttributedString.Runs.Run) -> Bool {
+        run.inlinePresentationIntent?.intersection([.inlineHTML, .blockHTML]).isEmpty == false
+    }
+
     /// Whether a run is code, in a span or a block.
     private static func isCode(_ run: AttributedString.Runs.Run) -> Bool {
         if run.inlinePresentationIntent?.contains(.code) == true { return true }
@@ -2249,7 +2285,7 @@ struct ObsidianMarkdownParser: MarkupParser {
     }
 
     /// `#tags` as the accent's (or the theme's) pill, a link to a search for the tag when
-    /// the reading view can open one. A tag in code or in a link is text.
+    /// the reading view can open one. A tag in code, in HTML or in a link is text.
     private func styleTags(in text: inout AttributedString) {
         guard text.characters.contains("#") else { return }
         let tagColor = themeColors?.tag ?? accent
@@ -2275,7 +2311,7 @@ struct ObsidianMarkdownParser: MarkupParser {
             // Found again from its offset after each change of attributes, which leaves the characters as they are.
             let lower = text.characters.index(text.startIndex, offsetBy: tag.characterOffset)
             let range = lower..<text.characters.index(lower, offsetBy: tag.characterCount)
-            guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) }) else { continue }
+            guard !text[range].runs.contains(where: { run in run.link != nil || Self.isCode(run) || Self.isHTML(run) }) else { continue }
             text[range].foregroundColor = tagColor
             // A pill: the background, corners and border, narrow enough that the space between
             // two tags still shows between their pills.
@@ -2847,6 +2883,7 @@ struct CalloutView<Body: View>: View {
     let sourceTokens: [ReadAloudSourceToken]?
     let automaticallyExpandsForReading: Bool
     @ViewBuilder let content: () -> Body
+    @Environment(\.displayScale) private var displayScale
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -2909,7 +2946,7 @@ struct CalloutView<Body: View>: View {
                         .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
                         .foregroundStyle(appearance.titleColor)
                         .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root))
+                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
                         .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
                         .allowsHitTesting(Self.containsLink(title))
                     if folding != .notFoldable {
@@ -2981,17 +3018,30 @@ struct CalloutAppearance {
 
 // MARK: Attachments and media
 
-private struct VaultImageLoader: AttachmentLoader {
+/// Draws a vault image inside text. One given a width (`![[photo.jpg|250]]`) is decoded for that
+/// width at the screen's scale, not for the inline limit: a row of ten 250-point camera photos
+/// held ten 1,800-pixel pictures, about 10 MB each, where 750 pixels show them as sharply.
+struct VaultImageLoader: AttachmentLoader {
     let root: URL
+    /// Pixels a point where the text is shown; a scale below 1 is a view not on a screen yet.
+    let displayScale: CGFloat
+
     func attachment(for location: URL, text: String, environment: ColorEnvironmentValues) async throws -> VaultImageAttachment {
         let fileLocation = URL(fileURLWithPath: location.path)
         let normalizedRoot = root.resolvingSymlinksInPath().path + "/"
         guard location.isFileURL, fileLocation.resolvingSymlinksInPath().path.hasPrefix(normalizedRoot) else {
             throw GraphiteError.outsideVault
         }
-        let thumbnail = try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline)
+        let thumbnail = try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline, displayPixelWidth: displayPixelWidth(for: location))
         return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
                                     path: vaultPath(of: fileLocation))
+    }
+
+    /// The widest the image is shown, in pixels, when the embed gives it a width; nil otherwise,
+    /// as an image without one is laid out at its pixel size.
+    func displayPixelWidth(for location: URL) -> Int? {
+        guard let displaySize = PreviewImageFragment.displaySize(in: location) else { return nil }
+        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize, displayScale: displayScale)
     }
 
     /// The picture's path in the vault, which its zoom names.
@@ -3003,16 +3053,19 @@ private struct VaultImageLoader: AttachmentLoader {
     }
 
     /// The image the cache made last, drawn at once while `attachment(for:text:environment:)`
-    /// checks it is current; a note exported to PDF loads its images into the cache first.
+    /// checks it is current; a note exported to PDF loads its images into the cache first, for
+    /// no width, which is used when none was made for the image's width.
     func readyAttachment(for location: URL, text: String, environment: ColorEnvironmentValues) -> VaultImageAttachment? {
+        let fileLocation = URL(fileURLWithPath: location.path)
         guard location.isFileURL,
-              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: URL(fileURLWithPath: location.path), kind: .inline) else { return nil }
+              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: fileLocation, kind: .inline, displayPixelWidth: displayPixelWidth(for: location))
+                ?? ReadingImageCache.shared.lastThumbnail(for: fileLocation, kind: .inline) else { return nil }
         return VaultImageAttachment(image: thumbnail.image, description: text, displaySize: PreviewImageFragment.displaySize(in: location),
-                                    path: vaultPath(of: URL(fileURLWithPath: location.path)))
+                                    path: vaultPath(of: fileLocation))
     }
 }
 
-private struct VaultImageAttachment: Attachment {
+struct VaultImageAttachment: Attachment {
     /// Pixels decoded when the image was loaded, off the main thread, so drawing the text
     /// does not decode the image again.
     let image: CGImage
@@ -3022,17 +3075,7 @@ private struct VaultImageAttachment: Attachment {
     /// The picture's path in the vault; nil outside it.
     let path: VaultPath?
     @MainActor var body: some View {
-        Image(image, scale: 1, label: Text(description)).resizable().scaledToFit()
-            // Where it is drawn, for a table's cell editor in Live Preview, whose tap target
-            // covers the table and leaves a tap on a picture to its zoom.
-            .background {
-                if let path {
-                    GeometryReader { geometry in
-                        let frameInBlock = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
-                        Color.clear.preference(key: ZoomablePictureFrame.Key.self, value: [ZoomablePictureFrame(path: path, frame: frameInBlock)])
-                    }
-                }
-            }
+        InlinePictureView(image: image, description: description, path: path)
     }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
         let width = Double(image.width), height = Double(image.height)
@@ -3116,9 +3159,21 @@ final class ReadingImageCache: @unchecked Sendable {
     }
 
     private let entries = NSCache<NSString, Entry>()
+    /// The key of the thumbnail last made or handed out for each file and kind, whatever its
+    /// width, so `latestThumbnail(for:kind:)` finds it without knowing that width.
+    private let latestKeys = NSCache<NSString, NSString>()
 
     init(totalCostLimit: Int = ReadingImageCache.defaultTotalCostLimit) {
         entries.totalCostLimit = totalCostLimit
+    }
+
+    /// The thumbnail last made or handed out for the file, at whatever width it was decoded
+    /// for, which may be older than the file. Live Preview draws the pictures of an image line
+    /// among the line's text with it while the cursor shows one embed's source, the pictures
+    /// its view decoded a moment before.
+    func latestThumbnail(for location: URL, kind: ReadingThumbnailKind) -> ReadingThumbnail? {
+        guard let key = latestKeys.object(forKey: Self.fileKey(for: location, kind: kind)) else { return nil }
+        return entries.object(forKey: key)?.thumbnail
     }
 
     /// The thumbnail last made for the file, which may be older than the file; shown while
@@ -3138,6 +3193,7 @@ final class ReadingImageCache: @unchecked Sendable {
         let byteCount = (attributes?[.size] as? NSNumber)?.intValue
         if let modificationDate, let byteCount, let entry = entries.object(forKey: key),
            entry.fileModificationDate == modificationDate, entry.fileByteCount == byteCount {
+            latestKeys.setObject(key, forKey: Self.fileKey(for: location, kind: kind))
             return entry.thumbnail
         }
         let limit = PreviewPixelLimit(maximumPixelDimension: kind.maximumDimension, displayPixelWidth: displayPixelWidth)
@@ -3147,12 +3203,17 @@ final class ReadingImageCache: @unchecked Sendable {
         if let modificationDate, let byteCount {
             entries.setObject(Entry(fileModificationDate: modificationDate, fileByteCount: byteCount, thumbnail: thumbnail), forKey: key,
                               cost: image.bytesPerRow * image.height)
+            latestKeys.setObject(key, forKey: Self.fileKey(for: location, kind: kind))
         }
         return thumbnail
     }
 
     private static func key(for location: URL, kind: ReadingThumbnailKind, displayPixelWidth: Int?) -> NSString {
         "\(kind.rawValue)|\(displayPixelWidth.map(String.init) ?? "")|\(location.standardizedFileURL.path)" as NSString
+    }
+
+    private static func fileKey(for location: URL, kind: ReadingThumbnailKind) -> NSString {
+        "\(kind.rawValue)|\(location.standardizedFileURL.path)" as NSString
     }
 }
 
@@ -3429,26 +3490,47 @@ struct EmbeddedAudioPlayer: View {
 }
 
 
-/// What reading view can do with an image. Closures cannot be compared, so two values are
-/// equal when the same workspace provides them with the same abilities; views that read
-/// them then do not update each time the note is drawn again.
-struct ReadingImageActions: Equatable {
-    let providerIdentity: ObjectIdentifier
-    /// Shows an image from a note full screen, where it can be zoomed.
-    let viewImage: (VaultPath) -> Void
-    /// Opens a Graphite drawing in the drawing editor; nil where drawings cannot be edited.
-    let editDrawing: ((VaultPath) -> Void)?
-    /// Opens the drawing editor over an image; nil where drawings are off.
-    var drawOnImage: ((VaultPath) -> Void)? = nil
-
-    static func == (leftActions: ReadingImageActions, rightActions: ReadingImageActions) -> Bool {
-        leftActions.providerIdentity == rightActions.providerIdentity && (leftActions.editDrawing == nil) == (rightActions.editDrawing == nil)
-            && (leftActions.drawOnImage == nil) == (rightActions.drawOnImage == nil)
+/// What Textual's selectable text does with the pictures it draws, each of which links to its
+/// zoom: kept here, with the reading view's other uses of Textual (`check-imports`).
+extension ReadingImageActions {
+    /// What the links of a text do for its pictures, each of which links to its zoom
+    /// (`GraphiteOpenLink.zoomedImageLink(path:)`): their menu, and ⌘-click to a new tab.
+    /// Other links keep the text's own menu and are followed as they are.
+    /// - Parameter offersMenu: False where the view around the text has its own menu that
+    ///   offers the commands, as a rendered block in Live Preview on the iPad does.
+    @MainActor func textLinkInteractions(offersMenu: Bool = true) -> TextLinkInteractions {
+        TextLinkInteractions(menuItems: { location in
+            guard offersMenu, let path = GraphiteOpenLink.zoomedImagePath(of: location) else { return [] }
+            return offeredCommands.map { command in
+                TextLinkMenuItem(title: title(of: command), systemImage: command.systemImage) { perform(command, on: path) }
+            }
+        }, openWithModifiers: { location, modifiers in
+            guard let path = GraphiteOpenLink.zoomedImagePath(of: location) else { return false }
+            return open(path, clickedWith: modifiers)
+        })
     }
 }
 
-extension EnvironmentValues {
-    @Entry var readingImageActions: ReadingImageActions? = nil
+extension ReadingPictureHover {
+    /// What the reading view's text tells of the pointer on its links: the picture buttons
+    /// of `self` and the preview cards of `previews`, each where it is set. Nil when neither
+    /// is: the texts then do not follow the pointer.
+    static func linkHoverAction(pictures: ReadingPictureHover?, previews: (ReadingLinkPreviews, LinkPreviewModel)?, sourceNote: VaultPath) -> TextLinkHoverAction? {
+        guard pictures != nil || previews != nil else { return nil }
+        let linkPreviews = previews?.0
+        return TextLinkHoverAction { [weak pictures, weak previewModel = previews?.1] hover in
+            switch hover {
+            case .entered(let location, let frame):
+                pictures?.pointerEntered(location, frame: frame)
+                if let linkPreviews, let previewModel { linkPreviews.pointerEntered(location, frame: frame, sourceNote: sourceNote, model: previewModel) }
+            case .exited:
+                pictures?.pointerLeftLink()
+                if let linkPreviews, let previewModel { linkPreviews.pointerLeft(model: previewModel) }
+            case .pressed(let location, let frame):
+                if let linkPreviews, let previewModel { linkPreviews.press(location, frame: frame, sourceNote: sourceNote, model: previewModel) }
+            }
+        }
+    }
 }
 
 /// An image or drawing on its own line in reading view.
@@ -3474,7 +3556,8 @@ private struct ReadingImageBlock: View {
                                   displayWidth: displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: thumbnail.aspectRatio)) },
                                   edit: thumbnail.isEditableDrawing ? imageActions?.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: imageActions.map { imageActions in { imageActions.viewImage(path) } },
-                                  drawOnImage: DrawableImages.canDrawOn(path) ? imageActions?.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil)
+                                  drawOnImage: DrawableImages.canDrawOn(path) ? imageActions?.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
+                                  path: path, tabOpening: imageActions?.tabOpening)
             } else if didFail {
                 Label("“\(path.name)” can't be shown.", systemImage: "photo").font(.callout).foregroundStyle(.secondary)
             } else {

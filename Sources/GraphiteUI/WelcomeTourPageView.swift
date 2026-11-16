@@ -160,8 +160,8 @@ private struct WelcomeTourScreenshots: View {
     }
 }
 
-/// One screenshot, from the welcome tour's add-on pack once it is downloaded. Until then a
-/// placeholder of the same shape says the pictures are on their way, or why they are not.
+/// One screenshot, from the welcome tour's add-on pack, which comes with the app or is downloaded.
+/// Until it is read a placeholder of the same shape says the pictures are on their way, or why they are not.
 private struct WelcomeTourPicture: View {
     let screenshot: WelcomeTourScreenshot
     @Environment(AddOnLibrary.self) private var addOns: AddOnLibrary?
@@ -205,9 +205,12 @@ private struct WelcomeTourPicture: View {
                     Text("The pictures could not be downloaded. \(reason.explanation)")
                         .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     if let pack, let addOns { Button("Try Again") { addOns.download(pack) }.buttonStyle(.bordered) }
-                case .notDownloaded, .downloading, .downloaded:
+                case .notDownloaded, .downloading:
                     ProgressView()
                     Text("Downloading the pictures…").font(.callout).foregroundStyle(.secondary)
+                case .checking, .downloaded, .includedWithApp:
+                    // On the device already: the picture is read in a moment, and nothing is downloaded.
+                    ProgressView()
                 }
             }
             .padding(24)

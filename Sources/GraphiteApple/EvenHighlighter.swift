@@ -6,8 +6,8 @@
  *              wide as the tool, at an even pressure, in a color that leaves the text under it readable.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 #if canImport(UIKit)
 import Foundation
@@ -23,9 +23,9 @@ import PencilKit
 ///
 /// PencilKit gives no way to change a stroke while it is drawn, and its live stroke follows
 /// the Pencil's tilt. So while the even highlighter is in use, the canvas draws with an
-/// invisible stand-in of the tool (`invisibleStandIn(for:)`) and shows the stroke itself, as
-/// the band the even stroke will draw (`bandPath(through:width:)`), until the even stroke
-/// replaces the invisible one at the lift (`HistoryCanvasView`).
+/// invisible stand-in of the tool (`invisibleStandIn(for:)`) and shows the stroke itself: the
+/// even stroke through the points so far, drawn by PencilKit (`evenStroke(through:width:ink:)`),
+/// until the even stroke replaces the invisible one at the lift (`HistoryCanvasView`).
 public enum EvenHighlighter {
     /// The angle of an upright tip: the Pencil held straight up from the page.
     static let uprightAltitude: CGFloat = .pi / 2
@@ -44,13 +44,19 @@ public enum EvenHighlighter {
     /// them stronger the more they have: 1 draws the color at about four fifths, 1.5 at about
     /// nine tenths. The even stroke takes the value of a slow, steady stroke everywhere.
     public static let tipOpacity: CGFloat = 1.5
+    /// The pressure of every point: one for the whole stroke, which the stroke shown while it is
+    /// drawn also has, before its average could be known (HUNT-356).
+    static let tipForce: CGFloat = 1
+    /// The random seed of every even stroke's texture, which the stroke shown while it is drawn
+    /// also has: the seed of the stroke PencilKit makes is known only at the lift (HUNT-356).
+    static let textureSeed: UInt32 = 0
     /// How much of the highlighter color's alpha the even stroke's ink keeps. PencilKit draws a
     /// canvas's ink over a PDF's page in the normal blend, so the even stroke at the color's full
     /// alpha drew its band at nine tenths of the color and hid the text under it: on the owner's
     /// iPad on 2026-11-04 a black bar under the band showed 0.87 as light as the band beside it
     /// (HUNT-002). At this fraction the band is about half the color, as PencilKit's own
     /// highlighter drew the same stroke on the simulator, and the text stays dark under it. The
-    /// band drawn while the stroke is drawn takes the same color, so nothing changes at the lift.
+    /// stroke shown while it is drawn takes the same color, so nothing changes at the lift.
     public static let colorAlphaFraction: CGFloat = 0.55
 
     /// The color the even stroke draws in for the highlighter's color.
@@ -59,7 +65,7 @@ public enum EvenHighlighter {
     }
 
     /// The stroke with every point's tip drawing a band `width` points across in the
-    /// drawing, turned across the stroke and at the stroke's average pressure, in `ink`
+    /// drawing, turned across the stroke and at one pressure, in `ink`
     /// (the stroke's own when nil). Nil for a stroke that is not marker ink or has no points,
     /// and for a width that is not a positive number.
     public static func evenStroke(_ stroke: PKStroke, width: CGFloat, ink: PKInk? = nil) -> PKStroke? {
@@ -72,15 +78,14 @@ public enum EvenHighlighter {
         guard transformScale.isFinite, transformScale > 0 else { return nil }
         let tipSide = width / chiselLengthPerPointSize / transformScale
         let tipSize = CGSize(width: tipSide, height: tipSide)
-        let averageForce = controlPoints.map(\.force).reduce(0, +) / CGFloat(controlPoints.count)
         let azimuths = tipAzimuths(along: controlPoints.map(\.location), reach: tipSide)
         let evenPoints = zip(controlPoints, azimuths).map { point, azimuth in
             PKStrokePoint(location: point.location, timeOffset: point.timeOffset, size: tipSize, opacity: tipOpacity,
-                          force: averageForce, azimuth: azimuth, altitude: uprightAltitude)
+                          force: tipForce, azimuth: azimuth, altitude: uprightAltitude)
         }
-        // The same random seed keeps the ink's texture as it was drawn.
+        // One random seed for every even stroke: the ink's texture is the one shown while the stroke was drawn.
         return PKStroke(ink: ink ?? stroke.ink, path: PKStrokePath(controlPoints: evenPoints, creationDate: stroke.path.creationDate),
-                        transform: transform, mask: stroke.mask, randomSeed: stroke.randomSeed)
+                        transform: transform, mask: stroke.mask, randomSeed: textureSeed)
     }
 
     /// The tip's direction at each point: across the stroke there, from the points `reach`
@@ -119,60 +124,21 @@ public enum EvenHighlighter {
         ink.inkType == .marker && ink.color.cgColor.alpha == 0
     }
 
-    /// How tall the band of an even stroke is for the tool's width, and how far it reaches
-    /// past the stroke's ends, measured on PencilKit (iOS 27): a highlight 24 points wide
-    /// draws 22 points tall, and about 3 points past each end, where its corners soften.
-    public static let bandHeightPerWidth: CGFloat = 22.0 / 24
-    public static let bandEndPerWidth: CGFloat = 3.0 / 24
-
-    /// How strongly the canvas draws an even stroke's band, for a band of the tool's width
-    /// in the canvas's points, as a fraction of the ink's color: PencilKit softens a
-    /// marker's edges over a few points, so a narrow band never reaches its full color.
-    /// Measured on a PencilKit canvas (iOS 27) for highlights 8, 20 and 50 points wide, at
-    /// opacities from 0.4 to 1: their middles are 0.86, 0.90 and 0.99 of the color.
-    public static func bandOpacity(forWidth width: CGFloat) -> CGFloat {
-        let measuredOpacities: [(width: CGFloat, opacity: CGFloat)] = [(8, 0.86), (20, 0.90), (50, 0.99)]
-        guard let first = measuredOpacities.first, let last = measuredOpacities.last else { return 1 }
-        if width <= first.width { return first.opacity }
-        if width >= last.width { return last.opacity }
-        for (narrower, wider) in zip(measuredOpacities, measuredOpacities.dropFirst()) where width <= wider.width {
-            let fraction = (width - narrower.width) / (wider.width - narrower.width)
-            return narrower.opacity + (wider.opacity - narrower.opacity) * fraction
+    /// The even stroke through points of the drawing, as it will be once the Pencil lifts, for
+    /// the canvas to show while the stroke is drawn: PencilKit draws it, so what is shown during
+    /// the stroke is what is kept after it (HUNT-356). Nil without points or a usable width.
+    public static func evenStroke(through locations: [CGPoint], width: CGFloat, ink: PKInk) -> PKStroke? {
+        let drawnPoints = locations.enumerated().map { pointIndex, location in
+            PKStrokePoint(location: location, timeOffset: TimeInterval(pointIndex) * timeBetweenShownPoints, size: CGSize(width: width, height: width),
+                          opacity: tipOpacity, force: tipForce, azimuth: tipAzimuth, altitude: uprightAltitude)
         }
-        return last.opacity
+        let drawnStroke = PKStroke(ink: PKInk(.marker, color: ink.color), path: PKStrokePath(controlPoints: drawnPoints, creationDate: shownStrokeCreationDate))
+        return evenStroke(drawnStroke, width: width, ink: ink)
     }
 
-    /// The band an even stroke through these points draws, `width` being the tool's width in
-    /// the same coordinates, as a path to stroke `bandHeightPerWidth` times as wide with butt
-    /// ends: the stroke's line, carried past each end as far as the band reaches.
-    public static func bandPath(through points: [CGPoint], width: CGFloat) -> CGPath {
-        let path = CGMutablePath()
-        guard let firstPoint = points.first, let lastPoint = points.last else { return path }
-        let reach = width * bandEndPerWidth
-        func extended(from endPoint: CGPoint, awayFrom innerPoint: CGPoint) -> CGPoint {
-            let length = hypot(endPoint.x - innerPoint.x, endPoint.y - innerPoint.y)
-            guard length > 0 else { return endPoint }
-            return CGPoint(x: endPoint.x + (endPoint.x - innerPoint.x) / length * reach, y: endPoint.y + (endPoint.y - innerPoint.y) / length * reach)
-        }
-        // A dot, which has no direction, reaches along the rows, as its tip does.
-        let secondPoint = points.dropFirst().first { point in point != firstPoint } ?? CGPoint(x: firstPoint.x + 1, y: firstPoint.y)
-        let secondToLastPoint = points.dropLast().last { point in point != lastPoint } ?? CGPoint(x: lastPoint.x - 1, y: lastPoint.y)
-        // Rounded through the points, as PencilKit smooths a stroke: a curve from the middle of
-        // each segment to the middle of the next, bending at the point between them.
-        let startPoint = extended(from: firstPoint, awayFrom: secondPoint)
-        path.move(to: startPoint)
-        path.addLine(to: firstPoint)
-        let innerPoints = Array(points.dropFirst().dropLast())
-        var previousPoint = firstPoint
-        for (pointIndex, point) in innerPoints.enumerated() {
-            let nextPoint = pointIndex + 1 < innerPoints.count ? innerPoints[pointIndex + 1] : lastPoint
-            if pointIndex == 0 { path.addLine(to: CGPoint(x: (previousPoint.x + point.x) / 2, y: (previousPoint.y + point.y) / 2)) }
-            path.addQuadCurve(to: CGPoint(x: (point.x + nextPoint.x) / 2, y: (point.y + nextPoint.y) / 2), control: point)
-            previousPoint = point
-        }
-        path.addLine(to: lastPoint)
-        path.addLine(to: extended(from: lastPoint, awayFrom: secondToLastPoint))
-        return path
-    }
+    /// The time between the points of a stroke shown while it is drawn; a marker's look does not depend on it.
+    static let timeBetweenShownPoints: TimeInterval = 0.008
+    /// The creation date of a stroke only shown, never kept; how it looks does not depend on it.
+    static let shownStrokeCreationDate = Date(timeIntervalSinceReferenceDate: 0)
 }
 #endif

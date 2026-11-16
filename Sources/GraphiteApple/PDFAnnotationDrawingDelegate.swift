@@ -1,3 +1,14 @@
+/**
+ * File: PDFAnnotationDrawingDelegate.swift
+ * ----------------------------------------
+ * Layer: Apple
+ * Description: The delegates of the PDF documents Graphite shows and writes, which choose the classes PDFKit makes for
+ *              Graphite's pictures, text boxes and ink.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 16/11/2026
+ */
 import Foundation
 import PDFKit
 import GraphiteCore
@@ -5,7 +16,9 @@ import GraphiteCore
 /// The delegate of every PDF document Graphite shows (`PDFPageManager.prepareForDisplay`):
 /// PDFKit makes the stamps it reads from the file `PDFPictureAnnotation`s and the
 /// `/FreeText` annotations `PDFTextBoxAnnotation`s, so Graphite's pictures and text boxes
-/// are drawn as smoothly after the PDF is opened again as while it is edited. The file is
+/// are drawn as smoothly after the PDF is opened again as while it is edited; the `/Ink`
+/// annotations are `PDFShownInkAnnotation`s, which draw nothing while hidden under a canvas on the
+/// iPad or while their page's ink layer draws them on the Mac. The file is
 /// not changed: an annotation read this way keeps its saved appearance and keys, and a
 /// document Graphite writes never has this delegate.
 public final class PDFAnnotationDrawingDelegate: NSObject, PDFDocumentDelegate, @unchecked Sendable {
@@ -21,6 +34,8 @@ public final class PDFAnnotationDrawingDelegate: NSObject, PDFDocumentDelegate, 
         switch annotationType {
         case PDFPicture.annotationTypeName: PDFPictureAnnotation.self
         case PDFTextBox.annotationTypeName: PDFTextBoxAnnotation.self
+        // Hidden under a page's canvas on the iPad, or drawn by its page's ink layer on the Mac, ink draws nothing.
+        case PDFShownInkAnnotation.annotationTypeName: PDFShownInkAnnotation.self
         default: PDFAnnotation.self
         }
     }

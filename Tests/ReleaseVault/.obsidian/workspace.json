@@ -1,0 +1,32 @@
+{
+  "main": {
+    "id": "release-main",
+    "type": "split",
+    "direction": "vertical",
+    "children": [
+      {
+        "id": "release-tabs",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "release-leaf",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Start here.md",
+                "mode": "source"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "active": "release-leaf",
+  "lastOpenFiles": [
+    "Start here.md",
+    "Embeds/Pictures in every form.md",
+    "PDFs/Written in Graphite.pdf"
+  ]
+}

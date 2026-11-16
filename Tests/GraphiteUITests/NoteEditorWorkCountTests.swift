@@ -167,7 +167,7 @@ final class NoteEditorWorkCountTests: XCTestCase {
         let session = try MarkdownSession(path: path, snapshot: try await store.read(path), store: store, didSave: { _ in })
         let editing = RenderedBlockSourceEditing(replaceSource: { _, transform in
             if let replacement = transform(session.text) { session.text = replacement }
-        }, setIsEditingInView: { _, _ in }, setDraftCommit: { editor, commit in session.draftCommitsOfViews[editor] = commit })
+        }, setIsEditingInView: { _, _ in }, setDraftCommit: { editor, commit in session.blockViews.draftCommits[editor] = commit })
         let editor = LivePreviewTableEditor()
         editor.update(source: session.text, textSize: 16, sourceEditing: editing)
         editor.beginEditing(TableCellPosition(row: 1, column: 1))
@@ -175,7 +175,7 @@ final class NoteEditorWorkCountTests: XCTestCase {
         try await session.save()
         XCTAssertTrue(try String(contentsOf: noteURL, encoding: .utf8).contains("typed just now"), "The last words typed were lost.")
         editor.endEditing()
-        XCTAssertTrue(session.draftCommitsOfViews.isEmpty)
+        XCTAssertTrue(session.blockViews.draftCommits.isEmpty)
     }
 
     // MARK: Menu blocks: HUNT-056, HUNT-057

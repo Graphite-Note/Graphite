@@ -10,9 +10,6 @@ struct GitGraphDiagramBuilder {
         var lastCommitIndex: Int?
     }
 
-    /// The branch every graph starts on, which is first among the branches of order 0.
-    static let mainBranchName = "main"
-
     private let limits: MermaidDiagramLimits
     private var commits: [GitGraphCommit] = []
     private var commitIndexByIdentifier: [String: Int] = [:]
@@ -22,9 +19,11 @@ struct GitGraphDiagramBuilder {
     private var currentBranchIndex = 0
     private var nodeCount = 0
 
-    init(limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) {
+    /// Every graph starts on its main branch, `main` unless the options name it, first among the branches of its order
+    /// (0 unless the options give it one).
+    init(limits: MermaidDiagramLimits, options: GitGraphOptions = GitGraphOptions()) throws(MermaidDiagramReadError) {
         self.limits = limits
-        try addBranch(name: Self.mainBranchName, order: 0, lastCommitIndex: nil)
+        try addBranch(name: options.mainBranchName, order: options.mainBranchOrder, lastCommitIndex: nil)
     }
 
     mutating func play(_ statement: GitGraphStatement, line: Int) throws(MermaidDiagramReadError) {

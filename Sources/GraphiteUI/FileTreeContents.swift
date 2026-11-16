@@ -6,21 +6,14 @@
  *              a folder's listing arriving does not rebuild the whole tree.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 11/11/2026
  */
 
 import Foundation
 import Observation
 import SwiftUI
 import GraphiteCore
-
-/// A file or folder of the tree, at its depth in the vault.
-struct FileTreeRow: Identifiable, Equatable {
-    let entry: VaultEntry
-    let depth: Int
-    var id: String { entry.path.rawValue }
-}
 
 /// The tree's rows as one flat list, an expanded folder's contents following it, kept up to date
 /// row by row: folding a folder in a root of 24,712 files rebuilds nothing but its own rows.
@@ -94,16 +87,28 @@ struct FlattenedFileTree {
     }
 }
 
-/// What the file tree's rows share: the flat list of rows and the folder a drag is over. A
-/// folder's listing and a tap on a folder reach the tree only through `rows`, and only when it
-/// changes, so one folder's listing does not invalidate the whole tree.
+/// What the file tree's rows share: the flat list of rows, the folder a drag is over, the folder
+/// revealed, and the filter by name. A folder's listing and a tap on a folder reach the tree only
+/// through `rows`, and only when it changes, so one folder's listing does not invalidate the whole tree.
 @MainActor @Observable final class FileTreeContents {
     private(set) var rows: [FileTreeRow] = []
     var dropTargetFolder: VaultPath?
+    /// A folder a search result or the filter revealed, marked as the open file is: the list's
+    /// selection holds files only.
+    var revealedFolder: VaultPath?
+    /// The Files panel's filter by name, on both platforms.
+    let filter = FileTreeFilter()
     @ObservationIgnored private var tree = FlattenedFileTree()
 
     /// Rows made so far, which a test counts.
     var rowsBuiltCount: Int { tree.rowsBuiltCount }
+
+    /// The rows the list shows: the filter's while it filters, the tree's otherwise.
+    var shownRows: [FileTreeRow] { filter.isFiltering ? filter.rows : rows }
+
+    /// Every folder and file listed so far: the root and the folders opened, for the filter to
+    /// find folders the index has no file in.
+    var listedEntries: [VaultEntry] { tree.rootEntries + tree.childrenByFolder.values.joined() }
 
     func setChildren(_ children: [VaultEntry], of folder: VaultPath) {
         tree.setChildren(children, of: folder)

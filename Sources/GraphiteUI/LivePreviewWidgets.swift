@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.37
- * Date: 05/11/2026
+ * Version: 0.41
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct LivePreviewReadingContext {
     let path: VaultPath
 }
 
-private struct LivePreviewReadingSnapshot: Sendable {
+struct LivePreviewReadingSnapshot: Sendable {
     let tokens: [ReadAloudSourceToken]
     let blocks: [NotePreviewDocument.LocatedBlock]
     let sourceLength: Int
@@ -32,7 +32,7 @@ private struct LivePreviewReadingRequest: Equatable {
     let hasReadingSession: Bool
 }
 
-private struct LivePreviewReadingSection: Sendable {
+struct LivePreviewReadingSection: Sendable {
     let snapshot: LivePreviewReadingSnapshot
     let block: NotePreviewDocument.LocatedBlock
     let endOffset: Int
@@ -81,6 +81,8 @@ struct LivePreviewEnvironment {
     var editDrawing: ((VaultPath) -> Void)? = nil
     /// Opens the drawing editor over an image; nil when drawings are turned off.
     var drawOnImage: ((VaultPath) -> Void)? = nil
+    /// Opens a picture in a tab of its own; nil where there are no tabs.
+    var pictureTabOpening: PictureTabOpening? = nil
     /// Changes when the index takes in new files, so embeds not found yet look again.
     var indexVersion = 0
     /// The widest, in points, the note's column shows an embedded image; nil when the
@@ -119,7 +121,7 @@ struct LivePreviewWidgetView: View {
     let environment: LivePreviewEnvironment
     let revealSource: () -> Void
     let reportHeight: (CGFloat) -> Void
-    /// How a table's view edits its cells; nil for other blocks.
+    /// How a table's view, or a callout's for its body's tables, edits cells; nil for other blocks.
     var sourceEditing: RenderedBlockSourceEditing? = nil
     /// Where the block starts in the note now; `block.range` says where it was found. Nil once it
     /// is no longer in the note.
@@ -127,6 +129,7 @@ struct LivePreviewWidgetView: View {
     @State private var parsedSource = LivePreviewParsedSource()
     @State private var readingSnapshot: LivePreviewReadingSnapshot?
     @State private var tableEditor = LivePreviewTableEditor()
+    @State private var calloutTableEditors = LivePreviewCalloutTableEditors()
     /// What a callout or table reads from the rest of its note; nil until the note is read.
     @State private var noteReading: RenderedBlockNoteReading?
     @Environment(\.renderedBlockMenuContext) private var menuContext
@@ -175,6 +178,7 @@ struct LivePreviewWidgetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         // The block's menu gives points in this space, the hosting view's own.
+        .modifier(RenderedBlockPictureMenu())
         .coordinateSpace(.named(LivePreviewTableEditor.blockCoordinateSpaceName))
         .modifier(LivePreviewNoteReadingModifier(block: block, environment: environment, currentLocation: currentLocation, noteReading: $noteReading))
         .environment(\.readingActiveSourceRange, readingRange)
@@ -201,6 +205,44 @@ struct LivePreviewWidgetView: View {
                 // Unsupported blocks keep their ordinary preview.
             }
         }
+    }
+
+    /// Writes a width dragged at the image's corner into the embed, as one edit: the block's
+    /// first embed, or, on a line of several pictures, the one starting at `location` in it.
+    private func resizeImage(of embed: EmbedReference, at location: Int? = nil) -> ((Int) -> Void)? {
+        sourceEditing.map { sourceEditing in { width in
+            sourceEditing.replaceSource(ObjectIdentifier(LivePreviewEmbedView.self)) { source in
+                guard let location else { return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, in: source) }
+                return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, at: location, in: source)
+            }
+        } }
+    }
+
+    /// A callout drawn as a box, its body's tables edited in place.
+    @ViewBuilder private var calloutContent: some View {
+        if let located = parsedSource.calloutBlock(from: block.markdown), case .callout(let type, let title, let folding, let bodyBlocks) = located.block {
+            LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, bodyLocated: located.body, noteReading: noteReading,
+                                  foldOccurrence: noteReading?.calloutOccurrence(atSourceOffset: located.startOffset) ?? 0,
+                                  environment: environment, revealSource: revealSource,
+                                  readingSection: readingSnapshot.flatMap { snapshot in snapshot.blocks.first.map { firstBlock in
+                                      LivePreviewReadingSection(snapshot: snapshot, block: firstBlock, endOffset: snapshot.sourceLength)
+                                  } }, tableEditing: calloutTableEditing(of: located))
+                .onAppear {
+                    guard sourceEditing != nil else { return }
+                    let editors = calloutTableEditors
+                    menuContext?.itemsAtPoint = { [weak editors] point in editors?.menuItems(at: point) ?? [] }
+                }
+        }
+    }
+
+    /// A tap on a cell of a table in the callout's body edits it in place, as a table's own; nil
+    /// when the callout's cells are not edited in its view or its body holds no table.
+    private func calloutTableEditing(of callout: NotePreviewDocument.LocatedBlock) -> LivePreviewCalloutTableEditing? {
+        guard let sourceEditing else { return nil }
+        let tables = parsedSource.calloutTables(of: callout)
+        guard !tables.isEmpty else { return nil }
+        return LivePreviewCalloutTableEditing(tables: tables, calloutSource: block.sourceLines, sourceEditing: sourceEditing,
+                                              editors: calloutTableEditors, textSize: environment.textSize)
     }
 
     @ViewBuilder private var content: some View {
@@ -236,9 +278,14 @@ struct LivePreviewWidgetView: View {
                 .contentShape(Rectangle())
                 .onTapGesture(perform: revealSource)
         case .embed(let embed):
-            LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
+            if let video = WebVideo(embed: embed) {
+                WebVideoCard(video: video, writtenTitle: embed.label, revealSource: revealSource)
+            } else {
+                LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource, resizeImage: resizeImage(of: embed))
+            }
         case .imageLine(let pieces):
-            LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource)
+            LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource,
+                                     resizeImage: sourceEditing == nil ? nil : { embed in resizeImage(of: embed, at: embed.range.location) })
         case .baseDefinition(let yaml):
             // No tap-to-reveal here: taps belong to the base's rows; "Edit Source" in its menu reveals it.
             BaseCodeBlockView(yaml: yaml, context: environment.baseContext)
@@ -255,17 +302,10 @@ struct LivePreviewWidgetView: View {
             } else {
                 RenderedMarkdownBlock(markdown: "```" + language + "\n" + block.markdown + "\n```", environment: environment)
             }
-        case .mermaidDiagram:
-            LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
+        case .mermaidDiagram: LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
+        case .webFrame(let frame): LivePreviewWebFrameView(frame: frame, revealSource: revealSource)
         case .callout:
-            if let located = parsedSource.calloutBlock(from: block.markdown), case .callout(let type, let title, let folding, let bodyBlocks) = located.block {
-                LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks, bodyLocated: located.body, noteReading: noteReading,
-                                      foldOccurrence: noteReading?.calloutOccurrence(atSourceOffset: located.startOffset) ?? 0,
-                                      environment: environment, revealSource: revealSource,
-                                      readingSection: readingSnapshot.flatMap { snapshot in snapshot.blocks.first.map { firstBlock in
-                                          LivePreviewReadingSection(snapshot: snapshot, block: firstBlock, endOffset: snapshot.sourceLength)
-                                      } })
-            }
+            calloutContent
         }
     }
 }
@@ -317,6 +357,8 @@ private final class LivePreviewParsedSource {
     private var parsedProperties: [NoteProperty]?
     private var calloutSource: String?
     private var parsedCalloutBlock: NotePreviewDocument.LocatedBlock?
+    private var calloutTablesSource: NotePreviewDocument.LocatedBlock?
+    private var parsedCalloutTables: [CalloutTable] = []
 
     /// The frontmatter's properties, or nil when its YAML is not valid.
     func properties(from markdown: String, declaredTypes: [String: PropertyType]) -> [NoteProperty]? {
@@ -328,6 +370,15 @@ private final class LivePreviewParsedSource {
         return parsedProperties
     }
 
+    /// The tables of the callout `calloutBlock(from:)` gave, found once per change of the source.
+    func calloutTables(of callout: NotePreviewDocument.LocatedBlock) -> [CalloutTable] {
+        if calloutTablesSource != callout {
+            parsedCalloutTables = CalloutTables.tables(in: callout)
+            calloutTablesSource = callout
+        }
+        return parsedCalloutTables
+    }
+
     func calloutBlock(from markdown: String) -> NotePreviewDocument.LocatedBlock? {
         if calloutSource != markdown {
             // A callout in a list item starts indented past what the block alone would allow.
@@ -336,108 +387,6 @@ private final class LivePreviewParsedSource {
             calloutSource = markdown
         }
         return parsedCalloutBlock
-    }
-}
-
-/// A callout drawn as a box, as in Obsidian's Live Preview. Its title folds it; a tap on
-/// its body shows the source.
-private struct LivePreviewCalloutView: View {
-    let type: String
-    let title: String
-    let folding: CalloutFolding
-    let bodyBlocks: [NotePreviewBlock]
-    /// The body's blocks with where their lines are in the callout's source, and what the note
-    /// around the callout says about them; nil where the callout is not part of the note.
-    var bodyLocated: [NotePreviewDocument.LocatedBlock]? = nil
-    var noteReading: RenderedBlockNoteReading? = nil
-    /// Which of the callouts with this type and title it is, which its fold key holds.
-    var foldOccurrence = 0
-    let environment: LivePreviewEnvironment
-    let revealSource: () -> Void
-    var readingSection: LivePreviewReadingSection? = nil
-    @Environment(\.readingActiveSourceRange) private var readingActiveSourceRange
-    @Environment(\.readingFollowsSource) private var readingFollowsSource
-
-    var body: some View {
-        CalloutView(type: type, title: LivePreviewText.prepared(title, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName),
-                    folding: folding, root: environment.root, textSize: environment.textSize, navigate: environment.follow,
-                    sourceTokens: readingSection?.titleTokens,
-                    automaticallyExpandsForReading: readingFollowsSource && (readingActiveSourceRange.map { range in
-                        readingSection?.tokens.contains { token in NSIntersectionRange(token.sourceRange, range).length > 0 } ?? false
-                    } ?? false), foldKeyTitle: title, foldOccurrence: foldOccurrence) {
-            LivePreviewBlockStack(blocks: bodyBlocks, located: bodyLocated, noteReading: noteReading, environment: environment, allowsNoteEmbeds: true,
-                                  revealSource: revealSource, readingSection: readingSection)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: revealSource)
-        }
-        .environment(\.calloutFoldNote, environment.calloutFoldNote)
-    }
-}
-
-/// Reading-view blocks inside a Live Preview view: a callout's body or an embedded note.
-private struct LivePreviewBlockStack: View {
-    let blocks: [NotePreviewBlock]
-    /// `blocks` with where their lines are in the source of the callout they are the body of,
-    /// when that callout is part of the note.
-    var located: [NotePreviewDocument.LocatedBlock]? = nil
-    var noteReading: RenderedBlockNoteReading? = nil
-    let environment: LivePreviewEnvironment
-    /// Embedded notes are shown one level deep, so notes that embed each other end.
-    let allowsNoteEmbeds: Bool
-    let revealSource: () -> Void
-    var readingSection: LivePreviewReadingSection? = nil
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { blockIndex, block in
-                view(for: block, at: blockIndex, readingSection: childReadingSection(at: blockIndex))
-            }
-        }
-    }
-
-    /// Type-erased, because a callout can contain callouts.
-    private func childReadingSection(at index: Int) -> LivePreviewReadingSection? {
-        guard let readingSection, readingSection.block.body.indices.contains(index) else { return nil }
-        let body = readingSection.block.body
-        let end = index + 1 < body.count ? body[index + 1].startOffset : readingSection.endOffset
-        return LivePreviewReadingSection(snapshot: readingSection.snapshot, block: body[index], endOffset: end)
-    }
-
-    /// Where the Markdown of the body block at `index` is in the note, when the callout is part of it.
-    private func place(ofBlockAt index: Int) -> RenderedBlockPlace? {
-        guard let noteReading, let located, located.indices.contains(index) else { return nil }
-        return RenderedBlockPlace(reading: noteReading, lineOffsets: located[index].lineStartOffsets)
-    }
-
-    /// Which of the callouts with its type and title the callout body block at `index` is.
-    private func foldOccurrence(ofCalloutAt index: Int) -> Int {
-        guard let noteReading, let located, located.indices.contains(index) else { return 0 }
-        return noteReading.calloutOccurrence(atSourceOffset: located[index].startOffset)
-    }
-
-    private func view(for block: NotePreviewBlock, at index: Int, readingSection: LivePreviewReadingSection?) -> AnyView {
-        switch block {
-        case .markdown(let markdown):
-            AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens, place: place(ofBlockAt: index)))
-        case .heading(let level, let text, _):
-            AnyView(RenderedMarkdownBlock(markdown: String(repeating: "#", count: level) + " " + text, environment: environment, sourceTokens: readingSection?.tokens))
-        case .callout(let type, let title, let folding, let bodyBlocks):
-            AnyView(LivePreviewCalloutView(type: type, title: title, folding: folding, bodyBlocks: bodyBlocks,
-                                           bodyLocated: located?.indices.contains(index) == true ? located?[index].body : nil, noteReading: noteReading,
-                                           foldOccurrence: foldOccurrence(ofCalloutAt: index),
-                                           environment: environment, revealSource: revealSource, readingSection: readingSection))
-        case .embed(let embed):
-            AnyView(LivePreviewEmbedView(embed: embed, environment: environment, allowsNoteEmbeds: allowsNoteEmbeds, revealSource: revealSource))
-        case .baseDefinition(let yaml):
-            AnyView(BaseCodeBlockView(yaml: yaml, context: environment.baseContext))
-        case .displayMath(let markdown):
-            AnyView(RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: readingSection?.tokens).frame(maxWidth: .infinity))
-        case .pluginCodeBlock(let language, let source):
-            // Blocks here are split without plugin languages, so this does not occur; shown as code.
-            AnyView(RenderedMarkdownBlock(markdown: "```" + language + "\n" + source + "\n```", environment: environment))
-        case .mermaidDiagram(let source):
-            AnyView(LivePreviewDiagramView(source: source, environment: environment, revealSource: revealSource))
-        }
     }
 }
 
@@ -530,11 +479,14 @@ struct RenderedMarkdownBlock: View {
 enum LivePreviewText {
     private static let wikiEmbedPattern = LivePreviewTextPattern.wikiEmbedPattern.compiled()
 
-    /// Whether `markdown` may embed a vault file that `preparedResolvingEmbeds` looks up.
-    static func hasWikiEmbed(_ markdown: String) -> Bool { markdown.contains("![[") }
+    /// Whether `markdown` may embed a vault file that `preparedResolvingEmbeds` looks up:
+    /// `![[photo.png]]`, or `![](photo.png)`, which needs `](`.
+    static func hasWikiEmbed(_ markdown: String) -> Bool { markdown.contains("![[") || (markdown.contains("![") && markdown.contains("](")) }
 
-    /// Also turns `![[image.png|300]]` into an image the renderer can show.
-    /// `hasUnresolvedEmbeds` tells whether an embed was not found in the vault.
+    /// Also turns `![[image.png|300]]` and `![300](Photos/image.png)` into an image the renderer
+    /// can show, as the reading view does: a Markdown image's path was otherwise read as a web
+    /// address, and nothing was drawn. `hasUnresolvedEmbeds` tells whether an embed was not
+    /// found in the vault.
     @MainActor
     static func preparedResolvingEmbeds(_ markdown: String, environment: LivePreviewEnvironment,
         place: RenderedBlockPlace? = nil) async -> (markdown: String, hasUnresolvedEmbeds: Bool) {
@@ -544,25 +496,43 @@ enum LivePreviewText {
         }
         guard hasWikiEmbed(markdown) else { return (prepared(markdown), false) }
         var hasUnresolvedEmbeds = false
-        let source = markdown as NSString
         let output = NSMutableString(string: markdown)
+        // Last first, so the ranges before each replacement stay where they were.
+        for embed in embeds(in: markdown).reversed() {
+            guard let path = await environment.resolve(embed.target, embed.isWiki) else {
+                hasUnresolvedEmbeds = true
+                continue
+            }
+            guard let location = try? path.url(in: environment.root) else { continue }
+            var isPicture = DocumentKind(path: path) == .image
+            if DocumentKind(path: path) == .pdf { isPicture = await ImageFileService().isEditableDrawingPDF(at: location) }
+            guard isPicture else {
+                // Any other file, as a PDF in a table cell, is a link to it named by its file, as the reading
+                // view writes it: left alone, its source showed with its `!` (HUNT-352).
+                let destination = GraphiteOpenLink.markdownDestination(target: embed.target, isWiki: embed.isWiki)
+                output.replaceCharacters(in: embed.range, with: "[\(ReadingViewBuilder.escapedLabel(path.name))](\(destination))")
+                continue
+            }
+            let imageLocation = PreviewImageFragment.url(for: location, displaySize: embed.displaySize, version: environment.drawingVersion)
+            output.replaceCharacters(in: embed.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
+        }
+        return (prepared(output as String), hasUnresolvedEmbeds)
+    }
+
+    /// The Wikilink and Markdown embeds of `markdown` outside code, in order.
+    private static func embeds(in markdown: String) -> [EmbedReference] {
+        let source = markdown as NSString
         let codeRanges = MarkdownCodeRanges.rangeSet(in: source)
-        for match in wikiEmbedPattern.matches(in: markdown, range: NSRange(location: 0, length: source.length)).reversed()
-        where !codeRanges.intersects(match.range) {
+        let wikiEmbeds = wikiEmbedPattern.matches(in: markdown, range: NSRange(location: 0, length: source.length)).compactMap { match -> EmbedReference? in
+            guard !codeRanges.intersects(match.range) else { return nil }
             var target = source.substring(with: match.range(at: 1))
             let label = match.range(at: 2).location == NSNotFound ? nil : source.substring(with: match.range(at: 2))
             // `![[image.png\|300]]` in a table, as Obsidian requires there: the backslash
             // escapes the pipe and is no part of the name, as for links below.
             if label != nil, target.hasSuffix("\\") { target.removeLast() }
-            guard let path = await environment.resolve(target, true) else {
-                hasUnresolvedEmbeds = true
-                continue
-            }
-            guard DocumentKind(path: path) == .image, let location = try? path.url(in: environment.root) else { continue }
-            let imageLocation = PreviewImageFragment.url(for: location, displaySize: label.flatMap(EmbedDisplaySize.parse(label:)), version: environment.drawingVersion)
-            output.replaceCharacters(in: match.range, with: "![\(ReadingViewBuilder.escapedLabel(path.stem))](\(GraphiteOpenLink.markdownDestination(imageLocation)))")
+            return EmbedReference(target: target, isWiki: true, displaySize: label.flatMap(EmbedDisplaySize.parse(label:)), range: match.range)
         }
-        return (prepared(output as String), hasUnresolvedEmbeds)
+        return (wikiEmbeds + EmbedLocator.markdownEmbeds(in: markdown)).sorted { leftEmbed, rightEmbed in leftEmbed.range.location < rightEmbed.range.location }
     }
 
     private static let wikilinkPattern = LivePreviewTextPattern.wikilinkPattern.compiled()
@@ -611,6 +581,9 @@ struct LivePreviewEmbedView: View {
     let environment: LivePreviewEnvironment
     var allowsNoteEmbeds = true
     let revealSource: () -> Void
+    /// Writes a width dragged at an image's corner into the embed; nil leaves images as
+    /// they are, as in an embedded note.
+    var resizeImage: ((Int) -> Void)? = nil
     @Environment(\.displayScale) private var displayScale
     @State private var resolution: EmbedResolution = .loading
     /// The `resolutionKey` of the last completed lookup. A lookup's own result changes the
@@ -657,7 +630,9 @@ struct LivePreviewEmbedView: View {
                                   displayWidth: embed.displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: aspectRatio)) },
                                   edit: isEditableDrawing ? environment.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: environment.viewImage.map { viewImage in { viewImage(path) } } ?? revealSource,
-                                  drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil)
+                                  drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
+                                  path: path, tabOpening: environment.pictureTabOpening,
+                                  resizeWidth: resizeImage, columnWidth: environment.embeddedImageColumnWidth)
             case .video(let location):
                 EmbeddedMediaPlayer(location: location)
             case .audio(let location, let name):
@@ -735,7 +710,9 @@ struct LivePreviewEmbedView: View {
     /// if the file has changed.
     private var shownResolution: EmbedResolution {
         guard case .loading = resolution, let foundImage = LivePreviewEmbedImageLocations.foundImage(for: embed, in: environment.root),
-              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: foundImage.location, kind: .block, displayPixelWidth: displayPixelWidth) else {
+              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: foundImage.location, kind: .block, displayPixelWidth: displayPixelWidth)
+                // After a resize, the picture at its old width stands in until the new one is made.
+                ?? ReadingImageCache.shared.latestThumbnail(for: foundImage.location, kind: .block) else {
             return resolution
         }
         return .image(path: foundImage.path, image: thumbnail.image, aspectRatio: thumbnail.aspectRatio, isEditableDrawing: thumbnail.isEditableDrawing)

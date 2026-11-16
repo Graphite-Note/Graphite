@@ -65,7 +65,7 @@ extension WorkspaceModel {
         do {
             try await store.setPropertyType(type, forKey: key)
             propertyTypesVersion += 1
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     /// Renames a property in every note that has it, changing only the name where it is
@@ -115,7 +115,7 @@ extension WorkspaceModel {
                 let more = unchangedNotes.count > 5 ? "\nand \(unchangedNotes.count - 5) more." : ""
                 errorMessage = "“\(key)” was renamed in \(Self.noteCount(renamedPaths.count)), but not in \(Self.noteCount(unchangedNotes.count)):\n" + listed + more
             }
-        } catch { errorMessage = error.localizedDescription }
+        } catch { errorMessage.report(error) }
     }
 
     private static func noteCount(_ count: Int) -> String { count == 1 ? "1 note" : "\(count) notes" }

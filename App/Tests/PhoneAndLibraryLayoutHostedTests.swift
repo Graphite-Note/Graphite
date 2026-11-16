@@ -7,8 +7,8 @@
  *              swatch of the Pencil bar in dark appearance with the size of its buttons.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 05/11/2026
+ * Version: 0.5
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -302,14 +302,14 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
     func testTheBlackSwatchShowsOnTheDarkBar() async throws {
         let toolbox = PencilToolbox(defaults: try XCTUnwrap(UserDefaults(suiteName: "DarkSwatch-\(UUID().uuidString)")))
         let contents = PencilToolRowLayout.contents(of: toolbox, favorites: PaletteColor.defaultPalette, highlighterColors: PaletteColor.defaultHighlighterPalette,
-                                                    offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
+                                                    offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
         let closerWidths = [PencilToolRowLayout.Density.tight, .tightest].compactMap { density in
             PencilToolRowLayout.width(of: .whole(density), holding: contents).map { width in CGFloat(width.rounded(.up)) + 1 }
         }
         var densitiesChecked: Set<Double> = []
         for width in [1_100] + closerWidths {
             PencilToolRowForm.lastShown = nil
-            let row = PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true)
+            let row = PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false), addImage: {}, offersReadAloudPen: true, offersTextBoxes: true, offersTextMarking: true)
                 .frame(width: width, height: PencilToolbarMetrics.height)
                 .background(Color(uiColor: .systemBackground))
             let controller = try host(row, size: CGSize(width: width, height: 120))

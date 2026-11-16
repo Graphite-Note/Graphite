@@ -9,6 +9,10 @@ struct ReadingStateDiagramShapes: Sendable {
     let noteConnectors: Path
     let arrows: Path
     let transitionTextPatches: Path
+    /// The composite states' boxes, painted as a flowchart's groups are.
+    let composites: ReadingFlowchartClusterShapes
+    /// The dashed lines between concurrent regions.
+    let regionDividers: Path
     let stateFills: Path
     let stateOutlines: Path
     let endRings: Path
@@ -23,6 +27,8 @@ struct ReadingStateDiagramShapes: Sendable {
     let noteTextLines: [ReadingDiagramTextLine]
 
     init(parts: StateDiagramDrawingParts, font: DiagramFont) {
+        composites = ReadingFlowchartClusterShapes(parts: parts.composites, font: font)
+        regionDividers = Path(parts.regionDividers)
         transitionLines = Path(parts.transitionLines)
         noteConnectors = Path(parts.noteConnectors)
         arrows = Path(parts.arrows)

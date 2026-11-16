@@ -9,10 +9,13 @@ struct ReadingGitGraphDrawing: View {
     let gitGraph: ReadingGitGraph
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ReadingScaledDiagram(size: gitGraph.layout.size, layoutTextSize: gitGraph.layout.font.size, textSize: textSize) {
-            ReadingGitGraphPainting(shapes: gitGraph.shapes, colors: ReadingDiagramColors(theme: theme))
+        ReadingScaledDiagram(size: gitGraph.layout.size, narrowSize: gitGraph.narrow?.layout.size, layoutTextSize: gitGraph.layout.font.size,
+                             textSize: textSize) { variant in
+            ReadingGitGraphPainting(shapes: variant == .narrow ? gitGraph.narrow?.shapes ?? gitGraph.shapes : gitGraph.shapes,
+                                    colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
@@ -36,7 +39,7 @@ private struct ReadingGitGraphPainting: View {
                 group.nameBoxes.fill(color(group))
             }
             ReadingGitGraphTextLines(lines: shapes.nameLines, color: colors.background)
-            ReadingGitGraphConnectors(groups: shapes.colorGroups)
+            ReadingGitGraphConnectors(groups: shapes.colorGroups, colors: colors)
             ForEach(shapes.colorGroups.indices, id: \.self) { index in
                 let group = shapes.colorGroups[index]
                 group.rings.fill(colors.background)
@@ -64,26 +67,27 @@ private struct ReadingGitGraphPainting: View {
     }
 
     private func color(_ group: ReadingGitGraphShapes.ColorGroup) -> Color {
-        ReadingDiagramColors.seriesColor(group.seriesIndex)
+        colors.seriesColor(group.seriesIndex)
     }
 }
 
 /// The lines between commits: between lanes, then dashed to cherry-picks, then along lanes, each in its group's color.
 private struct ReadingGitGraphConnectors: View {
     let groups: [ReadingGitGraphShapes.ColorGroup]
+    let colors: ReadingDiagramColors
 
     var body: some View {
         let width = GitGraphDrawingParts.connectorLineWidth
         ZStack(alignment: .topLeading) {
             ForEach(groups.indices, id: \.self) { index in
-                groups[index].curves.stroke(ReadingDiagramColors.seriesColor(groups[index].seriesIndex), style: StrokeStyle(lineWidth: width, lineCap: .round))
+                groups[index].curves.stroke(colors.seriesColor(groups[index].seriesIndex), style: StrokeStyle(lineWidth: width, lineCap: .round))
             }
             ForEach(groups.indices, id: \.self) { index in
-                groups[index].cherryPickCurves.stroke(ReadingDiagramColors.seriesColor(groups[index].seriesIndex),
+                groups[index].cherryPickCurves.stroke(colors.seriesColor(groups[index].seriesIndex),
                                                       style: StrokeStyle(lineWidth: width, lineCap: .round, dash: GitGraphDrawingParts.cherryPickDashLengths))
             }
             ForEach(groups.indices, id: \.self) { index in
-                groups[index].straightLines.stroke(ReadingDiagramColors.seriesColor(groups[index].seriesIndex),
+                groups[index].straightLines.stroke(colors.seriesColor(groups[index].seriesIndex),
                                                    style: StrokeStyle(lineWidth: width, lineCap: .round))
             }
         }

@@ -5,13 +5,14 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.12
+ * Date: 13/11/2026
  */
 
 import Foundation
 import GraphiteCore
 import GraphiteIndex
+import GraphiteApple
 
 /// What every window of the app shares, built once per process (decision 12 of
 /// `Docs/solid/rewrite-foundations.md`): the preferences, the vault list, what the device
@@ -39,13 +40,16 @@ public final class ProcessServices {
     /// removal asks for it, so a launch that shows no graph builds nothing for it.
     private(set) lazy var graphColorGroups = GraphColorGroupStore(defaults: defaults, makeIdentifier: UUID.init)
     let applicationFolders: ApplicationFolders
-    /// What this device has downloaded of the extras Graphite does not carry, such as the
-    /// welcome tour's pictures; every window and Settings read the same one.
+    /// The extras Graphite downloads or that came with it, such as the welcome tour's
+    /// pictures, and which of them are on this device; every window and Settings read the same one.
     let addOns: AddOnLibrary
     /// One index per open vault, shared by every window on it.
     let vaultIndexes: VaultIndexRegistry
     /// The unsaved strokes of drawing editors, kept in Application Support for every window.
     let drawingDrafts: DrawingEditorDraftStore
+    /// The signatures drawn on this device for signing PDFs, outside every vault. Made the first
+    /// time a PDF's markup row asks; it reads its folder only when the Sign menu first shows.
+    private(set) lazy var pdfSignatures = PDFSignatureStore(directory: PDFSignatureStore.directory(in: applicationFolders))
     /// Text of notes and canvases that could not reach their files, kept in Application
     /// Support for every window.
     let unsavedDrafts: UnsavedDocumentDraftStore
@@ -57,6 +61,12 @@ public final class ProcessServices {
     let settingsPageMemory = SettingsPageMemory()
     /// Obsidian's list of community themes once loaded, for the Theme page.
     let themeDirectoryCache = ThemeDirectoryCache()
+    /// Where the device is, for the maps' location control, shared by every window. It makes no
+    /// location manager until a map asks: access is asked only at the first use of the control.
+    let deviceLocation: any DeviceLocation = LiveDeviceLocation()
+    /// Apple's Calendar and Reminders, for the Calendar core plugin, shared by every window. The live store makes no event
+    /// store until a calendar feature is used, and asks for access only at that first use.
+    let calendar: CalendarServices
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the
@@ -66,7 +76,8 @@ public final class ProcessServices {
     let makeReadAloudController: @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController
 
     /// Services over `defaults` and `applicationFolders`.
-    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30),
+    /// - Parameter calendarStore: The live store for the app; tests give one that answers for Calendar and Reminders.
+    init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30), calendarStore: any CalendarStore,
          makeReadAloudController: @escaping @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController) {
         self.defaults = defaults
         // Before the preferences read the switches: a device that used Read Aloud keeps it on.
@@ -76,17 +87,19 @@ public final class ProcessServices {
         documentPlaceStore = DocumentPlaceStore(defaults: defaults)
         recentFilesStore = RecentFilesStore(defaults: defaults)
         self.applicationFolders = applicationFolders
-        addOns = .standard(applicationFolders: applicationFolders)
+        addOns = .standard(applicationFolders: applicationFolders, defaults: defaults)
         vaultIndexes = VaultIndexRegistry(cachesFolder: applicationFolders.cachesFolder, minimumSpacingOfSpacedScans: minimumSpacingOfSpacedScans)
         drawingDrafts = DrawingEditorDraftStore(directory: DrawingEditorDraftStore.directory(in: applicationFolders))
         unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
+        calendar = CalendarServices(store: calendarStore)
         self.makeReadAloudController = makeReadAloudController
     }
 
     /// The app's own: the standard preferences and the system's folders.
     static func live() -> ProcessServices {
-        ProcessServices(defaults: .standard, applicationFolders: .system, makeReadAloudController: ReadAloudVoices.makeController)
+        ProcessServices(defaults: .standard, applicationFolders: .system, calendarStore: LiveCalendarStore(),
+                        makeReadAloudController: ReadAloudVoices.makeController)
     }
 
     /// What a launch in `launchMode` uses. A hosted-tests launch gets a preferences suite of
@@ -104,7 +117,9 @@ public final class ProcessServices {
                 preconditionFailure("The preferences suite \(uniqueName) cannot be made, and a hosted-tests launch must not use the device's preferences.")
             }
             let folderRoot = FileManager.default.temporaryDirectory.appendingPathComponent(uniqueName, isDirectory: true)
-            return ProcessServices(defaults: suite, applicationFolders: .temporary(below: folderRoot),
+            // The live store, which asks nothing and makes no event store until a calendar feature is used; the hosted
+            // tests of those features give a workspace a store that answers for them.
+            return ProcessServices(defaults: suite, applicationFolders: .temporary(below: folderRoot), calendarStore: LiveCalendarStore(),
                                    makeReadAloudController: ReadAloudVoices.makeController)
         }
     }

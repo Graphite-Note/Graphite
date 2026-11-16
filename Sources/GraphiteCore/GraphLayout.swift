@@ -3,7 +3,10 @@ import Foundation
 /// Places a graph's nodes as Obsidian's graph view does: links pull their ends together,
 /// every node pushes the others away, and a weak pull keeps the graph centered. It is the
 /// force simulation of d3 (which Obsidian uses), stepped until it settles. Repulsion is
-/// approximated with a Barnes–Hut quadtree, so a large vault stays fast.
+/// approximated with a Barnes–Hut quadtree (`RepulsionTree`), which the graph view shares
+/// between the processor's cores for a large graph (`repulsionPushesSharingWork()`), so a large
+/// vault stays fast. Unlike Obsidian's, a note without links pushes
+/// less (`unlinkedRepelRatio`), so such notes keep to a thin ring around the linked ones.
 public struct GraphLayout: Sendable {
     /// Obsidian's graph "Forces" settings.
     public struct Forces: Equatable, Sendable {
@@ -36,6 +39,9 @@ public struct GraphLayout: Sendable {
     public private(set) var positions: [SIMD2<Double>]
     private var velocities: [SIMD2<Double>]
     private let links: [Link]
+    /// How hard each node pushes the others, as a share of the repel force: less for a node
+    /// without links (`unlinkedRepelRatio`); nil when every node has links.
+    private let repelCharges: [Double]?
     private var pinnedPositions: [Int: SIMD2<Double>] = [:]
     public var forces: Forces
     /// How much the simulation still moves; it stops below `minimumAlpha`.
@@ -50,6 +56,12 @@ public struct GraphLayout: Sendable {
     /// Barnes–Hut accuracy: cells seen smaller than this, relative to their distance,
     /// count as one body.
     static let approximationThreshold = 0.9
+    /// A note without links pushes the others with this share of the repel force. The notes
+    /// with links hold together and push the unlinked ones out to a ring around them; pushing
+    /// each other as hard as linked notes do, the unlinked notes of a vault of thousands spread
+    /// that ring over the outer quarter or third of the view (the owner's photo of 2026-10-21).
+    /// At a quarter they stand closer, and the ring is a thin band (`GraphLayoutShapeTests`).
+    static let unlinkedRepelRatio = 0.25
     /// Below this the simulation only adjusts: nodes move little from one step to the next.
     public static let calmAlpha = 0.1
     /// How much calming a graph laid out from nothing may cost before it is shown: steps
@@ -71,6 +83,12 @@ public struct GraphLayout: Sendable {
             let sourceCount = Double(linkCounts[edge.source] ?? 1), targetCount = Double(linkCounts[edge.target] ?? 1)
             return Link(source: source, target: target, bias: sourceCount / (sourceCount + targetCount), strength: 1 / min(sourceCount, targetCount))
         }
+        var isUnlinked = Array(repeating: true, count: identifiers.count)
+        for link in links {
+            isUnlinked[link.source] = false
+            isUnlinked[link.target] = false
+        }
+        repelCharges = isUnlinked.contains(true) ? isUnlinked.map { unlinked in unlinked ? Self.unlinkedRepelRatio : 1 } : nil
         var neighbors: [Int: [Int]] = [:]
         for link in links {
             neighbors[link.source, default: []].append(link.target)
@@ -122,24 +140,39 @@ public struct GraphLayout: Sendable {
         alpha = max(alpha, targetAlpha)
     }
 
-    /// Advances the simulation by one step.
+    /// Advances the simulation by one step, on the caller's thread.
     public mutating func step() {
+        step(repulsionPushes: repulsionTree().forces(positions: positions, strength: -1, threshold: Self.approximationThreshold))
+    }
+
+    /// The push of every node on each, at a repel force of 1, worked out on several cores for a
+    /// large graph (`RepulsionTree.sharedPassNodeCount`), for `step(repulsionPushes:)`.
+    public func repulsionPushesSharingWork() async -> [SIMD2<Double>] {
+        await repulsionTree().forcesSharingWork(positions: positions, strength: -1, threshold: Self.approximationThreshold)
+    }
+
+    /// Advances the simulation by one step with the pushes `repulsionPushesSharingWork()` worked
+    /// out for the positions the nodes are at; the same step as `step()`.
+    public mutating func step(repulsionPushes: [SIMD2<Double>]) {
         guard !positions.isEmpty else { alpha = 0; return }
         alpha += (0 - alpha) * Self.alphaDecay
         applyLinkForce()
-        applyRepulsion()
+        // The pushes grow with the repel force and the cooling, which they were worked out without.
+        if repulsionPushes.count == positions.count, forces.repelStrength > 0 {
+            let strength = forces.repelStrength * alpha
+            for index in positions.indices { velocities[index] += repulsionPushes[index] * strength }
+        }
         for index in positions.indices {
             // Centering, as d3's x and y forces toward the origin.
             velocities[index] -= positions[index] * forces.centerStrength * alpha
         }
         for index in positions.indices {
-            if let pinned = pinnedPositions[index] {
-                positions[index] = pinned
-                velocities[index] = .zero
-                continue
-            }
             velocities[index] *= 1 - Self.velocityDecay
             positions[index] += velocities[index]
+        }
+        for (index, pinned) in pinnedPositions {
+            positions[index] = pinned
+            velocities[index] = .zero
         }
     }
 
@@ -158,7 +191,7 @@ public struct GraphLayout: Sendable {
     }
 
     /// How many steps calming a graph of this many nodes may take.
-    static func calmingStepLimit(nodeCount: Int) -> Int {
+    public static func calmingStepLimit(nodeCount: Int) -> Int {
         calmingNodeStepBudget / max(nodeCount, 1)
     }
 
@@ -197,13 +230,8 @@ public struct GraphLayout: Sendable {
         }
     }
 
-    private mutating func applyRepulsion() {
-        guard positions.count > 1, forces.repelStrength > 0 else { return }
-        let tree = RepulsionTree(positions: positions)
-        let strength = -forces.repelStrength * alpha
-        for index in positions.indices {
-            velocities[index] += tree.force(on: index, positions: positions, strength: strength, threshold: Self.approximationThreshold)
-        }
+    private func repulsionTree() -> RepulsionTree {
+        RepulsionTree(positions: positions, charges: repelCharges)
     }
 
     /// A small offset that differs from node to node but not from run to run, to separate
@@ -211,117 +239,5 @@ public struct GraphLayout: Sendable {
     static func offset(for index: Int) -> SIMD2<Double> {
         let angle = Double((index &* 2_654_435_761) % 360) * Double.pi / 180
         return SIMD2(cos(angle), sin(angle))
-    }
-}
-
-/// A quadtree over the nodes, each cell knowing how many nodes it holds and their center,
-/// so a far group of nodes can push as one (Barnes–Hut).
-struct RepulsionTree {
-    private struct Cell {
-        var origin: SIMD2<Double>
-        var size: Double
-        var positionSum = SIMD2<Double>.zero
-        var count = 0
-        /// The first of four children, or -1 for a leaf.
-        var firstChild = -1
-        /// The node in a leaf, or -1.
-        var body = -1
-        /// Nodes in the same place as `body`, kept together once cells are too small to split.
-        var otherBodies: [Int] = []
-    }
-
-    private var cells: [Cell] = []
-    private static let maximumDepth = 40
-
-    init(positions: [SIMD2<Double>]) {
-        guard var lower = positions.first else { return }
-        var upper = lower
-        for position in positions {
-            lower = pointwiseMin(lower, position)
-            upper = pointwiseMax(upper, position)
-        }
-        let size = max((upper - lower).max(), 1) * 1.000_001
-        cells.reserveCapacity(positions.count * 2)
-        cells.append(Cell(origin: lower, size: size))
-        for index in positions.indices { insert(index, at: positions[index], positions: positions) }
-    }
-
-    private func quadrant(of position: SIMD2<Double>, in cell: Cell) -> Int {
-        let half = cell.size / 2
-        return (position.x >= cell.origin.x + half ? 1 : 0) + (position.y >= cell.origin.y + half ? 2 : 0)
-    }
-
-    private mutating func insert(_ index: Int, at position: SIMD2<Double>, positions: [SIMD2<Double>]) {
-        var cellIndex = 0
-        var depth = 0
-        while true {
-            cells[cellIndex].count += 1
-            cells[cellIndex].positionSum += position
-            if cells[cellIndex].firstChild >= 0 {
-                cellIndex = cells[cellIndex].firstChild + quadrant(of: position, in: cells[cellIndex])
-                depth += 1
-                continue
-            }
-            if cells[cellIndex].body < 0 {
-                cells[cellIndex].body = index
-                return
-            }
-            if depth >= Self.maximumDepth {
-                cells[cellIndex].otherBodies.append(index)
-                return
-            }
-            // Split the leaf and move its node down.
-            let cell = cells[cellIndex]
-            let half = cell.size / 2
-            let firstChild = cells.count
-            for quadrantIndex in 0..<4 {
-                let origin = cell.origin + SIMD2(quadrantIndex & 1 == 1 ? half : 0, quadrantIndex & 2 == 2 ? half : 0)
-                cells.append(Cell(origin: origin, size: half))
-            }
-            let existing = cell.body
-            cells[cellIndex].body = -1
-            cells[cellIndex].firstChild = firstChild
-            let existingCell = firstChild + quadrant(of: positions[existing], in: cell)
-            cells[existingCell].body = existing
-            cells[existingCell].count = 1
-            cells[existingCell].positionSum = positions[existing]
-            cellIndex = firstChild + quadrant(of: position, in: cell)
-            depth += 1
-        }
-    }
-
-    /// The push on node `index` from all others: `strength` over the squared distance,
-    /// negative to repel. With `threshold` 0 every node counts on its own.
-    func force(on index: Int, positions: [SIMD2<Double>], strength: Double, threshold: Double) -> SIMD2<Double> {
-        guard !cells.isEmpty else { return .zero }
-        let position = positions[index]
-        let thresholdSquared = threshold * threshold
-        var total = SIMD2<Double>.zero
-        func push(from body: Int) {
-            guard body >= 0, body != index else { return }
-            var delta = positions[body] - position
-            if delta == .zero { delta = GraphLayout.offset(for: body &+ index) * 1e-3 }
-            total += delta * (strength / max((delta * delta).sum(), 1))
-        }
-        var stack: [Int] = [0]
-        stack.reserveCapacity(64)
-        while let cellIndex = stack.popLast() {
-            let cell = cells[cellIndex]
-            guard cell.count > 0 else { continue }
-            if cell.firstChild >= 0 {
-                let center = cell.positionSum / Double(cell.count)
-                let delta = center - position
-                let distanceSquared = (delta * delta).sum()
-                if distanceSquared > 0, cell.size * cell.size < thresholdSquared * distanceSquared {
-                    total += delta * (strength * Double(cell.count) / max(distanceSquared, 1))
-                } else {
-                    for child in cell.firstChild..<(cell.firstChild + 4) { stack.append(child) }
-                }
-                continue
-            }
-            push(from: cell.body)
-            for body in cell.otherBodies { push(from: body) }
-        }
-        return total
     }
 }

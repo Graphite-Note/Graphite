@@ -32,8 +32,9 @@ final class ReadingMindmapShapesTests: XCTestCase {
     }
 
     func testBranchesTakeTheEightSeriesColorsInTurn() {
-        XCTAssertEqual(ReadingDiagramColors.series.count, 8)
-        XCTAssertEqual(ReadingDiagramColors.seriesColor(8), ReadingDiagramColors.seriesColor(0))
-        XCTAssertNotEqual(ReadingDiagramColors.seriesColor(1), ReadingDiagramColors.seriesColor(0))
+        let colors = ReadingDiagramColors(background: .white, foreground: .black)
+        XCTAssertEqual(colors.series.count, 8)
+        XCTAssertEqual(colors.seriesColor(8), colors.seriesColor(0))
+        XCTAssertNotEqual(colors.seriesColor(1), colors.seriesColor(0))
     }
 }

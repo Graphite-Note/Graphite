@@ -1,3 +1,15 @@
+/**
+ * File: SearchQuery.swift
+ * -----------------------
+ * Layer: Core
+ * Description: Obsidian's search syntax: parsing a query, deciding whether a file matches it (folder: included), and
+ *              the excerpts of matching lines.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 11/11/2026
+ */
+
 import Foundation
 
 /// A search written in Obsidian's search syntax: words, `"phrases"`, `/regular
@@ -35,9 +47,9 @@ public struct SearchTerm: Equatable, Sendable {
     }
 }
 
-/// Obsidian's search operators.
+/// Obsidian's search operators, and Graphite's `folder:`, which finds folders by name and the notes inside them.
 public enum SearchScope: String, CaseIterable, Sendable {
-    case file, path, content, tag, line, block, section, task
+    case file, path, folder, content, tag, line, block, section, task
     case taskTodo = "task-todo"
     case taskDone = "task-done"
     case matchCase = "match-case"
@@ -752,12 +764,20 @@ public struct SearchMatcher {
         return evaluate(expression, in: .note, isCaseSensitive: false, context: &context)
     }
 
+    /// Whether a folder's own name matches the expression, read as the operand of `folder:` (`SearchFolderQuery`).
+    public mutating func matchesFolderName(of folder: VaultPath) -> Bool {
+        var context = FileContext(file: SearchableFile(path: folder, content: nil, tags: [], properties: []))
+        return evaluate(expression, in: .folderName(folder.name), isCaseSensitive: false, context: &context)
+    }
+
     /// Where a search looks inside one file.
     enum Target {
         /// A note's name, path, and content: where plain words look.
         case note
         case fileName
         case filePath
+        /// The name of one folder the file is inside (`folder:`).
+        case folderName(String)
         case content
         /// The tags of the file, or of the part of it being searched.
         case tags([String])
@@ -800,6 +820,14 @@ public struct SearchMatcher {
         switch scope {
         case .file: return evaluate(operand, in: .fileName, isCaseSensitive: isCaseSensitive, context: &context)
         case .path: return evaluate(operand, in: .filePath, isCaseSensitive: isCaseSensitive, context: &context)
+        case .folder:
+            // Any folder the file is inside, at any depth, as the file tree's filter finds folders.
+            var folder = context.file.path.parent
+            while !folder.rawValue.isEmpty {
+                if evaluate(operand, in: .folderName(folder.name), isCaseSensitive: isCaseSensitive, context: &context) { return true }
+                folder = folder.parent
+            }
+            return false
         case .content: return evaluate(operand, in: .content, isCaseSensitive: isCaseSensitive, context: &context)
         case .tag:
             // Inside `line:`, `block:`, `section:` or `task:`, a tag must be written in that
@@ -865,6 +893,13 @@ public struct SearchMatcher {
             return substringMatches(term, in: file.path.name, isCaseSensitive: isCaseSensitive)
         case .filePath:
             return substringMatches(term, in: file.path.rawValue, isCaseSensitive: isCaseSensitive)
+        case .folderName(let name):
+            if term.kind == .regularExpression { return regularExpressionMatches(term.text, in: name, isCaseSensitive: isCaseSensitive) }
+            // Accents and width ignored as in the file tree's filter; `match-case:` still compares capitals.
+            guard isCaseSensitive else { return VaultNameMatching.name(name, contains: term.text) }
+            let options: String.CompareOptions = [.diacriticInsensitive, .widthInsensitive]
+            let composedText = term.text.precomposedStringWithCanonicalMapping
+            return composedText.isEmpty || name.precomposedStringWithCanonicalMapping.range(of: composedText, options: options) != nil
         case .content:
             return contentMatches(term, isCaseSensitive: isCaseSensitive, context: &context)
         case .tags(let tags):
@@ -1205,7 +1240,7 @@ public enum SearchExcerpts {
             terms.append((term, isCaseSensitive))
         case .scoped(let scope, let operand):
             switch scope {
-            case .file, .path, .tag: return
+            case .file, .path, .folder, .tag: return
             case .matchCase: collectHighlightedTerms(operand, isCaseSensitive: true, into: &terms)
             case .ignoreCase: collectHighlightedTerms(operand, isCaseSensitive: false, into: &terms)
             default: collectHighlightedTerms(operand, isCaseSensitive: isCaseSensitive, into: &terms)

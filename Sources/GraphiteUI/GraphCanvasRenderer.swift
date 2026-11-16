@@ -148,13 +148,21 @@ struct GraphCanvasRenderer {
             let frame = CGRect(x: top.x - nameSize.width / 2, y: top.y, width: nameSize.width, height: nameSize.height)
             candidates.append(GraphNamePlacement.Candidate(nodeIndex: index, frame: frame.insetBy(dx: -Self.nameMarginPoints, dy: -Self.nameMarginPoints),
                                                            importance: importance, nodeRadius: screenRadius(ofNodeAt: index)))
-            opacities[index] = importance > 0 ? 1 : zoomOpacity
+            opacities[index] = importance > 0 ? 1 : Self.shownNameOpacity(forZoomOpacity: zoomOpacity)
         }
         for index in GraphNamePlacement.placedNames(candidates) {
             let color = emphasis.isDimmed(index) ? Color.secondary.opacity(Self.dimmedNameOpacity) : Color.primary.opacity(Self.nameOpacity)
             let name = nameText(of: index, isOpenNote: index == emphasis.openIndex).foregroundStyle(color.opacity(opacities[index] ?? 1))
             context.draw(name, at: nameTop(at: index, points: points), anchor: .top)
         }
+    }
+
+    /// How strongly a name fading in with the zoom is drawn: it starts from nothing, as the zoom
+    /// says, but reaches a readable contrast early on. Followed as it was, half way through the fade
+    /// a name was drawn at less than half strength, light grey on white and dark grey on the dark
+    /// graph, where the names were hard to read at the zoom the graph opens at (HUNT-337).
+    static func shownNameOpacity(forZoomOpacity zoomOpacity: Double) -> Double {
+        min(max(zoomOpacity, 0), 1).squareRoot()
     }
 
     /// Where a node's name is drawn: centered under it.

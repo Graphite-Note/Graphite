@@ -28,14 +28,17 @@ public enum PieChartLayoutEngine {
     }
 
     static func layout<Measurer: DiagramTextMeasuring>(_ chart: PieChart, text: Measurer, smallText: Measurer, font: DiagramFont) -> PieChartLayout {
-        let slices = PieChartSlicePlacement(values: chart.slices.map(\.value), smallText: smallText, radius: radius)
-        let legendTexts = chart.slices.map { slice in legendText(for: slice, showsValue: chart.showsValues, measurer: smallText) }
+        let options = chart.options
+        let slices = PieChartSlicePlacement(values: chart.slices.map(\.value), smallText: smallText, radius: radius,
+                                            percentagePosition: options.effectivePercentagePosition)
+        let legendTexts = options.legendPosition == .none ? []
+            : chart.slices.map { slice in legendText(for: slice, showsValue: chart.showsValues, measurer: smallText) }
         let title = chart.title.map { title in
             DiagramTextBlock(label: DiagramLabelDecoder.label(from: title, form: .plain), measurer: text, maximumWidth: wrappingWidth)
         }.flatMap { block in block.lines.isEmpty ? nil : block }
-        let arrangement = Arrangement(pieDiameter: 2 * (radius + slices.outsideLabelRoom),
-                                      legendSize: legendSize(of: legendTexts), title: title)
-        return PieChartLayout(size: arrangement.size, font: font, center: arrangement.pieCenter, radius: radius,
+        let arrangement = Arrangement(pieDiameter: 2 * (radius + slices.outsideLabelRoom), legendSize: legendSize(of: legendTexts),
+                                      legendPosition: options.legendPosition, title: title)
+        return PieChartLayout(size: arrangement.size, font: font, center: arrangement.pieCenter, radius: radius, innerRadius: radius * options.holeShare,
                               slices: slices.placed(around: arrangement.pieCenter), legend: legend(legendTexts, at: arrangement.legendOrigin),
                               title: arrangement.placedTitle)
     }
@@ -69,24 +72,44 @@ public enum PieChartLayoutEngine {
         }
     }
 
-    /// Where the pie, the legend beside it and the title above go, and the page around them.
+    /// Where the pie, the legend beside it (on the side `legendPosition` names) and the title above go, and the page
+    /// around them.
     private struct Arrangement {
         let size: CGSize
         let pieCenter: CGPoint
         let legendOrigin: CGPoint
         let placedTitle: DiagramTextBlock?
 
-        init(pieDiameter: CGFloat, legendSize: CGSize, title: DiagramTextBlock?) {
+        init(pieDiameter: CGFloat, legendSize: CGSize, legendPosition: PieChartLegendPosition, title: DiagramTextBlock?) {
             let titleHeight = title.map { title in title.size.height + PieChartLayoutEngine.titleGap } ?? 0
-            let legendWidth = legendSize.width > 0 ? PieChartLayoutEngine.legendGap + legendSize.width : 0
-            let bodyWidth = max(pieDiameter + legendWidth, title?.size.width ?? 0)
-            let bodyHeight = max(pieDiameter, legendSize.height)
+            let hasLegend = legendSize.width > 0
+            let gap = hasLegend ? PieChartLayoutEngine.legendGap : 0
+            let isBeside = legendPosition == .right || legendPosition == .left
+            let contentWidth = isBeside ? pieDiameter + gap + legendSize.width : max(pieDiameter, legendSize.width)
+            let bodyWidth = max(contentWidth, title?.size.width ?? 0)
+            let bodyHeight = isBeside ? max(pieDiameter, legendSize.height) : pieDiameter + gap + legendSize.height
             let padding = PieChartLayoutEngine.padding
             let bodyTop = padding + titleHeight
+            // Beside its legend the pie stays at the left under a wider title, as Pele keeps it; above or below it, the
+            // two are centered.
+            let bodyLeft = padding + (isBeside || !hasLegend ? 0 : (bodyWidth - contentWidth) / 2)
             let pageSize = CGSize(width: (bodyWidth + 2 * padding).rounded(.up), height: (bodyHeight + titleHeight + 2 * padding).rounded(.up))
             size = pageSize
-            pieCenter = CGPoint(x: padding + pieDiameter / 2, y: bodyTop + bodyHeight / 2)
-            legendOrigin = CGPoint(x: pieCenter.x + pieDiameter / 2 + PieChartLayoutEngine.legendGap, y: bodyTop + (bodyHeight - legendSize.height) / 2)
+            let radius = pieDiameter / 2
+            switch legendPosition {
+            case .right, .none:
+                pieCenter = CGPoint(x: bodyLeft + radius, y: bodyTop + bodyHeight / 2)
+                legendOrigin = CGPoint(x: pieCenter.x + radius + gap, y: bodyTop + (bodyHeight - legendSize.height) / 2)
+            case .left:
+                pieCenter = CGPoint(x: bodyLeft + legendSize.width + gap + radius, y: bodyTop + bodyHeight / 2)
+                legendOrigin = CGPoint(x: bodyLeft, y: bodyTop + (bodyHeight - legendSize.height) / 2)
+            case .top:
+                pieCenter = CGPoint(x: bodyLeft + contentWidth / 2, y: bodyTop + legendSize.height + gap + radius)
+                legendOrigin = CGPoint(x: bodyLeft + (contentWidth - legendSize.width) / 2, y: bodyTop)
+            case .bottom:
+                pieCenter = CGPoint(x: bodyLeft + contentWidth / 2, y: bodyTop + radius)
+                legendOrigin = CGPoint(x: bodyLeft + (contentWidth - legendSize.width) / 2, y: bodyTop + pieDiameter + gap)
+            }
             placedTitle = title.map { title in
                 var placed = title
                 placed.center = CGPoint(x: pageSize.width / 2, y: padding + title.size.height / 2)

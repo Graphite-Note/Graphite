@@ -169,7 +169,9 @@ jobs:
         if: always()
         run: git checkout -- Package.resolved
 
-      - name: Skipped-test count may not rise
+      # Also run when a test failed: the build's warnings are checked here too (HUNT-321).
+      - name: Skipped-test count may not rise, and no warning in Graphite's own code
+        if: always()
         run: python3 scripts/check-rules.py --test-log hosted-ipad.log
 
       - name: Keep the result bundle

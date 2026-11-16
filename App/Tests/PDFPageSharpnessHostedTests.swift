@@ -299,7 +299,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
         try session.changeTextBox(from: nil, to: box, on: PDFHistoryPage(page), actionName: "Add Text Box")
         func pictureLayer() -> PDFTextBoxPictureLayer? {
             func layers(under layer: CALayer) -> [CALayer] { [layer] + (layer.sublayers ?? []).flatMap(layers(under:)) }
-            return layers(under: overlay.textBoxesView.layer).lazy.compactMap { layer in layer as? PDFTextBoxPictureLayer }.first
+            return layers(under: overlay.objectsOverInkView.layer).lazy.compactMap { layer in layer as? PDFTextBoxPictureLayer }.first
         }
         let screenScale = window.traitCollection.displayScale
         pdfView.autoScales = false

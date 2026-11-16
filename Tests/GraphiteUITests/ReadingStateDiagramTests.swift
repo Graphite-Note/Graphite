@@ -42,12 +42,19 @@ final class ReadingStateDiagramTests: XCTestCase {
         XCTAssertNil(try stateDiagram("stateDiagram-v2\nA").description)
     }
 
-    func testAStateDiagramWithCompositeStatesShowsTheSourceAndWhy() {
-        for source in ["stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> On\n  --\n  [*] --> Off\n}", "stateDiagram-v2\nstate First {\n  [*] --> second\n}"] {
+    func testAStateDiagramWithCompositeStatesIsDrawnWithItsBoxesAndItsNamesAreSpoken() throws {
+        let diagram = try stateDiagram("stateDiagram-v2\n[*] --> Active\nstate Active {\n  [*] --> On\n  --\n  [*] --> Off\n}")
+        XCTAssertEqual(diagram.layout.composites.count, 1)
+        XCTAssertEqual(diagram.layout.regionDividers.count, 1)
+        XCTAssertEqual(diagram.stateNames, ["Active", "On", "Off"])
+    }
+
+    func testAStateDiagramWhoseCompositeCannotBeLaidOutShowsTheSourceAndWhy() {
+        for source in ["stateDiagram-v2\nstate First {\n  [*] --> second\n}\nFirst --> First", "stateDiagram-v2\nstate First {\n  a\n}\nnote left of First: aside"] {
             guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
             XCTAssertEqual(shownSource, source)
             XCTAssertEqual(failure, .stateLayout(.compositeStatesNotLaidOut))
-            XCTAssertFalse(failure.explanation.isEmpty)
+            XCTAssertTrue(failure.explanation.hasSuffix("are not drawn yet."), failure.explanation)
         }
     }
 

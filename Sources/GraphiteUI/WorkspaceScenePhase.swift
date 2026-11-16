@@ -5,8 +5,8 @@
  * Description: What the workspace does when the scene's phase changes: places are remembered as the
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -32,5 +32,7 @@ extension WorkspaceModel {
             // Reading goes on in the background and on the lock screen, like an audiobook.
             saveBeforeLeaving()
         }
+        // Tasks ticked in Reminders meanwhile, or in Graphite before leaving for Reminders (only once Reminders is allowed).
+        if phase == .active || previousPhase == .active { Task { await updateLinkedTasksAndReminders() } }
     }
 }

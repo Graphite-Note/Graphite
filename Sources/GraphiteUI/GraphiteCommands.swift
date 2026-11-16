@@ -5,8 +5,8 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.14
- * Date: 11/11/2026
+ * Version: 0.17
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -38,6 +38,8 @@ public struct GraphiteCommands: Commands {
     #if os(macOS)
     /// The markup row of the focused window's PDF in front (`PDFMarkupMenuActions`).
     @FocusedValue(\.pdfMarkupMenuActions) private var pdfMarkupActions
+    /// Arrange for the selected picture, text box or shape of the focused window's PDF (`PDFArrangeMenuActions`).
+    @FocusedValue(\.pdfArrangeMenuActions) private var pdfArrangeActions
     #endif
     /// The shortcuts of the Mac's one workspace, which the menus keep while the Settings
     /// window, which has no workspace actions, is in front.
@@ -84,7 +86,7 @@ public struct GraphiteCommands: Commands {
                 .keyboardShortcut(shortcut(.openSettings))
         }
         #endif
-        CommandGroup(after: .textEditing) { findAndSearchItems }
+        CommandGroup(after: .textEditing) { textEditingItems }
         CommandGroup(before: .sidebar) {
             viewCommands
         }
@@ -99,6 +101,7 @@ public struct GraphiteCommands: Commands {
         // As in Preview.
         CommandMenu("Tools") {
             PDFAnnotateMenu(actions: pdfMarkupActions, shortcut: shortcut)
+            PDFArrangeCommandsMenu(actions: pdfArrangeActions, shortcut: shortcut)
         }
         #endif
         CommandMenu("Go") {
@@ -136,6 +139,12 @@ public struct GraphiteCommands: Commands {
             .disabled(workspace == nil)
     }
 
+    /// The Edit menu's own items: finding and searching, then the Table submenu of the table cell being edited.
+    @ViewBuilder private var textEditingItems: some View {
+        findAndSearchItems
+        TableCellCommandsMenu(target: workspace?.markdownSession?.blockViews.tableCellCommandTarget, shortcut: shortcut)
+    }
+
     @ViewBuilder private var findAndSearchItems: some View {
         #if os(macOS)
         // The text view finds, but only a menu item makes Find part of the Edit menu.
@@ -148,6 +157,9 @@ public struct GraphiteCommands: Commands {
         #endif
         Button("Search in All Files") { workspace?.searchFocusRequest += 1 }
             .keyboardShortcut(shortcut(.searchAllFiles))
+            .disabled(workspace == nil)
+        Button("Filter Files") { workspace?.requestFileTreeFilter() }
+            .keyboardShortcut(shortcut(.filterFiles))
             .disabled(workspace == nil)
         if workspace?.preferences.isEnabled(.templates) == true {
             Button("Insert Template…") { actions?.window.showTemplatePicker() }
@@ -176,6 +188,8 @@ public struct GraphiteCommands: Commands {
         Divider()
         Button("Open Quick Switcher…") { actions?.window.showQuickSwitcher() }
             .keyboardShortcut(shortcut(.quickSwitcher))
+        // PDFs, pictures, Goodnotes and Notability notebooks and folders, copied into the vault (`FileManagementPresentation`).
+        Button("Import…") { workspace?.isChoosingFilesToImport = true }
         Divider()
         Button("Close Tab") {
             guard let workspace else { return }

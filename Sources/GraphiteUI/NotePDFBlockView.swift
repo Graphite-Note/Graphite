@@ -6,8 +6,8 @@
  *              layout width, in light colours and without anything that only works on screen.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 12/11/2026
  */
 
 import SwiftUI
@@ -108,6 +108,7 @@ struct NotePDFPrintedBlock: View {
     var body: some View {
         NotePDFBlockView(block: block, units: units, root: root, layoutWidth: layoutWidth, typography: appearance.typography)
             .printedNoteEnvironment(appearance, layoutWidth: layoutWidth)
+            .environment(\.printedNestedBases, block.nestedBases)
     }
 }
 
@@ -125,6 +126,8 @@ extension View {
             .tint(appearance.accent)
             // Not selectable, and code and wide tables wrap: paper does not scroll.
             .environment(\.readingIsPrinted, true)
+            // A frame's page cannot be printed: its box, with the page's address.
+            .environment(\.webFramePresentation, .printed)
             .environment(\.embeddedImageColumnWidth, layoutWidth)
     }
 }

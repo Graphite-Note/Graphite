@@ -45,9 +45,11 @@ final class ThemeProbeVocabularyTests: XCTestCase {
         return try XCTUnwrap(mode["themed"] as? [String: String])
     }
 
-    func testTheProbeMeasuresOneHundredSixtyKeysOfWhichTwentySevenAreCalloutsAndTwelveArePrismTokens() async throws {
+    func testTheProbeMeasuresOneHundredSeventySevenKeysOfWhichTwentySevenAreCalloutsTwelvePrismTokensAndSeventeenPeleColors() async throws {
         let keys = Set(try await measuredValues(isDark: false).keys)
-        XCTAssertEqual(keys.count, 160)
+        XCTAssertEqual(keys.count, 177)
+        XCTAssertEqual(Set(keys.filter { key in key.hasPrefix("pele.") }.map { key in String(key.dropFirst("pele.".count)) }),
+                       Set(ThemeModeTokens.diagramColorVariableNames))
         XCTAssertEqual(keys.filter { key in key.hasPrefix("callout.") }.count - 3, 27, "Besides the 27 types: callout.borderRadius, borderWidth and background.")
         XCTAssertEqual(Set(keys.filter { key in key.hasPrefix("codeToken.") }.map { key in String(key.dropFirst("codeToken.".count)) }),
                        Set(ThemeModeTokens.codeTokenProbeClasses.values))
@@ -109,5 +111,23 @@ final class ThemeProbeVocabularyTests: XCTestCase {
         var onlyUnresolvedLinks = ThemeModeTokens()
         onlyUnresolvedLinks.unresolvedLinkColor = sameAsDefaults.unresolvedLinkColor
         XCTAssertEqual(sameAsDefaults, onlyUnresolvedLinks)
+    }
+
+    /// A snippet that sets Pele's variables gives diagrams its colors, in the appearance it sets them for; an unset
+    /// variable reads as no color.
+    func testPeleVariablesOfAThemeOrSnippetAreReadForEachAppearance() async throws {
+        let snippet = "body { --pele-bg: #102030; --pele-series-1: rgb(255, 0, 0); } .theme-dark { --pele-accent: #00ff00; }"
+        func diagramColors(isDark: Bool) async throws -> [String: ThemeColor] {
+            let themed = try await measuredValues(isDark: isDark, themedStyleSheet: snippet)
+            let defaults = try await measuredValues(isDark: isDark)
+            return ThemeProbeReading.tokens(themed: themed, defaults: defaults).diagramColors
+        }
+        let light = try await diagramColors(isDark: false), dark = try await diagramColors(isDark: true)
+        XCTAssertEqual(Set(light.keys), ["bg", "series-1"])
+        XCTAssertEqual(light["bg"], ThemeColor(red: 16 / 255, green: 32 / 255, blue: 48 / 255))
+        XCTAssertEqual(light["series-1"], ThemeColor(red: 1, green: 0, blue: 0))
+        XCTAssertEqual(Set(dark.keys), ["bg", "series-1", "accent"])
+        let unthemed = try await measuredValues(isDark: false)
+        XCTAssertTrue(ThemeProbeReading.tokens(themed: unthemed, defaults: unthemed).diagramColors.isEmpty)
     }
 }

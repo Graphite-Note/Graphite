@@ -20,10 +20,11 @@ struct ReadingGanttChartDrawing: View {
     let chart: ReadingGanttChart
     let textSize: Double
     @Environment(\.noteTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ReadingScaledDiagram(size: chart.layout.size, layoutTextSize: chart.layout.font.size, textSize: textSize) {
-            ReadingGanttChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme))
+            ReadingGanttChartPainting(shapes: chart.shapes, colors: ReadingDiagramColors(theme: theme, colorScheme: colorScheme))
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)

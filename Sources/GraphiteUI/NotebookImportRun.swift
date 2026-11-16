@@ -6,8 +6,8 @@
  *              one at a time into the vault, and leaves no empty folder behind.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 13/11/2026
  */
 
 import Foundation
@@ -32,6 +32,9 @@ struct NotebookImportRun: Sendable {
     let limits: NotebookImportLimits
     /// The creation date of every imported stroke: when the import began.
     let strokeCreationDate: Date
+    /// Where a chosen folder's notebooks go: into a new folder of its name, or, for an opened archive, whose own
+    /// folder the archive import made and filled with the other files already, into the destination itself.
+    var folderPlacement: NotebookImportFolderPlacement = .newFolderOfItsName
 
     /// A notebook to convert and the vault folder it goes into.
     private struct Item {
@@ -83,13 +86,21 @@ struct NotebookImportRun: Sendable {
             let folderName = source.lastPathComponent
             do {
                 let listing = try NotebookLibraryListing.list(source)
-                summary.otherFileCount += listing.otherFileCount
+                // Into the destination, the caller copies the other files itself.
+                if folderPlacement == .newFolderOfItsName { summary.otherFileCount += listing.otherFileCount }
                 guard !listing.notebooks.isEmpty else {
                     summary.foldersWithoutNotebooks.append(folderName)
                     continue
                 }
-                let folder = try await vault.freePath(destination, folderName, "")
-                try await vault.makeFolder(folder)
+                let folder: VaultPath
+                switch folderPlacement {
+                case .newFolderOfItsName:
+                    folder = try await vault.freePath(destination, folderName, "")
+                    try await vault.makeFolder(folder)
+                case .intoDestination:
+                    // Made for this import by its caller, which copied the other files into it.
+                    folder = destination
+                }
                 madeFolders.append(folder)
                 for notebook in listing.notebooks {
                     let notebookFolder = notebook.folderPath.isEmpty ? folder : try folder.appending(notebook.folderPath.joined(separator: "/"))
@@ -169,4 +180,13 @@ struct NotebookImportRun: Sendable {
         }
         return written
     }
+}
+
+/// Where a notebook import puts the notebooks of a chosen folder (`NotebookImportRun.folderPlacement`).
+enum NotebookImportFolderPlacement: Sendable, Equatable {
+    /// A new folder of the chosen folder's name (a free one) in the destination, holding the same subfolders.
+    case newFolderOfItsName
+    /// The destination itself, holding the chosen folder's subfolders; the caller made it for this import, so an
+    /// import that leaves it empty removes it.
+    case intoDestination
 }

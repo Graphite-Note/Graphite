@@ -6,8 +6,8 @@
  *              history, for the iPad's menus and the Mac's markup row, menus and menu bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import PDFKit
@@ -18,31 +18,23 @@ import GraphiteApple
 @MainActor
 enum PDFSelectionMarking {
     /// Marks the view's selected text with `style` and clears the selection. Nothing
-    /// happens without selected text.
+    /// happens without selected text. Text a mark of the same kind is on changes that mark
+    /// or joins it, never stacks another (`PDFSession.addMarkup`, `PDFMarkupOverlap`).
     static func markSelection(of view: PDFView, in session: PDFSession, as style: PDFMarkupStyle) {
         guard let selection = view.currentSelection, !(selection.string ?? "").isEmpty else { return }
         do {
             try session.addMarkup(style.kind, color: style.color, for: selection)
             view.clearSelection()
         } catch {
-            session.errorMessage = error.localizedDescription
+            session.errorMessage.report(error)
         }
     }
 
     static func recolor(_ mark: PDFAnnotation, on page: PDFPage, to color: PDFMarkupColor, in session: PDFSession) {
-        do { try session.recolorMarkup(mark, on: page, to: color) } catch { session.errorMessage = error.localizedDescription }
+        do { try session.recolorMarkup(mark, on: page, to: color) } catch { session.errorMessage.report(error) }
     }
 
     static func remove(_ mark: PDFAnnotation, on page: PDFPage, in session: PDFSession) {
-        do { try session.removeMarkup(mark, on: page) } catch { session.errorMessage = error.localizedDescription }
-    }
-
-    /// The colours a mark can be given: highlights take the highlight colours, underlines
-    /// and strikethroughs red first.
-    static func colors(for kind: PDFMarkupKind) -> [PDFMarkupColor] {
-        switch kind {
-        case .highlight: PDFMarkupColor.highlightColors
-        case .underline, .strikeOut: [PDFMarkupColor.red] + PDFMarkupColor.highlightColors
-        }
+        do { try session.removeMarkup(mark, on: page) } catch { session.errorMessage.report(error) }
     }
 }

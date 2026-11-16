@@ -59,31 +59,41 @@ extension PDFPageCanvasView {
         }
     }
 
-    /// Hides the boxes the selection's frame carries while it is dragged: Graphite's in the
-    /// view that draws them over the ink, another application's through its annotation.
+    /// Hides the boxes and pictures the selection's frame carries while it is dragged: those over
+    /// the ink in the view that draws them there, the others through their annotations.
     func setLassoTextBoxesHidden(_ identifiers: Set<String>) {
         guard let page else { return }
         let names = Set(identifiers.filter { identifier in identifier.hasPrefix(Self.textBoxIdentifierPrefix) }
             .map { identifier in String(identifier.dropFirst(Self.textBoxIdentifierPrefix.count)) })
-        overlayView?.textBoxesView.setCarriedBoxNames(names)
-        for annotation in page.annotations where annotation.type == PDFTextBox.annotationTypeName && !PDFPageTextBoxesView.drawsAnnotation(annotation) {
-            guard let name = annotation.persistentName else { continue }
+        let pictureNames = identifiers.filter { identifier in !identifier.hasPrefix(Self.textBoxIdentifierPrefix) }
+        overlayView?.objectsOverInkView.setCarriedObjectNames(names.union(pictureNames))
+        for annotation in page.annotations where annotation.type == PDFTextBox.annotationTypeName {
+            guard let name = annotation.persistentName, overlayView?.objectsOverInkView.drawsBox(named: name) != true else { continue }
             let isHidden = names.contains(name)
             if annotation.shouldDisplay == isHidden { annotation.shouldDisplay = !isHidden }
         }
     }
 
-    /// Graphite's boxes over what the page draws, as they are over the ink, for a picture of an
-    /// area; their annotations are hidden while this page's overlay draws them.
-    func drawTextBoxes(in context: CGContext, coordinates: PageCoordinates) {
+    /// The objects over the ink, over what the page draws and the ink, in their order, for a
+    /// picture of an area; their annotations are hidden while this page's overlay draws them.
+    func drawObjectsOverInk(in context: CGContext, coordinates: PageCoordinates) {
         guard let page else { return }
+        let objects = overlayView?.objectsOverInkView.objects ?? PDFPageObjectsOverInkView.objectsOverInk(on: page)
         let cropBox = coordinates.cropBox
         let scaleX = coordinates.overlaySize.width / max(cropBox.width, 1), scaleY = coordinates.overlaySize.height / max(cropBox.height, 1)
         context.saveGState()
         context.concatenate(CGAffineTransform(a: scaleX, b: 0, c: 0, d: -scaleY, tx: -cropBox.minX * scaleX, ty: cropBox.maxY * scaleY))
-        for annotation in page.annotations where PDFPageTextBoxesView.drawsAnnotation(annotation) && !annotation.shouldDisplay {
-            guard let box = PDFTextBox(annotation: annotation) else { continue }
-            PDFTextBoxLayout(box: box).draw(inPageContext: context)
+        for object in objects {
+            switch object {
+            case .textBox(let box):
+                PDFTextBoxLayout(box: box).draw(inPageContext: context)
+            case .annotation(let annotation, _, _):
+                if PDFPicture.drawShown(annotation, inPageCoordinates: context) { continue }
+                context.saveGState()
+                context.translateBy(x: cropBox.minX, y: cropBox.minY)
+                annotation.drawAsShown(with: .cropBox, in: context)
+                context.restoreGState()
+            }
         }
         context.restoreGState()
     }

@@ -548,6 +548,15 @@ final class BaseDocumentModel {
         return try await index.resolve(link.target, from: source).first
     }
 
+    /// Where the vault's placed notes are, by the properties the Map View reads, for a map view
+    /// with no markers and no center to open on (`BaseMapView`). Without them (an index that
+    /// cannot be read) the map opens where MapKit opens one, so a failure here is not reported.
+    func vaultPlaceCoordinates() async -> [BaseCoordinate] {
+        let vaultRoot = store.root
+        let propertyNames = await Task.detached(priority: .userInitiated) { PlacedNote.propertyNames(vaultRoot: vaultRoot) }.value
+        return ((try? await index.placedNotes(propertyNames: propertyNames)) ?? []).map(\.coordinate)
+    }
+
     // MARK: Editing
 
     /// Whether a cell's property can be edited from the base: note properties only,

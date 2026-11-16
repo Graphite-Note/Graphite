@@ -19,17 +19,22 @@ struct GitGraphRoom {
     let laneReachAfter: [CGFloat]
 
     init<Measurer: DiagramTextMeasuring>(diagram: GitGraphDiagram, smallText: Measurer, branchText: Measurer, isVertical: Bool) {
-        labels = diagram.commits.map { commit in Self.label(of: commit, measurer: smallText) }
+        let options = diagram.options
+        labels = diagram.commits.map { commit in options.showsCommitLabels ? Self.label(of: commit, measurer: smallText) : nil }
         tags = diagram.commits.map { commit in
             commit.tags.map { tag in DiagramTextBlock(label: tag, measurer: smallText, maximumWidth: GitGraphGeometry.wrappingWidth) }
         }
-        names = diagram.branches.map { branch in DiagramTextBlock(label: branch.label, measurer: branchText, maximumWidth: GitGraphGeometry.wrappingWidth) }
+        // Hidden branches (`showBranches: false`) have no name to make room for.
+        names = diagram.branches.map { branch in
+            DiagramTextBlock(label: options.showsBranches ? branch.label : DiagramLabel(lines: []), measurer: branchText,
+                             maximumWidth: GitGraphGeometry.wrappingWidth)
+        }
         var before = [CGFloat](repeating: GitGraphGeometry.dotRadius, count: diagram.branches.count)
         var after = before
         var halfLengths: [CGFloat] = []
         var tagHalfLengths: [CGFloat] = []
         for (index, commit) in diagram.commits.enumerated() {
-            let commitRoom = Self.room(label: labels[index], tags: tags[index], isVertical: isVertical)
+            let commitRoom = Self.room(label: labels[index], tags: tags[index], isVertical: isVertical, isLabelTurned: options.rotatesCommitLabels)
             halfLengths.append(commitRoom.halfLength)
             tagHalfLengths.append(commitRoom.tagHalfLength)
             before[commit.branchIndex] = max(before[commit.branchIndex], isVertical ? commitRoom.labelSide : commitRoom.tagSide)
@@ -58,9 +63,9 @@ struct GitGraphRoom {
         return DiagramTextBlock(label: label, measurer: measurer, maximumWidth: GitGraphGeometry.wrappingWidth)
     }
 
-    /// The room one commit needs: along the history, the most of its dot and its widest tag; across, its dot and its
-    /// tags on one side, its dot and its turned id on the other.
-    private static func room(label: DiagramTextBlock?, tags: [DiagramTextBlock], isVertical: Bool)
+    /// The room one commit needs: along the history, the most of its dot, its widest tag and a level id; across, its
+    /// dot and its tags on one side, its dot and its id, turned or level, on the other.
+    private static func room(label: DiagramTextBlock?, tags: [DiagramTextBlock], isVertical: Bool, isLabelTurned: Bool)
         -> (halfLength: CGFloat, tagHalfLength: CGFloat, tagSide: CGFloat, labelSide: CGFloat) {
         var tagsAlong: CGFloat = 0
         var tagsAcross: CGFloat = 0
@@ -69,8 +74,12 @@ struct GitGraphRoom {
             tagsAlong = max(tagsAlong, isVertical ? tag.size.height : length)
             tagsAcross += isVertical ? length + GitGraphGeometry.rowTagGap : tag.size.height + GitGraphGeometry.stackedTagGap
         }
-        let labelAcross = label.map { label in GitGraphGeometry.labelOffset + GitGraphGeometry.eighthTurnCosine * (label.size.width + label.size.height) } ?? 0
+        let labelAcross = label.map { label in
+            let levelAcross = isVertical ? label.size.width : label.size.height
+            return GitGraphGeometry.labelOffset + (isLabelTurned ? GitGraphGeometry.eighthTurnCosine * (label.size.width + label.size.height) : levelAcross)
+        } ?? 0
+        let levelLabelAlong = isLabelTurned ? 0 : label.map { label in (isVertical ? label.size.height : label.size.width) + GitGraphGeometry.gap } ?? 0
         let dot = GitGraphGeometry.dotRadius
-        return (max(dot, tagsAlong / 2), tagsAlong / 2, dot + (tags.isEmpty ? 0 : GitGraphGeometry.tagGap + tagsAcross), dot + labelAcross)
+        return (max(dot, tagsAlong / 2, levelLabelAlong / 2), tagsAlong / 2, dot + (tags.isEmpty ? 0 : GitGraphGeometry.tagGap + tagsAcross), dot + labelAcross)
     }
 }

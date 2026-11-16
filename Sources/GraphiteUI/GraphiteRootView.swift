@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.68
- * Date: 05/11/2026
+ * Version: 0.69
+ * Date: 11/11/2026
  */
 
 import SwiftUI
@@ -47,6 +47,8 @@ struct GraphiteRootView: View {
     /// On a phone the split view is one stack: the document comes first, as in Obsidian
     /// mobile, and the file list is a step back.
     @State private var preferredCompactColumn = NavigationSplitViewColumn.detail
+    /// Counts the requests to bring a phone's file list to the front (`CompactFileListReveal`).
+    @State private var compactFileListRequest = 0
     /// Whether the software keyboard, or the note's keyboard toolbar alone with a hardware
     /// keyboard, is on screen.
     @State private var isKeyboardShown = false
@@ -124,6 +126,7 @@ struct GraphiteRootView: View {
                 #if os(iOS)
                 // Upright the sidebar shows over the documents, which keep the window's width (HUNT-317).
                 .background { SidebarOverDocumentUpright(isWindowTallerThanWide: isWindowTallerThanWide && !isCompactWidth) }
+                .background { CompactFileListReveal(request: compactFileListRequest) }
                 #endif
                 .overlay {
                     // Both exist only while the Read Aloud core plugin is on.
@@ -134,7 +137,12 @@ struct GraphiteRootView: View {
                     }
                 }
         }
+        #if os(iOS)
+        // The window's own shape: the root view gives the software keyboard its room (HUNT-353).
+        .background { WindowShapeReader { isTallerThanWide in windowShapeMeasured(isTallerThanWide) } }
+        #else
         .onGeometryChange(for: Bool?.self, of: Self.windowShape) { measuredShape in windowShapeMeasured(measuredShape) }
+        #endif
         // The bars take this, and the system's overflow menu (•••) takes its icons' color from the bar: in the accent they
         // were dark blue on the menu's dark material. The columns' contents keep the accent, for selection and toggles.
         .tint(Color.primary)
@@ -256,6 +264,8 @@ struct GraphiteRootView: View {
         // A picture zoomed in over the window, as Obsidian zooms: the note stays behind it.
         .overlay { imageZoom }
         .messageAlert($workspace.errorMessage)
+        .modifier(OpenedFilesVaultChoiceDialog(waiting: $workspace.openedFilesAwaitingVault, vaults: workspace.vaultLibrary.vaults,
+                                               choose: { files, vault in Task { await workspace.importOpenedFiles(files, into: vault) } }))
         .task {
             if restoresLastVault { await openVaultOfWindow() }
             isRestoringVault = false
@@ -267,7 +277,8 @@ struct GraphiteRootView: View {
         }
         // A search asked for from anywhere (⇧⌘F, a tag, a link) shows where it happens.
         .onChange(of: workspace.searchFocusRequest) { showSidebar() }
-        .onChange(of: workspace.searchResultsRevealRequest) { showSidebar() }
+        // Results asked for from outside the sidebar, and the Files panel's filter (⌥⌘J), show in the sidebar.
+        .onChange(of: [workspace.searchResultsRevealRequest, workspace.fileTreeContents.filter.focusRequest]) { showSidebar() }
         // A plugin's sidebar view asked to be shown.
         .onChange(of: workspace.communityPlugins.sidebarViewRequest) { _, request in if request != nil { showSidebar() } }
         // "Reveal current file", from the palette, a tab's menu or the file list's menu.
@@ -465,7 +476,7 @@ struct GraphiteRootView: View {
     /// in the system's overflow menu (•••), the one such menu of the bar.
     @ToolbarContentBuilder private var windowMoreMenu: some ToolbarContent {
         #if os(iOS)
-        ToolbarOverflowMenu { WorkspaceMoreMenuItems() }
+        ToolbarOverflowMenu { WorkspaceMoreMenuItems().tint(.primary) }
         #else
         ToolbarItem(placement: .primaryAction) {
             Menu("More", systemImage: "ellipsis") { WorkspaceMoreMenuItems() }
@@ -552,7 +563,7 @@ struct GraphiteRootView: View {
                 case .templatePicker:
                     TemplatePicker(workspace: workspace) { self.activePalette = nil }
                 case .commandPalette:
-                    NotePDFPaletteCommands(hasNoteInFront: workspace.markdownSession != nil) { noteCommands in
+                    NotePDFPaletteCommands(hasNoteInFront: workspace.markdownSession != nil, shortcuts: workspace.keyboardShortcuts) { noteCommands in
                         let recentCommandIdentifiers = Binding(get: { workspace.preferences.recentCommandIdentifiers },
                                                                set: { identifiers in workspace.preferences.recentCommandIdentifiers = identifiers })
                         CommandPalette(commands: WorkspaceCommandList.commands(for: workspace, window: windowActions, offersSplit: !isCompactWidth) + noteCommands,
@@ -590,7 +601,7 @@ struct GraphiteRootView: View {
                       toggleLinksInspector: { showsInspector.toggle() },
                       toggleSidebar: {
                           if isCompactWidth {
-                              preferredCompactColumn = preferredCompactColumn == .sidebar ? .detail : .sidebar
+                              if preferredCompactColumn == .sidebar { preferredCompactColumn = .detail } else { showSidebar() }
                           } else {
                               columnVisibility = Self.sidebarVisibility(toggling: columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
                           }
@@ -668,7 +679,7 @@ struct GraphiteRootView: View {
 
     private func save() async {
         do { try await workspace.saveOpenDocuments() }
-        catch { workspace.errorMessage = error.localizedDescription }
+        catch { workspace.errorMessage.report(error) }
     }
 
     private func saveBeforeLeavingScreen() {
@@ -737,12 +748,14 @@ struct GraphiteRootView: View {
         return !isCompactWidth && !Self.isSidebarHidden(columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
     }
 
+    #if os(macOS)
     /// Whether the window is taller than wide; nil for a layout pass before the window has its size, which measures
     /// nothing: taken as a shape, an empty size read as wider than tall and showed an upright window's sidebar beside
-    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317).
+    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317; the iPad reads `WindowShapeReader`).
     nonisolated private static func windowShape(of geometry: GeometryProxy) -> Bool? {
         geometry.size.width > 0 && geometry.size.height > 0 ? geometry.size.height > geometry.size.width : nil
     }
+    #endif
 
     private func windowShapeMeasured(_ measuredShape: Bool?) {
         guard let isTallerThanWide = measuredShape else { return }
@@ -794,8 +807,14 @@ struct GraphiteRootView: View {
     }
 
     private func showSidebar() {
+        if isCompactWidth {
+            preferredCompactColumn = .sidebar
+            #if os(iOS)
+            compactFileListRequest += 1
+            #endif
+            return
+        }
         focusMode.leave(columnVisibility: &columnVisibility, showsInspector: &showsInspector)
-        if isCompactWidth { preferredCompactColumn = .sidebar }
         columnVisibility = Self.sidebarVisibility(revealing: columnVisibility, automaticHidesSidebar: automaticHidesSidebar)
     }
 
@@ -940,22 +959,5 @@ private struct CreateDocumentSheet: View {
         guard nameProblem == nil else { return }
         create(chosenName)
         dismiss()
-    }
-}
-
-/// The document's name in the navigation bar. A compact width shows it as a plain title,
-/// which truncates to make room for the document's controls; the editable title, with its
-/// Rename menu, kept its full width beside a long file name and sent Write, Undo and More
-/// into an overflow menu. Rename is in the document's More menu there.
-private struct DocumentTitle: ViewModifier {
-    @Binding var title: String
-    let isCompactWidth: Bool
-
-    func body(content: Content) -> some View {
-        if isCompactWidth {
-            content.navigationTitle(title)
-        } else {
-            content.navigationTitle($title)
-        }
     }
 }

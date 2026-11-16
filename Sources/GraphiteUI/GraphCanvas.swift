@@ -99,9 +99,8 @@ struct GraphCanvas: View {
         viewport = start.viewport
         framing = start.framing
         servedCenterRequest = start.servedCenterRequest
-        // The nodes shown now win over the places kept when the view last went.
-        let knownPositions = previousPositions.merging(model.positionsByIdentifier) { _, shownPosition in shownPosition }
-        await model.load(graph, forces: forces, previousPositions: knownPositions, groupIndexByIdentifier: groupColoring.groupIndexByIdentifier)
+        // The nodes shown now win over the places kept when the view last went (`GraphCanvasModel.load`).
+        await model.load(graph, forces: forces, previousPositions: previousPositions, groupIndexByIdentifier: groupColoring.groupIndexByIdentifier)
     }
 
     /// Keeps where the nodes are and where the view is, for when the graph comes back.
@@ -221,10 +220,7 @@ struct GraphCanvas: View {
 
     /// Shows the whole graph, names included, at most a little larger than its natural size.
     private func fit(in size: CGSize, animated: Bool) {
-        let names = model.graph.nodes.map { node in
-            GraphViewport.NameRoom(characterCount: node.title.count, shownFromScale: alwaysShowsLabels ? 0 : display.nameFadeStartScale(of: node.kind))
-        }
-        guard let fitted = GraphViewport.fitting(model.positions, names: names, in: size) else { return }
+        guard let fitted = model.fittingViewport(in: size, display: display, alwaysShowsNames: alwaysShowsLabels) else { return }
         show(fitted, animated: animated)
     }
 

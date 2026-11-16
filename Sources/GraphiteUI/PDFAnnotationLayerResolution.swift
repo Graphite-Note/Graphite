@@ -6,11 +6,12 @@
  *              boxes) at the screen's resolution, within a memory bound, on the Mac and the iPad.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 05/11/2026
+ * Version: 0.6
+ * Date: 16/11/2026
  */
 import PDFKit
 import SwiftUI
+import GraphiteCore
 import GraphiteApple
 #if canImport(UIKit)
 import UIKit
@@ -41,6 +42,14 @@ import AppKit
 /// zoomed in so far that they would hold more, every one is drawn at the same fraction of its
 /// screen's resolution, never below PDFKit's own one pixel per point (invariant P-17).
 ///
+/// Each look draws layers again for at most `drawingTimePerLook`, those on screen first, and the
+/// looks go on until every layer is done. A page of handwriting holds hundreds of strokes, each a
+/// layer of its own on the Mac: drawn all at once, the strokes of the pages PDFKit had made views
+/// for held the main thread for a fifth of a second and more whenever a handwritten PDF came into
+/// view in a note, and the note stopped scrolling (the owner's recording of 2026-11-15, a homework
+/// note of seven PDFs with about 2,600 strokes each). The ink now sharpens over a few frames, as
+/// PDFKit's own tiles do, and the scrolling goes on.
+///
 /// On the iPad PDFKit makes these layers draw asynchronously: Core Animation records the drawing
 /// and renders it itself. A placed picture is drawn by Core Graphics instead, as `PDFPage.draw`
 /// draws it: on the owner's iPad the recorded drawing showed a 4,000-pixel picture at twice fit
@@ -66,14 +75,24 @@ final class PDFAnnotationLayerResolution: NSObject {
     /// after the change.
     private static let lookInterval: TimeInterval = 1.0 / 30
     private static let looksAfterAChange = 30
+    /// The main thread's time one look may spend drawing layers again: a part of a frame at 120 Hz.
+    static let drawingTimePerLook = Duration.milliseconds(4)
+    /// Looks go on while layers are left to draw, for at most this many after a change (ten seconds),
+    /// in case PDFKit puts a layer back to its own resolution each time.
+    private static let maximumLooksAfterAChange = 300
 
     private static let annotationLayerClass: AnyClass? = NSClassFromString(annotationLayerClassName)
 
     private weak var view: PDFView?
     /// The edits of the document shown (`PDFSession.changeVersion`), read under observation.
     private let contentChangeCount: () -> Int
+    /// Times each look's drawing.
+    private let clock: any ApplicationClock
     private var lookTimer: Timer?
     private var looksLeft = 0
+    private var looksSinceAChange = 0
+    /// Whether the last look ran out of drawing time before every layer was at its resolution.
+    private var hasLayersLeftToDraw = false
     private var isStarted = false
     #if canImport(UIKit)
     private var scrollOffsetObservation: NSKeyValueObservation?
@@ -82,8 +101,9 @@ final class PDFAnnotationLayerResolution: NSObject {
     private var isMagnifying = false
     #endif
 
-    init(view: PDFView, contentChangeCount: @escaping () -> Int) {
+    init(view: PDFView, clock: any ApplicationClock = LiveApplicationClock(), contentChangeCount: @escaping () -> Int) {
         self.view = view
+        self.clock = clock
         self.contentChangeCount = contentChangeCount
         super.init()
     }
@@ -128,6 +148,7 @@ final class PDFAnnotationLayerResolution: NSObject {
         lookTimer?.invalidate()
         lookTimer = nil
         looksLeft = 0
+        hasLayersLeftToDraw = false
         #if canImport(UIKit)
         scrollOffsetObservation = nil
         observedPinchRecognizer?.removeTarget(self, action: #selector(pinchChanged(_:)))
@@ -141,6 +162,7 @@ final class PDFAnnotationLayerResolution: NSObject {
     @objc private func somethingShownChanged() {
         guard isStarted else { return }
         looksLeft = Self.looksAfterAChange
+        looksSinceAChange = 0
         if lookTimer == nil {
             // A timer rather than a display link, which a window that is not on a screen never runs.
             let timer = Timer(timeInterval: Self.lookInterval, target: self, selector: #selector(lookAgain), userInfo: nil, repeats: true)
@@ -185,7 +207,8 @@ final class PDFAnnotationLayerResolution: NSObject {
     @objc private func lookAgain() {
         update()
         looksLeft -= 1
-        if looksLeft <= 0 {
+        looksSinceAChange += 1
+        if (looksLeft <= 0 && !hasLayersLeftToDraw) || looksSinceAChange >= Self.maximumLooksAfterAChange {
             lookTimer?.invalidate()
             lookTimer = nil
         }
@@ -205,8 +228,10 @@ final class PDFAnnotationLayerResolution: NSObject {
     }
 
     /// Sets the resolution of the annotation layers of the pages shown to the screen's pixels
-    /// per point, within the bound; a layer already there is left alone.
+    /// per point, within the bound, for at most `drawingTimePerLook`, those on screen first; a layer
+    /// already there is left alone.
     func update() {
+        hasLayersLeftToDraw = false
         guard !isMagnifying, let view, let window = view.window, let documentLayer = view.documentView?.layer,
               let annotationLayerClass = Self.annotationLayerClass else { return }
         let annotationLayers = Self.annotationLayers(under: documentLayer, annotationLayerClass: annotationLayerClass)
@@ -223,18 +248,57 @@ final class PDFAnnotationLayerResolution: NSObject {
             abs(layer.contentsScale - target) > target * Self.resolutionTolerance
         }
         guard !layersToDraw.isEmpty else { return }
+        var layersOnScreen: [(CALayer, CGFloat)] = []
+        var layersOffScreen: [(CALayer, CGFloat)] = []
+        for (layer, target) in layersToDraw {
+            #if canImport(UIKit)
+            let isOnScreen = Self.isOnScreen(layer, in: window)
+            #else
+            let isOnScreen = Self.isOnScreen(layer, in: view)
+            #endif
+            if isOnScreen { layersOnScreen.append((layer, target)) } else { layersOffScreen.append((layer, target)) }
+        }
+        let layersOnScreenFirst = layersOnScreen + layersOffScreen
+        let lookStart = clock.now
+        let drawnCount = Self.draw(layersOnScreenFirst) { clock.now - lookStart < Self.drawingTimePerLook }
+        hasLayersLeftToDraw = drawnCount < layersOnScreenFirst.count
+    }
+
+    /// Draws each layer again at its scale, in order, while `hasTimeLeft` says so, and returns how
+    /// many it drew. The first is always drawn, so every look moves on however slow a layer is.
+    static func draw(_ layersAndScales: [(CALayer, CGFloat)], whileTimeIsLeft hasTimeLeft: () -> Bool) -> Int {
         CATransaction.begin()
         // No fade from the old pixels to the new ones.
         CATransaction.setDisableActions(true)
-        for (layer, target) in layersToDraw {
-            layer.contentsScale = target
+        defer { CATransaction.commit() }
+        var drawnCount = 0
+        for (layer, scale) in layersAndScales {
+            if drawnCount > 0, !hasTimeLeft() { break }
+            layer.contentsScale = scale
             #if canImport(UIKit)
-            if Self.showsAPicture(layer) { layer.drawsAsynchronously = false }
+            if showsAPicture(layer) { layer.drawsAsynchronously = false }
             #endif
+            // Drawn here rather than when Core Animation commits, so the time it takes is counted.
             layer.setNeedsDisplay()
+            layer.displayIfNeeded()
+            drawnCount += 1
         }
-        CATransaction.commit()
+        return drawnCount
     }
+
+    #if canImport(UIKit)
+    /// Whether any of the layer is in its window's bounds.
+    private static func isOnScreen(_ layer: CALayer, in window: UIWindow) -> Bool {
+        layer.convert(layer.bounds, to: window.layer).intersects(window.layer.bounds)
+    }
+    #else
+    /// Whether any of the layer is in the part of the PDF view that is shown, which for an embed
+    /// in a note is the part the note's scrolling leaves in view.
+    private static func isOnScreen(_ layer: CALayer, in view: PDFView) -> Bool {
+        guard let viewLayer = view.layer else { return false }
+        return layer.convert(layer.bounds, to: viewLayer).intersects(view.visibleRect)
+    }
+    #endif
 
     /// The pixels per point each layer is drawn at: the screen's for it, all of them reduced
     /// by the same fraction when together they would hold more than `maximumPixelCount`, none
@@ -251,14 +315,18 @@ final class PDFAnnotationLayerResolution: NSObject {
         }
     }
 
-    #if canImport(UIKit)
     private static let annotationSelector = NSSelectorFromString("annotation")
 
+    /// The annotation a layer draws, which PDFKit's layer class answers by a selector of the same name.
+    private static func annotation(drawnBy layer: CALayer) -> PDFAnnotation? {
+        guard layer.responds(to: annotationSelector) else { return nil }
+        return layer.perform(annotationSelector)?.takeUnretainedValue() as? PDFAnnotation
+    }
+
+    #if canImport(UIKit)
     /// Whether the layer draws a picture placed on the page: a stamp, whose appearance is an image.
     static func showsAPicture(_ layer: CALayer) -> Bool {
-        guard layer.responds(to: annotationSelector),
-              let annotation = layer.perform(annotationSelector)?.takeUnretainedValue() as? PDFAnnotation else { return false }
-        return annotation.type == PDFPicture.annotationTypeName
+        annotation(drawnBy: layer)?.type == PDFPicture.annotationTypeName
     }
 
     /// How many of the screen's pixels one point of the layer covers, through every transform
@@ -272,15 +340,22 @@ final class PDFAnnotationLayerResolution: NSObject {
     }
     #endif
 
-    /// Every annotation layer under the document's layer. The layers of Graphite's own views
+    /// Every annotation layer shown under the document's layer. The layers of Graphite's own views
     /// over a page (its Pencil canvas, with PencilKit's many tiles) are not looked into, nor
     /// an annotation layer's own sublayers.
+    ///
+    /// PDFKit hides the layer of an annotation that is not displayed, as Graphite's ink is while
+    /// a page's canvas shows it, and keeps it: a page written as densely as a formula sheet has
+    /// 6,000 of them. Drawing those again at the screen's resolution drew nothing anyone sees, on
+    /// the main thread, from each stroke's appearance: about a second at each step of a zoom on
+    /// such a notebook, and looking at them took 20 to 50 ms at every frame of a scroll.
     static func annotationLayers(under layer: CALayer, annotationLayerClass: AnyClass) -> [CALayer] {
         var found: [CALayer] = []
         func look(under layer: CALayer) {
-            for sublayer in layer.sublayers ?? [] {
+            for sublayer in layer.sublayers ?? [] where !sublayer.isHidden {
                 if type(of: sublayer) == annotationLayerClass {
-                    found.append(sublayer)
+                    // A stroke whose page's ink layer draws it draws nothing in its own (`MacPDFPageInkLayers`).
+                    if annotation(drawnBy: sublayer)?.isDrawnByPageInkLayer != true { found.append(sublayer) }
                 } else if !isGraphitesOwnOverlay(sublayer) {
                     look(under: sublayer)
                 }

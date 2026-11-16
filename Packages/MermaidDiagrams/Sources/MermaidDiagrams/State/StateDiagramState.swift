@@ -10,12 +10,16 @@ public struct StateDiagramState: Equatable, Sendable {
     /// Index into `StateDiagram.composites` of the composite state it was last named inside, or nil when it was only
     /// named at the top level.
     public internal(set) var compositeIndex: Int?
+    /// The concurrent region of that composite's body it was last named in, counted from 0 at the body's start, one more
+    /// after each `--`; 0 at the top level.
+    public internal(set) var regionIndex: Int
 
-    init(identifier: String, kind: StateDiagramStateKind, descriptions: [DiagramLabel] = [], compositeIndex: Int? = nil) {
+    init(identifier: String, kind: StateDiagramStateKind, descriptions: [DiagramLabel] = [], compositeIndex: Int? = nil, regionIndex: Int = 0) {
         self.identifier = identifier
         self.kind = kind
         self.descriptions = descriptions
         self.compositeIndex = compositeIndex
+        self.regionIndex = regionIndex
     }
 
     /// The text drawn as the state's name: its first description, else its identifier.

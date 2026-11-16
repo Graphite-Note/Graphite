@@ -6,8 +6,8 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.37
- * Date: 11/11/2026
+ * Version: 0.42
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -51,9 +51,10 @@ struct PDFAnnotationInput: Equatable {
     var fixedTool: PencilToolSelection?
     /// Lines or dots shown under the ink while writing, never saved into the PDF.
     var writingGuides: DrawingPaper = .plain
-    /// The Mac's markup row: its tool, and the mark its highlight button makes. The iPad
-    /// marks text from its selection menu.
+    /// The Mac's markup row: its tool. The iPad marks text from its selection menu, and with
+    /// the fixed bar's text highlighter (`fixedTool`).
     var markupTool = PDFMarkupTool.textSelection
+    /// The mark the Mac's highlight button and the iPad's text highlighter make.
     var markupStyle = PDFMarkupStyle.default
 
     /// Whether the view keeps first responder for its document: Undo shortcuts reach the
@@ -195,8 +196,11 @@ final class PDFViewPageObserver: NSObject {
         if pageIndex != NSNotFound, session.currentPageIndex != pageIndex { session.currentPageIndex = pageIndex }
     }
 
+    /// Reads PDFKit's annotations only of the pages that hold form fields (`PDFFormFieldPages`): reading them makes
+    /// every annotation of the page, each stroke of a handwritten page among them.
     func makeFormFieldsReadOnlyOnVisiblePages() {
-        for page in view?.visiblePages ?? [] {
+        for page in view?.visiblePages ?? []
+        where PDFFormFieldPages.mayHaveFormField(page, in: session.document, pageNumbers: session.formFieldPageNumbers) {
             // PDFKit reports the subtype without the leading slash of `PDFAnnotationSubtype`.
             for annotation in page.annotations where annotation.type == "Widget" && !annotation.isReadOnly {
                 annotation.isReadOnly = true
@@ -286,7 +290,10 @@ struct GraphitePDFView: UIViewRepresentable {
         // A picture placed on a page is drawn from all its pixels at any size: below high
         // quality, a picture made smaller than its pixels shows jagged, pixelated edges.
         view.interpolationQuality = .high
-        if isEmbedded { view.pageBreakMargins = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6) }
+        if isEmbedded {
+            let margin = PDFEmbedFitting.pageMargin
+            view.pageBreakMargins = UIEdgeInsets(top: margin, left: margin, bottom: margin, right: margin)
+        }
         // PDFKit asks for page overlays only when it creates page views, so the provider
         // must be in place before the document is.
         view.pageOverlayViewProvider = context.coordinator
@@ -779,11 +786,19 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var palmRejection: PalmRejectionInstallation?
     private var editMenuInteraction: UIEditMenuInteraction?
     private var tappedMarkup: (annotation: PDFAnnotation, page: PDFPage)?
-    private var selectionAnchor: (page: PDFPage, point: CGPoint)?
+    /// Where the saved text-mark colours are kept (`PDFTextMarkColors`); a test gives its own.
+    var markupPreferences: UserDefaults = .standard
+    private lazy var markColorPicker = PDFMarkColorPicker(preferences: markupPreferences)
+    /// The finger's text selection being dragged (`handleTextSelection`).
+    private var selectionDrag: PDFTextSelectionDrag?
+    /// The fixed bar's text highlighter: a drag on a page selects text and marks it on lift.
+    private var textHighlighter: PDFTextHighlighterInteraction?
     private var pageObserver: PDFViewPageObserver?
     private var pictureSelection: PDFPictureSelectionController?
     /// The page's text boxes: drawn over the ink, placed, selected and typed in.
     private var textBoxInteraction: PDFTextBoxInteraction?
+    /// Takes pictures dropped onto the pages; a PDF embedded in a note leaves drops to the note.
+    private(set) var pictureDrops: PDFPictureDropInteraction?
     private var toolboxObserver: NSObjectProtocol?
     private var zoomObserver: NSObjectProtocol?
     /// Draws the canvases at the zoom once it has settled, not at every step of a pinch.
@@ -909,6 +924,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         self.pictureSelection = pictureSelection
         session.visiblePageCenter = { [weak pictureSelection] in pictureSelection?.visiblePageCenter() }
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
+        if !isEmbedded { pictureDrops = PDFPictureDropInteraction(session: session, pdfView: view) }
+        textHighlighter = PDFTextHighlighterInteraction(session: session, pdfView: view)
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
@@ -1050,7 +1067,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         pictureSelection?.stop()
         pictureSelection = nil
         textBoxInteraction?.stop()
+        pictureDrops?.stop()
+        pictureDrops = nil
         textBoxInteraction = nil
+        textHighlighter = nil
         if let toolboxObserver { NotificationCenter.default.removeObserver(toolboxObserver) }
         toolboxObserver = nil
         if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
@@ -1184,7 +1204,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             if !newInput.isEnabled { session.textBoxActivity = .idle }
             editMenuInteraction?.dismissMenu()
             tappedMarkup = nil
-            selectionAnchor = nil
+            selectionDrag = nil
             pdfView.clearSelection()
         }
         for canvas in canvasesByPage.values { configure(canvas) }
@@ -1424,12 +1444,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
-        guard let canvas = (overlayView as? PDFPageOverlayView)?.canvas else { return }
+        guard overlayView is PDFPageOverlayView else { return }
         let identifier = ObjectIdentifier(page)
         displayedPages.remove(identifier)
-        // Thumbnails and other views show the saved ink while no canvas covers the page.
-        setInkAnnotationsHidden(false, on: page, group: canvas.inkTracker.group)
-        canvas.inkAnnotationsState = (false, session.editCount(of: page))
+        // The page's ink annotations stay hidden while its canvas is kept: PDFKit gives every annotation a layer of its
+        // own, drawn on the main thread from its appearance whenever it is shown, so showing a page's ink each time its
+        // view left the screen, and hiding it again as it came back, drew every stroke of the page twice. On a page of
+        // 6,000 strokes that froze the iPad for one to two and a half seconds at each zoom (Docs/Bug-hunt-todo.md,
+        // HUNT-344). Thumbnails draw hidden ink themselves (`PDFThumbnailRenderer`); the ink shows again when the canvas
+        // is let go (`release`).
         textBoxInteraction?.pageDidDisappear(page)
         hiddenCanvasOrder.append(identifier)
         // A page kept for scrolling back takes no more than a page's memory. It leaves the
@@ -1484,11 +1507,12 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// draws the ink annotations as lines of one width in one flat color, so a highlighter
     /// became a thin opaque line, a pencil lost its grain and every stroke its pressure, and
     /// the page changed each time writing was turned on or off. The annotations, which other
-    /// PDF readers show, stay hidden only while a displayed canvas shows the same ink.
+    /// PDF readers show, stay hidden only while the page's canvas, shown or kept, has the same ink.
     func configure(_ canvas: PDFPageCanvasView) {
         restoreStoredInkIfNeeded(on: canvas)
         canvas.readAloudPenTapped = readAloudPen == nil ? nil : { [weak self] windowPoint in self?.handleReadAloudPenTap(atWindowPoint: windowPoint) }
         canvas.textToolTapped = { [weak self] windowPoint in self?.textBoxInteraction?.handleTextToolTap(atWindowPoint: windowPoint) }
+        canvas.textHighlighterDragged = { [weak self] dragEvent in self?.handleTextHighlighterDrag(dragEvent) }
         canvas.takeTool(from: toolPicker, fixedTool: input.fixedTool)
         canvas.drawingPolicy = input.drawsWithFinger ? .anyInput : .pencilOnly
         canvas.showWritingGuides(input.writingGuides)
@@ -1497,7 +1521,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         // takes touches: a stroke begun then is kept and recorded after the stored ink (HUNT-307).
         canvas.isUserInteractionEnabled = input.isEnabled
         if let page = canvas.page {
-            let isHidden = displayedPages.contains(ObjectIdentifier(page)) && !canvas.isRestoringStoredInk
+            // Hidden while the canvas has the page's ink, shown or kept for scrolling back (`willEndDisplayingOverlayView`).
+            let isHidden = !canvas.isRestoringStoredInk
             let pageEditCount = session.editCount(of: page)
             if canvas.inkAnnotationsState?.isHidden != isHidden || canvas.inkAnnotationsState?.pageEditCount != pageEditCount {
                 setInkAnnotationsHidden(isHidden, on: page, group: canvas.inkTracker.group)
@@ -1630,7 +1655,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
                 }
             }
         } catch {
-            session.errorMessage = error.localizedDescription
+            session.errorMessage.report(error)
         }
     }
 
@@ -1788,7 +1813,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
 
     /// While annotating, touches on a page belong to its canvas, so PDFKit's own text
     /// selection never sees them. A finger press selects the word under it; dragging
-    /// extends the selection, and lifting shows Copy and the markup actions.
+    /// extends the selection, and lifting shows Copy and the markup actions, or, with the
+    /// text highlighter chosen, marks the selection.
     @objc private func handleTextSelection(_ recognizer: UILongPressGestureRecognizer) {
         guard let pdfView else { return }
         let viewPoint = recognizer.location(in: pdfView)
@@ -1796,22 +1822,35 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         case .began:
             beginInteraction?()
             editMenuInteraction?.dismissMenu()
-            guard let page = pdfView.page(for: viewPoint, nearest: true) else { return }
-            let pagePoint = pdfView.convert(viewPoint, to: page)
-            selectionAnchor = (page, pagePoint)
-            pdfView.currentSelection = page.selectionForWord(at: pagePoint)
+            selectionDrag = PDFTextSelectionDrag(startingAt: viewPoint, in: pdfView)
+            pdfView.currentSelection = selectionDrag?.anchorWord
         case .changed:
-            guard let selectionAnchor, let page = pdfView.page(for: viewPoint, nearest: true) else { return }
-            let pagePoint = pdfView.convert(viewPoint, to: page)
-            let rangeSelection = session.document.selection(from: selectionAnchor.page, at: selectionAnchor.point, to: page, at: pagePoint)
-            if let anchorWord = selectionAnchor.page.selectionForWord(at: selectionAnchor.point) { rangeSelection?.add(anchorWord) }
-            if let rangeSelection, !(rangeSelection.string ?? "").isEmpty { pdfView.currentSelection = rangeSelection }
+            if let selection = selectionDrag?.selection(extendedTo: viewPoint, in: pdfView) { pdfView.currentSelection = selection }
         case .ended:
-            selectionAnchor = nil
-            presentSelectionMenu()
+            selectionDrag = nil
+            let marked = textHighlighter?.markSelectionOnLift(style: input.markupStyle, marksOnLift: marksTextOnLift) ?? false
+            if !marked { presentSelectionMenu() }
         default:
-            selectionAnchor = nil
+            selectionDrag = nil
         }
+    }
+
+    /// Whether a text selection is marked as the touch that made it lifts: the fixed bar's text highlighter is chosen.
+    private var marksTextOnLift: Bool { input.fixedTool?.kind == .textHighlighter }
+
+    /// A drag of the text highlighter on a page's canvas (`TextHighlighterToolController`).
+    private func handleTextHighlighterDrag(_ dragEvent: TextHighlighterDrag) {
+        // A tool changed during the drag ends it unmarked.
+        guard input.isEnabled, marksTextOnLift else {
+            textHighlighter?.handle(.cancelled, style: input.markupStyle)
+            return
+        }
+        if case .began = dragEvent {
+            beginInteraction?()
+            editMenuInteraction?.dismissMenu()
+            tappedMarkup = nil
+        }
+        textHighlighter?.handle(dragEvent, style: input.markupStyle)
     }
 
     private func presentSelectionMenu() {
@@ -1825,13 +1864,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private func selectionMenu() -> UIMenu? {
         guard let selection = pdfView?.currentSelection, let selectedText = selection.string, !selectedText.isEmpty else { return nil }
         let copy = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in UIPasteboard.general.string = selectedText }
-        let highlightActions = PDFMarkupColor.highlightColors.map { color in
-            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in self?.markSelection(as: .highlight(color)) }
-        }
-        let highlight = UIMenu(title: PDFMarkupKind.highlight.title, image: UIImage(systemName: "highlighter"), children: highlightActions)
-        let underline = UIAction(title: PDFMarkupKind.underline.title, image: UIImage(systemName: "underline")) { [weak self] _ in self?.markSelection(as: .underline) }
-        let strikeOut = UIAction(title: PDFMarkupKind.strikeOut.title, image: UIImage(systemName: "strikethrough")) { [weak self] _ in self?.markSelection(as: .strikeOut) }
-        var children: [UIMenuElement] = [copy, highlight, underline, strikeOut]
+        let markingItems = PDFMarkMenus.markingItems(savedColors: savedTextMarkColors, mark: { [weak self] style in self?.markSelection(as: style) },
+                                                     pickColor: { [weak self] color, choose in self?.pickMarkColor(color, choose: choose) },
+                                                     removeSavedColor: { [weak self] color in self?.removeSavedTextMarkColor(color) })
+        var children: [UIMenuElement] = [copy] + markingItems
         if let linkActions, let page = selection.pages.first, session.document.index(for: page) != NSNotFound {
             children.append(UIMenu(options: .displayInline, children: linkActions.menuElements(pageIndex: session.document.index(for: page), text: selectedText)))
         }
@@ -1843,8 +1879,21 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         PDFSelectionMarking.markSelection(of: pdfView, in: session, as: style)
     }
 
-    private static func swatch(for color: PDFMarkupColor) -> UIImage? {
-        UIImage(systemName: "circle.fill")?.withTintColor(color.platformColor, renderingMode: .alwaysOriginal)
+    private var savedTextMarkColors: PDFTextMarkColors {
+        PDFTextMarkColors(decoding: markupPreferences.data(forKey: PDFAnnotationPreferenceKey.textMarkColors))
+    }
+
+    private func removeSavedTextMarkColor(_ color: PDFMarkupColor) {
+        markupPreferences.set(savedTextMarkColors.removing(color).encoded, forKey: PDFAnnotationPreferenceKey.textMarkColors)
+    }
+
+    /// Opens the colour picker over the selection or the tapped mark; the colour picked is saved and handed to `choose`.
+    private func pickMarkColor(_ color: PDFMarkupColor, choose: @escaping (PDFMarkupColor) -> Void) {
+        guard let pdfView else { return }
+        let sourcePoint = pdfView.currentSelection.flatMap { selection in
+            selection.pages.first.map { page in pdfView.convert(selection.bounds(for: page), from: page) }
+        }.map { bounds in CGPoint(x: bounds.midX, y: bounds.minY) } ?? CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY)
+        markColorPicker.present(with: color, from: pdfView, at: sourcePoint, choose: choose)
     }
 
     // MARK: Existing markup
@@ -1858,14 +1907,24 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             pdfView.clearSelection()
             // A tap on a text box selects it, or types in the one selected; a tap beside it
             // ends typing or arranging.
-            if input.isEnabled, !placesTextBoxes, textBoxInteraction?.handleTap(at: viewPoint) == true { return }
+            // A picture over the box there takes the tap.
+            let isPictureOnTop = isPictureTheTopmostObject(at: viewPoint)
+            if input.isEnabled, !placesTextBoxes, !isPictureOnTop, textBoxInteraction?.handleTap(at: viewPoint) == true { return }
             // A tap on a picture selects it; a tap beside it ends arranging.
             let tappedPicture = input.isEnabled ? pictureSelection?.picture(at: viewPoint) : nil
+            if tappedPicture != nil, session.textBoxActivity != .idle { session.textBoxActivity = .idle }
             if session.selectedPicture != tappedPicture { session.selectedPicture = tappedPicture }
             return
         }
         tappedMarkup = markup
         editMenuInteraction?.presentEditMenu(with: UIEditMenuConfiguration(identifier: Self.markupMenuIdentifier, sourcePoint: viewPoint))
+    }
+
+    /// Whether a picture is the topmost object under the point, over any text box there, while no box is typed in.
+    private func isPictureTheTopmostObject(at viewPoint: CGPoint) -> Bool {
+        guard textBoxInteraction?.isEditing != true, let pdfView, let page = pdfView.page(for: viewPoint, nearest: false),
+              let topmost = session.topmostObjectAnnotation(at: pdfView.convert(viewPoint, to: page), on: page, shapeTolerance: 0) else { return false }
+        return PDFPageManager.isPicture(topmost)
     }
 
     private func markup(at viewPoint: CGPoint) -> (annotation: PDFAnnotation, page: PDFPage)? {
@@ -1931,17 +1990,17 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
         if configuration.identifier as? NSString == Self.selectionMenuIdentifier { return selectionMenu() }
         guard let (annotation, page) = tappedMarkup, let kind = PDFMarkupKind(annotationType: annotation.type) else { return nil }
-        let colorActions = PDFSelectionMarking.colors(for: kind).map { color in
-            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in
-                guard let self else { return }
-                PDFSelectionMarking.recolor(annotation, on: page, to: color, in: self.session)
-            }
-        }
+        let colorMenu = PDFMarkMenus.colorMenu(for: kind, currentColor: PDFMarkup(annotation: annotation)?.color, savedColors: savedTextMarkColors,
+                                               recolor: { [weak self] color in
+                                                   guard let self else { return }
+                                                   PDFSelectionMarking.recolor(annotation, on: page, to: color, in: self.session)
+                                               },
+                                               pickColor: { [weak self] color, choose in self?.pickMarkColor(color, choose: choose) })
         let remove = UIAction(title: "Remove \(kind.title)", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
             guard let self else { return }
             PDFSelectionMarking.remove(annotation, on: page, in: self.session)
         }
-        return UIMenu(children: [UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: colorActions), remove])
+        return UIMenu(children: [colorMenu, remove])
     }
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, willDismissMenuFor configuration: UIEditMenuConfiguration, animator: any UIEditMenuInteractionAnimating) {
@@ -2018,6 +2077,8 @@ struct GraphitePDFView: NSViewRepresentable {
         var pageObserver: PDFViewPageObserver?
         weak var session: PDFSession?
         var markupInteraction: MacPDFMarkupInteraction?
+        /// Draws each page's ink in one layer (`MacPDFPageInkLayers`); nil when PDFKit draws every stroke.
+        var pageInkLayers: MacPDFPageInkLayers?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -2026,6 +2087,11 @@ struct GraphitePDFView: NSViewRepresentable {
         let view = GraphiteMacPDFView()
         view.contentChangeCount = { [weak session] in session?.changeVersion ?? 0 }
         view.documentUndoManager = session.undoManager
+        // Before the document is shown, so PDFKit never draws the strokes of a page whose layer draws them.
+        let pageInkLayers = MacPDFPageInkLayers(session: session, view: view)
+        context.coordinator.pageInkLayers = pageInkLayers
+        view.pageInkLayers = pageInkLayers
+        view.pageOverlayViewProvider = pageInkLayers
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high
@@ -2041,6 +2107,13 @@ struct GraphitePDFView: NSViewRepresentable {
         let markupInteraction = MacPDFMarkupInteraction(session: session, view: view)
         context.coordinator.markupInteraction = markupInteraction
         view.markupInteraction = markupInteraction
+        session.visiblePageCenter = { [weak view] in view?.visiblePageCenter() }
+        if !isEmbedded {
+            let pictureDrops = MacPDFPictureDropTarget(session: session, view: view)
+            pictureDrops.picturesWerePlaced = { [weak view] in view?.markupInteraction?.toolbar?.choose(.pictures) }
+            view.pictureDrops = pictureDrops
+            view.registerForDraggedTypes(MacPDFPictureDropTarget.pasteboardTypes)
+        }
         session.pdfView = view
         return view
     }
@@ -2061,6 +2134,7 @@ struct GraphitePDFView: NSViewRepresentable {
         }
         coordinator.pageObserver?.stop()
         coordinator.markupInteraction?.stopObservingSelection()
+        coordinator.pageInkLayers?.stop()
     }
 }
 
@@ -2071,9 +2145,13 @@ final class GraphiteMacPDFView: PDFView {
     var pendingPlace: PDFPagePlace?
     /// The shown document's change count (`PDFSession.changeVersion`).
     var contentChangeCount: () -> Int = { 0 }
-    private lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
+    lazy var annotationLayerResolution = PDFAnnotationLayerResolution(view: self) { [weak self] in self?.contentChangeCount() ?? 0 }
     /// Text markup by pointer and keyboard; owned by the view's coordinator.
     weak var markupInteraction: MacPDFMarkupInteraction?
+    /// Takes pictures dropped onto the pages; nil in a PDF embedded in a note.
+    var pictureDrops: MacPDFPictureDropTarget?
+    /// Each page's ink drawn in one layer (`MacPDFPageInkLayers`); owned by the view's coordinator.
+    weak var pageInkLayers: MacPDFPageInkLayers?
     /// The PDF's own history (`PDFSession.undoManager`), which Edit › Undo and Redo, ⌘Z and
     /// ⇧⌘Z reach while the PDF is the first responder.
     weak var documentUndoManager: UndoManager?
@@ -2112,6 +2190,18 @@ final class GraphiteMacPDFView: PDFView {
     override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
         markupInteraction?.mouseUpFinished()
+    }
+
+    override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        pictureDrops?.draggingUpdated(sender) ?? super.draggingEntered(sender)
+    }
+
+    override func draggingUpdated(_ sender: any NSDraggingInfo) -> NSDragOperation {
+        pictureDrops?.draggingUpdated(sender) ?? super.draggingUpdated(sender)
+    }
+
+    override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
+        pictureDrops?.performDrop(sender) ?? super.performDragOperation(sender)
     }
 
     override func keyDown(with event: NSEvent) {

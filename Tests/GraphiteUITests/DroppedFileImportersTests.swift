@@ -18,6 +18,19 @@ final class DroppedFileImportersTests: XCTestCase {
         XCTAssertEqual(routing.remaining.map(\.lastPathComponent), ["Slides.pdf"])
     }
 
+    /// A folder has no extension: it goes to the first importer that takes folders (the notebook import, for a library
+    /// export), and is copied plainly when none does.
+    func testFoldersGoToTheFirstImporterThatTakesFolders() {
+        let fileImporter = importer(["pdf"])
+        let folderImporter = FileTypeImporter(fileExtensions: ["goodnotes"], takesFolders: true) { _, _, copies in copies }
+        let library = URL(fileURLWithPath: "/a/Library", isDirectory: true)
+        let routing = DroppedFileImporters.route([library, URL(fileURLWithPath: "/a/Week.goodnotes"), URL(fileURLWithPath: "/a/Slides.pdf")],
+                                                 through: [fileImporter, folderImporter])
+        XCTAssertEqual(routing.routed.map { routed in routed.files.map(\.lastPathComponent) }, [["Slides.pdf"], ["Library", "Week.goodnotes"]])
+        XCTAssertTrue(routing.remaining.isEmpty)
+        XCTAssertEqual(DroppedFileImporters.route([library], through: [fileImporter]).remaining, [library])
+    }
+
     func testWithNoImporterEveryFileIsCopiedPlainly() {
         let routing = DroppedFileImporters.route([URL(fileURLWithPath: "/a/Slides.pdf")], through: [])
         XCTAssertTrue(routing.routed.isEmpty)

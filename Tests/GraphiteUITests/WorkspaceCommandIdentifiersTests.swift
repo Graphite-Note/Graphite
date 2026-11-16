@@ -98,24 +98,51 @@ final class WorkspaceCommandIdentifiersTests: XCTestCase {
         XCTAssertEqual(recorder.shownSidebar, 1, "Only the bookmarks command asks the window to show the sidebar.")
     }
 
+    // MARK: A table's cell commands
+
+    /// While a Live Preview table's cell is edited, or until the note's text takes the keyboard
+    /// after it, the palette lists the cell's commands that apply, after the editing commands' place.
+    func testTheTableCommandsOfTheCellBeingEditedJoinTheListUntilTheNotesTextTakesTheKeyboard() async throws {
+        let workspace = try await openedWorkspace()
+        let session = try XCTUnwrap(workspace.markdownSession)
+        var tableSource = "| A | B |\n| - | - |\n| 2 | x |\n| 1 | y |\n"
+        let editor = LivePreviewTableEditor()
+        editor.update(source: tableSource, textSize: 16, sourceEditing: RenderedBlockSourceEditing(replaceSource: { _, transform in
+            tableSource = transform(tableSource) ?? tableSource
+        }, setIsEditingInView: { _, _ in }, offerCellCommands: { target in session.blockViews.takeTableCellCommands(target) }))
+        editor.beginEditing(TableCellPosition(row: 1, column: 0))
+
+        let identifiers = WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).map(\.id)
+        let tableIdentifiers = identifiers.filter { identifier in identifier.contains(":table-") }
+        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveRowUp && command != .moveColumnLeft }
+            .map(\.graphiteCommand.identifier), "The first body row's first cell can move neither up nor left.")
+        XCTAssertEqual(Array(identifiers.filter { identifier in !identifier.contains(":table-") }), Self.identifiersWithANoteOpen)
+        editor.focusDidLeave()
+        try command("graphite:table-sort-ascending", in: workspace, window: makeWindowActions()).run()
+        XCTAssertEqual(tableSource, "| A | B |\n| - | - |\n| 1 | y |\n| 2 | x |\n")
+
+        session.blockViews.releaseTableCellCommands()
+        XCTAssertFalse(WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).contains { command in command.id.contains(":table-") })
+    }
+
     // MARK: Golden lists
 
     /// The identifiers as the palette lists them with the default core plugins and no vault open.
     static let identifiersWithNoVaultOpen = withoutWhatThisDeviceCannotEdit([
-        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders",
+        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
         "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "file-recovery-all", "workspace-focus",
-        "graph-open", "map-open", "bookmarks-show", "daily-today", "daily-previous", "daily-next", "record", "record-video",
+        "graph-open", "map-open", "bookmarks-show", "daily-today", "daily-previous", "daily-next", "calendar-show", "record", "record-video",
     ])
 
     /// The same with `Folder/Note.md` open in the only tab: the file, tab, note and editing commands join the list.
     static let identifiersWithANoteOpen = withoutWhatThisDeviceCannotEdit([
-        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders",
+        "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
         "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "move-tab", "file-recovery-all", "file-recovery-note",
         "copy-url", "workspace-focus", "graph-open", "graph-local", "map-open", "map-local", "bookmarks-show", "bookmarks-file",
-        "daily-today", "daily-previous", "daily-next", "rename", "move", "copy", "delete", "reveal",
+        "daily-today", "daily-previous", "daily-next", "calendar-show", "calendar-event-note", "rename", "move", "copy", "delete", "reveal",
         "toggle-reading", "toggle-source", "toggle-right-sidebar", "find-in-note", "replace-in-note", "toggle-fold", "fold-all", "unfold-all",
         "insert-template", "heading-1", "heading-2", "heading-3", "heading-4", "heading-5", "heading-6", "task", "table", "math", "callout",
-        "new-notebook-in-note", "record", "record-video",
+        "new-notebook-in-note", "calendar-insert-events", "reminders-send-task", "reminders-insert", "record", "record-video",
     ])
 
     /// The Mac does not offer to make a notebook or a canvas, which it cannot write in.
