@@ -262,8 +262,12 @@ final class ReleaseVaultPass {
         try await waitForWebFrames(of: path, in: blocks)
         let pictures = LivePreviewBlockCheck.shownPictures(in: textView, blocks: blocks)
         let root = workspace.folderAccess?.root ?? vaultRoot
+        // A picture the vault leaves undrawn on purpose (another app's SVG) is not waited for: the wait failed the part each run.
+        let picturesToDraw = pictures.filter { picture in
+            !ReleaseVaultFinding.intended.contains(ReleaseVaultFinding(path: path.rawValue, shown: shown, problem: .pictureNotLoaded(target: picture.target)))
+        }
         try? await waitUntil("every picture on screen is decoded", timeoutSeconds: 5) {
-            pictures.allSatisfy { picture in LivePreviewEmbedImageLocations.foundImage(for: picture, in: root) != nil }
+            picturesToDraw.allSatisfy { picture in LivePreviewEmbedImageLocations.foundImage(for: picture, in: root) != nil }
         }
         for picture in pictures where LivePreviewEmbedImageLocations.foundImage(for: picture, in: root) == nil {
             record(ReleaseVaultFinding(path: path.rawValue, shown: shown, problem: .pictureNotLoaded(target: picture.target)))
