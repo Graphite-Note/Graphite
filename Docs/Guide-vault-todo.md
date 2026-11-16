@@ -2,7 +2,7 @@
 
 Created: 2026-11-16.
 
-Status: sections 1 and 3 built and pushed to main (25c7e2d1, 87e47d93, ec9ba141), section 2 in part; section 4 waits for a read-through on devices and the owner. Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), one per section.
+Status: section 1 built and ticked; section 3 all but the buttons pressed by hand on a device; section 2 all but the Mac's markup row and the gestures' animated pictures; section 4 has a session's read-through and waits for the owner (main 25c7e2d1, 87e47d93, ec9ba141, 4650d948, 751c4cd4, e929a078). Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), one per section.
 
 ## Request
 
@@ -68,3 +68,4 @@ Issue: [#192](https://github.com/Graphite-Note/Graphite/issues/192)
 Issue: [#193](https://github.com/Graphite-Note/Graphite/issues/193)
 
 - [ ] Read through on the iPad, the iPhone and the Mac, in light and dark, by a session, with screenshots looked at; the owner reads it and says whether it is what they meant.
+  A session's part, 2026-11-16, not ticked: the iPad simulator's release pass over the whole guide (447 pages in Live Preview, the reading view and Source mode, plus each base, canvas, PDF and picture in its own view) looked at, with the first page of every file's reading view in contact sheets; the iPhone's and the iPad's dark pictures, and the Mac's pass in light and Live Preview in dark. Found and fixed on the way: HUNT-360 (the reading view's table loop at `Tables.md`) and HUNT-362 (Live Preview's map left over its heading in `Lisbon weekend.md`); found and open: HUNT-363 (the Mac's reading view in dark, in the test window). Nothing else drawn wrong or reading wrong. Open: the iPhone and the Mac read through page by page in dark, and the owner's own reading.
