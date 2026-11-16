@@ -6,8 +6,8 @@
  *              the pictures of a line or list item that shows images among its text.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 12/11/2026
+ * Version: 0.8
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -112,7 +112,7 @@ public enum EmbedLocator {
             let destination = linkDestination(in: (line as NSString).substring(with: match.range(at: 2)))
             guard !destination.isEmpty else { return nil }
             return EmbedReference(target: destination, isWiki: false, displaySize: EmbedDisplaySize.parse(label: label),
-                                  range: NSRange(location: lineRange.location + match.range.location, length: match.range.length))
+                                  range: NSRange(location: lineRange.location + match.range.location, length: match.range.length), label: label)
         }
         return nil
     }

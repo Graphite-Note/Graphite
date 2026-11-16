@@ -5,8 +5,8 @@
  * Description: A Live Preview callout drawn as a box, and the reading-view blocks of its body or of an embedded note.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -120,7 +120,8 @@ struct LivePreviewBlockStack: View {
                                            foldOccurrence: foldOccurrence(ofCalloutAt: index),
                                            environment: environment, revealSource: revealSource, readingSection: readingSection, tableEditing: tableEditing))
         case .embed(let embed):
-            AnyView(LivePreviewEmbedView(embed: embed, environment: environment, allowsNoteEmbeds: allowsNoteEmbeds, revealSource: revealSource))
+            if let video = WebVideo(embed: embed) { AnyView(WebVideoCard(video: video, writtenTitle: embed.label, revealSource: revealSource)) }
+            else { AnyView(LivePreviewEmbedView(embed: embed, environment: environment, allowsNoteEmbeds: allowsNoteEmbeds, revealSource: revealSource)) }
         case .baseDefinition(let yaml):
             AnyView(BaseCodeBlockView(yaml: yaml, context: environment.baseContext))
         case .displayMath(let markdown):

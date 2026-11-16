@@ -6,8 +6,8 @@
  *              not loaded, a freeze), and how it looks: Live Preview's views over its blocks, the reading view's blocks.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -227,7 +227,7 @@ enum ReadingBlockCheck {
                 if (try? await ReadingImageCache.shared.thumbnail(for: location, kind: .block)) == nil { found.append(.pictureNotLoaded(target: path.rawValue)) }
             case .callout(_, _, _, _, let body), .transclusion(_, _, _, let body): found += await problems(in: body)
             case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .footnotes, .pluginCodeBlock, .pluginSection,
-                 .webFrame:
+                 .webFrame, .webVideo:
                 break
             }
         }

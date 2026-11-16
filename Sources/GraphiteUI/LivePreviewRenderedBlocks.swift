@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.24
- * Date: 13/11/2026
+ * Version: 0.25
+ * Date: 16/11/2026
  */
 
 #if canImport(UIKit)
@@ -928,6 +928,8 @@ struct DetachedWidgetPool<Host> {
         // Shapes and lines of text, as a formula's glyphs are; estimated as a formula of as many lines, not measured.
         case .mermaidDiagram: return 0.15 + 0.05 * Double(block.markdown.split(separator: "\n", omittingEmptySubsequences: false).count)
         case .embed(let embed):
+            // A video card's thumbnail, 640 by 360 pixels.
+            if WebVideo(embed: embed) != nil { return 1 }
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) || DocumentKind.audioFileExtensions.contains(fileExtension) { return nil }
             return 12
@@ -1006,6 +1008,8 @@ enum LivePreviewBlockHeightEstimate {
         // vertical padding is the rest.
         case .webFrame(let frame): return CGFloat(frame.shownHeight) + 8
         case .embed(let embed):
+            // The picture at 16:9 and a line of title under it.
+            if WebVideo(embed: embed) != nil { return min(columnWidth, WebVideoCard.maximumWidth) * 9 / 16 + 44 }
             let fileExtension = (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension.lowercased()
             if DocumentKind.videoFileExtensions.contains(fileExtension) { return columnWidth * 9 / 16 + 8 }
             if DocumentKind.audioFileExtensions.contains(fileExtension) { return 96 }

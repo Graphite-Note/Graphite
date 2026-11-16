@@ -5,8 +5,8 @@
  * Description: The line-oriented scanner that finds what the editor styles, and the block state from line to line.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 12/11/2026
+ * Version: 0.15
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -596,6 +596,12 @@ public enum MarkdownStyleScanner {
             add(labelRange, isEmbed ? .embed : .link, in: match.range)
             add(NSRange(location: NSMaxRange(labelRange), length: NSMaxRange(match.range) - NSMaxRange(labelRange)), .concealableMarker, in: match.range)
             claimedRanges.insert(match.range)
+        }
+        // A bare web address is a link, as the reading view shows it; its `_`, `*` and `#`
+        // are part of the address, not emphasis or a tag.
+        for address in WebAddressSyntax.addresses(in: line, range: range) where isUnclaimed(address.range) {
+            add(address.range, .link, in: address.range)
+            claimedRanges.insert(address.range)
         }
         // Emphasis can hold any of the elements above (`**bold with a [[link]]**`), and a
         // delimiter inside one is that element's text. With each element replaced by

@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.18
- * Date: 13/11/2026
+ * Version: 0.19
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -183,8 +183,8 @@ public enum LivePreviewBlockScanner {
             }
             if let embed = EmbedLocator.standaloneEmbed(onLine: content) {
                 // A web image is not a vault file, so it gets no embed widget and stays
-                // Markdown, as reading view leaves it.
-                if !embed.isRemoteImage {
+                // Markdown, as reading view leaves it. A YouTube address is a video card.
+                if embed.isBlockOfItsOwn {
                     blocks.append(LivePreviewBlock(kind: .embed(embed), range: lines[lineIndex].range, markdown: content))
                 }
             } else if let pieces = imageLinePieces(ofParagraphLine: content) ?? imageLinePieces(ofListItem: content, followsListItem: followsListItem) {

@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.53
- * Date: 12/11/2026
+ * Version: 0.54
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -72,6 +72,8 @@ indirect enum RenderedBlock: Identifiable, Sendable {
     case heading(id: Int, level: Int, text: String, anchor: String?)
     case callout(id: Int, type: String, title: String, folding: CalloutFolding, body: [RenderedBlock])
     case video(id: Int, location: URL)
+    /// A YouTube video or playlist, drawn as a card that opens it.
+    case webVideo(id: Int, video: WebVideo, writtenTitle: String?)
     case audio(id: Int, location: URL, name: String)
     case pdf(id: Int, path: VaultPath, location: URL, options: PDFEmbedOptions)
     case transclusion(id: Int, path: VaultPath, heading: String?, body: [RenderedBlock])
@@ -99,7 +101,8 @@ indirect enum RenderedBlock: Identifiable, Sendable {
     var id: String {
         switch self {
         case .properties: "properties"
-        case .markdown(let id, _), .displayMath(let id, _), .heading(let id, _, _, _), .callout(let id, _, _, _, _), .video(let id, _), .audio(let id, _, _),
+        case .markdown(let id, _), .displayMath(let id, _), .heading(let id, _, _, _), .callout(let id, _, _, _, _), .video(let id, _),
+             .webVideo(let id, _, _), .audio(let id, _, _),
              .pdf(let id, _, _, _), .transclusion(let id, _, _, _), .base(let id, _), .baseFile(let id, _, _), .missingEmbed(let id, _), .missingSection(let id, _, _), .image(let id, _, _, _, _),
              .footnotes(let id, _), .pluginCodeBlock(let id, _, _, _, _, _), .pluginSection(let id, _, _), .diagram(let id, _),
              .webFrame(let id, _): "block-\(id)"
@@ -540,6 +543,7 @@ actor ReadingViewBuilder {
     }
 
     private func renderEmbed(_ embed: EmbedReference, note: VaultPath, root: URL, index: VaultIndex, configuration: ReadingConfiguration, allowsTransclusion: Bool) async throws -> RenderedBlock {
+        if let video = WebVideo(embed: embed) { return .webVideo(id: identifier(), video: video, writtenTitle: embed.label) }
         guard let path = await resolve(embed.target, isWiki: embed.isWiki, note: note, root: root, index: index),
               let location = try? path.url(in: root) else {
             return .missingEmbed(id: identifier(), target: embed.target)
@@ -849,7 +853,7 @@ extension RenderedBlock {
         case .callout(_, _, _, _, let body), .transclusion(_, _, _, let body): body.contains { block in block.holdsReadingScrollTarget(target) }
         case .footnotes(_, let notes): notes.contains { footnote in RenderedFootnote.anchor(for: footnote.number) == target }
         case .properties, .markdown, .displayMath, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-             .pluginCodeBlock, .pluginSection, .diagram, .webFrame: false
+             .pluginCodeBlock, .pluginSection, .diagram, .webFrame, .webVideo: false
         }
     }
 }
@@ -1715,6 +1719,8 @@ struct ReadingBlocksView: View {
                 }
             case .video(_, let location):
                 EmbeddedMediaPlayer(location: location)
+            case .webVideo(_, let video, let writtenTitle):
+                WebVideoCard(video: video, writtenTitle: writtenTitle)
             case .audio(_, let location, let name):
                 EmbeddedAudioPlayer(location: location, name: name)
             case .pdf(_, let path, let location, let options):

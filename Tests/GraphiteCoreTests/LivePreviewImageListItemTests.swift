@@ -7,8 +7,8 @@
  *              Markdown embeds of a table or callout are found with their sizes (issue #102).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -50,7 +50,7 @@ final class LivePreviewImageListItemTests: XCTestCase {
             .listMarker(ImageLineListMarker(indentation: "", marker: "12.", spacing: " ")),
             .text("Before"),
             .image(EmbedReference(target: "Photos/a.JPG", isWiki: false, displaySize: EmbedDisplaySize(width: 120, height: nil),
-                                  range: NSRange(location: 11, length: 26))),
+                                  range: NSRange(location: 11, length: 26), label: "photo|120")),
             .text("after"),
         ])
     }

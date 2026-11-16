@@ -8,8 +8,8 @@
  *              web links the finished PDF needs.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -157,6 +157,9 @@ enum NotePDFBlocks {
             return NotePDFBlock(content: .fileName(location.lastPathComponent, systemImage: "film"))
         case .audio(_, _, let name):
             return NotePDFBlock(content: .fileName(name, systemImage: "waveform"))
+        case .webVideo(_, let video, let writtenTitle):
+            return NotePDFBlock(content: .fileName(writtenTitle.flatMap { title in title.isEmpty ? nil : title } ?? video.address.absoluteString,
+                                                   systemImage: "play.rectangle"))
         case .baseFile(_, let path, let viewName):
             return await printedBase(.file(path), viewName: viewName, name: path.name, vault: vault, note: note, layoutWidth: layoutWidth)
         case .base(_, let yaml):
@@ -191,7 +194,7 @@ enum NotePDFBlocks {
             case .transclusion(let id, let path, let heading, let body):
                 .transclusion(id: id, path: path, heading: heading, body: openedForPrinting(body))
             case .properties, .markdown, .displayMath, .heading, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image,
-                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram, .webFrame:
+                 .footnotes, .pluginCodeBlock, .pluginSection, .diagram, .webFrame, .webVideo:
                 block
             }
         }
@@ -206,6 +209,8 @@ enum NotePDFBlocks {
         case .footnotes(_, let notes): notes.map(\.text)
         // A frame's page cannot be printed: its box shows the address, which the finished PDF links to the page.
         case .webFrame(_, let frame): ["<" + frame.address.absoluteString + ">"]
+        // A video card prints as its title, with the address the finished PDF links to the video.
+        case .webVideo(_, let video, _): ["<" + video.address.absoluteString + ">"]
         case .properties, .video, .audio, .pdf, .base, .baseFile, .missingEmbed, .missingSection, .image, .pluginCodeBlock, .diagram: []
         }
     }

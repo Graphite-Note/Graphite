@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.40
- * Date: 13/11/2026
+ * Version: 0.41
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -267,7 +267,11 @@ struct LivePreviewWidgetView: View {
                 .contentShape(Rectangle())
                 .onTapGesture(perform: revealSource)
         case .embed(let embed):
-            LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
+            if let video = WebVideo(embed: embed) {
+                WebVideoCard(video: video, writtenTitle: embed.label, revealSource: revealSource)
+            } else {
+                LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
+            }
         case .imageLine(let pieces):
             LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource)
         case .baseDefinition(let yaml):

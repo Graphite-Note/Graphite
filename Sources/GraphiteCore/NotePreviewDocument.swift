@@ -5,8 +5,8 @@
  * Description: Splits a note into the blocks of its reading view, and finds headings by the text a link names.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.19
- * Date: 12/11/2026
+ * Version: 0.20
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -212,11 +212,11 @@ public enum NotePreviewDocument {
                 lineIndex += 1 + bodyLineCount
                 continue
             }
-            // A web image (`![](https://…)`) is not a vault file. It stays Markdown, which the
+            // A web image (`![](https://…)`) is not a vault file, a YouTube video is a card (`isBlockOfItsOwn`). The image stays Markdown, which the
             // renderer draws from the web as it does an inline one. PDFs on a paragraph line among
             // pictures or text are each their viewer, the rest of the line Markdown (HUNT-351).
             let lineStart = lineStartOffsets[lineIndex]
-            let standaloneEmbed = EmbedLocator.standaloneEmbed(onLine: line).flatMap { embed in embed.isRemoteImage ? nil : embed }
+            let standaloneEmbed = EmbedLocator.standaloneEmbed(onLine: line).flatMap { embed in embed.isBlockOfItsOwn ? embed : nil }
             if let embedBlocks = standaloneEmbed.map({ embed in [LocatedBlock(block: .embed(embed), startOffset: lineStart, lineStartOffsets: [], body: [])] })
                 ?? ReadingPDFLine.locatedBlocks(of: line, lineStart: lineStart) {
                 flushMarkdown()
