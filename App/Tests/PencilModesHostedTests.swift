@@ -7,7 +7,7 @@
  *              the palette Add Image and Graphite's tools are buttons of the PDF's toolbar (HUNT-309).
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 16/11/2026
  */
 
@@ -193,16 +193,24 @@ final class PencilModesHostedTests: XCTestCase {
         }
     }
 
+    /// Every accessibility element under `object`: its accessibility children and, for a view, its subviews too, since
+    /// a toolbar lists only some of its buttons as its children once it holds more than fit one of its groups (seen
+    /// 2026-11-16, after Record Lecture joined the PDF's toolbar). Each element once.
     private func accessibilityElements(in object: NSObject) -> [NSObject] {
-        var elements: [NSObject] = object.isAccessibilityElement ? [object] : []
-        let count = object.accessibilityElementCount()
-        if let children = object.accessibilityElements {
-            elements += children.compactMap { child in child as? NSObject }.flatMap(accessibilityElements)
-        } else if count != NSNotFound, count > 0 {
-            elements += (0..<count).compactMap { elementIndex in object.accessibilityElement(at: elementIndex) as? NSObject }.flatMap(accessibilityElements)
-        } else if let view = object as? UIView {
-            elements += view.subviews.flatMap(accessibilityElements)
+        var seen = Set<ObjectIdentifier>()
+        var elements: [NSObject] = []
+        func visit(_ object: NSObject) {
+            guard seen.insert(ObjectIdentifier(object)).inserted else { return }
+            if object.isAccessibilityElement { elements.append(object) }
+            let count = object.accessibilityElementCount()
+            if let children = object.accessibilityElements {
+                children.compactMap { child in child as? NSObject }.forEach(visit)
+            } else if count != NSNotFound, count > 0 {
+                (0..<count).compactMap { elementIndex in object.accessibilityElement(at: elementIndex) as? NSObject }.forEach(visit)
+            }
+            if let view = object as? UIView { view.subviews.forEach(visit) }
         }
+        visit(object)
         return elements
     }
 }
