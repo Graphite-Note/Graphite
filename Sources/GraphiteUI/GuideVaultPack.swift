@@ -20,7 +20,7 @@ import GraphiteCore
 /// against the commit and `GuideVaultContentsTests` against the vault in the checkout, so a change to the vault is
 /// pinned again before it ships.
 enum GuideVaultPack {
-    static let revision = "ebd0c6af8742616440814290ce1ce4a226ad6978"
+    static let revision = "58dde7f395d5654402326c0d8ce79e1de1cf9c8d"
     /// The note the Guide vault opens at when no other is asked for.
     static let startNote = "Start here"
     private static let baseAddress = URL(string: "https://raw.githubusercontent.com/Graphite-Note/Graphite/\(revision)/Guide/Graphite%20Guide")
@@ -67,12 +67,12 @@ enum GuideVaultPack {
                   sha256: "b20194d0a03cc8680028f461f01be9f5bee4ca0d595e3a950a7958ec72fa2659"),
         AddOnFile(name: "3 Handwriting and PDFs/Handwriting and PDFs.md", byteCount: 1269,
                   sha256: "a231a636eb25f97aa7d799ef29c006092e82ba840cdbc2ba25dec49214d48ef2"),
-        AddOnFile(name: "3 Handwriting and PDFs/Notebooks and paper.md", byteCount: 1533,
-                  sha256: "72a1d82c7dc213b0faed06871c73dc561f0889961d223cf82a5ded46c0e46dab"),
+        AddOnFile(name: "3 Handwriting and PDFs/Notebooks and paper.md", byteCount: 1633,
+                  sha256: "b76ef6c19fd5e8cfdfc1329bfa68e00d0dfa235637f8e1c56bb2221cc31836f3"),
         AddOnFile(name: "3 Handwriting and PDFs/PDF markup on the Mac.md", byteCount: 1420,
                   sha256: "96cadd05e9e9065ba268beefff67ee2f65121189c226679e172d079994f3531e"),
-        AddOnFile(name: "3 Handwriting and PDFs/Pencil tools.md", byteCount: 2347,
-                  sha256: "8afc74210712bd36948178f83eaa96ce5b28f6c3a1453a6e429c74813404ace3"),
+        AddOnFile(name: "3 Handwriting and PDFs/Pencil tools.md", byteCount: 2657,
+                  sha256: "28241888bdcf2cb155e49f28163e0603dabdd799f9c9766d125f0deac4aaeb8f"),
         AddOnFile(name: "3 Handwriting and PDFs/Recording a lecture.md", byteCount: 1277,
                   sha256: "87f4f8d65a916d5b753e4a97d7a0a4adad9e129e0f996d76fa375a09e0ec1424"),
         AddOnFile(name: "3 Handwriting and PDFs/Writing on slides.md", byteCount: 1919,
@@ -87,8 +87,8 @@ enum GuideVaultPack {
                   sha256: "3b767b4539e8b5ecfd58af234d9c92b904caf99776c48a87503d5ce0cf358180"),
         AddOnFile(name: "4 Making notes look good/Lists and tasks.md", byteCount: 1228,
                   sha256: "5e8eef5a32692e821f92596f1bd412b8100008ccd9f2a6c373c7c57a4b0dd528"),
-        AddOnFile(name: "4 Making notes look good/Making notes look good.md", byteCount: 1855,
-                  sha256: "8b6fdfc509dace516c02e3dee4dce5ca49ecb1fc457ed6028a251b83188c255b"),
+        AddOnFile(name: "4 Making notes look good/Making notes look good.md", byteCount: 1972,
+                  sha256: "2cdec77e42e8c4d806a53c559fb427a5a190ba2c800fc5e011bcdda1331418cc"),
         AddOnFile(name: "4 Making notes look good/Math.md", byteCount: 1285,
                   sha256: "e449267ffbd35a40c5dc2a726304fbbdeec6990f760f6dceccd8490a70d14c9c"),
         AddOnFile(name: "4 Making notes look good/Pictures and embeds.md", byteCount: 1716,
@@ -221,6 +221,8 @@ enum GuideVaultPack {
                   sha256: "99a328c4cfaa5ddfb533074e29e0dd0932ce8496cc19d1ceabfee7d4cd3e3d06"),
         AddOnFile(name: "Attachments/Screenshots/iPad - Callouts.jpg", byteCount: 156079,
                   sha256: "e686ac05e506130e83ccdde268057317a9e15b48b9ea11ffa81038bb12fdff7b"),
+        AddOnFile(name: "Attachments/Screenshots/iPad - Choosing and arranging colours.gif", byteCount: 148254,
+                  sha256: "1a9e6935b4b2f8b9f1f4c9857e428846bec2e14db54e58648203193624d2da70"),
         AddOnFile(name: "Attachments/Screenshots/iPad - Diagrams.jpg", byteCount: 150496,
                   sha256: "f7274b238778e89cf4f5baebf7918951e50c646444bc74c868f7d4babe08e569"),
         AddOnFile(name: "Attachments/Screenshots/iPad - Lisbon weekend.jpg", byteCount: 146429,
@@ -237,8 +239,14 @@ enum GuideVaultPack {
                   sha256: "b191d63a7e155ef7c89cf513a5761ac772c6b7fb5a5a42c07eba147547ae61be"),
         AddOnFile(name: "Attachments/Screenshots/iPad - Start here.jpg", byteCount: 289482,
                   sha256: "5ed066d07a83138353b66e21d13bf41a86dd0106b7c3e98cd9f340a1d0e93d36"),
+        AddOnFile(name: "Attachments/Screenshots/iPad - Switching views.gif", byteCount: 143689,
+                  sha256: "b9c23abdc54692f83b460ca29a2e74b92f864da3db5b9dca4c8d8125789ec966"),
         AddOnFile(name: "Attachments/Screenshots/iPad - Tables.jpg", byteCount: 152277,
                   sha256: "9af57b94571a98620ed805135d8312cfa28ee490a969616b20486f0cb3e3b682"),
+        AddOnFile(name: "Attachments/Screenshots/iPad - The lasso.gif", byteCount: 255779,
+                  sha256: "41c67f6a6f1b8830a3c7feceda906daea633eef16dcaf6e57495aa5fd14a9d74"),
+        AddOnFile(name: "Attachments/Screenshots/iPad - Writing on a page.gif", byteCount: 149073,
+                  sha256: "63c8bcb9958cd50de98527c9a59baff7da380d3f9b258ebba3bf76934271a81d"),
         AddOnFile(name: "Attachments/Screenshots/iPhone - A recipe.jpg", byteCount: 75762,
                   sha256: "e33c05095f60f9382ef1fe51b3f5ba29513baf632844e8844f3c342a55858a12"),
         AddOnFile(name: "Attachments/Screenshots/iPhone - Restaurants map.jpg", byteCount: 173380,
