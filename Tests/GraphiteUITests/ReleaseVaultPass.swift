@@ -7,8 +7,8 @@
  *              a screenshot of each page, and what went wrong; the Mac's and the iPad's tests run it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -77,12 +77,13 @@ final class ReleaseVaultPass {
         quietWatch = MainThreadQuietWatch(window: window, quietStepsToStop: 40)
     }
 
-    /// The vault copied, indexed and shown in a window that closes when the test ends.
-    static func open(for testCase: XCTestCase) async throws -> ReleaseVaultPass {
-        let webServer = try await LoopbackWebServer(pages: try ReleaseVaultPassWebPages.pages())
+    /// The vault copied, indexed and shown in a window that closes when the test ends: `Tests/ReleaseVault`, or another
+    /// vault of the repository such as the Graphite Guide (`GuideVaultPassTests`).
+    static func open(for testCase: XCTestCase, vault source: URL = FixtureFolders.releaseVault) async throws -> ReleaseVaultPass {
+        let webServer = try await LoopbackWebServer(pages: try ReleaseVaultPassWebPages.pages(in: source))
         testCase.addTeardownBlock { webServer.stop() }
         let vaultRoot = try TemporaryVault.make(prefix: "ReleaseVault", for: testCase).root
-        try ReleaseVaultPassWebPages.copyVault(to: vaultRoot, pointingFramesAt: webServer.address("/").absoluteString)
+        try ReleaseVaultPassWebPages.copyVault(source, to: vaultRoot, pointingFramesAt: webServer.address("/").absoluteString)
         let device = try IsolatedWorkspaceDevice.make(for: testCase)
         let workspace = device.makeWorkspace()
         try await workspace.openFolderAsVault(vaultRoot)
@@ -103,17 +104,28 @@ final class ReleaseVaultPass {
                 record(ReleaseVaultFinding(path: path.rawValue, shown: .wholeVault, problem: .notShown("no part of the pass opens it")))
             }
         }
-        for path in files where part.contains(path.rawValue) {
-            switch DocumentKind(path: path) {
-            case .markdown: try await passNote(path)
-            case .pdf, .image, .base, .canvas: try await passFile(path)
-            case .media, .other: continue
-            }
-            openedFileCount += 1
-        }
+        for path in files where part.contains(path.rawValue) { try await passAnyFile(path) }
         if part.contains("Web/"), !webServer.requestedPaths.contains(where: ReleaseVaultPassWebPages.isFramePage) {
             record(ReleaseVaultFinding(path: "Web/Web pages.md", shown: .livePreview, problem: .notShown("the page in the frame was never asked for")))
         }
+    }
+
+    /// Opens every file of a vault other than the release vault whose top-level folder or file is one of `topLevelNames`,
+    /// in order of its path, as `run` opens a part's files.
+    func runFiles(inTopLevel topLevelNames: Set<String>) async throws {
+        for path in try filesToOpen() where topLevelNames.contains(path.rawValue.split(separator: "/", maxSplits: 1).first.map(String.init) ?? "") {
+            try await passAnyFile(path)
+        }
+    }
+
+    /// A note in its three views, a PDF, picture, base or canvas in its own; audio, video and other files are not opened.
+    private func passAnyFile(_ path: VaultPath) async throws {
+        switch DocumentKind(path: path) {
+        case .markdown: try await passNote(path)
+        case .pdf, .image, .base, .canvas: try await passFile(path)
+        case .media, .other: return
+        }
+        openedFileCount += 1
     }
 
     /// Findings that are not the vault's own deliberate failures.

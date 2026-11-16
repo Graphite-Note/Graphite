@@ -25,6 +25,10 @@ public enum FixtureFolders {
     /// (`Tests/ReleaseVault/README.md` lists what each note shows; Docs/Release-test-vault-todo.md).
     public static let releaseVault = repositoryRoot.appendingPathComponent("Tests/ReleaseVault", isDirectory: true)
 
+    /// The Graphite Guide vault: notes that show each feature beside its syntax, which the Guide downloads and opens
+    /// (`GuideVaultPack`, Docs/Guide-vault-todo.md).
+    public static let guideVault = repositoryRoot.appendingPathComponent("Guide/Graphite Guide", isDirectory: true)
+
     /// The Mac and iPad application's property lists.
     public static let applicationFolder = repositoryRoot.appendingPathComponent("App", isDirectory: true)
 

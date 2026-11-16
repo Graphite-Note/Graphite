@@ -6,8 +6,8 @@
  *              time, and the copy of the vault whose web frames point at the pass's own loopback server.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -203,10 +203,10 @@ enum ReleaseVaultPassWebPages {
         return addresses
     }
 
-    /// The server's page for each frame: text and colour only, naming the address it stands in for.
-    static func pages() throws -> [String: String] {
+    /// The server's page for each frame of the vault: text and colour only, naming the address it stands in for.
+    static func pages(in vaultRoot: URL = FixtureFolders.releaseVault) throws -> [String: String] {
         var pages: [String: String] = [:]
-        for (addressIndex, address) in try frameAddresses().enumerated() {
+        for (addressIndex, address) in try frameAddresses(in: vaultRoot).enumerated() {
             let escaped = address.replacingOccurrences(of: "&", with: "&amp;").replacingOccurrences(of: "<", with: "&lt;")
             pages[framePathPrefix + "\(addressIndex + 1).html"] = "<html><body style=\"font: 15px -apple-system; background: #eef3ff; margin: 16px\">"
                 + "<h1>Frame \(addressIndex + 1)</h1><p>Served by the release pass on the loopback address, in place of \(escaped).</p></body></html>"
@@ -214,14 +214,22 @@ enum ReleaseVaultPassWebPages {
         return pages
     }
 
-    /// Copies `Tests/ReleaseVault` to `destination`, its settings folder included, and points every frame of every note
-    /// at its page of `serverAddress` (`http://127.0.0.1:<port>/`).
-    static func copyVault(to destination: URL, pointingFramesAt serverAddress: String) throws {
+    /// Copies the vault (`Tests/ReleaseVault` unless another is named) to `destination`, its settings folder included, and
+    /// points every frame of every note at its page of `serverAddress` (`http://127.0.0.1:<port>/`).
+    static func copyVault(_ source: URL = FixtureFolders.releaseVault, to destination: URL, pointingFramesAt serverAddress: String) throws {
         let fileManager = FileManager.default
-        for item in try fileManager.contentsOfDirectory(at: FixtureFolders.releaseVault, includingPropertiesForKeys: nil) {
+        for item in try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
             try fileManager.copyItem(at: item, to: destination.appendingPathComponent(item.lastPathComponent))
         }
-        let addresses = try frameAddresses()
+        // A checkout below `.claude` on the iCloud Desktop gives every file the hidden flag, which the copy would keep
+        // and Graphite would then leave out of the vault; names starting with a dot stay hidden by their name.
+        let enumerator = fileManager.enumerator(at: destination, includingPropertiesForKeys: [.isHiddenKey])
+        while var location = enumerator?.nextObject() as? URL {
+            var visible = URLResourceValues()
+            visible.isHidden = false
+            try location.setResourceValues(visible)
+        }
+        let addresses = try frameAddresses(in: source)
         let expression = try NSRegularExpression(pattern: frameSourcePattern, options: [.caseInsensitive])
         let serverRoot = serverAddress.hasSuffix("/") ? String(serverAddress.dropLast()) : serverAddress
         for note in try notes(in: destination) {
@@ -238,11 +246,15 @@ enum ReleaseVaultPassWebPages {
         }
     }
 
+    /// The vault's notes outside its hidden folders. Hidden is judged inside the vault: `.skipsHiddenFiles` also skipped
+    /// every note of a checkout below a hidden folder, such as a worktree in `.claude/worktrees`.
     private static func notes(in vaultRoot: URL) throws -> [URL] {
-        let enumerator = FileManager.default.enumerator(at: vaultRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+        let root = vaultRoot.standardizedFileURL.path
+        let enumerator = FileManager.default.enumerator(at: vaultRoot, includingPropertiesForKeys: nil)
         var notes: [URL] = []
         while let location = enumerator?.nextObject() as? URL {
-            if location.pathExtension == "md" { notes.append(location) }
+            let insideVault = location.standardizedFileURL.path.dropFirst(root.count)
+            if location.pathExtension == "md", !insideVault.contains("/.") { notes.append(location) }
         }
         return notes.sorted { first, second in first.path < second.path }
     }

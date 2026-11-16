@@ -170,6 +170,7 @@
 				GraphiteTestSupport/TextRecognitionCapability.swift,
 				GraphiteTestSupport/WaitUntil.swift,
 				GraphiteUITests/GraphBenchmarkTests.swift,
+				GraphiteUITests/GuideVaultPassTests.swift,
 				GraphiteUITests/IsolatedWorkspaceDevice.swift,
 				GraphiteUITests/PDFSessionMarkupTests.swift,
 				GraphiteUITests/PDFTextMarkColorsTests.swift,

@@ -5,8 +5,8 @@
  * Description: The add-on packs on this device, those that came with the app included, and their downloads.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 13/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import Foundation
@@ -76,7 +76,7 @@ final class AddOnLibrary {
     /// The packs the app ships definitions of, with a download session that keeps no cookies
     /// or cache of its own; what the person removed is remembered in `defaults`.
     static func standard(applicationFolders: ApplicationFolders, defaults: UserDefaults) -> AddOnLibrary {
-        AddOnLibrary(packs: [WelcomeTourScreenshotPack.forThisPlatform].compactMap { pack in pack },
+        AddOnLibrary(packs: [WelcomeTourScreenshotPack.forThisPlatform, GuideVaultPack.pack].compactMap { pack in pack },
                      applicationFolders: applicationFolders, session: URLSession(configuration: .ephemeral),
                      includedCopies: .live(defaults: defaults))
     }
@@ -106,6 +106,13 @@ final class AddOnLibrary {
         case .notDownloaded, .checking, .downloading, .failed:
             return nil
         }
+    }
+
+    /// The folder holding a downloaded pack's files at their paths (the Graphite Guide vault), or nil until it is here.
+    /// A pack that came with the app keeps its files elsewhere, file by file (`location(ofFileNamed:in:)`).
+    func downloadedFolder(of pack: AddOnPack) -> URL? {
+        guard state(of: pack) == .downloaded, let store, store.isInstalled(pack) else { return nil }
+        return store.folder(of: pack)
     }
 
     /// Fetches the pack unless it is here or already on its way: from the copy that came with the app when it is

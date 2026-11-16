@@ -12,6 +12,8 @@ the Mac app's bundle. The script checks that Graphite.xcodeproj takes exactly th
 way: each iPad and iPhone file for iOS only and with the pack's tag, each Mac file for macOS only and
 with no tag, and the tag known to the project and named in ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS.
 
+The Graphite Guide vault (`GuideVaultPack`) is a download only, so only its files at its revision are checked.
+
 Usage:
   python3 scripts/check-add-on-packs.py
 """
@@ -20,9 +22,10 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 
 REPOSITORY_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PACK_DEFINITIONS = ["Sources/GraphiteUI/WelcomeTourScreenshotPack.swift"]
+PACK_DEFINITIONS = ["Sources/GraphiteUI/WelcomeTourScreenshotPack.swift", "Sources/GraphiteUI/GuideVaultPack.swift"]
 FILE_PATTERN = re.compile(r'AddOnFile\(name: "([^"]+)", byteCount: (\d+),\s*sha256: "([0-9a-f]{64})"\)')
 PROJECT_PATH = "Graphite.xcodeproj/project.pbxproj"
 BUILD_FILE_PATTERN = re.compile(r'/\* (\S+\.jpg) in Resources \*/ = \{isa = PBXBuildFile; [^\n]*?platformFilters = \((\w+), \);(?: settings = \{ASSET_TAGS = \((\w+), \); \};)? \};')
@@ -51,7 +54,8 @@ def check_project_resources(definition_path):
 def check(definition_path):
     text = open(os.path.join(REPOSITORY_ROOT, definition_path), encoding="utf-8").read()
     revision = re.search(r'static let revision = "([0-9a-f]{40})"', text).group(1)
-    folder = re.search(r'/\\\(revision\)/([^"]+)"\)', text).group(1)
+    # The address's folder, with its spaces as the repository names them (`Guide/Graphite%20Guide`).
+    folder = urllib.parse.unquote(re.search(r'/\\\(revision\)/([^"]+)"\)', text).group(1))
     problems = []
     files = FILE_PATTERN.findall(text)
     for name, byte_count, sha256 in files:

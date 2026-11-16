@@ -13,8 +13,29 @@ enum BoundedYAML {
     static func load(_ yaml: String) -> Any? {
         guard !YAMLNesting.exceedsSafeDepth(yaml), !YAMLAliasExpansion.exceedsAnchorCount(yaml), let root = try? Yams.compose(yaml: yaml),
               !YAMLAliasExpansion.exceedsLimits(root, sourceByteCount: yaml.utf8.count),
-              isWithinExpansionBudget(root, yamlByteCount: yaml.utf8.count) else { return nil }
+              isWithinExpansionBudget(root, yamlByteCount: yaml.utf8.count), hasOnlyScalarKeys(root) else { return nil }
         return root.any
+    }
+
+    /// Whether every key of every mapping in `root` is a scalar. Yams turns a mapping into values only with text keys and
+    /// stops the app on any other: `date: {{date:YYYY-MM-DD}}`, an Obsidian template's unquoted placeholder, is a flow
+    /// mapping whose key is itself a mapping. Such frontmatter is refused, as invalid YAML is, and the note still reads.
+    static func hasOnlyScalarKeys(_ root: Node) -> Bool {
+        var pendingNodes = [root]
+        while let node = pendingNodes.popLast() {
+            switch node {
+            case .mapping(let mapping):
+                for (key, value) in mapping {
+                    guard case .scalar = key else { return false }
+                    pendingNodes.append(value)
+                }
+            case .sequence(let sequence):
+                pendingNodes.append(contentsOf: sequence)
+            case .scalar, .alias:
+                break
+            }
+        }
+        return true
     }
 
     /// Whether `root`, with every alias expanded, stays within the node budget for YAML of
