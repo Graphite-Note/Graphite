@@ -2,13 +2,14 @@
  * File: PencilColorSwatchRow.swift
  * --------------------------------
  * Layer: UI
- * Description: The Pencil bar's row of colors, arranged by dragging as in Apple's markup palette: a color lifts and
- *              follows the finger, Apple Pencil or pointer along the row while the others slide aside, letting go puts
- *              it there, a drag off the row removes it, a tap chooses a color and a second tap opens its color picker.
+ * Description: The Pencil bar's row of colors inside its strip, arranged by dragging as in Apple's markup palette: a
+ *              color held a moment lifts and follows the finger, Apple Pencil or pointer along the row while the others
+ *              slide aside, letting go puts it there, a drag off the row removes it, a swipe scrolls the strip, a tap
+ *              chooses a color and a second tap opens its color picker.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if canImport(UIKit)
@@ -16,7 +17,7 @@ import SwiftUI
 import UIKit
 import GraphiteCore
 
-/// How a row inside a scrolling strip scrolls under a drag held near either end (`PencilColorStrip`).
+/// How the row's strip scrolls under a drag held near either end (`PencilColorStrip`).
 struct PencilColorRowScrolling {
     /// The width of the strip's visible part, in points.
     let visibleWidth: Double
@@ -55,7 +56,7 @@ struct PencilColorSwatchRow: View {
     let pickerTitle: String
     let rowHeight: CGFloat
     let density: PencilToolRowLayout.Density
-    let scrolling: PencilColorRowScrolling?
+    let scrolling: PencilColorRowScrolling
     let actions: PencilColorRowActions
 
     @State private var drag: PencilColorDrag?
@@ -75,23 +76,20 @@ struct PencilColorSwatchRow: View {
             ForEach(Array(colors.enumerated()), id: \.element.id) { index, color in
                 arrangeableSwatch(color, at: index, outcome: dragOutcome)
             }
-            if let removedColorName = actions.removedColorName { undoButton(removedColorName) }
         }
         .background { PencilColorPickerAnchor(presenter: pickerPresenter) }
         .overlay { PencilColorRowTouchSurface(touches: touches) }
         .scrollTargetLayout()
     }
 
-    /// The row's touches by place: black first when shown, then the colors, then Undo when offered.
+    /// The row's touches by place: black first when shown, then the colors.
     private var touches: PencilColorRowTouches {
         PencilColorRowTouches(
             swatchPitch: density.swatchPitch,
             canArrange: { place in colors.indices.contains(place - leadingCount) },
-            holdSeconds: scrolling == nil ? nil : 0.25,
             tapped: { place in
                 if let fixedLeadingColor, place == 0 { return tap(fixedLeadingColor, at: 0, isArranged: false) }
-                if colors.indices.contains(place - leadingCount) { return tap(colors[place - leadingCount], at: place, isArranged: true) }
-                if place == leadingCount + colors.count, actions.removedColorName != nil { actions.putBack() }
+                if colors.indices.contains(place - leadingCount) { tap(colors[place - leadingCount], at: place, isArranged: true) }
             },
             dragged: { place, phase in
                 guard colors.indices.contains(place - leadingCount) else { return }
@@ -132,21 +130,10 @@ struct PencilColorSwatchRow: View {
             .accessibilityAction { tap(color, at: index + leadingCount, isArranged: true) }
             .accessibilityAction(named: "Move Left") { if index > 0 { actions.arrange(color.id, index - 1) } }
             .accessibilityAction(named: "Move Right") { if index < colors.count - 1 { actions.arrange(color.id, index + 1) } }
+            .accessibilityAction(named: "Remove") { withAnimation(.snappy(duration: 0.22)) { actions.remove(color) } }
     }
 
-    private func undoButton(_ removedColorName: String) -> some View {
-        Button(action: actions.putBack) {
-            Image(systemName: "arrow.uturn.backward.circle")
-                .font(.system(size: 17))
-                .frame(width: density.swatchPitch, height: rowHeight)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Undo Remove \(removedColorName)")
-        .transition(.opacity)
-    }
-
-    /// A color's menu (a long press): Remove, and Put Back while a removal can be undone.
+    /// A color's menu (a hold let go where the color lifted): Remove, and Put Back while a removal can be undone.
     private func menu(for color: PaletteColor) -> UIMenu {
         var items: [UIMenuElement] = [UIAction(title: "Remove from Favorite Colors", image: UIImage(systemName: "minus.circle"),
                                                attributes: .destructive) { _ in withAnimation(.snappy(duration: 0.22)) { actions.remove(color) } }]
@@ -166,21 +153,19 @@ struct PencilColorSwatchRow: View {
             return
         }
         let swatchFrame = CGRect(x: Double(swatchIndex) * density.swatchPitch, y: 0, width: density.swatchPitch, height: rowHeight)
-        pickerPresenter.present(hex: color.hex, title: pickerTitle, sourceRect: swatchFrame) { [toolbox, actions] pickedHex, isFinal in
+        pickerPresenter.present(hex: color.hex, title: pickerTitle, sourceRect: swatchFrame) { [toolbox, actions] pickedHex, phase in
             toolbox.chooseColor(hex: pickedHex)
-            if isFinal, isArranged { actions.changeHex(color.id, pickedHex) }
+            if phase != .moving, isArranged { actions.changeHex(color.id, pickedHex) }
         }
     }
 
     // MARK: Dragging
 
-    /// A drag on the bar's row arranges at once; in a scrolling strip, where a sideways drag scrolls, a color lifts
-    /// after a short hold. A tap fails both, so it still chooses.
+    /// A color lifts after a short hold, since a swipe scrolls the strip; a tap fails the hold, so it still chooses.
     private func follow(_ phase: PencilColorRowTouches.DragPhase, of color: PaletteColor, at index: Int) {
         switch phase {
         case .moved(let translation, let visibleLocation):
             drag = PencilColorDrag(colorIdentifier: color.id, originalIndex: index, translation: translation)
-            guard let scrolling else { return }
             let direction = arrangement.scrollDirection(atVisibleLocation: visibleLocation, visibleWidth: scrolling.visibleWidth)
             autoscroller.follow(direction: direction, step: density.swatchPitch / 4, scrollBy: scrolling.scrollBy)
         case .ended(let translation):

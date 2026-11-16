@@ -3,12 +3,13 @@
  * --------------------------------------
  * Layer: Tests
  * Description: Hosted tests of the Pencil bar's colors arranged by dragging, as in Apple's markup palette: a finger
- *              dragged along the row reorders the favorite colors where Settings › Colors keeps them, a tap still
- *              chooses, a drag off the row removes a color and Undo brings it back (Docs/Pen-color-palette-todo.md 1).
+ *              held on a color then dragged along the row reorders the favorite colors where Settings › Colors keeps
+ *              them, a tap still chooses, a drag off the row removes a color and Undo brings it back
+ *              (Docs/Pen-color-palette-todo.md 1; the hold since Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -17,7 +18,8 @@ import SwiftUI
 import GraphiteCore
 @testable import GraphiteUI
 
-/// The owner's request of 2026-11-13 ("not the hold and move left situation we have"). The bar's colors are shown on
+/// The owner's request of 2026-11-13 ("not the hold and move left situation we have"); since 2026-11-14 a color lifts
+/// after a short hold, as a quick drag scrolls the strip (`PencilColorRowScrollingHostedTests`). The bar's colors are shown on
 /// their own in a window, at a known place, and touched through UIKit's event path as the screen touches them; their
 /// lists are kept in settings of the test's own. Nothing here plays sound.
 @MainActor
@@ -74,6 +76,16 @@ final class PencilColorDragHostedTests: XCTestCase {
         CGPoint(x: rowOrigin.x + (Double(swatchIndex) + 0.5) * swatchPitch, y: rowOrigin.y + rowHeight / 2)
     }
 
+    /// A finger held on `start` until the color lifts, then dragged to `end` and lifted there.
+    private func holdAndDrag(from start: CGPoint, to end: CGPoint, in window: UIWindow) async {
+        let touches = SynthesizedTouches(window: window)
+        touches.begin(at: [start])
+        await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.15)
+        await touches.slide(to: [end], steps: 24)
+        await touches.hold(seconds: 0.3)
+        touches.end()
+    }
+
     private func tap(at point: CGPoint, in window: UIWindow) async {
         await SynthesizedTouches(window: window).move(paths: [(point, point)], steps: 1, stepSeconds: 0.03, holdSeconds: 0)
     }
@@ -87,6 +99,24 @@ final class PencilColorDragHostedTests: XCTestCase {
         attachment.name = "The bar's colors before the touches"
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+
+    private func attachScreenshot(of window: UIWindow, named name: String) {
+        let screenshot = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let attachment = XCTAttachment(image: screenshot)
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    /// The clear view that takes the colors' touches.
+    private func colorRow(in window: UIWindow) -> PencilColorRowTouchView? {
+        func search(_ view: UIView) -> PencilColorRowTouchView? {
+            if let rowView = view as? PencilColorRowTouchView { return rowView }
+            for subview in view.subviews { if let found = search(subview) { return found } }
+            return nil
+        }
+        return search(window)
     }
 
     /// The simulator always makes touches; a missing one is a failure here, not a reason to skip.
@@ -105,11 +135,11 @@ final class PencilColorDragHostedTests: XCTestCase {
         try await waitForTheRow(in: window)
         // Red, the first favorite, two places on: past orange and green.
         let start = center(ofSwatchAt: 1)
-        await SynthesizedTouches(window: window).drag(from: start, to: CGPoint(x: start.x + 2 * swatchPitch, y: start.y), steps: 24)
+        await holdAndDrag(from: start, to: CGPoint(x: start.x + 2 * swatchPitch, y: start.y), in: window)
         try await waitUntil("the drop is stored") { self.storedNames(in: defaults) == ["orange", "green", "red", "blue"] }
         // And back to the start, past the first place.
         let redNow = center(ofSwatchAt: 3)
-        await SynthesizedTouches(window: window).drag(from: redNow, to: CGPoint(x: redNow.x - 6 * swatchPitch, y: redNow.y), steps: 24)
+        await holdAndDrag(from: redNow, to: CGPoint(x: redNow.x - 6 * swatchPitch, y: redNow.y), in: window)
         try await waitUntil("the drop past the start is stored") { self.storedNames(in: defaults) == ["red", "orange", "green", "blue"] }
     }
 
@@ -126,6 +156,7 @@ final class PencilColorDragHostedTests: XCTestCase {
         let touches = SynthesizedTouches(window: window)
         let start = center(ofSwatchAt: 4)
         touches.begin(at: [start])
+        await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.15)
         await touches.slide(to: [CGPoint(x: start.x - 2 * swatchPitch, y: start.y)], steps: 20)
         await touches.hold(seconds: 0.4)
         XCTAssertEqual(storedNames(in: defaults), ["red", "orange", "green", "blue"], "Nothing is stored before the finger lifts.")
@@ -141,11 +172,29 @@ final class PencilColorDragHostedTests: XCTestCase {
         let window = try await showColors(toolbox: toolbox, defaults: defaults)
         try await waitForTheRow(in: window)
         let orangeCenter = center(ofSwatchAt: 2)
-        await SynthesizedTouches(window: window).drag(from: orangeCenter, to: CGPoint(x: orangeCenter.x, y: orangeCenter.y - 3 * rowHeight), steps: 24)
+        await holdAndDrag(from: orangeCenter, to: CGPoint(x: orangeCenter.x, y: orangeCenter.y - 3 * rowHeight), in: window)
         try await waitUntil("orange is removed") { self.storedNames(in: defaults) == ["red", "green", "blue"] }
-        // The row closed up, and Undo stands after its last color.
+        // The row closed up, and Undo stands after its last color, in the plus's place. It is a SwiftUI button, which
+        // synthesized touches do not reach: it is pressed as VoiceOver presses it.
         window.layoutIfNeeded()
-        await tap(at: center(ofSwatchAt: 4), in: window)
+        try PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(true)
+        defer { try? PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(false) } // Left on, it slows later tests.
+        var undo: NSObject?
+        try await waitUntil("Undo is offered", pollingIntervalSeconds: 0.25) {
+            undo = PencilBarPlacementHostedTests.accessibilityElements(in: window).first { element in element.accessibilityLabel == "Undo Remove orange" }
+            return undo != nil
+        }
+        let undoElement = try XCTUnwrap(undo)
+        XCTAssertEqual(undoElement.accessibilityFrame.midX, center(ofSwatchAt: 4).x, accuracy: 2, "Undo stands after the last color.")
+        XCTAssertFalse(PencilBarPlacementHostedTests.accessibilityElements(in: window).contains { element in
+            element.accessibilityLabel == "Add to Favorite Colors"
+        }, "Undo takes the plus's place while it is offered.")
+        // On screen too: the strip is as wide as the four colors left, with no gap where orange was.
+        let strip = try XCTUnwrap(sequence(first: try XCTUnwrap(colorRow(in: window)) as UIView) { view in view.superview }
+            .compactMap { view in view as? UIScrollView }.first)
+        try await waitUntil("the strip closes up") { abs(strip.bounds.width - 4 * self.swatchPitch) < 0.5 }
+        attachScreenshot(of: window, named: "After a drag off the row: Undo in the plus's place")
+        XCTAssertTrue(undoElement.accessibilityActivate())
         try await waitUntil("orange is back at its place") { self.storedNames(in: defaults) == ["red", "orange", "green", "blue"] }
     }
 
@@ -165,6 +214,42 @@ final class PencilColorDragHostedTests: XCTestCase {
         let picker = try XCTUnwrap(window.rootViewController?.presentedViewController as? UIColorPickerViewController)
         XCTAssertEqual(picker.title, "Pen Color")
         picker.dismiss(animated: false)
+    }
+
+    /// Docs/PDF-annotation-todo.md section 3: a color held then let go where it lifted opens its menu, whose Remove
+    /// takes it off the row; held and let go, it moves nowhere.
+    func testAColorHeldAndLetGoInPlaceOpensItsMenuWhoseRemoveTakesItOff() async throws {
+        try requireTouches()
+        let defaults = try makeDefaults()
+        let toolbox = PencilToolbox(defaults: defaults)
+        let window = try await showColors(toolbox: toolbox, defaults: defaults)
+        try await waitForTheRow(in: window)
+        let touches = SynthesizedTouches(window: window)
+        touches.begin(at: [center(ofSwatchAt: 3)])
+        await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.3)
+        touches.end()
+        try PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(true)
+        defer { try? PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(false) } // Left on, it slows later tests.
+        let scene = try XCTUnwrap(window.windowScene)
+        var remove: NSObject?
+        try await waitUntil("the color's menu opens", pollingIntervalSeconds: 0.25) {
+            remove = scene.windows.flatMap { shownWindow in PencilBarPlacementHostedTests.accessibilityElements(in: shownWindow) }
+                .first { element in element.accessibilityLabel == "Remove from Favorite Colors" }
+            return remove != nil
+        }
+        XCTAssertEqual(storedNames(in: defaults), ["red", "orange", "green", "blue"], "A hold let go in place arranges nothing.")
+        // The edit menu is UIKit's, which a finger's tap reaches once it has come to rest.
+        var removeFrame = CGRect.null
+        try await waitUntil("the menu comes to rest", pollingIntervalSeconds: 0.2) {
+            let frame = remove?.accessibilityFrame ?? .null
+            defer { removeFrame = frame }
+            return frame == removeFrame && !frame.isEmpty
+        }
+        let removeCenter = CGPoint(x: removeFrame.midX, y: removeFrame.midY)
+        let menuWindow = (remove as? UIView)?.window ?? window
+        let pointInMenuWindow = menuWindow.convert(removeCenter, from: nil)
+        await SynthesizedTouches(window: menuWindow).move(paths: [(pointInMenuWindow, pointInMenuWindow)], steps: 1, stepSeconds: 0.03, holdSeconds: 0.05)
+        try await waitUntil("green is removed") { self.storedNames(in: defaults) == ["red", "orange", "blue"] }
     }
 }
 #endif

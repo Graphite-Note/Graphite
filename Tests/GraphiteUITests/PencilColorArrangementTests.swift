@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Where a color dragged along the Pencil bar lands for every drop place (first, last, past either end, on
  *              itself), how the others slide aside, when a drag removes it, when the strip scrolls under it, and the
- *              palette edits a drop, a color picker and Undo make (Docs/Pen-color-palette-todo.md section 1).
+ *              palette edits a drop, a color picker, the plus and Undo make (Docs/Pen-color-palette-todo.md section 1,
+ *              Docs/PDF-annotation-todo.md section 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -87,6 +88,25 @@ final class PencilColorArrangementTests: XCTestCase {
         XCTAssertEqual(changed[1].hex, TextColorMarkup.canonicalHex("#123abc"))
         XCTAssertEqual(FavoriteColorEditing.changingHex(of: orange.id, to: "#E93147", in: palette), palette, "Red is in the list already.")
         XCTAssertEqual(FavoriteColorEditing.changingHex(of: orange.id, to: "no color", in: palette), palette)
+    }
+
+    // MARK: The plus
+
+    /// Docs/PDF-annotation-todo.md section 3: the plus saves the color in use when the strip does not have it, and
+    /// otherwise opens the color picker for a new one.
+    func testThePlusSavesAColorInUseTheStripLacksAndOtherwiseOpensThePicker() {
+        let black = PencilInk.pen.defaultColorHex
+        XCTAssertEqual(FavoriteColorEditing.additionStep(colorInUseHex: "#2A9D8F", palette: palette, fixedLeadingHex: black), .saveColorInUse)
+        XCTAssertEqual(FavoriteColorEditing.additionStep(colorInUseHex: "#E93147", palette: palette, fixedLeadingHex: black), .chooseNewColor,
+                       "Red is a swatch already, however its hex is written.")
+        XCTAssertEqual(FavoriteColorEditing.additionStep(colorInUseHex: black, palette: palette, fixedLeadingHex: black), .chooseNewColor,
+                       "Black is always first on a pen's strip.")
+        XCTAssertEqual(FavoriteColorEditing.additionStep(colorInUseHex: black, palette: palette, fixedLeadingHex: nil), .saveColorInUse,
+                       "A highlighter's strip has no black of its own.")
+        XCTAssertEqual(FavoriteColorEditing.additionStep(colorInUseHex: "no color", palette: palette, fixedLeadingHex: black), .chooseNewColor)
+        let saved = FavoriteColorEditing.adding(hex: "#2A9D8F", to: palette)
+        XCTAssertEqual(saved.count, palette.count + 1)
+        XCTAssertEqual(saved.last?.hex, TextColorMarkup.canonicalHex("#2a9d8f"), "The swatch is saved at the end of the strip.")
     }
 
     // MARK: Scrolling under a drag

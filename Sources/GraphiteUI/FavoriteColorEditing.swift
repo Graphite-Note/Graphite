@@ -3,12 +3,12 @@
  * --------------------------------
  * Layer: UI
  * Description: The changes the Pencil bar makes to the favorite colors of Settings › Colors: moving a color one place
- *              (VoiceOver's actions) or to the place a drag left it, changing a color's hex, adding the color in use,
- *              removing one and putting it back. Pure: the bar stores what these return.
+ *              (VoiceOver's actions) or to the place a drag left it, changing a color's hex, what the plus does and
+ *              adding a color, removing one and putting it back. Pure: the bar stores what these return.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 13/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import GraphiteCore
@@ -82,6 +82,24 @@ enum FavoriteColorEditing {
     static func contains(hex: String, in palette: [PaletteColor]) -> Bool {
         guard let canonicalHex = TextColorMarkup.canonicalHex(hex) else { return false }
         return palette.contains { color in TextColorMarkup.canonicalHex(color.hex) == canonicalHex }
+    }
+
+    /// What the bar's plus does.
+    enum AdditionStep: Equatable {
+        /// Saves the color in use, which the strip does not have, as a swatch at its end.
+        case saveColorInUse
+        /// Opens the color picker for a new color, saved when it closes: the strip has the color in use already.
+        case chooseNewColor
+    }
+
+    /// What the plus does with the ink drawing in `colorInUseHex`, for a strip of `palette` after `fixedLeadingHex`
+    /// (black on a pen's bar, which is always there).
+    static func additionStep(colorInUseHex: String, palette: [PaletteColor], fixedLeadingHex: String?) -> AdditionStep {
+        let isFixedLeadingColor = fixedLeadingHex.map { hex in TextColorMarkup.canonicalHex(hex) == TextColorMarkup.canonicalHex(colorInUseHex) } ?? false
+        guard TextColorMarkup.canonicalHex(colorInUseHex) != nil, !isFixedLeadingColor, !contains(hex: colorInUseHex, in: palette) else {
+            return .chooseNewColor
+        }
+        return .saveColorInUse
     }
 
     /// The palette with the color added at its end under a name no color has (`PaletteColorNames.unusedName`), which

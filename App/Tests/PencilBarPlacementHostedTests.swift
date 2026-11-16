@@ -8,8 +8,8 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 05/11/2026
+ * Version: 0.7
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -285,7 +285,12 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
             attachScreenshot(of: window, named: "Pencil row with the pen, \(Int(width)) points: \(shownRow.arrangement)")
             XCTAssertNotEqual(shownRow.form, .condensed, "\(Int(width)) points: the colors are on the bar, not behind a control.")
-            if case .compactWithScrollingColors = expected { XCTFail("\(Int(width)) points: the default colors all fit; none scrolls.") }
+            // Beside the sidebar upright (514 points) the plus that saves a color takes one color's room: eight of the nine
+            // show and the last scrolls into the strip (Docs/PDF-annotation-todo.md section 3).
+            if case .compactWithScrollingColors(let visibleSwatchCount) = expected {
+                XCTAssertGreaterThanOrEqual(visibleSwatchCount, PencilToolRowLayout.maximumVisibleSwatchCount - 1,
+                                            "\(Int(width)) points: at most one of the default colors scrolls.")
+            }
             // The bar is built at the layout's widths: the row measured here is as wide as the layout says.
             let expectedWidth = try XCTUnwrap(PencilToolRowLayout.width(of: expected, holding: contents))
             XCTAssertEqual(Double(shownRow.frameInWindow.width), expectedWidth, accuracy: 1, "\(Int(width)) points: the row's measured width.")
@@ -294,7 +299,9 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             var elements: [NSObject] = []
             try await waitUntil("the row's buttons are accessible at \(Int(width)) points", pollingIntervalSeconds: 0.25) {
                 elements = Self.accessibilityElements(in: controller.view)
+                // The colors sit in their strip, a scroll view, whose elements come a moment after the bar's own.
                 return elements.contains { element in element.accessibilityLabel == "Ruler" }
+                    && elements.contains { element in element.accessibilityLabel == "black" }
             }
             let windowFrame = window.frame
             /// Whether an element with `label` stands wholly inside the window, at least as wide as a mini color.

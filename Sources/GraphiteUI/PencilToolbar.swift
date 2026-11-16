@@ -3,12 +3,12 @@
  * -------------------------
  * Layer: UI
  * Description: The fixed Pencil bar and its tool row: the whole row, closer and with smaller colors as the bar narrows,
- *              then the least used controls folded into a More control a stage at a time, the writing tools, every color,
- *              the ruler and Add Image staying on the bar, then a condensed form.
+ *              then the least used controls folded into a More control a stage at a time, the writing tools, the strip of
+ *              colors with its plus, the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 05/11/2026
+ * Version: 0.15
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -95,19 +95,20 @@ struct PencilToolbar<LeadingControls: View, TrailingControls: View>: View {
 /// The fixed bar's tools in one row: the ink presets, the eraser, the lasso, the laser pointer,
 /// and on PDF pages the text tool and the Read Aloud pen; the tool's own choices and the three
 /// sizes of the ink or eraser in use; black and every favorite color, or for a highlighter its own
-/// lighter colors, from Settings › Colors, with Other Color and its plus; then Shapes, the Ruler
-/// and Add Image. The row takes the first form that fits (`PencilToolRowLayout`): the whole row,
+/// lighter colors, from Settings › Colors, in a strip that scrolls sideways only past nine of them,
+/// with the plus that saves a color and Other Color; then Shapes, the Ruler and Add Image. The
+/// row takes the first form that fits (`PencilToolRowLayout`): the whole row,
 /// closer and with smaller colors as the bar narrows; then, at the mini size, the least used
 /// controls behind one More control a stage at a time (`PencilToolRowLayout.FoldStage`: the
 /// laser, text and Read Aloud tools; then the tool's choices, Other Color and Shapes; then Add
-/// Image), the tools a person writes with, the sizes, every color and the ruler staying on the
-/// bar; then that row with its colors in a strip that scrolls, only where they do not all fit
-/// even at the mini size; then fewer tools. Nothing is cut off.
+/// Image), the tools a person writes with, the sizes, the strip of colors with its plus and the
+/// ruler staying on the bar; then that row with a narrower strip, only where nine colors do not
+/// fit even at the mini size; then fewer tools. Nothing is cut off.
 ///
 /// A second tap on the ink in use opens its options: every ink PencilKit has, any width and
 /// opacity, and adding or removing a preset. A second tap on the size in use, of an ink or
-/// of the eraser, opens its width, to change it. A long press on a favorite color moves or
-/// removes it, and the plus beside Other Color adds the color in use.
+/// of the eraser, opens its width, to change it. A favorite color held a moment is dragged to its
+/// place or off the strip, and the plus saves the color in use or a new one as a swatch.
 ///
 /// Each tool is its SF Symbol (`PencilToolGlyph`); the tool in use stands on a faint fill and has
 /// the selected trait, so it is not told apart by color alone.
@@ -188,7 +189,7 @@ struct PencilToolRow: View {
                 if placement.showsToolChoices { toolChoices }
                 if placement.showsSizes { sizeButtons(opensWidth: true, density: density) }
             }
-            if placement.showsSwatches || placement.showsOtherColor {
+            if placement.showsSwatches || placement.showsAddColor || placement.showsOtherColor {
                 separator(density)
                 colorControls(placement)
             }
@@ -201,20 +202,16 @@ struct PencilToolRow: View {
         .padding(.horizontal, density.edgeInset)
     }
 
-    /// The colors the form keeps on the bar: every one, or a strip of whole colors that scrolls, with Other Color and
-    /// its plus where the form keeps them.
-    @ViewBuilder private func colorControls(_ placement: PencilToolRowLayout.Placement) -> some View {
-        if let scrollingSwatchCount = placement.scrollingSwatchCount {
-            PencilColorStrip(toolbox: toolbox, rowHeight: rowHeight, visibleSwatchCount: scrollingSwatchCount)
-        } else {
-            let controls: PencilColorControls = !placement.showsSwatches ? .otherColorAndAdd : placement.showsOtherColor ? .all : .swatches
-            PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: placement.density, controls: controls)
-        }
+    /// The colors the form keeps on the bar: their strip of whole colors, which scrolls sideways where it holds more than
+    /// it shows, the plus, and Other Color where the form keeps it.
+    private func colorControls(_ placement: PencilToolRowLayout.Placement) -> some View {
+        PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, density: placement.density,
+                           controls: placement.showsOtherColor ? .all : .stripAndAdd, visibleSwatchCount: placement.scrollingSwatchCount)
     }
 
     /// The folded row's More control: what the form's fold stage moved off the bar, in the bar's order: the tools used
     /// now and then (the laser pointer, the text tool, the Read Aloud pen), the tool's own choices (the eraser's kind,
-    /// the lasso's type), Other Color with its plus, Shapes, and Add Image.
+    /// the lasso's type), Other Color, Shapes, and Add Image.
     private func moreToolsButton(_ placement: PencilToolRowLayout.Placement) -> some View {
         PencilBarMoreButton(accessibilityLabel: "More Tools", width: placement.density.toolPitch, rowHeight: rowHeight) { isPresented in
             Image(systemName: drawsShapes || isPresented ? "ellipsis.circle.fill" : "ellipsis.circle")
@@ -224,7 +221,7 @@ struct PencilToolRow: View {
             if !placement.showsToolChoices { HStack(spacing: 2) { toolChoices } }
             HStack(spacing: 2) {
                 if !placement.showsOtherColor, Self.offersColors(toolInUse: toolbox.toolInUse) {
-                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColorAndAdd)
+                    PencilColorButtons(toolbox: toolbox, rowHeight: rowHeight, controls: .otherColor)
                 }
                 if !placement.showsShapes { shapesToggle(density: .regular) }
                 if !placement.showsAddImage { addImageButton(density: .regular) }

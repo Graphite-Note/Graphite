@@ -3,11 +3,12 @@
  * -----------------------------
  * Layer: Tests
  * Description: Which form the Pencil bar takes at each width of the 11-inch iPad: every favorite color and the ruler on
- *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317).
+ *              the bar upright, sideways and beside the sidebar, closer before anything moves into a menu (HUNT-317), and
+ *              colors past nine scrolling inside a strip that keeps the bar's width (Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 05/11/2026
+ * Version: 0.4
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -126,13 +127,15 @@ final class PencilBarFitTests: XCTestCase {
     func testOnlyMoreFavoritesThanFitEvenAsMiniDotsScrollAndThenInWholeColors() throws {
         XCTAssertNil(Layout.scrollingColorsArrangement(forWidth: 514, holding: pensBar()), "The default colors all fit: nothing scrolls.")
         let manyColors = pensBar(favoriteCount: 16)
-        let arrangement = Layout.arrangement(forWidth: 514, holding: manyColors)
-        XCTAssertEqual(arrangement, .compactWithScrollingColors(visibleSwatchCount: 9))
-        XCTAssertLessThanOrEqual(try width(arrangement, manyColors), 514)
-        let widthWithoutColors = try width(.compactWithScrollingColors(visibleSwatchCount: 0), manyColors)
-        let stripWidth = try width(arrangement, manyColors) - widthWithoutColors - Layout.Density.tightest.separatorWidth
-        XCTAssertEqual(stripWidth.truncatingRemainder(dividingBy: Layout.Density.tightest.swatchPitch), 0, "The strip shows whole colors, none cut in half.")
-        XCTAssertEqual(Layout.arrangement(forWidth: 1_194, holding: manyColors), .whole(.regular), "Sideways, seventeen colors still all fit.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 514, holding: manyColors), .folded(.addImage), "Nine of seventeen show, as the default nine do.")
+        XCTAssertEqual(Layout.placement(of: .folded(.addImage), holding: manyColors)?.scrollingSwatchCount, 9)
+        let arrangement = Layout.arrangement(forWidth: 470, holding: manyColors)
+        XCTAssertEqual(arrangement, .compactWithScrollingColors(visibleSwatchCount: 7), "Narrower, fewer show.")
+        XCTAssertLessThanOrEqual(try width(arrangement, manyColors), 470)
+        let pitch = Layout.Density.tightest.swatchPitch
+        let stripWidth = try width(arrangement, manyColors) - (try width(.compactWithScrollingColors(visibleSwatchCount: 1), manyColors) - pitch)
+        XCTAssertEqual(stripWidth.truncatingRemainder(dividingBy: pitch), 0, "The strip shows whole colors, none cut in half.")
+        XCTAssertEqual(Layout.arrangement(forWidth: 1_194, holding: manyColors), .whole(.regular), "Sideways, seventeen colors still fit their strip.")
     }
 
     func testSixPresetsBesideTheSidebarScrollTheColorsRatherThanHideThem() {

@@ -2,7 +2,7 @@
 
 Created: 2026-11-13.
 
-Status: built and tested in the simulator 2026-11-13; the check on the owner's iPad is open. Issue: [#178](https://github.com/Graphite-Note/Graphite/issues/178).
+Status: built and tested in the simulator 2026-11-13; the check on the owner's iPad is open. Since 2026-11-16 (Docs/PDF-annotation-todo.md section 3) the colours sit in a strip that scrolls sideways on every bar, a colour lifts after a short hold (a quicker drag scrolls), its menu opens when the hold is let go in place, and the plus stays beside the strip. Issue: [#178](https://github.com/Graphite-Note/Graphite/issues/178).
 
 ## Request
 

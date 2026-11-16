@@ -5,11 +5,11 @@
  * Description: The Pencil bar with the owner's own toolbox (a monoline, a pencil and a highlighter, no pen) and with the
  *              other toolboxes a person could set up: every favorite color, the ruler, the writing tools and Add Image
  *              stay buttons on the 11-inch iPad's bar upright and sideways, and only the least used controls fold
- *              (HUNT-317).
+ *              (HUNT-317); past nine colors the strip scrolls (Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 05/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -158,8 +158,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     // MARK: Toolboxes a person could set up
 
     /// Every count of pens, pencils and highlighters from none to four that the toolbox holds (one to six presets), with
-    /// none to twelve favorite colors, each ink, the eraser and the lasso in use, and the plus showing for an ink: at
-    /// 834 and 1,194 points every preset, the eraser, the lasso, the ruler, Add Image and every color are on the bar.
+    /// none to twelve favorite colors, each ink, the eraser and the lasso in use, and the plus showing with the colors: at
+    /// 834 and 1,194 points every preset, the eraser, the lasso, the ruler, Add Image, the plus and the strip of colors
+    /// (nine at most showing, the rest scrolling inside it) are on the bar.
     func testEveryToolboxAPersonCouldSetUpKeepsTheWritingControlsOnTheBarUprightAndSideways() throws {
         var checkedCount = 0
         for penCount in 0...4 { for pencilCount in 0...4 { for highlighterCount in 0...4 {
@@ -195,9 +196,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         }
         let swatchCountOfTheLastInk = inks.last == .highlighter ? highlighterColorCount : 1 + favoriteCount
         contents.append(("eraser", Layout.Contents(tools: tools, toolInUse: .eraser, sizeCount: 3, offersColors: true, swatchCount: swatchCountOfTheLastInk,
-                                                    showsAddColor: false, offersImages: true, toolChoicesWidth: Self.eraserChoicesWidth)))
+                                                    showsAddColor: true, offersImages: true, toolChoicesWidth: Self.eraserChoicesWidth)))
         contents.append(("lasso", Layout.Contents(tools: tools, toolInUse: .lasso, sizeCount: 0, offersColors: true, swatchCount: swatchCountOfTheLastInk,
-                                                   showsAddColor: false, offersImages: true, toolChoicesWidth: Self.lassoChoicesWidth)))
+                                                   showsAddColor: true, offersImages: true, toolChoicesWidth: Self.lassoChoicesWidth)))
         return contents
     }
 
@@ -209,7 +210,9 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
                       file: file, line: line)
         if let toolInUse = contents.toolInUse { XCTAssertTrue(placement.shownTools.contains(toolInUse), "\(label): the tool in use.", file: file, line: line) }
         XCTAssertTrue(placement.showsSwatches, "\(label): the colors are on the bar.", file: file, line: line)
-        XCTAssertNil(placement.scrollingSwatchCount, "\(label): every color is on the bar; none scrolls.", file: file, line: line)
+        XCTAssertEqual(placement.scrollingSwatchCount ?? contents.swatchCount, min(contents.swatchCount, Layout.maximumVisibleSwatchCount),
+                       "\(label): every color shows, or nine do and the rest scroll inside the strip.", file: file, line: line)
+        XCTAssertEqual(placement.showsAddColor, contents.showsAddColor, "\(label): the plus, where it shows, is on the bar.", file: file, line: line)
         XCTAssertTrue(placement.showsRuler, "\(label): the ruler.", file: file, line: line)
         XCTAssertTrue(placement.showsAddImage, "\(label): Add Image.", file: file, line: line)
         XCTAssertGreaterThanOrEqual(placement.density.swatchDiameter, 16, "\(label): dots no smaller than the mini ones.", file: file, line: line)
