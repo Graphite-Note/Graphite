@@ -74,8 +74,8 @@ struct EmbeddedPDFViewer: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var toolbox = PencilToolbox.shared
     @State private var pictureSource: PDFPictureSource?
-    /// The fixed bar takes the place of the floating palette; compact layouts keep the palette.
-    private var usesFixedToolbar: Bool { toolbarStyle == .fixed && horizontalSizeClass != .compact }
+    /// The fixed bar takes the place of the floating palette; a phone's compact layout keeps the palette.
+    private var usesFixedToolbar: Bool { toolbarStyle.shown(horizontalSizeClass: horizontalSizeClass, isPhone: PencilToolbarStyle.isPhone) == .fixed }
     #endif
     @Environment(\.scenePhase) private var scenePhase
     /// The note this PDF is embedded in, where the lasso's pictures of its pages go.

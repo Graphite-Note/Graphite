@@ -101,8 +101,8 @@ private struct PDFPaneContent: View {
     @Environment(\.sharesWindowWithOtherSide) private var sharesWindowWithOtherSide
     /// The style that shows: the one chosen in Settings, except in a split (`PencilToolbarStyle.inEffect`).
     private var toolbarStyle: PencilToolbarStyle { chosenToolbarStyle.inEffect(sharesWindowWithOtherSide: sharesWindowWithOtherSide) }
-    /// The fixed bar takes the place of the floating palette; compact layouts keep the palette.
-    private var usesFixedToolbar: Bool { toolbarStyle == .fixed && horizontalSizeClass != .compact }
+    /// The fixed bar takes the place of the floating palette; a phone's compact layout keeps the palette.
+    private var usesFixedToolbar: Bool { toolbarStyle.shown(horizontalSizeClass: horizontalSizeClass, isPhone: PencilToolbarStyle.isPhone) == .fixed }
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.foldsSecondaryToolbarActions) private var foldsSecondaryToolbarActions

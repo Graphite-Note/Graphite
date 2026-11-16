@@ -82,6 +82,19 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
         XCTAssertEqual(PencilToolbarStyle.fixed.inEffect(sharesWindowWithOtherSide: false), .fixed)
     }
 
+    // Docs/PDF-annotation-todo.md section 3: side by side, the iPad keeps the fixed bar
+
+    func testAnIPadBesideAnotherAppKeepsTheFixedBarAndAPhoneUsesThePalette() {
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .compact, isPhone: false), .fixed,
+                       "An iPad window beside another app is compact and keeps the fixed bar, whose colors scroll in its strip.")
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .regular, isPhone: false), .fixed)
+        XCTAssertEqual(PencilToolbarStyle.floating.shown(horizontalSizeClass: .compact, isPhone: false), .floating)
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .compact, isPhone: true), .floating,
+                       "A phone's compact width uses the system's palette, docked at the bottom.")
+        XCTAssertEqual(PencilToolbarStyle.fixed.shown(horizontalSizeClass: .regular, isPhone: true), .fixed,
+                       "A Max phone held sideways is regular in width and keeps the bar.")
+    }
+
     // MARK: HUNT-274, HUNT-260: a phone held sideways
 
     func testAPhoneHeldSidewaysKeepsTheControlsInTheNavigationBar() {

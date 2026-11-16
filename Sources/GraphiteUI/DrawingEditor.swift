@@ -5,7 +5,7 @@
  * Description: The full-screen drawing editor and its canvas controller.
  *
  * Authors: Bahey Shalash
- * Version: 0.24
+ * Version: 0.25
  * Date: 16/11/2026
  */
 
@@ -147,8 +147,8 @@ struct DrawingEditor: View {
                                                                        background: request.background))
     }
 
-    /// The fixed bar takes the place of the floating palette; the compact layouts keep the palette.
-    private var usesFixedToolbar: Bool { toolbarStyle == .fixed && horizontalSizeClass != .compact }
+    /// The fixed bar takes the place of the floating palette; a phone's compact layout keeps the palette.
+    private var usesFixedToolbar: Bool { toolbarStyle.shown(horizontalSizeClass: horizontalSizeClass, isPhone: PencilToolbarStyle.isPhone) == .fixed }
 
     var body: some View {
         NavigationStack {

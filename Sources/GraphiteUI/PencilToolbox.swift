@@ -11,6 +11,9 @@
 
 import SwiftUI
 import GraphiteCore
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Where the Pencil tools are shown while drawing.
 enum PencilToolbarStyle: String, CaseIterable, Identifiable {
@@ -36,6 +39,26 @@ enum PencilToolbarStyle: String, CaseIterable, Identifiable {
     /// - Parameter sharesWindowWithOtherSide: Whether the window shows two sides at once.
     func inEffect(sharesWindowWithOtherSide: Bool) -> PencilToolbarStyle {
         sharesWindowWithOtherSide ? .fixed : self
+    }
+
+    /// The style shown at a width. A phone's compact width always uses the system's palette, which docks at the
+    /// bottom of its screen. An iPad keeps the style in effect in a compact window, beside another app: the fixed bar
+    /// takes its narrow forms there, and its colors scroll sideways in their strip (owner, 2026-11-16); before, the
+    /// window showed Apple's palette, whose colors are not the bar's.
+    /// - Parameters:
+    ///   - horizontalSizeClass: The width class of the view showing the tools.
+    ///   - isPhone: Whether the device is a phone (`PencilToolbarStyle.isPhone`).
+    func shown(horizontalSizeClass: UserInterfaceSizeClass?, isPhone: Bool) -> PencilToolbarStyle {
+        horizontalSizeClass == .compact && isPhone ? .floating : self
+    }
+
+    /// Whether this device is a phone, whose compact width always uses the system's palette.
+    @MainActor static var isPhone: Bool {
+        #if canImport(UIKit)
+        UIDevice.current.userInterfaceIdiom == .phone
+        #else
+        false
+        #endif
     }
 }
 
