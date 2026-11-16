@@ -1036,11 +1036,14 @@ enum LivePreviewBlockHeightEstimate {
 
 private extension LivePreviewBlock {
     /// Whether the block's view edits its source itself: table cells, its own or those of a
-    /// callout's body, and an image's width when its corner is dragged. A block a comment
-    /// runs out of is edited as source.
+    /// callout's body, and a picture's width when its corner is dragged, alone on its line or
+    /// beside others. A block a comment runs out of is edited as source.
     var editsSourceInItsView: Bool {
         guard !isCutByComment else { return false }
-        if case .embed = kind { return true }
-        return kind.editsTablesInItsView
+        switch kind {
+        case .embed, .imageLine: return true
+        case .table, .callout, .frontmatter, .mathBlock, .baseDefinition, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame:
+            return kind.editsTablesInItsView
+        }
     }
 }

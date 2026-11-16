@@ -155,6 +155,16 @@ private struct ImageResizeTouchArea: UIViewRepresentable {
 final class ImageResizeTouchView: UIView {}
 #endif
 
+/// The width a picture is drawn at while its corner is dragged, nil otherwise; read by a line of
+/// pictures side by side (`LivePreviewImageLineView`), which offers the picture that width.
+struct DraggedPictureWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat? = nil
+
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
+        value = nextValue() ?? value
+    }
+}
+
 /// The bottom-right corner of a frame with a rounded bend, as the system draws a window's.
 private struct ResizeCornerShape: Shape {
     func path(in rect: CGRect) -> Path {

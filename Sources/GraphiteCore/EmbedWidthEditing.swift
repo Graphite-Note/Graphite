@@ -6,7 +6,7 @@
  *              an image's corner is dragged: `![[image.png|300]]` or `![Caption|300](image.png)`.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 16/11/2026
  */
 
@@ -18,11 +18,19 @@ public enum EmbedWidthEditing {
     /// Obsidian reads. A size already given is replaced, height and all, so the image keeps
     /// its shape; a caption is kept before the size. Nothing else of `source` changes.
     public static func settingWidth(_ width: Int, ofEmbedOf target: String, in source: String) -> String? {
+        let start = (source as NSString).range(of: "![")
+        guard start.location != NSNotFound else { return nil }
+        return settingWidth(width, ofEmbedOf: target, at: start.location, in: source)
+    }
+
+    /// `source` with the embed that starts at `location` (in UTF-16 units, as an embed's
+    /// range counts) shown `width` points wide: one picture of a line that shows several side
+    /// by side, the others left as they are. Nil when no embed of `target` starts there.
+    public static func settingWidth(_ width: Int, ofEmbedOf target: String, at location: Int, in source: String) -> String? {
         guard width > 0, EmbedDisplaySize.parse(label: String(width)) != nil else { return nil }
         let text = source as NSString
-        let start = text.range(of: "![")
-        guard start.location != NSNotFound, let embed = EmbedLocator.embed(at: start.location + 1, in: text),
-              embed.range.location == start.location, embed.target == target else { return nil }
+        guard location >= 0, location + 1 < text.length, let embed = EmbedLocator.embed(at: location + 1, in: text),
+              embed.range.location == location, embed.target == target else { return nil }
         let embedText = text.substring(with: embed.range)
         let rewritten = embed.isWiki ? wikiEmbed(embedText, width: width) : markdownEmbed(embedText, width: width)
         return rewritten.map { rewritten in text.replacingCharacters(in: embed.range, with: rewritten) }

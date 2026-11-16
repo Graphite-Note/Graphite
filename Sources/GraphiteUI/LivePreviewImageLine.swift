@@ -7,8 +7,8 @@
  *              item's bullet or number before them.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 11/11/2026
+ * Version: 0.3
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -27,6 +27,12 @@ struct LivePreviewImageLineView: View {
     let pieces: [ImageLinePiece]
     let environment: LivePreviewEnvironment
     let revealSource: () -> Void
+    /// Writes a width dragged at a picture's corner into that picture's embed; nil leaves
+    /// the pictures as they are.
+    var resizeImage: ((EmbedReference) -> ((Int) -> Void)?)? = nil
+    /// The width each picture is drawn at while its corner is dragged, by its place among the
+    /// pieces, so its row is laid out again around it as the drag goes.
+    @State private var draggedWidths: [Int: CGFloat] = [:]
 
     var body: some View {
         if case .listMarker(let marker)? = pieces.first {
@@ -44,7 +50,7 @@ struct LivePreviewImageLineView: View {
 
     private func flow(of pieces: [ImageLinePiece]) -> some View {
         ImageLineFlowLayout {
-            ForEach(Array(pieces.enumerated()), id: \.offset) { _, piece in
+            ForEach(Array(pieces.enumerated()), id: \.offset) { offset, piece in
                 switch piece {
                 // Only ever the first piece, drawn before the flow.
                 case .listMarker:
@@ -55,8 +61,10 @@ struct LivePreviewImageLineView: View {
                         .onTapGesture(perform: revealSource)
                         .layoutValue(key: ImageLinePieceSizing.self, value: .text)
                 case .image(let embed):
-                    LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
-                        .layoutValue(key: ImageLinePieceSizing.self, value: .picture(width: embed.displayWidth.map { width in CGFloat(width) }))
+                    LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource, resizeImage: resizeImage?(embed))
+                        .onPreferenceChange(DraggedPictureWidthKey.self) { width in draggedWidths[offset] = width }
+                        .layoutValue(key: ImageLinePieceSizing.self,
+                                     value: .picture(width: draggedWidths[offset] ?? embed.displayWidth.map { width in CGFloat(width) }))
                 }
             }
         }

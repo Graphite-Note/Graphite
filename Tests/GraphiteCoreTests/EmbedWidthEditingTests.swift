@@ -56,4 +56,22 @@ final class EmbedWidthEditingTests: XCTestCase {
             XCTAssertEqual(embed.target, "photo.png", source)
         }
     }
+
+    func testOnePictureOfALineOfSeveralGetsItsWidth() {
+        let line = "![[a.png|200]] ![[b.png|200]] ![c|200](c.png)"
+        XCTAssertEqual(EmbedWidthEditing.settingWidth(320, ofEmbedOf: "b.png", at: 15, in: line), "![[a.png|200]] ![[b.png|320]] ![c|200](c.png)")
+        XCTAssertEqual(EmbedWidthEditing.settingWidth(90, ofEmbedOf: "c.png", at: 30, in: line), "![[a.png|200]] ![[b.png|200]] ![c|90](c.png)")
+    }
+
+    func testAPictureOfAListItemIsFoundWhereItStarts() {
+        let item = "- See ![[a.png]] and ![[b.png|100]]"
+        XCTAssertEqual(EmbedWidthEditing.settingWidth(150, ofEmbedOf: "a.png", at: 6, in: item), "- See ![[a.png|150]] and ![[b.png|100]]")
+    }
+
+    func testNoEmbedOfThatPictureWhereItStartedLeavesTheLineAlone() {
+        let line = "![[a.png|200]] ![[b.png|200]]"
+        XCTAssertNil(EmbedWidthEditing.settingWidth(320, ofEmbedOf: "a.png", at: 15, in: line), "Another picture is there now.")
+        XCTAssertNil(EmbedWidthEditing.settingWidth(320, ofEmbedOf: "b.png", at: 16, in: line), "Not where an embed starts.")
+        XCTAssertNil(EmbedWidthEditing.settingWidth(320, ofEmbedOf: "b.png", at: 99, in: line))
+    }
 }

@@ -228,6 +228,8 @@ struct EmbeddedImageView: View {
             .frame(maxWidth: draggedWidth ?? displayWidth ?? .infinity, alignment: .leading)
             // The note now gives the dragged width, or the drag changed nothing.
             .onChange(of: displayWidth) { draggedWidth = nil }
+            // A line of pictures side by side lays its row out again as one is dragged.
+            .preference(key: DraggedPictureWidthKey.self, value: draggedWidth)
     }
 }
 

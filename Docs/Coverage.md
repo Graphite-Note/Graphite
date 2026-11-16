@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-16.
 
+## Pictures shown side by side resize by their corner too: 2026-11-16
+
+[Image-resize-todo.md](Image-resize-todo.md) section 2 (issue #195). Each picture of a line that shows several (`![[a.png|200]] ![[b.png|200]]`, with text or as a list item's) has its own corner handle; the row lays out again as one is dragged, and letting go writes the width into that picture's embed only.
+
+- **Automated tests, passing on macOS:** `EmbedWidthEditingTests` (10, 3 of them new: one picture of three, a list item's picture after text, a picture no longer where it started), `UiLivePreviewImageLineTests`.
+- **Checked:** on the Mac in a separate Debug copy with a demo vault (middle picture to `|261`, third to `![c|84](c.png)`, the others unchanged); in an iPad simulator by finger (first picture to `|230`, the note did not scroll).
+- **Full runs:** full Mac package suite on origin/main 54f2ff45 with the change: 5,370 tests, 30 skipped, 0 failures but for two timing tests while the Mac's load average was about 238 from other sessions' builds (`ViewSwitchingMacTests.testTheFileTreeIsKeptAcrossLibraryModeAndNoTagsViewIsBuiltBehindTheLibrary`, `BaseWholeVaultTimingTests.testBasesOverAWholeVaultAreCompleteAndFast`), both passing when run again alone; the audio output never opened. The iOS app with its hosted tests built; rules and `size-report.py` show nothing new.
+- **Not checked:** a row that wraps while a picture is dragged, a list item's line by hand, a physical iPad.
+
 ## Pictures resize by dragging their corner in Live Preview: 2026-11-16
 
 [Image-resize-todo.md](Image-resize-todo.md) section 1 (issue #194). The owner asked for Obsidian's resize handle on pictures, on the Mac and the iPad. A picture on its own line in Live Preview has a handle at its bottom-right corner; dragging it resizes the picture and letting go writes the width into the embed (`![[picture.png|300]]`, `![Caption|300](picture.png)`), one undoable edit.

@@ -207,11 +207,13 @@ struct LivePreviewWidgetView: View {
         }
     }
 
-    /// Writes a width dragged at the image's corner into the embed, as one edit.
-    private func resizeImage(of embed: EmbedReference) -> ((Int) -> Void)? {
+    /// Writes a width dragged at the image's corner into the embed, as one edit: the block's
+    /// first embed, or, on a line of several pictures, the one starting at `location` in it.
+    private func resizeImage(of embed: EmbedReference, at location: Int? = nil) -> ((Int) -> Void)? {
         sourceEditing.map { sourceEditing in { width in
             sourceEditing.replaceSource(ObjectIdentifier(LivePreviewEmbedView.self)) { source in
-                EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, in: source)
+                guard let location else { return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, in: source) }
+                return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, at: location, in: source)
             }
         } }
     }
@@ -282,7 +284,8 @@ struct LivePreviewWidgetView: View {
                 LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource, resizeImage: resizeImage(of: embed))
             }
         case .imageLine(let pieces):
-            LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource)
+            LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource,
+                                     resizeImage: sourceEditing == nil ? nil : { embed in resizeImage(of: embed, at: embed.range.location) })
         case .baseDefinition(let yaml):
             // No tap-to-reveal here: taps belong to the base's rows; "Edit Source" in its menu reveals it.
             BaseCodeBlockView(yaml: yaml, context: environment.baseContext)
