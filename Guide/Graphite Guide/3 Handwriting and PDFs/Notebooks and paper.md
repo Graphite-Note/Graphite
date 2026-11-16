@@ -23,6 +23,10 @@ The line above is:
 3. Pick a paper from **Paper Templates**. **My Templates** holds papers you made from a PDF page of your own.
 4. Tap the checkmark to make it, then write.
 
+![[iPad - Writing on a page.gif|460]]
+
+*Writing on a ruled page of the example course's notebook.*
+
 From inside a note, **Insert** › **New Notebook…** makes one and embeds it without leaving the note.
 
 ## Pages

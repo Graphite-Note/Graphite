@@ -34,14 +34,22 @@ The fixed bar over the example course's slides, on iPad, with the inks, the eras
 | **Laser Pointer** | points at something while you present, and fades |
 | **Shapes** | draws clean lines, arrows, circles and rectangles |
 
+The lasso drawn round a formula and its resistor, which then move together:
+
+![[iPad - The lasso.gif|460]]
+
 ## Your colours, arranged by dragging
 
 The fixed bar has a row of colours, as Apple's markup has:
 
 - tap a colour to use it; tap it again to change it in the colour picker;
-- **drag a colour** along the row to put it where you want it;
+- **hold a colour**, then drag it along the row to put it where you want it (a quick swipe scrolls the row);
 - drag it up or down off the row to remove it (Undo brings it back);
 - **+** at the end adds the colour in use.
+
+![[iPad - Choosing and arranging colours.gif|520]]
+
+*Orange chosen with a tap and used for a line, then a colour held and moved two places along the row.*
 
 ## Hold to make a shape
 

@@ -26,3 +26,7 @@ Every note in this part shows the Markdown in a grey box (**Copy this**), then w
 
 > [!tip] Three ways to see a note
 > **Live Preview** shows the formatting while you write, and reveals the characters only around the cursor. The **reading view** (the **pencil** button, ⌘E) shows the finished note. **Source Mode** (**More** › **View**) shows the plain text. Try all three on this note.
+
+![[iPad - Switching views.gif|460]]
+
+*A recipe in Live Preview, then the reading view, then Source Mode, and back.*
