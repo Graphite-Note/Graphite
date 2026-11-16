@@ -13,7 +13,9 @@
 import XCTest
 import GraphiteApple
 @testable import GraphiteUI
+#if canImport(GraphiteTestSupport)
 import GraphiteTestSupport
+#endif
 
 final class PDFTextMarkColorsTests: XCTestCase {
     private let orange = PDFMarkupColor(redLevel: 0xFF, greenLevel: 0x80, blueLevel: 0)

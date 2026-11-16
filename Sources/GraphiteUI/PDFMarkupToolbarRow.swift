@@ -229,8 +229,9 @@ struct PDFMarkupTextMarkButtons: View {
                 ForEach(swatchColors) { color in colorButton(color, saved: saved) }
             }
             PDFMarkupColorPanelButton(title: selectedMark.map { mark in "\(mark.kind.title) Color…" } ?? "Other Color…",
-                                      color: (currentColor ?? style.color).platformColor) { [weak toolbar, style = $style, storedColors = $storedTextMarkColors] chosen in
-                Self.useColorFromPanel(PDFMarkupColor(platformColor: chosen), toolbar: toolbar, style: style, storedColors: storedColors)
+                                      color: (currentColor ?? style.color).platformColor) { [weak toolbar, style = $style, storedColors = $storedTextMarkColors, markSelection] chosen in
+                Self.useColorFromPanel(PDFMarkupColor(platformColor: chosen), toolbar: toolbar, style: style, storedColors: storedColors,
+                                       markSelection: markSelection)
             }
             lineMarkButton(.underline, saved: saved)
             lineMarkButton(.strikeOut, saved: saved)
@@ -256,10 +257,10 @@ struct PDFMarkupTextMarkButtons: View {
     }
 
     /// A colour chosen in the panel, which may come after the row was rebuilt: it is saved as
-    /// a swatch, and recolours the selected mark or becomes the colour of the mark in use.
-    /// The text selected is not marked: the panel took the click, not the text.
+    /// a swatch, and recolours the selected mark, or becomes the colour of the mark in use and
+    /// marks the text selected, as a swatch does.
     private static func useColorFromPanel(_ color: PDFMarkupColor, toolbar: PDFMarkupToolbar?, style: Binding<PDFMarkupStyle>,
-                                          storedColors: Binding<Data?>) {
+                                          storedColors: Binding<Data?>, markSelection: (PDFMarkupStyle) -> Void) {
         storedColors.wrappedValue = PDFTextMarkColors(decoding: storedColors.wrappedValue).adding(color).encoded
         guard let toolbar else { return }
         if toolbar.selectedMarkAppearance != nil {
@@ -267,6 +268,7 @@ struct PDFMarkupTextMarkButtons: View {
         } else {
             style.wrappedValue = style.wrappedValue.recolored(color)
             toolbar.choose(.highlight)
+            markSelection(style.wrappedValue)
         }
     }
 

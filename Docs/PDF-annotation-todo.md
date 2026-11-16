@@ -2,7 +2,7 @@
 
 Created: 2026-11-14.
 
-Status: planned 2026-11-14; nothing built. Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d.
+Status: planned 2026-11-14; sections 5, 6 and 7 built 2026-11-16 (see each). Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d.
 
 ## Request
 
@@ -81,26 +81,32 @@ Issue: [#183](https://github.com/Graphite-Note/Graphite/issues/183)
 
 Issue: [#184](https://github.com/Graphite-Note/Graphite/issues/184)
 
-- [ ] A selected mark shows in the markup row: its colour ticked, a swatch recolours it (one step, no second mark), and a Remove button deletes it; Delete keeps working.
-- [ ] Removing a mark leaves every other change in place (no ⌘Z needed), on the Mac and the iPad.
-- [ ] Underline and strikethrough recolour the same way as highlights.
-- [ ] Tests: `MacPDFMarkupInteractionTests` for a swatch on a selected mark (recoloured, one annotation) and Remove from the row; checked by hand in a copy of the Mac app.
+Checked first (2026-11-16): on the code before this section, a swatch clicked while a mark was selected marked the mark's text again and stacked a second mark (`testASelectedMarkShowsInTheRowAndASwatchRecoloursItWithoutASecondMark` fails that way with section 6's rule taken out).
+
+- [ ] A selected mark shows in the markup row: its colour ticked, a swatch recolours it (one step, no second mark), and a Remove button deletes it; Delete keeps working. Built 2026-11-16: `MacPDFMarkupInteraction` tells `PDFMarkupToolbar.selectedMark` which mark a click selected; the row (`PDFMarkupTextMarkButtons`) reads its kind and colour again after every edit, undo and redo (`selectedMarkMayHaveChanged`), ticks its colour (its own colour first when it is not a saved one), recolours it through `changeSelectedMark(.recolor)` as one "Change Color" step, and shows a Remove button; the folded tool menu does the same; a mark removed or undone away is let go of.
+- [ ] Removing a mark leaves every other change in place (no ⌘Z needed), on the Mac and the iPad. Built: Remove in the row, Delete, the Mac's right-click Remove and the iPad's tap menu Remove all go through `PDFSession.removeMarkup`, one step that takes only that annotation.
+- [ ] Underline and strikethrough recolour the same way as highlights. Built: the row's swatches and colour panel recolour a selected underline or strikethrough.
+- [ ] Tests: `MacPDFMarkupInteractionTests` for a swatch on a selected mark (recoloured, one annotation) and Remove from the row; checked by hand in a copy of the Mac app. Tests pass: `testASelectedMarkShowsInTheRowAndASwatchRecoloursItWithoutASecondMark`, `testRemoveInTheRowDeletesTheSelectedMarkAndKeepsTheOtherChanges` (an underline recoloured, then removed, the highlight beside it kept), `testARowLeftWithAMarkWhoseMakingWasUndoneLetsGoOfIt`.
 
 ## 6. Highlighting text that is already marked
 
 Issue: [#185](https://github.com/Graphite-Note/Graphite/issues/185)
 
-- [ ] Marking text that a mark of the same kind already covers changes that mark (its colour) instead of adding another; the text never gets darker.
-- [ ] Marking text that partly overlaps a mark of the same kind joins them into one mark covering both (or replaces the overlapped part; decided while building, the same on both platforms).
-- [ ] A highlight and an underline on the same text stay two marks.
-- [ ] Tests: the overlap rules with plain values (`PDFSelectionMarking`), session tests for each case on both platforms; checked in Preview that the file holds one annotation per run of text.
+Decided while building (2026-11-16): overlapping marks join. The rule is `PDFMarkupOverlap` (GraphiteApple), plain rectangles in and an outcome out, which `PDFSession.addMarkup` (`PDFSessionMarkup.swift`) applies page by page as one step for `PDFSelectionMarking` on both platforms. Text one mark covers in the same colour changes nothing and makes no step; in another colour, that whole mark takes the colour. Text that overlaps or touches (within 1 point along the line) marks of the kind becomes one mark in the new colour, one rectangle per run of text, keeping the notes of the marks it replaces; only marks the new text itself reaches are joined, so a recoloured word never changes a mark elsewhere. Turned text is handled along its own direction.
+
+- [ ] Marking text that a mark of the same kind already covers changes that mark (its colour) instead of adding another; the text never gets darker. Built 2026-11-16 (above).
+- [ ] Marking text that partly overlaps a mark of the same kind joins them into one mark covering both (or replaces the overlapped part; decided while building, the same on both platforms). Built: joins, as above; undo gives every joined mark back as it was, another application's with its own colour and note.
+- [ ] A highlight and an underline on the same text stay two marks. Built: only marks of the kind being made are compared.
+- [ ] Tests: the overlap rules with plain values (`PDFSelectionMarking`), session tests for each case on both platforms; checked in Preview that the file holds one annotation per run of text. Tests pass: `PDFMarkupOverlapTests` (11, plain values), `PDFSessionMarkupTests` (6: recolour, same colour no step, join with one quadrilateral and one `/Highlight` in the saved file, highlight and underline stay two, another application's mark joined with its note, recolour to its own colour no step), in the Mac package suite and added to the hosted iPad target.
 
 ## 7. Any colour for text marks
 
 Issue: [#186](https://github.com/Graphite-Note/Graphite/issues/186)
 
-- [ ] Highlight, underline and strikethrough take any colour: a colour picker (`NSColorPanel` on the Mac, `UIColorPickerViewController` on the iPad) beside the swatches.
-- [ ] Chosen colours can be saved as presets and removed, kept on the device, shared by the Mac's highlighter, the iPad's text highlighter and both platforms' mark menus (open question 3).
-- [ ] A mark of a colour outside the list (made by Preview, Acrobat or a picker) is shown with its own colour in the menus and the row, and recoloured like the others.
-- [ ] The Mac's draw, shapes and text box colours get the same picker.
-- [ ] Tests: the stored presets and the written `/C` for an arbitrary colour; checked in Preview and on the iPad with a custom colour made on the Mac.
+Open question 3 taken as proposed (2026-11-16): text marks have their own saved colours, `PDFTextMarkColors` under `GraphitePDFTextMarkColors` on the device (a JSON list of Graphite's colour names and `#RRGGBB`, starting as the five highlight colours, at most 24), apart from the pen colours. The iPad's text highlighter (section 4) reads the same list.
+
+- [ ] Highlight, underline and strikethrough take any colour: a colour picker (`NSColorPanel` on the Mac, `UIColorPickerViewController` on the iPad) beside the swatches. Built 2026-11-16: `PDFMarkupColor` is any colour, eight bits a component in device RGB, written to `/C` as is; `PDFMarkupStyle` is a kind and a colour (old stored names read the same). The Mac's row has a colour-panel button (`MacMarkupColorPanel`, a colour reported when the pointer lets go, so one step per choice) and Underline and Strikethrough with colour arrows; the right-click menus have Other Color…. The iPad's selection menu Highlight and a tapped mark's Color menu have Other Color…, which opens `UIColorPickerViewController` (`PDFMarkColorPicker`, `PDFMarkMenus`).
+- [ ] Chosen colours can be saved as presets and removed, kept on the device, shared by the Mac's highlighter, the iPad's text highlighter and both platforms' mark menus (open question 3). Built: a colour picked in either picker is saved; on the Mac a swatch's right-click menu removes it (or saves a mark's own colour), on the iPad the selection menu's Highlight › Remove a Color.
+- [ ] A mark of a colour outside the list (made by Preview, Acrobat or a picker) is shown with its own colour in the menus and the row, and recoloured like the others. Built: `PDFTextMarkColors.offered(for:including:)` puts its colour first, ticked.
+- [ ] The Mac's draw, shapes and text box colours get the same picker. Built: Draw has a colour-panel button and Other Color… in its folded menu, Shapes one button for Other Border Color… and Other Fill Color…, Text Box Other Color… in its colour menu; a colour chosen there shows ticked in the row.
+- [ ] Tests: the stored presets and the written `/C` for an arbitrary colour; checked in Preview and on the iPad with a custom colour made on the Mac. Tests pass: `PDFTextMarkColorsTests` (5), `PDFMarkupColorTests` (`/C` read by Core Graphics' own parser and read back by PDFKit), `PDFMarkupStyleTests`, `MacPDFMarkupInteractionTests.testTheMenusOfferTheSavedTextMarkColours` and the other application's orange mark shown first and ticked.

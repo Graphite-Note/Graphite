@@ -16,7 +16,9 @@ import CoreText
 import PDFKit
 import GraphiteApple
 @testable import GraphiteUI
+#if canImport(GraphiteTestSupport)
 import GraphiteTestSupport
+#endif
 
 @MainActor
 final class PDFSessionMarkupTests: XCTestCase {

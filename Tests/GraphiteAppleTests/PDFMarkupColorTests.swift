@@ -13,7 +13,9 @@
 import XCTest
 import PDFKit
 import GraphiteApple
+#if canImport(GraphiteTestSupport)
 import GraphiteTestSupport
+#endif
 
 final class PDFMarkupColorTests: XCTestCase {
     func testAColourIsKeptAsHexTextOrAsGraphitesName() throws {
