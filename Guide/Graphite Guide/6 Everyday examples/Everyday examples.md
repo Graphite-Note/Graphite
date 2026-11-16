@@ -29,5 +29,9 @@ flowchart LR
 
 Open the graph (⇧⌘G) to see the same thing drawn from the links themselves.
 
+The trip, on iPad:
+
+![[iPad - Lisbon weekend.jpg|420]]
+
 > [!tip] Make them yours
 > Change anything here: add a recipe you love, rate a restaurant, tick a task. This is your copy of the guide. Then make your own vault and start one of these for real.

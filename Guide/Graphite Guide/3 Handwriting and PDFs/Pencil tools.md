@@ -19,6 +19,10 @@ Settings › Pencil Drawings › Pencil Tools › **Tools** chooses where the to
 
 On iPhone the palette is always used.
 
+The fixed bar over the example course's slides, on iPad, with the inks, the eraser and lasso, and the colour row:
+
+![[iPad - Slides.jpg|460]]
+
 ## The tools
 
 | Tool | What it does |

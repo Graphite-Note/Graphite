@@ -8,6 +8,10 @@ A canvas is a board of cards: notes, pictures, PDFs, web links and text, arrange
 
 Open [[Course map.canvas]] for the example course laid out on a board: the course page, the two weeks, the slides and the drawing, joined by arrows that say what to read first.
 
+![[Mac - Course map canvas.jpg|620]]
+
+*The course map on the Mac.*
+
 ## Make one
 
 On iPad and iPhone:

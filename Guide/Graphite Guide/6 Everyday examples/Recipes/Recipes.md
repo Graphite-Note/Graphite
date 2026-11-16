@@ -8,6 +8,10 @@ A recipe collection: one note per dish, each with a picture and a few properties
 
 ![[Recipes.base]]
 
+One recipe on iPad and on iPhone, in the dark:
+
+![[iPad - A recipe.jpg|380]] ![[iPhone - A recipe.jpg|190]]
+
 ## What each recipe has
 
 - **Properties** at the top: `minutes`, `servings`, `course`, `cover`, and the tag `recipe`.

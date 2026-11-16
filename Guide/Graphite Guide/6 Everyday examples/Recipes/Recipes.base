@@ -1,6 +1,7 @@
 filters:
   and:
     - file.hasTag("recipe")
+    - file.inFolder("6 Everyday examples/Recipes")
 properties:
   file.name:
     displayName: Dish

@@ -8,6 +8,10 @@ Lecture slides, papers, handouts and forms are PDFs, and Graphite writes on them
 
 Try it on the example course's slides: open [[Week 1 slides.pdf]] and tap the **pencil** button at the top right.
 
+![[iPad - Slides.jpg|460]]
+
+*The slides open for writing on iPad, with the Pencil tools in the fixed bar.*
+
 ## Write and highlight
 
 1. Open a PDF. Bring one in with **New** › **Import**, or put it in the vault's folder with the Files app.
@@ -21,6 +25,10 @@ A note can show one page of a PDF, at the height you choose. The page scrolls an
 
 ```markdown
 ![[Week 1 slides.pdf#page=2&height=380]]
+
+In the example course's lecture note, on iPad and on the Mac:
+
+![[iPad - A slide in a lecture note.jpg|380]] ![[Mac - A slide in a lecture note.jpg|560]]
 ```
 
 ![[Week 1 slides.pdf#page=2&height=380]]

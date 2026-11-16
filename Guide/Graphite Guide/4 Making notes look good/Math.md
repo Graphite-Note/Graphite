@@ -71,3 +71,7 @@ $$
 | `\leq \geq \neq \approx` | $\leq \geq \neq \approx$ |
 
 **Format** › **Math Block** makes an empty block to type into. A long formula wraps to the page instead of running off it.
+
+## On iPad
+
+![[iPad - Math.jpg|420]]

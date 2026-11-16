@@ -14,6 +14,16 @@ This guide is itself a vault: a folder of notes, pictures and PDFs that Graphite
 > - **Obsidian**: start with [[What Graphite opens]]. Your vault works as it is, and [[What Graphite adds]] shows the new parts.
 > - **New to both**: read [[What a vault is]], then try the examples in [[Everyday examples]].
 
+## What it looks like
+
+![[iPad - A drawing in a note.jpg|420]] ![[iPhone - A recipe.jpg|190]]
+
+*A lecture note with a drawing, on iPad; a recipe on iPhone, in the dark appearance.*
+
+![[Mac - Course map canvas.jpg|620]]
+
+*The example course laid out on a canvas, on the Mac.*
+
 
 ## The two paths
 

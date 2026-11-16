@@ -42,3 +42,7 @@ Links, **bold**, `code`, math such as $V = IR$, and small pictures:
 | ![[Tomato soup.png\|80]] | $P = V \times I$ | inside a table, the `\|` of a picture's size is written with a backslash: `\|80` |
 
 A wide table scrolls sideways rather than squeezing its columns.
+
+## On iPad, while writing
+
+![[iPad - Tables.jpg|420]]

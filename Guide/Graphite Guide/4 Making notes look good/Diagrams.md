@@ -65,3 +65,9 @@ sequenceDiagram
 ```
 
 Graphite also draws class, state, entity relationship and Gantt diagrams, mind maps, Git graphs, user journeys, quadrant charts, XY charts and Sankey diagrams. Write the source in a code block named `mermaid`, as above.
+
+## On iPad and the Mac
+
+![[iPad - Diagrams.jpg|380]] ![[Mac - Diagrams.jpg|560]]
+
+*This note in the reading view: on iPad in the dark, on the Mac in the light.*

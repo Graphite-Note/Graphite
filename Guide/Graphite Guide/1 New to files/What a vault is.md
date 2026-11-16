@@ -11,6 +11,10 @@ Graphite works the other way round. **A vault is an ordinary folder.** Every not
 > [!example] This guide is a vault
 > The notes you are reading are files in a folder called *Graphite Guide*. On iPad, open the **Files** app › **On My iPad** › **Graphite** and you will find it, with a file for every note you see in the sidebar.
 
+![[iPhone - Start here.jpg|190]] ![[iPad - Start here.jpg|380]]
+
+*This guide's first note, on iPhone and iPad.*
+
 ## Why it is good for you
 
 - **You own the files.** Nothing is locked in a format only one app reads. If Graphite disappeared tomorrow, every file would still open: notes in any text editor, notebooks in any PDF reader, drawings in Photos or Preview.

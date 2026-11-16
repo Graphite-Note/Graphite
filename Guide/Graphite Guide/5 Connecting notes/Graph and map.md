@@ -32,6 +32,12 @@ coordinates:
 
 The restaurants of the examples have one. Their base has a map view:
 
+![[iPad - Restaurants map.jpg|380]] ![[iPhone - Restaurants map.jpg|190]]
+
+*The restaurants' map on iPad and iPhone: each marker is a note.*
+
+The live map, drawn from the notes as they are now:
+
 ![[Restaurants.base#Map]]
 
 - On iPad and iPhone, run **Map view: Open map view** in the Command Palette; on the Mac, View › **Map View**.

@@ -105,3 +105,7 @@ A `-` after the type starts the callout folded, to hide an answer until you tap 
 > > | Oven | 180 °C |
 
 To make one without typing, use **Format** › **Callout**.
+
+## On iPad, in the dark
+
+![[iPad - Callouts.jpg|420]]

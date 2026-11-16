@@ -18,6 +18,10 @@ In the note it is just one line:
 
 The `|480` is its width on the page. Without it, the drawing is as wide as the note.
 
+This is how the lecture note that holds it looks on iPad, with the drawing's **Edit** button:
+
+![[iPad - A drawing in a note.jpg|420]]
+
 ## Draw one
 
 1. While writing, put the cursor where the drawing should go.
