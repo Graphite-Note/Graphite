@@ -2,7 +2,17 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-13.
+Last updated: 2026-11-16.
+
+## The Graphite Guide vault, opened from the Guide: 2026-11-16
+
+[Guide-vault-todo.md](Guide-vault-todo.md) sections 1 to 3 (issues #190, #191, #192). `Guide/Graphite Guide` is a vault of notes that show each feature beside the Markdown that makes it, with a path for readers coming from Goodnotes or Notability and one for Obsidian users, everyday examples (a course, recipes, restaurants on a map, a trip, a reading list, all made up) and 19 screenshots of the app taken from it. It is a download-only add-on pack (`GuideVaultPack`, at 87e47d93); the Guide's Open the Guide Vault and each topic's See It in the Guide Vault download it, copy it once into Graphite's Documents folder (`GuideVaultCopy`) and open it at the note through `graphite://guide` (`VaultURI.Action.guide`, `WorkspaceModel.openGuideVault`). `scripts/make-guide-vault.py` makes its pictures and slides and writes the pack's list; `scripts/take-guide-screenshots.sh` takes the iPad and iPhone pictures.
+
+- **Fixed on the way:** frontmatter whose YAML key is a mapping, as an Obsidian template's unquoted `date: {{date:YYYY-MM-DD}}`, stopped the app in Yams; `BoundedYAML` now refuses it (`CoreAreaHandoffTests.testAMappingUsedAsAKeyInFrontmatterIsRefusedWithoutCrashing`). The release pass's copy clears the hidden flag a checkout below `.claude` gives every file, and its web-frame helper judges hidden files inside the vault, so both work from a worktree.
+- **Automated tests, passing on macOS:** `GuideVaultTests` (5), `GuideVaultCopyTests` (3), `VaultURITests` (7), `AddOnPackStoreTests` (6), `CoreAreaHandoffTests` (20), `GuideContentTests` (8), `ReleaseVaultPassTests.testEveryWebFrameOfTheVaultIsPointedAtThePassServer`; `GuideVaultPassTests` with `GRAPHITE_RELEASE_PASS=1`: 104 files in every view, no finding, the longest step 382 ms. GraphiteCoreTests and GraphiteAppleTests ran whole: passing but `ReleaseVaultContentsTests.testEveryWebAddressInTheNotesIsAnHTTPSPageOfAKnownSite`, which finds no file in a checkout below `.claude` (the hidden flag; unchanged code). `scripts/check-add-on-packs.py`: no problem.
+- **Hosted tests, iPad Pro 11-inch (M5) simulator, iOS 27.2:** `GuideVaultOpeningHostedTests` passing (the pack downloaded from GitHub at its commit and checked, copied, opened at a note, opened again, a fresh copy beside it). `GuideVaultPassHostedTests`: the second half opened 75 files with one finding (the map embedded in `Lisbon weekend.md` placed after the 3 seconds the pass waits, drawn on the next page); the first half stops at `Tables.md` with the main thread at 100 % (HUNT-358, open).
+- **Looked at:** the Mac pass's screenshots of every note, and the iPad and iPhone screenshots in light and dark (the map's markers, the gallery, the slides with the Pencil bar).
+- **Not established:** the Guide's buttons pressed by hand (no simulator access was granted in this run), the Mac in dark, animated pictures, the iPhone pass, a read-through by the owner.
 
 ## Tables in callouts edited in place, PDF embeds that show their whole page: 2026-11-13
 

@@ -2,7 +2,7 @@
 
 Created: 2026-11-16.
 
-Status: planned. Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), one per section.
+Status: sections 1 and 3 built and pushed to main (25c7e2d1, 87e47d93, ec9ba141), section 2 in part; section 4 waits for a read-through on devices and the owner. Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), one per section.
 
 ## Request
 
@@ -24,30 +24,44 @@ Today the Guide is a list of short how-to topics inside the app (`GuideContent`,
 
 Issue: [#190](https://github.com/Graphite-Note/Graphite/issues/190)
 
-- [ ] `Guide/Graphite Guide/` in the repository, an Obsidian vault with a `Start here` note that asks "Are you coming from Goodnotes or Notability, from Obsidian, or new to both?" and links each path.
-- [ ] **New to files** (for Goodnotes and Notability users): what a vault is (a folder of ordinary files you own), where it can live (on the device, iCloud Drive, another drive or a sync service, a USB stick on the Mac), what each file is (Markdown notes, PDF notebooks, PNG drawings, M4A recordings), that Obsidian, Finder, Files and Preview open them all, sharing one folder with someone through iCloud Drive or another drive, moving notebooks in from Goodnotes and Notability (Import, Open in Graphite, ZIPs), and backups.
-- [ ] **Coming from Obsidian**: what Graphite opens of an existing vault (settings, themes, snippets, core and community plugins), what it adds (handwriting, PDF notebooks and markup, recording, the library), what differs or is not there yet, and using both apps on one vault.
-- [ ] **Handwriting and PDFs**: drawings in notes, the Pencil tools and palette, notebooks and paper, writing on slides, text boxes, the lasso, pages, bookmarks, recordings, and on the Mac highlighting, drawing, text boxes, signatures and shapes.
-- [ ] **Making notes look good**: each piece of Markdown and Obsidian syntax shown rendered beside its source (headings, emphasis, lists and tasks, quotes, callouts of every type, tables, math, code with themes, diagrams, footnotes, pictures and their sizes, embeds), with a "copy this" block for each.
-- [ ] **Connecting notes**: links, backlinks, embeds of notes and sections, tags, properties, Bases over the example recipes, restaurants (with a map) and reading list, the graph, canvas, daily notes, templates and the calendar.
-- [ ] **Everyday examples**: a recipe collection, favourite restaurants on a map, a course with lecture notes and slides, a trip plan, a reading list, each cross-referenced, so a reader sees how the pieces fit.
-- [ ] **Making it yours**: themes, snippets, the code theme, core and community plugins, keyboard shortcuts, the library and list views.
-- [ ] Small: under 5 MB with its pictures; no person's notes or photos of people; no audio or video.
+- [x] `Guide/Graphite Guide/` in the repository, an Obsidian vault with a `Start here` note that asks "Are you coming from Goodnotes or Notability, from Obsidian, or new to both?" and links each path.
+  Done 2026-11-16: `Guide/Graphite Guide`, 110 files in seven numbered folders, `Start here` with the question and both paths, `.obsidian` settings (attachments, templates, daily notes, property types, a snippet left off). Checked: `GuideVaultTests` (every link and embed found but the one written on purpose), and the release pass over it on the Mac (`GuideVaultPassTests`: 104 files in every view, no finding, screenshots looked at).
+- [x] **New to files** (for Goodnotes and Notability users): what a vault is (a folder of ordinary files you own), where it can live (on the device, iCloud Drive, another drive or a sync service, a USB stick on the Mac), what each file is (Markdown notes, PDF notebooks, PNG drawings, M4A recordings), that Obsidian, Finder, Files and Preview open them all, sharing one folder with someone through iCloud Drive or another drive, moving notebooks in from Goodnotes and Notability (Import, Open in Graphite, ZIPs), and backups.
+  Done 2026-11-16: `1 New to files` (What a vault is, Where a vault can live, What the files are, Sharing a folder, Moving in from Goodnotes and Notability, Backups). Checked as above, read in the Mac pass's screenshots.
+- [x] **Coming from Obsidian**: what Graphite opens of an existing vault (settings, themes, snippets, core and community plugins), what it adds (handwriting, PDF notebooks and markup, recording, the library), what differs or is not there yet, and using both apps on one vault.
+  Done 2026-11-16: `2 Coming from Obsidian` (What Graphite opens, What Graphite adds, What differs, Using both apps), claims taken from Docs/Coverage.md and Docs/Obsidian-mobile-gaps.md. Checked as above.
+- [x] **Handwriting and PDFs**: drawings in notes, the Pencil tools and palette, notebooks and paper, writing on slides, text boxes, the lasso, pages, bookmarks, recordings, and on the Mac highlighting, drawing, text boxes, signatures and shapes.
+  Done 2026-11-16: `3 Handwriting and PDFs` (seven notes), with a drawing and a Cornell notebook made by Graphite's own writers and the course's slides. Checked as above.
+- [x] **Making notes look good**: each piece of Markdown and Obsidian syntax shown rendered beside its source (headings, emphasis, lists and tasks, quotes, callouts of every type, tables, math, code with themes, diagrams, footnotes, pictures and their sizes, embeds), with a "copy this" block for each.
+  Done 2026-11-16: `4 Making notes look good` (eleven notes), each syntax in a Copy this block above its result; callout types checked against the reading view's list. Checked as above; on the iPad, `Tables.md` found HUNT-358 (below).
+- [x] **Connecting notes**: links, backlinks, embeds of notes and sections, tags, properties, Bases over the example recipes, restaurants (with a map) and reading list, the graph, canvas, daily notes, templates and the calendar.
+  Done 2026-11-16: `5 Connecting notes` (eight notes and `Course map.canvas`). Checked as above.
+- [x] **Everyday examples**: a recipe collection, favourite restaurants on a map, a course with lecture notes and slides, a trip plan, a reading list, each cross-referenced, so a reader sees how the pieces fit.
+  Done 2026-11-16: `6 Everyday examples`: the course *Everyday Electronics*, four recipes with a gallery base, five made-up restaurants on a map of Lisbon, the Lisbon weekend, four made-up books, two daily notes, and three templates. Checked as above, and in the iPad and iPhone simulators.
+- [x] **Making it yours**: themes, snippets, the code theme, core and community plugins, keyboard shortcuts, the library and list views.
+  Done 2026-11-16: `7 Making it yours` (themes and snippets, plugins, keyboard shortcuts, library and list). Checked as above.
+- [x] Small: under 5 MB with its pictures; no person's notes or photos of people; no audio or video.
+  Done 2026-11-16: 3.3 MB with its pictures; no audio or video, no person, nothing from the owner's notes (`GuideVaultTests`).
 
 ## 2. Pictures of the app
 
 Issue: [#191](https://github.com/Graphite-Note/Graphite/issues/191)
 
 - [ ] Screenshots of each feature in use, taken from the guide vault in the iPad simulator, the iPhone simulator and a test copy of the Mac app, light and dark, embedded where the guide explains it; made by a script so they can be taken again after the app changes.
+  Built 2026-11-16, not ticked: 19 pictures in `Attachments/Screenshots`, embedded where the guide explains each feature: 13 on iPad and 3 on iPhone, light and dark, taken by `scripts/take-guide-screenshots.sh`; 3 on the Mac, light only, from the release pass's pictures of the guide in Graphite's window. Open: the Mac in dark, and the Mac's markup row (it needs a hand in the app).
 - [ ] Short animated pictures (GIF or small looping images, no sound) for gestures that a still picture cannot show: drawing, the lasso, dragging pen colours, switching views.
+  Open 2026-11-16: not made; recording a gesture needs the simulator panel or a hand, which this run did not have.
 
 ## 3. In the app
 
 Issue: [#192](https://github.com/Graphite-Note/Graphite/issues/192)
 
 - [ ] The Guide opens the guide vault: a copy is made in Graphite's own folder the first time (or again, when asked), and opens beside the reader's vaults; Settings, the welcome screen and Help › Graphite Guide lead to it.
-- [ ] The in-app Guide topics link to the matching guide notes, and their text is brought up to date with what the app does today.
+  Built 2026-11-16, not ticked: the pack downloads on the first press (`GuideVaultButton`, with progress and the reason of a failure), `graphite://guide` copies it once into Graphite's Documents folder and opens the note, a fresh copy goes beside the old one. The Guide is the way in from Settings › General, the welcome screen and Help › Graphite Guide. Checked: `GuideVaultOpeningHostedTests` on the iPad simulator (downloaded from GitHub at the pinned commit, copied, opened at the note, opened again, a fresh copy), `GuideVaultCopyTests`. Open: the buttons pressed by hand on a device.
+- [x] The in-app Guide topics link to the matching guide notes, and their text is brought up to date with what the app does today.
+  Done 2026-11-16: every topic but Read Aloud and Source Code has See It in the Guide Vault (`GuideTopic.guideVaultNote`, each note checked by `GuideVaultTests`); the Mac's PDF topic is now Mark Up PDFs, with the markup row's tools.
 - [ ] Tests: the guide vault opens in every view with no errors (the release pass run over it), every link in it resolves, its size stays under the target, and the copy is made once and can be made again.
+  Built 2026-11-16, not ticked: `GuideVaultPassTests` on the Mac pass with no finding; `GuideVaultPassHostedTests` on the iPad: the second half has one finding (the map embedded in `Lisbon weekend.md` is placed after the pass's 3 seconds as it scrolls in; drawn on the next page), the first half stops at `Tables.md` (HUNT-358, Docs/Bug-hunt-todo.md). `GuideVaultTests` checks links, size and the pack; `GuideVaultCopyTests` the copy.
 
 ## 4. Checks
 
