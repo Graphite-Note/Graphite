@@ -2,11 +2,11 @@
  * File: NoteFileMenu.swift
  * ------------------------
  * Layer: UI
- * Description: The File submenu of a note's More menu: where the file is, export, saved versions, move and delete.
+ * Description: The File submenu of a note's More menu: where the file is, export, saved versions, rename, move and delete.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -21,6 +21,8 @@ struct NoteFileMenu: View {
     let vaultRoot: URL?
     /// Nil while the File Recovery core plugin is off.
     let showFileRecovery: (() -> Void)?
+    /// Nil where the note's toolbar renames it: a phone's menu keeps Rename here to fit its height.
+    var rename: (() -> Void)? = nil
     let move: () -> Void
     let delete: () -> Void
 
@@ -32,6 +34,7 @@ struct NoteFileMenu: View {
                 Button("File Recovery…", menuSymbol: "clock.arrow.circlepath", action: showFileRecovery)
             }
             Divider()
+            if let rename { Button("Rename…", menuSymbol: "pencil", action: rename) }
             Button("Move to…", menuSymbol: VaultEntryAction.moveTo.systemImage, action: move)
             Button("Delete", menuSymbol: VaultEntryAction.delete.systemImage, role: .destructive, action: delete)
         }

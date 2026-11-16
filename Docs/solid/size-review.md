@@ -374,6 +374,7 @@ These rows review every item that had no row at the first 70. They were measured
 | `Sources/GraphiteUI/VaultSidebar.swift` | `VaultSidebar.searchResults` | 41 | one concept | It lists the search results with their sort and bookmark menu; the search itself runs in the workspace. |
 | `Sources/GraphiteUI/WorkspaceTagsAndProperties.swift` | `WorkspaceModel.renameProperty` | 41 | split planned → `NoteTextEditor` edits one note, open or closed, with an explicit save policy; the rename keeps the loop over paths and the failure report | It carries its own copy of "edit a note whether it is open or not" (`SRP-READING-06`). |
 | `Sources/GraphiteUI/ReadingDiagramWording.swift` | `MermaidSyntaxProblem.explanation` | 53 | split planned → each diagram type's problems under one case of `MermaidSyntaxProblem` of their own, worded by their type, as the sequence diagram's and the Git graph's already are (`.sequence`, `.gitGraph`) | It is the reading view's wording of each syntax problem a diagram's text can have, one sentence per case; fourteen types each added their problems to the one flat enum, so it grew from 41 to 53 lines on 2026-10-23. |
+| `Sources/GraphiteUI/QuickPalette.swift` | `(file)` | 402 | one concept | It is the three palettes of one panel (quick switcher, command palette, template picker), their shared `QuickPalette` view and the overlay that sizes it above a phone's keyboard; HUNT-278 added the measured field row. |
 
 ## 5. Counts
 

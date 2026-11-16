@@ -6,8 +6,8 @@
  *              protected PDFs, and a password field with its Unlock button at the widths a Mac password prompt has.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -25,8 +25,9 @@ struct PDFPasswordPrompt: View {
     /// a narrow width on the Mac, which squeezed a field that only had a maximum to a few characters.
     static let passwordFieldWidth: CGFloat = 200
     #else
-    /// At most this wide, so the field and its button fit a phone's width.
-    static let maximumPasswordFieldWidth: CGFloat = 240
+    /// The field's width on the iPad and iPhone: room for a password, and beside its button within a phone's width. A
+    /// maximum alone let `ContentUnavailableView` squeeze it to about 100 points on an iPhone (HUNT-327).
+    static let passwordFieldWidth: CGFloat = 220
     #endif
 
     var body: some View {
@@ -59,7 +60,7 @@ struct PDFPasswordPrompt: View {
         SecureField("Password", text: $password)
             .textContentType(.password)
             .textFieldStyle(.roundedBorder)
-            .frame(maxWidth: Self.maximumPasswordFieldWidth)
+            .frame(width: Self.passwordFieldWidth)
         #endif
     }
 

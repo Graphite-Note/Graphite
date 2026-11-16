@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.68
- * Date: 05/11/2026
+ * Version: 0.69
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -592,13 +592,30 @@ struct MarkdownPane: View {
 
     /// The note's view, and its line width while it is read, when there is no Format menu.
     @ViewBuilder private var viewChoices: some View {
-        Picker("View", selection: $session.viewMode) {
+        let picker = Picker("View", selection: $session.viewMode) {
             MenuItemLabel(title: "Reading View", systemImage: "book").tag(NoteViewMode.reading)
             MenuItemLabel(title: "Live Preview", systemImage: "eye").tag(NoteViewMode.livePreview)
             MenuItemLabel(title: "Source Mode", systemImage: "chevron.left.forwardslash.chevron.right").tag(NoteViewMode.source)
         }
-        .pickerStyle(.inline)
+        // On a phone the three views are one row of symbols, as the menu has a phone's height to fit in (HUNT-277).
+        if isCompactWidth { picker.pickerStyle(.palette) } else { picker.pickerStyle(.inline) }
         if !isEditing { lineWidthPicker }
+    }
+
+    @ViewBuilder private var localGraphButton: some View {
+        if preferences.isEnabled(.graph) {
+            Button("Local Graph", menuSymbol: "point.3.filled.connected.trianglepath.dotted") {
+                NoteLinksInspector.choose(.graph, deviceDefaults: workspace.deviceDefaults)
+                showsLinksInspector = true
+            }
+        }
+    }
+
+    @ViewBuilder private var foldingAndSavingButtons: some View {
+        Button("Fold All", menuSymbol: "rectangle.compress.vertical") { session.foldAll() }
+        Button("Unfold All", menuSymbol: "rectangle.expand.vertical") { session.unfoldAll() }
+            .disabled(session.foldedKeys.isEmpty)
+        Button("Save Now", menuSymbol: "square.and.arrow.down") { Task { try? await session.save() } }
     }
 
     @ViewBuilder private var moreMenuItems: some View {
@@ -619,24 +636,22 @@ struct MarkdownPane: View {
         #endif
         if isCompactWidth {
             Section {
-                Button("Links and Outline", systemImage: "sidebar.right") { showsLinksInspector.toggle() }
-                if let renameDocument { Button("Rename…", systemImage: "pencil") { renameDocument.rename() } }
+                // Beside each other on a phone, as the menu has a phone's height to fit in (HUNT-277).
+                ControlGroup {
+                    Button("Links and Outline", systemImage: "sidebar.right") { showsLinksInspector.toggle() }
+                    localGraphButton
+                }
             }
         }
-        Button("Fold All", menuSymbol: "rectangle.compress.vertical") { session.foldAll() }
-        Button("Unfold All", menuSymbol: "rectangle.expand.vertical") { session.unfoldAll() }
-            .disabled(session.foldedKeys.isEmpty)
-        Button("Save Now", menuSymbol: "square.and.arrow.down") { Task { try? await session.save() } }
-        if preferences.isEnabled(.graph) {
-            Button("Local Graph", menuSymbol: "point.3.filled.connected.trianglepath.dotted") {
-                NoteLinksInspector.choose(.graph, deviceDefaults: workspace.deviceDefaults)
-                showsLinksInspector = true
-            }
-        }
+        // A phone's menu shows about twelve rows before it scrolls, with room left below it (HUNT-277, seen 2026-11-16):
+        // there, folding and saving are one row of three.
+        if isCompactWidth { ControlGroup { foldingAndSavingButtons } } else { foldingAndSavingButtons }
+        if !isCompactWidth { localGraphButton }
         // The file's own commands in one submenu: the menu ran to 25 entries, cut off at about 520 points of a
         // phone's screen, and had neither Move nor Delete.
         NoteFileMenu(path: session.path, openingLink: workspace.openingLink(to: session.path), vaultRoot: workspace.folderAccess?.root,
                      showFileRecovery: preferences.isEnabled(.fileRecovery) ? { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) } : nil,
+                     rename: isCompactWidth ? renameDocument.map { renameDocument in { renameDocument.rename() } } : nil,
                      move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil

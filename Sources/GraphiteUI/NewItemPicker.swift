@@ -6,8 +6,8 @@
  *              New button that opens it and carries out the choice once the menu has closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 01/11/2026
+ * Version: 0.7
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -238,7 +238,17 @@ struct NewItemButton<Label: View>: View {
     @State private var showsCamera = false
     /// Whether the question about stopping the scan being prepared is shown.
     @State private var showsScanCancellation = false
-    @State private var scanProcessing = DocumentScanProcessing(wordRecognizer: .onDevice)
+    @State private var scanProcessing: DocumentScanProcessing
+
+    /// - Parameter scanProcessing: What prepares a finished scan's PDF; a test gives one it holds while preparing.
+    init(firstKind: CreationKind, isEnabled: @escaping (CorePlugin) -> Bool, actions: NewItemActions,
+         scanProcessing: DocumentScanProcessing = DocumentScanProcessing(wordRecognizer: .onDevice), @ViewBuilder label: @escaping () -> Label) {
+        self.firstKind = firstKind
+        self.isEnabled = isEnabled
+        self.actions = actions
+        self.label = label
+        _scanProcessing = State(initialValue: scanProcessing)
+    }
 
     var body: some View {
         Button(action: openPickerOrAskAboutScan) {

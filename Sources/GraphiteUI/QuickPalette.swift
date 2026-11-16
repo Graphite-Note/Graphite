@@ -6,8 +6,8 @@
  *              matches, drawn over the document and beside a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.13
- * Date: 04/11/2026
+ * Version: 0.14
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -56,11 +56,13 @@ struct QuickPalette: View {
     /// On a phone the keyboard takes the lower half of the screen; the results stay above it. At least this
     /// much, and more where the overlay has the room: a fixed 300 left about 120 points empty above the keyboard.
     private static let maximumCompactResultsHeight: CGFloat = 300
-    /// What the search field, the panel's margins and its rounded edge take of the overlay's height.
-    private static let compactPanelChromeHeight: CGFloat = 96
+    /// The search field's row, measured (a fixed 96 points for it and the margins left 35 empty above a phone's keyboard, HUNT-278).
+    @State private var searchRowHeight: CGFloat = 52
+    /// The overlay's margin above the panel (`PaletteOverlay`) and the room left between the panel and the keyboard.
+    private static let compactMarginsAboveAndBelow: CGFloat = 8 + 8
     private var maximumResultsHeight: CGFloat {
         guard isCompactWidth else { return Self.maximumResultsHeight }
-        return max(Self.maximumCompactResultsHeight, (paletteAvailableHeight ?? 0) - Self.compactPanelChromeHeight)
+        return max(Self.maximumCompactResultsHeight, (paletteAvailableHeight ?? 0) - searchRowHeight - Self.compactMarginsAboveAndBelow)
     }
     private var isCompactWidth: Bool { horizontalSizeClass == .compact }
     #if canImport(UIKit)
@@ -103,6 +105,7 @@ struct QuickPalette: View {
                     .onKeyPress(.escape) { close(); return .handled }
             }
             .padding(.horizontal, 18).padding(.vertical, 14)
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in searchRowHeight = height }
             Divider()
             if items.isEmpty {
                 Text(emptyMessage).foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(24)

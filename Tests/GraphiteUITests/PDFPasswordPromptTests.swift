@@ -6,12 +6,13 @@
  *              password prompt's width, the Unlock button with its whole title, and no Passwords suggestions asked for.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
 import AppKit
+import PDFKit
 import SwiftUI
 import Vision
 import XCTest
@@ -29,9 +30,9 @@ final class PDFPasswordPromptTests: XCTestCase {
         windows = []
     }
 
-    private func showPrompt(width: CGFloat) -> NSHostingView<some View> {
+    private func showPrompt(width: CGFloat, unlock: @escaping (String) -> Void = { _ in }) -> NSHostingView<some View> {
         let size = CGSize(width: width, height: 800)
-        let prompt = PDFPasswordPrompt(fileName: "Locked lecture.pdf", message: "This PDF is protected by a password.") { _ in }
+        let prompt = PDFPasswordPrompt(fileName: "Locked lecture.pdf", message: "This PDF is protected by a password.", unlock: unlock)
         let hosting = NSHostingView(rootView: prompt.frame(width: size.width, height: size.height))
         let window = NSWindow(contentRect: CGRect(origin: .zero, size: size), styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
@@ -88,6 +89,40 @@ final class PDFPasswordPromptTests: XCTestCase {
         }
         XCTAssertTrue(texts.contains("Password"), "The placeholder reads whole, not \"Pass\": \(texts)")
         XCTAssertTrue(texts.contains("Unlock"), "The button reads whole, not \"U…\": \(texts)")
+    }
+
+    /// The rest of HUNT-327's check: a password typed into the field and given with Return unlocks a PDF written with it.
+    func testAPasswordTypedIntoTheFieldUnlocksThePDF() async throws {
+        let lockedData = NSMutableData()
+        var mediaBox = CGRect(x: 0, y: 0, width: 300, height: 400)
+        let auxiliaryInfo = [kCGPDFContextOwnerPassword: "owner-2026", kCGPDFContextUserPassword: "lecture-2026"] as CFDictionary
+        let consumer = try XCTUnwrap(CGDataConsumer(data: lockedData as CFMutableData))
+        let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &mediaBox, auxiliaryInfo))
+        context.beginPDFPage(nil)
+        context.endPDFPage()
+        context.closePDF()
+        let document = try XCTUnwrap(PDFDocument(data: lockedData as Data))
+        XCTAssertTrue(document.isLocked, "The PDF needs its password.")
+        var givenPasswords: [String] = []
+        let hosting = showPrompt(width: 1_370) { password in
+            givenPasswords.append(password)
+            XCTAssertTrue(document.unlock(withPassword: password))
+        }
+        var foundField: NSSecureTextField?
+        try await waitUntil("the prompt's field") {
+            foundField = self.passwordField(in: hosting)
+            return foundField != nil
+        }
+        let field = try XCTUnwrap(foundField)
+        // As typing does: the field's text changes and its delegate hears of it, then Return sends the field's action.
+        field.stringValue = "lecture-2026"
+        NotificationCenter.default.post(name: NSControl.textDidChangeNotification, object: field)
+        try await waitUntil("the typed password reaches the prompt") {
+            _ = field.sendAction(field.action, to: field.target)
+            return !givenPasswords.isEmpty
+        }
+        XCTAssertEqual(givenPasswords, ["lecture-2026"])
+        XCTAssertFalse(document.isLocked, "The password given by the prompt unlocks the PDF.")
     }
 }
 #endif
