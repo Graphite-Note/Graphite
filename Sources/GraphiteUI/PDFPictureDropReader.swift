@@ -90,7 +90,8 @@ enum PDFPictureDropReader {
     private static func vaultPicture(of provider: NSItemProvider) async -> PDFDroppedItem {
         let transfer: VaultItemTransfer? = await withCheckedContinuation { continuation in
             _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.graphiteVaultItem.identifier) { encoded, _ in
-                continuation.resume(returning: encoded.flatMap { encoded in try? JSONDecoder().decode(VaultItemTransfer.self, from: encoded) }) // An unreadable item is no picture.
+                let transfer = encoded.flatMap { encoded in try? JSONDecoder().decode(VaultItemTransfer.self, from: encoded) } // Unreadable: no picture.
+                continuation.resume(returning: transfer)
             }
         }
         guard let location = transfer?.sourceLocation else { return .unreadable }

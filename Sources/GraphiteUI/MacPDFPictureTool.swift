@@ -82,7 +82,8 @@ final class MacPDFPictureTool: NSObject {
         Task { [weak self] in
             do {
                 let imageData = try await Task.detached(priority: .userInitiated) { try PickedImageFiles.imageData(at: location) }.value
-                try await session.addPicture(imageData: imageData, placement: nil, preferredWidth: PictureNaturalSize.measure(ofImageData: imageData)?.widthInPoints)
+                let preferredWidth = PictureNaturalSize.measure(ofImageData: imageData)?.widthInPoints
+                try await session.addPicture(imageData: imageData, placement: nil, preferredWidth: preferredWidth)
             } catch {
                 session.reportFailedChange(error)
             }

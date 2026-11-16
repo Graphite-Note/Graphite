@@ -96,7 +96,7 @@ final class MacPDFPictureDropTarget {
             do {
                 imagesData.append(try await Task.detached(priority: .userInitiated) { try PickedImageFiles.imageData(at: pictureLocation) }.value)
             } catch {
-                session.errorMessage = error.localizedDescription
+                session.reportFailedChange(error)
             }
         }
         if files.isEmpty, let imageOnPasteboard { imagesData.append(imageOnPasteboard) }

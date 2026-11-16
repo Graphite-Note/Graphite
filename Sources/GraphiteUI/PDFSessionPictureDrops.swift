@@ -57,7 +57,7 @@ extension PDFSession {
                                      preferredWidth: PictureNaturalSize.measure(ofImageData: imageData)?.widthInPoints)
                 placedCount += 1
             } catch {
-                errorMessage = error.localizedDescription
+                reportFailedChange(error)
             }
         }
         return placedCount
