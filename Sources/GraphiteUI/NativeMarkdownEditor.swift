@@ -111,9 +111,10 @@ final class MarkdownTextView: UITextView {
     /// own controls. A folded callout's title did not open, and a drag starting on the
     /// properties could end as a tap at the note's start.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer !== panGestureRecognizer, !(gestureRecognizer is UIPinchGestureRecognizer),
-           let touchedView = super.hitTest(gestureRecognizer.location(in: self), with: nil), isOverlay(touchedView) {
-            return false
+        if let touchedView = super.hitTest(gestureRecognizer.location(in: self), with: nil) {
+            // An image's corner handle resizes it; the note does not scroll under it.
+            if touchedView is ImageResizeTouchView, gestureRecognizer === panGestureRecognizer { return false }
+            if gestureRecognizer !== panGestureRecognizer, !(gestureRecognizer is UIPinchGestureRecognizer), isOverlay(touchedView) { return false }
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)
     }

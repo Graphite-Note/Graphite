@@ -40,6 +40,13 @@ struct EmbeddedImageView: View {
     private let tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?
     /// The picture's file in the vault, which a Live Preview block's menu lists the commands of.
     private let picturePath: VaultPath?
+    /// Writes a width dragged at the image's corner into the note; nil where the image
+    /// cannot be resized, as in reading view.
+    private let resizeWidth: ((Int) -> Void)?
+    /// The widest the image can be dragged, the width of the column it is in.
+    private let columnWidth: CGFloat?
+    /// The width the image is drawn at while its corner is dragged.
+    @State private var draggedWidth: CGFloat?
     /// Set in a Live Preview block, whose own menu takes the long press and the secondary click.
     @Environment(\.renderedBlockMenuContext) private var blockMenuContext
     @State private var decodedImages = DecodedImageCache()
@@ -55,10 +62,13 @@ struct EmbeddedImageView: View {
     /// Shows pixels already decoded at the size they are shown, off the main thread, so no
     /// evaluation of the body decodes anything and every one draws the same image.
     /// - Parameter path: The picture's file, which `tabOpening` opens in a tab.
+    /// - Parameter resizeWidth: Shows a handle at the corner that resizes the image and
+    ///   writes its width, in points, into the note; `columnWidth` is the widest it goes.
     init(image: CGImage, aspectRatio: CGFloat, displayWidth: CGFloat?, edit: (() -> Void)?, view: (() -> Void)?, drawOnImage: (() -> Void)? = nil,
-         path: VaultPath? = nil, tabOpening: PictureTabOpening? = nil) {
+         path: VaultPath? = nil, tabOpening: PictureTabOpening? = nil, resizeWidth: ((Int) -> Void)? = nil, columnWidth: CGFloat? = nil) {
         self.init(imageSource: .decoded(image), aspectRatio: aspectRatio, displayWidth: displayWidth, edit: edit, view: view, drawOnImage: drawOnImage,
-                  tabbedPicture: path.flatMap { path in tabOpening.map { opening in (path, opening) } }, picturePath: path)
+                  tabbedPicture: path.flatMap { path in tabOpening.map { opening in (path, opening) } }, picturePath: path,
+                  resizeWidth: resizeWidth, columnWidth: columnWidth)
     }
 
     /// Shows encoded image data, decoded away from the main thread when the view appears.
@@ -68,7 +78,8 @@ struct EmbeddedImageView: View {
     }
 
     private init(imageSource: ImageSource, aspectRatio: CGFloat, displayWidth: CGFloat?, edit: (() -> Void)?, view: (() -> Void)?,
-                 drawOnImage: (() -> Void)?, tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?, picturePath: VaultPath?) {
+                 drawOnImage: (() -> Void)?, tabbedPicture: (path: VaultPath, opening: PictureTabOpening)?, picturePath: VaultPath?,
+                 resizeWidth: ((Int) -> Void)? = nil, columnWidth: CGFloat? = nil) {
         self.imageSource = imageSource
         self.aspectRatio = aspectRatio
         self.displayWidth = displayWidth
@@ -77,6 +88,8 @@ struct EmbeddedImageView: View {
         self.drawOnImage = edit == nil ? drawOnImage : nil
         self.tabbedPicture = tabbedPicture
         self.picturePath = picturePath
+        self.resizeWidth = resizeWidth
+        self.columnWidth = columnWidth
     }
 
     var body: some View {
@@ -211,7 +224,10 @@ struct EmbeddedImageView: View {
             .aspectRatio(aspectRatio, contentMode: .fit)
             .background { if showsDrawingOnWhite { Color.white } }
             .clipShape(RoundedRectangle(cornerRadius: showsDrawingOnWhite ? 6 : 0))
-            .frame(maxWidth: displayWidth ?? .infinity, alignment: .leading)
+            .modifier(EmbeddedImageResizeHandle(commitWidth: resizeWidth, isPointerOver: isHovered, columnWidth: columnWidth, draggedWidth: $draggedWidth))
+            .frame(maxWidth: draggedWidth ?? displayWidth ?? .infinity, alignment: .leading)
+            // The note now gives the dragged width, or the drag changed nothing.
+            .onChange(of: displayWidth) { draggedWidth = nil }
     }
 }
 

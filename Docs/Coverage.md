@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-16.
 
+## Pictures resize by dragging their corner in Live Preview: 2026-11-16
+
+[Image-resize-todo.md](Image-resize-todo.md) section 1 (issue #194). The owner asked for Obsidian's resize handle on pictures, on the Mac and the iPad. A picture on its own line in Live Preview has a handle at its bottom-right corner; dragging it resizes the picture and letting go writes the width into the embed (`![[picture.png|300]]`, `![Caption|300](picture.png)`), one undoable edit.
+
+- **Automated tests, passing on macOS:** `EmbedWidthEditingTests` (7: wiki and Markdown embeds, a caption kept, a size and a height replaced, what surrounds the embed kept, another embed or an impossible width left alone, the width read back), `EmbeddedImageResizeHandleTests` (4: the width follows the drag, stays in its column and above 48 points, the old thumbnail stands in for the new width).
+- **Checked:** on the Mac, in a separate Debug copy with a demo vault: `|300` dragged to `|181` and to `|486`, the text below following. In an iPad simulator (iPad Pro 11-inch, iOS 27.2): a finger drag wrote `|215` and `|345` without scrolling the note, the toolbar's Undo and Redo went back and forth, and no progress indicator showed after letting go.
+- **Full runs:** full Mac package suite on origin/main b2eab0cd with the change: 5,367 tests, 0 failures, 30 skipped; the audio output never opened. The iOS app with its hosted tests (build-for-testing) and the Mac app built; rules, test registration and `size-report.py` show nothing new.
+- **Not checked:** ⌘Z on the Mac by hand, a physical iPad or Apple Pencil's hover, pictures several to a line or inside text and pictures in callouts or embedded notes (not resizable yet), VoiceOver's adjustable action.
+
 ## Pasted web addresses are links, titled from their page, and YouTube embeds are cards: 2026-11-16
 
 [Web-links-todo.md](Web-links-todo.md) sections 1 to 3 (issues #187 to #189). The owner's screenshots showed two pasted YouTube playlist addresses as plain text in the editor. A bare `http://`, `https://` or `www.` address, ended as GFM ends it, is now a link in both editors' Live Preview and Source mode (`WebAddressSyntax`, `MarkdownStyleScanner`, `LinkLocator`). Its menu (right-click on the Mac, long press on the iPad) starts with Use Page Title, which writes `[Title](address)`, and on a YouTube address Show Preview, which writes `![Title](address)` on its own line; nothing is fetched before one is chosen (`WebLinkEditing`, `WebLinkDetailsFetching`: YouTube's oEmbed or the page's `og:title`/`<title>`, at most 512 KB). `![…](YouTube video or playlist)` alone on its line is a card in Live Preview and the reading view, a thumbnail, the title and a play button, which opens YouTube; no web view (`WebVideo`, `WebVideoCard`).

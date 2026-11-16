@@ -679,7 +679,7 @@ final class LivePreviewRenderedBlocks {
                          sourceEditing: RenderedBlockSourceEditing? = nil, currentLocation: (@MainActor () -> Int?)? = nil) -> RenderedBlockRoot {
         let accent = Color.graphiteAccent(hex: accentHex) ?? .accentColor
         let widget = LivePreviewWidgetView(block: entry.block, environment: environment, revealSource: revealSource, reportHeight: reportHeight,
-                                           sourceEditing: entry.block.kind.editsTablesInItsView && !entry.block.isCutByComment ? sourceEditing : nil,
+                                           sourceEditing: entry.block.editsSourceInItsView ? sourceEditing : nil,
                                            currentLocation: currentLocation)
             .environment(\.lassoNoteDestination, environment.lassoNoteDestination)
             .environment(\.embeddedPDFSessions, environment.embeddedPDFSessions)
@@ -1031,5 +1031,16 @@ enum LivePreviewBlockHeightEstimate {
         case .imageLine(let pieces):
             return LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: columnWidth)
         }
+    }
+}
+
+private extension LivePreviewBlock {
+    /// Whether the block's view edits its source itself: table cells, its own or those of a
+    /// callout's body, and an image's width when its corner is dragged. A block a comment
+    /// runs out of is edited as source.
+    var editsSourceInItsView: Bool {
+        guard !isCutByComment else { return false }
+        if case .embed = kind { return true }
+        return kind.editsTablesInItsView
     }
 }

@@ -207,6 +207,15 @@ struct LivePreviewWidgetView: View {
         }
     }
 
+    /// Writes a width dragged at the image's corner into the embed, as one edit.
+    private func resizeImage(of embed: EmbedReference) -> ((Int) -> Void)? {
+        sourceEditing.map { sourceEditing in { width in
+            sourceEditing.replaceSource(ObjectIdentifier(LivePreviewEmbedView.self)) { source in
+                EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, in: source)
+            }
+        } }
+    }
+
     /// A callout drawn as a box, its body's tables edited in place.
     @ViewBuilder private var calloutContent: some View {
         if let located = parsedSource.calloutBlock(from: block.markdown), case .callout(let type, let title, let folding, let bodyBlocks) = located.block {
@@ -270,7 +279,7 @@ struct LivePreviewWidgetView: View {
             if let video = WebVideo(embed: embed) {
                 WebVideoCard(video: video, writtenTitle: embed.label, revealSource: revealSource)
             } else {
-                LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource)
+                LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource, resizeImage: resizeImage(of: embed))
             }
         case .imageLine(let pieces):
             LivePreviewImageLineView(pieces: pieces, environment: environment, revealSource: revealSource)
@@ -569,6 +578,9 @@ struct LivePreviewEmbedView: View {
     let environment: LivePreviewEnvironment
     var allowsNoteEmbeds = true
     let revealSource: () -> Void
+    /// Writes a width dragged at an image's corner into the embed; nil leaves images as
+    /// they are, as in an embedded note.
+    var resizeImage: ((Int) -> Void)? = nil
     @Environment(\.displayScale) private var displayScale
     @State private var resolution: EmbedResolution = .loading
     /// The `resolutionKey` of the last completed lookup. A lookup's own result changes the
@@ -616,7 +628,8 @@ struct LivePreviewEmbedView: View {
                                   edit: isEditableDrawing ? environment.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: environment.viewImage.map { viewImage in { viewImage(path) } } ?? revealSource,
                                   drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
-                                  path: path, tabOpening: environment.pictureTabOpening)
+                                  path: path, tabOpening: environment.pictureTabOpening,
+                                  resizeWidth: resizeImage, columnWidth: environment.embeddedImageColumnWidth)
             case .video(let location):
                 EmbeddedMediaPlayer(location: location)
             case .audio(let location, let name):
@@ -694,7 +707,9 @@ struct LivePreviewEmbedView: View {
     /// if the file has changed.
     private var shownResolution: EmbedResolution {
         guard case .loading = resolution, let foundImage = LivePreviewEmbedImageLocations.foundImage(for: embed, in: environment.root),
-              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: foundImage.location, kind: .block, displayPixelWidth: displayPixelWidth) else {
+              let thumbnail = ReadingImageCache.shared.lastThumbnail(for: foundImage.location, kind: .block, displayPixelWidth: displayPixelWidth)
+                // After a resize, the picture at its old width stands in until the new one is made.
+                ?? ReadingImageCache.shared.latestThumbnail(for: foundImage.location, kind: .block) else {
             return resolution
         }
         return .image(path: foundImage.path, image: thumbnail.image, aspectRatio: thumbnail.aspectRatio, isEditableDrawing: thumbnail.isEditableDrawing)
