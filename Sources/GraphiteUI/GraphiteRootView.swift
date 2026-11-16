@@ -369,6 +369,8 @@ struct GraphiteRootView: View {
             // Editable, so the title bar's menu offers Rename, as for documents in Files.
             .modifier(DocumentTitle(title: titleBinding, isCompactWidth: isCompactWidth))
             #if canImport(UIKit)
+            // The app switcher names each window after its document, as it does Files' and Preview's.
+            .background { WindowSceneTitle(title: titleBinding.wrappedValue) }
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar { detailToolbar }

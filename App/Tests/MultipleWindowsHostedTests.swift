@@ -1,6 +1,7 @@
 #if os(iOS)
 import XCTest
 import UIKit
+import SwiftUI
 import GraphiteCore
 @testable import GraphiteUI
 
@@ -35,6 +36,25 @@ final class MultipleWindowsHostedTests: XCTestCase {
         UIApplication.shared.activateSceneSession(for: UISceneSessionActivationRequest(session: appScene.session)) { error in activationError = error }
         try await waitUntil("the app's window is in front again") { appScene.activationState == .foregroundActive }
         XCTAssertNil(activationError)
+    }
+
+    /// The app switcher shows a window's scene title under the app's name: each window is named after its document, and
+    /// the name follows the document shown (the switcher showed "Graphite" alone for two windows, 2026-11-16).
+    func testAWindowIsNamedAfterItsDocumentInTheAppSwitcher() throws {
+        let appScene = try XCTUnwrap(UIApplication.shared.connectedScenes.first { scene in scene.activationState == .foregroundActive } as? UIWindowScene)
+        let titleBefore = appScene.title
+        defer { appScene.title = titleBefore }
+        let window = UIWindow(windowScene: appScene)
+        let host = UIHostingController(rootView: WindowSceneTitle(title: "Lecture 3.md"))
+        window.rootViewController = host
+        window.isHidden = false
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(appScene.title, "Lecture 3.md")
+
+        host.rootView = WindowSceneTitle(title: "Exam review.md")
+        host.view.layoutIfNeeded()
+        XCTAssertEqual(appScene.title, "Exam review.md")
+        window.isHidden = true
     }
 }
 #endif
