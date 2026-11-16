@@ -33,7 +33,7 @@ Issue: [#190](https://github.com/Graphite-Note/Graphite/issues/190)
 - [x] **Handwriting and PDFs**: drawings in notes, the Pencil tools and palette, notebooks and paper, writing on slides, text boxes, the lasso, pages, bookmarks, recordings, and on the Mac highlighting, drawing, text boxes, signatures and shapes.
   Done 2026-11-16: `3 Handwriting and PDFs` (seven notes), with a drawing and a Cornell notebook made by Graphite's own writers and the course's slides. Checked as above.
 - [x] **Making notes look good**: each piece of Markdown and Obsidian syntax shown rendered beside its source (headings, emphasis, lists and tasks, quotes, callouts of every type, tables, math, code with themes, diagrams, footnotes, pictures and their sizes, embeds), with a "copy this" block for each.
-  Done 2026-11-16: `4 Making notes look good` (eleven notes), each syntax in a Copy this block above its result; callout types checked against the reading view's list. Checked as above; on the iPad, `Tables.md` found HUNT-358 (below).
+  Done 2026-11-16: `4 Making notes look good` (eleven notes), each syntax in a Copy this block above its result; callout types checked against the reading view's list. Checked as above; on the iPad, `Tables.md` found HUNT-360 (below).
 - [x] **Connecting notes**: links, backlinks, embeds of notes and sections, tags, properties, Bases over the example recipes, restaurants (with a map) and reading list, the graph, canvas, daily notes, templates and the calendar.
   Done 2026-11-16: `5 Connecting notes` (eight notes and `Course map.canvas`). Checked as above.
 - [x] **Everyday examples**: a recipe collection, favourite restaurants on a map, a course with lecture notes and slides, a trip plan, a reading list, each cross-referenced, so a reader sees how the pieces fit.
@@ -61,7 +61,7 @@ Issue: [#192](https://github.com/Graphite-Note/Graphite/issues/192)
 - [x] The in-app Guide topics link to the matching guide notes, and their text is brought up to date with what the app does today.
   Done 2026-11-16: every topic but Read Aloud and Source Code has See It in the Guide Vault (`GuideTopic.guideVaultNote`, each note checked by `GuideVaultTests`); the Mac's PDF topic is now Mark Up PDFs, with the markup row's tools.
 - [ ] Tests: the guide vault opens in every view with no errors (the release pass run over it), every link in it resolves, its size stays under the target, and the copy is made once and can be made again.
-  Built 2026-11-16, not ticked: `GuideVaultPassTests` on the Mac pass with no finding; `GuideVaultPassHostedTests` on the iPad: the second half has one finding (the map embedded in `Lisbon weekend.md` is placed after the pass's 3 seconds as it scrolls in; drawn on the next page), the first half stops at `Tables.md` (HUNT-358, Docs/Bug-hunt-todo.md). `GuideVaultTests` checks links, size and the pack; `GuideVaultCopyTests` the copy.
+  Built 2026-11-16, not ticked: `GuideVaultPassTests` on the Mac pass with no finding; `GuideVaultPassHostedTests` on the iPad: the second half has one finding (the map embedded in `Lisbon weekend.md` is placed after the pass's 3 seconds as it scrolls in; drawn on the next page), the first half stops at `Tables.md` (HUNT-360, Docs/Bug-hunt-todo.md). `GuideVaultTests` checks links, size and the pack; `GuideVaultCopyTests` the copy.
 
 ## 4. Checks
 
