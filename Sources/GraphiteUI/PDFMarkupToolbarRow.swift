@@ -314,6 +314,15 @@ struct PDFMarkupTextMarkButtons: View {
         .accessibilityLabel("Highlight Colors")
     }
 
+    /// A symbol drawn in `color`. AppKit draws a menu's label from an image as a template, in
+    /// the text colour, unless the image carries its own colours.
+    private static func coloredSymbol(_ symbolName: String, color: NSColor) -> NSImage {
+        let symbol = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color])) ?? NSImage()
+        symbol.isTemplate = false
+        return symbol
+    }
+
     /// Removes the selected mark, as Delete does.
     private func removeButton(_ kind: PDFMarkupKind) -> some View {
         Button { toolbar.changeSelectedMark(.remove) } label: {
@@ -340,8 +349,7 @@ struct PDFMarkupTextMarkButtons: View {
                 }
             }
         } label: {
-            Image(systemName: kindStyle.symbolName)
-                .foregroundStyle(Color(nsColor: kindStyle.color.platformColor))
+            Image(nsImage: Self.coloredSymbol(kindStyle.symbolName, color: kindStyle.color.platformColor))
         } primaryAction: {
             choose(kindStyle)
         }
