@@ -21,6 +21,7 @@ Sources/GraphiteApple/DrawingFileService.swift      ImageDecodingLimiter.shared 
 Sources/GraphiteUI/MarkdownPreview.swift            ReadingImageCache.shared           # bounded NSCache; owner and memory release in Phase 6
 Sources/GraphiteUI/PencilToolbox.swift              PencilToolbox.shared               # per-device Pencil tool state, one for every window: the same pens everywhere (decision 12, owner 2026-10-21); injected in Phase 2 (T-18)
 Sources/GraphiteUI/CanvasCardViews.swift            CanvasPDFPageRenderer.shared       # bounded renderer for canvas PDF cards
+Sources/GraphiteUI/MacMarkupColorPanel.swift        MacMarkupColorPanel.shared         # the one target of AppKit's one NSColorPanel, which does not retain it: process-wide like the panel, so the target is never a released object (FR-52, platform singleton at the edge)
 
 # --- stored mutable statics, locks and caches (DIP-ARCH-02 and architecture.md 8.4) ---
 # Locks and caches that guard themselves.

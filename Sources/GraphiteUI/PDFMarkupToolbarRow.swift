@@ -192,30 +192,48 @@ struct PDFMarkupSwatch: View {
     }
 }
 
-/// The text marks: a swatch per highlight colour, and Underline and Strikethrough buttons.
-/// A click chooses the mark, marks the text selected and leaves the highlighter on, so text
-/// selected next is marked the same way when the mouse is let go.
+/// The text marks: a swatch per saved text-mark colour (`PDFTextMarkColors`), Underline and
+/// Strikethrough buttons whose arrows choose their colour, and the colour panel. A click
+/// chooses the mark, marks the text selected and leaves the highlighter on, so text selected
+/// next is marked the same way when the mouse is let go. A colour chosen in the panel is
+/// used and saved as a swatch; a swatch's right-click menu removes it.
 ///
-/// While a mark is selected (a click on it), the row shows that mark: its colour ticked, or
-/// its kind for an underline or strikethrough. A swatch then recolours it, as one step and
-/// without a second mark, and a Remove button deletes it.
+/// While a mark is selected (a click on it), the row shows that mark: its colour ticked, a
+/// swatch of its own colour first when it is not a saved one, and its kind for an underline
+/// or strikethrough. A swatch or the panel then recolours it, as one step and without a
+/// second mark, and a Remove button deletes it.
 struct PDFMarkupTextMarkButtons: View {
     let toolbar: PDFMarkupToolbar
     @Binding var style: PDFMarkupStyle
     let foldsColors: Bool
     let markSelection: (PDFMarkupStyle) -> Void
+    @AppStorage(PDFAnnotationPreferenceKey.textMarkColors) private var storedTextMarkColors: Data?
 
     private var selectedMark: PDFSelectedMarkAppearance? { toolbar.selectedMarkAppearance }
+    private var savedColors: PDFTextMarkColors { PDFTextMarkColors(decoding: storedTextMarkColors) }
+
+    /// The colour ticked: the selected mark's, or the highlighter's while no mark is selected.
+    private var currentColor: PDFMarkupColor? {
+        if let selectedMark { return selectedMark.color }
+        return style.kind == .highlight ? style.color : nil
+    }
 
     var body: some View {
+        // Read once a drawing of the row: every swatch asks whether it is saved.
+        let saved = savedColors
+        let swatchColors = saved.offered(for: .highlight, including: currentColor)
         HStack(spacing: PDFMarkupRowMetrics.itemSpacing) {
             if foldsColors {
-                colorMenu
+                colorMenu(swatchColors)
             } else {
-                ForEach(PDFMarkupColor.highlightColors) { color in colorButton(color) }
+                ForEach(swatchColors) { color in colorButton(color, saved: saved) }
             }
-            markButton(.underline)
-            markButton(.strikeOut)
+            PDFMarkupColorPanelButton(title: selectedMark.map { mark in "\(mark.kind.title) Color…" } ?? "Other Color…",
+                                      color: (currentColor ?? style.color).platformColor) { [weak toolbar, style = $style, storedColors = $storedTextMarkColors] chosen in
+                Self.useColorFromPanel(PDFMarkupColor(platformColor: chosen), toolbar: toolbar, style: style, storedColors: storedColors)
+            }
+            lineMarkButton(.underline, saved: saved)
+            lineMarkButton(.strikeOut, saved: saved)
             if let selectedMark { removeButton(selectedMark.kind) }
         }
         .padding(.horizontal, 2)
@@ -237,29 +255,45 @@ struct PDFMarkupTextMarkButtons: View {
         }
     }
 
-    /// Whether the colour is ticked: the selected mark's, or the highlighter's while no mark is selected.
-    private func isInUse(_ color: PDFMarkupColor) -> Bool {
-        if let selectedMark { return selectedMark.color == color }
-        return style == .highlight(color)
+    /// A colour chosen in the panel, which may come after the row was rebuilt: it is saved as
+    /// a swatch, and recolours the selected mark or becomes the colour of the mark in use.
+    /// The text selected is not marked: the panel took the click, not the text.
+    private static func useColorFromPanel(_ color: PDFMarkupColor, toolbar: PDFMarkupToolbar?, style: Binding<PDFMarkupStyle>,
+                                          storedColors: Binding<Data?>) {
+        storedColors.wrappedValue = PDFTextMarkColors(decoding: storedColors.wrappedValue).adding(color).encoded
+        guard let toolbar else { return }
+        if toolbar.selectedMarkAppearance != nil {
+            toolbar.changeSelectedMark(.recolor(color))
+        } else {
+            style.wrappedValue = style.wrappedValue.recolored(color)
+            toolbar.choose(.highlight)
+        }
     }
 
-    private func colorButton(_ color: PDFMarkupColor) -> some View {
-        let isInUse = isInUse(color)
+    private func colorButton(_ color: PDFMarkupColor, saved: PDFTextMarkColors) -> some View {
+        let isInUse = currentColor == color
         let title = selectedMark.map { mark in "\(mark.kind.title) \(color.title)" } ?? "Highlight \(color.title)"
         return Button { chooseColor(color) } label: {
             PDFMarkupSwatch(color: Color(nsColor: color.platformColor), isInUse: isInUse)
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            if saved.contains(color) {
+                Button("Remove Color") { storedTextMarkColors = saved.removing(color).encoded }
+            } else {
+                Button("Save Color") { storedTextMarkColors = saved.adding(color).encoded }
+            }
+        }
         .help(title)
         .accessibilityLabel(title)
         .accessibilityAddTraits(isInUse ? .isSelected : [])
     }
 
     /// The colours folded into one button: a click marks with the colour in use, the arrow chooses another.
-    private var colorMenu: some View {
-        let currentColor: PDFMarkupColor = if let selectedMark { selectedMark.color } else if case .highlight(let color) = style { color } else { .yellow }
+    private func colorMenu(_ swatchColors: [PDFMarkupColor]) -> some View {
+        let menuColor = currentColor ?? .yellow
         return Menu {
-            ForEach(PDFMarkupColor.highlightColors) { color in
+            ForEach(swatchColors) { color in
                 Button {
                     chooseColor(color)
                 } label: {
@@ -267,14 +301,14 @@ struct PDFMarkupTextMarkButtons: View {
                 }
             }
         } label: {
-            Image(nsImage: MacPDFMarkupInteraction.swatch(currentColor.platformColor))
+            Image(nsImage: MacPDFMarkupInteraction.swatch(menuColor.platformColor))
         } primaryAction: {
-            chooseColor(currentColor)
+            chooseColor(menuColor)
         }
         .menuStyle(.borderlessButton)
         .menuIndicator(.visible)
         .fixedSize()
-        .help("Highlight \(currentColor.title)")
+        .help("Highlight \(menuColor.title)")
         .accessibilityLabel("Highlight Colors")
     }
 
@@ -290,18 +324,33 @@ struct PDFMarkupTextMarkButtons: View {
         .accessibilityLabel("Remove \(kind.title)")
     }
 
-    private func markButton(_ markStyle: PDFMarkupStyle) -> some View {
-        let isInUse = selectedMark.map { mark in mark.kind == markStyle.kind } ?? (style == markStyle)
-        return Button { choose(markStyle) } label: {
-            Image(systemName: markStyle.symbolName)
-                .foregroundStyle(Color(nsColor: markStyle.color.platformColor))
-                .frame(width: PDFMarkupRowMetrics.toolSide, height: PDFMarkupRowMetrics.toolSide)
-                .background(PDFMarkupRowMetrics.chosenBackground(isInUse))
-                .contentShape(Rectangle())
+    /// Underline or Strikethrough: a click marks the selection in the kind's colour (red until
+    /// another is chosen), the arrow chooses another colour.
+    private func lineMarkButton(_ kind: PDFMarkupKind, saved: PDFTextMarkColors) -> some View {
+        let kindStyle = style.kind == kind ? style : (kind == .underline ? PDFMarkupStyle.underline : .strikeOut)
+        let isInUse = selectedMark.map { mark in mark.kind == kind } ?? (style.kind == kind)
+        return Menu {
+            ForEach(saved.offered(for: kind, including: kindStyle.color)) { color in
+                Button {
+                    choose(kindStyle.recolored(color))
+                } label: {
+                    Label { Text(color.title) } icon: { Image(nsImage: MacPDFMarkupInteraction.swatch(color.platformColor)) }
+                }
+            }
+        } label: {
+            Image(systemName: kindStyle.symbolName)
+                .foregroundStyle(Color(nsColor: kindStyle.color.platformColor))
+        } primaryAction: {
+            choose(kindStyle)
         }
-        .buttonStyle(.borderless)
-        .help(markStyle.title)
-        .accessibilityLabel(markStyle.title)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        .fixedSize()
+        .padding(.horizontal, 2)
+        .frame(height: PDFMarkupRowMetrics.toolSide)
+        .background(PDFMarkupRowMetrics.chosenBackground(isInUse))
+        .help(kindStyle.title)
+        .accessibilityLabel(kindStyle.title)
         .accessibilityAddTraits(isInUse ? .isSelected : [])
     }
 }
@@ -312,21 +361,12 @@ struct PDFMarkupToolMenu: View {
     @Binding var style: PDFMarkupStyle
     let markSelection: (PDFMarkupStyle) -> Void
     let signatureStore: PDFSignatureStore?
+    @AppStorage(PDFAnnotationPreferenceKey.textMarkColors) private var storedTextMarkColors: Data?
 
     var body: some View {
         Menu {
             Button(PDFMarkupTool.textSelection.title, systemImage: PDFMarkupTool.textSelection.symbolName) { toolbar.choose(.textSelection) }
-            Section {
-                ForEach(PDFMarkupStyle.choices) { choice in
-                    Button {
-                        style = choice
-                        toolbar.choose(.highlight)
-                        markSelection(choice)
-                    } label: {
-                        Label { Text(choice.kind == .highlight ? "Highlight \(choice.title)" : choice.title) } icon: { styleIcon(choice) }
-                    }
-                }
-            }
+            textMarkItems
             Section {
                 ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .shapes], id: \.self) { tool in
                     Button(tool.title, systemImage: tool.symbolName) { toolbar.choose(tool) }
@@ -348,10 +388,32 @@ struct PDFMarkupToolMenu: View {
         .accessibilityLabel("Markup Tools")
     }
 
+    /// The marks in the saved colours, which recolour the selected mark while one is, and its Remove.
+    private var textMarkItems: some View {
+        Section {
+            ForEach(PDFMarkupStyle.choices(highlightColors: PDFTextMarkColors(decoding: storedTextMarkColors).colors)) { choice in
+                Button {
+                    if toolbar.selectedMarkAppearance != nil, choice.kind == .highlight {
+                        toolbar.changeSelectedMark(.recolor(choice.color))
+                    } else {
+                        style = choice
+                        toolbar.choose(.highlight)
+                        markSelection(choice)
+                    }
+                } label: {
+                    Label { Text(choice.kind == .highlight ? "Highlight \(choice.title)" : choice.title) } icon: { styleIcon(choice) }
+                }
+            }
+            if let selectedMark = toolbar.selectedMarkAppearance {
+                Button("Remove \(selectedMark.kind.title)", systemImage: "trash") { toolbar.changeSelectedMark(.remove) }
+            }
+        }
+    }
+
     /// A highlight's swatch, or the symbol of an underline or strikethrough, which the menu tints as its text.
     @ViewBuilder private func styleIcon(_ style: PDFMarkupStyle) -> some View {
-        switch style {
-        case .highlight(let color): Image(nsImage: MacPDFMarkupInteraction.swatch(color.platformColor))
+        switch style.kind {
+        case .highlight: Image(nsImage: MacPDFMarkupInteraction.swatch(style.color.platformColor))
         case .underline, .strikeOut: Image(systemName: style.symbolName)
         }
     }
@@ -408,7 +470,7 @@ struct PDFMarkupControls: ViewModifier {
     }
 
     private var menuActions: PDFMarkupMenuActions {
-        let highlightStyle: PDFMarkupStyle = if case .highlight = style { style } else { .default }
+        let highlightStyle: PDFMarkupStyle = style.kind == .highlight ? style : .default
         return PDFMarkupMenuActions(isRowShown: toolbar.isRowShown, acceptsMarkup: !session.isProtected, hasTextSelection: toolbar.hasTextSelection,
                                     highlightStyle: highlightStyle, toggleRow: toolbar.toggleRow, markSelection: markSelection)
     }

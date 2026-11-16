@@ -7,8 +7,8 @@
  *              folded into menus where the pane is narrow.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -24,12 +24,27 @@ extension Color {
     }
 }
 
+extension PDFTextColor {
+    /// The colour for the colour panel.
+    var panelColor: NSColor { NSColor(srgbRed: CGFloat(red), green: CGFloat(green), blue: CGFloat(blue), alpha: 1) }
+
+    /// A colour chosen in the colour panel, in sRGB as the row's colours are.
+    init(panelColor: NSColor) {
+        let sRGBColor = panelColor.usingColorSpace(.sRGB) ?? panelColor
+        self.init(red: Double(sRGBColor.redComponent), green: Double(sRGBColor.greenComponent), blue: Double(sRGBColor.blueComponent))
+    }
+}
+
 /// The colours the row offers for ink and text: black, then the favourite colours of Settings › Colors.
 enum PDFMarkupRowColors {
-    static func choices(storedPalette: Data?) -> [(name: String, color: PDFTextColor)] {
-        [("Black", .black)] + GraphitePreferences.colorPalette(decoding: storedPalette).compactMap { favorite in
+    /// The colours, with `currentColor` last when it is none of them (one chosen in the colour
+    /// panel, or a selected shape's), so it shows ticked.
+    static func choices(storedPalette: Data?, including currentColor: PDFTextColor? = nil) -> [(name: String, color: PDFTextColor)] {
+        let favorites = [("Black", PDFTextColor.black)] + GraphitePreferences.colorPalette(decoding: storedPalette).compactMap { favorite in
             PDFTextColor(hex: favorite.hex).map { color in (favorite.name.capitalized, color) }
         }
+        guard let currentColor, !favorites.contains(where: { favorite in favorite.1 == currentColor }) else { return favorites }
+        return favorites + [(currentColor.hex.uppercased(), currentColor)]
     }
 }
 
@@ -75,7 +90,12 @@ struct PDFMarkupInkOptions: View {
                 colorMenu
                 widthMenu
             } else {
-                ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette), id: \.name) { choice in colorButton(choice.name, choice.color) }
+                ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette, including: inkStyle.color), id: \.name) { choice in
+                    colorButton(choice.name, choice.color)
+                }
+                PDFMarkupColorPanelButton(title: "Other Ink Color…", color: inkStyle.color.panelColor) { [inkStyle = $inkStyle] chosen in
+                    inkStyle.wrappedValue.color = PDFTextColor(panelColor: chosen)
+                }
                 Divider().frame(height: PDFMarkupRowMetrics.dividerHeight).padding(.horizontal, 4)
                 ForEach(PDFMarkupInkWidth.allCases) { width in widthButton(width) }
             }
@@ -95,8 +115,13 @@ struct PDFMarkupInkOptions: View {
 
     private var colorMenu: some View {
         Menu {
-            ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette), id: \.name) { choice in
+            ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette, including: inkStyle.color), id: \.name) { choice in
                 Button(choice.name) { inkStyle.color = choice.color }
+            }
+            Button("Other Color…") {
+                MacMarkupColorPanel.shared.open(with: inkStyle.color.panelColor) { [inkStyle = $inkStyle] chosen in
+                    inkStyle.wrappedValue.color = PDFTextColor(panelColor: chosen)
+                }
             }
         } label: {
             Image(nsImage: PDFMarkupRowImages.swatch(inkStyle.color))
@@ -254,8 +279,13 @@ struct PDFMarkupTextFormatControls: View {
 
     private var colorMenu: some View {
         Menu {
-            ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette), id: \.name) { choice in
+            ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette, including: format.attributes.color), id: \.name) { choice in
                 Button(choice.name) { apply(.color(choice.color)) }
+            }
+            Button("Other Color…") {
+                // The box selected when the panel opened, or the next new box.
+                let apply = apply
+                MacMarkupColorPanel.shared.open(with: format.attributes.color.panelColor) { chosen in apply(.color(PDFTextColor(panelColor: chosen))) }
             }
         } label: {
             Image(nsImage: PDFMarkupRowImages.swatch(format.attributes.color))

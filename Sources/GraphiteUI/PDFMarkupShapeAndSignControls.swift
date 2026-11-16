@@ -6,8 +6,8 @@
  *              out or folded into menus) and its Sign menu of the device's signatures, with Create Signature.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(macOS)
@@ -37,7 +37,20 @@ struct PDFMarkupShapeOptions: View {
     let isFolded: Bool
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
 
-    private var colors: [(name: String, color: PDFTextColor)] { PDFMarkupRowColors.choices(storedPalette: storedColorPalette) }
+    private func colors(including currentColor: PDFTextColor?) -> [(name: String, color: PDFTextColor)] {
+        PDFMarkupRowColors.choices(storedPalette: storedColorPalette, including: currentColor)
+    }
+
+    /// Opens the colour panel for the border or the fill of the selected shape and the next one.
+    private func openColorPanel(with color: PDFTextColor, change: @escaping (inout PDFMarkupShapeStyle, PDFTextColor) -> Void) {
+        MacMarkupColorPanel.shared.open(with: color.panelColor) { [weak toolbar, shapeStyle = $shapeStyle] chosen in
+            guard let toolbar else { return }
+            var changed = toolbar.shapeStyle
+            change(&changed, PDFTextColor(panelColor: chosen))
+            shapeStyle.wrappedValue = changed
+            toolbar.chooseShapeStyle(changed)
+        }
+    }
 
     private func choose(_ change: (inout PDFMarkupShapeStyle) -> Void) {
         var changed = toolbar.shapeStyle
@@ -57,22 +70,39 @@ struct PDFMarkupShapeOptions: View {
             } else {
                 ForEach(PDFShapeKind.allCases) { kind in kindButton(kind, isInUse: style.kind == kind) }
                 divider
-                ForEach(colors, id: \.name) { choice in
+                ForEach(colors(including: style.borderColor), id: \.name) { choice in
                     colorButton(label: "Border \(choice.name)", color: choice.color, isInUse: style.borderColor == choice.color) { changed in
                         changed.borderColor = choice.color
                     }
                 }
                 divider
                 noFillButton(isInUse: style.fillColor == nil)
-                ForEach(colors, id: \.name) { choice in
+                ForEach(colors(including: style.fillColor), id: \.name) { choice in
                     colorButton(label: "Fill \(choice.name)", color: choice.color, isInUse: style.fillColor == choice.color, isFill: true) { changed in
                         changed.fillColor = choice.color
                     }
                 }
+                otherColorMenu(style)
                 divider
                 ForEach(PDFMarkupInkWidth.allCases) { width in widthButton(width, isInUse: style.width == width) }
             }
         }
+    }
+
+    /// The colour panel for the border or the fill, one button for both to keep the row short.
+    private func otherColorMenu(_ style: PDFMarkupShapeStyle) -> some View {
+        Menu {
+            Button("Other Border Color…") { openColorPanel(with: style.borderColor) { changed, color in changed.borderColor = color } }
+            Button("Other Fill Color…") { openColorPanel(with: style.fillColor ?? .black) { changed, color in changed.fillColor = color } }
+        } label: {
+            Image(systemName: "paintpalette")
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .frame(width: PDFMarkupRowMetrics.toolSide, height: PDFMarkupRowMetrics.toolSide)
+        .help("Other Color")
+        .accessibilityLabel("Other Color")
     }
 
     private var divider: some View {
@@ -148,9 +178,10 @@ struct PDFMarkupShapeOptions: View {
 
     private func borderMenu(_ style: PDFMarkupShapeStyle) -> some View {
         Menu {
-            ForEach(colors, id: \.name) { choice in
+            ForEach(colors(including: style.borderColor), id: \.name) { choice in
                 Button(choice.name) { choose { changed in changed.borderColor = choice.color } }
             }
+            Button("Other Color…") { openColorPanel(with: style.borderColor) { changed, color in changed.borderColor = color } }
         } label: {
             Image(nsImage: PDFMarkupRowImages.swatch(style.borderColor))
         }
@@ -163,9 +194,10 @@ struct PDFMarkupShapeOptions: View {
     private func fillMenu(_ style: PDFMarkupShapeStyle) -> some View {
         Menu {
             Button("No Fill") { choose { changed in changed.fillColor = nil } }
-            ForEach(colors, id: \.name) { choice in
+            ForEach(colors(including: style.fillColor), id: \.name) { choice in
                 Button(choice.name) { choose { changed in changed.fillColor = choice.color } }
             }
+            Button("Other Color…") { openColorPanel(with: style.fillColor ?? .black) { changed, color in changed.fillColor = color } }
         } label: {
             if let fill = style.fillColor {
                 Image(nsImage: PDFMarkupRowImages.swatch(fill))

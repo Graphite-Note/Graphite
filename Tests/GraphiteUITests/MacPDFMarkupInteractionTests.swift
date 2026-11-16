@@ -54,6 +54,7 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
         window.contentView = view
         view.layoutSubtreeIfNeeded()
         let interaction = MacPDFMarkupInteraction(session: session, view: view)
+        interaction.pageToolPreferences = try IsolatedDeviceState.make(prefix: "MacPDFMarkupInteraction", for: self).preferences
         interaction.input = PDFAnnotationInput(isEnabled: true, drawsWithFinger: false, showsToolPicker: false, markupTool: tool, markupStyle: style)
         view.markupInteraction = interaction
         addTeardownBlock { interaction.stopObservingSelection() }
@@ -149,7 +150,7 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
 
         let menu = try XCTUnwrap(fixture.interaction.menu(for: try mouseEvent(.rightMouseDown, on: "bandwidth", in: fixture), defaultMenu: NSMenu()))
         let titles = menu.items.map { item in item.isSeparatorItem ? "-" : item.title }
-        XCTAssertEqual(titles, ["Yellow", "Green", "Blue", "Pink", "Purple", "-", "Remove Highlight"])
+        XCTAssertEqual(titles, ["Yellow", "Green", "Blue", "Pink", "Purple", "Other Color…", "-", "Remove Highlight"])
         XCTAssertEqual(menu.items.first?.state, .on, "The mark's colour is ticked.")
 
         step(in: fixture.session) { menu.performActionForItem(at: 2) }
@@ -209,6 +210,8 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
 
         let menu = try XCTUnwrap(fixture.interaction.menu(for: try mouseEvent(.rightMouseDown, on: "bandwidth", in: fixture), defaultMenu: NSMenu()))
         XCTAssertEqual(menu.items.last?.title, "Remove Highlight")
+        XCTAssertEqual(menu.items.first?.title, "#FF8000", "The mark's own colour, none of the saved ones, comes first.")
+        XCTAssertEqual(menu.items.first?.state, .on)
         let greenIndex = try XCTUnwrap(menu.items.firstIndex { item in item.title == "Green" })
         step(in: fixture.session) { menu.performActionForItem(at: greenIndex) }
         XCTAssertEqual(marks(on: fixture.page).map(\.color), [.green])
@@ -289,6 +292,22 @@ final class MacPDFMarkupInteractionTests: XCTestCase {
         toolbar.changeSelectedMark(.recolor(.green))
         XCTAssertNil(fixture.session.errorMessage)
         XCTAssertEqual(marks(on: fixture.page), [])
+    }
+
+    func testTheMenusOfferTheSavedTextMarkColours() async throws {
+        let fixture = try await makeFixture()
+        let orange = try XCTUnwrap(PDFMarkupColor(hex: "#FF8000"))
+        PDFTextMarkColors.save(orange, in: fixture.interaction.pageToolPreferences)
+        try select("bandwidth", in: fixture)
+
+        let menu = try XCTUnwrap(fixture.interaction.menu(for: try mouseEvent(.rightMouseDown, on: "bandwidth", in: fixture), defaultMenu: NSMenu()))
+        let orangeIndex = try XCTUnwrap(menu.items.firstIndex { item in item.title == "Highlight #FF8000" })
+        step(in: fixture.session) { menu.performActionForItem(at: orangeIndex) }
+        XCTAssertEqual(marks(on: fixture.page).map(\.color), [orange])
+
+        let markMenu = try XCTUnwrap(fixture.interaction.menu(for: try mouseEvent(.rightMouseDown, on: "bandwidth", in: fixture), defaultMenu: NSMenu()))
+        XCTAssertEqual(markMenu.items.prefix(6).map(\.title), ["Yellow", "Green", "Blue", "Pink", "Purple", "#FF8000"])
+        XCTAssertEqual(markMenu.items[5].state, .on)
     }
 
     func testAClickBesideTheMarksGoesOnToPDFKit() async throws {

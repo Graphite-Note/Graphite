@@ -6,8 +6,8 @@
  *              text markup.
  *
  * Authors: Bahey Shalash
- * Version: 0.39
- * Date: 13/11/2026
+ * Version: 0.40
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -782,6 +782,9 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var palmRejection: PalmRejectionInstallation?
     private var editMenuInteraction: UIEditMenuInteraction?
     private var tappedMarkup: (annotation: PDFAnnotation, page: PDFPage)?
+    /// Where the saved text-mark colours are kept (`PDFTextMarkColors`); a test gives its own.
+    var markupPreferences: UserDefaults = .standard
+    private lazy var markColorPicker = PDFMarkColorPicker(preferences: markupPreferences)
     private var selectionAnchor: (page: PDFPage, point: CGPoint)?
     private var pageObserver: PDFViewPageObserver?
     private var pictureSelection: PDFPictureSelectionController?
@@ -1832,13 +1835,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private func selectionMenu() -> UIMenu? {
         guard let selection = pdfView?.currentSelection, let selectedText = selection.string, !selectedText.isEmpty else { return nil }
         let copy = UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { _ in UIPasteboard.general.string = selectedText }
-        let highlightActions = PDFMarkupColor.highlightColors.map { color in
-            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in self?.markSelection(as: .highlight(color)) }
-        }
-        let highlight = UIMenu(title: PDFMarkupKind.highlight.title, image: UIImage(systemName: "highlighter"), children: highlightActions)
-        let underline = UIAction(title: PDFMarkupKind.underline.title, image: UIImage(systemName: "underline")) { [weak self] _ in self?.markSelection(as: .underline) }
-        let strikeOut = UIAction(title: PDFMarkupKind.strikeOut.title, image: UIImage(systemName: "strikethrough")) { [weak self] _ in self?.markSelection(as: .strikeOut) }
-        var children: [UIMenuElement] = [copy, highlight, underline, strikeOut]
+        let markingItems = PDFMarkMenus.markingItems(savedColors: savedTextMarkColors, mark: { [weak self] style in self?.markSelection(as: style) },
+                                                     pickColor: { [weak self] color, choose in self?.pickMarkColor(color, choose: choose) },
+                                                     removeSavedColor: { [weak self] color in self?.removeSavedTextMarkColor(color) })
+        var children: [UIMenuElement] = [copy] + markingItems
         if let linkActions, let page = selection.pages.first, session.document.index(for: page) != NSNotFound {
             children.append(UIMenu(options: .displayInline, children: linkActions.menuElements(pageIndex: session.document.index(for: page), text: selectedText)))
         }
@@ -1850,8 +1850,21 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         PDFSelectionMarking.markSelection(of: pdfView, in: session, as: style)
     }
 
-    private static func swatch(for color: PDFMarkupColor) -> UIImage? {
-        UIImage(systemName: "circle.fill")?.withTintColor(color.platformColor, renderingMode: .alwaysOriginal)
+    private var savedTextMarkColors: PDFTextMarkColors {
+        PDFTextMarkColors(decoding: markupPreferences.data(forKey: PDFAnnotationPreferenceKey.textMarkColors))
+    }
+
+    private func removeSavedTextMarkColor(_ color: PDFMarkupColor) {
+        markupPreferences.set(savedTextMarkColors.removing(color).encoded, forKey: PDFAnnotationPreferenceKey.textMarkColors)
+    }
+
+    /// Opens the colour picker over the selection or the tapped mark; the colour picked is saved and handed to `choose`.
+    private func pickMarkColor(_ color: PDFMarkupColor, choose: @escaping (PDFMarkupColor) -> Void) {
+        guard let pdfView else { return }
+        let sourcePoint = pdfView.currentSelection.flatMap { selection in
+            selection.pages.first.map { page in pdfView.convert(selection.bounds(for: page), from: page) }
+        }.map { bounds in CGPoint(x: bounds.midX, y: bounds.minY) } ?? CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY)
+        markColorPicker.present(with: color, from: pdfView, at: sourcePoint, choose: choose)
     }
 
     // MARK: Existing markup
@@ -1938,17 +1951,17 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
         if configuration.identifier as? NSString == Self.selectionMenuIdentifier { return selectionMenu() }
         guard let (annotation, page) = tappedMarkup, let kind = PDFMarkupKind(annotationType: annotation.type) else { return nil }
-        let colorActions = PDFSelectionMarking.colors(for: kind).map { color in
-            UIAction(title: color.title, image: Self.swatch(for: color)) { [weak self] _ in
-                guard let self else { return }
-                PDFSelectionMarking.recolor(annotation, on: page, to: color, in: self.session)
-            }
-        }
+        let colorMenu = PDFMarkMenus.colorMenu(for: kind, currentColor: PDFMarkup(annotation: annotation)?.color, savedColors: savedTextMarkColors,
+                                               recolor: { [weak self] color in
+                                                   guard let self else { return }
+                                                   PDFSelectionMarking.recolor(annotation, on: page, to: color, in: self.session)
+                                               },
+                                               pickColor: { [weak self] color, choose in self?.pickMarkColor(color, choose: choose) })
         let remove = UIAction(title: "Remove \(kind.title)", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in
             guard let self else { return }
             PDFSelectionMarking.remove(annotation, on: page, in: self.session)
         }
-        return UIMenu(children: [UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), children: colorActions), remove])
+        return UIMenu(children: [colorMenu, remove])
     }
 
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, willDismissMenuFor configuration: UIEditMenuConfiguration, animator: any UIEditMenuInteractionAnimating) {

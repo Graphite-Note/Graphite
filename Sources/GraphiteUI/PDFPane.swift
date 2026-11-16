@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.32
- * Date: 13/11/2026
+ * Version: 0.33
+ * Date: 16/11/2026
  */
 
 import SwiftUI
@@ -27,6 +27,8 @@ enum PDFAnnotationPreferenceKey {
     static let writingGuideSpacing = "GraphitePDFWritingGuideSpacing"
     /// The mark the Mac's highlight button makes (`PDFMarkupStyle`).
     static let markupStyle = "GraphitePDFMarkupStyle"
+    /// The colours saved for highlights, underlines and strikethroughs (`PDFTextMarkColors`).
+    static let textMarkColors = "GraphitePDFTextMarkColors"
     /// The colour and width of the Mac's Draw tool (`PDFMarkupInkStyle`).
     static let markupInkStyle = "GraphitePDFMarkupInkStyle"
     /// The shape, colours and width of the Mac's Shapes tool (`PDFMarkupShapeStyle`).

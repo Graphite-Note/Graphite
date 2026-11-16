@@ -42,9 +42,13 @@ final class MacPDFMarkupInteraction: NSObject {
     }
     /// Draw, Eraser and Text Box, made when one of them is first chosen.
     private(set) var pageTools: MacPDFPageTools?
-    /// Where the page tools keep the look of the next text box: the device's, as the
-    /// iPad's text tool keeps it; a test gives its own.
+    /// Where the device keeps the look of the next text box, as the iPad's text tool keeps
+    /// it, and the saved text-mark colours (`PDFTextMarkColors`); a test gives its own.
     var pageToolPreferences: UserDefaults = .standard
+
+    private var savedTextMarkColors: PDFTextMarkColors {
+        PDFTextMarkColors(decoding: pageToolPreferences.data(forKey: PDFAnnotationPreferenceKey.textMarkColors))
+    }
     /// The wall clock, read for the date PencilKit keeps with each stroke, as the iPad's canvas dates its strokes.
     var currentDate: () -> Date = Date.init
     var linkActions: PDFLinkActions?
@@ -149,7 +153,7 @@ final class MacPDFMarkupInteraction: NSObject {
         guard input.isEnabled, let view, let session, let selection = view.currentSelection,
               let selectedText = selection.string, !selectedText.isEmpty else { return defaultMenu }
         let menu = defaultMenu ?? NSMenu()
-        var items = PDFMarkupStyle.choices.map { style in
+        var items = PDFMarkupStyle.choices(highlightColors: savedTextMarkColors.colors).map { style in
             MacPDFMarkupMenuItem(title: style.kind == .highlight ? "Highlight \(style.title)" : style.title, image: Self.image(for: style)) {
                 [weak view, weak session] in
                 guard let view, let session else { return }
@@ -178,7 +182,7 @@ final class MacPDFMarkupInteraction: NSObject {
         guard let kind = PDFMarkupKind(annotationType: mark.annotation.type), let session else { return nil }
         let menu = NSMenu()
         let currentColor = PDFMarkup(annotation: mark.annotation)?.color
-        for color in PDFSelectionMarking.colors(for: kind) {
+        for color in savedTextMarkColors.offered(for: kind, including: currentColor) {
             let item = MacPDFMarkupMenuItem(title: color.title, image: Self.swatch(color.platformColor)) { [weak session] in
                 guard let session else { return }
                 PDFSelectionMarking.recolor(mark.annotation, on: mark.page, to: color, in: session)
@@ -186,6 +190,15 @@ final class MacPDFMarkupInteraction: NSObject {
             item.state = color == currentColor ? .on : .off
             menu.addItem(item)
         }
+        menu.addItem(MacPDFMarkupMenuItem(title: "Other Color…", image: NSImage(systemSymbolName: "paintpalette", accessibilityDescription: nil)) {
+            [weak self, weak session] in
+            MacMarkupColorPanel.shared.open(with: (currentColor ?? .yellow).platformColor) { chosen in
+                guard let self, let session else { return }
+                let color = PDFMarkupColor(platformColor: chosen)
+                PDFTextMarkColors.save(color, in: self.pageToolPreferences)
+                PDFSelectionMarking.recolor(mark.annotation, on: mark.page, to: color, in: session)
+            }
+        })
         menu.addItem(.separator())
         menu.addItem(MacPDFMarkupMenuItem(title: "Remove \(kind.title)", image: NSImage(systemSymbolName: "trash", accessibilityDescription: nil)) {
             [weak self, weak session] in
@@ -235,8 +248,8 @@ final class MacPDFMarkupInteraction: NSObject {
 
     /// The swatch of a highlight colour, or the symbol of an underline or strikethrough.
     static func image(for style: PDFMarkupStyle) -> NSImage? {
-        switch style {
-        case .highlight(let color): swatch(color.platformColor)
+        switch style.kind {
+        case .highlight: swatch(style.color.platformColor)
         case .underline, .strikeOut: NSImage(systemSymbolName: style.symbolName, accessibilityDescription: style.title)
         }
     }

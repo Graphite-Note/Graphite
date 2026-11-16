@@ -5,8 +5,8 @@
  * Description: The highlight button's marks, the name each is kept under on the device, and what the menu offers.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 import XCTest
@@ -24,9 +24,24 @@ final class PDFMarkupStyleTests: XCTestCase {
     }
 
     func testANameNoStyleHasIsNotReadAsAStyle() {
-        for name in ["", "highlight", "highlight-", "highlight-red", "highlight-orange", "Underline", "strikethrough"] {
+        for name in ["", "highlight", "highlight-", "highlight-orange", "highlight-#12345", "underline-", "Underline", "strikethrough"] {
             XCTAssertNil(PDFMarkupStyle(rawValue: name), name)
         }
+    }
+
+    func testAMarkOfAnyColourIsKeptUnderItsHexText() throws {
+        let orange = try XCTUnwrap(PDFMarkupColor(hex: "#ff8000"))
+        let styles = [PDFMarkupStyle.highlight(orange), PDFMarkupStyle(kind: .underline, color: .blue), PDFMarkupStyle(kind: .strikeOut, color: orange),
+                      PDFMarkupStyle.highlight(.red)]
+        XCTAssertEqual(styles.map(\.rawValue), ["highlight-#FF8000", "underline-blue", "strikeOut-#FF8000", "highlight-red"])
+        for style in styles { XCTAssertEqual(PDFMarkupStyle(rawValue: style.rawValue), style, style.rawValue) }
+        XCTAssertEqual(PDFMarkupStyle(kind: .underline, color: .blue).title, "Underline Blue")
+        XCTAssertEqual(PDFMarkupStyle.highlight(orange).title, "#FF8000")
+    }
+
+    func testTheMenuWithSavedColoursOffersThemThenUnderlineAndStrikethrough() throws {
+        let orange = try XCTUnwrap(PDFMarkupColor(hex: "#FF8000"))
+        XCTAssertEqual(PDFMarkupStyle.choices(highlightColors: [.green, orange]), [.highlight(.green), .highlight(orange), .underline, .strikeOut])
     }
 
     func testTheMenuOffersTheHighlightColoursThenUnderlineAndStrikethrough() {
