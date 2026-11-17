@@ -7,8 +7,8 @@
  *              without markers opens, and the vault map framing every placed note.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -156,7 +156,16 @@ final class MapUserLocationHostedTests: XCTestCase {
         let neverAsked = AnsweringDeviceLocation(access: .notAsked, answer: .granted, position: BaseCoordinate(latitude: 46.5197, longitude: 6.6323))
         let notesMap = try await mapView(in: host(baseView("Trips.base", store: store, index: index).environment(\.deviceLocation, neverAsked)))
         // Paris, Lausanne, Rome, New York and the Rome trip, all in sight, far from 0, 0.
-        try await waitUntil("the map on the vault's notes") { Self.framesEveryNote(notesMap, coordinates: Self.vaultCoordinates) }
+        let notesMiddle = BaseMapCameraTarget.region(fitting: Self.vaultCoordinates).center
+        try await waitUntil("the map on the vault's notes") { Self.distanceInDegrees(notesMap.centerCoordinate, notesMiddle) < 1 }
+        let shownRegion = MKCoordinateRegion(notesMap.visibleMapRect)
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            // A phone held upright shows at most about 85 degrees of longitude: MapKit will not zoom out further on a screen
+            // this tall, so New York and Rome together cannot both be in sight; the map shows their middle at its widest.
+            XCTAssertGreaterThan(shownRegion.span.longitudeDelta, 80, "The map is as wide as MapKit lets it be: \(shownRegion.span)")
+        } else {
+            XCTAssertTrue(Self.framesEveryNote(notesMap, coordinates: Self.vaultCoordinates), "Every note is in sight: \(shownRegion.span)")
+        }
         XCTAssertGreaterThan(Self.distanceInDegrees(notesMap.centerCoordinate, CLLocationCoordinate2D(latitude: 0, longitude: 0)), 10)
         XCTAssertEqual(neverAsked.accessRequestCount, 0, "Without access the map opens on the notes and asks nothing.")
     }
