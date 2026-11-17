@@ -5,7 +5,7 @@
  * Description: A Live Preview table's grips for its rows and columns, the outline of its selected cells, and selecting cells by dragging.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -33,7 +33,7 @@ struct LivePreviewTableGrips: View {
     @State private var drag: TableGripDrag?
 
     private var geometry: TableGripsGeometry {
-        TableGripsGeometry(tableBounds: layout.bounds, blockBounds: editor.tablePlacement.blockBoundsInTable)
+        TableGripsGeometry(tableBounds: layout.bounds, placement: editor.tablePlacement)
     }
 
     var body: some View {

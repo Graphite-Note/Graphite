@@ -6,7 +6,7 @@
  *              copy and paste), the header row's commands, the grips' places and where the caret goes beside a table.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -179,5 +179,19 @@ final class LivePreviewTableKeysAndSelectionTests: XCTestCase {
         let tight = TableGripsGeometry(tableBounds: table, blockBounds: CGRect(x: 0, y: 15, width: 200, height: 120))
         XCTAssertEqual(tight.rowGrip(for: CGRect(x: 0, y: 20, width: 200, height: 30)).minX, 0, "No room on the left: over the first cell's padding.")
         XCTAssertEqual(tight.columnGrip(for: CGRect(x: 0, y: 20, width: 80, height: 100)).minY, 15)
+    }
+
+    func testInACalloutTheColumnGripStaysOffTheTextAboveTheTable() {
+        let table = CGRect(x: 0, y: 0, width: 200, height: 100)
+        // The callout's view reaches far above the table, over its title and text; the table's own
+        // piece starts where the table does.
+        let placement = TablePlacementInBlock(origin: CGPoint(x: 12, y: 60), blockSize: CGSize(width: 400, height: 200), pieceTopInTable: 0)
+        let grip = TableGripsGeometry(tableBounds: table, placement: placement).columnGrip(for: CGRect(x: 0, y: 0, width: 80, height: 100))
+        XCTAssertEqual(grip.minY, -LivePreviewTableEditor.tablePieceSpacing / 2, "Only halfway into the space above the table's piece.")
+        XCTAssertEqual(grip.height, TableGripsGeometry.minimumThickness, "Short of room, the grip is thinner instead of reaching into the header.")
+        XCTAssertLessThanOrEqual(grip.maxY, table.minY + TableGripsGeometry.reachIntoTable)
+        let plainBlock = TablePlacementInBlock(origin: CGPoint(x: 12, y: 60), blockSize: CGSize(width: 400, height: 200))
+        XCTAssertEqual(TableGripsGeometry(tableBounds: table, placement: plainBlock).columnGrip(for: CGRect(x: 0, y: 0, width: 80, height: 100)).maxY,
+                       -TableGripsGeometry.gap, "A table that is its whole block keeps its grip outside it.")
     }
 }

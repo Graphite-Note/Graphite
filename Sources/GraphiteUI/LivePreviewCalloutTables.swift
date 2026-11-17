@@ -6,8 +6,8 @@
  *              view, and each edit run on the table's lines with their quote markers kept.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -95,7 +95,7 @@ struct LivePreviewCalloutRun: View {
     var sourceTokens: [ReadAloudSourceToken]? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: LivePreviewTableEditor.tablePieceSpacing) {
             ForEach(pieces, id: \.lineRange.lowerBound) { piece in
                 pieceView(piece)
             }
@@ -112,7 +112,8 @@ struct LivePreviewCalloutRun: View {
         let block = RenderedMarkdownBlock(markdown: markdown, environment: environment, sourceTokens: tokens(of: piece), place: place)
             .padding(.leading, indentationLength == 0 ? 0 : Self.listItemIndentation(textSize: environment.textSize))
         if piece.isTable, let startOffset = lineOffsets.first, let editor = tableEditing.editor(forTableStartingAt: startOffset) {
-            block.environment(\.livePreviewTableEditor, editor)
+            // The grips go above the table only as far as its own piece and half the space above it.
+            block.environment(\.livePreviewTableEditor, editor).coordinateSpace(.named(LivePreviewTableEditor.tablePieceCoordinateSpaceName))
         } else {
             block
         }

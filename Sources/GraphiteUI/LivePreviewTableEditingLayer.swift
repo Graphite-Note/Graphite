@@ -6,7 +6,7 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -66,7 +66,8 @@ struct LivePreviewTableEditingLayer: View {
         .onGeometryChange(for: TablePlacementInBlock.self) { geometry in
             let frame = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
             let blockSize = geometry.bounds(of: .named(LivePreviewTableEditor.blockCoordinateSpaceName))?.size ?? frame.size
-            return TablePlacementInBlock(origin: frame.origin, blockSize: blockSize)
+            let pieceTop = geometry.bounds(of: .named(LivePreviewTableEditor.tablePieceCoordinateSpaceName))?.minY
+            return TablePlacementInBlock(origin: frame.origin, blockSize: blockSize, pieceTopInTable: pieceTop)
         } action: { placement in
             editor.tablePlacement = placement
         }

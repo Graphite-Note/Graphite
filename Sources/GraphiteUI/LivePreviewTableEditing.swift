@@ -6,7 +6,7 @@
  *              puts its layer over the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
+ * Version: 0.10
  * Date: 17/11/2026
  */
 
@@ -67,6 +67,11 @@ extension EnvironmentValues {
 final class LivePreviewTableEditor {
     /// The coordinate space of a rendered block's whole view, which its menu's points are in.
     nonisolated static let blockCoordinateSpaceName = "LivePreviewRenderedBlock"
+    /// The coordinate space of a table's own piece where the block holds more than the table, as
+    /// a callout does: what is above the piece is the block's text, not room for the grips.
+    nonisolated static let tablePieceCoordinateSpaceName = "LivePreviewTablePiece"
+    /// The space between the pieces of a callout's body, half of which a grip may reach into.
+    nonisolated static let tablePieceSpacing: CGFloat = 8
     /// How long typing pauses before the cell is written into the note.
     private static let commitDelay: Duration = .milliseconds(400)
 

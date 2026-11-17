@@ -6,8 +6,8 @@
  *              Obsidian.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -16,6 +16,9 @@ import SwiftUI
 struct TablePlacementInBlock: Equatable {
     var origin: CGPoint = .zero
     var blockSize: CGSize = .zero
+    /// Where the table's own piece of the block starts, in the table's coordinates, when the
+    /// block holds more than the table (a callout's body); nil for a block that is the table.
+    var pieceTopInTable: CGFloat? = nil
 
     /// The block's view in the table's coordinates: what a touch or a click can reach, and so
     /// where the strips must stay, since they take no room of their own in the note.

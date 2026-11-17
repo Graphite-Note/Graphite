@@ -6,7 +6,7 @@
  *              clearing and deleting them, as Obsidian's table editor does.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -225,7 +225,7 @@ extension LivePreviewTableEditor {
     /// A grip's menu: a row's Row commands, a column's Column commands and the sorts.
     func gripMenuItems(at pointInTable: CGPoint, layout: TableCellGrid) -> [RenderedBlockMenuItem]? {
         guard let table, let cell = Self.cell(at: pointInTable, in: layout) else { return nil }
-        let grips = TableGripsGeometry(tableBounds: layout.bounds, blockBounds: tablePlacement.blockBoundsInTable)
+        let grips = TableGripsGeometry(tableBounds: layout.bounds, placement: tablePlacement)
         let menuCell: TableCellPosition
         let placements: [TableCellCommand.Placement]
         if grips.columnGrip(for: layout.columnBounds(cell.column)).contains(pointInTable) {
@@ -263,16 +263,37 @@ extension TableCellCommand {
 /// Where the grips go, in the table's coordinates: a column's above its header, a row's left
 /// of its first cell, `gap` outside the table where the block has the room, and otherwise moved
 /// in over the cells' padding, as the "+" strips are: they take no room of their own in the note.
+/// Above the table the room ends at `topLimit` where one is given (in a callout, halfway into
+/// the space above the table's piece, so the grip never covers the callout's text), and a column
+/// grip short of room is made thinner rather than reaching further into the header.
 struct TableGripsGeometry: Equatable {
     let tableBounds: CGRect
     let blockBounds: CGRect
+    var topLimit: CGFloat? = nil
 
     static let thickness: CGFloat = 12
     static let gap: CGFloat = 2
+    /// How far a column grip short of room reaches into the header: about its top padding.
+    static let reachIntoTable: CGFloat = 4
+    static let minimumThickness: CGFloat = 8
+
+    init(tableBounds: CGRect, blockBounds: CGRect, topLimit: CGFloat? = nil) {
+        self.tableBounds = tableBounds
+        self.blockBounds = blockBounds
+        self.topLimit = topLimit
+    }
+
+    /// The grips of a table placed in its block, with the room above its own piece.
+    init(tableBounds: CGRect, placement: TablePlacementInBlock) {
+        self.init(tableBounds: tableBounds, blockBounds: placement.blockBoundsInTable,
+                  topLimit: placement.pieceTopInTable.map { pieceTop in pieceTop - LivePreviewTableEditor.tablePieceSpacing / 2 })
+    }
 
     func columnGrip(for columnBounds: CGRect) -> CGRect {
-        CGRect(x: columnBounds.minX, y: Self.gripStart(edge: tableBounds.minY, blockEdge: blockBounds.minY),
-               width: columnBounds.width, height: Self.thickness)
+        let top = max(blockBounds.minY, topLimit ?? blockBounds.minY)
+        let start = Self.gripStart(edge: tableBounds.minY, blockEdge: top)
+        let height = min(Self.thickness, max(tableBounds.minY + Self.reachIntoTable - start, Self.minimumThickness))
+        return CGRect(x: columnBounds.minX, y: start, width: columnBounds.width, height: height)
     }
 
     func rowGrip(for rowBounds: CGRect) -> CGRect {
