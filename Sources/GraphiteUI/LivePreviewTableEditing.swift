@@ -5,8 +5,8 @@
  * Description: Editing a rendered table's cells in place, its cell commands and its "+" strips.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 13/11/2026
+ * Version: 0.8
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -373,8 +373,8 @@ struct LivePreviewTableEditingOverlay: ViewModifier {
         if let editor, editor.canEdit {
             content
                 .onPreferenceChange(ZoomablePictureFrame.Key.self) { frames in editor.pictureFrames = frames }
-                .textual.interactiveTableOverlay { layout in
-                    LivePreviewTableEditingLayer(layout: layout, editor: editor)
+                .textual.interactiveTableOverlay { layout, links in
+                    LivePreviewTableEditingLayer(layout: layout, links: links, editor: editor)
                 }
         } else {
             content
@@ -386,7 +386,11 @@ struct LivePreviewTableEditingOverlay: ViewModifier {
 /// "+" strips that add a column and a row while the pointer is over the table or a cell is edited.
 private struct LivePreviewTableEditingLayer: View {
     let layout: StructuredText.TableLayout
+    /// The cells' links: this layer takes the table's taps from the text selection overlay,
+    /// which would otherwise follow them.
+    let links: StructuredText.TableLinks
     @Bindable var editor: LivePreviewTableEditor
+    @Environment(\.openURL) private var openURL
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
     @Environment(\.accent) private var accent
@@ -471,10 +475,16 @@ private struct LivePreviewTableEditingLayer: View {
     }
     #endif
 
-    /// A tap on a picture zooms into it; anywhere else in a cell edits the cell.
+    /// A tap on a picture zooms into it and one on a link follows it, as in Obsidian's Live
+    /// Preview; anywhere else in a cell edits the cell.
     private func tapped(at location: CGPoint) {
         if let viewImage = imageActions?.viewImage, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock(location)) }) {
             viewImage(picture.path)
+            return
+        }
+        if let url = links.url(at: location) {
+            editor.endEditing()
+            openURL(url)
             return
         }
         editor.beginEditing(at: location)

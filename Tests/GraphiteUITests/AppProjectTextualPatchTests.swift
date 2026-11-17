@@ -6,8 +6,8 @@
  *              SwiftUIMath.
  *
  * Authors: Bahey Shalash
- * Version: 0.13
- * Date: 16/11/2026
+ * Version: 0.14
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -1036,6 +1036,42 @@ final class AppProjectTextualPatchTests: XCTestCase {
         XCTAssertGreaterThan(layout.cellBounds(row: 0, column: 1).width, layout.cellBounds(row: 0, column: 0).width * 4)
     }
 
+    // MARK: Patch 17, table overlays that take touches
+
+    /// Live Preview's cell editor takes every tap on a table, so a tap on a link in a cell
+    /// edited the cell instead of following the link. The overlay is now given the cells'
+    /// links where it is given their layout, in the same coordinates.
+    func testInteractiveTableOverlayFindsTheLinkUnderAPointOfACell() throws {
+        let markdown = "| Name | Where |\n| --- | --- |\n| x | [Other](https://example.com/other) and plain words after it |\n"
+        let recorder = InteractiveTableOverlayRecorder()
+        let table = StructuredText(markdown: markdown)
+            .textual.textSelection(.enabled)
+            .textual.tableStyle(InteractiveRecordingTableStyle(recorder: recorder))
+            .textual.tableCellStyle(BareTableCellStyle())
+        let hostingView = NSHostingView(rootView: table.frame(width: 2000, alignment: .leading))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 2000, height: 600), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = hostingView
+        defer { window.contentView = nil }
+        func linkCell() -> CGRect? {
+            guard let layout = recorder.layout, layout.numberOfRows == 2, layout.numberOfColumns == 2 else { return nil }
+            return layout.cellBounds(row: 1, column: 1)
+        }
+        func urlsAcross(_ cell: CGRect) -> [URL?] {
+            stride(from: cell.minX + 1, to: cell.maxX, by: 2).map { x in recorder.links?.url(at: CGPoint(x: x, y: cell.midY)) }
+        }
+        for _ in 0..<60 {
+            hostingView.layoutSubtreeIfNeeded()
+            if let cell = linkCell(), urlsAcross(cell).contains(where: { url in url != nil }) { break }
+            RunLoop.main.run(until: Date.now.addingTimeInterval(0.05))
+        }
+        let cell = try XCTUnwrap(linkCell(), "the table was never laid out")
+        let urls = urlsAcross(cell)
+        XCTAssertEqual(urls.first ?? nil, URL(string: "https://example.com/other"), "the cell begins with the link")
+        XCTAssertNil(urls.last ?? nil, "the words after the link are not a link")
+        let nameCell = try XCTUnwrap(recorder.layout).cellBounds(row: 1, column: 0)
+        XCTAssertNil(recorder.links?.url(at: CGPoint(x: nameCell.midX, y: nameCell.midY)), "a cell without a link has none")
+    }
+
     /// The layout of the table in `markdown` inside a frame `offeredWidth` wide, once it
     /// satisfies `isSettled`: images load after the first layout.
     private func tableLayout(ofMarkdown markdown: String, offeredWidth: CGFloat,
@@ -1079,6 +1115,30 @@ private struct RecordingTableStyle: StructuredText.TableStyle {
                 Color.clear
             }
             .frame(width: offeredWidth, alignment: .leading)
+    }
+}
+
+@MainActor
+private final class InteractiveTableOverlayRecorder {
+    var layout: StructuredText.TableLayout?
+    var links: StructuredText.TableLinks?
+}
+
+/// Records what an interactive overlay is given: the cells' layout and their links.
+private struct InteractiveRecordingTableStyle: StructuredText.TableStyle {
+    let recorder: InteractiveTableOverlayRecorder
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .textual.tableCellSpacing(horizontal: 1, vertical: 1)
+            .textual.interactiveTableOverlay { layout, links in
+                // Recorded as the overlay is built, as `RecordingTableStyle` records.
+                let _ = MainActor.assumeIsolated {
+                    recorder.layout = layout
+                    recorder.links = links
+                }
+                Color.clear
+            }
     }
 }
 

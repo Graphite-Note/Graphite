@@ -81,7 +81,7 @@ A table style decides the width to offer. Upstream's `Overflow` scroll container
 
 ## 17. Table overlays that take touches
 
-`Sources/Textual/View+Textual.swift`: `textual.interactiveTableOverlay(content:)` is `tableOverlay(content:)` without `allowsHitTesting(false)`. Graphite's Live Preview places a cell editor and its tap target over a table's cells with it, as Obsidian edits a table's cells in place.
+`Sources/Textual/View+Textual.swift`, `InteractiveTableOverlay.swift` (new): `textual.interactiveTableOverlay(content:)` is `tableOverlay(content:)` without `allowsHitTesting(false)`. Graphite's Live Preview places a cell editor and its tap target over a table's cells with it, as Obsidian edits a table's cells in place. Because the overlay keeps the table's taps from the text selection overlay, which follows links, it is also given the cells' links: `content` receives a `StructuredText.TableLinks` next to the `TableLayout`, whose `url(at:)` finds the link under a point in the same coordinates, looked up from the cells' `Text.Layout`s only when asked. The two are read from their own preferences and met in one (`InteractiveTableOverlayKey`), since an overlay reads one preference. A tap on a wikilink in a Live Preview table opened the cell's editor instead of the note. Test: `AppProjectTextualPatchTests.testInteractiveTableOverlayFindsTheLinkUnderAPointOfACell`.
 
 ## 18. Attachments at hand are drawn at once
 
