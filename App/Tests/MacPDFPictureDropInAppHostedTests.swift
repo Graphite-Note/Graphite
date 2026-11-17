@@ -7,7 +7,7 @@
  *              tells a drag destination, with the toolbar's Undo pressed by mouse events and pictures of each step.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -62,8 +62,9 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
         let finderOutcome = try await drop(finderPasteboard, at: finderDropPoint, view: pdfView, window: window) { session.pictures(on: page).count == 1 }
         try assertTaken(finderOutcome, by: pdfView)
         try assertPlacedPicture(session.pictures(on: page).last, middleAt: finderPagePoint)
-        // The row unfolds above the page as the drop chooses its tool, and the page moves down with it.
-        try note("after the row unfolded, the page point under the same window point is \(pagePoint(underWindowPoint: finderDropPoint, page: page, view: pdfView))")
+        // The row unfolded above the page as the drop chose its tool; the page stayed, so the picture is still under
+        // the pointer (2026-11-17: it moved down 22 page points with the row, `MacPDFPagesHeldStill`).
+        try assertPointer(at: finderDropPoint, isOverPagePoint: finderPagePoint, page: page, view: pdfView, after: "the row unfolded")
         try await waitUntil("the row chose its Images tool", timeoutSeconds: 5) { pdfView.markupInteraction?.input.markupTool == .pictures }
         XCTAssertTrue(markupToolbar.isRowShown, "the drop unfolded the row")
         XCTAssertEqual(session.selectedPicture?.pictureName, session.pictures(on: page).last?.name, "the dropped picture is selected")
@@ -91,15 +92,19 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
 
         // 3. Image data with no file, as an app dragging a picture writes it: the row folded away first, so the drop
         // chooses the Images tool again.
+        let foldingPoint = windowPoint(onPageFromTop: CGPoint(x: 300, y: 300), page: page, view: pdfView)
+        let pagePointBeforeFolding = pagePoint(underWindowPoint: foldingPoint, page: page, view: pdfView)
         markupToolbar.toggleRow()
         try await waitUntil("the row is folded away", timeoutSeconds: 5) { pdfView.markupInteraction?.input.markupTool == .textSelection }
-        let imagePasteboard = dragPasteboard { pasteboard in pasteboard.setData(opened.pictureData, forType: .png) }
         try await settle(window)
+        try assertPointer(at: foldingPoint, isOverPagePoint: pagePointBeforeFolding, page: page, view: pdfView, after: "the row folded away")
+        let imagePasteboard = dragPasteboard { pasteboard in pasteboard.setData(opened.pictureData, forType: .png) }
         let imageDropPoint = windowPoint(onPageFromTop: CGPoint(x: 420, y: 420), page: page, view: pdfView)
         let imagePagePoint = pagePoint(underWindowPoint: imageDropPoint, page: page, view: pdfView)
         let imageOutcome = try await drop(imagePasteboard, at: imageDropPoint, view: pdfView, window: window) { session.pictures(on: page).count == 1 }
         try assertTaken(imageOutcome, by: pdfView)
         try assertPlacedPicture(session.pictures(on: page).last, middleAt: imagePagePoint)
+        try assertPointer(at: imageDropPoint, isOverPagePoint: imagePagePoint, page: page, view: pdfView, after: "the row unfolded again")
         try await waitUntil("the row chose its Images tool", timeoutSeconds: 5) { pdfView.markupInteraction?.input.markupTool == .pictures }
         XCTAssertEqual(session.undoManager.undoActionName, "Add Image")
         try writePicture("image data dropped", of: window)
@@ -158,6 +163,15 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
     /// The page point under a point of the window, read before the drop: the page moves once the row unfolds.
     private func pagePoint(underWindowPoint windowPoint: CGPoint, page: PDFPage, view: PDFView) -> CGPoint {
         view.convert(view.convert(windowPoint, from: nil), to: page)
+    }
+
+    /// The page did not move under the pointer while the row unfolded or folded above it.
+    private func assertPointer(at windowPoint: CGPoint, isOverPagePoint expected: CGPoint, page: PDFPage, view: PDFView, after change: String,
+                               file: StaticString = #filePath, line: UInt = #line) throws {
+        let now = pagePoint(underWindowPoint: windowPoint, page: page, view: view)
+        try note("after \(change): page point under the pointer \(now), was \(expected)")
+        XCTAssertEqual(now.x, expected.x, accuracy: 1, "the page stayed still as \(change)", file: file, line: line)
+        XCTAssertEqual(now.y, expected.y, accuracy: 1, "the page stayed still as \(change)", file: file, line: line)
     }
 
     /// The picture's middle is `pagePoint`, the page point that was under the pointer where the drop let go.

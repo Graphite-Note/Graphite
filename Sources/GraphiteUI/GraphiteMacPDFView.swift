@@ -2,11 +2,12 @@
  * File: GraphiteMacPDFView.swift
  * ------------------------------
  * Layer: UI
- * Description: The Mac's PDFView: it comes back to a place once it has a size and draws pictures and ink at the screen's resolution.
+ * Description: The Mac's PDFView: it comes back to a place once it has a size, keeps its pages still while a row above
+ *              it unfolds, and draws pictures and ink at the screen's resolution.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -110,8 +111,22 @@ final class GraphiteMacPDFView: PDFView {
         return PDFPagePlace(pageIndex: pageIndex, fractionFromTop: Double(min(max(distanceFromTop / pageRect.height, -0.2), 1)))
     }
 
+    /// Keeps the pages still on screen while the markup row or a banner is shown or hidden above the view.
+    private lazy var pagesHeldStill = MacPDFPagesHeldStill(view: self)
+
+    override func setFrameOrigin(_ newOrigin: NSPoint) {
+        pagesHeldStill.viewWillMove()
+        super.setFrameOrigin(newOrigin)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        pagesHeldStill.viewWillMove()
+        super.setFrameSize(newSize)
+    }
+
     override func layout() {
         super.layout()
+        defer { pagesHeldStill.viewDidLayOut() }
         guard let place = pendingPlace, bounds.width > 0, bounds.height > 0, let page = document?.page(at: place.pageIndex) else { return }
         pendingPlace = nil
         go(to: page)
