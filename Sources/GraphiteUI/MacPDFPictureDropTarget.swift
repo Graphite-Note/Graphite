@@ -4,11 +4,11 @@
  * Layer: UI
  * Description: Takes pictures dropped onto the pages of a Mac PDF view: the Finder's file addresses, the files
  *              Photos and Mail promise, and image data (a picture dragged from Safari), each placed where it landed;
- *              a protected or signed PDF, and a PDF file, take none.
+ *              a protected or signed PDF takes none, and a dropped PDF file is refused with the reason in the banner.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -66,17 +66,31 @@ final class MacPDFPictureDropTarget {
 
     // MARK: Dragging
 
+    /// A copy ("+" on the pointer) for a picture over a page. A drag of PDF files alone gets the
+    /// plain pointer of a generic operation instead of none: AppKit hands the drop over only after
+    /// an operation that is not none, and the drop is where the banner says why it is refused.
     func draggingUpdated(_ draggingInfo: any NSDraggingInfo) -> NSDragOperation {
-        guard let view, takesDrop(from: draggingInfo.draggingPasteboard),
-              view.page(for: view.convert(draggingInfo.draggingLocation, from: nil), nearest: true) != nil else { return [] }
-        return .copy
+        guard let view, view.page(for: view.convert(draggingInfo.draggingLocation, from: nil), nearest: true) != nil else { return [] }
+        if takesDrop(from: draggingInfo.draggingPasteboard) { return .copy }
+        guard isRefusedWithReason(draggingInfo.draggingPasteboard) else { return [] }
+        return draggingInfo.draggingSourceOperationMask.intersection(.generic)
     }
 
-    /// Takes the drop when it carries a picture; the pictures are read and placed after.
+    /// Whether a drag the PDF does not take is one a person expects to land, so a drop says why
+    /// not in the banner: PDF files, onto a PDF that can be changed.
+    private func isRefusedWithReason(_ pasteboard: NSPasteboard) -> Bool {
+        !session.isProtected && Self.kinds(on: pasteboard).contains(.pdfDocument)
+    }
+
+    /// Takes the drop when it carries a picture; the pictures are read and placed after. A drop
+    /// of PDF files is refused with the reason in the banner.
     func performDrop(_ draggingInfo: any NSDraggingInfo) -> Bool {
-        guard let view, takesDrop(from: draggingInfo.draggingPasteboard),
-              let location = view.dropLocation(atViewPoint: view.convert(draggingInfo.draggingLocation, from: nil)) else { return false }
         let pasteboard = draggingInfo.draggingPasteboard
+        guard let view, let location = view.dropLocation(atViewPoint: view.convert(draggingInfo.draggingLocation, from: nil)) else { return false }
+        guard takesDrop(from: pasteboard) else {
+            if isRefusedWithReason(pasteboard) { session.reportRefusedDrop(of: Self.kinds(on: pasteboard)) }
+            return false
+        }
         let imageOnPasteboard = Self.imageData(on: pasteboard)
         Task { await placePictures(from: pasteboard, imageOnPasteboard: imageOnPasteboard, at: location) }
         return true

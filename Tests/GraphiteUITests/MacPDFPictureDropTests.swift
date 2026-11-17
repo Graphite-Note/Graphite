@@ -4,11 +4,11 @@
  * Layer: Tests
  * Description: Pictures dropped onto a Mac PDF view: the page point under the drop agrees with PDFKit at every quarter
  *              turn and zoom; image data and a Finder file are placed where they landed, selected, one step each; a
- *              PDF file and a protected PDF take no drop.
+ *              PDF file and a protected PDF take no drop; a dragged PDF file shows no "+" and its drop says why.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -140,6 +140,36 @@ final class MacPDFPictureDropTests: XCTestCase {
         XCTAssertEqual(placedCount, 0)
         XCTAssertTrue(pictures(fixture).isEmpty)
         XCTAssertEqual(fixture.session.errorMessage, "A PDF can't be placed on a page as an image. Drop a picture, such as a PNG or JPEG.")
+    }
+
+    /// The view's dragging methods as AppKit calls them: a drop goes to `performDragOperation` only after an answer that
+    /// is not none, so a PDF file gets the plain pointer of a generic operation, and its drop says why in the banner.
+    func testAPDFFileDraggedOverThePageShowsNoPlusAndItsDropSaysWhy() throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let target = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        fixture.view.pictureDrops = target
+        fixture.view.registerForDraggedTypes(MacPDFPictureDropTarget.pasteboardTypes)
+        let carried = pasteboard { pasteboard in pasteboard.writeObjects([fixture.location as NSURL]) }
+        let pagePoint = fixture.view.convert(fixture.view.convert(CGPoint(x: 200, y: 300), from: fixture.page), to: nil)
+        let outcome = PasteboardDrag(pasteboard: carried, window: fixture.window).move(through: [pagePoint, pagePoint])
+        XCTAssertTrue(outcome.destinations.allSatisfy { destination in destination === fixture.view }, "\(outcome.destinations)")
+        XCTAssertEqual(outcome.operations, [.generic, .generic], "no + on the pointer")
+        XCTAssertTrue(outcome.wasHandedOver, "the drop reaches the view, which says why it is refused")
+        XCTAssertFalse(outcome.wasTaken)
+        XCTAssertTrue(pictures(fixture).isEmpty)
+        XCTAssertEqual(fixture.session.errorMessage, "A PDF can't be placed on a page as an image. Drop a picture, such as a PNG or JPEG.")
+    }
+
+    func testTextDraggedOverThePageIsNotHandedOver() throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        fixture.view.pictureDrops = MacPDFPictureDropTarget(session: fixture.session, view: fixture.view)
+        fixture.view.registerForDraggedTypes(MacPDFPictureDropTarget.pasteboardTypes + [.string])
+        let carried = pasteboard { pasteboard in pasteboard.setString("Some words", forType: .string) }
+        let pagePoint = fixture.view.convert(fixture.view.convert(CGPoint(x: 200, y: 300), from: fixture.page), to: nil)
+        let outcome = PasteboardDrag(pasteboard: carried, window: fixture.window).move(through: [pagePoint])
+        XCTAssertEqual(outcome.operations, [[]])
+        XCTAssertFalse(outcome.wasHandedOver)
+        XCTAssertNil(fixture.session.errorMessage)
     }
 
     func testTextAloneIsNotTaken() throws {
