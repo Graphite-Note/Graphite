@@ -24,7 +24,7 @@ struct PDFTextBoxArrangementBar: View {
                     Button("Edit Text", systemImage: "character.cursor.ibeam") { beginEditing() }
                     Button("Duplicate Text Box", systemImage: "plus.square.on.square") { run { try session.duplicateSelectedTextBox() } }
                     PDFArrangeMenu(offeredArrangements: PDFArrangement.menuArrangements, possibleArrangements: possibleArrangements,
-                                   ink: inkOptions) { arrangement in
+                                   objects: .item) { arrangement in
                         run { try session.arrangeSelectedTextBox(arrangement) }
                     }
                     Button("Delete Text Box", systemImage: "trash", role: .destructive) { run { try session.deleteSelectedTextBox() } }
@@ -54,15 +54,6 @@ struct PDFTextBoxArrangementBar: View {
     private var possibleArrangements: Set<PDFArrangement> {
         _ = session.changeVersion
         return session.possibleArrangementsOfSelectedTextBox
-    }
-
-    /// Ink to Front and Ink to Back for the selected box's page, read again with each edit.
-    private var inkOptions: PDFInkArrangeOptions {
-        _ = session.changeVersion
-        guard let page = session.textBoxActivity.selection?.page.page else { return .none }
-        return PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { arrangement in
-            run { try session.arrangeInk(on: page, arrangement) }
-        }
     }
 
     private func beginEditing() {

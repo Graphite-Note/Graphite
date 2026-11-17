@@ -115,7 +115,7 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
         try note("under the shape: \(viewUnderPointer)")
         let shapeMenu = viewUnderPointer.menu(for: try mouseEvent(.rightMouseDown, at: shapePoint, in: window))
         try writeMenu("shape right-click", shapeMenu)
-        let sendToBack = try XCTUnwrap(shapeMenu.flatMap { menu in item(titled: "Send to Back", in: menu) }, "the shape's menu has Send to Back")
+        let sendToBack = try XCTUnwrap(shapeMenu.flatMap { menu in item(titled: "Send Item to Back", in: menu) }, "the shape's menu has Send Item to Back")
         let sendToBackMenu = try XCTUnwrap(sendToBack.menu)
         try note("choosing Send to Back, item \(sendToBackMenu.index(of: sendToBack))")
         try await asOneAction {
@@ -197,9 +197,9 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
         let pictureMenuView = try XCTUnwrap(window.contentView?.hitTest(picturePoint))
         let pictureMenu = pictureMenuView.menu(for: try mouseEvent(.rightMouseDown, at: picturePoint, in: window))
         try writeMenu("picture right-click", pictureMenu)
-        XCTAssertEqual(pictureMenu?.items.first?.title, "Bring to Front", "the menu opens on its first command, not a line")
+        XCTAssertEqual(pictureMenu?.items.first?.title, "Bring Image to Front", "the menu opens on its first command, not a line")
         try note("before Bring to Front: \(page.annotations.map { annotation in annotation.type ?? "?" })")
-        let bringToFront = try XCTUnwrap(pictureMenu.flatMap { menu in item(titled: "Bring to Front", in: menu) }, "the picture's menu has Bring to Front")
+        let bringToFront = try XCTUnwrap(pictureMenu.flatMap { menu in item(titled: "Bring Image to Front", in: menu) }, "the picture's menu has Bring Image to Front")
         let bringToFrontMenu = try XCTUnwrap(bringToFront.menu)
         try await asOneAction {
             bringToFrontMenu.performActionForItem(at: bringToFrontMenu.index(of: bringToFront))

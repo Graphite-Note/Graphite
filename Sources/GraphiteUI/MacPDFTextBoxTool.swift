@@ -204,11 +204,8 @@ final class MacPDFTextBoxTool: NSObject {
         menu.addItem(MacPDFPageToolMenuItem(title: "Delete") { [weak self] in
             self?.perform { [weak self] in try self?.session.deleteSelectedTextBox() }
         })
-        let page = pressed.page
-        let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
-            self?.perform { [weak self] in try self?.session.arrangeInk(on: page, arrangement) }
-        }
-        MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangementsOfSelectedTextBox, ink: ink) { [weak self] arrangement in
+        // The page's ink is arranged from the More menu and Tools › Arrange, not from its boxes' menus.
+        MacPDFArrangeMenuItems.add(to: menu, objects: .item, possibleArrangements: session.possibleArrangementsOfSelectedTextBox) { [weak self] arrangement in
             self?.perform { [weak self] in try self?.session.arrangeSelectedTextBox(arrangement) }
         }
         return menu

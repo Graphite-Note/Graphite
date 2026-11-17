@@ -147,6 +147,56 @@ public struct PDFStackingOrder: Equatable, Sendable {
         return arrangedLayers == layers ? nil : arrangedLayers
     }
 
+    /// The layers in their order once the objects of `group` are arranged together, or nil when
+    /// none moves. The objects keep their order among themselves: going up, each, from the
+    /// topmost down, passes the next object outside the group (Bring Forward) or the topmost one
+    /// (Bring to Front) and goes right over it; going down the same from the lowest up. As for
+    /// one object, an object goes over or under the ink only to pass an object on its other side.
+    /// The ink and layers not on the page are left out of the group.
+    public func arranged(together group: Set<Layer>, _ arrangement: PDFArrangement) -> [Layer]? {
+        let members = layers.filter { layer in layer != .ink && group.contains(layer) }
+        let others = layers.filter { layer in layer != .ink && !group.contains(layer) }
+        guard !members.isEmpty, !others.isEmpty else { return nil }
+        let goesUp: Bool
+        switch arrangement {
+        case .bringToFront, .bringForward: goesUp = true
+        case .sendBackward, .sendToBack: goesUp = false
+        case .position: return nil
+        }
+        var arrangedLayers = layers
+        // The others never move, so their order is the page's throughout.
+        for member in goesUp ? Array(members.reversed()) : members {
+            guard let memberPosition = arrangedLayers.firstIndex(of: member) else { continue }
+            let passedOther: Layer? = switch arrangement {
+            case .bringToFront: others.last
+            case .bringForward: others.first { other in arrangedLayers.firstIndex(of: other).map { $0 > memberPosition } == true }
+            case .sendBackward: others.last { other in arrangedLayers.firstIndex(of: other).map { $0 < memberPosition } == true }
+            case .sendToBack, .position: others.first
+            }
+            guard let passedOther, let passedPosition = arrangedLayers.firstIndex(of: passedOther),
+                  goesUp ? passedPosition > memberPosition : passedPosition < memberPosition else { continue }
+            arrangedLayers.remove(at: memberPosition)
+            let passedPositionAfterRemoval = goesUp ? passedPosition - 1 : passedPosition
+            // Right over the object passed going up, right under it going down.
+            arrangedLayers.insert(member, at: goesUp ? passedPositionAfterRemoval + 1 : passedPositionAfterRemoval)
+        }
+        return arrangedLayers == layers ? nil : arrangedLayers
+    }
+
+    /// The layers once each of `placements`' layers is at its place (`PDFStackingOrder.layers`'
+    /// index, as `position(of:)` read it before they moved), and every other layer keeps its
+    /// order: how an arrangement of several objects is undone. Nil when nothing moves.
+    public func placing(_ placements: [(layer: Layer, position: Int)]) -> [Layer]? {
+        let placementsOnThePage = placements.filter { placement in layers.contains(placement.layer) }
+        let positionsByLayer = Dictionary(placementsOnThePage.map { placement in (placement.layer, placement.position) },
+                                          uniquingKeysWith: { firstPosition, _ in firstPosition })
+        var newOrder = layers.filter { layer in positionsByLayer[layer] == nil }
+        for (layer, position) in positionsByLayer.sorted(by: { leftPlacement, rightPlacement in leftPlacement.value < rightPlacement.value }) {
+            newOrder.insert(layer, at: min(max(position, 0), newOrder.count))
+        }
+        return newOrder == layers ? nil : newOrder
+    }
+
     /// Where `layer` goes among `otherLayers`, the page's layers without it.
     private func newPosition(of layer: Layer, _ arrangement: PDFArrangement, amongTheOthers otherLayers: [Layer]) -> Int? {
         if case .position(let requestedPosition) = arrangement { return min(max(requestedPosition, 0), otherLayers.count) }

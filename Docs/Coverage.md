@@ -4,11 +4,20 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-17.
 
+## Several PDF objects arranged together, and the menus' names: 2026-11-17
+
+`Docs/PDF-annotation-todo.md` section 8 (issue #210). Several of a page's pictures, text boxes and shapes can be brought forward or sent back together, keeping their order among themselves, as one step (`PDFSession.arrange(_:on:_:)` with an array, `possibleArrangements(of:on:)`); no menu offers it yet. An object's own Arrange menu names what it arranges ("Bring Image to Front" on the Mac's picture menu, "Bring Item to Front" for a text box or shape on the iPad and the Mac) and no longer has Ink to Front and Ink to Back, which are in the PDF's More menu for the page shown and in the Mac's Tools › Arrange.
+
+- **Automated tests, passing on macOS (`swift test --filter`):** `PDFStackingOrderTests` (4 new: a group keeps its order going up and down, passes the ink only to pass an object, stays put when nothing would move it or every object is in it, and is put back by `placing`), `PDFStackingOrderSessionTests` (2 new: two objects and another application's note arranged together as one step that one Undo takes back, saved in that order; the titles), `MacPDFPictureToolTests` (the picture's menu: four image items, then Delete Image).
+- **Hosted (Mac):** `MacPDFArrangeMenusInAppHostedTests` and `MacPDFMarkupInAppHostedTests` with the new names (below).
+- **Checked by hand:** in the installed app on an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2), the More menu's "This Page's Ink": Ink to Front dimmed with the ink on top, Ink to Back put the ink under every object, one Undo put it back.
+- **Not established:** a menu that arranges several objects (the lasso's, if the owner wants it); the iPad text box bar's renamed items looked at on a device; the owner's iPad.
+
 ## The Mac's Arrange menus in the running app: 2026-11-17
 
-`Docs/PDF-annotation-todo.md` section 2 (issue #181). On a PDF page on the Mac, a picture's, a text box's and a shape's right-click menus and Tools › Arrange offer Bring to Front, Bring Forward, Send Backward and Send to Back, and Ink to Front and Ink to Back for the page's ink as one layer, those that would move nothing dimmed.
+`Docs/PDF-annotation-todo.md` section 2 (issue #181). On a PDF page on the Mac, a picture's, a text box's and a shape's right-click menus and Tools › Arrange offer Bring to Front, Bring Forward, Send Backward and Send to Back (in the right-click menus named after the object since section 8: "Bring Image to Front", "Bring Item to Front"), and Tools › Arrange Ink to Front and Ink to Back for the page's ink as one layer (the right-click menus had them too until section 8), those that would move nothing dimmed.
 
-- **Hosted:** `MacPDFArrangeMenusInAppHostedTests` in the running Mac app (built unsigned as `com.graphite.study.repro`, only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE=<folder>`): two overlapping pictures, ink, a text box and a shape on a generated page; each of the six commands from the right-click menu of a picture, a text box and a shape and through the actions Tools › Arrange's items call; the dimmed items, one Undo each, the saved file's order and the colour of 383 overlap points in each of the 109 pictures of the window.
+- **Hosted:** `MacPDFArrangeMenusInAppHostedTests` in the running Mac app (built unsigned as `com.graphite.study.repro`, only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE=<folder>`): two overlapping pictures, ink, a text box and a shape on a generated page; the four object commands from the right-click menu of a picture ("Bring Image to Front" …), a text box and a shape ("Bring Item to Front" …), which have no ink items, and all six, Ink to Front and Ink to Back included, through the actions Tools › Arrange's items call; the dimmed items, one Undo each, the saved file's order and the colour of 383 overlap points in each of the 91 pictures of the window (run 2026-11-17).
 - **Not established:** a click on Tools › Arrange's own items in the menu bar, which stay dimmed for a test's window (SwiftUI feeds the menu bar from its own scene windows, with the app in front).
 
 ## Pictures dropped onto a PDF page in the running Mac app: 2026-11-17

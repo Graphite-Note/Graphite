@@ -3,8 +3,8 @@
  * ----------------------------------------------
  * Layer: Tests
  * Description: The Mac's Arrange menus used in Graphite's own window inside the running Mac app: two overlapping
- *              pictures, ink, a text box and a shape on a generated page; each of the six commands chosen from the
- *              right-click menus and through what Tools › Arrange's items call; the dimmed items, one Undo for each
+ *              pictures, ink, a text box and a shape on a generated page; each object's four commands chosen from its
+ *              right-click menu and all six through what Tools › Arrange's items call; the dimmed items, one Undo for each
  *              move, the colour the screen shows where the objects overlap and the saved file's order at each step.
  *
  * Authors: Bahey Shalash
@@ -43,21 +43,32 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
         let tool: PDFMarkupTool
         /// From the window's left edge, read from a picture of the row in this window of 1,280 by 860 points.
         let rowX: Double
+        /// What its right-click menu's items name: "Bring Image to Front", "Bring Item to Front".
+        let objects: PDFArrangement.Objects
     }
 
-    private static let subjects = [ArrangeSubject(layer: .bluePicture, tool: .pictures, rowX: 882), ArrangeSubject(layer: .textBox, tool: .textBox, rowX: 734),
-                                   ArrangeSubject(layer: .shape, tool: .shapes, rowX: 798)]
+    private static let subjects = [ArrangeSubject(layer: .bluePicture, tool: .pictures, rowX: 882, objects: .image),
+                                   ArrangeSubject(layer: .textBox, tool: .textBox, rowX: 734, objects: .item),
+                                   ArrangeSubject(layer: .shape, tool: .shapes, rowX: 798, objects: .item)]
 
     private enum ArrangeRoute: String {
+        /// The object's four, named after it; the page's ink is arranged from the More menu and Tools › Arrange.
         case rightClickMenu = "right-click menu"
         /// What Tools › Arrange's items call (`PDFArrangeMenuActions`, made from the markup row's model) and what they
         /// read to dim themselves. The menu bar's own items stay dimmed for a window of a hosted test: SwiftUI gives the
         /// commands the focused values of its own scene windows only, and only while the app is in front (2026-11-17:
         /// every item dimmed, the app in the background and in front alike).
         case toolsArrangeActions = "Tools › Arrange's actions"
+
+        var commands: [ArrangeCommand] {
+            switch self {
+            case .rightClickMenu: ArrangeCommand.objectCommands
+            case .toolsArrangeActions: ArrangeCommand.all
+            }
+        }
     }
 
-    /// An Arrange menu as read before a choice: which of the six it leaves enabled, and how one is chosen.
+    /// An Arrange menu as read before a choice: which of its commands it leaves enabled, and how one is chosen.
     private struct ArrangeChoices {
         let enabled: Set<ArrangeCommand>
         let choose: (ArrangeCommand) -> Void
@@ -134,17 +145,17 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
 
     // MARK: The steps
 
-    /// Chooses each of the six commands once from `route`, whichever its dimmed items allow next, with the menu read
+    /// Chooses each of the route's commands once, whichever its dimmed items allow next, with the menu read
     /// before each choice and once more at the end, and the object seen at the top, in the middle and at the bottom.
     private func chooseEachCommand(for subject: ArrangeSubject, through route: ArrangeRoute, from start: ExpectedStacking,
                                    in stage: ArrangeStage) async throws -> ExpectedStacking {
         var expected = start
-        var remaining = ArrangeCommand.all
+        var remaining = route.commands
         var places: Set<PlaceAmongObjects> = []
         while true {
             let place = expected.place(of: subject.layer)
             places.insert(place)
-            let possible = expected.possibleCommands(for: subject.layer)
+            let possible = expected.possibleCommands(for: subject.layer).intersection(route.commands)
             let choices = try await arrangeChoices(through: route, for: subject, in: stage)
             let enabled = choices.enabled
             XCTAssertEqual(Set(enabled.map(\.title)), Set(possible.map(\.title)),
@@ -219,8 +230,13 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
             let menu = try XCTUnwrap(viewUnderPointer.menu(for: rightClick), "the \(subject.layer.rawValue)'s right-click menu")
             try await settle(stage.window)
             var items: [ArrangeCommand: NSMenuItem] = [:]
-            for command in ArrangeCommand.all { items[command] = menu.items.first { item in item.title == command.title } }
-            return ArrangeChoices(enabled: Set(ArrangeCommand.all.filter { command in items[command]?.isEnabled == true }), choose: { command in
+            for command in ArrangeCommand.objectCommands {
+                items[command] = menu.items.first { item in item.title == command.menuTitle(naming: subject.objects) }
+                XCTAssertNotNil(items[command], "the \(subject.layer.rawValue)'s right-click menu has \(command.menuTitle(naming: subject.objects))")
+            }
+            let inkItems = ArrangeCommand.inkCommands.filter { command in menu.items.contains { item in item.title == command.title } }
+            XCTAssertEqual(inkItems, [], "the \(subject.layer.rawValue)'s right-click menu has no ink items")
+            return ArrangeChoices(enabled: Set(ArrangeCommand.objectCommands.filter { command in items[command]?.isEnabled == true }), choose: { command in
                 guard let item = items[command], item.isEnabled else { return XCTFail("\(command.title) is dimmed") }
                 menu.performActionForItem(at: menu.index(of: item))
             }, heldMenu: menu)

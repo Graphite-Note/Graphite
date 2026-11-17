@@ -169,11 +169,10 @@ final class MacPDFPictureTool: NSObject {
         }
         surface?.needsDisplay = true
         let menu = NSMenu()
-        if let selection = session.selectedPicture, let page = selection.page.page {
-            let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
-                self?.perform { session in try session.arrangeInk(on: page, arrangement) }
-            }
-            MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangements(of: selection), ink: ink) { [weak self] arrangement in
+        if let selection = session.selectedPicture {
+            // The page's ink is arranged from the More menu and Tools › Arrange, not from its pictures' menus.
+            let possibleArrangements = session.possibleArrangements(of: selection)
+            MacPDFArrangeMenuItems.add(to: menu, objects: .image, possibleArrangements: possibleArrangements) { [weak self] arrangement in
                 self?.arrangeSelection(arrangement)
             }
             menu.addItem(.separator())

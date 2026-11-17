@@ -82,16 +82,27 @@ enum ScreenColour: String, CaseIterable {
     }
 }
 
-/// One of the six items of an Arrange menu: the selected object's four and the page's ink's two.
+/// One of the six items of Tools › Arrange: the selected object's four and the page's ink's two; an object's right-click
+/// menu has the first four.
 struct ArrangeCommand: Hashable, CustomStringConvertible {
     let arrangement: PDFArrangement
     let movesInk: Bool
 
+    /// Its title in Tools › Arrange, and the name of its step in Undo.
     var title: String { movesInk ? arrangement.inkTitle : arrangement.title }
     var description: String { title }
 
-    static let all: [ArrangeCommand] = PDFArrangement.menuArrangements.map { arrangement in ArrangeCommand(arrangement: arrangement, movesInk: false) }
-        + PDFArrangement.inkMenuArrangements.map { arrangement in ArrangeCommand(arrangement: arrangement, movesInk: true) }
+    /// Its title in an object's right-click menu, which names the object ("Bring Item to Front") and has no ink items
+    /// (Docs/PDF-annotation-todo.md, section 8).
+    func menuTitle(naming objects: PDFArrangement.Objects) -> String {
+        movesInk ? arrangement.inkTitle : arrangement.title(of: objects)
+    }
+
+    /// The selected object's four.
+    static let objectCommands: [ArrangeCommand] = PDFArrangement.menuArrangements.map { arrangement in ArrangeCommand(arrangement: arrangement, movesInk: false) }
+    /// The page's ink's two.
+    static let inkCommands: [ArrangeCommand] = PDFArrangement.inkMenuArrangements.map { arrangement in ArrangeCommand(arrangement: arrangement, movesInk: true) }
+    static let all: [ArrangeCommand] = objectCommands + inkCommands
 }
 
 /// Where an object is among the page's objects, for the dimmed items.

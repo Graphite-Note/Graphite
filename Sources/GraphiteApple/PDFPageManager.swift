@@ -46,6 +46,12 @@ public enum PDFEdit: Sendable {
     case arrange(PDFAnnotationReference, PDFArrangement)
     /// Puts the page's Pencil ink, as one layer, over or under its objects.
     case arrangeInk(page: Int, PDFArrangement)
+    /// Brings several pictures, text boxes and shapes of a page forward or sends them back
+    /// together, keeping their order among themselves (`PDFStackingOrder.arranged(together:_:)`).
+    case arrangeTogether(page: Int, [PDFAnnotationReference], PDFArrangement)
+    /// Puts several objects of a page at these places among its layers, as when arranging
+    /// them together is undone; `positions` are the references' places, in the same order.
+    case placeObjects(page: Int, [PDFAnnotationReference], positions: [Int])
     /// Places a text box on a page, over the page's ink.
     case addTextBox(page: Int, textBox: PDFTextBox)
     /// Puts another box in the place of a text box, one Graphite wrote or another
@@ -88,8 +94,8 @@ public enum PDFEdit: Sendable {
     /// shapes, which a view laid over the page may draw over the ink.
     public var changesPageObjects: Bool {
         switch self {
-        case .addPicture, .movePicture, .replacePicture, .arrange, .arrangeInk, .addTextBox, .replaceTextBox, .removeTextBox, .addShape,
-             .replaceShape, .removeAnnotation: true
+        case .addPicture, .movePicture, .replacePicture, .arrange, .arrangeInk, .arrangeTogether, .placeObjects, .addTextBox, .replaceTextBox,
+             .removeTextBox, .addShape, .replaceShape, .removeAnnotation: true
         case .insert, .duplicate, .delete, .move, .rotate, .updateInk, .addMarkup, .recolorMarkup, .restoreMarkupColor, .bookmark,
              .removeOutlineItem, .addNote, .replaceNote: false
         }
@@ -99,7 +105,8 @@ public enum PDFEdit: Sendable {
     public var changedPageIndex: Int? {
         switch self {
         case .rotate(let pageIndex, _), .addMarkup(let pageIndex, _), .addPicture(let pageIndex, _), .addTextBox(let pageIndex, _),
-             .addShape(let pageIndex, _), .arrangeInk(let pageIndex, _), .addNote(let pageIndex, _): pageIndex
+             .addShape(let pageIndex, _), .arrangeInk(let pageIndex, _), .arrangeTogether(let pageIndex, _, _), .placeObjects(let pageIndex, _, _),
+             .addNote(let pageIndex, _): pageIndex
         case .updateInk(let update): update.pageIndex
         case .recolorMarkup(let reference, _), .restoreMarkupColor(let reference, _), .removeAnnotation(let reference),
              .movePicture(let reference, _), .replacePicture(let reference, _), .replaceTextBox(let reference, _),
@@ -246,10 +253,10 @@ public enum PDFPageManager {
                 throw GraphiteError.invalidFile("This image no longer exists.")
             }
             try replacePicture(annotation, with: picture, on: targetPage, isForWrittenDocument: drawsInkOutlines, authorName: annotation.userName)
-        case .arrange(let reference, let arrangement):
-            try arrange(reference, arrangement, on: page(at: reference.pageIndex))
-        case .arrangeInk(let pageIndex, let arrangement):
-            try arrangeInk(arrangement, on: page(at: pageIndex))
+        case .arrange(let reference, let arrangement): try arrange(reference, arrangement, on: page(at: reference.pageIndex))
+        case .arrangeInk(let pageIndex, let arrangement): try arrangeInk(arrangement, on: page(at: pageIndex))
+        case .arrangeTogether(let pageIndex, let references, let arrangement): try arrangeTogether(references, arrangement, on: page(at: pageIndex))
+        case .placeObjects(let pageIndex, let references, let positions): try place(references, at: positions, on: page(at: pageIndex))
         case .addTextBox(let pageIndex, let textBox):
             try addTextBox(textBox, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines, authorName: author.name)
         case .replaceTextBox(let reference, let textBox):

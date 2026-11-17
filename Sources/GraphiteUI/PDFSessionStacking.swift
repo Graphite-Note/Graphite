@@ -3,7 +3,8 @@
  * ------------------------------
  * Layer: UI
  * Description: Bring to Front, Bring Forward, Send Backward and Send to Back for a PDF page's pictures, text boxes
- *              and shapes, each one step of the PDF's history, and the topmost object under a point.
+ *              and shapes, one or several together, each one step of the PDF's history, and the topmost object under
+ *              a point.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -29,6 +30,34 @@ extension PDFArrangement {
         case .position: "Arrange"
         }
     }
+
+    /// What an object's own menu calls what it arranges: "Bring Image to Front" for a picture,
+    /// "Bring Item to Front" for a text box or shape, "Bring Items to Front" for several objects.
+    enum Objects {
+        case image, item, items
+
+        var noun: String {
+            switch self {
+            case .image: "Image"
+            case .item: "Item"
+            case .items: "Items"
+            }
+        }
+    }
+
+    /// The item's title in an object's own menu, naming what it arranges; Tools › Arrange keeps `title`.
+    func title(of objects: Objects) -> String {
+        switch self {
+        case .bringToFront: "Bring \(objects.noun) to Front"
+        case .bringForward: "Bring \(objects.noun) Forward"
+        case .sendBackward: "Send \(objects.noun) Backward"
+        case .sendToBack: "Send \(objects.noun) to Back"
+        case .position: "Arrange"
+        }
+    }
+
+    /// The title for several objects arranged together, and the name of its step in Undo.
+    var itemsTitle: String { title(of: .items) }
 
     /// The two arrangements of the ink as one layer the menus offer.
     static let inkMenuArrangements: [PDFArrangement] = [.bringToFront, .sendToBack]
@@ -74,6 +103,43 @@ extension PDFSession {
         } redo: { session in
             try arrange(in: session, arrangement)
         }
+    }
+
+    /// Arranges several pictures, text boxes and shapes of a page together, keeping their order
+    /// among themselves, as one step named after the arrangement (`itemsTitle`); Undo puts each
+    /// back where it was. Annotations that are not objects of the page, such as ink strokes,
+    /// text marks and links, are left out, so a selection can be passed as it is.
+    func arrange(_ annotations: [PDFAnnotation], on page: PDFPage, _ arrangement: PDFArrangement) throws {
+        let objects = PDFPageManager.objectAnnotations(among: annotations, on: page)
+        guard !objects.isEmpty, PDFPageManager.possibleArrangements(of: objects, on: page).contains(arrangement) else { return }
+        let historyPage = historyPage(for: page)
+        let formerPositions = objects.compactMap { object in PDFPageManager.stackingPosition(of: object, on: page) }
+        // The annotations keep their names, kinds and rectangles through a change of order.
+        let identities = objects.map { object in (name: object.persistentName, annotationType: object.type ?? "", bounds: object.bounds) }
+        func references(in session: PDFSession) throws -> (pageIndex: Int, references: [PDFAnnotationReference]) {
+            let pageIndex = try session.currentIndex(of: historyPage)
+            return (pageIndex, identities.map { identity in
+                PDFAnnotationReference(pageIndex: pageIndex, name: identity.name, annotationType: identity.annotationType, bounds: identity.bounds)
+            })
+        }
+        func arrange(in session: PDFSession) throws {
+            let (pageIndex, references) = try references(in: session)
+            try session.apply(.arrangeTogether(page: pageIndex, references, arrangement))
+            session.stackingOrderDidChange()
+        }
+        try arrange(in: self)
+        registerStep(named: arrangement.itemsTitle) { session in
+            let (pageIndex, references) = try references(in: session)
+            try session.apply(.placeObjects(page: pageIndex, references, positions: formerPositions))
+            session.stackingOrderDidChange()
+        } redo: { session in
+            try arrange(in: session)
+        }
+    }
+
+    /// The arrangements that would move some of the objects among `annotations` arranged together, for dimming the others.
+    func possibleArrangements(of annotations: [PDFAnnotation], on page: PDFPage) -> Set<PDFArrangement> {
+        PDFPageManager.possibleArrangements(of: annotations, on: page)
     }
 
     /// Puts the page's ink, as one layer, over or under every object, as one step; Undo puts it back where it was.

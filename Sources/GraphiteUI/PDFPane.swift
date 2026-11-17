@@ -572,6 +572,7 @@ private struct PDFPaneContent: View {
             }
             Divider()
             #endif
+            PDFPageInkArrangeMenuItems(session: session)
             CurrentPageActionsMenuContent(session: session, commands: commands)
         }
         if !foldsSecondaryActions {

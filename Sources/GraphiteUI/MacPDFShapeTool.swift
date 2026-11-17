@@ -150,12 +150,9 @@ final class MacPDFShapeTool: NSObject {
         let menu = NSMenu()
         menu.addItem(MacPDFPageToolMenuItem(title: "Delete") { [weak self] in self?.deleteSelectedShape() })
         if let session {
-            let page = pressed.page
-            let ink = PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { [weak self] arrangement in
-                self?.perform { [weak self] in try self?.session?.arrangeInk(on: page, arrangement) }
-                self?.surface?.needsDisplay = true
-            }
-            MacPDFArrangeMenuItems.add(to: menu, possibleArrangements: session.possibleArrangements(of: pressed.annotation, on: page), ink: ink) { [weak self] arrangement in
+            // The page's ink is arranged from the More menu and Tools › Arrange, not from its shapes' menus.
+            let possibleArrangements = session.possibleArrangements(of: pressed.annotation, on: pressed.page)
+            MacPDFArrangeMenuItems.add(to: menu, objects: .item, possibleArrangements: possibleArrangements) { [weak self] arrangement in
                 self?.arrangeSelectedShape(arrangement)
             }
         }

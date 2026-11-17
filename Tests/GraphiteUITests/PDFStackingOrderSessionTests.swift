@@ -2,8 +2,9 @@
  * File: PDFStackingOrderSessionTests.swift
  * ----------------------------------------
  * Layer: Tests
- * Description: Arranging a PDF page's pictures, text boxes and shapes through the session: each arrangement is one
- *              step of the PDF's history, a deleted object comes back at its place, and the saved file keeps the order.
+ * Description: Arranging a PDF page's pictures, text boxes and shapes through the session, one or several together:
+ *              each arrangement is one step of the PDF's history, a deleted object comes back at its place, and the
+ *              saved file keeps the order.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -170,5 +171,44 @@ final class PDFStackingOrderSessionTests: XCTestCase {
         try await session.save()
         let saved = try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))
         XCTAssertNotNil(saved.annotations.first?.value(forAnnotationKey: PDFPageManager.groupKey), "The saved file has the ink under every object.")
+    }
+
+    func testSeveralObjectsArrangedTogetherAreOneStepThatUndoTakesBack() async throws {
+        let (session, location) = try await openSession()
+        let (page, pictureName, box, shape) = try await pageWithThreeObjects(in: session)
+        let pictureAnnotation = try XCTUnwrap(page.annotations.first { annotation in annotation.persistentName == pictureName })
+        let boxAnnotation = try XCTUnwrap(page.annotations.first { annotation in annotation.persistentName == box.name })
+        let otherApplicationsNote = PDFAnnotation(bounds: CGRect(x: 10, y: 10, width: 20, height: 20), forType: .text, withProperties: nil)
+        page.addAnnotation(otherApplicationsNote)
+        let selection = [boxAnnotation, otherApplicationsNote, pictureAnnotation]
+        XCTAssertEqual(session.possibleArrangements(of: selection, on: page), [.bringToFront, .bringForward],
+                       "Under the shape, the two can only go up; the note is not an object and is left out.")
+
+        try await step(in: session) { try session.arrange(selection, on: page, .bringToFront) }
+        XCTAssertEqual(names(on: page), [shape.name, pictureName, box.name], "Both over the shape, the picture still under the box.")
+        XCTAssertEqual(session.undoAvailability.undoActionName, "Bring Items to Front")
+        XCTAssertEqual(session.possibleArrangements(of: selection, on: page), [.sendBackward, .sendToBack])
+        // Nothing would move: no step.
+        try session.arrange(selection, on: page, .bringForward)
+        XCTAssertEqual(session.undoAvailability.undoActionName, "Bring Items to Front")
+
+        session.undoAvailability.undo()
+        XCTAssertEqual(names(on: page), [pictureName, box.name, shape.name], "One Undo puts both back.")
+        XCTAssertEqual(session.undoAvailability.undoActionName, "Add Oval")
+        session.undoAvailability.redo()
+        XCTAssertEqual(names(on: page), [shape.name, pictureName, box.name])
+        XCTAssertTrue(page.annotations.contains { annotation in annotation === otherApplicationsNote }, "The note stays on the page.")
+
+        try await session.save()
+        XCTAssertEqual(names(on: try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))), [shape.name, pictureName, box.name])
+    }
+
+    func testTheMenusNameWhatTheyArrange() {
+        XCTAssertEqual(PDFArrangement.menuArrangements.map { arrangement in arrangement.title(of: .image) },
+                       ["Bring Image to Front", "Bring Image Forward", "Send Image Backward", "Send Image to Back"])
+        XCTAssertEqual(PDFArrangement.menuArrangements.map { arrangement in arrangement.title(of: .item) },
+                       ["Bring Item to Front", "Bring Item Forward", "Send Item Backward", "Send Item to Back"])
+        XCTAssertEqual(PDFArrangement.menuArrangements.map(\.itemsTitle),
+                       ["Bring Items to Front", "Bring Items Forward", "Send Items Backward", "Send Items to Back"])
     }
 }

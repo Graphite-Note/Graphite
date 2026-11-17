@@ -132,9 +132,10 @@ final class MacPDFPictureToolTests: XCTestCase {
         let fixture = try await makeFixture()
         let menu = try XCTUnwrap(fixture.tools?.menu(for: try fixture.event(.rightMouseDown, at: CGPoint(x: 210, y: 290))))
         XCTAssertNotNil(fixture.session.selectedPicture)
-        // Seen 2026-11-16 in the running app: the menu opened on a separator line above Bring to Front.
+        // Seen 2026-11-16 in the running app: the menu opened on a separator line above Bring to Front. The items name the
+        // image, and the page's ink is not arranged from here (Docs/PDF-annotation-todo.md, section 8).
         XCTAssertEqual(menu.items.map { item in item.isSeparatorItem ? "-" : item.title },
-                       ["Bring to Front", "Bring Forward", "Send Backward", "Send to Back", "-", "Delete Image"])
+                       ["Bring Image to Front", "Bring Image Forward", "Send Image Backward", "Send Image to Back", "-", "Delete Image"])
         let deleteItem = try XCTUnwrap(menu.items.first { item in item.title == "Delete Image" })
         fixture.step { menu.performActionForItem(at: menu.index(of: deleteItem)) }
         XCTAssertTrue(fixture.session.pictures(on: fixture.page).isEmpty)

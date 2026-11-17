@@ -84,6 +84,61 @@ extension PDFPageManager {
         reorder(page, annotations: annotations, from: order, to: newOrder)
     }
 
+    /// The object layers of the annotations the references name; throws when one is no longer on the page.
+    private static func objectLayers(of references: [PDFAnnotationReference], on page: PDFPage, annotations: [PDFAnnotation],
+                                     order: PDFStackingOrder) throws -> [PDFStackingOrder.Layer] {
+        try references.map { reference in
+            guard let annotation = referencedAnnotation(reference, on: page) else { throw PDFStackingError.objectMissing }
+            guard let layer = annotations.firstIndex(where: { candidate in candidate === annotation }).flatMap(order.layer(ofObjectAt:)) else {
+                throw PDFStackingError.notArrangeable
+            }
+            return layer
+        }
+    }
+
+    /// Arranges several pictures, text boxes and shapes of a page together (`PDFEdit.arrangeTogether`).
+    static func arrangeTogether(_ references: [PDFAnnotationReference], _ arrangement: PDFArrangement, on page: PDFPage) throws {
+        let (annotations, order) = stacking(of: page)
+        let group = try objectLayers(of: references, on: page, annotations: annotations, order: order)
+        guard let newOrder = order.arranged(together: Set(group), arrangement) else { return }
+        reorder(page, annotations: annotations, from: order, to: newOrder)
+    }
+
+    /// Puts several objects at these places among the page's layers (`PDFEdit.placeObjects`).
+    static func place(_ references: [PDFAnnotationReference], at positions: [Int], on page: PDFPage) throws {
+        let (annotations, order) = stacking(of: page)
+        let layers = try objectLayers(of: references, on: page, annotations: annotations, order: order)
+        guard let newOrder = order.placing(Array(zip(layers, positions)).map { layer, position in (layer: layer, position: position) }) else { return }
+        reorder(page, annotations: annotations, from: order, to: newOrder)
+    }
+
+    /// The object layers of the annotations that are a page's objects; the others are left out.
+    private static func objectLayers(of objectAnnotations: [PDFAnnotation], annotations: [PDFAnnotation],
+                                     order: PDFStackingOrder) -> Set<PDFStackingOrder.Layer> {
+        Set(objectAnnotations.compactMap { objectAnnotation in
+            annotations.firstIndex { candidate in candidate === objectAnnotation }.flatMap(order.layer(ofObjectAt:))
+        })
+    }
+
+    /// The arrangements that would move some of these objects arranged together, for the menus
+    /// that offer them; annotations that are not objects of the page are left out.
+    public static func possibleArrangements(of objectAnnotations: [PDFAnnotation], on page: PDFPage) -> Set<PDFArrangement> {
+        let (annotations, order) = stacking(of: page)
+        let group = objectLayers(of: objectAnnotations, annotations: annotations, order: order)
+        let arrangements: [PDFArrangement] = [.bringToFront, .bringForward, .sendBackward, .sendToBack]
+        return Set(arrangements.filter { arrangement in order.arranged(together: group, arrangement) != nil })
+    }
+
+    /// The annotations that are objects of the page, each once, in the page's stacking order, the lowest first.
+    public static func objectAnnotations(among candidates: [PDFAnnotation], on page: PDFPage) -> [PDFAnnotation] {
+        let (annotations, order) = stacking(of: page)
+        let group = objectLayers(of: candidates, annotations: annotations, order: order)
+        return order.layers.compactMap { layer in
+            guard group.contains(layer), case .object(let annotationIndex) = layer else { return nil }
+            return annotations[annotationIndex]
+        }
+    }
+
     /// Where the object is among the page's layers (`PDFStackingOrder.layers`), or nil when it is not one.
     public static func stackingPosition(of annotation: PDFAnnotation, on page: PDFPage) -> Int? {
         let (annotations, order) = stacking(of: page)
