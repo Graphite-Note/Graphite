@@ -2,11 +2,12 @@
  * File: VaultStoreLargeFiles.swift
  * --------------------------------
  * Layer: Core
- * Description: Looking at a file of any size without holding it in memory: its size, its revision, and a run of its bytes.
+ * Description: Looking at a file of any size without holding it in memory: its size, its revision, a run of its bytes; and
+ *              giving it dates.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -39,5 +40,11 @@ public extension VaultStore {
             try handle.seek(toOffset: UInt64(offset))
             return try handle.read(upToCount: count) ?? Data()
         }
+    }
+
+    /// Gives the file at `path` these dates, as Obsidian does with a write's `DataWriteOptions`
+    /// (`AtomicFileWriter.setFileTimes`).
+    func setFileTimes(modified: Date?, created: Date?, at path: VaultPath) throws {
+        try writer.setFileTimes(modified: modified, created: created, at: path.url(in: root))
     }
 }

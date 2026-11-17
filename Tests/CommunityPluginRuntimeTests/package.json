@@ -27,6 +27,7 @@
     "lucide": "0.469.0",
     "moment": "2.31.0",
     "obsidian": "1.14.4",
+    "turndown": "7.2.4",
     "typescript": "5.8.3"
   }
 }

@@ -5,8 +5,8 @@
  * Description: Obsidian's Vault, DataAdapter and FileManager for plugins, over Graphite's vault bridge.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 17/11/2026
  */
 
 // Obsidian's vault for plugins: the file tree (`TFile`, `TFolder`), `Vault`, the low-level
@@ -66,6 +66,16 @@
 
     function isHiddenPath(path) {
         return path.split('/').some((component) => component.startsWith('.'));
+    }
+
+    /// Obsidian's `DataWriteOptions` times as a write sends them: the file is given them in the same
+    /// coordinated write (Importer marks each imported note with its source's time, and on importing
+    /// again tells an edited note from an untouched one by it).
+    function writtenTimes(options) {
+        const times = {};
+        if (options && Number.isFinite(options.mtime)) times.modified = options.mtime;
+        if (options && Number.isFinite(options.ctime)) times.created = options.ctime;
+        return times;
     }
 
     function statFromHost(hostStat) {
@@ -243,8 +253,9 @@
             const normalizedPath = normalizePath(path);
             const pluginIdentifier = runtime.callingPluginIdentifier();
             const text = textFromData(data);
-            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { text }, this.writeExpectation(normalizedPath), true, pluginIdentifier));
-            if (options) await this.applyTimes(normalizedPath, options);
+            const payload = Object.assign({ text }, writtenTimes(options));
+            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, payload, this.writeExpectation(normalizedPath), true,
+                pluginIdentifier));
         }
         /// A plugin's own `saveData`, which replaces its settings file whatever another app or
         /// device left there, as in Obsidian: the plugin holds its settings in memory and has
@@ -258,12 +269,9 @@
             const normalizedPath = normalizePath(path);
             const pluginIdentifier = runtime.callingPluginIdentifier();
             const base64 = arrayBufferToBase64(data);
-            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, { base64 }, this.writeExpectation(normalizedPath), true, pluginIdentifier));
-            if (options) await this.applyTimes(normalizedPath, options);
-        }
-        async applyTimes(path, options) {
-            if (options.mtime === undefined && options.ctime === undefined) return;
-            runtime.reportUnsupportedFeature('Setting file times (DataWriteOptions)');
+            const payload = Object.assign({ base64 }, writtenTimes(options));
+            await this.writeInTurn(normalizedPath, () => this.writeData(normalizedPath, payload, this.writeExpectation(normalizedPath), true,
+                pluginIdentifier));
         }
         async append(path, data, options) {
             await this.process(path, (existingText) => existingText + textFromData(data), options);
@@ -275,8 +283,8 @@
             const combined = new Uint8Array(existing.length + addition.length);
             combined.set(existing, 0);
             combined.set(addition, existing.length);
-            await this.writeData(normalizedPath, { base64: arrayBufferToBase64(combined.buffer) }, this.writeExpectation(normalizedPath));
-            if (options) await this.applyTimes(normalizedPath, options);
+            const payload = Object.assign({ base64: arrayBufferToBase64(combined.buffer) }, writtenTimes(options));
+            await this.writeData(normalizedPath, payload, this.writeExpectation(normalizedPath));
         }
         /// A file's full path, as Obsidian mobile's adapter gives it. Plugins use it to keep
         /// names within the system's path length (ReadItLater); Graphite gives the path under the
@@ -312,8 +320,8 @@
                 // file recorded meanwhile.
                 const expectation = { kind: 'revision', revision: response.revision };
                 try {
-                    await this.writeData(normalizedPath, { text: transformedText }, expectation, attempt === 2, pluginIdentifier);
-                    if (options) await this.applyTimes(normalizedPath, options);
+                    const payload = Object.assign({ text: transformedText }, writtenTimes(options));
+                    await this.writeData(normalizedPath, payload, expectation, attempt === 2, pluginIdentifier);
                     return transformedText;
                 } catch (error) {
                     if (attempt === 2 || !/changed outside this plugin/.test(error.message)) throw error;
@@ -597,8 +605,7 @@
             const normalizedPath = normalizePath(path);
             if (this.abstractFilesByPath.has(normalizedPath)) throw new Error('File already exists.');
             const text = textFromData(data);
-            await this.adapter.writeData(normalizedPath, { text }, { kind: 'absent' });
-            if (options) await this.adapter.applyTimes(normalizedPath, options);
+            await this.adapter.writeData(normalizedPath, Object.assign({ text }, writtenTimes(options)), { kind: 'absent' });
             const file = this.getFileByPath(normalizedPath);
             if (runtime.app && runtime.app.metadataCache.indexWrittenText) runtime.app.metadataCache.indexWrittenText(file, text);
             return file;
@@ -606,8 +613,7 @@
         async createBinary(path, data, options) {
             const normalizedPath = normalizePath(path);
             if (this.abstractFilesByPath.has(normalizedPath)) throw new Error('File already exists.');
-            await this.adapter.writeData(normalizedPath, { base64: arrayBufferToBase64(data) }, { kind: 'absent' });
-            if (options) await this.adapter.applyTimes(normalizedPath, options);
+            await this.adapter.writeData(normalizedPath, Object.assign({ base64: arrayBufferToBase64(data) }, writtenTimes(options)), { kind: 'absent' });
             return this.getFileByPath(normalizedPath);
         }
         async createFolder(path) {
@@ -628,8 +634,8 @@
             const combined = new Uint8Array(existing.length + addition.length);
             combined.set(existing, 0);
             combined.set(addition, existing.length);
-            await this.adapter.writeData(file.path, { base64: arrayBufferToBase64(combined.buffer) }, this.adapter.writeExpectation(file.path));
-            if (options) await this.adapter.applyTimes(file.path, options);
+            const payload = Object.assign({ base64: arrayBufferToBase64(combined.buffer) }, writtenTimes(options));
+            await this.adapter.writeData(file.path, payload, this.adapter.writeExpectation(file.path));
         }
         async process(file, transform, options) { return this.adapter.process(file.path, transform, options); }
         async delete(file) {
@@ -732,13 +738,14 @@
         generateMarkdownLink(file, sourcePath, subpath, alias) {
             const useMarkdownLinks = Boolean(this.vault.getConfig('useMarkdownLinks'));
             const linktext = this.app.metadataCache.fileToLinktext(file, sourcePath, !useMarkdownLinks);
-            const embedPrefix = file.extension !== 'md' ? '!' : '';
             const subpathText = subpath || '';
+            // A link, never an embed, whatever the file: as in Obsidian, the plugin adds the `!` it wants
+            // (Importer embeds a database's base as `!` and this link).
             if (useMarkdownLinks) {
                 const markdownPath = encodeURI(linktext.endsWith('.md') || file.extension !== 'md' ? linktext : linktext + '.md').replace(/\(/g, '%28').replace(/\)/g, '%29');
-                return embedPrefix + '[' + (alias || file.basename) + '](' + markdownPath + encodeURI(subpathText) + ')';
+                return '[' + (alias || file.basename) + '](' + markdownPath + encodeURI(subpathText) + ')';
             }
-            return embedPrefix + '[[' + linktext + subpathText + (alias ? '|' + alias : '') + ']]';
+            return '[[' + linktext + subpathText + (alias ? '|' + alias : '') + ']]';
         }
 
         /// Where an attachment named `filename` goes for the note at `sourcePath`, from the

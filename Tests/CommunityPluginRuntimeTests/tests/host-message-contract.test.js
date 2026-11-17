@@ -5,8 +5,8 @@
  * Description: The message names between Graphite and the runtime.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 17/11/2026
  */
 
 // The messages the plugin runtime and Graphite's Swift host exchange, as the two sides spell
@@ -163,7 +163,8 @@ test('the runtime talks to Graphite through the message handler named graphitePl
 test('the runtime page loads its scripts in the order index.html lists them, and some depend on the ones before', async () => {
     assert.deepEqual(runtimeScriptNames(), [
         'Vendor/moment.min.js', 'Vendor/js-yaml.min.js', 'Vendor/lucide.min.js', 'Vendor/codemirror-modules.min.js',
-        'community-plugin-dom-extensions.js', 'community-plugin-runtime-foundation.js', 'community-plugin-runtime-vault.js',
+        'Vendor/turndown.min.js', 'community-plugin-dom-extensions.js', 'community-plugin-runtime-foundation.js',
+        'community-plugin-runtime-markdown-conversion.js', 'community-plugin-runtime-vault.js',
         'community-plugin-runtime-metadata.js', 'community-plugin-runtime-workspace.js', 'community-plugin-runtime-interface.js',
         'community-plugin-runtime-settings.js', 'community-plugin-runtime-bases.js', 'community-plugin-runtime-plugins.js',
         'community-plugin-runtime-reading.js', 'community-plugin-runtime-host-connection.js',

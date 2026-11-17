@@ -512,52 +512,6 @@
         return fragment;
     }
 
-    /// Obsidian's `htmlToMarkdown` for the HTML plugins usually pass: headings, paragraphs,
-    /// emphasis, links, images, lists, quotes, code and line breaks.
-    function htmlToMarkdown(html) {
-        const container = typeof html === 'string' ? new globalScope.DOMParser().parseFromString(html, 'text/html').body : html;
-        function convertChildren(node, listDepth) {
-            return Array.from(node.childNodes).map((child) => convertNode(child, listDepth)).join('');
-        }
-        function convertNode(node, listDepth) {
-            if (node.nodeType === 3) return node.textContent.replace(/\s+/g, ' ');
-            if (node.nodeType !== 1) return '';
-            const name = node.localName;
-            const inner = () => convertChildren(node, listDepth);
-            switch (name) {
-            case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6':
-                return '\n\n' + '#'.repeat(Number(name[1])) + ' ' + inner().trim() + '\n\n';
-            case 'p': case 'div': return '\n\n' + inner().trim() + '\n\n';
-            case 'br': return '\n';
-            case 'hr': return '\n\n---\n\n';
-            case 'strong': case 'b': return '**' + inner() + '**';
-            case 'em': case 'i': return '*' + inner() + '*';
-            case 's': case 'del': case 'strike': return '~~' + inner() + '~~';
-            case 'mark': return '==' + inner() + '==';
-            case 'code': return node.parentElement && node.parentElement.localName === 'pre' ? node.textContent : '`' + node.textContent + '`';
-            case 'pre': return '\n\n```\n' + node.textContent.replace(/\n$/, '') + '\n```\n\n';
-            case 'a': {
-                const address = node.getAttribute('href');
-                return address ? '[' + inner() + '](' + address + ')' : inner();
-            }
-            case 'img': return '![' + (node.getAttribute('alt') || '') + '](' + (node.getAttribute('src') || '') + ')';
-            case 'blockquote': return '\n\n' + inner().trim().split('\n').map((line) => '> ' + line).join('\n') + '\n\n';
-            case 'ul': case 'ol': {
-                const items = Array.from(node.children).filter((child) => child.localName === 'li');
-                const lines = items.map((item, itemPosition) => {
-                    const marker = name === 'ol' ? (itemPosition + 1) + '. ' : '- ';
-                    const content = convertChildren(item, listDepth + 1).trim().replace(/\n{2,}/g, '\n');
-                    return '    '.repeat(listDepth) + marker + content.split('\n').join('\n' + '    '.repeat(listDepth + 1));
-                });
-                return (listDepth === 0 ? '\n\n' : '\n') + lines.join('\n') + (listDepth === 0 ? '\n\n' : '');
-            }
-            case 'script': case 'style': return '';
-            default: return inner();
-            }
-        }
-        return convertChildren(container, 0).replace(/\n{3,}/g, '\n\n').trim();
-    }
-
     // MARK: Network
 
     /// Obsidian's `requestUrl`: an HTTP request made by Graphite rather than the page, so
@@ -729,7 +683,6 @@
         renderResults,
         sortSearchResults,
         sanitizeHTMLToDom,
-        htmlToMarkdown,
         requestUrl,
         request,
         Platform,

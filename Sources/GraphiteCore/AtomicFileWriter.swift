@@ -5,8 +5,8 @@
  * Description: File revisions, and coordinated reads and whole-or-nothing writes of the person's files.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 02/11/2026
+ * Version: 0.4
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -50,6 +50,28 @@ public struct AtomicFileWriter: Sendable {
     }
 
     public func makeCoordinator() -> NSFileCoordinator { NSFileCoordinator(filePresenter: filePresenter) }
+
+    /// Gives the file at `location` these dates. Importers mark each imported note with its source's
+    /// time, and on importing again tell a note edited since (a later date) from one nothing has
+    /// touched (the same date). Only the file's metadata changes, under coordination, so a sync
+    /// provider sees a change of dates, not of contents.
+    public func setFileTimes(modified: Date?, created: Date?, at location: URL) throws {
+        var attributes: [FileAttributeKey: Any] = [:]
+        if let modified { attributes[.modificationDate] = modified }
+        if let created { attributes[.creationDate] = created }
+        guard !attributes.isEmpty else { return }
+        var coordinationError: NSError?
+        var settingError: (any Error)?
+        makeCoordinator().coordinate(writingItemAt: location, options: .contentIndependentMetadataOnly, error: &coordinationError) { coordinatedLocation in
+            do {
+                try FileManager.default.setAttributes(attributes, ofItemAtPath: coordinatedLocation.path)
+            } catch {
+                settingError = error
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        if let settingError { throw settingError }
+    }
 
     public func read(_ url: URL, maximumBytes: Int? = nil) throws -> FileSnapshot {
         try readingCoordinated(url) { location in

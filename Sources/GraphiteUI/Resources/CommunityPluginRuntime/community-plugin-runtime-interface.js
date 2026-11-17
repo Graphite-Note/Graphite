@@ -192,14 +192,26 @@
         openModals: [],
         shownSettingTab: null,
         isPresented: false,
+        settingsWindowElement: null,
+        settingsContentContainer: null,
 
         hostElement() {
             return globalScope.document.querySelector('.graphite-plugin-surface') || globalScope.document.body;
         },
+        /// Obsidian's settings window around a shown setting tab and its pages, made once:
+        /// `.modal.mod-settings`, holding `.vertical-tab-content-container`. Plugins put what
+        /// stays outside a scrolling page there (Importer's button bar) and style it by it.
+        settingsContentElement() {
+            if (!this.settingsWindowElement) {
+                this.settingsWindowElement = createDiv({ cls: 'modal mod-settings graphite-settings-window' });
+                this.settingsContentContainer = this.settingsWindowElement.createDiv({ cls: 'vertical-tab-content-container' });
+            }
+            if (!this.settingsWindowElement.isConnected) this.hostElement().appendChild(this.settingsWindowElement);
+            return this.settingsContentContainer;
+        },
         /// Pages a setting tab opened over itself (`app.setting.openPage`), the top one shown.
         settingPages: [],
         openSettingPage(page) {
-            const host = this.hostElement();
             const below = this.settingPages.last() ? this.settingPages.last().rootEl : (this.shownSettingTab ? this.shownSettingTab.containerEl : null);
             if (below) below.hide();
             if (!page.titlebarEl.querySelector('.setting-page-title')) {
@@ -210,7 +222,7 @@
                 page.titlebarEl.createDiv({ cls: 'setting-page-title', text: page.title || '' });
             }
             this.settingPages.push(page);
-            host.appendChild(page.rootEl);
+            this.settingsContentElement().appendChild(page.rootEl);
             page.rootEl.show();
             try { page.display(); } catch (error) { console.error(error); }
         },
@@ -230,6 +242,7 @@
                 settingTab.hide();
                 settingTab.containerEl.detach();
             }
+            if (this.settingsWindowElement) this.settingsWindowElement.detach();
         },
         present(title) {
             this.isPresented = true;
@@ -248,7 +261,7 @@
             this.clearShownContent();
             this.shownSettingTab = settingTab;
             this.addSettingsHeader();
-            this.hostElement().appendChild(settingTab.containerEl);
+            this.settingsContentElement().appendChild(settingTab.containerEl);
             this.drawSettingTab(settingTab);
             this.present(title);
         },
@@ -458,10 +471,65 @@
         }
     }
 
-    class SecretComponent extends TextComponent {
-        constructor(containerElement) {
-            super(containerElement);
-            this.inputEl.type = 'password';
+    /// Obsidian 1.11's control for linking a secret of `app.secretStorage` (`new SecretComponent(app, element)`):
+    /// its value is the secret's name, never the secret itself, which stays in the device's keychain. Its
+    /// button opens a window listing the secrets kept for this vault, and one to make a new one (a name and
+    /// the secret), as Obsidian's does. Called with an element alone, as before Obsidian 1.11, it takes the app.
+    class SecretComponent extends BaseComponent {
+        constructor(appOrElement, element) {
+            super();
+            const containerElement = element || appOrElement;
+            this.app = element ? appOrElement : runtime.app;
+            this.secretName = '';
+            this.changeCallback = null;
+            this.buttonEl = containerElement.createEl('button', { cls: 'graphite-secret-link' });
+            this.buttonEl.addEventListener('click', () => this.openChoice());
+            this.showName();
+        }
+        setValue(secretName) { this.secretName = secretName || ''; this.showName(); return this; }
+        getValue() { return this.secretName; }
+        onChange(callback) { this.changeCallback = callback; return this; }
+        setDisabled(isDisabled) { super.setDisabled(isDisabled); this.buttonEl.disabled = this.disabled; return this; }
+        showName() { this.buttonEl.setText(this.secretName ? this.secretName : 'Link…'); }
+        choose(secretName) {
+            this.setValue(secretName);
+            if (this.changeCallback) this.changeCallback(secretName || null);
+        }
+        openChoice() {
+            const component = this;
+            const storage = this.app.secretStorage;
+            const choice = new Modal(this.app);
+            choice.titleEl.setText('Link a secret');
+            const listElement = choice.contentEl.createDiv({ cls: 'graphite-secret-list' });
+            for (const secretName of storage.listSecrets()) {
+                new Setting(listElement).setName(secretName).addButton((button) => button.setButtonText('Link').onClick(() => {
+                    choice.close();
+                    component.choose(secretName);
+                }));
+            }
+            let newName = '';
+            let newSecret = '';
+            new Setting(choice.contentEl).setName('New secret').setHeading();
+            new Setting(choice.contentEl).setName('Name').addText((text) => text.setPlaceholder('notion-token').onChange((name) => {
+                newName = name.trim();
+            }));
+            new Setting(choice.contentEl).setName('Secret').addText((text) => {
+                text.inputEl.type = 'password';
+                text.onChange((secret) => { newSecret = secret; });
+            });
+            new Setting(choice.contentEl).addButton((button) => button.setButtonText('Save and link').setCta().onClick(() => {
+                if (!newName || !newSecret) return;
+                storage.setSecret(newName, newSecret);
+                choice.close();
+                component.choose(newName);
+            }));
+            if (this.secretName) {
+                new Setting(choice.contentEl).addButton((button) => button.setButtonText('Unlink').onClick(() => {
+                    choice.close();
+                    component.choose('');
+                }));
+            }
+            choice.open();
         }
     }
 

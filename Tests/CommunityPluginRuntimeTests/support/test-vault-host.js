@@ -5,8 +5,8 @@
  * Description: Answers the runtime's messages from a folder on disk, as Graphite does.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 17/11/2026
  */
 
 // Answers the plugin runtime's messages from a vault folder on disk, as Graphite's native
@@ -235,6 +235,9 @@ class TestVaultHost {
         }
         fileSystem.mkdirSync(path.dirname(location), { recursive: true });
         fileSystem.writeFileSync(location, bytes);
+        // The times a plugin asked for (`DataWriteOptions`), as Graphite gives them. Node cannot set
+        // a creation time, which Graphite sets; only the modification time is checked here.
+        if (Number.isFinite(message.modified)) fileSystem.utimesSync(location, new Date(), new Date(message.modified));
         return { revision: revisionOf(bytes), stat: this.stat(location) };
     }
 

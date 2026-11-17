@@ -6,8 +6,8 @@
  *              page.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -115,6 +115,10 @@ public struct CommunityPluginVaultBridge: Sendable {
         let text: String?
         let base64: String?
         let expectation: Expectation
+        /// The dates the plugin asked the file to have (Obsidian's `DataWriteOptions`), in
+        /// milliseconds since 1970, as JavaScript's dates count.
+        let modified: Double?
+        let created: Double?
     }
     private struct RemoveRequest: Decodable {
         let path: String
@@ -233,8 +237,14 @@ public struct CommunityPluginVaultBridge: Sendable {
         }
         try await store.createDirectory(path.parent)
         let revision = try await store.save(data, at: path, expecting: expectation)
+        if request.modified != nil || request.created != nil {
+            let modified = request.modified.map(Self.date(fromMilliseconds:))
+            try await store.setFileTimes(modified: modified, created: request.created.map(Self.date(fromMilliseconds:)), at: path)
+        }
         return ["revision": Self.revisionDictionary(revision), "stat": try Self.stat(of: location) ?? NSNull()]
     }
+
+    private static func date(fromMilliseconds milliseconds: Double) -> Date { Date(timeIntervalSince1970: milliseconds / 1000) }
 
     private static let byteOrderMark = Data([0xEF, 0xBB, 0xBF])
 

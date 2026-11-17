@@ -2,7 +2,8 @@
 // `Sources/GraphiteUI/Resources/CommunityPluginRuntime/Vendor/`, from the exact versions
 // pinned in this folder's package.json (`npm ci` first). Obsidian gives plugins these
 // libraries, so plugins expect them: moment (`moment`), js-yaml (`parseYaml`), Lucide
-// (`setIcon`), and CodeMirror 6 with Lezer (`require('@codemirror/…')`).
+// (`setIcon`), CodeMirror 6 with Lezer (`require('@codemirror/…')`), and Turndown
+// (`htmlToMarkdown` and `window.TurndownService`).
 //
 // Usage: node tools/build-vendored-libraries.js
 'use strict';
@@ -62,13 +63,24 @@ async function buildCodeMirrorBundle() {
     fileSystem.writeFileSync(path.join(vendorFolder, 'codemirror-modules.min.js'), header + result.outputFiles[0].text);
 }
 
+/// Turndown's browser build reads HTML with the page's own DOMParser; it is minified here, as
+/// its package ships no minified build.
+async function buildTurndown() {
+    const source = fileSystem.readFileSync(path.join(modulesFolder, 'turndown', 'lib', 'turndown.browser.umd.js'), 'utf8');
+    const result = await esbuild.transform(source, { minify: true, target: 'safari17', legalComments: 'none' });
+    const header = '/* Turndown ' + packageVersion('turndown') + ' (MIT; see Licenses/turndown.txt), minified by '
+        + 'Tests/CommunityPluginRuntimeTests/tools/build-vendored-libraries.js. */\n';
+    fileSystem.writeFileSync(path.join(vendorFolder, 'turndown.min.js'), header + result.code);
+}
+
 async function main() {
     fileSystem.mkdirSync(licensesFolder, { recursive: true });
     copyLibrary('moment', 'min/moment.min.js', 'moment.min.js');
     copyLibrary('js-yaml', 'dist/js-yaml.min.js', 'js-yaml.min.js');
     copyLibrary('lucide', 'dist/umd/lucide.min.js', 'lucide.min.js');
     await buildCodeMirrorBundle();
-    const licensedPackages = ['moment', 'js-yaml', 'lucide', ...codeMirrorModuleNames, 'style-mod', 'w3c-keyname', 'crelt'];
+    await buildTurndown();
+    const licensedPackages = ['moment', 'js-yaml', 'lucide', ...codeMirrorModuleNames, 'style-mod', 'w3c-keyname', 'crelt', 'turndown'];
     for (const packageName of licensedPackages) copyLicense(packageName);
     const versions = licensedPackages.map((packageName) => '- `' + packageName + '` ' + packageVersion(packageName));
     fileSystem.writeFileSync(path.join(vendorFolder, 'VERSIONS.md'), [

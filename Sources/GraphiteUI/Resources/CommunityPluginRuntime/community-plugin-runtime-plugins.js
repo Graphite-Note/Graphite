@@ -5,8 +5,8 @@
  * Description: Plugins, their loading and API, and the messages Graphite sends the runtime.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.21
- * Date: 01/11/2026
+ * Version: 0.22
+ * Date: 17/11/2026
  */
 
 // Loading and running Obsidian community plugins: `App`, `Plugin`, the module loader that
@@ -776,6 +776,8 @@
             const assignedName = Object.keys(this.types).find((candidate) => candidate.toLowerCase() === String(name).toLowerCase());
             return assignedName ? this.types[assignedName] : null;
         }
+        /// Obsidian calls a property's assigned type its widget (Importer asks before assigning one).
+        getAssignedWidget(name) { return this.getAssignedType(name); }
         getTypeInfo(name) {
             const assigned = this.getAssignedType(name);
             const inferred = this.getPropertyInfo(name);

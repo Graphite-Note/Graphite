@@ -122,6 +122,9 @@ input[type="range"] { accent-color: var(--interactive-accent); }
 .checkbox-container.is-disabled { opacity: 0.5; pointer-events: none; }
 
 /* Settings */
+/* The settings window is not a floating window here: the panel itself scrolls, so it keeps the
+   panel's padding and width, and only gives plugins Obsidian's structure to place things in. */
+.modal.mod-settings.graphite-settings-window { max-width: none; max-height: none; overflow: visible; padding: 0; }
 .vertical-tab-content { max-width: 760px; margin: 0 auto; }
 .setting-item { display: flex; align-items: center; gap: var(--size-4-3); padding: var(--size-4-3) 0; border-top: var(--border-width) solid var(--background-modifier-border); }
 .setting-item:first-child { border-top: none; }

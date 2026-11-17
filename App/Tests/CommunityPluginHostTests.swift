@@ -5,8 +5,8 @@
  * Description: A community plugin running in WebKit inside the app, on the iPad and the Mac.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.15
- * Date: 04/11/2026
+ * Version: 0.16
+ * Date: 17/11/2026
  */
 import XCTest
 import SwiftUI
@@ -597,13 +597,23 @@ final class CommunityPluginHostTests: XCTestCase {
     }
 
     /// The folder `npm run build-compatibility-plugins` builds real plugins into, in the Mac's
-    /// checkout: the simulator's apps and an unsandboxed Mac test host can read it.
-    private static let builtPluginsFolder = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .deletingLastPathComponent().appendingPathComponent("Tests/CommunityPluginRuntimeTests/compatibility/built")
+    /// checkout: the simulator's apps and an unsandboxed Mac test host can read it. A copy of the
+    /// runtime tests' folder elsewhere can stand in (`GRAPHITE_RUNTIME_TESTS_FOLDER`): reading from a
+    /// checkout in iCloud's Desktop folder was seen to wait without end in the test host.
+    static let builtPluginsFolder = runtimeTestsFolder.appendingPathComponent("compatibility/built")
+    static let runtimeTestsFolder = ProcessInfo.processInfo.environment["GRAPHITE_RUNTIME_TESTS_FOLDER"].map { path in URL(fileURLWithPath: path) }
+        ?? URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().appendingPathComponent("Tests/CommunityPluginRuntimeTests")
 
     /// A vault with real plugins, built from their sources at the commits the Node tests pin,
     /// installed as Graphite installs them, turned on and loaded, in a window. Skipped when
     /// they are not built.
+    /// `workspaceWithBuiltPlugins`, for the tests of other files: the workspace and its vault.
+    func workspaceAndVaultWithBuiltPlugins(_ pluginIdentifiers: [String], notes: [String: String]) async throws -> (WorkspaceModel, URL) {
+        let (workspace, vault, _) = try await workspaceWithBuiltPlugins(pluginIdentifiers, notes: notes)
+        return (workspace, vault)
+    }
+
     private func workspaceWithBuiltPlugins(_ pluginIdentifiers: [String], notes: [String: String]) async throws
         -> (WorkspaceModel, URL, HostedViewController) {
         let builtFolders = pluginIdentifiers.map { plugin in Self.builtPluginsFolder.appendingPathComponent(plugin) }
@@ -615,7 +625,8 @@ final class CommunityPluginHostTests: XCTestCase {
             let destination = vault.appendingPathComponent(".obsidian/plugins/" + plugin)
             try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
             for file in ["main.js", "manifest.json", "styles.css"] where FileManager.default.fileExists(atPath: builtFolder.appendingPathComponent(file).path) {
-                try FileManager.default.copyItem(at: builtFolder.appendingPathComponent(file), to: destination.appendingPathComponent(file))
+                // Read and written rather than copied: cloning a file of the iCloud-synced checkout can wait on iCloud.
+                try Data(contentsOf: builtFolder.appendingPathComponent(file)).write(to: destination.appendingPathComponent(file))
             }
         }
         let enabledList = try JSONSerialization.data(withJSONObject: pluginIdentifiers, options: [.prettyPrinted])
