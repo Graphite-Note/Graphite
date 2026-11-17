@@ -5,8 +5,8 @@
  * Description: The welcome tour that shows once on a device, and the pictures it asks for at launch.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 13/11/2026
+ * Version: 0.6
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -79,7 +79,7 @@ struct WelcomeTour: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 0) {
                     ForEach(pages) { page in
-                        WelcomeTourPageView(content: page.content)
+                        WelcomeTourPageView(content: page.content, closeTourForVault: page == pages.last ? { dismiss() } : nil)
                             .containerRelativeFrame(.horizontal)
                     }
                 }

@@ -1,3 +1,14 @@
+/**
+ * File: WelcomeTourPageView.swift
+ * -------------------------------
+ * Layer: UI
+ * Description: One page of the welcome tour: its words, its screenshots, and on the last page the buttons to go on.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 17/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 
@@ -6,6 +17,9 @@ import GraphiteCore
 /// scrolls when Dynamic Type makes it taller than the window.
 struct WelcomeTourPageView: View {
     let content: WelcomeTourPageContent
+    /// Set on the last page: its buttons to try the Guide vault and open the Guide, and how the vault's button
+    /// closes the tour once the vault opens.
+    var closeTourForVault: (() -> Void)?
     /// The size of the page's window, which picks the layout and centers a short page.
     @State private var viewportSize = CGSize.zero
 
@@ -27,6 +41,7 @@ struct WelcomeTourPageView: View {
                         heading
                         if !content.screenshots.isEmpty { WelcomeTourScreenshots(screenshots: content.screenshots) }
                         points
+                        tryButtons
                     }
                     .frame(maxWidth: content.pointLayout.maximumStackedWidth)
                 }
@@ -46,7 +61,12 @@ struct WelcomeTourPageView: View {
         VStack(alignment: .leading, spacing: 24) {
             heading
             points
+            tryButtons
         }
+    }
+
+    @ViewBuilder private var tryButtons: some View {
+        if let closeTourForVault { WelcomeTourTryButtons(closeTour: closeTourForVault) }
     }
 
     private var heading: some View {

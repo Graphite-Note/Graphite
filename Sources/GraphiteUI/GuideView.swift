@@ -1,10 +1,11 @@
 import SwiftUI
 
 extension View {
-    /// Presents the Guide in a sheet: page-sized on iPad and iPhone, window-sized on the Mac.
-    func guide(isPresented: Binding<Bool>) -> some View {
+    /// Presents the Guide in a sheet: page-sized on iPad and iPhone, window-sized on the Mac. `didOpenVault` runs
+    /// when the Guide opens its vault, so what presented the Guide can make way for the vault too (the welcome tour).
+    func guide(isPresented: Binding<Bool>, didOpenVault: @escaping () -> Void = {}) -> some View {
         sheet(isPresented: isPresented) {
-            GuideView(showsDoneButton: true)
+            GuideView(showsDoneButton: true, didOpenVault: didOpenVault)
                 #if os(macOS)
                 .frame(minWidth: 860, idealWidth: 1000, minHeight: 600, idealHeight: 720)
                 #else
@@ -21,6 +22,8 @@ extension View {
 struct GuideView: View {
     /// A sheet has Done; the Mac's Guide window closes as windows do.
     let showsDoneButton: Bool
+    /// Runs after the Guide opened its vault, once the sheet is on its way out.
+    var didOpenVault: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accent) private var accent
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -55,6 +58,7 @@ struct GuideView: View {
     /// The sheet makes way for the vault it opened; the Mac's Guide window stays beside it.
     private func closeAfterOpeningVault() {
         if showsDoneButton { dismiss() }
+        didOpenVault()
     }
 
     private var topicList: some View {

@@ -225,7 +225,7 @@ enum WelcomeTourCopy {
     static let gettingStarted = WelcomeTourPageContent(
         systemImage: "checkmark.seal",
         title: "Ready when you are",
-        summary: "Open the vault you already have, or start a new one. You can see this tour again in Settings › General › Welcome Tour.",
+        summary: "Open the vault you already have, start a new one, or try Graphite first in the Guide vault. You can see this tour again in Settings › General › Welcome Tour.",
         points: [
             WelcomeTourPoint(systemImage: "folder", title: .words("Open Folder as Vault"),
                              detail: "Pick an existing folder, such as an Obsidian vault in iCloud Drive."),

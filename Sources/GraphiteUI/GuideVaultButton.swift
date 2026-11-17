@@ -5,8 +5,8 @@
  * Description: The Guide's buttons that open the Graphite Guide vault at a note, downloading it first if it is not here.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -14,7 +14,7 @@ import GraphiteCore
 
 /// Opens the Graphite Guide vault at `note` (`Start here` when nil). The vault is an add-on pack: the first press
 /// downloads it, showing its progress here, and opens it once it is here; a failed download says why and offers to try
-/// again. The vault opens through its `graphite://guide` link, which reaches a window of notes from the Guide's sheet
+/// again. Only the pressed button shows the download. The vault opens through its `graphite://guide` link, which reaches a window of notes from the Guide's sheet
 /// and from the Mac's Guide window alike; `didOpen` then closes the sheet.
 struct GuideVaultButton: View {
     let title: String
@@ -33,9 +33,9 @@ struct GuideVaultButton: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: press) {
                 Label {
-                    Text(isFetching ? "Downloading the Guide Vault…" : title)
+                    Text(showsDownload ? "Downloading the Guide Vault…" : title)
                 } icon: {
-                    if isFetching { ProgressView().controlSize(.small) } else { Image(systemName: "books.vertical") }
+                    if showsDownload { ProgressView().controlSize(.small) } else { Image(systemName: "books.vertical") }
                 }
             }
             .disabled(isFetching || pack == nil || addOns == nil)
@@ -51,6 +51,9 @@ struct GuideVaultButton: View {
     }
 
     private var isFetching: Bool { state == .downloading || state == .checking }
+    /// Only the pressed button says the vault is downloading: the Guide shows two of these buttons, and both
+    /// saying so read as two downloads. The other keeps its title, disabled, until the vault is here.
+    private var showsDownload: Bool { isFetching && opensWhenDownloaded }
 
     private var footnote: String? {
         guard !freshCopy else { return nil }
