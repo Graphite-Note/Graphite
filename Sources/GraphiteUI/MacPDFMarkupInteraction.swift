@@ -57,6 +57,8 @@ final class MacPDFMarkupInteraction: NSObject {
         didSet { if selectedMark != oldValue { toolbar?.selectedMarkChanged(selectedMark) } }
     }
     private var mouseDownChoseMark = false
+    /// The popover a note opens in when its icon is clicked with Text Selection or Highlight, made at the first such click.
+    private var noteEditor: MacPDFNoteEditor?
 
     init(session: PDFSession, view: PDFView) {
         self.session = session
@@ -71,6 +73,7 @@ final class MacPDFMarkupInteraction: NSObject {
     func stopObservingSelection() {
         NotificationCenter.default.removeObserver(self, name: .PDFViewSelectionChanged, object: nil)
         pageTools?.stop()
+        noteEditor?.close()
     }
 
     /// Gives the page tools the row's tool, making them when a page tool is first chosen: a
@@ -102,6 +105,11 @@ final class MacPDFMarkupInteraction: NSObject {
     func handleMouseDown(_ event: NSEvent) -> Bool {
         mouseDownChoseMark = false
         selectedMark = nil
+        // A note's icon opens the note, as Preview does whatever tool is chosen; PDFKit would only select the page there.
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty, let pressed = note(at: event) {
+            openNote(pressed.annotation, on: pressed.page)
+            return true
+        }
         guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty, event.clickCount == 1,
               let view, let mark = mark(at: event) else { return false }
         mouseDownChoseMark = true
@@ -149,6 +157,11 @@ final class MacPDFMarkupInteraction: NSObject {
 
     /// The right-click menu: a mark's menu, or PDFKit's menu with the markup items first when text is selected.
     func menu(for event: NSEvent, defaultMenu: NSMenu?) -> NSMenu? {
+        if let pressed = note(at: event), let session, let view {
+            let editor = noteEditor ?? MacPDFNoteEditor(session: session, view: view)
+            noteEditor = editor
+            return MacPDFNoteMenu.menu(for: pressed.annotation, on: pressed.page, session: session, editor: editor) {}
+        }
         if let mark = mark(at: event) { return markMenu(for: mark) }
         guard input.isEnabled, let view, let session, let selection = view.currentSelection,
               let selectedText = selection.string, !selectedText.isEmpty else { return defaultMenu }
@@ -168,6 +181,28 @@ final class MacPDFMarkupInteraction: NSObject {
         for (index, item) in items.enumerated() { menu.insertItem(item, at: index) }
         return menu
     }
+
+    // MARK: Notes
+
+    /// The note whose icon is under the event, on a PDF that takes marks.
+    private func note(at event: NSEvent) -> (annotation: PDFAnnotation, page: PDFPage)? {
+        guard input.isEnabled, let view, let session else { return nil }
+        let viewPoint = view.convert(event.locationInWindow, from: nil)
+        guard let page = view.page(for: viewPoint, nearest: false) else { return nil }
+        let pagePoint = view.convert(viewPoint, to: page)
+        return session.noteAnnotation(at: pagePoint, on: page, tolerance: 0).map { annotation in (annotation, page) }
+    }
+
+    /// Opens a note to read and edit in a popover beside its icon.
+    func openNote(_ annotation: PDFAnnotation, on page: PDFPage) {
+        guard let session, let view else { return }
+        let editor = noteEditor ?? MacPDFNoteEditor(session: session, view: view)
+        noteEditor = editor
+        editor.open(annotation, on: page)
+    }
+
+    /// The note open in the popover, for a test to type in.
+    var openNoteEditor: MacPDFNoteEditor? { noteEditor?.isOpen == true ? noteEditor : pageTools?.notes?.editor }
 
     // MARK: Marks
 

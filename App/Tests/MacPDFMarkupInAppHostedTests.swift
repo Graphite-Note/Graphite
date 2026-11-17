@@ -16,6 +16,7 @@ import XCTest
 import AppKit
 import PDFKit
 import GraphiteCore
+import GraphiteApple
 @testable import GraphiteUI
 
 /// Docs/Mac-PDF-markup-todo.md: the checks "in the running app". The owner declined computer use and a Mac UI test needs
@@ -91,7 +92,7 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
         XCTAssertEqual(session.textBoxes(on: page).map(\.plainText), ["Sampling theorem"])
 
         // Shapes: a rectangle dragged over the box's corner.
-        try await choose(.shapes, atRowX: 766, in: window, view: pdfView)
+        try await choose(.shapes, atRowX: 798, in: window, view: pdfView)
         try await drag(through: [pages.windowPoint(CGPoint(x: 400, y: 90)), pages.windowPoint(CGPoint(x: 470, y: 120)), pages.windowPoint(CGPoint(x: 540, y: 160))], in: window)
         try writePicture("shape", of: window)
         try note("\(Self.undoState(session)) after \("shape")")
@@ -145,7 +146,7 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
         try note("box moved from \(boxBefore.integral) to \(boxMoved.integral), undo named \"\(session.undoManager.undoActionName)\"")
         XCTAssertEqual(boxMoved.midX - boxBefore.midX, 60, accuracy: 2, "moved right with the pointer")
         XCTAssertEqual(boxMoved.midY - boxBefore.midY, -60, accuracy: 2, "moved down with the pointer")
-        try await click(atWindowPoint: Self.rowPoint(x: 1055), in: window)
+        try await click(atWindowPoint: Self.rowPoint(x: 1087), in: window)
         try note("after Bold: bold \(session.textBoxes(on: page).first?.leadingAttributes.isBold ?? false), undo named \"\(session.undoManager.undoActionName)\"")
         XCTAssertEqual(session.textBoxes(on: page).first?.leadingAttributes.isBold, true, "the row's Bold made the selected box bold")
         try writePicture("box moved and bold", of: window)
@@ -191,7 +192,7 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
 
         // A picture with the Images tool, and its right-click menu's Bring to Front.
         try await asOneAction { try await session.addPicture(imageData: try Self.redSquarePNG(), placement: (pageIndex: 0, center: CGPoint(x: 480, y: 470))) }
-        try await choose(.pictures, atRowX: 850, in: window, view: pdfView)
+        try await choose(.pictures, atRowX: 882, in: window, view: pdfView)
         let picturePoint = pages.windowPoint(onPage: CGPoint(x: 480, y: 470))
         let pictureMenuView = try XCTUnwrap(window.contentView?.hitTest(picturePoint))
         let pictureMenu = pictureMenuView.menu(for: try mouseEvent(.rightMouseDown, at: picturePoint, in: window))
@@ -206,6 +207,24 @@ final class MacPDFMarkupInAppHostedTests: XCTestCase {
         }
         try note("after Bring to Front: \(page.annotations.map { annotation in annotation.type ?? "?" }), undo named \"\(session.undoManager.undoActionName)\"")
         try writePicture("picture brought to front", of: window)
+
+        // A note: the Note tool, a click on the page opens it, typing fills it, closing it places it.
+        try await choose(.note, atRowX: 766, in: window, view: pdfView)
+        try await click(atWindowPoint: pages.windowPoint(CGPoint(x: 60, y: 300)), in: window)
+        let noteEditor = try XCTUnwrap(pdfView.markupInteraction?.openNoteEditor, "the note opened to type in")
+        XCTAssertTrue(noteEditor.isOpen)
+        try writePicture("note open", of: window)
+        try await asOneAction {
+            let textView = try XCTUnwrap(noteEditor.textView)
+            textView.insertText("Ask about aliasing", replacementRange: NSRange(location: 0, length: 0))
+            noteEditor.close()
+            try await settle(window)
+        }
+        let placedNote = try XCTUnwrap(page.annotations.compactMap(PDFNote.init(annotation:)).first)
+        try note("note placed: \(placedNote.contents) at \(placedNote.iconBounds.integral), undo named \"\(session.undoManager.undoActionName)\"")
+        XCTAssertEqual(placedNote.contents, "Ask about aliasing")
+        try writePicture("note placed", of: window)
+        try writeMenu("note right-click", pdfView.menu(for: try mouseEvent(.rightMouseDown, at: pages.windowPoint(onPage: CGPoint(x: placedNote.iconBounds.midX, y: placedNote.iconBounds.midY)), in: window)))
 
         // Saved and read back from the file, as another application reads it.
         try await session.save()

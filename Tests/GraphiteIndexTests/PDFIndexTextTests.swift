@@ -3,8 +3,8 @@ import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport
 
-/// Search finds a PDF by the text of its text boxes: read by a scan and by a refresh of the
-/// file, from the `/FreeText` annotations only, as plain text with no links or tags.
+/// Search finds a PDF by the text of its text boxes and notes: read by a scan and by a refresh of
+/// the file, from the `/FreeText` and `/Text` annotations only, as plain text with no links or tags.
 final class PDFIndexTextTests: XCTestCase {
     private var vault: URL!
     private var index: VaultIndex!
@@ -41,8 +41,8 @@ final class PDFIndexTextTests: XCTestCase {
     func testAScanMakesThePDFsTextBoxesSearchable() async throws {
         let found = try await index.search("Fourier")
         XCTAssertEqual(found.results.map(\.path.rawValue), ["Lecture 3.pdf"])
-        let notFound = try await index.search("content:\"sticky secret\"")
-        XCTAssertTrue(notFound.results.isEmpty, "Only text boxes are read, not other annotations.")
+        let note = try await index.search("content:\"sticky secret\"")
+        XCTAssertEqual(note.results.map(\.path.rawValue), ["Lecture 3.pdf"], "A note's text is found as a text box's is.")
     }
 
     func testTheTextOfABoxIsNotReadAsMarkdown() async throws {

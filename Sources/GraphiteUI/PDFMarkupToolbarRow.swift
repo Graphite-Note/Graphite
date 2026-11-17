@@ -107,6 +107,7 @@ struct PDFMarkupRowContent: View {
                 PDFMarkupToolButton(tool: .eraseInk, toolbar: toolbar)
                 groupDivider
                 PDFMarkupToolButton(tool: .textBox, toolbar: toolbar)
+                PDFMarkupToolButton(tool: .note, toolbar: toolbar)
                 PDFMarkupToolButton(tool: .shapes, toolbar: toolbar)
                 if let signatureStore { PDFMarkupSignMenu(toolbar: toolbar, store: signatureStore, reportFailure: reportFailure) }
                 PDFMarkupToolButton(tool: .pictures, toolbar: toolbar)
@@ -130,7 +131,7 @@ struct PDFMarkupRowContent: View {
         case .pictures:
             groupDivider
             PDFMarkupPictureOptions(toolbar: toolbar)
-        case .textSelection, .highlight, .eraseInk, .sign:
+        case .textSelection, .highlight, .eraseInk, .note, .sign:
             EmptyView()
         }
     }
@@ -383,7 +384,7 @@ struct PDFMarkupToolMenu: View {
             Button(PDFMarkupTool.textSelection.title, systemImage: PDFMarkupTool.textSelection.symbolName) { toolbar.choose(.textSelection) }
             textMarkItems
             Section {
-                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .shapes, .pictures], id: \.self) { tool in
+                ForEach([PDFMarkupTool.draw, .eraseInk, .textBox, .note, .shapes, .pictures], id: \.self) { tool in
                     Button(tool.title, systemImage: tool.symbolName) { toolbar.choose(tool) }
                 }
             }

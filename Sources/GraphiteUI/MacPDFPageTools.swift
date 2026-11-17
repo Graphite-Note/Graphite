@@ -2,7 +2,7 @@
  * File: MacPDFPageTools.swift
  * ---------------------------
  * Layer: UI
- * Description: The Mac markup row's page tools in one PDF view: Draw, Eraser, Text Box, Shapes, Sign and Images, which take
+ * Description: The Mac markup row's page tools in one PDF view: Draw, Eraser, Text Box, Note, Shapes, Sign and Images, which take
  *              the pointer from PDFKit through a surface over the view while one of them is chosen.
  *
  * Authors: Bahey Shalash
@@ -27,6 +27,7 @@ final class MacPDFPageTools {
     private var surface: MacPDFToolSurface?
     private var pointerInk: MacPDFPointerInkTool?
     private var textBoxes: MacPDFTextBoxTool?
+    private(set) var notes: MacPDFNoteTool?
     private(set) var shapes: MacPDFShapeTool?
     private(set) var signatures: MacPDFSignatureTool?
     private(set) var pictures: MacPDFPictureTool?
@@ -62,6 +63,7 @@ final class MacPDFPageTools {
     func use(_ newTool: PDFMarkupTool) {
         guard newTool != tool else { return }
         if tool == .textBox { textBoxes?.toolWasPutDown() }
+        if tool == .note { notes?.toolWasPutDown() }
         if tool == .shapes { shapes?.toolWasPutDown() }
         if tool == .sign { signatures?.toolWasPutDown() }
         if tool == .pictures { pictures?.toolWasPutDown() }
@@ -78,6 +80,7 @@ final class MacPDFPageTools {
             }
             if newTool == .textBox, textBoxes == nil { textBoxes = MacPDFTextBoxTool(session: session, view: view, surface: surface, preferences: preferences) }
             if newTool == .draw || newTool == .eraseInk, pointerInk == nil { pointerInk = MacPDFPointerInkTool(session: session, view: view, surface: surface) }
+            if newTool == .note, notes == nil { notes = MacPDFNoteTool(session: session, view: view, surface: surface) }
             if newTool == .shapes, shapes == nil {
                 shapes = MacPDFShapeTool(session: session, view: view, surface: surface)
                 shapes?.toolbar = toolbar
@@ -99,6 +102,7 @@ final class MacPDFPageTools {
         session?.unregisterPageObjectsChangeObserver(for: self)
         toolbar?.selectedObjectChanged(arrangements: [], inkArrangements: [])
         textBoxes?.stop()
+        notes?.stop()
         shapes?.stop()
         signatures?.stop()
         pictures?.stop()
@@ -121,6 +125,7 @@ final class MacPDFPageTools {
         switch tool {
         case .draw, .eraseInk: return .crosshair
         case .textBox: return textBoxes?.cursor(atViewPoint: viewPoint) ?? .iBeam
+        case .note: return notes?.cursor(atViewPoint: viewPoint)
         case .shapes: return shapes?.cursor(atViewPoint: viewPoint)
         case .sign: return signatures?.cursor(atViewPoint: viewPoint)
         case .pictures: return pictures?.cursor(atViewPoint: viewPoint)
@@ -138,6 +143,7 @@ final class MacPDFPageTools {
         case .draw: pointerInk?.beginStroke(at: viewPoint, timeSeconds: event.timestamp, style: toolbar?.inkStyle ?? .default)
         case .eraseInk: pointerInk?.beginErasing(at: viewPoint)
         case .textBox: textBoxes?.mouseDown(at: viewPoint, clickCount: event.clickCount)
+        case .note: notes?.mouseDown(at: viewPoint)
         case .shapes: shapes?.mouseDown(at: viewPoint)
         case .sign: signatures?.mouseDown(at: viewPoint)
         case .pictures: pictures?.mouseDown(at: viewPoint)
@@ -152,6 +158,7 @@ final class MacPDFPageTools {
         case .draw: pointerInk?.continueStroke(to: viewPoint, timeSeconds: event.timestamp)
         case .eraseInk: pointerInk?.continueErasing(at: viewPoint)
         case .textBox: textBoxes?.mouseDragged(to: viewPoint)
+        case .note: notes?.mouseDragged(to: viewPoint)
         case .shapes: shapes?.mouseDragged(to: viewPoint)
         case .sign: signatures?.mouseDragged(to: viewPoint)
         case .pictures: pictures?.mouseDragged(to: viewPoint)
@@ -167,6 +174,7 @@ final class MacPDFPageTools {
         case .draw: pointerInk?.endStroke(at: viewPoint, timeSeconds: event.timestamp, creationDate: currentDate())
         case .eraseInk: pointerInk?.endErasing()
         case .textBox: textBoxes?.mouseUp(at: viewPoint)
+        case .note: notes?.mouseUp(at: viewPoint)
         case .shapes: shapes?.mouseUp(at: viewPoint)
         case .sign: signatures?.mouseUp(at: viewPoint)
         case .pictures: pictures?.mouseUp(at: viewPoint)
@@ -180,6 +188,7 @@ final class MacPDFPageTools {
         defer { updateArrangeableSelection() }
         return switch tool {
         case .textBox: textBoxes?.handleKeyDown(event) ?? false
+        case .note: notes?.handleKeyDown(event) ?? false
         case .shapes: shapes?.handleKeyDown(event) ?? false
         case .sign: signatures?.handleKeyDown(event) ?? false
         case .pictures: pictures?.handleKeyDown(event) ?? false
@@ -193,6 +202,7 @@ final class MacPDFPageTools {
         let viewPoint = view.convert(event.locationInWindow, from: nil)
         switch tool {
         case .textBox: return textBoxes?.menu(atViewPoint: viewPoint)
+        case .note: return notes?.menu(atViewPoint: viewPoint)
         case .shapes: return shapes?.menu(atViewPoint: viewPoint)
         case .sign: return signatures?.menu(atViewPoint: viewPoint)
         case .pictures: return pictures?.menu(atViewPoint: viewPoint)
@@ -209,7 +219,7 @@ final class MacPDFPageTools {
             do { try session?.arrangeSelectedTextBox(arrangement) } catch { session?.reportFailedChange(error) }
         case .shapes: shapes?.arrangeSelectedShape(arrangement)
         case .pictures: pictures?.arrangeSelection(arrangement)
-        case .textSelection, .highlight, .draw, .eraseInk, .sign: break
+        case .textSelection, .highlight, .draw, .eraseInk, .note, .sign: break
         }
         surface?.needsDisplay = true
         updateArrangeableSelection()
@@ -229,7 +239,7 @@ final class MacPDFPageTools {
         case .textBox: session?.textBoxActivity.selection?.page.page
         case .shapes: shapes?.selectedShapePage
         case .pictures: session?.selectedPicture?.page.page
-        case .textSelection, .highlight, .draw, .eraseInk, .sign: nil
+        case .textSelection, .highlight, .draw, .eraseInk, .note, .sign: nil
         }
     }
 
@@ -239,7 +249,7 @@ final class MacPDFPageTools {
         case .textBox: session?.possibleArrangementsOfSelectedTextBox ?? []
         case .shapes: shapes?.possibleArrangementsOfSelectedShape ?? []
         case .pictures: pictures?.possibleArrangementsOfSelection ?? []
-        case .textSelection, .highlight, .draw, .eraseInk, .sign: []
+        case .textSelection, .highlight, .draw, .eraseInk, .note, .sign: []
         }
         let inkArrangements = selectedObjectPage.flatMap { page in session?.possibleInkArrangements(on: page) } ?? []
         toolbar?.selectedObjectChanged(arrangements: arrangements, inkArrangements: inkArrangements)
@@ -256,6 +266,7 @@ final class MacPDFPageTools {
         switch tool {
         case .draw: pointerInk?.drawStrokeUnderWay(in: surface, of: pdfView)
         case .textBox: textBoxes?.drawSelectionFrame(in: surface, of: pdfView)
+        case .note: notes?.drawOverlay(in: surface, of: pdfView)
         case .shapes: shapes?.drawOverlay(in: surface, of: pdfView)
         case .sign: signatures?.drawSelectionFrame(in: surface, of: pdfView)
         case .pictures: pictures?.drawSelectionFrame(in: surface, of: pdfView)

@@ -60,6 +60,11 @@ public enum PDFEdit: Sendable {
     /// moved, reshaped or recoloured, at its place in the page's stacking order; the new one
     /// keeps the former's author.
     case replaceShape(PDFAnnotationReference, with: PDFShape)
+    /// Places a note, its icon and its closed popup, on a page.
+    case addNote(page: Int, note: PDFNote)
+    /// Puts a note in the place of one, Graphite's or another application's, as when its text is edited or it is moved
+    /// or recoloured; the new one keeps the former's author and icon.
+    case replaceNote(PDFAnnotationReference, with: PDFNote)
     case bookmark(page: Int, label: String)
     /// Removes the outline item at this path of child indices from the outline root.
     case removeOutlineItem(path: [Int])
@@ -86,7 +91,7 @@ public enum PDFEdit: Sendable {
         case .addPicture, .movePicture, .replacePicture, .arrange, .arrangeInk, .addTextBox, .replaceTextBox, .removeTextBox, .addShape,
              .replaceShape, .removeAnnotation: true
         case .insert, .duplicate, .delete, .move, .rotate, .updateInk, .addMarkup, .recolorMarkup, .restoreMarkupColor, .bookmark,
-             .removeOutlineItem: false
+             .removeOutlineItem, .addNote, .replaceNote: false
         }
     }
 
@@ -94,11 +99,11 @@ public enum PDFEdit: Sendable {
     public var changedPageIndex: Int? {
         switch self {
         case .rotate(let pageIndex, _), .addMarkup(let pageIndex, _), .addPicture(let pageIndex, _), .addTextBox(let pageIndex, _),
-             .addShape(let pageIndex, _), .arrangeInk(let pageIndex, _): pageIndex
+             .addShape(let pageIndex, _), .arrangeInk(let pageIndex, _), .addNote(let pageIndex, _): pageIndex
         case .updateInk(let update): update.pageIndex
         case .recolorMarkup(let reference, _), .restoreMarkupColor(let reference, _), .removeAnnotation(let reference),
              .movePicture(let reference, _), .replacePicture(let reference, _), .replaceTextBox(let reference, _),
-             .removeTextBox(let reference), .replaceShape(let reference, _), .arrange(let reference, _): reference.pageIndex
+             .removeTextBox(let reference), .replaceShape(let reference, _), .arrange(let reference, _), .replaceNote(let reference, _): reference.pageIndex
         default: nil
         }
     }
@@ -221,7 +226,7 @@ public enum PDFPageManager {
             guard let annotation = referencedAnnotation(reference, on: targetPage) else { throw GraphiteError.invalidFile("This annotation no longer exists.") }
             // A note's popup belongs to its markup; left behind, it would be written as a
             // popup without a parent.
-            if let popup = annotation.popup, popup.page === targetPage { targetPage.removeAnnotation(popup) }
+            removePopup(of: annotation, from: targetPage)
             targetPage.removeAnnotation(annotation)
         case .addPicture(let pageIndex, let picture):
             try addPicture(picture, to: page(at: pageIndex), isForWrittenDocument: drawsInkOutlines, authorName: author.name)
@@ -255,6 +260,8 @@ public enum PDFPageManager {
             try page(at: pageIndex).addAnnotation(shape.makeAnnotation(authorName: author.name))
         case .replaceShape(let reference, let shape):
             try replaceShape(reference, with: shape, on: page(at: reference.pageIndex), authorName: author.name)
+        case .addNote(let pageIndex, let note): addNote(note, to: try page(at: pageIndex), authorName: author.name)
+        case .replaceNote(let reference, let note): try replaceNote(reference, with: note, on: page(at: reference.pageIndex), authorName: author.name)
         case .bookmark(let pageIndex, let label):
             let targetPage = try page(at: pageIndex)
             let outline = PDFOutline()

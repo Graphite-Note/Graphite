@@ -2,9 +2,9 @@ import XCTest
 import CoreGraphics
 @testable import GraphiteCore
 
-/// The text of a PDF's text boxes, as Search reads it: every `/FreeText`'s `/Contents`, and
-/// nothing else of the file.
-final class PDFFreeTextContentsTests: XCTestCase {
+/// The text people typed on a PDF, as Search reads it: every `/FreeText`'s and `/Text`'s
+/// `/Contents`, and nothing else of the file.
+final class PDFTypedAnnotationTextTests: XCTestCase {
     /// A PDF of one page per list of annotation dictionaries, written by hand so the test
     /// depends on no PDF writer.
     private func pdfData(pages: [[String]]) throws -> Data {
@@ -35,7 +35,7 @@ final class PDFFreeTextContentsTests: XCTestCase {
         try XCTUnwrap(CGPDFDocument(XCTUnwrap(CGDataProvider(data: data as CFData))))
     }
 
-    func testTheTextOfEveryTextBoxIsReadInPageOrderAndNothingElse() throws {
+    func testTheTextOfEveryTextBoxAndNoteIsReadInPageOrderAndNothingElse() throws {
         let data = try pdfData(pages: [
             ["<< /Type /Annot /Subtype /FreeText /Rect [0 0 50 20] /Contents (First box) >>",
              "<< /Type /Annot /Subtype /Text /Rect [0 0 10 10] /Contents (A sticky note) >>",
@@ -44,19 +44,19 @@ final class PDFFreeTextContentsTests: XCTestCase {
              "<< /Type /Annot /Subtype /FreeText /Rect [0 0 50 20] /Contents (   ) >>",
              "<< /Type /Annot /Subtype /FreeText /Rect [0 0 50 20] /Contents <FEFF00C9006C00E8007600650020> >>"],
         ])
-        XCTAssertEqual(PDFFreeTextContents.searchableText(of: try document(data)), "First box\nSecond\nline\nÉlève\n")
+        XCTAssertEqual(PDFTypedAnnotationText.searchableText(of: try document(data)), "First box\nA sticky note\nSecond\nline\nÉlève\n")
     }
 
     func testAPDFWithoutTextBoxesHasNoText() throws {
         let data = try pdfData(pages: [["<< /Type /Annot /Subtype /Ink /Rect [0 0 10 10] /InkList [[0 0 5 5]] >>"], []])
-        XCTAssertEqual(PDFFreeTextContents.searchableText(of: try document(data)), "")
+        XCTAssertEqual(PDFTypedAnnotationText.searchableText(of: try document(data)), "")
     }
 
     func testTextPastTheLimitIsNotRead() throws {
-        let long = String(repeating: "a", count: PDFFreeTextContents.maximumUTF16Count / 2)
+        let long = String(repeating: "a", count: PDFTypedAnnotationText.maximumUTF16Count / 2)
         let box = "<< /Type /Annot /Subtype /FreeText /Rect [0 0 50 20] /Contents (\(long)) >>"
-        let text = PDFFreeTextContents.searchableText(of: try document(try pdfData(pages: [[box, box, box]])))
-        XCTAssertLessThanOrEqual(text.utf16.count, PDFFreeTextContents.maximumUTF16Count)
+        let text = PDFTypedAnnotationText.searchableText(of: try document(try pdfData(pages: [[box, box, box]])))
+        XCTAssertLessThanOrEqual(text.utf16.count, PDFTypedAnnotationText.maximumUTF16Count)
         XCTAssertEqual(text.utf16.count, long.utf16.count + 1)
     }
 }

@@ -65,6 +65,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var palmRejection: PalmRejectionInstallation?
     private var editMenuInteraction: UIEditMenuInteraction?
     private var tappedMarkup: (annotation: PDFAnnotation, page: PDFPage)?
+    /// Opens a note's text when its icon is tapped (`PDFNoteReading`).
+    private(set) var noteReading: PDFNoteReading?
     /// Where the saved text-mark colours are kept (`PDFTextMarkColors`); a test gives its own.
     var markupPreferences: UserDefaults = .standard
     private lazy var markColorPicker = PDFMarkColorPicker(preferences: markupPreferences)
@@ -185,6 +187,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         textSelectionRecognizer = selectionRecognizer
 
         installPencilWhileReadingRecognizer(in: view)
+        noteReading = PDFNoteReading(view: view, session: session)
 
         // A hand resting on a page while the Pencil writes does not tap, select, scroll or zoom.
         palmRejection = PencilActivity.installRecognizers(in: view, isWriting: { [weak self] in self?.input.isEnabled ?? false },

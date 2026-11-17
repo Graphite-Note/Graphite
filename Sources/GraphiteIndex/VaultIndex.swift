@@ -851,7 +851,7 @@ public actor VaultIndex {
             file.readsContent = readability == .readable
             file.isNotDownloaded = readability == .inTheCloud
             // A PDF is not read whole: only its text boxes' text, which is bounded.
-            if file.readsContent { state.batchContentBytes += file.isPDF ? min(file.size, PDFFreeTextContents.maximumUTF16Count * 2) : file.size }
+            if file.readsContent { state.batchContentBytes += file.isPDF ? min(file.size, PDFTypedAnnotationText.maximumUTF16Count * 2) : file.size }
             state.batch.append(file)
             state.updatedFiles += 1
             if state.batch.count >= Self.maximumBatchFileCount || state.batchContentBytes >= Self.maximumBatchContentBytes {

@@ -2,11 +2,11 @@ import Foundation
 import CoreGraphics
 import GraphiteCore
 
-/// What Search reads of a PDF: the text of its text boxes (`PDFFreeTextContents`), not its
+/// What Search reads of a PDF: the text of its text boxes and notes (`PDFTypedAnnotationText`), not its
 /// printed text. Core Graphics loads only the page and annotation dictionaries it is asked
-/// for, so a large PDF is not read whole; what is read is bounded by `PDFFreeTextContents`.
+/// for, so a large PDF is not read whole; what is read is bounded by `PDFTypedAnnotationText`.
 enum PDFIndexText {
-    /// A PDF this size or smaller is read for its text boxes; most of its bytes, the pages'
+    /// A PDF this size or smaller is read for its text boxes and notes; most of its bytes, the pages'
     /// content and images, are never loaded.
     static let maximumPDFBytes = 2 * 1_073_741_824
 
@@ -18,7 +18,7 @@ enum PDFIndexText {
             return .failed(PDFIndexReadingError.unreadable)
         }
         guard document.isUnlocked else { return .text("") }
-        return .text(PDFFreeTextContents.searchableText(of: document))
+        return .text(PDFTypedAnnotationText.searchableText(of: document))
     }
 
     /// The same, under a file coordination of its own, as a refresh of one file reads it.

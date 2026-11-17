@@ -22,6 +22,8 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     case eraseInk
     /// A click on a page places a text box and starts typing in it; a click on a box selects it.
     case textBox
+    /// A click on a page places a note and opens it to type; a click on a note opens it, a drag moves it.
+    case note
     /// Dragging on a page draws the row's shape; a click on a shape selects it to move, reshape or delete.
     case shapes
     /// A signature chosen from the row's Sign menu is placed on the page; a press on it moves or resizes it.
@@ -36,6 +38,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
         case .draw: "Draw"
         case .eraseInk: "Eraser"
         case .textBox: "Text Box"
+        case .note: "Note"
         case .shapes: "Shapes"
         case .sign: "Sign"
         case .pictures: "Images"
@@ -49,6 +52,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
         case .draw: "scribble.variable"
         case .eraseInk: "eraser"
         case .textBox: "character.textbox"
+        case .note: "note.text"
         case .shapes: "square.on.circle"
         case .sign: "signature"
         case .pictures: "photo"
@@ -60,7 +64,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     var takesPagePresses: Bool {
         switch self {
         case .textSelection, .highlight: false
-        case .draw, .eraseInk, .textBox, .shapes, .sign, .pictures: true
+        case .draw, .eraseInk, .textBox, .note, .shapes, .sign, .pictures: true
         }
     }
 
@@ -68,7 +72,7 @@ enum PDFMarkupTool: Hashable, Sendable, CaseIterable {
     /// A click that chose a mark already on the page selects that mark, so it never marks the text again.
     func styleToApplyOnMouseUp(style: PDFMarkupStyle, selectionHasText: Bool, clickChoseExistingMark: Bool) -> PDFMarkupStyle? {
         switch self {
-        case .textSelection, .draw, .eraseInk, .textBox, .shapes, .sign, .pictures: nil
+        case .textSelection, .draw, .eraseInk, .textBox, .note, .shapes, .sign, .pictures: nil
         case .highlight: selectionHasText && !clickChoseExistingMark ? style : nil
         }
     }

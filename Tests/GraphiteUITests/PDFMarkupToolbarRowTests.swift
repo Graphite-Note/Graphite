@@ -53,8 +53,9 @@ final class PDFMarkupToolbarRowTests: XCTestCase {
     func testAWidePaneLaysEveryToolAndColourOutAsAButton() {
         // `ViewThatFits` takes the first layout whose width fits, and the unfolded one comes first.
         // Shapes shows two palettes, border and fill, and needs a wider window before its choices fold into menus; the text
-        // marks' colour panel and the colour arrows of Underline and Strikethrough (2026-11-16) take a little more.
-        for (tool, widest) in [(PDFMarkupTool.draw, 1050), (.shapes, 1250)] as [(PDFMarkupTool, CGFloat)] {
+        // marks' colour panel and the colour arrows of Underline and Strikethrough (2026-11-16) take a little more, and the
+        // Note tool's button (2026-11-17) one button more: 1,278 points with Shapes chosen.
+        for (tool, widest) in [(PDFMarkupTool.draw, 1080), (.shapes, 1300)] as [(PDFMarkupTool, CGFloat)] {
             let toolbar = PDFMarkupToolbar()
             toolbar.choose(tool)
             XCTAssertLessThan(fittingWidth(content(toolbar, folding: .none)), widest, "\(tool): a wide window shows the whole row.")

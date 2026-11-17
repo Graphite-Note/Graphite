@@ -41,7 +41,7 @@ struct PDFAnnotationFileEntries {
         let subtype = annotation.type ?? ""
         let bounds = annotation.bounds
         var candidates: [CGPDFDictionaryRef] = []
-        for annotationIndex in 0..<min(CGPDFArrayGetCount(annotations), PDFFreeTextContents.maximumAnnotationsPerPage) {
+        for annotationIndex in 0..<min(CGPDFArrayGetCount(annotations), PDFTypedAnnotationText.maximumAnnotationsPerPage) {
             var dictionary: CGPDFDictionaryRef?
             guard CGPDFArrayGetDictionary(annotations, annotationIndex, &dictionary), let dictionary else { continue }
             if let name {
