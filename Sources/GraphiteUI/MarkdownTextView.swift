@@ -5,7 +5,7 @@
  * Description: The iPad's and iPhone's note text view: paste and drop, focus, the readable column and Read Aloud's highlight.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
+ * Version: 0.2
  * Date: 16/11/2026
  */
 
@@ -171,7 +171,9 @@ final class MarkdownTextView: UITextView {
             inlineTitleLabel.frame = CGRect(x: horizontalInset + textContainer.lineFragmentPadding, y: Self.topInset, width: titleWidth, height: titleHeight)
             topInset += titleHeight + Self.inlineTitleSpacing
         }
-        let insets = UIEdgeInsets(top: topInset, left: horizontalInset, bottom: 160, right: horizontalInset)
+        // Room below the last line, so the end of a note scrolls up to the middle (EditorRoomBelowText).
+        let bottomInset = EditorRoomBelowText.height(forVisibleHeight: bounds.height)
+        let insets = UIEdgeInsets(top: topInset, left: horizontalInset, bottom: bottomInset, right: horizontalInset)
         // Setting equal insets would still invalidate the layout.
         if textContainerInset != insets { textContainerInset = insets }
         didLayout?(self)

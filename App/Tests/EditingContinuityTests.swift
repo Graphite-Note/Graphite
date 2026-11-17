@@ -5,7 +5,7 @@
  * Description: Undo and redo across tab switches, tab moves, renames and reading view, in the hosted workspace.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
+ * Version: 0.12
  * Date: 04/11/2026
  */
 
@@ -256,6 +256,20 @@ final class EditingContinuityTests: XCTestCase {
         XCTAssertNotNil(textView.textLayoutManager)
         textView.frame = CGRect(x: 0, y: 0, width: 600, height: 400)
         textView.layoutIfNeeded()
+    }
+
+    /// Scrolled to its end, a note's last line stops at the middle of the editor, as in
+    /// Obsidian: the room below the text is half the editor's height and follows it.
+    func testRoomBelowTheTextIsHalfTheEditorsHeight() {
+        let textView = MarkdownTextView()
+        textView.text = (1...80).map { number in "Line \(number)" }.joined(separator: "\n")
+        textView.frame = CGRect(x: 0, y: 0, width: 600, height: 800)
+        textView.layoutIfNeeded()
+        XCTAssertEqual(textView.textContainerInset.bottom, 400)
+
+        textView.frame.size.height = 500
+        textView.layoutIfNeeded()
+        XCTAssertEqual(textView.textContainerInset.bottom, 250)
     }
 
     /// A change around the note's view, as when the window title stops or starts being
