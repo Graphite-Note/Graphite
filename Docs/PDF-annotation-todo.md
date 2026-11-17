@@ -2,7 +2,7 @@
 
 Created: 2026-11-14.
 
-Status: planned 2026-11-14; sections 5, 6 and 7 built 2026-11-16 (see each), with their tests passing on the Mac and, for the session, colour and stored-colour tests, in the hosted iPad suite. Their items were checked on 2026-11-16 by scripts on the real views, the Mac's colour panel, an iPad simulator and Core Graphics, because access to drive the app by hand was declined (see each section). Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section. Read against main b2c3787d. Section 4, the iPad's text highlighter, built 2026-11-16 with hosted iPad tests; its check on the owner's iPad with the Pencil is open.
+Status: planned 2026-11-14; sections 5, 6 and 7 built 2026-11-16 (see each), with their tests passing on the Mac and, for the session, colour and stored-colour tests, in the hosted iPad suite. Their items were checked on 2026-11-16 by scripts on the real views, the Mac's colour panel, an iPad simulator and Core Graphics, because access to drive the app by hand was declined (see each section). Issues: [#180](https://github.com/Graphite-Note/Graphite/issues/180) to [#186](https://github.com/Graphite-Note/Graphite/issues/186), one per section, and [#210](https://github.com/Graphite-Note/Graphite/issues/210) for section 8 (2026-11-17). Read against main b2c3787d. Section 4, the iPad's text highlighter, built 2026-11-16 with hosted iPad tests; its check on the owner's iPad with the Pencil is open.
 
 ## Request
 
@@ -150,3 +150,17 @@ Checked 2026-11-16, by script rather than by hand: computer-use access to a re-s
 - [x] Done 2026-11-16: A mark of a colour outside the list (made by Preview, Acrobat or a picker) is shown with its own colour in the menus and the row, and recoloured like the others. Built: `PDFTextMarkColors.offered(for:including:)` puts its colour first, ticked.
 - [x] Done 2026-11-16: The Mac's draw, shapes and text box colours get the same picker. Built: Draw has a colour-panel button and Other Color… in its folded menu, Shapes one button for Other Border Color… and Other Fill Color…, Text Box Other Color… in its colour menu; a colour chosen there shows ticked in the row.
 - [x] Done 2026-11-16: Tests: the stored presets and the written `/C` for an arbitrary colour; checked in Preview and on the iPad with a custom colour made on the Mac. Tests pass: `PDFTextMarkColorsTests` (5), `PDFMarkupColorTests` (`/C` read by Core Graphics' own parser and read back by PDFKit), `PDFMarkupStyleTests`, `MacPDFMarkupInteractionTests.testTheMenusOfferTheSavedTextMarkColours` and the other application's orange mark shown first and ticked.
+
+## 8. Arranging a picture on the iPad by touch
+
+Issue: [#210](https://github.com/Graphite-Note/Graphite/issues/210)
+
+The owner, 2026-11-17, placing pictures on a PDF on their iPad (Release build of main b04ceef0, a made-up test vault): the picture's bar at the bottom of the screen (`PDFPictureArrangementBar`: Rotate, Crop, Arrange, Delete) is "functional, but the UX is just horrible". In their words: rotating "should not be just from the top... with two fingers, I should be able to twist the image around, and click on it, send it back, send it front. Should be like a floating thing above the image, not this whole thing at the back."
+
+Planned: the system's edit menu (`UIEditMenuInteraction`), which places itself above what it points at, or below it where there is no room, and inside the screen, so no bar of Graphite's own is needed. The session's commands stay as they are (`arrangePicture`, `rotatePictureRight`, `cropPicture`, `removePicture`); only where a picture's commands are shown changes, on a pane's PDF and on a PDF embedded in a note. A text box keeps its bar (`PDFTextBoxArrangementBar`), and a drawing's pictures keep theirs (`DrawingEditor`); both can follow if the owner wants.
+
+- [ ] A floating menu over the selected picture replaces the bar at the bottom: Bring to Front, Send to Back, Arrange (Bring Forward, Send Backward, Ink to Front, Ink to Back), Rotate Right, Crop, Delete, with what would not move the picture dimmed. It shows when a tap selects the picture and again after each move, resize or turn; a tap on the selected picture shows or hides it; it hides while the picture is dragged and follows the picture as the page scrolls and zooms. A tap beside the picture ends arranging, as before.
+- [ ] Crop from the menu: the crop frame, with Crop and Cancel in the floating menu in place of the bar's.
+- [ ] Two fingers on the picture turn it (twist) and resize it (pinch), in proportion, and move it with the fingers, as one undo step per gesture, held straight or at a quarter turn when close, as the rotate handle is. The rotate handle and the corner handles stay.
+- [ ] VoiceOver: the menu's commands are actions of the selected image, as the bar's buttons were.
+- [ ] Tests: the two-finger geometry with plain values; hosted iPad tests of the menu's items and of a two-finger turn and pinch as one step; checked on an iPad simulator; the owner on their iPad.
