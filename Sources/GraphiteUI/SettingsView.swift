@@ -19,6 +19,7 @@ struct SettingsView: View {
     @Bindable var workspace: WorkspaceModel
     let manageVaults: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The page the person picked in this opening of Settings; nil until they pick one.
@@ -194,7 +195,12 @@ struct SettingsView: View {
 
     @ViewBuilder private func content(of page: SettingsPage) -> some View {
         switch page {
-        case .general: GeneralSettingsPage(workspace: workspace) { dismiss(); manageVaults() }
+        case .general:
+            // The Guide's own link, which reaches a window of notes on the Mac even when none is open.
+            GeneralSettingsPage(workspace: workspace, manageVaults: { dismiss(); manageVaults() }, openGuideVault: {
+                dismiss()
+                if let link = VaultURI.guideLink(to: nil, freshCopy: false) { openURL(link) }
+            })
         case .editor: EditorSettingsPage(workspace: workspace, preferences: workspace.preferences, vaultSettingsChanges: vaultSettingsChanges)
         case .filesAndLinks: FilesAndLinksSettingsPage(workspace: workspace, vaultSettingsChanges: vaultSettingsChanges)
         case .appearance: AppearanceSettingsPage(workspace: workspace, preferences: workspace.preferences, vaultSettingsChanges: vaultSettingsChanges)
@@ -226,6 +232,7 @@ struct SettingsView: View {
 private struct GeneralSettingsPage: View {
     @Bindable var workspace: WorkspaceModel
     let manageVaults: () -> Void
+    let openGuideVault: () -> Void
     @State private var showsWelcomeTour = false
     @State private var showsGuide = false
 
@@ -261,7 +268,7 @@ private struct GeneralSettingsPage: View {
                         .formFooterAlignment()
                 }
             }
-            AddOnsSettingsSection()
+            AddOnsSettingsSection(openGuideVault: openGuideVault)
             aboutSection
         }
         .navigationTitle("General")

@@ -61,6 +61,20 @@ final class SettingsPagesTests: XCTestCase {
                        "Every window and every opening of Settings shares one memory.")
     }
 
+    // MARK: Settings › General › Add-ons
+
+    func testTheGuideVaultOnceDownloadedOffersOpenAndDeleteAndOtherPacksOnlyDelete() {
+        XCTAssertEqual(AddOnPackAction.actions(for: .downloaded, canOpen: true), [.open, .delete])
+        XCTAssertEqual(AddOnPackAction.actions(for: .downloaded, canOpen: false), [.delete])
+        for canOpen in [true, false] {
+            XCTAssertEqual(AddOnPackAction.actions(for: .notDownloaded, canOpen: canOpen), [.download], "Nothing to open before the download.")
+            XCTAssertEqual(AddOnPackAction.actions(for: .failed(.noConnection), canOpen: canOpen), [.download])
+            XCTAssertEqual(AddOnPackAction.actions(for: .downloading, canOpen: canOpen), [.waitForDownload])
+            XCTAssertEqual(AddOnPackAction.actions(for: .checking, canOpen: canOpen), [.waitForDownload])
+            XCTAssertEqual(AddOnPackAction.actions(for: .includedWithApp, canOpen: canOpen), [], "A pack that came with Graphite cannot be deleted.")
+        }
+    }
+
     // MARK: HUNT-240, HUNT-248: wording that fits the screen
 
     func testTheAppearanceSectionNamesTheSwitchOnlyWhereItCanBeSeen() {
