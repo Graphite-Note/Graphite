@@ -2,12 +2,13 @@
  * File: PDFTextHighlighterHostedTests.swift
  * -----------------------------------------
  * Layer: Tests
- * Description: The fixed bar's text highlighter on a PDF page in the hosted app: a drag over the text marks it once
- *              in the chosen style as one undo step, a finger's long press marks it on lift, and no ink is drawn.
+ * Description: The fixed bar's text highlighter on a PDF page in the hosted app: a drag over the text, of a finger
+ *              where fingers draw or of touches typed as Apple Pencil's, marks it once in the chosen style as one undo
+ *              step, a finger's long press marks it on lift, and no ink is drawn.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -87,6 +88,50 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         XCTAssertNil(fixture.session.errorMessage)
     }
 
+    /// With finger drawing off, as on the owner's iPad, Apple Pencil dragged over the line with the text highlighter
+    /// chosen marks it once when it lifts, with no ink. The touches report the Pencil's type, so every recognizer that
+    /// filters by type (the page's scrolling, PDFKit's, PencilKit's, the tool's own) treats them as the screen's Pencil
+    /// touches: a finger's drag would scroll here instead.
+    func testAPencilDragWithTheTextHighlighterMarksTheTextOnce() async throws {
+        guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
+        let fixture = try await openTextPDF()
+        let canvas = try await canvasMarkingText(in: fixture)
+        XCTAssertNotEqual(canvas.drawingPolicy, .anyInput, "Fingers do not draw, so only the Pencil can mark by dragging.")
+
+        let (start, end) = try lineEnds(in: fixture)
+        await SynthesizedTouches(window: fixture.window, touchType: .pencil).drag(from: start, to: end, steps: 24, holdSeconds: 0.1)
+
+        try await waitUntil("the line is marked") { !self.marks(on: fixture.page).isEmpty }
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+        XCTAssertEqual(marks(on: fixture.page).count, 1, "One mark for one drag.")
+        XCTAssertTrue(canvas.drawing.strokes.isEmpty, "The drag drew no stroke.")
+        XCTAssertEqual(fixture.session.undoManager.undoActionName, PDFMarkupKind.highlight.title)
+        fixture.session.undoAvailability.undo()
+        try await waitUntil("one undo takes the mark away") { self.marks(on: fixture.page).isEmpty }
+    }
+
+    /// The Pencil rested on the first word before it moves, as a hand often does, still marks the line once: no long
+    /// press of PDFKit's, PencilKit's or the page's takes the touch from the tool while it is still.
+    func testAPencilHeldStillBeforeItsDragStillMarksTheTextOnce() async throws {
+        guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
+        let fixture = try await openTextPDF()
+        let canvas = try await canvasMarkingText(in: fixture)
+
+        let (start, end) = try lineEnds(in: fixture)
+        let touches = SynthesizedTouches(window: fixture.window, touchType: .pencil)
+        touches.begin(at: [start])
+        await touches.hold(seconds: 0.8)
+        await touches.slide(to: [end], steps: 24)
+        await touches.hold(seconds: 0.1)
+        touches.end()
+
+        try await waitUntil("the line is marked") { !self.marks(on: fixture.page).isEmpty }
+        try await SynthesizedStrokes.waitForPageToDraw(milliseconds: 300)
+        XCTAssertEqual(marks(on: fixture.page).count, 1, "One mark for one drag.")
+        XCTAssertTrue(canvas.drawing.strokes.isEmpty, "The drag drew no stroke.")
+        XCTAssertNil(fixture.pdfView.window?.rootViewController?.presentedViewController, "No menu or sheet opened.")
+    }
+
     /// With finger drawing off, fingers scroll; a finger's long press then drag selects the line, and with the text
     /// highlighter chosen lifting marks it in the style chosen, here Underline, instead of showing the menu.
     func testAFingersLongPressWithTheTextHighlighterMarksTheSelectionOnLift() async throws {
@@ -143,6 +188,7 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         HostedDevicePreferences.remove(forKey: PDFAnnotationPreferenceKey.textMarkColors)
         let fixture = try await openTextPDF()
         _ = try await canvasMarkingText(in: fixture)
+        try await waitForTheBarToSettle()
         // SwiftUI's buttons take no touches sent through UIKit's event path, so the "+" is pressed as VoiceOver does.
         try PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(true)
         defer { try? PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(false) } // Off again if the test stops early.
@@ -160,13 +206,18 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         var picker: UIColorPickerViewController?
         try await waitUntil("the colour picker is shown") {
             picker = fixture.window.rootViewController?.presentedViewController as? UIColorPickerViewController
-            return picker != nil
+            // Shown and done appearing: a tap outside a popover still appearing does not close it.
+            return picker != nil && picker?.isBeingPresented == false
         }
         let shownPicker = try XCTUnwrap(picker)
         let orange = UIColor(red: 1, green: 0.5, blue: 0, alpha: 1)
         shownPicker.delegate?.colorPickerViewController?(shownPicker, didSelect: orange, continuously: false)
-        shownPicker.delegate?.colorPickerViewControllerDidFinish?(shownPicker)
-        shownPicker.dismiss(animated: false)
+        // Closed as a person closes the popover, which has no close button: a tap outside it.
+        let outside = CGPoint(x: 40, y: fixture.window.bounds.maxY - 60)
+        let tap = SynthesizedTouches(window: fixture.window)
+        tap.begin(at: [outside])
+        await tap.hold(seconds: 0.05)
+        tap.end()
         try await waitUntil("the colour picker is gone") { fixture.window.rootViewController?.presentedViewController == nil }
 
         let pickedColor = PDFMarkupColor(platformColor: orange)
@@ -265,6 +316,18 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         await touches.slide(to: [end], steps: 24)
         await touches.hold(seconds: 0.1)
         touches.end()
+    }
+
+    /// Waits until the bar keeps its form for 600 ms: a regular width's sidebar slides in, and the bar beside it is
+    /// condensed until the slide ends, so a "+" found before then can leave the window as the bar changes form.
+    private func waitForTheBarToSettle() async throws {
+        var lastForm = String(describing: PencilToolRowForm.lastShown?.arrangement)
+        var sameSince = Date()
+        try await waitUntil("the bar's form settles") {
+            let form = String(describing: PencilToolRowForm.lastShown?.arrangement)
+            if form != lastForm { lastForm = form; sameSince = Date() }
+            return Date().timeIntervalSince(sameSince) >= 0.6
+        }
     }
 
     private func marks(on page: PDFPage) -> [PDFMarkup] {

@@ -7,8 +7,8 @@
  *              and the system colour picker that item opens.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -63,9 +63,11 @@ enum PDFMarkMenus {
 
 /// The system colour picker for a text mark's colour, presented over the PDF. It hands
 /// back one colour, when the picker is closed, so a mark changes once, as one step; the
-/// colour is then saved with the text-mark colours.
+/// colour is then saved with the text-mark colours. As a popover the picker has no close
+/// button and never reports finishing (`colorPickerViewControllerDidFinish` comes only from
+/// that button), so it is closed by a tap outside it, which its presentation reports.
 @MainActor
-final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate {
+final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     private let preferences: UserDefaults
     private var choose: ((PDFMarkupColor) -> Void)?
     private var pickedColor: PDFMarkupColor?
@@ -86,6 +88,7 @@ final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate {
         picker.modalPresentationStyle = .popover
         picker.popoverPresentationController?.sourceView = view
         picker.popoverPresentationController?.sourceRect = CGRect(origin: sourcePoint, size: .zero)
+        picker.presentationController?.delegate = self
         self.choose = choose
         pickedColor = nil
         presenter.present(picker, animated: true)
@@ -95,11 +98,25 @@ final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate {
         pickedColor = PDFMarkupColor(platformColor: color)
     }
 
+    /// The close button, shown when the popover becomes a sheet in a compact width.
     func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
-        defer { choose = nil }
-        guard let pickedColor, let choose else { return }
-        PDFTextMarkColors.save(pickedColor, in: preferences)
-        choose(pickedColor)
+        finish()
+    }
+
+    /// A tap outside the popover, or a sheet swiped down.
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        finish()
+    }
+
+    /// Saves the colour picked and hands it back, once; with no colour picked, nothing.
+    private func finish() {
+        let chosenColor = pickedColor
+        let chooseColor = choose
+        pickedColor = nil
+        choose = nil
+        guard let chosenColor, let chooseColor else { return }
+        PDFTextMarkColors.save(chosenColor, in: preferences)
+        chooseColor(chosenColor)
     }
 }
 #endif
