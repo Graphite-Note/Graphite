@@ -136,6 +136,12 @@ step_mac_suite() {
 
 step_mac_pass() {
   mkdir -p "$build_folder/release-pass-mac"
+  # The pass reuses the Mac suite's build; started here with --from, it builds first, or it would test the last build made
+  # in this folder, whatever the checkout holds now (seen 2026-11-17).
+  if [ "$first_step" = mac-pass ]; then
+    wait_for_other_builds
+    swift build --build-tests --scratch-path "$build_folder/swiftpm" > "$build_folder/mac-pass-build.log" 2>&1 || { report "  the build failed: $build_folder/mac-pass-build.log"; return 1; }
+  fi
   run_watched "$build_folder/mac-pass.log" env GRAPHITE_RELEASE_PASS=1 GRAPHITE_RELEASE_PASS_SCREENSHOTS="$build_folder/release-pass-mac" \
     swift test --skip-build --scratch-path "$build_folder/swiftpm" --filter ReleaseVaultPassTests
   local status=$?

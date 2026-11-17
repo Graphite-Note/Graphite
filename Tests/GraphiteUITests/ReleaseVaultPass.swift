@@ -15,6 +15,7 @@ import Foundation
 import SwiftUI
 import XCTest
 import GraphiteCore
+@testable import GraphiteApple
 #if canImport(GraphiteFixtures)
 import GraphiteFixtures
 #endif
@@ -187,12 +188,18 @@ final class ReleaseVaultPass {
     private func passFile(_ path: VaultPath) async throws {
         try await open(path)
         let isShown = switch DocumentKind(path: path) {
+        // A Graphite drawing saved as PDF opens as a drawing, as Drawings/Every tool.pdf does, not as a PDF to annotate.
         case .pdf: (workspace.pdfSession?.pageCount ?? 0) > 0
+            || (workspace.activeDocument.loadedPath == path && (try? path.url(in: vaultRoot)).map(isEditableDrawingPDF) == true)
         case .canvas: workspace.canvasSession != nil
         case .image, .base, .markdown, .media, .other: workspace.activeDocument.loadedPath == path
         }
         if !isShown { record(ReleaseVaultFinding(path: path.rawValue, shown: .ownView, problem: .notShown("its view did not open"))) }
         attachScreenshot(named: "\(path.rawValue) — \(ReleaseVaultFinding.Shown.ownView.rawValue)")
+    }
+
+    private func isEditableDrawingPDF(_ location: URL) -> Bool {
+        PDFDrawingFile.readMetadata(at: location).payload != nil
     }
 
     /// Opens only these notes, each as `run` opens a note of its part, for a test of one defect the pass found.
