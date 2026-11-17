@@ -6,7 +6,7 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.18
+ * Version: 0.19
  * Date: 17/11/2026
  */
 #if os(iOS)
@@ -55,7 +55,7 @@ final class InkSelectionTests: XCTestCase {
         else { UserDefaults.standard.removeObject(forKey: PDFAnnotationPreferenceKey.drawsShapes) }
     }
 
-    func testALoopTakesTheStrokesMostlyInsideItAndATapTakesTheStrokeUnderIt() async throws {
+    func testALoopTakesTheStrokesPartlyInsideItAndATapTakesTheStrokeUnderIt() async throws {
         let (session, canvas, page) = try await openPageWithCanvas()
         let upperStroke = stroke(from: CGPoint(x: 100, y: 100), to: CGPoint(x: 300, y: 100))
         let lowerStroke = stroke(from: CGPoint(x: 100, y: 200), to: CGPoint(x: 300, y: 200))
@@ -72,10 +72,13 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertLessThan(frame.maxY, 200)
         XCTAssertEqual(descendants(of: canvas, matching: SelectionFrameView.self).count, 1)
 
-        // A loop over the left third of both takes neither; one around everything takes both.
-        selection.selectContents(enclosedBy: loop(around: CGRect(x: 80, y: 80, width: 80, height: 140)))
+        // A loop reaching 10 points into both takes neither; one over their left third takes both
+        // (owner 2026-11-17: a loop around part of a stroke takes it), as does one around everything.
+        selection.selectContents(enclosedBy: loop(around: CGRect(x: 80, y: 80, width: 30, height: 140)))
         XCTAssertTrue(selection.selectedStrokeIndices.isEmpty)
         XCTAssertTrue(descendants(of: canvas, matching: SelectionFrameView.self).isEmpty)
+        selection.selectContents(enclosedBy: loop(around: CGRect(x: 80, y: 80, width: 80, height: 140)))
+        XCTAssertEqual(selection.selectedStrokeIndices, [0, 1])
         selection.selectContents(enclosedBy: loop(around: CGRect(x: 80, y: 80, width: 240, height: 140)))
         XCTAssertEqual(selection.selectedStrokeIndices, [0, 1])
 
@@ -88,7 +91,7 @@ final class InkSelectionTests: XCTestCase {
         // The menu offers the clipboard actions and the colors of Settings › Colors.
         selection.select([1])
         let menu = selection.selectionMenuElements(palette: [PaletteColor(name: "red", hex: "#e93147")])
-        XCTAssertEqual(menu.compactMap { element in (element as? UIAction)?.title }, ["Take Screenshot", "Cut", "Copy", "Duplicate", "Delete", "Smooth"])
+        XCTAssertEqual(menu.compactMap { element in (element as? UIAction)?.title }, ["Take Screenshot", "Delete", "Copy", "Cut", "Duplicate", "Smooth"])
         let colorMenu = try XCTUnwrap(menu.compactMap { element in element as? UIMenu }.first)
         XCTAssertEqual(colorMenu.children.map(\.title), ["black", "red"])
 
@@ -850,7 +853,7 @@ extension InkSelectionTests {
         XCTAssertEqual(selection.selectedStrokeIndices, [0])
         XCTAssertEqual(selection.selectedPictureIdentifiers, [picture.identifier])
         XCTAssertEqual(selection.selectionMenuElements(palette: []).compactMap { element in (element as? UIAction)?.title },
-                       ["Take Screenshot", "Copy", "Delete", "Smooth"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
+                       ["Take Screenshot", "Delete", "Copy", "Smooth"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
         let frameView = try XCTUnwrap(descendants(of: canvas, matching: SelectionFrameView.self).first)
         XCTAssertEqual(frameView.accessibilityLabel, "Selected ink and images")
         XCTAssertTrue(frameView.accessibilityCustomActions?.contains { action in action.name == "Take Screenshot" } ?? false)

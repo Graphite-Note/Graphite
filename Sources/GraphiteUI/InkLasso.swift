@@ -7,8 +7,8 @@
  *              or resized selection frame carries what it holds.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -24,12 +24,20 @@ import GraphiteCore
 enum InkLasso {
     // MARK: The rules, in one place to tune
 
-    /// A stroke is taken when at least this share of its length lies inside the closed loop:
-    /// a loop around half of a word takes the strokes it cuts through, as Goodnotes and Apple
-    /// Notes do, while a stroke the loop's edge only grazes (a few percent inside), or a long
-    /// line passing under a circled word, stays where it is. Owner, 2026-11-04: "if you lasso
-    /// a circle and not the entire item the item should be taken too"; it was 60 %.
-    static let minimumEnclosedStrokeFraction = 0.35
+    /// A stroke is taken when at least this share of its length lies inside the closed loop and
+    /// that part is at least `minimumEnclosedStrokeLength` long: a loop around the last third of
+    /// a long stroke, or around half of a word, takes the whole stroke, as Goodnotes does, while
+    /// a stroke the loop's edge only grazes (a few percent inside), or a long line passing under
+    /// a circled word, stays where it is. Owner, 2026-11-04: "if you lasso a circle and not the
+    /// entire item the item should be taken too" (it was 60 %, then 35 %); 2026-11-17, a loop
+    /// around a stroke's right third took nothing: "I had to select a lot of like the ink".
+    static let minimumEnclosedStrokeFraction = 0.15
+    /// The shortest part of a stroke, in the drawing's points, that takes it by
+    /// `minimumEnclosedStrokeFraction`: a loop that cuts a few points off a stroke's end is a graze.
+    static let minimumEnclosedStrokeLength: CGFloat = 12
+    /// A stroke with at least this share inside is taken however short it is: a dot, a short
+    /// letter, or a short stroke circled in part.
+    static let enclosedStrokeFractionTakingAnyStroke = 0.35
     /// A picture or a text box is taken when at least this share of its area lies inside the
     /// loop, or when the loop encloses its middle and also reaches past its edge. A loop drawn
     /// wholly on a picture, around writing on it, takes the picture only by this share.
@@ -122,9 +130,13 @@ enum InkLasso {
         return min(strokeSampleSpacing, pathLength / CGFloat(minimumStrokeSampleCount))
     }
 
-    /// Whether the loop takes a stroke tested at these points, evenly spaced along it.
+    /// Whether the loop takes a stroke tested at these points, evenly spaced along it:
+    /// `enclosedStrokeFractionTakingAnyStroke` of it inside, or `minimumEnclosedStrokeFraction`
+    /// of it making at least `minimumEnclosedStrokeLength` inside.
     static func takesStroke(sampledAt strokePoints: [CGPoint], inLoop loop: [CGPoint]) -> Bool {
-        enclosedFraction(of: strokePoints, inLoop: loop) >= minimumEnclosedStrokeFraction
+        let fraction = enclosedFraction(of: strokePoints, inLoop: loop)
+        if fraction >= enclosedStrokeFractionTakingAnyStroke { return true }
+        return fraction >= minimumEnclosedStrokeFraction && CGFloat(fraction) * length(of: strokePoints) >= minimumEnclosedStrokeLength
     }
 
     /// Whether the loop takes a picture or a text box filling `frame` before it is turned

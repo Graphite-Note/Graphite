@@ -6,8 +6,8 @@
  *              partly circled stroke or picture taken, a grazed one not, and how small a loop is a slip.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 import XCTest
 import CoreGraphics
@@ -51,8 +51,10 @@ final class InkLassoSelectionThresholdsTests: XCTestCase {
         }
     }
 
-    func testTheThresholdsAreAThirdOfAStrokeThirtyPercentOfAPictureAndTheSlipAndTapSizes() {
-        XCTAssertEqual(InkLasso.minimumEnclosedStrokeFraction, 0.35)
+    func testTheThresholdsAreASixthOfAStrokeThirtyPercentOfAPictureAndTheSlipAndTapSizes() {
+        XCTAssertEqual(InkLasso.minimumEnclosedStrokeFraction, 0.15)
+        XCTAssertEqual(InkLasso.minimumEnclosedStrokeLength, 12)
+        XCTAssertEqual(InkLasso.enclosedStrokeFractionTakingAnyStroke, 0.35)
         XCTAssertEqual(InkLasso.minimumEnclosedPictureFraction, 0.3)
         XCTAssertEqual(InkLasso.minimumLoopLength, 24)
         XCTAssertEqual(InkLasso.minimumLoopArea, 64)
@@ -112,11 +114,25 @@ final class InkLassoSelectionThresholdsTests: XCTestCase {
         XCTAssertEqual(InkLasso.enclosedFraction(of: stroke, inLoop: closedLoop), 1, "Even its right end, in the C's opening, is inside the closed loop.")
     }
 
-    func testAShareOfAStrokeFromAThirdIsTakenAndUnderItIsNot() {
-        // 26 samples along x from 0 to 100; the square covers x from 0 to 100.
+    func testAShareOfAStrokeFromASixthIsTakenAndUnderItIsNot() {
+        // Samples every 4 points along x from startX to startX + 100; the square covers x from 0 to 100.
         func stroke(startingAt startX: CGFloat) -> [CGPoint] { strokeSamples(along: line(from: CGPoint(x: startX, y: 50), to: CGPoint(x: startX + 100, y: 50))) }
-        XCTAssertTrue(InkLasso.takesStroke(sampledAt: stroke(startingAt: 60), inLoop: square), "40 % inside")
-        XCTAssertFalse(InkLasso.takesStroke(sampledAt: stroke(startingAt: 70), inLoop: square), "30 % inside")
+        XCTAssertTrue(InkLasso.takesStroke(sampledAt: stroke(startingAt: 70), inLoop: square), "30 % inside")
+        XCTAssertTrue(InkLasso.takesStroke(sampledAt: stroke(startingAt: 80), inLoop: square), "20 % inside")
+        XCTAssertFalse(InkLasso.takesStroke(sampledAt: stroke(startingAt: 90), inLoop: square), "10 % inside")
+    }
+
+    func testALoopAroundTheLastThirdOfALongZigzagTakesIt() {
+        // Owner, 2026-11-17: a stroke written as a zigzag 200 points wide, circled around its right third,
+        // was not taken. The loop is a circle about x 135 to 215.
+        let zigzag = stride(from: CGFloat(0), through: 200, by: 25).enumerated().map { index, x in
+            CGPoint(x: x, y: index.isMultiple(of: 2) ? 100 : 20)
+        }
+        let loop = InkLasso.closed(arc(center: CGPoint(x: 175, y: 60), radius: 40, fromDegrees: 0, toDegrees: 355))
+        let samples = strokeSamples(along: zigzag)
+        let fraction = InkLasso.enclosedFraction(of: samples, inLoop: loop)
+        XCTAssertLessThan(fraction, 0.35, "Under the rule of 35 % it was left.")
+        XCTAssertTrue(InkLasso.takesStroke(sampledAt: samples, inLoop: loop), "\(fraction) inside is taken.")
     }
 
     func testAPictureHalfInsideIsTakenAndOneWithACornerInsideIsNot() {

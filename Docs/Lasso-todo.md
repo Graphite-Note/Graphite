@@ -2,7 +2,7 @@
 
 Created: 2026-11-17.
 
-Status: planned and built 2026-11-17; section 1 done, section 2 built with the second tap on the bar not yet checked by hand, section 3 (the iPad) open. Issues: [#202](https://github.com/Graphite-Note/Graphite/issues/202) to [#204](https://github.com/Graphite-Note/Graphite/issues/204), one per section.
+Status: planned and built 2026-11-17; section 1 done, section 2 built with the second tap on the bar not yet checked by hand, section 3 (the iPad) open: the owner's first check found two things to fix, built the same day. Issues: [#202](https://github.com/Graphite-Note/Graphite/issues/202) to [#204](https://github.com/Graphite-Note/Graphite/issues/204), one per section.
 
 ## Request
 
@@ -24,7 +24,7 @@ The owner, 2026-11-17, with a screen recording of the lasso on a PDF page on the
 
 Issue: [#202](https://github.com/Graphite-Note/Graphite/issues/202)
 
-- [x] Take Screenshot is the first item of the selection's menu, then Cut, Copy, Duplicate, Color, Delete, Straighten and Smooth, so the compact bar shows the camera and the editing actions before it pages. Done 2026-11-17: `InkSelectionController.selectionMenuElements`; `LassoSelectionKindsHostedTests.testTheSelectionsMenuStartsWithTakeScreenshotThenCutCopyAndDuplicate`, `InkSelectionTests` (menu orders), passed in the iPad simulator. How the compact bar looks on the iPad is section 3.
+- [x] Take Screenshot is the first item of the selection's menu, then (as first built) Cut, Copy, Duplicate, Color, Delete, Straighten and Smooth; section 3 moves Color and Delete forward, so the compact bar shows the camera and the editing actions before it pages. Done 2026-11-17: `InkSelectionController.selectionMenuElements`; `LassoSelectionKindsHostedTests` (menu order), `InkSelectionTests` (menu orders), passed in the iPad simulator. How the compact bar looks on the iPad is section 3.
 
 ## 2. The Lasso panel and what the lasso takes
 
@@ -39,3 +39,8 @@ Issue: [#203](https://github.com/Graphite-Note/Graphite/issues/203)
 Issue: [#204](https://github.com/Graphite-Note/Graphite/issues/204)
 
 - [ ] The bar's order, the panel, and a loop with each kind off, checked in the iPad simulator and on the owner's iPad.
+
+The owner's check on their iPad, 2026-11-17 (a recording of a PDF page in a test vault): the bar's Freehand and Rectangle, Take Screenshot ("The screenshot is nice") and the bar starting with Take Screenshot passed; the panel opened by a second tap and a loop with Handwriting off were not shown. Two things to fix came out of it:
+
+- [ ] A loop around a smaller part of a stroke takes the whole stroke, as Goodnotes does: "when I selected like a bit of ink at some point, it didn't select all of it. I had to select a lot of like the ink to select it." A loop around the right third of a zigzag took nothing, since a stroke needed 35 % of its length inside. Built 2026-11-17: `InkLasso.takesStroke(sampledAt:inLoop:)` takes a stroke with 15 % of its length inside when that part is at least 12 points long, or with 35 % inside however short (a dot, a short letter); a loop cutting a few points off a stroke's end is still a graze. Tests: `InkLassoSelectionThresholdsTests.testALoopAroundTheLastThirdOfALongZigzagTakesIt`, `testAShareOfAStrokeFromASixthIsTakenAndUnderItIsNot`, `testALoopTouchingAStrokesEndByAHairDoesNotTakeIt`, `InkLassoTests`, and the hosted `LassoClosingHostedTests` (a grazed line stays). Not yet checked on the owner's iPad.
+- [ ] Color and Delete are in the compact bar, not behind its ">": "a lot of the useful stuff is not visible at shorthand. Like, why do I have Ask Siri and I have to click on it, click on the arrow, then on Color". The bar showed Take Screenshot, Cut, Copy, Duplicate and iOS's Ask Siri, which iOS adds after an app's own items. Built 2026-11-17: the menu is Take Screenshot, Color, Delete, Copy, Cut, Duplicate, Straighten, Smooth (`InkSelectionController.selectionMenuElements`); `LassoSelectionKindsHostedTests.testTheSelectionsMenuStartsWithTakeScreenshotColorAndDelete`, `InkSelectionTests`. Ask Siri stays: UIKit adds it to an edit menu after the delegate's menu, and has no public way to leave it out. Not yet checked on the owner's iPad.

@@ -6,8 +6,8 @@
  *              picture inside it, the frame's transform, and the lasso's remembered type.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 import XCTest
 import CoreGraphics
@@ -35,13 +35,16 @@ final class InkLassoTests: XCTestCase {
         XCTAssertFalse(InkLasso.isPoint(CGPoint(x: 5, y: 0), insideLoop: [CGPoint(x: 0, y: 0), CGPoint(x: 10, y: 0)]))
     }
 
-    func testAStrokeIsTakenWhenAThirdOrMoreOfItIsInside() {
+    func testAStrokeIsTakenWhenASixthOrMoreOfItIsInside() {
         let strokeAcrossTheEdge = (0..<10).map { pointIndex in CGPoint(x: 55 + Double(pointIndex) * 10, y: 50) }
         XCTAssertEqual(InkLasso.enclosedFraction(of: strokeAcrossTheEdge, inLoop: square), 0.5)
         XCTAssertTrue(InkLasso.takesStroke(sampledAt: strokeAcrossTheEdge, inLoop: square), "Half inside is selected.")
-        let strokeGrazed = (0..<10).map { pointIndex in CGPoint(x: 85 + Double(pointIndex) * 10, y: 50) }
-        XCTAssertEqual(InkLasso.enclosedFraction(of: strokeGrazed, inLoop: square), 0.2)
-        XCTAssertFalse(InkLasso.takesStroke(sampledAt: strokeGrazed, inLoop: square), "A fifth inside is not.")
+        let strokeAFifthInside = (0..<10).map { pointIndex in CGPoint(x: 85 + Double(pointIndex) * 10, y: 50) }
+        XCTAssertEqual(InkLasso.enclosedFraction(of: strokeAFifthInside, inLoop: square), 0.2)
+        XCTAssertTrue(InkLasso.takesStroke(sampledAt: strokeAFifthInside, inLoop: square), "A fifth inside, 18 points of it, is selected.")
+        let strokeGrazed = (0..<10).map { pointIndex in CGPoint(x: 95 + Double(pointIndex) * 10, y: 50) }
+        XCTAssertEqual(InkLasso.enclosedFraction(of: strokeGrazed, inLoop: square), 0.1)
+        XCTAssertFalse(InkLasso.takesStroke(sampledAt: strokeGrazed, inLoop: square), "A tenth inside is not.")
         XCTAssertEqual(InkLasso.enclosedFraction(of: [], inLoop: square), 0)
         XCTAssertEqual(InkLasso.length(of: square), 300)
         XCTAssertEqual(InkLasso.length(of: [CGPoint(x: 3, y: 4)]), 0)

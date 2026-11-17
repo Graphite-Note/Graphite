@@ -6,7 +6,7 @@
  *              Graphite's own tools; the lasso's geometry and rules are `InkLasso`.
  *
  * Authors: Bahey Shalash
- * Version: 0.15
+ * Version: 0.16
  * Date: 17/11/2026
  */
 import Foundation
@@ -946,22 +946,15 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         UIAction(title: "Take Screenshot", image: UIImage(systemName: "camera.viewfinder")) { [weak self] _ in self?.takeScreenshot() }
     }
 
-    /// Take Screenshot first, where the compact bar always shows it (Docs/Lasso-todo.md
-    /// section 1), then Cut, Copy, Duplicate, the colors of Settings › Colors, Delete, and
-    /// last Straighten (for a line of writing that runs uphill or downhill) and Smooth. With
-    /// pictures selected, Cut and Duplicate are not offered: Graphite pastes ink, not
-    /// pictures, and Copy puts a picture of the whole selection on the pasteboard.
+    /// Take Screenshot first, then the colors of Settings › Colors and Delete, so the compact bar
+    /// shows them before iOS's own Ask Siri, which it adds after the menu's items (Docs/Lasso-todo.md
+    /// section 3); then Copy, Cut, Duplicate, and last Straighten (for a line of writing that runs
+    /// uphill or downhill) and Smooth. With pictures selected, Cut and Duplicate are not offered:
+    /// Graphite pastes ink, not pictures, and Copy puts a picture of the whole selection on the pasteboard.
     func selectionMenuElements(palette: [PaletteColor] = GraphitePreferences.storedColorPalette()) -> [UIMenuElement] {
         let hasInk = !selectedStrokeIndices.isEmpty
         let hasPictures = !selectedPictureIdentifiers.isEmpty
         var elements: [UIMenuElement] = [takeScreenshotAction]
-        if !hasPictures {
-            elements.append(UIAction(title: "Cut", image: UIImage(systemName: "scissors")) { [weak self] _ in self?.cutSelection() })
-        }
-        elements.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in self?.copySelection() })
-        if !hasPictures {
-            elements.append(UIAction(title: "Duplicate", image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in self?.duplicateSelection() })
-        }
         if hasInk {
             let colors = [PaletteColor(name: "black", hex: PencilInk.pen.defaultColorHex)] + palette
             let swatches = colors.compactMap { favorite -> UIAction? in
@@ -972,6 +965,11 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             elements.append(UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), options: .displayAsPalette, children: swatches))
         }
         elements.append(UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in self?.deleteSelection() })
+        elements.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in self?.copySelection() })
+        if !hasPictures {
+            elements.append(UIAction(title: "Cut", image: UIImage(systemName: "scissors")) { [weak self] _ in self?.cutSelection() })
+            elements.append(UIAction(title: "Duplicate", image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in self?.duplicateSelection() })
+        }
         if hasInk, selectionSlant != nil {
             elements.append(UIAction(title: "Straighten", image: UIImage(systemName: "level")) { [weak self] _ in self?.straightenSelection() })
         }
