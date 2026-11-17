@@ -6,8 +6,8 @@
  *              the toolbar with its More commands in the system's overflow menu.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.34
- * Date: 16/11/2026
+ * Version: 0.35
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -732,6 +732,13 @@ final class PDFPageCommands {
         Task {
             do { try await session.importPages(from: sourceLocation, at: insertionIndex) }
             catch { session.errorMessage.report(error) }
+        }
+    }
+
+    /// Inserts the pages of PDFs dropped onto the page list (`PDFPageListDropDelegate`).
+    func insertDroppedPDFs(_ droppedPDFs: [Data], at insertionIndex: Int) {
+        changingPageStructure { [session] in
+            perform(session) { try session.insertDroppedPDFs(droppedPDFs, at: insertionIndex) }
         }
     }
 

@@ -2,11 +2,12 @@
  * File: PDFPagesSidebar.swift
  * ---------------------------
  * Layer: UI
- * Description: The page thumbnails and outline of a PDF, with page selection and page commands.
+ * Description: The page thumbnails and outline of a PDF, with page selection and page commands, and PDFs dropped
+ *              between the pages.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 04/11/2026
+ * Version: 0.12
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -19,6 +20,8 @@ struct PDFPagesSidebar: View {
     private enum Content: Hashable { case pages, outline }
     private static let thumbnailSize = CGSize(width: 150, height: 200)
     private static let dragPreviewSize = CGSize(width: 75, height: 100)
+    /// The page list's own coordinates, in which a drop's pointer and the rows' frames are compared.
+    private static let pageListSpace = "PDFPagesSidebar.pageList"
 
     @Bindable var session: PDFSession
     let commands: PDFPageCommands
@@ -28,6 +31,9 @@ struct PDFPagesSidebar: View {
     @State private var content = Content.pages
     @State private var isSelecting = false
     @State private var selectedPages = PDFPageSelection()
+    @State private var pageListDrop = PDFPageListDropTargeting()
+    /// The list's visible height, so a drop below the last page, in the list's empty space, still lands on the list.
+    @State private var pageListHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -69,10 +75,24 @@ struct PDFPagesSidebar: View {
                                 }
                                 .padding(8)
                             }
+                            // In the list's own coordinates, which scrolling does not change.
+                            .onGeometryChange(for: CGRect.self) { geometry in geometry.frame(in: .named(Self.pageListSpace)) } action: { frame in
+                                pageListDrop.rowFrames[pageIndex] = frame
+                            }
+                            .onDisappear { pageListDrop.rowFrames[pageIndex] = nil }
                         }
                     }
                     .padding(.vertical, 8)
+                    // A PDF dropped onto the list, also below the last page, inserts its pages where it is let go, and a
+                    // page dragged within the list moves there (`PDFPageListDropDelegate`).
+                    .frame(maxWidth: .infinity, minHeight: pageListHeight, alignment: .top)
+                    .contentShape(Rectangle())
+                    .overlay(alignment: .top) { PDFPageInsertionLine(targeting: pageListDrop) }
+                    .onDrop(of: PDFPageListDropReader.acceptedTypes,
+                            delegate: PDFPageListDropDelegate(session: session, commands: commands, targeting: pageListDrop))
+                    .coordinateSpace(.named(Self.pageListSpace))
                 }
+                .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in pageListHeight = height }
                 // Follows the page in view from a view of its own: read here, each page turned
                 // rebuilt every row of the list.
                 .background { PDFCurrentPageFollower(session: session, scrollProxy: scrollProxy) }
@@ -128,12 +148,6 @@ struct PDFPagesSidebar: View {
             PDFSessionPageThumbnail(session: session, page: page, renderer: renderer, size: Self.thumbnailSize)
                 .scaleEffect(Self.dragPreviewSize.width / Self.thumbnailSize.width)
                 .frame(width: Self.dragPreviewSize.width, height: Self.dragPreviewSize.height)
-        }
-        .dropDestination(for: PDFPageDragItem.self) { droppedItems, _ in
-            guard !session.isProtected, let droppedItem = droppedItems.first, droppedItem.sessionIdentifier == session.identifier,
-                  droppedItem.pageIndex != pageIndex else { return false }
-            commands.move(page: droppedItem.pageIndex, to: pageIndex)
-            return true
         }
     }
 
@@ -335,9 +349,9 @@ private struct PDFSessionPageThumbnail: View {
     }
 }
 
-/// A page dragged within the sidebar to reorder it. The index means something only in the
-/// PDF it came from, so the payload names that session and has a type of its own, which
-/// other apps and other drop targets do not accept.
+/// A page dragged within the sidebar to reorder it, let go where the list's line shows (`PDFPageListDropDelegate`). The
+/// index means something only in the PDF it came from, so the payload names that session and has a type of its own,
+/// which other apps and other drop targets do not accept.
 struct PDFPageDragItem: Codable, Transferable {
     let sessionIdentifier: UUID
     let pageIndex: Int

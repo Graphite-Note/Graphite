@@ -4,10 +4,11 @@
  * Layer: Tests
  * Description: Pictures dragged onto a page of a PDF in Graphite's own window inside the running Mac app: a picture file
  *              as the Finder's drag carries it, a PDF file, and image data, each told to the window's views as AppKit
- *              tells a drag destination, with the toolbar's Undo pressed by mouse events and pictures of each step.
+ *              tells a drag destination, with the toolbar's Undo pressed by mouse events and pictures of each step; and
+ *              a PDF from the Finder dropped between, after and before the pages of the sidebar's page list.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 17/11/2026
  */
 
@@ -117,6 +118,199 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
         try await assertSavedFileHasStamps(1, of: session, named: "after the image data drop")
     }
 
+    /// Docs/PDF-annotation-todo.md section 1: a PDF dropped onto the sidebar's page list inserts its pages where it is let
+    /// go, with a line showing where while it is held, as one undo step. The rows are found in a picture of the window
+    /// (the white of the page thumbnails), as a person finds them.
+    func testAPDFDroppedOntoThePageListInTheRunningApp() async throws {
+        guard let outputPath = ProcessInfo.processInfo.environment[Self.switchVariable] else { return }
+        let folder = URL(fileURLWithPath: outputPath, isDirectory: true).appendingPathComponent("page list", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        outputFolder = folder
+        let opened = try await openWorksheet(pageCount: 2)
+        let window = opened.window
+        try await settle(window)
+        let session = try XCTUnwrap(opened.workspace.pdfSession)
+        openedSession = session
+        session.undoManager.groupsByEvent = false
+        let pdfView = try XCTUnwrap(ReleaseVaultViews.descendants(of: try XCTUnwrap(window.contentView), ofType: GraphiteMacPDFView.self).first)
+        // The page list, 210 points wide with a divider of one point, slides in where the PDF view started.
+        let sidebarMinX = pdfView.convert(pdfView.bounds, to: nil).minX
+        try await click(atWindowPoint: try toolbarItemPoint(labelled: "Show Pages", share: 0.5, in: window), in: window)
+        try await waitUntil("the page list slid in", timeoutSeconds: 5) { pdfView.convert(pdfView.bounds, to: nil).minX >= sidebarMinX + 210 }
+        try await settle(window)
+        let thumbnailColumnX = sidebarMinX + 38
+        let lineColumnX = sidebarMinX + 105
+        // Left of the thumbnails and of the tint behind the row in view, where the line still runs, and away from the
+        // row's page number, which is in the accent for the page in view.
+        let lineProbeX = sidebarMinX + 18
+        var rows = try await thumbnailRows(count: 2, atX: thumbnailColumnX, in: window)
+        try note("sidebar from x \(sidebarMinX), thumbnails from the window's top \(rows)")
+        try writePicture("page list shown", of: window)
+
+        // 1. Between the two pages, from the Finder: the line shows in the gap while the drag is held. The page list
+        // reads the Finder's addresses from the drag pasteboard, so it is written there, as the Finder writes it.
+        let finderPasteboard = finderDragPasteboard(carrying: opened.otherPDFFile)
+        let gapFromTop = (rows[0].upperBound + rows[1].lowerBound) / 2
+        try noteViews(atX: lineColumnX, fromTop: gapFromTop, in: window, carrying: finderPasteboard)
+        let pageListDestination = try pageListDropDestination(in: window, sidebarMinX: sidebarMinX)
+        // The line is drawn halfway between the rows, whose padding reaches past the thumbnails: looked for down the
+        // whole space between the thumbnails.
+        let gapSpan = rows[0].upperBound...rows[1].lowerBound
+        let tintedBefore = try tintedRows(atX: lineProbeX, within: gapSpan, in: window)
+        try await dropOnPageList(finderPasteboard, to: pageListDestination, atX: lineColumnX, fromTop: gapFromTop, in: window, named: "between the pages") {
+            let tintedWhileHeld = try tintedRows(atX: lineProbeX, within: gapSpan, in: window)
+            try note("tinted rows between the thumbnails before the drag \(tintedBefore), while it is held \(tintedWhileHeld)")
+            XCTAssertTrue(tintedBefore.isEmpty, "no line before the drag")
+            XCTAssertFalse(tintedWhileHeld.isEmpty, "the insertion line shows between the pages while the drag is held")
+            try writePicture("held between the pages", of: window)
+        } until: { session.pageCount == 3 }
+        XCTAssertEqual(pageTitles(of: session), ["Worksheet", "Handout", "Worksheet, page 2"])
+        XCTAssertEqual(session.currentPageIndex, 1, "the inserted page is shown")
+        XCTAssertEqual(session.undoManager.undoActionName, "Insert PDF")
+        try writePicture("pdf inserted between the pages", of: window)
+        try await click(atWindowPoint: try toolbarItemPoint(labelled: "Undo", share: 0.25, in: window), in: window)
+        XCTAssertEqual(pageTitles(of: session), ["Worksheet", "Worksheet, page 2"], "one Undo took the inserted page out")
+        try writePicture("insertion undone", of: window)
+
+        // 2. A picture file is not taken: no line, nothing inserted.
+        let picturePasteboard = finderDragPasteboard(carrying: opened.pictureFile)
+        let pictureOutcome = try await dropOnPageList(picturePasteboard, to: pageListDestination, atX: lineColumnX, fromTop: gapFromTop, in: window, named: "a picture file") {
+            XCTAssertTrue(try tintedRows(atX: lineProbeX, within: gapSpan, in: window).isEmpty, "no line for a picture")
+        } until: { true }
+        XCTAssertFalse(pictureOutcome.wasTaken, "the page list does not take a picture")
+        XCTAssertEqual(session.pageCount, 2)
+
+        // 3. In the empty space below the last page, then 4. above the first page.
+        _ = finderDragPasteboard(carrying: opened.otherPDFFile)
+        rows = try await thumbnailRows(count: 2, atX: thumbnailColumnX, in: window)
+        try await dropOnPageList(finderPasteboard, to: pageListDestination, atX: lineColumnX, fromTop: rows[1].upperBound + 80, in: window, named: "below the last page") {
+            try writePicture("held below the last page", of: window)
+        } until: { session.pageCount == 3 }
+        XCTAssertEqual(pageTitles(of: session), ["Worksheet", "Worksheet, page 2", "Handout"])
+        rows = try await thumbnailRows(count: 2, atX: thumbnailColumnX, in: window)
+        try await dropOnPageList(finderPasteboard, to: pageListDestination, atX: lineColumnX, fromTop: rows[0].lowerBound + 20, in: window, named: "on the first page's top half") {
+            try writePicture("held over the first page's top half", of: window)
+        } until: { session.pageCount == 4 }
+        XCTAssertEqual(pageTitles(of: session), ["Handout", "Worksheet", "Worksheet, page 2", "Handout"])
+        try writePicture("pdf inserted after the last and before the first page", of: window)
+        try await session.save()
+        let saved = try XCTUnwrap(PDFDocument(url: session.location))
+        XCTAssertEqual(saved.pageCount, 4, "the saved file has the inserted pages")
+        try Data(contentsOf: session.location).write(to: folder.appendingPathComponent("Worksheet with inserted pages.pdf"))
+    }
+
+    /// The page list's own drop destination: SwiftUI lays a view of its own over each drop destination, and the list's
+    /// is the one as wide as the sidebar (each row has one of its own, for pages dragged to reorder them).
+    private func pageListDropDestination(in window: NSWindow, sidebarMinX: CGFloat) throws -> NSView {
+        let destinations = ReleaseVaultViews.descendants(of: try XCTUnwrap(window.contentView), ofType: NSView.self).filter { view in
+            let frame = view.convert(view.bounds, to: nil)
+            return !view.registeredDraggedTypes.isEmpty && abs(frame.minX - sidebarMinX) < 2 && abs(frame.width - 210) < 2 && frame.height > 300
+        }
+        try note("the page list's drop destinations: \(destinations.map { view in "\(type(of: view)) \(view.convert(view.bounds, to: nil))" })")
+        return try XCTUnwrap(destinations.last, "the page list's drop destination")
+    }
+
+    /// The views under a point, from the deepest up, with the drag types each registered, and the pasteboard's types.
+    private func noteViews(atX x: CGFloat, fromTop: CGFloat, in window: NSWindow, carrying pasteboard: NSPasteboard) throws {
+        let point = CGPoint(x: x, y: window.frame.height - fromTop)
+        var view = window.contentView?.superview?.hitTest(point)
+        var chain: [String] = []
+        while let current = view {
+            chain.append("\(type(of: current)) \(current.registeredDraggedTypes.map(\.rawValue))")
+            view = current.superview
+        }
+        try note("pasteboard types \(pasteboard.types?.map(\.rawValue) ?? []); views under the point: \(chain.joined(separator: " < "))")
+        let registered = ReleaseVaultViews.descendants(of: try XCTUnwrap(window.contentView), ofType: NSView.self).filter { view in !view.registeredDraggedTypes.isEmpty }
+        try note("views registered for drags: \(registered.map { view in "\(type(of: view)) \(view.convert(view.bounds, to: nil)) \(view.registeredDraggedTypes.map(\.rawValue))" })")
+    }
+
+    /// The system's drag pasteboard, written as the Finder writes it for a drag of `file`; overwritten by the next drag.
+    private func finderDragPasteboard(carrying file: URL) -> NSPasteboard {
+        let pasteboard = NSPasteboard(name: .drag)
+        pasteboard.clearContents()
+        pasteboard.writeObjects([file as NSURL])
+        return pasteboard
+    }
+
+    /// The titles of the pages, in order: the first line of each page's text.
+    private func pageTitles(of session: PDFSession) -> [String] {
+        (0..<session.document.pageCount).map { pageIndex in
+            session.document.page(at: pageIndex)?.string?.components(separatedBy: .newlines).first?.trimmingCharacters(in: .whitespaces) ?? ""
+        }
+    }
+
+    /// A drag that comes down the page list to a point `fromTop` points below the window's top, is held there while
+    /// `whileHeld` looks, and lets go, as one action; waits until `isDone`, since the drop reads its files first.
+    @discardableResult
+    private func dropOnPageList(_ pasteboard: NSPasteboard, to destination: NSView, atX x: CGFloat, fromTop: CGFloat, in window: NSWindow, named name: String,
+                                whileHeld: () async throws -> Void, until isDone: @escaping () -> Bool) async throws -> PasteboardDrag.Outcome {
+        let height = window.frame.height
+        let dropPoint = CGPoint(x: x, y: height - fromTop)
+        let path = (0...6).map { step in CGPoint(x: x, y: dropPoint.y + 60 - Double(step) * 10) }
+        let drag = PasteboardDrag(pasteboard: pasteboard, window: window, destination: destination)
+        try note("\(name): told to \(type(of: destination)) at \(destination.convert(destination.bounds, to: nil))")
+        var outcome = PasteboardDrag.Outcome()
+        try await asOneAction {
+            let hover = drag.hover(through: path)
+            try await settle(window)
+            try await whileHeld()
+            outcome = drag.letGo(hover)
+            try await waitUntil("the drop is done", timeoutSeconds: 10, isDone)
+            try await settle(window)
+        }
+        try note("\(name), let go \(Int(fromTop)) points from the top: \(describe(outcome))")
+        return outcome
+    }
+
+    /// The thumbnails' extents from the window's top, found in a picture of the window as runs of the pages' white down
+    /// a column; waits until `count` of them are drawn.
+    private func thumbnailRows(count: Int, atX x: CGFloat, in window: NSWindow) async throws -> [ClosedRange<CGFloat>] {
+        var rows: [ClosedRange<CGFloat>] = []
+        try await waitUntil("\(count) thumbnails are drawn", timeoutSeconds: 15) {
+            rows = (try? self.whiteRuns(atX: x, in: window)) ?? []
+            return rows.count >= count
+        }
+        return rows
+    }
+
+    private func whiteRuns(atX x: CGFloat, in window: NSWindow) throws -> [ClosedRange<CGFloat>] {
+        let picture = try windowPicture(of: window)
+        var runs: [ClosedRange<CGFloat>] = []
+        var runStart: Int?
+        for row in 60..<picture.pixelsHigh {
+            let isWhite = picture.colorAt(x: Int(x), y: row).map { color in Self.isPageWhite(color) } ?? false
+            if isWhite, runStart == nil { runStart = row }
+            if !isWhite, let start = runStart {
+                if row - start >= 60 { runs.append(CGFloat(start)...CGFloat(row - 1)) }
+                runStart = nil
+            }
+        }
+        return runs
+    }
+
+    private func windowPicture(of window: NSWindow) throws -> NSBitmapImageRep {
+        try XCTUnwrap(NSBitmapImageRep(data: try XCTUnwrap(ReleaseVaultWindow.screenshot(of: window))))
+    }
+
+    /// The rows of the window's picture, from its top, where a column is the accent's colour.
+    private func tintedRows(atX x: CGFloat, within span: ClosedRange<CGFloat>, in window: NSWindow) throws -> [Int] {
+        let picture = try windowPicture(of: window)
+        return (Int(span.lowerBound)...Int(span.upperBound)).filter { row in
+            picture.colorAt(x: Int(x), y: row)?.usingColorSpace(.deviceRGB).map(Self.isTinted) == true
+        }
+    }
+
+    private static func isPageWhite(_ color: NSColor) -> Bool {
+        guard let color = color.usingColorSpace(.deviceRGB) else { return false }
+        return color.redComponent > 0.985 && color.greenComponent > 0.985 && color.blueComponent > 0.985
+    }
+
+    /// The accent itself, not a grey of the list or the pale tint behind the row of the page in view.
+    private static func isTinted(_ color: NSColor) -> Bool {
+        let components = [color.redComponent, color.greenComponent, color.blueComponent]
+        return (components.max() ?? 0) - (components.min() ?? 0) > 0.35
+    }
+
     // MARK: Dragging
 
     /// A pasteboard of its own for one drag, written as the dragging app writes the drag's.
@@ -213,9 +407,9 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
         let pictureData: Data
     }
 
-    private func openWorksheet() async throws -> OpenedWorksheet {
+    private func openWorksheet(pageCount: Int = 1) async throws -> OpenedWorksheet {
         let vaultRoot = try TemporaryVault.make(prefix: "MacPictureDropsInApp", for: self).root
-        try Self.writeWorksheetPDF(to: vaultRoot.appendingPathComponent("Worksheet.pdf"), title: "Worksheet")
+        try Self.writeWorksheetPDF(to: vaultRoot.appendingPathComponent("Worksheet.pdf"), title: "Worksheet", pageCount: pageCount)
         try Data("# Notes\n".utf8).write(to: vaultRoot.appendingPathComponent("Notes.md"))
         let finderFolder = try TemporaryVault.make(prefix: "MacPictureDropsFinder", for: self).root
         let pictureData = try Self.diagramPNG()
@@ -233,18 +427,22 @@ final class MacPDFPictureDropInAppHostedTests: XCTestCase {
         return OpenedWorksheet(window: window, workspace: workspace, pictureFile: pictureFile, otherPDFFile: otherPDFFile, pictureData: pictureData)
     }
 
-    /// A one-page Letter PDF with a title and ruled lines, so a picture on it is easy to see.
-    private static func writeWorksheetPDF(to location: URL, title: String) throws {
+    /// A Letter PDF with a title and ruled lines on each page, so a picture on it is easy to see; pages after the first
+    /// say their number after the title.
+    private static func writeWorksheetPDF(to location: URL, title: String, pageCount: Int = 1) throws {
         var mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
         let context = try XCTUnwrap(CGContext(location as CFURL, mediaBox: &mediaBox, nil))
-        context.beginPDFPage(nil)
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
-        NSAttributedString(string: title, attributes: [.font: NSFont.boldSystemFont(ofSize: 28)]).draw(at: CGPoint(x: 72, y: 700))
-        NSColor(white: 0.75, alpha: 1).setFill()
-        for lineIndex in 0..<20 { CGRect(x: 72, y: 640 - Double(lineIndex) * 28, width: 468, height: 1).fill() }
-        NSGraphicsContext.restoreGraphicsState()
-        context.endPDFPage()
+        for pageIndex in 0..<pageCount {
+            context.beginPDFPage(nil)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: false)
+            let pageTitle = pageIndex == 0 ? title : "\(title), page \(pageIndex + 1)"
+            NSAttributedString(string: pageTitle, attributes: [.font: NSFont.boldSystemFont(ofSize: 28)]).draw(at: CGPoint(x: 72, y: 700))
+            NSColor(white: 0.75, alpha: 1).setFill()
+            for lineIndex in 0..<20 { CGRect(x: 72, y: 640 - Double(lineIndex) * 28, width: 468, height: 1).fill() }
+            NSGraphicsContext.restoreGraphicsState()
+            context.endPDFPage()
+        }
         context.closePDF()
     }
 
