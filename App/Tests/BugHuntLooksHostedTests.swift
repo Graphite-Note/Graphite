@@ -7,8 +7,8 @@
  *              stopping a scan being prepared, the locked PDF's prompt and the author written into a PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -184,14 +184,22 @@ final class BugHuntLooksHostedTests: SettingsHostedTestCase {
         try await requestLook(named: "Phone Show Pages sheet")
         // The sheet opens at half the screen's height with the first page in view; page 3 is a scroll below it.
         let sheetView = try XCTUnwrap(controller.presentedViewController?.view)
-        for pages in scrollViews(in: sheetView) where pages.contentSize.height > pages.bounds.height {
-            pages.setContentOffset(CGPoint(x: 0, y: min(pages.contentSize.height - pages.bounds.height, 2 * 240)), animated: false)
+        // The list keeps the page it was last scrolled to (`PDFCurrentPageFollower`, page 1) and, while the sheet settles,
+        // puts itself back there at its updates: an offset set once was undone within a second. It is set again at each look.
+        var pageThree: NSObject?
+        try await waitUntil("page 3 scrolled into view", timeoutSeconds: 10) {
+            pageThree = self.find(in: controller) { object in
+                object.accessibilityLabel == "Page 3" && sheetView.window.map { window in window.bounds.contains(CGPoint(x: object.accessibilityFrame.midX, y: object.accessibilityFrame.midY)) } == true
+            }
+            if pageThree != nil { return true }
+            for pages in self.scrollViews(in: sheetView) where pages.contentSize.height > pages.bounds.height {
+                pages.setContentOffset(CGPoint(x: 0, y: min(pages.contentSize.height - pages.bounds.height, 2 * 240)), animated: false)
+            }
+            return false
         }
-        let pageThree = try await element(in: controller, "page 3 scrolled into view") { object in
-            object.accessibilityLabel == "Page 3" && sheetView.window.map { window in window.bounds.contains(CGPoint(x: object.accessibilityFrame.midX, y: object.accessibilityFrame.midY)) } == true
-        }
+        let pageThreeElement = try XCTUnwrap(pageThree)
         try await requestLook(named: "Phone Show Pages sheet scrolled to page 3")
-        if !pageThree.accessibilityActivate(), let window { await tapAsAFinger(on: pageThree, in: window) }
+        if !pageThreeElement.accessibilityActivate(), let window { await tapAsAFinger(on: pageThreeElement, in: window) }
         try await waitUntil("choosing page 3 closes the sheet", timeoutSeconds: 10) { controller.presentedViewController == nil }
         try await waitUntil("the PDF is on page 3", timeoutSeconds: 10) { session.currentPageIndex == 2 }
         try await requestLook(named: "Phone PDF on page 3 after the sheet")

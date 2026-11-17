@@ -5,8 +5,8 @@
  * Description: The shape tool, pen presets, Pencil double-tap in notes, and drawing on images.
  *
  * Authors: Bahey Shalash
- * Version: 0.23
- * Date: 16/11/2026
+ * Version: 0.24
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -773,7 +773,10 @@ final class PencilToolsTests: XCTestCase {
         let shapesSwitch = try XCTUnwrap((elements[2] as? UIMenu)?.children.first as? UIAction)
         XCTAssertEqual(shapesSwitch.title, "Draw Shapes", "Draw Shapes comes right after the colors")
         XCTAssertEqual(shapesSwitch.state, .off)
-        XCTAssertEqual((elements[3] as? UIMenu)?.children.map(\.title), ["Select Ink", "Lasso Type"])
+        // Included in Selection: the Lasso panel's switches, as a submenu beside Lasso Type (Docs/Lasso-todo.md, item 5).
+        XCTAssertEqual((elements[3] as? UIMenu)?.children.map(\.title), ["Select Ink", "Lasso Type", "Included in Selection"])
+        let includedKinds = try XCTUnwrap((elements[3] as? UIMenu)?.children.last as? UIMenu)
+        XCTAssertFalse(includedKinds.children.isEmpty, "Each kind the lasso takes has its switch.")
         XCTAssertEqual((elements[4] as? UIMenu)?.children.map(\.title), ["Laser Pointer", "Laser Type"])
         // With a favorite color in use there is nothing to add, and Draw Shapes still follows the colors.
         PencilToolPalette.applyColor(try XCTUnwrap(UIColor(graphiteHex: "#e93147")), to: toolPicker)

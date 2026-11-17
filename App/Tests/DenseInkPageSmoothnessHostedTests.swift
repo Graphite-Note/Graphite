@@ -6,8 +6,8 @@
  *              takes a lasso's move within its frame budget, and its pages' ink stays hidden under their canvases.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -186,12 +186,16 @@ final class DenseInkPageSmoothnessHostedTests: XCTestCase {
     private static func seconds(_ interval: TimeInterval) -> String { String(format: "%.2f s", interval) }
 }
 
-/// Runs `step` at each frame of a display link until it returns false, recording the gap before each frame and the
-/// processor time the process spent meanwhile, on every thread (PDFKit and PencilKit draw away from the main thread).
+/// Runs `step` at each frame of a display link until it returns false, recording the gap before each frame, the
+/// processor time the main thread spent in it, and the processor time the process spent meanwhile, on every thread
+/// (PDFKit and PencilKit draw away from the main thread). A busy machine stretches a gap without the main thread
+/// working longer; the main thread's processor time is its own work.
 @MainActor
 final class FrameRecorder: NSObject {
     struct Recording {
         let gaps: [CFTimeInterval]
+        /// The main thread's processor time in each gap, in seconds.
+        let mainThreadWork: [Double]
         let processorSeconds: Double
         let wallSeconds: Double
 
@@ -212,8 +216,10 @@ final class FrameRecorder: NSObject {
     private var displayLink: CADisplayLink?
     private var previousTimestamp: CFTimeInterval?
     private var gaps: [CFTimeInterval] = []
+    private var mainThreadWork: [Double] = []
+    private var previousMainThreadSeconds: Double?
     private var frameIndex = 0
-    private var continuation: CheckedContinuation<[CFTimeInterval], Never>?
+    private var continuation: CheckedContinuation<Void, Never>?
 
     private init(step: @escaping (Int) -> Bool) {
         self.step = step
@@ -223,11 +229,12 @@ final class FrameRecorder: NSObject {
         let recorder = FrameRecorder(step: step)
         let processorStart = processorSeconds()
         let wallStart = Date()
-        let gaps = await recorder.run()
-        return Recording(gaps: gaps, processorSeconds: processorSeconds() - processorStart, wallSeconds: Date().timeIntervalSince(wallStart))
+        await recorder.run()
+        return Recording(gaps: recorder.gaps, mainThreadWork: recorder.mainThreadWork, processorSeconds: processorSeconds() - processorStart,
+                         wallSeconds: Date().timeIntervalSince(wallStart))
     }
 
-    private func run() async -> [CFTimeInterval] {
+    private func run() async {
         await withCheckedContinuation { continuation in
             self.continuation = continuation
             let displayLink = CADisplayLink(target: self, selector: #selector(frame(_:)))
@@ -237,15 +244,34 @@ final class FrameRecorder: NSObject {
     }
 
     @objc private func frame(_ link: CADisplayLink) {
-        if let previousTimestamp { gaps.append(link.timestamp - previousTimestamp) }
+        let mainThreadSeconds = Self.currentThreadProcessorSeconds()
+        if let previousTimestamp, let previousMainThreadSeconds {
+            gaps.append(link.timestamp - previousTimestamp)
+            mainThreadWork.append(mainThreadSeconds - previousMainThreadSeconds)
+        }
         previousTimestamp = link.timestamp
+        previousMainThreadSeconds = mainThreadSeconds
         let goesOn = step(frameIndex)
         frameIndex += 1
         guard !goesOn else { return }
         link.invalidate()
         displayLink = nil
-        continuation?.resume(returning: gaps)
+        continuation?.resume()
         continuation = nil
+    }
+
+    /// The processor time of the thread this runs on, user and system, in seconds.
+    private static func currentThreadProcessorSeconds() -> Double {
+        var information = thread_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<thread_basic_info>.size / MemoryLayout<integer_t>.size)
+        let thread = mach_thread_self()
+        defer { mach_port_deallocate(mach_task_self_, thread) }
+        let result = withUnsafeMutablePointer(to: &information) { pointer in
+            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { integers in thread_info(thread, thread_flavor_t(THREAD_BASIC_INFO), integers, &count) }
+        }
+        guard result == KERN_SUCCESS else { return 0 }
+        func seconds(_ time: time_value_t) -> Double { Double(time.seconds) + Double(time.microseconds) / 1_000_000 }
+        return seconds(information.user_time) + seconds(information.system_time)
     }
 
     /// The processor time of the whole process, user and system, in seconds.
