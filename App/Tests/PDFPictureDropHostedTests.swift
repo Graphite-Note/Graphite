@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Hosted iPad test of pictures dropped onto a PDF view in a window: the view takes drops, an image as
  *              Photos and Safari offer it and an image file of the vault as the sidebar offers it are placed where
- *              they landed, selected, as one step each; a PDF file and a protected PDF take none.
+ *              they landed, selected, as one step each; a PDF file and a protected PDF take none, and a PDF let go over
+ *              a page says why in the banner.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -129,6 +130,39 @@ final class PDFPictureDropHostedTests: XCTestCase {
         XCTAssertEqual(session.pictures(on: page).count, 1)
     }
 
+    /// The drop interaction's own methods, called as UIKit calls them: a drag of a PDF over a page is forbidden, which
+    /// UIKit never hands over as a drop, so letting go over the page says why in the banner; carried off the view
+    /// first, it says nothing. A picture's drag is a copy.
+    func testAPDFLetGoOverAPageSaysWhyInTheBanner() async throws {
+        let session = try await PDFSession.open(try makePDF(named: "Worksheet.pdf"))
+        let (window, view, drops) = try await show(session)
+        let interaction = try XCTUnwrap(drops.interaction)
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let overPage = view.convert(view.convert(CGPoint(x: 200, y: 300), from: page), to: window)
+        let pdfFile = provider(of: try Data(contentsOf: try makePDF(named: "Handout.pdf")), as: .pdf)
+
+        let dragOfPDF = TellingDropSession(providers: [pdfFile], windowPoint: overPage)
+        XCTAssertTrue(drops.dropInteraction(interaction, canHandle: dragOfPDF), "the drag of a PDF is followed, to say why at its end")
+        XCTAssertEqual(drops.dropInteraction(interaction, sessionDidUpdate: dragOfPDF).operation, .forbidden)
+        drops.dropInteraction(interaction, sessionDidEnd: dragOfPDF)
+        XCTAssertEqual(session.errorMessage, "A PDF can't be placed on a page as an image. Drop a picture, such as a PNG or JPEG.")
+        XCTAssertTrue(session.pictures(on: page).isEmpty)
+
+        session.errorMessage = nil
+        let carriedAway = TellingDropSession(providers: [pdfFile], windowPoint: overPage)
+        _ = drops.dropInteraction(interaction, sessionDidUpdate: carriedAway)
+        carriedAway.windowPoint = CGPoint(x: view.convert(view.bounds, to: window).maxX + 40, y: overPage.y)
+        _ = drops.dropInteraction(interaction, sessionDidUpdate: carriedAway)
+        drops.dropInteraction(interaction, sessionDidEnd: carriedAway)
+        XCTAssertNil(session.errorMessage, "let go off the view, the drag says nothing")
+
+        let dragOfPicture = TellingDropSession(providers: [imageProvider(try pngData())], windowPoint: overPage)
+        XCTAssertTrue(drops.dropInteraction(interaction, canHandle: dragOfPicture))
+        XCTAssertEqual(drops.dropInteraction(interaction, sessionDidUpdate: dragOfPicture).operation, .copy)
+        drops.dropInteraction(interaction, sessionDidEnd: dragOfPicture)
+        XCTAssertNil(session.errorMessage)
+    }
+
     func testAPasswordProtectedPDFTakesNoDrop() async throws {
         let location = try makePDF(named: "Encrypted.pdf", auxiliaryInfo: [kCGPDFContextOwnerPassword: "owner", kCGPDFContextUserPassword: ""] as CFDictionary)
         let session = try await PDFSession.open(location)
@@ -136,6 +170,8 @@ final class PDFPictureDropHostedTests: XCTestCase {
         let (_, view, drops) = try await show(session)
         let provider = imageProvider(try pngData())
         XCTAssertFalse(drops.takesDrop(of: [provider]))
+        let pdfFile = self.provider(of: try Data(contentsOf: try makePDF(named: "Handout.pdf")), as: .pdf)
+        XCTAssertFalse(drops.isRefusedWithReason([pdfFile]), "a protected PDF says nothing of a PDF dragged over it")
         let placedCount = await drops.placePictures(of: [provider], atViewPoint: CGPoint(x: view.bounds.midX, y: view.bounds.midY))
         XCTAssertEqual(placedCount, 0)
         XCTAssertTrue(session.pictures(on: try XCTUnwrap(session.document.page(at: 0))).isEmpty)
@@ -149,6 +185,41 @@ final class PDFPictureDropHostedTests: XCTestCase {
         coordinator.attach(to: view)
         defer { coordinator.detach() }
         XCTAssertNil(coordinator.pictureDrops)
+    }
+}
+
+/// A drag over a window as UIKit's drop session describes it to a drop interaction: its items and the touch's place.
+/// UIKit makes its own sessions only from a hand's drag, so a test gives this one in its place.
+@MainActor
+private final class TellingDropSession: NSObject, UIDropSession {
+    let items: [UIDragItem]
+    /// The touch, in the window's coordinates.
+    var windowPoint: CGPoint
+    var progressIndicatorStyle: UIDropSessionProgressIndicatorStyle = .none
+    let progress = Progress(totalUnitCount: 1)
+
+    init(providers: [NSItemProvider], windowPoint: CGPoint) {
+        items = providers.map(UIDragItem.init(itemProvider:))
+        self.windowPoint = windowPoint
+    }
+
+    func location(in view: UIView) -> CGPoint { view.convert(windowPoint, from: nil) }
+    var allowsMoveOperation: Bool { false }
+    var isRestrictedToDraggingApplication: Bool { false }
+    /// Another application's drag.
+    var localDragSession: (any UIDragSession)? { nil }
+
+    func hasItemsConforming(toTypeIdentifiers typeIdentifiers: [String]) -> Bool {
+        items.contains { item in typeIdentifiers.contains { identifier in item.itemProvider.hasItemConformingToTypeIdentifier(identifier) } }
+    }
+
+    func canLoadObjects(ofClass aClass: any NSItemProviderReading.Type) -> Bool {
+        items.contains { item in item.itemProvider.canLoadObject(ofClass: aClass) }
+    }
+
+    func loadObjects(ofClass aClass: any NSItemProviderReading.Type, completion: @escaping ([any NSItemProviderReading]) -> Void) -> Progress {
+        completion([])
+        return progress
     }
 }
 #endif

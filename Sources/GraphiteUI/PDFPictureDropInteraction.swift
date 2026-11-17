@@ -3,11 +3,12 @@
  * -------------------------------------
  * Layer: UI
  * Description: Takes pictures dropped onto the pages of an iPad PDF view (from Photos, Files, Safari or Graphite's
- *              own sidebar) and places each where it landed; a protected or signed PDF, and a PDF file, take none.
+ *              own sidebar) and places each where it landed; a protected or signed PDF takes none, and PDF files let go
+ *              over a page are refused with the reason in the banner.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -22,6 +23,8 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
     private let session: PDFSession
     private weak var pdfView: PDFView?
     private(set) var interaction: UIDropInteraction?
+    /// The drag's last place was a page and it carries PDF files alone.
+    private var refusedDragIsOverPage = false
 
     init(session: PDFSession, pdfView: PDFView) {
         self.session = session
@@ -40,6 +43,29 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
     /// Whether the PDF takes the dragged items: it can be changed, and one of them is a picture.
     func takesDrop(of providers: [NSItemProvider]) -> Bool {
         !session.isProtected && providers.contains { provider in PDFPictureDropReader.kind(of: provider) == .picture }
+    }
+
+    /// Whether a drag the PDF does not take is one a person expects to land, so letting go over
+    /// the page says why not in the banner: PDF files, onto a PDF that can be changed.
+    func isRefusedWithReason(_ providers: [NSItemProvider]) -> Bool {
+        !session.isProtected && !takesDrop(of: providers) && providers.contains { provider in PDFPictureDropReader.kind(of: provider) == .pdfDocument }
+    }
+
+    /// What the drop interaction answers for a drag at a point of the view: a copy for a picture
+    /// over a page; a forbidden drop for PDF files, which UIKit then never hands over, so the
+    /// end of the drag says why (`dragEnded`); nothing taken otherwise.
+    func operation(forDragOf providers: [NSItemProvider], atViewPoint viewPoint: CGPoint) -> UIDropOperation {
+        let isOverPage = pdfView?.page(for: viewPoint, nearest: true) != nil
+        refusedDragIsOverPage = isOverPage && isRefusedWithReason(providers)
+        return isOverPage && takesDrop(of: providers) ? .copy : .forbidden
+    }
+
+    /// The drag ended at a point of the view, dropped or not: PDF files let go over the page say
+    /// in the banner why they were not placed.
+    func dragEnded(atViewPoint viewPoint: CGPoint) {
+        defer { refusedDragIsOverPage = false }
+        guard refusedDragIsOverPage, let pdfView, pdfView.bounds.contains(viewPoint) else { return }
+        session.reportRefusedDrop(of: [.pdfDocument])
     }
 
     /// Reads the dropped items and places their pictures where they landed. Called when the
@@ -65,13 +91,18 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
     // MARK: UIDropInteractionDelegate
 
     func dropInteraction(_ interaction: UIDropInteraction, canHandle dropSession: any UIDropSession) -> Bool {
-        takesDrop(of: dropSession.items.map(\.itemProvider))
+        let providers = dropSession.items.map(\.itemProvider)
+        return takesDrop(of: providers) || isRefusedWithReason(providers)
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, sessionDidUpdate dropSession: any UIDropSession) -> UIDropProposal {
-        guard let pdfView, takesDrop(of: dropSession.items.map(\.itemProvider)),
-              pdfView.page(for: dropSession.location(in: pdfView), nearest: true) != nil else { return UIDropProposal(operation: .forbidden) }
-        return UIDropProposal(operation: .copy)
+        guard let pdfView else { return UIDropProposal(operation: .forbidden) }
+        return UIDropProposal(operation: operation(forDragOf: dropSession.items.map(\.itemProvider), atViewPoint: dropSession.location(in: pdfView)))
+    }
+
+    func dropInteraction(_ interaction: UIDropInteraction, sessionDidEnd dropSession: any UIDropSession) {
+        guard let pdfView else { return }
+        dragEnded(atViewPoint: dropSession.location(in: pdfView))
     }
 
     func dropInteraction(_ interaction: UIDropInteraction, performDrop dropSession: any UIDropSession) {
