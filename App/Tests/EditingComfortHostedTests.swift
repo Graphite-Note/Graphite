@@ -6,8 +6,8 @@
  *              fence that closes itself, and the other papercuts of Docs/Editing-comfort-todo.md.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -186,6 +186,36 @@ final class EditingComfortHostedTests: XCTestCase {
         editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
         editor.paste(nil)
         try await waitUntil("the Markdown") { session.text.contains("**Bold** and [a link](https://example.org)") }
+    }
+
+    /// A numbered item deleted or items pasted count the list again, through UIKit's own
+    /// delete and paste, and one Undo takes the edit and the numbers back.
+    func testDeletingOrPastingItemsCountsTheListAgain() async throws {
+        let (editor, session) = try await openNote("1. a\n2. b\n3. c\n4. d\n", viewMode: .livePreview)
+        try await startEditing(editor, at: 5)
+        editor.selectedRange = NSRange(location: 5, length: 5)
+        // The keyboard's Backspace asks the editor first; a programmatic deleteBackward does not.
+        if editor.delegate?.textView?(editor, shouldChangeTextIn: editor.selectedRange, replacementText: "") != false { editor.deleteBackward() }
+        try await waitUntil("the deletion") { session.text == "1. a\n2. c\n3. d\n" }
+        editor.undoManager?.undo()
+        try await waitUntil("the undo") { session.text == "1. a\n2. b\n3. c\n4. d\n" }
+        UIPasteboard.general.string = "1. x\n2. y\n"
+        editor.selectedRange = NSRange(location: 5, length: 0)
+        editor.paste(nil)
+        try await waitUntil("the paste") { session.text.contains("x") }
+        XCTAssertEqual(session.text, "1. a\n2. x\n3. y\n4. b\n5. c\n6. d\n")
+        attachScreenshot(named: "Pasted items counted into the list")
+    }
+
+    /// Return at the end of an item with children starts its first child, so the children
+    /// stay under their item, as in Obsidian.
+    func testReturnAtAnItemWithChildrenStartsItsFirstChild() async throws {
+        let (editor, session) = try await openNote("1. Plan\n\t1. Draft\n\t2. Review\n2. Ship\n", viewMode: .livePreview)
+        try await startEditing(editor, at: 7)
+        typeAsKeyboard("\nOutline", in: editor)
+        try await waitUntil("the first child") { session.text.contains("Outline") }
+        XCTAssertEqual(session.text, "1. Plan\n\t1. Outline\n\t2. Draft\n\t3. Review\n2. Ship\n")
+        attachScreenshot(named: "A new first child above the children")
     }
 
     /// The cursor stays where the typing is after a block it passed renders: a math block

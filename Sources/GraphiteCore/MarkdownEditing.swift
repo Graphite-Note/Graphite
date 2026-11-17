@@ -5,8 +5,8 @@
  * Description: Obsidian's editing commands on a note's text, each as one edit that leaves the rest unchanged.
  *
  * Authors: Bahey Shalash
- * Version: 1.0
- * Date: 16/11/2026
+ * Version: 1.1
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -115,17 +115,26 @@ public enum MarkdownEditing {
         // Past nine digits a number is no list marker, so the list ends there instead of
         // going on with an item that would not be one.
         if let number = listLine.orderedNumber, number >= 999_999_999 { return nil }
+        let lineBreak = lineBreakForNewLine(lineStart: lineStart, lineEnd: lineEnd, contentsEnd: contentsEnd, in: text)
+        if selection.length == 0, selection.location == contentsEnd,
+           let firstChild = continuingAsFirstChild(of: listLine, lineEnd: lineEnd, contentsEnd: contentsEnd, lineBreak: lineBreak,
+                                                   in: text, tabSize: tabSize) {
+            return firstChild
+        }
         var nextMarker = listLine.marker
         if let number = listLine.orderedNumber, let delimiter = listLine.marker.last { nextMarker = String(number + 1) + String(delimiter) }
-        let lineBreak = lineBreakForNewLine(lineStart: lineStart, lineEnd: lineEnd, contentsEnd: contentsEnd, in: text)
         let continuation = lineBreak + listLine.quotePrefix + listLine.indentation + nextMarker + listLine.spacing + (listLine.taskStatus.map { _ in "[ ] " } ?? "")
         let selectionAfter = NSRange(location: selection.location + continuation.utf16.count, length: 0)
+        // As in Obsidian, the spaces after the cursor go, so the new item's text follows its marker.
+        var restStart = NSMaxRange(selection)
+        while restStart < contentsEnd, [0x20, 0x09].contains(text.character(at: restStart)) { restStart += 1 }
+        let replacedRange = NSRange(location: selection.location, length: restStart - selection.location)
         guard let renumbering = renumberingItems(after: lineEnd, following: listLine, in: text, tabSize: tabSize) else {
-            return MarkdownTextEdit(range: selection, replacement: continuation, selectionAfter: selectionAfter)
+            return MarkdownTextEdit(range: replacedRange, replacement: continuation, selectionAfter: selectionAfter)
         }
         // One edit reaches from the cursor to the last renumbered item, so the new item and
         // the renumbering undo together.
-        let restOfLine = text.substring(with: NSRange(location: NSMaxRange(selection), length: lineEnd - NSMaxRange(selection)))
+        let restOfLine = text.substring(with: NSRange(location: restStart, length: lineEnd - restStart))
         return MarkdownTextEdit(range: NSRange(location: selection.location, length: renumbering.end - selection.location),
                                 replacement: continuation + restOfLine + renumbering.replacement, selectionAfter: selectionAfter)
     }

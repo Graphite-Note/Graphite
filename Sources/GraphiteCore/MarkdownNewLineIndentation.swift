@@ -2,11 +2,12 @@
  * File: MarkdownNewLineIndentation.swift
  * --------------------------------------
  * Layer: Core
- * Description: Return keeps the line's indentation, Shift-Return breaks an item's line without a new item, Backspace removes a level, as in Obsidian.
+ * Description: Return keeps the line's indentation, starts an item's first child above its children, Shift-Return breaks an item's line
+ *              without a new item, Backspace removes a level, as in Obsidian.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -76,5 +77,36 @@ extension MarkdownEditing {
         let deletedCount = remainder == 0 ? levelWidth : remainder
         let deletedRange = NSRange(location: selection.location - deletedCount, length: deletedCount)
         return MarkdownTextEdit(range: deletedRange, replacement: "", selectionAfter: NSRange(location: deletedRange.location, length: 0))
+    }
+
+    /// Return at the end of a list item whose next line is a child of it: the new item is
+    /// the item's first child, with the child's indentation, marker and checkbox, as
+    /// Obsidian makes it, and not a sibling that would take the children from it. The
+    /// child's level is numbered again in the same edit. Nil when no child follows.
+    static func continuingAsFirstChild(of item: MarkdownListSyntax.ListLine, lineEnd: Int, contentsEnd: Int, lineBreak: String,
+                                       in text: NSString, tabSize: Int) -> MarkdownTextEdit? {
+        guard item.isListItem, let child = firstChildItem(of: item, after: lineEnd, in: text, tabSize: tabSize) else { return nil }
+        let continuation = lineBreak + child.quotePrefix + child.indentation + child.marker + child.spacing + (child.taskStatus.map { _ in "[ ] " } ?? "")
+        let edit = MarkdownTextEdit(range: NSRange(location: contentsEnd, length: 0), replacement: continuation,
+                                    selectionAfter: NSRange(location: contentsEnd + continuation.utf16.count, length: 0))
+        return renumberingLists(after: edit, in: text, tabSize: tabSize)
+    }
+
+    /// The list item on the first line with text after `lineEnd`, when it is more indented
+    /// than `item` in the same quote.
+    private static func firstChildItem(of item: MarkdownListSyntax.ListLine, after lineEnd: Int, in text: NSString,
+                                       tabSize: Int) -> MarkdownListSyntax.ListLine? {
+        var location = lineEnd
+        while location < text.length {
+            let lineRange = text.lineRange(for: NSRange(location: location, length: 0))
+            location = NSMaxRange(lineRange)
+            guard let line = lineContents(in: text, range: lineRange).first?.content else { return nil }
+            if line.trimmingCharacters(in: .whitespaces).isEmpty { continue }
+            guard let child = MarkdownListSyntax.listLine(line), child.isListItem, !child.spacing.isEmpty,
+                  child.quotePrefix == item.quotePrefix,
+                  indentationWidth(child.indentation, tabSize: tabSize) > indentationWidth(item.indentation, tabSize: tabSize) else { return nil }
+            return child
+        }
+        return nil
     }
 }

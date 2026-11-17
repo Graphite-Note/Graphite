@@ -2,11 +2,12 @@
  * File: NewLineIndentationTests.swift
  * -----------------------------------
  * Layer: Tests
- * Description: Return keeps the line's indentation, and in quoted code the quote markers that hold the code.
+ * Description: Return keeps the line's indentation, in quoted code the quote markers that hold the code, and at an item with children
+ *              starts its first child.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -84,5 +85,33 @@ final class NewLineIndentationTests: XCTestCase {
         XCTAssertNil(pressingBackspace(in: "\t\tcode", at: 2, indentUnit: "\t"), "A vault indenting with tabs deletes one tab.")
         XCTAssertNil(pressingBackspace(in: "line", at: 0))
     }
-}
 
+    private func continuingList(_ text: String, atEndOf fragment: String) -> (text: String, cursor: Int)? {
+        let location = NSMaxRange((text as NSString).range(of: fragment))
+        let edit = MarkdownEditing.continuingList(in: text as NSString, selection: NSRange(location: location, length: 0), indentUnit: "\t")
+        return edit.map { edit in ((text as NSString).replacingCharacters(in: edit.range, with: edit.replacement), edit.selectionAfter.location) }
+    }
+
+    func testReturnAtTheEndOfAnItemWithChildrenStartsItsFirstChild() {
+        let bullets = continuingList("- parent\n\t- child\n- next", atEndOf: "parent")
+        XCTAssertEqual(bullets?.text, "- parent\n\t- \n\t- child\n- next", "The children stay under their item.")
+        XCTAssertEqual(bullets?.cursor, 12)
+        XCTAssertEqual(continuingList("1. a\n\t1. x\n\t2. y\n2. b", atEndOf: "a")?.text, "1. a\n\t1. \n\t2. x\n\t3. y\n2. b",
+                       "The children count on after the new first child.")
+        XCTAssertEqual(continuingList("- [x] plan\n    - [x] step", atEndOf: "plan")?.text, "- [x] plan\n    - [ ] \n    - [x] step",
+                       "A task's child is a new open task, with the child's spaces.")
+        XCTAssertEqual(continuingList("> - a\n> \t* b", atEndOf: "a")?.text, "> - a\n> \t* \n> \t* b")
+        XCTAssertEqual(continuingList("- parent\n\t- child", atEndOf: "par")?.text, "- par\n- ent\n\t- child",
+                       "Inside the item's text, Return splits it as before.")
+        XCTAssertEqual(continuingList("- a\n- b", atEndOf: "a")?.text, "- a\n- \n- b", "No child: a sibling as before.")
+        XCTAssertEqual(continuingList("- a\n\n\tindented paragraph", atEndOf: "a")?.text, "- a\n- \n\n\tindented paragraph")
+    }
+
+    func testReturnInsideAnItemDropsTheSpacesAfterTheCursor() {
+        let split = continuingList("- foo bar", atEndOf: "foo")
+        XCTAssertEqual(split?.text, "- foo\n- bar", "Not \"-  bar\", as Obsidian drops them too.")
+        XCTAssertEqual(split?.cursor, 8)
+        XCTAssertEqual(continuingList("1. foo   bar\n2. next", atEndOf: "foo")?.text, "1. foo\n2. bar\n3. next")
+        XCTAssertEqual(continuingList("- [ ] foo \tbar", atEndOf: "foo")?.text, "- [ ] foo\n- [ ] bar")
+    }
+}

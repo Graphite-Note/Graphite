@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note text view: paste and drop, focus, the readable column and Read Aloud's highlight.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -462,7 +462,7 @@ final class MarkdownTextView: UITextView {
                     // Where the paste was asked for, unless the note changed meanwhile; then
                     // at the cursor. It went in at the cursor, wherever it had moved.
                     if self.text == textWhenPasted, NSMaxRange(pastedRange) <= (textWhenPasted as NSString).length { self.selectedRange = pastedRange }
-                    self.insertText(text)
+                    self.insertPastedText(text)
                 }
             }
             return
@@ -474,6 +474,15 @@ final class MarkdownTextView: UITextView {
             return
         }
         super.paste(sender)
+    }
+
+    /// Inserts pasted text at the selection, asking the editor first, as UIKit's own paste
+    /// does and `insertText` does not: lines pasted into a numbered list count it again, and a
+    /// paste into a folded section opens it. One character, such as a lone line break, is
+    /// inserted as it is, never taken for the key that types it.
+    private func insertPastedText(_ pastedText: String) {
+        if pastedText.count > 1, delegate?.textView?(self, shouldChangeTextIn: selectedRange, replacementText: pastedText) == false { return }
+        insertText(pastedText)
     }
 
     /// Converts pasted HTML off the main thread, since a large page takes long to convert.
@@ -492,7 +501,7 @@ final class MarkdownTextView: UITextView {
             let isTextUnchanged = (self.textRevision?() ?? 0) == revisionAtPaste
             guard let pastedText = isTextUnchanged ? (markdown ?? plainText) : plainText, !pastedText.isEmpty else { return }
             if isTextUnchanged, NSMaxRange(pastedRange) <= self.textStorage.length { self.selectedRange = pastedRange }
-            self.insertText(pastedText)
+            self.insertPastedText(pastedText)
         }
     }
 

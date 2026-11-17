@@ -5,7 +5,7 @@
  * Description: What a key typed in a note does beyond inserting itself, the same in the iPad's and the Mac's editors.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 17/11/2026
  */
 
@@ -18,6 +18,15 @@ extension EditingBehavior {
     /// removing an empty pair or a level of spaces. The edit to make in place of replacing `range` with
     /// `replacement`, or nil to let the text view make that change.
     func typingEdit(replacing range: NSRange, with replacement: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
+        if let edit = keyEdit(replacing: range, with: replacement, in: text, selection: selection) { return edit }
+        // Any other edit that adds or removes lines, a deleted item or pasted lines, counts
+        // the numbered lists again in the same change, so one Undo takes both back.
+        guard continuesLists else { return nil }
+        return MarkdownEditing.renumberingLists(replacing: range, with: replacement, in: text, tabSize: tabSize)
+    }
+
+    /// What Return, Tab, Backspace or a typed character does in place of inserting itself.
+    private func keyEdit(replacing range: NSRange, with replacement: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
         // Text typed right after a table never joins it, and Backspace there selects it.
         if selection.length == 0, let edit = MarkdownEditing.editBesideTable(typed: replacement, replacing: range, in: text) { return edit }
         switch replacement {

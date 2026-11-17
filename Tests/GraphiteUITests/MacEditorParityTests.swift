@@ -5,8 +5,8 @@
  * Description: The Mac note editor does what the iPad's does: lists, Tab, pairs, code fences, folds, the note's name, and clicks that act on release.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 16/11/2026
+ * Version: 0.7
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -163,6 +163,24 @@ final class MacEditorParityTests: XCTestCase {
         spaces.coordinator.configuration = configuration
         spaces.textView.deleteBackward(nil)
         XCTAssertEqual(spaces.textView.string, "    indented")
+    }
+
+    func testDeletingOrPastingItemsCountsTheListAgainAndOneUndoTakesItBack() async throws {
+        let editor = try await makeEditor(text: "1. a\n2. b\n3. c\n4. d", cursor: 5)
+        editor.textView.setSelectedRange(NSRange(location: 5, length: 5))
+        editor.textView.deleteBackward(nil)
+        XCTAssertEqual(editor.textView.string, "1. a\n2. c\n3. d")
+        editor.coordinator.noteUndoManager.undo()
+        XCTAssertEqual(editor.textView.string, "1. a\n2. b\n3. c\n4. d", "One undo takes the deletion and the numbers back.")
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("MacEditorParityTests-\(UUID().uuidString)"))
+        defer { pasteboard.releaseGlobally() }
+        pasteboard.clearContents()
+        pasteboard.setString("1. x\n2. y\n", forType: .string)
+        editor.textView.setSelectedRange(NSRange(location: 5, length: 0))
+        // AppKit's own paste of plain text, from this pasteboard rather than the general one.
+        XCTAssertTrue(editor.textView.readSelection(from: pasteboard))
+        XCTAssertEqual(editor.textView.string, "1. a\n2. x\n3. y\n4. b\n5. c\n6. d")
+        XCTAssertEqual(editor.textView.selectedRange(), NSRange(location: 15, length: 0))
     }
 
     func testTypedMarkerWrapsTheSelection() async throws {

@@ -2,10 +2,10 @@
  * File: MarkdownListRenumbering.swift
  * -----------------------------------
  * Layer: Core
- * Description: Numbered list items counted again after Tab, Shift-Tab or a moved line, as Obsidian's smart lists count them.
+ * Description: Numbered list items counted again after Tab, Shift-Tab, a moved line, a deleted item or pasted lines, as Obsidian's smart lists count them.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 17/11/2026
  */
 
@@ -24,6 +24,21 @@ extension MarkdownEditing {
         var renumbering = ListRenumbering(text: text, edit: edit, tabSize: tabSize)
         renumbering.run()
         return renumbering.combinedEdit(of: edit, in: text)
+    }
+
+    /// Replacing `range` with `replacement`, with the numbered lists it touched counted again,
+    /// as Obsidian's smart lists count them after every change: a deleted item's followers
+    /// move up a number, and pasted items take the numbers of their place. Only an edit that
+    /// adds or removes a line break can change a list's numbers; nil for any other, and when
+    /// the numbers stay as they are, so the text view makes the plain edit itself.
+    public static func renumberingLists(replacing range: NSRange, with replacement: String, in text: NSString, tabSize: Int) -> MarkdownTextEdit? {
+        guard NSMaxRange(range) <= text.length else { return nil }
+        let changesLines = replacement.contains(where: \.isNewline) || text.substring(with: range).contains(where: \.isNewline)
+        guard changesLines else { return nil }
+        let plainEdit = MarkdownTextEdit(range: range, replacement: replacement,
+                                         selectionAfter: NSRange(location: range.location + replacement.utf16.count, length: 0))
+        let renumbered = renumberingLists(after: plainEdit, in: text, tabSize: tabSize)
+        return renumbered == plainEdit ? nil : renumbered
     }
 }
 
