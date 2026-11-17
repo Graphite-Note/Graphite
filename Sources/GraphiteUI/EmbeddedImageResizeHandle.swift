@@ -7,7 +7,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 16/11/2026
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -77,6 +77,7 @@ struct EmbeddedImageResizeHandle: ViewModifier {
             .accessibilityElement()
             .accessibilityLabel("Resize Image")
             .accessibilityValue("\(Int(shownWidth.rounded())) points wide")
+            .accessibilityHint("Swipe up or down to change the width")
             .accessibilityAdjustableAction { direction in
                 let step: CGFloat = direction == .increment ? 50 : -50
                 commitWidth?(Int(Self.width(from: shownWidth, horizontalTranslation: step, columnWidth: columnWidth).rounded()))
