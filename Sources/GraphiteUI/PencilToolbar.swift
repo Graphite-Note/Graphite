@@ -7,8 +7,8 @@
  *              colors with its plus, the ruler and Add Image staying on the bar, then a condensed form.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 16/11/2026
+ * Version: 0.17
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -130,6 +130,8 @@ struct PencilToolRow: View {
     /// The text highlighter, on PDF pages.
     var offersTextMarking = false
     @State private var showsInkOptions = false
+    /// The Lasso panel, opened by a second tap on the lasso in use.
+    @State private var showsLassoOptions = false
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
     /// The size whose width is open for changing.
@@ -286,7 +288,13 @@ struct PencilToolRow: View {
         case .preset(let presetIndex):
             if toolbox.presets.indices.contains(presetIndex) { presetButton(toolbox.presets[presetIndex], at: presetIndex, density: density) }
         case .eraser: buttons.toolButton(.eraser)
-        case .lasso: buttons.toolButton(.lasso)
+        case .lasso:
+            buttons.toolButton(.lasso) { showsLassoOptions = true }
+                .popover(isPresented: Binding(get: { showsLassoOptions && toolbox.toolInUse == .lasso },
+                                              set: { isPresented in showsLassoOptions = isPresented })) {
+                    LassoOptionsPanel(offersTextBoxes: offersTextBoxes)
+                        .presentationCompactAdaptation(.popover)
+                }
         case .laser: buttons.toolButton(.laser)
         case .text: buttons.toolButton(.text)
         case .textHighlighter: buttons.toolButton(.textHighlighter)

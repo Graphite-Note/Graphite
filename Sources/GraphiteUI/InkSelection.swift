@@ -6,8 +6,8 @@
  *              Graphite's own tools; the lasso's geometry and rules are `InkLasso`.
  *
  * Authors: Bahey Shalash
- * Version: 0.14
- * Date: 05/11/2026
+ * Version: 0.15
+ * Date: 17/11/2026
  */
 import Foundation
 
@@ -90,6 +90,8 @@ import GraphiteApple
 final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @preconcurrency UIEditMenuInteractionDelegate {
     private unowned let canvas: HistoryCanvasView
     private(set) var selectedStrokeIndices: [Int] = []
+    /// Where the Lasso panel's switches are read (`LassoSelectionKinds`); tests give their own.
+    var preferences: UserDefaults = .standard
     /// The pictures selected with the ink (`LassoCanvasContent`).
     private(set) var selectedPictureIdentifiers: [String] = []
     /// The loop the selection or the area was taken with, in the drawing's coordinates.
@@ -390,11 +392,13 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         let drawingLoop = InkLasso.closed(loop)
         let loopBounds = InkLasso.bounds(of: drawingLoop)
         guard !loopBounds.isNull else { return }
-        let strokeIndices = canvas.drawing.strokes.enumerated().compactMap { strokeIndex, stroke -> Int? in
+        // Only the kinds switched on in the Lasso panel; a loop around nothing else marks its area.
+        let kinds = LassoSelectionKinds.stored(in: preferences)
+        let strokeIndices = !kinds.contains(.handwriting) ? [] : canvas.drawing.strokes.enumerated().compactMap { strokeIndex, stroke -> Int? in
             InkLasso.takesStroke(stroke, inLoop: drawingLoop) ? strokeIndex : nil
         }
         let pictureIdentifiers = (content?.lassoPictures() ?? []).compactMap { picture -> String? in
-            guard picture.boundingFrame.intersects(loopBounds) else { return nil }
+            guard kinds.takesPicture(identifiedAs: picture.identifier), picture.boundingFrame.intersects(loopBounds) else { return nil }
             return InkLasso.takesPicture(framed: picture.frame, turnedBy: picture.rotationRadians, inLoop: drawingLoop) ? picture.identifier : nil
         }
         if strokeIndices.isEmpty, pictureIdentifiers.isEmpty {
@@ -410,9 +414,13 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
 
     /// Selects the topmost stroke whose ink passes near a point of the canvas, measured on the
     /// page with the stroke's own transform (`InkLasso.stroke(_:passesWithin:of:)`); false when
-    /// there is none, and the selection then ends.
+    /// there is none or the Lasso panel has Handwriting off, and the selection then ends.
     @discardableResult
     func selectStroke(at point: CGPoint) -> Bool {
+        guard LassoSelectionKinds.stored(in: preferences).contains(.handwriting) else {
+            select([])
+            return false
+        }
         let drawingPoint = drawingPoint(fromCanvas: point)
         let reach = InkLasso.tapReach / screenPointsPerCanvasPoint / zoomScale
         let touchedIndex = canvas.drawing.strokes.enumerated().reversed().first { _, stroke in
@@ -938,14 +946,15 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         UIAction(title: "Take Screenshot", image: UIImage(systemName: "camera.viewfinder")) { [weak self] _ in self?.takeScreenshot() }
     }
 
-    /// Cut, Copy, Duplicate, Take Screenshot, Straighten (for a line of writing that runs
-    /// uphill or downhill), Smooth, Delete, and the colors of Settings › Colors. With
+    /// Take Screenshot first, where the compact bar always shows it (Docs/Lasso-todo.md
+    /// section 1), then Cut, Copy, Duplicate, the colors of Settings › Colors, Delete, and
+    /// last Straighten (for a line of writing that runs uphill or downhill) and Smooth. With
     /// pictures selected, Cut and Duplicate are not offered: Graphite pastes ink, not
     /// pictures, and Copy puts a picture of the whole selection on the pasteboard.
     func selectionMenuElements(palette: [PaletteColor] = GraphitePreferences.storedColorPalette()) -> [UIMenuElement] {
         let hasInk = !selectedStrokeIndices.isEmpty
         let hasPictures = !selectedPictureIdentifiers.isEmpty
-        var elements: [UIMenuElement] = []
+        var elements: [UIMenuElement] = [takeScreenshotAction]
         if !hasPictures {
             elements.append(UIAction(title: "Cut", image: UIImage(systemName: "scissors")) { [weak self] _ in self?.cutSelection() })
         }
@@ -953,17 +962,6 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         if !hasPictures {
             elements.append(UIAction(title: "Duplicate", image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in self?.duplicateSelection() })
         }
-        // Early, where the compact menu shows it without paging.
-        elements.append(takeScreenshotAction)
-        if hasInk, selectionSlant != nil {
-            elements.append(UIAction(title: "Straighten", image: UIImage(systemName: "level")) { [weak self] _ in self?.straightenSelection() })
-        }
-        if hasInk {
-            elements.append(UIAction(title: "Smooth", image: UIImage(systemName: "scribble.variable")) { [weak self] _ in self?.smoothSelection() })
-        }
-        elements += [
-            UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in self?.deleteSelection() },
-        ]
         if hasInk {
             let colors = [PaletteColor(name: "black", hex: PencilInk.pen.defaultColorHex)] + palette
             let swatches = colors.compactMap { favorite -> UIAction? in
@@ -972,6 +970,13 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
                 return UIAction(title: favorite.name, image: swatch) { [weak self] _ in self?.recolorSelection(color) }
             }
             elements.append(UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), options: .displayAsPalette, children: swatches))
+        }
+        elements.append(UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in self?.deleteSelection() })
+        if hasInk, selectionSlant != nil {
+            elements.append(UIAction(title: "Straighten", image: UIImage(systemName: "level")) { [weak self] _ in self?.straightenSelection() })
+        }
+        if hasInk {
+            elements.append(UIAction(title: "Smooth", image: UIImage(systemName: "scribble.variable")) { [weak self] _ in self?.smoothSelection() })
         }
         return elements
     }

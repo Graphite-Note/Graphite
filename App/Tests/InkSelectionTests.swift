@@ -6,8 +6,8 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.17
- * Date: 04/11/2026
+ * Version: 0.18
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -88,7 +88,7 @@ final class InkSelectionTests: XCTestCase {
         // The menu offers the clipboard actions and the colors of Settings › Colors.
         selection.select([1])
         let menu = selection.selectionMenuElements(palette: [PaletteColor(name: "red", hex: "#e93147")])
-        XCTAssertEqual(menu.compactMap { element in (element as? UIAction)?.title }, ["Cut", "Copy", "Duplicate", "Take Screenshot", "Smooth", "Delete"])
+        XCTAssertEqual(menu.compactMap { element in (element as? UIAction)?.title }, ["Take Screenshot", "Cut", "Copy", "Duplicate", "Delete", "Smooth"])
         let colorMenu = try XCTUnwrap(menu.compactMap { element in element as? UIMenu }.first)
         XCTAssertEqual(colorMenu.children.map(\.title), ["black", "red"])
 
@@ -850,7 +850,7 @@ extension InkSelectionTests {
         XCTAssertEqual(selection.selectedStrokeIndices, [0])
         XCTAssertEqual(selection.selectedPictureIdentifiers, [picture.identifier])
         XCTAssertEqual(selection.selectionMenuElements(palette: []).compactMap { element in (element as? UIAction)?.title },
-                       ["Copy", "Take Screenshot", "Smooth", "Delete"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
+                       ["Take Screenshot", "Copy", "Delete", "Smooth"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
         let frameView = try XCTUnwrap(descendants(of: canvas, matching: SelectionFrameView.self).first)
         XCTAssertEqual(frameView.accessibilityLabel, "Selected ink and images")
         XCTAssertTrue(frameView.accessibilityCustomActions?.contains { action in action.name == "Take Screenshot" } ?? false)
@@ -1048,7 +1048,7 @@ extension InkSelectionTests {
         XCTAssertEqual(actions.first { action in action.title == "Laser Pointer" }?.state, .on)
         XCTAssertEqual(actions.first { action in action.title == "Select Ink" }?.state, .off)
         let typeMenus = inlineMenus.flatMap(\.children).compactMap { element in element as? UIMenu }.map(\.title)
-        XCTAssertEqual(typeMenus, ["Lasso Type", "Laser Type"])
+        XCTAssertEqual(typeMenus, ["Lasso Type", "Included in Selection", "Laser Type"])
         inkSelection.pointsWithLaser = false
     }
 

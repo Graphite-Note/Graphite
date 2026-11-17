@@ -7,8 +7,8 @@
  *              box and the Read Aloud pen.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -165,12 +165,29 @@ enum PencilToolPalette {
                     selectionAction,
                     UIMenu(title: "Lasso Type", subtitle: LassoShape.stored.title, image: UIImage(systemName: LassoShape.stored.symbolName),
                            options: .singleSelection, children: lassoShapes),
+                    UIMenu(title: "Included in Selection", image: UIImage(systemName: "checklist"),
+                           children: lassoKindActions(inkSelection: inkSelection, offersTextBoxes: offersTextBoxes)),
                 ]),
                 UIMenu(options: .displayInline, children: [
                     laserAction,
                     UIMenu(title: "Laser Type", subtitle: LaserPointerStyle.stored.title, image: UIImage(systemName: LaserPointerStyle.stored.symbolName),
                            options: .singleSelection, children: laserStyles),
                 ])] + textMenus + readAloudMenus
+    }
+
+    /// The Lasso panel's "Included in Selection" switches as the menu's actions; choosing one
+    /// also takes up the lasso, and the last kind on cannot be turned off.
+    static func lassoKindActions(inkSelection: PaletteInkSelection, offersTextBoxes: Bool,
+                                 defaults: UserDefaults = .standard) -> [UIAction] {
+        let kinds = LassoSelectionKinds.stored(in: defaults)
+        return LassoOptionsPanel.shownKinds(offersTextBoxes: offersTextBoxes).map { kind in
+            let action = UIAction(title: kind.title, image: UIImage(systemName: kind.symbolName), state: kinds.includes(kind) ? .on : .off) { _ in
+                kinds.setting(kind, included: !kinds.includes(kind)).store(in: defaults)
+                inkSelection.isOn = true
+            }
+            if kinds.includes(kind), !kinds.canExclude(kind) { action.attributes = .disabled }
+            return action
+        }
     }
 
     // MARK: Favorite colors

@@ -9,8 +9,8 @@ import GraphiteApple
 /// about its middle, in the canvas's drawing coordinates.
 extension PDFPageCanvasView {
     /// Starts the identifier of a text box among the lasso's pictures, which are otherwise
-    /// known by their own names.
-    static let textBoxIdentifierPrefix = "graphite-text-box:"
+    /// known by their own names; the lasso's switches tell them apart by it.
+    static let textBoxIdentifierPrefix = LassoSelectionKinds.textBoxIdentifierPrefix
 
     func pageTextBoxes() -> [PDFTextBox] {
         guard let page, let session = annotationCoordinator?.session else { return [] }

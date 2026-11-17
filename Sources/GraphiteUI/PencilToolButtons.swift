@@ -6,8 +6,8 @@
  *              palette.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 16/11/2026
+ * Version: 0.11
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -43,15 +43,17 @@ struct PencilToolButtons {
         .accessibilityAddTraits(isInUse ? .isSelected : [])
     }
 
-    func toolButton(_ kind: PencilToolKind) -> some View {
+    /// A tool; a tap on the one in use calls `tapOnToolInUse`, where it has one (the lasso's panel).
+    func toolButton(_ kind: PencilToolKind, tapOnToolInUse: (() -> Void)? = nil) -> some View {
         let isInUse = toolbox.toolInUse == kind
         return Button {
-            toolbox.use(kind)
+            if isInUse, let tapOnToolInUse { tapOnToolInUse() } else { toolbox.use(kind) }
         } label: {
             glyphLabel(PencilToolGlyph(tool: PencilToolGlyph.Tool(kind: kind), isInUse: isInUse, side: density.toolSide))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(kind.title)
+        .accessibilityHint(isInUse && tapOnToolInUse != nil ? "Opens the tool's options" : "")
         .accessibilityAddTraits(isInUse ? .isSelected : [])
     }
 
