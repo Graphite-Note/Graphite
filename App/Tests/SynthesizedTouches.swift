@@ -20,10 +20,16 @@ final class SynthesizedTouches {
 
     private let window: UIWindow
     private var touches: [UITouch] = []
+    /// The kind of touch made: a finger, or Apple Pencil where UIKit lets a touch be marked as one.
+    private let touchType: UITouch.TouchType
 
-    init(window: UIWindow) {
+    init(window: UIWindow, touchType: UITouch.TouchType = .direct) {
         self.window = window
+        self.touchType = touchType
     }
+
+    /// Whether UIKit lets a made touch be marked as Apple Pencil's.
+    static var canMakePencilTouches: Bool { UITouch().responds(to: NSSelectorFromString("_setType:")) }
 
     // MARK: Gestures
 
@@ -134,6 +140,7 @@ final class SynthesizedTouches {
         Private.callBool(touch, "_setIsFirstTouchForView:", true)
         Private.callBool(touch, "setIsTap:", false)
         Private.setTimestamp(of: touch)
+        if touchType != .direct, touch.responds(to: NSSelectorFromString("_setType:")) { Private.callInteger(touch, "_setType:", touchType.rawValue) }
         if touch.responds(to: NSSelectorFromString("setGestureView:")) { Private.call(touch, "setGestureView:", object: touchedView) }
         return touch
     }

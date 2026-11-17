@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Hosted tests of the Pencil bar's colour row inside the whole app, a PDF open and written on, in the
  *              window sizes of the owner's 11-inch iPad at full screen and side by side with another app: the fixed bar
- *              shows in each, and a sideways swipe scrolls the colours that run past the strip's edge and moves none.
+ *              shows in each, a sideways swipe scrolls the colours that run past the strip's edge and moves none, and a
+ *              colour held then dragged by a finger or Apple Pencil moves along the bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -92,6 +93,31 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
         return ancestor as? UIScrollView
     }
 
+    /// Waits until `measure` keeps its answer for 600 ms: the bar settles on its form, a regular width's sidebar sliding in.
+    private func waitUntilSettled<Answer: Equatable>(_ description: String, _ measure: () -> Answer) async throws {
+        var lastAnswer = measure()
+        var lastChange = ContinuousClock.now
+        try await waitUntil(description) {
+            let answer = measure()
+            if answer != lastAnswer {
+                lastAnswer = answer
+                lastChange = ContinuousClock.now
+                return false
+            }
+            return ContinuousClock.now - lastChange >= .milliseconds(600)
+        }
+    }
+
+    /// The colour row once it shows and its strip keeps its width and its content's.
+    private func settledColorRow(in window: UIWindow, named name: String) async throws -> PencilColorRowTouchView {
+        let shownRows = { self.descendants(of: window, matching: PencilColorRowTouchView.self).filter { $0.window != nil && !$0.bounds.isEmpty } }
+        try await waitUntil("the colour row shows, \(name)") { !shownRows().isEmpty }
+        try await waitUntilSettled("the bar settles, \(name)") {
+            shownRows().first.flatMap(self.colorStrip(of:)).map { strip in [strip.bounds.width, strip.contentSize.width] } ?? []
+        }
+        return try XCTUnwrap(shownRows().first)
+    }
+
     /// Every scroll view and gesture recognizer from the strip up to the window, for the attachment that explains a
     /// swipe that did not scroll.
     private func describeChain(from rowView: UIView) -> String {
@@ -124,6 +150,51 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
         ("one third upright", CGSize(width: 320, height: 1_194), .compact),
     ]
 
+    /// The owner's report of 2026-11-17 on the iPad, running main b2eab0cd at full screen sideways on a PDF with the pen
+    /// chosen: "I can't seem to switch colors around, they seem to be fixed." A color held a moment then dragged two
+    /// places along the bar moves there, whether the PDF is written on or read.
+    func testAColorHeldThenDraggedInTheAppMovesAlongTheBar() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        guard SynthesizedTouches.unavailableReason == nil else { return }
+        try await waitUntil("the app's scene is connected") { UIApplication.shared.connectedScenes.contains { $0 is UIWindowScene } }
+        XCTAssertTrue(SynthesizedTouches.canMakePencilTouches, "UIKit lets a made touch be marked as Apple Pencil's.")
+        for (isWriting, touchType) in [(true, UITouch.TouchType.direct), (false, .direct), (true, .pencil), (false, .pencil)] {
+            let workspace = try await pdfWorkspace(named: "ColorDragInApp")
+            try XCTUnwrap(workspace.pdfSession).isWriting = isWriting
+            PencilToolRowForm.lastShown = nil
+            let window = try host(workspace, size: CGSize(width: 1_194, height: 834), horizontalSizeClass: .regular)
+            let rowView = try await settledColorRow(in: window, named: "writing \(isWriting)")
+            let pitch = try XCTUnwrap(rowView.touches?.swatchPitch)
+            // Yellow, the first favorite, after black.
+            let start = rowView.convert(CGPoint(x: 1.5 * pitch, y: rowView.bounds.midY), to: nil)
+            let touches = SynthesizedTouches(window: window, touchType: touchType)
+            touches.begin(at: [start])
+            await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.15)
+            attachScreenshot(of: window, named: "writing \(isWriting): yellow held")
+            await touches.slide(to: [CGPoint(x: start.x + 2 * pitch, y: start.y)], steps: 12)
+            await touches.hold(seconds: 0.3)
+            touches.end()
+            let storedNames = {
+                GraphitePreferences.colorPalette(decoding: workspace.deviceDefaults.data(forKey: GraphitePreferences.colorPaletteKey)).map(\.name)
+            }
+            // The order is stored once, when the drag ends; a hold that never lifted stores nothing, and the assertion
+            // below says so after the wait's own failure.
+            try await waitUntil("yellow is stored third, writing \(isWriting)", timeoutSeconds: 2) { storedNames().firstIndex(of: "yellow") == 2 }
+            attachScreenshot(of: window, named: "writing \(isWriting): after the drag")
+            let names = storedNames()
+            if names.firstIndex(of: "yellow") != 2 {
+                let chain = XCTAttachment(string: describeChain(from: rowView))
+                chain.name = "writing \(isWriting): views and recognizers above the row"
+                chain.lifetime = .keepAlways
+                add(chain)
+            }
+            XCTAssertEqual(names.firstIndex(of: "yellow"), 2, "writing \(isWriting), \(touchType == .pencil ? "Pencil" : "finger"): yellow held then dragged two places moves there (\(names)).")
+            window.isHidden = true
+            window.rootViewController = nil
+            self.window = nil
+        }
+    }
+
     func testASidewaysSwipeScrollsTheColorsInTheAppAtFullScreenAndSideBySide() async throws {
         XCTAssertNil(SynthesizedTouches.unavailableReason)
         guard SynthesizedTouches.unavailableReason == nil else { return }
@@ -135,6 +206,9 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
             let window = try host(workspace, size: shown.size, horizontalSizeClass: shown.sizeClass)
             // The iPad keeps the fixed bar in every width, beside another app too (owner, 2026-11-16).
             try await waitUntil("the fixed bar shows, \(shown.name)") { PencilToolRowForm.lastShown != nil }
+            // The bar settles on its form: a regular width's sidebar slides in, and the bar beside it is condensed
+            // until the slide ends. The form must stay the same for 600 ms.
+            try await waitUntilSettled("the bar's form settles, \(shown.name)") { String(describing: PencilToolRowForm.lastShown?.arrangement) }
             if PencilToolRowForm.lastShown?.arrangement == .condensed {
                 // A third of the screen: fewer than three colours fit beside the tools, so they are behind the
                 // condensed bar's one control (PencilToolRowLayout.minimumVisibleSwatchCount).
@@ -146,24 +220,7 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
                 self.window = nil
                 continue
             }
-            try await waitUntil("the colour row shows, \(shown.name)") {
-                self.descendants(of: window, matching: PencilColorRowTouchView.self).contains { $0.window != nil && !$0.bounds.isEmpty }
-            }
-            // The bar settles on its form: the strip keeps its width and its content's for 600 ms.
-            var lastMeasure: CGFloat = -1
-            var lastChange = ContinuousClock.now
-            try await waitUntil("the bar settles, \(shown.name)") {
-                let rows = self.descendants(of: window, matching: PencilColorRowTouchView.self).filter { $0.window != nil && !$0.bounds.isEmpty }
-                guard let strip = rows.first.flatMap(self.colorStrip(of:)) else { return false }
-                let measure = strip.bounds.width * 10_000 + strip.contentSize.width
-                if abs(measure - lastMeasure) > 0.5 {
-                    lastMeasure = measure
-                    lastChange = ContinuousClock.now
-                    return false
-                }
-                return ContinuousClock.now - lastChange >= .milliseconds(600)
-            }
-            let rowView = try XCTUnwrap(descendants(of: window, matching: PencilColorRowTouchView.self).first { $0.window != nil && !$0.bounds.isEmpty })
+            let rowView = try await settledColorRow(in: window, named: shown.name)
             let pitch = try XCTUnwrap(rowView.touches?.swatchPitch)
             let strip = try XCTUnwrap(colorStrip(of: rowView), "\(shown.name): the colours sit in a strip")
             attachScreenshot(of: window, named: "\(shown.name) before the swipe")

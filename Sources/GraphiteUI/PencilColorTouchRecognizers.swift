@@ -7,13 +7,14 @@
  *              color's menu (the hold let go where it lifted), and report them to the row, which draws.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 /// What the row's touches report, by the place of the color touched in the row (black, when shown, is place 0).
 struct PencilColorRowTouches {
@@ -63,11 +64,13 @@ struct PencilColorRowTouchSurface: UIViewRepresentable {
 
 /// One hold does both a color's jobs, as on the Home Screen: held, the color lifts; dragged, it is arranged; let go where
 /// it lifted, its menu opens. The menu is an edit menu opened on that release, not a context menu interaction, whose
-/// own recognizers made every long press on the view wait for them, so the hold never lifted a color.
+/// own recognizers made every long press on the view wait for them, so the hold never lifted a color. The hold is a
+/// recognizer of the row's own (`PencilColorHoldRecognizer`), not UIKit's long press, and once a color is lifted no
+/// other recognizer begins from its touch (the owner's report of 2026-11-17 on the iPad: the colors "seem to be fixed").
 final class PencilColorRowTouchView: UIView, @preconcurrency UIEditMenuInteractionDelegate {
     /// The row's latest answers; replaced on every update of the row.
     var touches: PencilColorRowTouches?
-    private let arrangingRecognizer = UILongPressGestureRecognizer()
+    private let arrangingRecognizer = PencilColorHoldRecognizer()
     private lazy var menuInteraction = UIEditMenuInteraction(delegate: self)
     /// The place and the window point a drag began at.
     private var dragStart: (place: Int, windowLocation: CGPoint)?
@@ -82,7 +85,6 @@ final class PencilColorRowTouchView: UIView, @preconcurrency UIEditMenuInteracti
         isAccessibilityElement = false
         accessibilityElementsHidden = true
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(handleTap(_:))))
-        arrangingRecognizer.minimumPressDuration = PencilColorRowTouches.holdSeconds
         arrangingRecognizer.addTarget(self, action: #selector(handleDrag(_:)))
         addGestureRecognizer(arrangingRecognizer)
         addInteraction(menuInteraction)
@@ -107,8 +109,10 @@ final class PencilColorRowTouchView: UIView, @preconcurrency UIEditMenuInteracti
         touches?.tapped(place)
     }
 
+    /// UIKit asks the touched view about every recognizer the touch reaches, its ancestors' too. While a color is lifted
+    /// none but the hold begins: the split view's swipe that shows the sidebar took a lifted color's sideways drag.
     override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
-        guard recognizer === arrangingRecognizer else { return super.gestureRecognizerShouldBegin(recognizer) }
+        guard recognizer === arrangingRecognizer else { return dragStart == nil && super.gestureRecognizerShouldBegin(recognizer) }
         guard let place = place(at: recognizer.location(in: self)) else { return false }
         return touches?.canArrange(place) ?? false
     }
@@ -188,6 +192,71 @@ final class PencilColorRowTouchView: UIView, @preconcurrency UIEditMenuInteracti
                              suggestedActions: [UIMenuElement]) -> UIMenu? {
         guard let place = (configuration.identifier as? NSNumber)?.intValue else { return nil }
         return touches?.menu(place)
+    }
+}
+/// A finger, Apple Pencil or the pointer held still on a color for `PencilColorRowTouches.holdSeconds`, then followed until
+/// it lifts. UIKit's long press could not do it in the app: with the system's own touches it began late or not at all,
+/// behind the drag and drop lift that SwiftUI puts on the window's root view, and the split view's swipe took a sideways
+/// drag (traced in a simulator on 2026-11-17; the hosted tests' touches start no drag lift, so they had passed).
+/// Its own class keeps it out of the waits UIKit sets up between long presses, it waits for no other recognizer, and it
+/// fails as soon as the touch moves sooner, so a swipe still scrolls the strip and a tap still chooses.
+final class PencilColorHoldRecognizer: UIGestureRecognizer {
+    /// How far the touch may move during the hold and still lift the color, in points, as UIKit's long press allows.
+    static let allowableMovement = 10.0
+    private weak var trackedTouch: UITouch?
+    private var startLocation: CGPoint = .zero
+
+    override func canBePrevented(by preventingGestureRecognizer: UIGestureRecognizer) -> Bool {
+        // Before the hold ends, only a movement fails it (a scroll of the strip, the split view's swipe).
+        state == .possible ? false : super.canBePrevented(by: preventingGestureRecognizer)
+    }
+
+    override func shouldRequireFailure(of otherGestureRecognizer: UIGestureRecognizer) -> Bool { false }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard trackedTouch == nil, touches.count == 1, let touch = touches.first else {
+            // A second finger is a pinch or a two-finger swipe, never a hold.
+            if state == .possible { state = .failed }
+            return
+        }
+        trackedTouch = touch
+        startLocation = touch.location(in: nil)
+        // In the common modes, so the hold ends on time while the strip or a page is tracking a touch.
+        perform(#selector(holdEnded), with: nil, afterDelay: PencilColorRowTouches.holdSeconds, inModes: [.common])
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        switch state {
+        case .possible:
+            let location = trackedTouch.location(in: nil)
+            if hypot(location.x - startLocation.x, location.y - startLocation.y) > Self.allowableMovement { state = .failed }
+        case .began, .changed:
+            state = .changed
+        default:
+            break
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = state == .possible ? .failed : .ended
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let trackedTouch, touches.contains(trackedTouch) else { return }
+        state = state == .possible ? .failed : .cancelled
+    }
+
+    override func reset() {
+        super.reset()
+        NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(holdEnded), object: nil)
+        trackedTouch = nil
+    }
+
+    @objc private func holdEnded() {
+        guard state == .possible, trackedTouch != nil else { return }
+        state = .began
     }
 }
 #endif
