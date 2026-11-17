@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-17.
 
+## The Mac's Arrange menus in the running app: 2026-11-17
+
+`Docs/PDF-annotation-todo.md` section 2 (issue #181). On a PDF page on the Mac, a picture's, a text box's and a shape's right-click menus and Tools › Arrange offer Bring to Front, Bring Forward, Send Backward and Send to Back, and Ink to Front and Ink to Back for the page's ink as one layer, those that would move nothing dimmed.
+
+- **Hosted:** `MacPDFArrangeMenusInAppHostedTests` in the running Mac app (built unsigned as `com.graphite.study.repro`, only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE=<folder>`): two overlapping pictures, ink, a text box and a shape on a generated page; each of the six commands from the right-click menu of a picture, a text box and a shape and through the actions Tools › Arrange's items call; the dimmed items, one Undo each, the saved file's order and the colour of 383 overlap points in each of the 109 pictures of the window.
+- **Not established:** a click on Tools › Arrange's own items in the menu bar, which stay dimmed for a test's window (SwiftUI feeds the menu bar from its own scene windows, with the app in front).
+
 ## Pictures dropped onto a PDF page in the running Mac app: 2026-11-17
 
 [PDF-annotation-todo.md](PDF-annotation-todo.md) section 1 (issue #180). A picture file (by its address, as the Finder's drag carries it) and image data dropped onto a page of a PDF in Graphite's own window land with their middle under the pointer, selected, the row's Images tool chosen, one Undo each; a PDF file is turned away with no "+" and its drop says why in the banner. That last part was broken on the Mac and the iPad: the view answered "none" to a dragged PDF, so AppKit never handed the drop over; it now answers a generic operation. The iPad answered `.forbidden`, so UIKit never called `performDrop`; it now follows a PDF's drag and says why when the drag ends over the page. A drop that unfolded the markup row moved the page down by the row's height, so the picture ended below the pointer; the pages now stay still on screen while the row or a banner is shown or hidden above them.
