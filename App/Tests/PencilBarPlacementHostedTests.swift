@@ -8,8 +8,8 @@
  *              HUNT-310, HUNT-311, HUNT-317).
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 16/11/2026
+ * Version: 0.9
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -299,9 +299,10 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             var elements: [NSObject] = []
             try await waitUntil("the row's buttons are accessible at \(Int(width)) points", pollingIntervalSeconds: 0.25) {
                 elements = Self.accessibilityElements(in: controller.view)
-                // The colors sit in their strip, a scroll view, whose elements come a moment after the bar's own.
+                // The colors sit in their strip, a scroll view, whose elements come a moment after the bar's own (black
+                // stands before the strip, so it comes with the bar).
                 return elements.contains { element in element.accessibilityLabel == "Ruler" }
-                    && elements.contains { element in element.accessibilityLabel == "black" }
+                    && elements.contains { element in element.accessibilityLabel == favorites.first?.name }
             }
             let windowFrame = window.frame
             /// Whether an element with `label` stands wholly inside the window, at least as wide as a mini color.

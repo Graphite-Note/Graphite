@@ -3,13 +3,13 @@
  * ---------------------------------------
  * Layer: Tests
  * Description: Where a color dragged along the Pencil bar lands for every drop place (first, last, past either end, on
- *              itself), how the others slide aside, when a drag removes it, when the strip scrolls under it, and the
- *              palette edits a drop, a color picker, the plus and Undo make (Docs/Pen-color-palette-todo.md section 1,
+ *              itself), how the others slide aside, when the strip scrolls under it, and the palette edits a drop, a
+ *              color picker, the plus (saving the new color at its first pick) and Undo make (Docs/Pen-color-palette-todo.md section 1,
  *              Docs/PDF-annotation-todo.md section 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -23,8 +23,8 @@ final class PencilColorArrangementTests: XCTestCase {
     private let green = PaletteColor(name: "green", hex: "#08b94e")
     private let blue = PaletteColor(name: "blue", hex: "#086ddd")
     private var palette: [PaletteColor] { [red, orange, green, blue] }
-    /// Four colors 32 points apart, removed past 44 points across the row: the regular bar.
-    private let arrangement = PencilColorArrangement(colorCount: 4, swatchPitch: 32, removalDistance: 44)
+    /// Four colors 32 points apart: the regular bar.
+    private let arrangement = PencilColorArrangement(colorCount: 4, swatchPitch: 32)
 
     // MARK: Drop places
 
@@ -54,22 +54,12 @@ final class PencilColorArrangementTests: XCTestCase {
     // MARK: Sliding aside
 
     func testTheColorsBetweenTheTwoPlacesSlideOnePlaceTowardsTheDraggedColorsPlace() {
-        let rightwards = PencilColorArrangement.Outcome.arranged(destinationIndex: 3)
-        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 1, outcome: rightwards) }, [0, 0, -32, -32])
-        let leftwards = PencilColorArrangement.Outcome.arranged(destinationIndex: 0)
-        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 2, outcome: leftwards) }, [32, 32, 0, 0])
-        let inPlace = PencilColorArrangement.Outcome.arranged(destinationIndex: 2)
-        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 2, outcome: inPlace) }, [0, 0, 0, 0])
+        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 1, destinationIndex: 3) }, [0, 0, -32, -32])
+        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 2, destinationIndex: 0) }, [32, 32, 0, 0])
+        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 2, destinationIndex: 2) }, [0, 0, 0, 0])
     }
 
     // MARK: Removing
-
-    func testADragFarAcrossTheRowRemovesAndTheLaterColorsCloseUp() {
-        XCTAssertEqual(arrangement.outcome(draggedFrom: 1, horizontalTravel: 40, verticalTravel: -30), .arranged(destinationIndex: 2))
-        XCTAssertEqual(arrangement.outcome(draggedFrom: 1, horizontalTravel: 40, verticalTravel: -45), .removed, "Up and off the bar.")
-        XCTAssertEqual(arrangement.outcome(draggedFrom: 1, horizontalTravel: 0, verticalTravel: 60), .removed, "Down and off the bar.")
-        XCTAssertEqual((0..<4).map { index in arrangement.slideOffset(ofColorAt: index, draggedFrom: 1, outcome: .removed) }, [0, 0, -32, -32])
-    }
 
     func testARemovedColorIsPutBackAtItsPlaceOnce() {
         let withoutGreen = FavoriteColorEditing.removing(green.id, from: palette)
@@ -109,10 +99,28 @@ final class PencilColorArrangementTests: XCTestCase {
         XCTAssertEqual(saved.last?.hex, TextColorMarkup.canonicalHex("#2a9d8f"), "The swatch is saved at the end of the strip.")
     }
 
+    /// The owner's request of 2026-11-17: a color chosen in the plus's picker goes on the strip at once. The first pick
+    /// adds one swatch, later picks change it, and a pick of a color the strip has adds nothing.
+    func testThePlusPickerSavesItsFirstPickAndLaterPicksChangeThatSwatch() {
+        let first = FavoriteColorEditing.savingPickedColor(hex: "#2A9D8F", addedColorIdentifier: nil, in: palette)
+        XCTAssertEqual(first.palette.count, palette.count + 1)
+        XCTAssertEqual(first.palette.last?.hex, TextColorMarkup.canonicalHex("#2a9d8f"))
+        XCTAssertEqual(first.addedColorIdentifier, first.palette.last?.id)
+        let second = FavoriteColorEditing.savingPickedColor(hex: "#264653", addedColorIdentifier: first.addedColorIdentifier, in: first.palette)
+        XCTAssertEqual(second.palette.count, palette.count + 1, "A later pick changes the new swatch rather than adding another.")
+        XCTAssertEqual(second.palette.last?.hex, TextColorMarkup.canonicalHex("#264653"))
+        XCTAssertEqual(second.palette.last?.id, first.addedColorIdentifier)
+        let existing = FavoriteColorEditing.savingPickedColor(hex: red.hex, addedColorIdentifier: nil, in: palette)
+        XCTAssertEqual(existing.palette, palette, "Red is on the strip already.")
+        XCTAssertNil(existing.addedColorIdentifier)
+        let removedMeanwhile = FavoriteColorEditing.savingPickedColor(hex: "#264653", addedColorIdentifier: first.addedColorIdentifier, in: palette)
+        XCTAssertEqual(removedMeanwhile.palette.count, palette.count + 1, "A swatch removed while the picker was open is added again.")
+    }
+
     // MARK: Scrolling under a drag
 
     func testTheStripScrollsOnlyWhileTheDragIsNearAnEnd() {
-        let strip = PencilColorArrangement(colorCount: 8, swatchPitch: 22, removalDistance: 44)
+        let strip = PencilColorArrangement(colorCount: 8, swatchPitch: 22)
         XCTAssertEqual(strip.scrollDirection(atVisibleLocation: 5, visibleWidth: 132), -1)
         XCTAssertEqual(strip.scrollDirection(atVisibleLocation: 66, visibleWidth: 132), 0)
         XCTAssertEqual(strip.scrollDirection(atVisibleLocation: 128, visibleWidth: 132), 1)

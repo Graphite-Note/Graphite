@@ -7,8 +7,8 @@
  *              guide vault, while the simulator's screen is recorded from outside.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -137,13 +137,13 @@ final class GuideGestureRecordingsHostedTests: XCTestCase {
         try await pause(seconds: 0.8)
         try await mark("pen-colors", "begin")
         try await pause(seconds: 0.5)
-        let chosen = center(ofPlace: 2)
+        let chosen = center(ofPlace: 1)
         await SynthesizedTouches(window: window).move(paths: [(chosen, chosen)], steps: 1, stepSeconds: 0.05, holdSeconds: 0)
         try await pause(seconds: 0.6)
         let underline = SynthesizedStrokes.line(from: CGPoint(x: 150, y: 330), to: CGPoint(x: 330, y: 330), steps: 60)
         try await SynthesizedStrokes.draw(on: canvas, through: underline.map { windowPoint(ofPage: $0, on: canvas, in: window) }, in: window)
         try await pause(seconds: 0.8)
-        let start = center(ofPlace: 1)
+        let start = center(ofPlace: 0)
         let touches = SynthesizedTouches(window: window)
         touches.begin(at: [start])
         await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.2)

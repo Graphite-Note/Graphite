@@ -2,13 +2,14 @@
  * File: PencilColorButtons.swift
  * ------------------------------
  * Layer: UI
- * Description: The Pencil bar's colors: black and the favorite colors, or the highlighter's own, in a strip that scrolls
- *              sideways only and keeps its size, the plus that saves a color as a swatch, Other Color, and the arranging
- *              (by dragging, `PencilColorSwatchRow`), changing and removal with Undo of a color at the bar itself.
+ * Description: The Pencil bar's colors: black before the favorite colors, or the highlighter's own, in a strip that
+ *              scrolls sideways only and keeps its size, the plus that saves a color as a swatch (a picked one at once),
+ *              Other Color, and the arranging (by dragging, `PencilColorSwatchRow`), changing and removal with Undo of a
+ *              color at the bar itself.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 16/11/2026
+ * Version: 0.6
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -35,9 +36,10 @@ enum PencilColorControls {
 /// `PencilToolRowLayout.maximumVisibleSwatchCount` of them, so saving more colors never widens the bar or moves its other
 /// controls (the owner's report of 2026-11-14 that the palette moved "up, down, left, and right"). A swipe scrolls; a
 /// favorite color held a moment lifts and is dragged to its place along the strip, as in Apple's markup palette, or off
-/// it to remove it (with Undo, which stands where the plus does for a few seconds); a second tap on the color in use
-/// opens its color picker, and its menu removes it. The plus after the strip saves the color in use as a swatch, or,
-/// when the strip has it already, opens the color picker for a new one (`FavoriteColorEditing.additionStep`): the bar is
+/// its menu removes it (with Undo, which stands where the plus does for a few seconds); a second tap on the color in
+/// use opens its color picker. Black stands before the strip and never scrolls. The plus after the strip saves the color
+/// in use as a swatch, or, when the strip has it already, opens the color picker for a new one, saved at its first pick
+/// (`FavoriteColorEditing.additionStep`): the bar is
 /// where the colors are used, so it is where they are kept (HUNT-312, the owner's requests of 2026-11-13 and 2026-11-14).
 struct PencilColorButtons: View {
     @Bindable var toolbox: PencilToolbox
@@ -69,9 +71,12 @@ struct PencilColorButtons: View {
         switch controls {
         case .all, .stripAndAdd:
             let colors = palette(editedPalette)
-            let swatchCount = colors.count + (fixedLeadingColor == nil ? 0 : 1)
-            PencilColorStrip(rowHeight: rowHeight, density: density,
-                             visibleSwatchCount: visibleSwatchCount ?? min(swatchCount, PencilToolRowLayout.maximumVisibleSwatchCount)) { scrolling in
+            let leadingCount = fixedLeadingColor == nil ? 0 : 1
+            let shownCount = visibleSwatchCount ?? min(colors.count + leadingCount, PencilToolRowLayout.maximumVisibleSwatchCount)
+            // Black stands before the strip, so scrolling the colors never takes it out of view (the owner's report of
+            // 2026-11-17 that black was "not saved": ten colors scrolled it off the strip's start).
+            if let fixedLeadingColor { PencilFixedColorSwatch(toolbox: toolbox, color: fixedLeadingColor, rowHeight: rowHeight, density: density) }
+            PencilColorStrip(rowHeight: rowHeight, density: density, visibleSwatchCount: max(0, shownCount - leadingCount)) { scrolling in
                 swatches(colors, scrolling: scrolling)
             }
             if let removal = offeredRemoval {
@@ -90,12 +95,11 @@ struct PencilColorButtons: View {
         removalUndo.removal.flatMap { removal in removal.palette == editedPalette ? removal : nil }
     }
 
-    /// Black and the favorite colors, or the highlighter's colors, arranged by dragging.
+    /// The favorite colors, or the highlighter's colors, arranged by dragging.
     private func swatches(_ colors: [PaletteColor], scrolling: PencilColorRowScrolling) -> some View {
         let editedPalette = editedPalette
         return PencilColorSwatchRow(
             toolbox: toolbox,
-            fixedLeadingColor: fixedLeadingColor,
             colors: colors,
             pickerTitle: editedPalette == .favorites ? "Pen Color" : "Highlighter Color",
             rowHeight: rowHeight, density: density, scrolling: scrolling,
@@ -162,7 +166,7 @@ struct PencilColorButtons: View {
     }
 
     /// Saves the color in use as a swatch at the end of the strip, or opens the color picker for a new color, which is
-    /// saved when the picker closes; the ink draws in each color picked meanwhile.
+    /// saved as soon as one is picked; the ink draws in each color picked meanwhile.
     private func addColor() {
         let editedPalette = editedPalette
         let step = FavoriteColorEditing.additionStep(colorInUseHex: toolbox.presetInUse.colorHex, palette: palette(editedPalette),
@@ -173,13 +177,17 @@ struct PencilColorButtons: View {
                 store(FavoriteColorEditing.adding(hex: toolbox.presetInUse.colorHex, to: palette(editedPalette)), as: editedPalette)
             }
         case .chooseNewColor:
+            // The first color picked is saved at once as a new swatch, which later picks change, so the strip shows
+            // the new color while the picker is still open (the owner's request of 2026-11-17).
+            var addedColorIdentifier: PaletteColor.ID?
             let plusFrame = CGRect(x: 0, y: 0, width: density.swatchPitch, height: rowHeight)
             additionPicker.present(hex: toolbox.presetInUse.colorHex, title: "New Color", sourceRect: plusFrame) { [toolbox] pickedHex, phase in
                 toolbox.chooseColor(hex: pickedHex)
-                guard phase == .closed else { return }
-                withAnimation(.snappy(duration: 0.22)) {
-                    store(FavoriteColorEditing.adding(hex: pickedHex, to: palette(editedPalette)), as: editedPalette)
-                }
+                guard phase != .moving else { return }
+                let saved = FavoriteColorEditing.savingPickedColor(hex: pickedHex, addedColorIdentifier: addedColorIdentifier,
+                                                                   in: palette(editedPalette))
+                addedColorIdentifier = saved.addedColorIdentifier
+                withAnimation(.snappy(duration: 0.22)) { store(saved.palette, as: editedPalette) }
             }
         }
     }
@@ -227,7 +235,7 @@ struct PencilColorStrip<Swatches: View>: View {
     var body: some View {
         let visibleWidth = Double(visibleSwatchCount) * density.swatchPitch
         ScrollView(.horizontal, showsIndicators: false) {
-            swatches(PencilColorRowScrolling(visibleWidth: visibleWidth, scrollBy: scroll(by:)))
+            swatches(PencilColorRowScrolling(visibleWidth: visibleWidth, scrollBy: scroll(by:), settle: settle))
         }
         .scrollPosition($scrollPosition)
         .scrollTargetBehavior(.viewAligned)
@@ -238,8 +246,21 @@ struct PencilColorStrip<Swatches: View>: View {
         } action: { _, offsetAndLargest in
             scrollOffset = offsetAndLargest.width
             largestScrollOffset = offsetAndLargest.height
+            // A removal shortens the strip under it: it then scrolls back to its new end, leaving no gap after the last
+            // color (the owner's recording of 2026-11-17).
+            if scrollOffset > largestScrollOffset + 0.5 { settle() }
         }
         .frame(width: visibleWidth, height: rowHeight)
+    }
+
+    /// Scrolls to the color's edge nearest where the strip stands, within its ends.
+    private func settle() {
+        let pitch = density.swatchPitch
+        guard pitch > 0 else { return }
+        let target = max(0, min((scrollOffset / pitch).rounded() * pitch, largestScrollOffset))
+        guard abs(target - scrollOffset) > 0.5 else { return }
+        scrollPosition.scrollTo(x: target)
+        scrollOffset = target
     }
 
     /// Scrolls by up to `distance` points within the strip's ends, for a drag held near one, and says how far it went.

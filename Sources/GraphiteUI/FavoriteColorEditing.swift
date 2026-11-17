@@ -7,8 +7,8 @@
  *              adding a color, removing one and putting it back. Pure: the bar stores what these return.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 17/11/2026
  */
 
 import GraphiteCore
@@ -88,7 +88,7 @@ enum FavoriteColorEditing {
     enum AdditionStep: Equatable {
         /// Saves the color in use, which the strip does not have, as a swatch at its end.
         case saveColorInUse
-        /// Opens the color picker for a new color, saved when it closes: the strip has the color in use already.
+        /// Opens the color picker for a new color, saved at its first pick: the strip has the color in use already.
         case chooseNewColor
     }
 
@@ -107,6 +107,19 @@ enum FavoriteColorEditing {
     static func adding(hex: String, to palette: [PaletteColor]) -> [PaletteColor] {
         guard let canonicalHex = TextColorMarkup.canonicalHex(hex), !contains(hex: canonicalHex, in: palette) else { return palette }
         return palette + [PaletteColor(name: PaletteColorNames.unusedName(in: palette), hex: canonicalHex)]
+    }
+
+    /// What a pick in the plus's color picker does: the first color picked is added at the end of the palette
+    /// (`adding`), and every later pick changes that added color (`changingHex`), so the strip shows the color at once
+    /// and a picker that moves on leaves one new swatch, not one per pick. `addedColorIdentifier` is the color an earlier
+    /// pick added, if any; the result says which color the next pick changes.
+    static func savingPickedColor(hex: String, addedColorIdentifier: PaletteColor.ID?,
+                                  in palette: [PaletteColor]) -> (palette: [PaletteColor], addedColorIdentifier: PaletteColor.ID?) {
+        if let addedColorIdentifier, palette.contains(where: { color in color.id == addedColorIdentifier }) {
+            return (changingHex(of: addedColorIdentifier, to: hex, in: palette), addedColorIdentifier)
+        }
+        let added = adding(hex: hex, to: palette)
+        return (added, added.count > palette.count ? added.last?.id : nil)
     }
 
     /// The palette without the color.

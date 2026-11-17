@@ -4,12 +4,13 @@
  * Layer: Tests
  * Description: Hosted tests of the Pencil bar's colors arranged by dragging, as in Apple's markup palette: a finger
  *              held on a color then dragged along the row reorders the favorite colors where Settings › Colors keeps
- *              them, a tap still chooses, a drag off the row removes a color and Undo brings it back
- *              (Docs/Pen-color-palette-todo.md 1; the hold since Docs/PDF-annotation-todo.md 3).
+ *              them, a tap still chooses, a lifted color stays on the row's line and a drag up or down removes nothing,
+ *              and a color's menu removes it with Undo to bring it back (Docs/Pen-color-palette-todo.md 1; the hold since
+ *              Docs/PDF-annotation-todo.md 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -165,7 +166,10 @@ final class PencilColorDragHostedTests: XCTestCase {
         XCTAssertEqual(toolbox.presetInUse.colorHex, TextColorMarkup.canonicalHex(green.hex), "A drag chooses no color.")
     }
 
-    func testADragOffTheRowRemovesTheColorAndUndoPutsItBack() async throws {
+    /// The owner's report of 2026-11-17: a lifted color that rose with the finger read as the row moving up and down,
+    /// and two colors dragged down came off the row. A lifted color now follows the finger along the row only: a drag
+    /// up or down, held or not, removes nothing, and its sideways part still arranges.
+    func testALiftedColorStaysOnTheRowAndADragUpOrDownRemovesNothing() async throws {
         try requireTouches()
         let defaults = try makeDefaults()
         let toolbox = PencilToolbox(defaults: defaults)
@@ -173,29 +177,11 @@ final class PencilColorDragHostedTests: XCTestCase {
         try await waitForTheRow(in: window)
         let orangeCenter = center(ofSwatchAt: 2)
         await holdAndDrag(from: orangeCenter, to: CGPoint(x: orangeCenter.x, y: orangeCenter.y - 3 * rowHeight), in: window)
-        try await waitUntil("orange is removed") { self.storedNames(in: defaults) == ["red", "green", "blue"] }
-        // The row closed up, and Undo stands after its last color, in the plus's place. It is a SwiftUI button, which
-        // synthesized touches do not reach: it is pressed as VoiceOver presses it.
-        window.layoutIfNeeded()
-        try PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(true)
-        defer { try? PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(false) } // Left on, it slows later tests.
-        var undo: NSObject?
-        try await waitUntil("Undo is offered", pollingIntervalSeconds: 0.25) {
-            undo = PencilBarPlacementHostedTests.accessibilityElements(in: window).first { element in element.accessibilityLabel == "Undo Remove orange" }
-            return undo != nil
-        }
-        let undoElement = try XCTUnwrap(undo)
-        XCTAssertEqual(undoElement.accessibilityFrame.midX, center(ofSwatchAt: 4).x, accuracy: 2, "Undo stands after the last color.")
-        XCTAssertFalse(PencilBarPlacementHostedTests.accessibilityElements(in: window).contains { element in
-            element.accessibilityLabel == "Add to Favorite Colors"
-        }, "Undo takes the plus's place while it is offered.")
-        // On screen too: the strip is as wide as the four colors left, with no gap where orange was.
-        let strip = try XCTUnwrap(sequence(first: try XCTUnwrap(colorRow(in: window)) as UIView) { view in view.superview }
-            .compactMap { view in view as? UIScrollView }.first)
-        try await waitUntil("the strip closes up") { abs(strip.bounds.width - 4 * self.swatchPitch) < 0.5 }
-        attachScreenshot(of: window, named: "After a drag off the row: Undo in the plus's place")
-        XCTAssertTrue(undoElement.accessibilityActivate())
-        try await waitUntil("orange is back at its place") { self.storedNames(in: defaults) == ["red", "orange", "green", "blue"] }
+        await holdAndDrag(from: orangeCenter, to: CGPoint(x: orangeCenter.x, y: orangeCenter.y + 3 * rowHeight), in: window)
+        XCTAssertEqual(storedNames(in: defaults), ["red", "orange", "green", "blue"], "Up or down, a lifted color stays on the bar.")
+        // Down and two places on: the sideways part arranges.
+        await holdAndDrag(from: orangeCenter, to: CGPoint(x: orangeCenter.x + 2 * swatchPitch, y: orangeCenter.y + 2 * rowHeight), in: window)
+        try await waitUntil("orange lands two places on") { self.storedNames(in: defaults) == ["red", "green", "blue", "orange"] }
     }
 
     func testASecondTapOnTheChosenColorOpensItsColorPicker() async throws {
@@ -217,7 +203,7 @@ final class PencilColorDragHostedTests: XCTestCase {
     }
 
     /// Docs/PDF-annotation-todo.md section 3: a color held then let go where it lifted opens its menu, whose Remove
-    /// takes it off the row; held and let go, it moves nowhere.
+    /// takes it off the row and offers Undo in the plus's place; held and let go, it moves nowhere.
     func testAColorHeldAndLetGoInPlaceOpensItsMenuWhoseRemoveTakesItOff() async throws {
         try requireTouches()
         let defaults = try makeDefaults()
@@ -250,6 +236,26 @@ final class PencilColorDragHostedTests: XCTestCase {
         let pointInMenuWindow = menuWindow.convert(removeCenter, from: nil)
         await SynthesizedTouches(window: menuWindow).move(paths: [(pointInMenuWindow, pointInMenuWindow)], steps: 1, stepSeconds: 0.03, holdSeconds: 0.05)
         try await waitUntil("green is removed") { self.storedNames(in: defaults) == ["red", "orange", "blue"] }
+        // The row closed up, and Undo stands after its last color, in the plus's place. It is a SwiftUI button, which
+        // synthesized touches do not reach: it is pressed as VoiceOver presses it.
+        window.layoutIfNeeded()
+        var undo: NSObject?
+        try await waitUntil("Undo is offered", pollingIntervalSeconds: 0.25) {
+            undo = PencilBarPlacementHostedTests.accessibilityElements(in: window).first { element in element.accessibilityLabel == "Undo Remove green" }
+            return undo != nil
+        }
+        let undoElement = try XCTUnwrap(undo)
+        XCTAssertEqual(undoElement.accessibilityFrame.midX, center(ofSwatchAt: 4).x, accuracy: 2, "Undo stands after the last color.")
+        XCTAssertFalse(PencilBarPlacementHostedTests.accessibilityElements(in: window).contains { element in
+            element.accessibilityLabel == "Add to Favorite Colors"
+        }, "Undo takes the plus's place while it is offered.")
+        // On screen too: the strip is as wide as the three colors left, with no gap where green was.
+        let strip = try XCTUnwrap(sequence(first: try XCTUnwrap(colorRow(in: window)) as UIView) { view in view.superview }
+            .compactMap { view in view as? UIScrollView }.first)
+        try await waitUntil("the strip closes up") { abs(strip.bounds.width - 3 * self.swatchPitch) < 0.5 }
+        attachScreenshot(of: window, named: "After Remove: Undo in the plus's place")
+        XCTAssertTrue(undoElement.accessibilityActivate())
+        try await waitUntil("green is back at its place") { self.storedNames(in: defaults) == ["red", "orange", "green", "blue"] }
     }
 }
 #endif

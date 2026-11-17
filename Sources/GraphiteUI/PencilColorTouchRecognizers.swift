@@ -16,7 +16,7 @@ import SwiftUI
 import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
-/// What the row's touches report, by the place of the color touched in the row (black, when shown, is place 0).
+/// What the row's touches report, by the place of the color touched in the row (the first color is place 0).
 struct PencilColorRowTouches {
     /// What a drag reports as it moves and ends.
     enum DragPhase {
@@ -31,7 +31,7 @@ struct PencilColorRowTouches {
 
     /// The width of one place of the row, in points.
     let swatchPitch: Double
-    /// Whether a place can be dragged (a favorite or highlighter color, not black or Undo).
+    /// Whether a place can be dragged (a color, not the empty end of the row).
     let canArrange: (Int) -> Bool
     /// How long a color is held before it lifts: a finger that moves sooner swipes the strip, which scrolls sideways
     /// only, so a quick drag in any direction never moves or removes a color (the owner's report of 2026-11-14).

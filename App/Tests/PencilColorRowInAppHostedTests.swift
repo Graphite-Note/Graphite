@@ -165,8 +165,8 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
             let window = try host(workspace, size: CGSize(width: 1_194, height: 834), horizontalSizeClass: .regular)
             let rowView = try await settledColorRow(in: window, named: "writing \(isWriting)")
             let pitch = try XCTUnwrap(rowView.touches?.swatchPitch)
-            // Yellow, the first favorite, after black.
-            let start = rowView.convert(CGPoint(x: 1.5 * pitch, y: rowView.bounds.midY), to: nil)
+            // Yellow, the first favorite: black stands before the strip, outside the row.
+            let start = rowView.convert(CGPoint(x: 0.5 * pitch, y: rowView.bounds.midY), to: nil)
             let touches = SynthesizedTouches(window: window, touchType: touchType)
             touches.begin(at: [start])
             await touches.hold(seconds: PencilColorRowTouches.holdSeconds + 0.15)
