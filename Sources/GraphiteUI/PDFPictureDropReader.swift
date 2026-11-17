@@ -6,8 +6,8 @@
  *              Files and Safari, and image files dragged from Graphite's own sidebar and library.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -33,10 +33,14 @@ enum PDFPictureDropReader {
     /// a photo as HEIC and as JPEG, and a JPEG is kept as it is where a HEIC is encoded again.
     private static let preferredPictureTypes: [UTType] = [.png, .jpeg, .heic, .gif, .webP, .tiff]
 
-    /// What an item is, from the types it offers. An item of Graphite's sidebar or library
+    /// What an item is, from the types it offers. An item of Graphite's sidebar names its file
+    /// (`suggestedName`), so a PDF is turned away as it is dragged in; an item that names none
     /// says which file it is only once read, so it counts as a picture until then.
     static func kind(of provider: NSItemProvider) -> PDFDroppedItemKind {
-        if isVaultItem(provider) { return .picture }
+        if isVaultItem(provider) {
+            guard let name = provider.suggestedName, !name.isEmpty else { return .picture }
+            return PDFPictureDropPlan.kind(ofFileAt: URL(fileURLWithPath: name))
+        }
         if provider.canLoadObject(ofClass: UIImage.self) && !provider.registeredContentTypes.contains(where: { type in type.conforms(to: .pdf) }) {
             return .picture
         }

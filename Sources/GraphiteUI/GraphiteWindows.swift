@@ -5,8 +5,8 @@
  * Description: Windows of the app: what each opens on, and dragging items to open a new one.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -67,23 +67,19 @@ extension View {
     func draggableVaultEntry<Preview: View>(_ entry: VaultEntry, inVault vaultIdentifier: UUID?, atRoot vaultRoot: URL?,
                                             @ViewBuilder preview: @escaping () -> Preview) -> some View {
         draggable(VaultItemTransfer(path: entry.path.rawValue, vaultRoot: vaultRoot), contentType: .graphiteVaultItem,
+                  suggestedName: VaultItemTransfer.suggestedName(of: entry),
                   opening: entry.isDirectory ? nil : .showing(entry.path, inVault: vaultIdentifier), preview: preview)
     }
 
     /// `draggable(item)`; on the iPad the drag also carries the user activity of
     /// `windowContent`, so iPadOS opens it in a new window when the drag ends at the edge of
-    /// the screen. Drops inside Graphite read `item` as before.
-    func draggable<Item: Transferable & Encodable, Preview: View>(_ item: Item, contentType: UTType, opening windowContent: GraphiteWindowContent?,
+    /// the screen, and `suggestedName`, the file's name. Drops inside Graphite read `item` as before.
+    func draggable<Item: Transferable & Encodable, Preview: View>(_ item: Item, contentType: UTType, suggestedName: String? = nil,
+                                                                  opening windowContent: GraphiteWindowContent?,
                                                                   @ViewBuilder preview: @escaping () -> Preview) -> some View {
         #if canImport(UIKit)
         onDrag {
-            let provider = NSItemProvider()
-            provider.registerDataRepresentation(forTypeIdentifier: contentType.identifier, visibility: .ownProcess) { completion in
-                do { completion(try JSONEncoder().encode(item), nil) } catch { completion(nil, error) }
-                return nil
-            }
-            if let windowContent { provider.registerObject(windowContent.userActivity, visibility: .all) }
-            return provider
+            NSItemProvider.graphiteDrag(of: item, contentType: contentType, suggestedName: suggestedName, opening: windowContent)
         } preview: {
             preview()
         }
@@ -92,6 +88,25 @@ extension View {
         #endif
     }
 }
+
+#if canImport(UIKit)
+extension NSItemProvider {
+    /// The item provider of a drag inside Graphite on the iPad: `item` for Graphite's own drops,
+    /// the file's name, which a drop can decide by before reading the item (a PDF page turns a
+    /// PDF away as it is dragged in), and the window content iPadOS opens at the screen's edge.
+    static func graphiteDrag<Item: Encodable>(of item: Item, contentType: UTType, suggestedName: String?,
+                                              opening windowContent: GraphiteWindowContent?) -> NSItemProvider {
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: contentType.identifier, visibility: .ownProcess) { completion in
+            do { completion(try JSONEncoder().encode(item), nil) } catch { completion(nil, error) }
+            return nil
+        }
+        provider.suggestedName = suggestedName
+        if let windowContent { provider.registerObject(windowContent.userActivity, visibility: .all) }
+        return provider
+    }
+}
+#endif
 
 /// The identifier of the windows that show a workspace, on the Mac and the iPad.
 public enum GraphiteWindow {

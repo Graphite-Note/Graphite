@@ -5,7 +5,7 @@
  * Description: Hosted iPad test of pictures dropped onto a PDF view in a window: the view takes drops, an image as
  *              Photos and Safari offer it and an image file of the vault as the sidebar offers it are placed where
  *              they landed, selected, as one step each; a PDF file and a protected PDF take none, and a PDF let go over
- *              a page says why in the banner.
+ *              a page says why in the banner; a PDF dragged from the sidebar is turned away as it is dragged in.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -161,6 +161,40 @@ final class PDFPictureDropHostedTests: XCTestCase {
         XCTAssertEqual(drops.dropInteraction(interaction, sessionDidUpdate: dragOfPicture).operation, .copy)
         drops.dropInteraction(interaction, sessionDidEnd: dragOfPicture)
         XCTAssertNil(session.errorMessage)
+    }
+
+    /// A PDF of the vault dragged from Graphite's sidebar is turned away as it is dragged in, by the name its drag gives
+    /// (`NSItemProvider.graphiteDrag`, as the sidebar makes it): no "+", and letting go over a page says why. A picture of
+    /// the vault is still a copy, and a folder names nothing.
+    func testAPDFDraggedFromTheSidebarIsTurnedAwayAsItIsDraggedIn() async throws {
+        let session = try await PDFSession.open(try makePDF(named: "Worksheet.pdf"))
+        let (window, view, drops) = try await show(session)
+        let interaction = try XCTUnwrap(drops.interaction)
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let overPage = view.convert(view.convert(CGPoint(x: 200, y: 300), from: page), to: window)
+        _ = try makePDF(named: "Handout.pdf")
+        try pngData().write(to: directory.appendingPathComponent("Figure.png"))
+
+        func sidebarDrag(of rawPath: String, isDirectory: Bool = false) throws -> NSItemProvider {
+            let entry = VaultEntry(path: try VaultPath(rawPath), isDirectory: isDirectory, size: 0, modified: Date())
+            return NSItemProvider.graphiteDrag(of: VaultItemTransfer(path: rawPath, vaultRoot: directory), contentType: .graphiteVaultItem,
+                                               suggestedName: VaultItemTransfer.suggestedName(of: entry), opening: nil)
+        }
+        let sidebarPDF = try sidebarDrag(of: "Handout.pdf")
+        XCTAssertEqual(sidebarPDF.suggestedName, "Handout.pdf")
+        XCTAssertEqual(PDFPictureDropReader.kind(of: sidebarPDF), .pdfDocument)
+        let dragOfPDF = TellingDropSession(providers: [sidebarPDF], windowPoint: overPage)
+        XCTAssertTrue(drops.dropInteraction(interaction, canHandle: dragOfPDF))
+        XCTAssertEqual(drops.dropInteraction(interaction, sessionDidUpdate: dragOfPDF).operation, .forbidden, "no + from the start")
+        drops.dropInteraction(interaction, sessionDidEnd: dragOfPDF)
+        XCTAssertEqual(session.errorMessage, "A PDF can't be placed on a page as an image. Drop a picture, such as a PNG or JPEG.")
+        XCTAssertTrue(session.pictures(on: page).isEmpty)
+        session.errorMessage = nil
+
+        let sidebarPicture = try sidebarDrag(of: "Figure.png")
+        XCTAssertEqual(PDFPictureDropReader.kind(of: sidebarPicture), .picture)
+        XCTAssertEqual(drops.dropInteraction(interaction, sessionDidUpdate: TellingDropSession(providers: [sidebarPicture], windowPoint: overPage)).operation, .copy)
+        XCTAssertNil(try sidebarDrag(of: "Lectures", isDirectory: true).suggestedName, "a folder names no file")
     }
 
     func testAPasswordProtectedPDFTakesNoDrop() async throws {

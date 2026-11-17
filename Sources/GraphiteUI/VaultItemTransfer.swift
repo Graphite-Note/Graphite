@@ -5,8 +5,8 @@
  * Description: A file or folder being dragged, with the vault it comes from.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -42,6 +42,11 @@ struct VaultItemTransfer: Codable, Transferable {
     func isFromAnotherVault(than root: URL?) -> Bool {
         guard let vaultRoot, let root else { return false }
         return vaultRoot.standardizedFileURL.resolvingSymlinksInPath() != root.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    /// The name a drag of `entry` gives: a file's own, with its extension; none for a folder.
+    static func suggestedName(of entry: VaultEntry) -> String? {
+        entry.isDirectory ? nil : entry.path.name
     }
 
     /// Where the item is on disk, from what the drag carries.
