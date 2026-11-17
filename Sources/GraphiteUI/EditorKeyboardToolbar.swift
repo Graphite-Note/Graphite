@@ -100,7 +100,7 @@ extension MarkdownEditing {
         case .bulletList: return togglingList(numbered: false, in: text, selection: selection)
         case .numberedList: return togglingList(numbered: true, in: text, selection: selection)
         case .task: return togglingTask(in: text, selection: selection)
-        case .indent: return indenting(in: text, selection: selection, indentUnit: indentUnit)
+        case .indent: return indenting(in: text, selection: selection, indentUnit: indentUnit, tabSize: tabSize)
         case .outdent: return outdenting(in: text, selection: selection, indentUnit: indentUnit, tabSize: tabSize)
         case .moveLinesUp: return movingLines(up: true, in: text, selection: selection)
         case .moveLinesDown: return movingLines(up: false, in: text, selection: selection)

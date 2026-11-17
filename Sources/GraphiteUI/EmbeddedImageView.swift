@@ -7,7 +7,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.2
- * Date: 12/11/2026
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -118,6 +118,12 @@ struct EmbeddedImageView: View {
             .highPriorityGesture(TapGesture().modifiers(.command).onEnded { open(at: .newTab) }, including: tabbedPicture == nil ? .none : .all)
             #endif
             .modifier(PictureMenu(blockPicture: blockPicture) { menuItems })
+    }
+
+    /// The picture's own element is a button that zooms or edits it, with the picture's commands. It is given to the
+    /// picture alone: given around the resize handle too, it would make the handle a second picture.
+    private func pictureAccessibility(_ content: some View) -> some View {
+        content
             .accessibilityAddTraits(.isButton)
             .accessibilityHint(edit != nil ? "Opens the drawing to edit" : "Opens the image to zoom")
             .accessibilityActions {
@@ -220,10 +226,10 @@ struct EmbeddedImageView: View {
     }
 
     private func sized(_ content: some View) -> some View {
-        content
+        pictureAccessibility(content
             .aspectRatio(aspectRatio, contentMode: .fit)
             .background { if showsDrawingOnWhite { Color.white } }
-            .clipShape(RoundedRectangle(cornerRadius: showsDrawingOnWhite ? 6 : 0))
+            .clipShape(RoundedRectangle(cornerRadius: showsDrawingOnWhite ? 6 : 0)))
             .modifier(EmbeddedImageResizeHandle(commitWidth: resizeWidth, isPointerOver: isHovered, columnWidth: columnWidth, draggedWidth: $draggedWidth))
             .frame(maxWidth: draggedWidth ?? displayWidth ?? .infinity, alignment: .leading)
             // The note now gives the dragged width, or the drag changed nothing.

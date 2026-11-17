@@ -15,7 +15,7 @@ import GraphiteCore
 extension EditingBehavior {
     /// Obsidian's typing helpers: lists that continue on Return, indentation kept on Return,
     /// Tab to indent list items, bracket pairs, a code fence's closing line, and Backspace
-    /// removing an empty pair. The edit to make in place of replacing `range` with
+    /// removing an empty pair or a level of spaces. The edit to make in place of replacing `range` with
     /// `replacement`, or nil to let the text view make that change.
     func typingEdit(replacing range: NSRange, with replacement: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
         switch replacement {
@@ -27,9 +27,11 @@ extension EditingBehavior {
             let line = text.substring(with: text.lineRange(for: NSRange(location: range.location, length: 0)))
             let isListItem = MarkdownListSyntax.listLine(line.trimmingCharacters(in: .newlines))?.isListItem == true
             guard continuesLists, isListItem || selection.length > 0 else { return nil }
-            return MarkdownEditing.indenting(in: text, selection: selection, indentUnit: indentUnit)
+            return MarkdownEditing.indenting(in: text, selection: selection, indentUnit: indentUnit, tabSize: tabSize)
         case "":
-            guard range.length == 1, selection.length == 0, NSMaxRange(range) == selection.location, pairsBrackets || pairsMarkdown else { return nil }
+            guard range.length == 1, selection.length == 0, NSMaxRange(range) == selection.location else { return nil }
+            if let edit = MarkdownEditing.deletingIndentation(in: text, selection: selection, indentUnit: indentUnit) { return edit }
+            guard pairsBrackets || pairsMarkdown else { return nil }
             return MarkdownEditing.deletingPair(in: text, selection: selection, pairsBrackets: pairsBrackets, pairsMarkdown: pairsMarkdown)
         default:
             // A fence's closing line, like Obsidian's backtick pairs, comes with "Auto pair Markdown syntax".

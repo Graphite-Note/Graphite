@@ -163,6 +163,7 @@
 				GraphiteTestSupport/InvisibleWindow.swift,
 				GraphiteTestSupport/IsolatedDeviceState.swift,
 				GraphiteTestSupport/LoopbackWebServer.swift,
+				GraphiteTestSupport/PasteboardDrag.swift,
 				GraphiteTestSupport/PenTestSpeech.swift,
 				GraphiteTestSupport/SimulatorAudio.swift,
 				GraphiteTestSupport/StoredZipArchive.swift,

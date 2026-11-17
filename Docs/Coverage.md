@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-17.
 
+## Pictures dropped onto a PDF page in the running Mac app: 2026-11-17
+
+[PDF-annotation-todo.md](PDF-annotation-todo.md) section 1 (issue #180). A picture file (by its address, as the Finder's drag carries it) and image data dropped onto a page of a PDF in Graphite's own window land with their middle under the pointer, selected, the row's Images tool chosen, one Undo each; a PDF file is turned away with no "+" and its drop says why in the banner. That last part was broken on the Mac: the view answered "none" to a dragged PDF, so AppKit never handed the drop over; it now answers a generic operation.
+
+- **Automated tests, passing on macOS (`swift test --filter`):** `MacPDFPictureDropTests` (8, 2 of them new: a PDF file through the view's dragging methods shows no "+" and its drop says why; dragged text is not handed over), `MacPDFPictureToolTests`.
+- **Hosted:** `MacPDFPictureDropInAppHostedTests` in the running Mac app (only with `TEST_RUNNER_GRAPHITE_MAC_PICTURE_DROPS=<folder>`, built as `com.graphite.study.repro`, unsigned): each drag told to the window's views as AppKit tells a drag destination (`PasteboardDrag`), with real pasteboards written as the Finder writes a file and as an app writes image data; the toolbar's Undo and Redo pressed with mouse events; the saved file read back with one stamp; pictures of each step looked at.
+- **Not established:** a drag from the Finder or Photos itself (computer use was declined), Photos' and Mail's file promises, AppKit's own choice of destination; the iPad's banner for a dropped PDF, which has the Mac's old gap (`.forbidden`).
+
 ## Obsidian's Importer imports Notion's export and API in Graphite: 2026-11-17
 
 [Notion-import-todo.md](Notion-import-todo.md) sections 3 and 6 (issues #174, #177). Obsidian's own Importer 3.2.0, unmodified, imports Notion's HTML export and, through Notion's API, a workspace, in Graphite's plugin runtime, on made-up material only (`Docs/Community-plugins.md`, Importer and Notion's HTML export and API). Six runtime gaps it found are fixed for every plugin: `htmlToMarkdown` is Turndown 7.2.4 with Obsidian's rules (vendored, MIT, 11 KB), with `window.TurndownService`; a write's `DataWriteOptions` times become the file's dates (`AtomicFileWriter.setFileTimes`, sent in the same `vault.write`); setting tabs show in Obsidian's settings window structure; `SecretComponent(app, element)` links a keychain secret by its name; `metadataTypeManager.getAssignedWidget`; `generateMarkdownLink` gives a link, never an embed.

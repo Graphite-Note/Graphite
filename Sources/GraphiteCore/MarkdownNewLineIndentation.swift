@@ -2,7 +2,7 @@
  * File: MarkdownNewLineIndentation.swift
  * --------------------------------------
  * Layer: Core
- * Description: Return keeps the indentation of the line it breaks, and Shift-Return breaks a list item's line without a new item, as in Obsidian.
+ * Description: Return keeps the line's indentation, Shift-Return breaks an item's line without a new item, Backspace removes a level, as in Obsidian.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -60,5 +60,21 @@ extension MarkdownEditing {
         let replacement = lineBreak + prefix
         return MarkdownTextEdit(range: range, replacement: replacement, selectionAfter: NSRange(location: location + replacement.utf16.count, length: 0))
     }
-}
 
+    /// Backspace in a line's leading spaces, in a vault that indents with spaces: it deletes
+    /// back to the previous indentation level, as Obsidian's editor (CodeMirror) does, instead
+    /// of one space of the four. Nil elsewhere: after text, after a tab, with a selection, or
+    /// when the vault indents with tabs.
+    public static func deletingIndentation(in text: NSString, selection: NSRange, indentUnit: String) -> MarkdownTextEdit? {
+        guard selection.length == 0, selection.location > 0, selection.location <= text.length,
+              !indentUnit.isEmpty, indentUnit.allSatisfy({ character in character == " " }) else { return nil }
+        let lineStart = text.lineRange(for: NSRange(location: selection.location, length: 0)).location
+        let beforeCursor = text.substring(with: NSRange(location: lineStart, length: selection.location - lineStart))
+        guard !beforeCursor.isEmpty, beforeCursor.allSatisfy({ character in character == " " }) else { return nil }
+        let levelWidth = indentUnit.count
+        let remainder = beforeCursor.count % levelWidth
+        let deletedCount = remainder == 0 ? levelWidth : remainder
+        let deletedRange = NSRange(location: selection.location - deletedCount, length: deletedCount)
+        return MarkdownTextEdit(range: deletedRange, replacement: "", selectionAfter: NSRange(location: deletedRange.location, length: 0))
+    }
+}

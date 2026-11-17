@@ -130,4 +130,26 @@ final class SmartEditingTests: XCTestCase {
         XCTAssertNil(typing("%", in: "50", at: 2), "With nothing selected, % is typed alone.")
         XCTAssertNil(typing("%", in: "hide", at: 0, length: 4, markdown: false))
     }
+
+    /// Obsidian moves an item's children with it on Tab and Shift-Tab.
+    func testTabAndShiftTabCarryTheItemsNestedLinesAlong() {
+        let list = "- a\n- b\n\t- child\n\t  more of child\n- c"
+        let atB = NSRange(location: 5, length: 0)
+        let indented = MarkdownEditing.indenting(in: list as NSString, selection: atB, indentUnit: "\t")
+        XCTAssertEqual(applying(indented, to: list), "- a\n\t- b\n\t\t- child\n\t\t  more of child\n- c")
+        XCTAssertEqual(indented.selectionAfter, NSRange(location: 6, length: 0), "The cursor stays on b.")
+        let nested = "- a\n\t- b\n\t\t- child\n\t- sibling"
+        let outdented = MarkdownEditing.outdenting(in: nested as NSString, selection: NSRange(location: 7, length: 0), indentUnit: "\t")
+        XCTAssertEqual(applying(outdented, to: nested), "- a\n- b\n\t- child\n\t- sibling", "The sibling at b's level stays.")
+        let topLevel = "- a\n\t- child"
+        let topLevelOutdent = MarkdownEditing.outdenting(in: topLevel as NSString, selection: NSRange(location: 1, length: 0), indentUnit: "\t")
+        XCTAssertEqual(applying(topLevelOutdent, to: topLevel), topLevel, "An item that cannot move out keeps its children where they are.")
+        let quoted = "> - a\n> \t- child\n\nafter"
+        let quotedIndent = MarkdownEditing.indenting(in: quoted as NSString, selection: NSRange(location: 3, length: 0), indentUnit: "\t")
+        XCTAssertEqual(applying(quotedIndent, to: quoted), "> \t- a\n> \t\t- child\n\nafter")
+        let spaces = "- a\n  - child\n- next"
+        let spacesIndent = MarkdownEditing.indenting(in: spaces as NSString, selection: NSRange(location: 1, length: 0), indentUnit: "  ", tabSize: 2)
+        XCTAssertEqual(applying(spacesIndent, to: spaces), "  - a\n    - child\n- next")
+    }
 }
+

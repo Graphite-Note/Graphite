@@ -5,8 +5,8 @@
  * Description: Styles Markdown source in place, with attributes only, for the editor.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.21
- * Date: 16/11/2026
+ * Version: 0.22
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -726,7 +726,7 @@ struct MarkdownTextStyler {
     }
 
     /// Hides `range` and marks it for `ConcealedReplacementLayoutFragment` to draw over.
-    private func replace(_ range: NSRange, with replacement: ConcealedReplacement, in textStorage: NSTextStorage, baseFont: PlatformFont) {
+    func replace(_ range: NSRange, with replacement: ConcealedReplacement, in textStorage: NSTextStorage, baseFont: PlatformFont) {
         textStorage.addAttribute(.foregroundColor, value: PlatformColor.clear, range: range)
         textStorage.addAttribute(ConcealedReplacement.attributeKey, value: replacement.rawValue, range: range)
         let color: PlatformColor = switch replacement {
