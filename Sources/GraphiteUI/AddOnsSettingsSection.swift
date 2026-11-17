@@ -40,7 +40,7 @@ struct AddOnsSettingsSection: View {
 }
 
 /// What a pack's row in Settings offers in each state: Download until it is here, a spinner while it comes, then
-/// Open (only for a pack that opens, the Graphite Guide vault) and Delete; nothing for a pack included with the app.
+/// Open (only for a pack that opens, the Graphite Guide vault) and Delete.
 enum AddOnPackAction: Hashable {
     case download, waitForDownload, open, delete
 
@@ -49,7 +49,6 @@ enum AddOnPackAction: Hashable {
         case .notDownloaded, .failed: [.download]
         case .checking, .downloading: [.waitForDownload]
         case .downloaded: canOpen ? [.open, .delete] : [.delete]
-        case .includedWithApp: []
         }
     }
 }
@@ -103,7 +102,6 @@ private struct AddOnPackRow: View {
         case .checking: size
         case .downloading: "Downloading \(size)…"
         case .downloaded: "\(size) on this device"
-        case .includedWithApp: "\(size), included with Graphite"
         case .failed(let reason): reason.explanation
         }
     }

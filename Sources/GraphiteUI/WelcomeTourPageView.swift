@@ -228,7 +228,7 @@ private struct WelcomeTourPicture: View {
                 case .notDownloaded, .downloading:
                     ProgressView()
                     Text("Downloading the pictures…").font(.callout).foregroundStyle(.secondary)
-                case .checking, .downloaded, .includedWithApp:
+                case .checking, .downloaded:
                     // On the device already: the picture is read in a moment, and nothing is downloaded.
                     ProgressView()
                 }

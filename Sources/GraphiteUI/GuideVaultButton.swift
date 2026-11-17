@@ -60,7 +60,7 @@ struct GuideVaultButton: View {
         return switch state {
         case .notDownloaded: pack.map { pack in "Downloads \(ByteCountFormatter.string(fromByteCount: pack.byteCount, countStyle: .file)) the first time." }
         case .failed(let failure): failure.explanation + " Try again when you are online."
-        case .checking, .downloading, .downloaded, .includedWithApp: nil
+        case .checking, .downloading, .downloaded: nil
         }
     }
 

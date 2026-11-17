@@ -6,11 +6,11 @@ downloaded from. This script reads each pack definition in Sources, takes the fi
 commit with `git show`, and fails when a file is missing or its size or hash differ, so a
 build can never ask for files that do not exist or no longer match.
 
-The welcome tour's pictures also come with the app (Docs/App-size-todo.md, section 2): the iPad and
-iPhone pack as an On-Demand Resources tag among the app target's initial install tags, the Mac pack in
-the Mac app's bundle. The script checks that Graphite.xcodeproj takes exactly the pack's files that
-way: each iPad and iPhone file for iOS only and with the pack's tag, each Mac file for macOS only and
-with no tag, and the tag known to the project and named in ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS.
+The welcome tour's iPad and iPhone pictures also come with the app (Docs/App-size-todo.md, section 2),
+as an On-Demand Resources tag among the app target's initial install tags; the Mac downloads its own, so
+that they can be removed. The script checks that Graphite.xcodeproj takes exactly the iPad and iPhone
+files, each for iOS only and with the pack's tag, no Mac file, and the tag known to the project and named
+in ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS.
 
 The Graphite Guide vault (`GuideVaultPack`) is a download only, so only its files at its revision are checked.
 
@@ -32,17 +32,20 @@ BUILD_FILE_PATTERN = re.compile(r'/\* (\S+\.jpg) in Resources \*/ = \{isa = PBXB
 
 
 def check_project_resources(definition_path):
-    """The pack's files in the app target as the platforms receive them: iOS's in its tag, the Mac's in the bundle."""
+    """The iOS pack's files in the app target, in its tag; the Mac's are downloaded and not in the project."""
     text = open(os.path.join(REPOSITORY_ROOT, definition_path), encoding="utf-8").read()
     tag = re.search(r'static let onDemandResourcesTag = "(\w+)"', text).group(1)
     project = open(os.path.join(REPOSITORY_ROOT, PROJECT_PATH), encoding="utf-8").read()
     in_project = {name: (platform, file_tag) for name, platform, file_tag in BUILD_FILE_PATTERN.findall(project)}
     touch_section, mac_section = text.split("private static let macFiles", 1)
     expected = {name: ("ios", tag) for name, _, _ in FILE_PATTERN.findall(touch_section)}
-    expected.update({name: ("macos", "") for name, _, _ in FILE_PATTERN.findall(mac_section)})
-    problems = [f"{name} is in the project as {in_project.get(name)}, not as {platform} {tag_name or 'in the bundle'}"
+    mac_names = {name for name, _, _ in FILE_PATTERN.findall(mac_section)}
+    problems = [f"{name} is in the project as {in_project.get(name)}, not as {platform} {tag_name}"
                 for name, (platform, tag_name) in sorted(expected.items()) if in_project.get(name) != (platform, tag_name)]
-    problems += [f"{name} is a resource of the project but not a file of the pack" for name in sorted(set(in_project) - set(expected))]
+    problems += [f"{name} is a resource of the project but the Mac downloads it, so it can be removed"
+                 for name in sorted(set(in_project) & mac_names)]
+    problems += [f"{name} is a resource of the project but not a file of the pack"
+                 for name in sorted(set(in_project) - set(expected) - mac_names)]
     if not re.search(r"knownAssetTags = \(\s*" + tag + r",\s*\);", project):
         problems.append(f"the project does not know the tag {tag}")
     if project.count(f'"ON_DEMAND_RESOURCES_INITIAL_INSTALL_TAGS[sdk=iphone*]" = {tag};') != 2:

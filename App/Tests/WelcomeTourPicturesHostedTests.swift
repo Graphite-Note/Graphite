@@ -7,8 +7,8 @@
  *              again.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -65,7 +65,7 @@ final class WelcomeTourPicturesHostedTests: XCTestCase {
         let pack = try pack
         try await waitUntil("the pictures are on the device or failed", timeoutSeconds: 60) {
             switch library.state(of: pack) {
-            case .downloaded, .failed, .includedWithApp: true
+            case .downloaded, .failed: true
             case .notDownloaded, .checking, .downloading: false
             }
         }
@@ -86,7 +86,7 @@ final class WelcomeTourPicturesHostedTests: XCTestCase {
 
         // The first page as the tour shows it, beside the same page while the pictures are not here.
         let firstPage = try XCTUnwrap(WelcomeTourPage.pagesOnThisPlatform.first)
-        let placeholderLibrary = try launchLibrary(includedCopies: AddOnIncludedCopies(appBundle: .main, defaults: device.preferences, makeTagAccess: nil))
+        let placeholderLibrary = try launchLibrary(includedCopies: AddOnIncludedCopies(defaults: device.preferences, makeTagAccess: nil))
         let waiting = try host(WelcomeTourPageView(content: firstPage.content).environment(placeholderLibrary))
         let withPicture = try host(WelcomeTourPageView(content: firstPage.content).environment(library))
         defer {

@@ -71,7 +71,6 @@ final class SettingsPagesTests: XCTestCase {
             XCTAssertEqual(AddOnPackAction.actions(for: .failed(.noConnection), canOpen: canOpen), [.download])
             XCTAssertEqual(AddOnPackAction.actions(for: .downloading, canOpen: canOpen), [.waitForDownload])
             XCTAssertEqual(AddOnPackAction.actions(for: .checking, canOpen: canOpen), [.waitForDownload])
-            XCTAssertEqual(AddOnPackAction.actions(for: .includedWithApp, canOpen: canOpen), [], "A pack that came with Graphite cannot be deleted.")
         }
     }
 

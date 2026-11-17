@@ -2,12 +2,12 @@
  * File: AddOnIncludedCopies.swift
  * -------------------------------
  * Layer: UI
- * Description: The add-on packs that come with the app: files in its bundle on the Mac, an On-Demand Resources tag
- *              installed with it on the iPad and the iPhone, and which of those the person removed.
+ * Description: The add-on packs that come with the app, an On-Demand Resources tag installed with it on the iPad and
+ *              the iPhone, and which of those the person removed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -15,12 +15,11 @@ import GraphiteCore
 import GraphiteApple
 
 /// The copies of add-on packs that come with the app (`AddOnPackDelivery`), beside the ones Graphite downloads itself
-/// (`AddOnPackStore`). A pack in the app's bundle is always there. A pack of an On-Demand Resources tag is used once
+/// (`AddOnPackStore`). A pack of an On-Demand Resources tag is used once
 /// asked for, and the person can remove it: the use ends, iOS may take the space back, and the removal is remembered
 /// on the device, so a pack iOS has not yet taken back is still reported as removed until it is asked for again.
 @MainActor
 final class AddOnIncludedCopies {
-    private let appBundle: Bundle
     /// Nil where the platform has no On-Demand Resources.
     private let makeTagAccess: (@MainActor (String) -> any OnDemandResourcesAccess)?
     private let defaults: UserDefaults
@@ -30,26 +29,18 @@ final class AddOnIncludedCopies {
     private static let removedPacksKey = "GraphiteRemovedAddOnPacks"
 
     /// - Parameter makeTagAccess: Makes the access to a tag's files; nil where the platform has no On-Demand Resources.
-    init(appBundle: Bundle, defaults: UserDefaults, makeTagAccess: (@MainActor (String) -> any OnDemandResourcesAccess)?) {
-        self.appBundle = appBundle
+    init(defaults: UserDefaults, makeTagAccess: (@MainActor (String) -> any OnDemandResourcesAccess)?) {
         self.defaults = defaults
         self.makeTagAccess = makeTagAccess
     }
 
-    /// The app's own: its main bundle, and On-Demand Resources on iOS.
+    /// The app's own: On-Demand Resources on iOS, none on the Mac.
     static func live(defaults: UserDefaults) -> AddOnIncludedCopies {
         #if os(iOS)
-        AddOnIncludedCopies(appBundle: .main, defaults: defaults) { tag in BundleResourceRequestAccess(tag: tag) }
+        AddOnIncludedCopies(defaults: defaults) { tag in BundleResourceRequestAccess(tag: tag) }
         #else
-        AddOnIncludedCopies(appBundle: .main, defaults: defaults, makeTagAccess: nil)
+        AddOnIncludedCopies(defaults: defaults, makeTagAccess: nil)
         #endif
-    }
-
-    /// Whether every file of the pack is in the app's bundle. False for a build without them, such as the package's
-    /// tests, which then download the pack as before.
-    func isInAppBundle(_ pack: AddOnPack) -> Bool {
-        guard pack.delivery.isInAppBundle else { return false }
-        return pack.files.allSatisfy { file in bundledLocation(ofFileNamed: file.name) != nil }
     }
 
     /// Whether the pack comes as an On-Demand Resources tag this platform can ask for.
@@ -64,11 +55,10 @@ final class AddOnIncludedCopies {
     /// Whether the person removed the pack and has not asked for it since.
     func wasRemoved(_ pack: AddOnPack) -> Bool { removedPackIdentifiers.contains(pack.id) }
 
-    /// Where the pack's file of this name is in the app's bundle or in its tag in use, or nil.
+    /// Where the pack's file of this name is in its tag in use, or nil.
     func location(ofFileNamed name: String, in pack: AddOnPack) -> URL? {
         switch pack.delivery {
         case .downloadOnly: nil
-        case .inAppBundle: bundledLocation(ofFileNamed: name)
         case .onDemandResourcesTag(let tag): tagAccesses[tag]?.location(ofFileNamed: name)
         }
     }
@@ -112,11 +102,6 @@ final class AddOnIncludedCopies {
         let made = makeTagAccess(tag)
         tagAccesses[tag] = made
         return made
-    }
-
-    private func bundledLocation(ofFileNamed name: String) -> URL? {
-        let file = URL(fileURLWithPath: name)
-        return appBundle.url(forResource: file.deletingPathExtension().lastPathComponent, withExtension: file.pathExtension)
     }
 
     private var removedPackIdentifiers: Set<String> { Set(defaults.stringArray(forKey: Self.removedPacksKey) ?? []) }

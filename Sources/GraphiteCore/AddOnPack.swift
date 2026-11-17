@@ -55,27 +55,17 @@ public struct AddOnFile: Hashable, Sendable {
 public enum AddOnPackDelivery: Hashable, Sendable {
     /// Only Graphite's own download, the first time a feature needs the files.
     case downloadOnly
-    /// In the app's own bundle: installed with the app, and never removed while it is installed.
-    case inAppBundle
     /// The files of this On-Demand Resources tag, one of the App Store's initial install tags: installed with the app,
     /// removable, and downloaded again by the system when asked for after it took their space back.
     case onDemandResourcesTag(String)
 }
 
 extension AddOnPackDelivery {
-    /// Whether the files are in the app's own bundle.
-    public var isInAppBundle: Bool {
-        switch self {
-        case .inAppBundle: true
-        case .downloadOnly, .onDemandResourcesTag: false
-        }
-    }
-
     /// The On-Demand Resources tag the files come as, if they do.
     public var onDemandResourcesTag: String? {
         switch self {
         case .onDemandResourcesTag(let tag): tag
-        case .downloadOnly, .inAppBundle: nil
+        case .downloadOnly: nil
         }
     }
 }

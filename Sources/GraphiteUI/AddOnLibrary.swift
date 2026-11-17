@@ -5,8 +5,8 @@
  * Description: The add-on packs on this device, those that came with the app included, and their downloads.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 16/11/2026
+ * Version: 0.5
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -21,8 +21,6 @@ enum AddOnPackState: Equatable {
     case checking
     case downloading
     case downloaded
-    /// In the app's own bundle, so always here and never removed.
-    case includedWithApp
     /// The last download or removal failed, for this reason.
     case failed(AddOnFailure)
 }
@@ -47,8 +45,8 @@ enum AddOnFailure: Equatable {
 
 /// The add-on packs on this device and their downloads: what Settings › General › Add-ons
 /// lists and what a feature asks for when it needs its pack. A pack can come with the app
-/// (`AddOnIncludedCopies`: in its bundle on the Mac, an On-Demand Resources tag installed with it
-/// on iOS); otherwise, or when that copy is not there, Graphite downloads it, keeping the files with
+/// (`AddOnIncludedCopies`: an On-Demand Resources tag installed with it on iOS); otherwise, or when
+/// that copy is not there, Graphite downloads it, keeping the files with
 /// `AddOnPackStore`, which is the truth on disk. One fetch of a pack runs at a time.
 @MainActor @Observable
 final class AddOnLibrary {
@@ -101,7 +99,7 @@ final class AddOnLibrary {
     func location(ofFileNamed name: String, in pack: AddOnPack) -> URL? {
         guard let file = pack.file(named: name) else { return nil }
         switch state(of: pack) {
-        case .downloaded, .includedWithApp:
+        case .downloaded:
             return includedCopies.location(ofFileNamed: name, in: pack) ?? store?.location(of: file, in: pack)
         case .notDownloaded, .checking, .downloading, .failed:
             return nil
@@ -123,7 +121,7 @@ final class AddOnLibrary {
             return
         }
         switch state(of: pack) {
-        case .downloaded, .includedWithApp, .checking, .downloading: return
+        case .downloaded, .checking, .downloading: return
         case .notDownloaded, .failed: break
         }
         states[pack.id] = includedCopies.hasTag(pack) ? .checking : .downloading
@@ -150,9 +148,7 @@ final class AddOnLibrary {
 
     private func settleStates() {
         for pack in packs where fetches[pack.id] == nil {
-            if includedCopies.isInAppBundle(pack) {
-                states[pack.id] = .includedWithApp
-            } else if includedCopies.isInUse(pack) || store?.isInstalled(pack) == true {
+            if includedCopies.isInUse(pack) || store?.isInstalled(pack) == true {
                 states[pack.id] = .downloaded
             } else {
                 states[pack.id] = states[pack.id].flatMap(Self.keptFailure) ?? .notDownloaded

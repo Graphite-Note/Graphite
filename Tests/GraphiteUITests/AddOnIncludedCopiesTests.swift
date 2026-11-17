@@ -3,12 +3,12 @@
  * ------------------------------------
  * Layer: Tests
  * Description: Add-on packs that come with the app: a tag installed with it is used without a download, a removed one
- *              is reported removed across launches and asked for again, a missing one is downloaded, and a pack in the
- *              app's bundle is included and cannot be removed.
+ *              is reported removed across launches and asked for again, a missing one is downloaded, and the Mac's
+ *              pictures are downloaded and can be removed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -49,9 +49,9 @@ final class AddOnIncludedCopiesTests: XCTestCase {
     }
 
     /// A library as one launch of the app makes it: the same device's folders and preferences each time.
-    private func launchLibrary(with pack: AddOnPack, appBundle: Bundle = .main) -> AddOnLibrary {
+    private func launchLibrary(with pack: AddOnPack) -> AddOnLibrary {
         let access = tagAccess!
-        let copies = AddOnIncludedCopies(appBundle: appBundle, defaults: device.preferences) { _ in access }
+        let copies = AddOnIncludedCopies(defaults: device.preferences) { _ in access }
         return AddOnLibrary(packs: [pack], applicationFolders: .temporary(below: folders), session: URLSession(configuration: .ephemeral),
                             includedCopies: copies)
     }
@@ -159,34 +159,32 @@ final class AddOnIncludedCopiesTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: try storeFolder(of: pack).path), "Remove takes the downloaded copy too.")
     }
 
-    func testAPackInTheAppBundleIsIncludedAndHasNothingToRemove() throws {
-        let pack = try pack(delivery: .inAppBundle)
-        let appBundle = try XCTUnwrap(Bundle(url: tagFolder))
-        let library = launchLibrary(with: pack, appBundle: appBundle)
-
-        XCTAssertEqual(library.state(of: pack), .includedWithApp)
-        XCTAssertEqual(library.location(ofFileNamed: "Picture-light.jpg", in: pack)?.resolvingSymlinksInPath(),
-                       tagFolder.appendingPathComponent("Picture-light.jpg").resolvingSymlinksInPath())
-        library.download(pack)
-        XCTAssertEqual(library.state(of: pack), .includedWithApp, "Nothing to fetch.")
-        XCTAssertEqual(tagAccess.beginCount, 0)
-    }
-
-    /// The package's tests have no pictures in their bundle: the pack is downloaded as before.
-    func testAPackMissingFromTheAppBundleIsDownloaded() async throws {
-        let pack = try pack(delivery: .inAppBundle)
+    /// The owner, 2026-11-17: on the Mac too, the pictures are there at first and can be deleted. The Mac downloads
+    /// them (macOS has no On-Demand Resources, and the signed bundle cannot lose files); Remove deletes them, a later
+    /// launch keeps them removed, and asking for them again downloads them.
+    func testADownloadedPackCanBeRemovedAndStaysRemovedUntilAskedForAgain() async throws {
+        let pack = try pack(delivery: .downloadOnly)
         let library = launchLibrary(with: pack)
-        XCTAssertEqual(library.state(of: pack), .notDownloaded)
-
         library.download(pack)
         try await waitForState(.downloaded, of: pack, in: library)
-        XCTAssertNotNil(library.location(ofFileNamed: "Picture-light.jpg", in: pack))
+        XCTAssertEqual(tagAccess.beginCount, 0, "A download-only pack asks no tag.")
+
+        library.remove(pack)
+        XCTAssertEqual(library.state(of: pack), .notDownloaded)
+        XCTAssertNil(library.location(ofFileNamed: "Picture-light.jpg", in: pack))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try storeFolder(of: pack).path), "The files leave the device.")
+
+        let relaunched = launchLibrary(with: pack)
+        XCTAssertEqual(relaunched.state(of: pack), .notDownloaded, "Removed across launches.")
+        relaunched.download(pack)
+        try await waitForState(.downloaded, of: pack, in: relaunched)
+        XCTAssertNotNil(relaunched.location(ofFileNamed: "Picture-light.jpg", in: pack))
     }
 
-    func testTheMacPicturesAreInTheAppBundleAndTheIPadPicturesATagInstalledWithTheApp() throws {
+    func testTheMacPicturesAreDownloadedAndTheIPadPicturesATagInstalledWithTheApp() throws {
         let pack = try XCTUnwrap(WelcomeTourScreenshotPack.forThisPlatform)
         #if os(macOS)
-        XCTAssertEqual(pack.delivery, .inAppBundle)
+        XCTAssertEqual(pack.delivery, .downloadOnly)
         #else
         XCTAssertEqual(pack.delivery, .onDemandResourcesTag(WelcomeTourScreenshotPack.onDemandResourcesTag))
         #endif
