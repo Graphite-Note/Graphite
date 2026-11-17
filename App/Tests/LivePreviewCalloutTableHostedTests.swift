@@ -6,8 +6,8 @@
  *              commands change the note's source with the callout's quote markers kept, each one undoable edit.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -47,7 +47,7 @@ final class LivePreviewCalloutTableHostedTests: XCTestCase {
         XCTAssertTrue(menu.context.items(at: CGPoint(x: 60, y: 6)).isEmpty, "The callout's title has no table commands.")
         XCTAssertEqual(menu.context.items(at: point).map(\.title), ["Row", "Column", "Sort by column (A to Z)", "Sort by column (Z to A)"])
         attachScreenshot(named: "The callout and its table")
-        let heightBefore = calloutView.bounds.height
+        let heightBefore = try await settledHeight(of: editor)
 
         try choose("Row", "Add row below", at: point, in: menu)
         try await waitUntil("the row is in the note") { session.text.contains("\n> |  |  |\n") }
@@ -105,6 +105,22 @@ final class LivePreviewCalloutTableHostedTests: XCTestCase {
 
     private func currentBlockView(in editor: MarkdownTextView) -> UIView? {
         editor.subviews.first { subview in !subview.isHidden && renderedBlockMenu(of: subview) != nil }
+    }
+
+    /// The callout's height once its view has measured itself. A callout is first drawn at an
+    /// estimate that the blocks measured earlier in the app's run correct, so a callout with
+    /// code, measured by an earlier test, made the first height taller than this one's.
+    private func settledHeight(of editor: MarkdownTextView) async throws -> CGFloat {
+        var lastHeight: CGFloat = -1
+        var unchangedReads = 0
+        try await waitUntil("the callout's height settles") {
+            let height = self.currentBlockView(in: editor)?.bounds.height ?? 0
+            unchangedReads = height == lastHeight ? unchangedReads + 1 : 0
+            lastHeight = height
+            // Ten reads 20 ms apart: longer than the view takes to report its measured height.
+            return height > 0 && unchangedReads >= 10
+        }
+        return lastHeight
     }
 
     private func blockView(in editor: MarkdownTextView) async throws -> UIView {

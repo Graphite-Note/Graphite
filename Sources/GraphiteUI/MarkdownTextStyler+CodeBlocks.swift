@@ -1,3 +1,14 @@
+/**
+ * File: MarkdownTextStyler+CodeBlocks.swift
+ * -----------------------------------------
+ * Layer: UI
+ * Description: Fenced code in the editor: each block drawn as one box, its tokens colored, and quoted code inside its quote's bars.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 17/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 #if canImport(UIKit)
@@ -156,13 +167,18 @@ extension MarkdownTextStyler {
     /// lines are inset from the box's edges and set without the space between paragraphs,
     /// and in Live Preview its fences are hidden, unless the selection starts or ends in it,
     /// leaving short lines that pad the box above and below. Quoted code (in a callout)
-    /// keeps the plain background, inside its quote's bars.
+    /// keeps the plain background, inside its quote's bars: its lines' `>` markers are drawn
+    /// as the bars, as a quoted text line's are, and not as code.
     func drawCodeBlocksAsBoxes(in spans: [MarkdownStyleSpan], to textStorage: NSTextStorage, source: NSString, revealedMarkup: RevealedMarkup?,
                                fonts: MarkdownStyleFonts, blockContextCheckpoints: MarkdownBlockContextCheckpoints?) {
         let styles = codeBoxStyles(codeFont: fonts.codeFont)
         /// The block whose fences show, found once, when a fence is styled.
         var codeBlockShowingFences: FencedCodeBlock??
         for span in spans {
+            if let block = span.fencedCodeBlock, block.quoteDepth > 0, span.style == .codeBlock {
+                drawQuoteBars(ofQuotedCodeLine: span, quoteDepth: block.quoteDepth, in: textStorage, source: source, baseFont: fonts.baseFont)
+                continue
+            }
             guard let block = span.fencedCodeBlock, block.quoteDepth == 0, span.style == .codeBlock || span.style == .syntaxMarker,
                   span.range.location <= source.length else { continue }
             let lineRange = source.lineRange(for: NSRange(location: span.range.location, length: 0))
@@ -181,6 +197,20 @@ extension MarkdownTextStyler {
                                    isOpening: isFence && span.range.location < block.codeStart, showsFence: showsFence)
             styleCodeBoxLine(line, styles: styles, in: textStorage, source: source)
         }
+    }
+
+    /// A code line of a block in a quote or callout carries the quote's `>` markers inside its
+    /// code span; without this they showed as text on the code's background, left of the bars.
+    private func drawQuoteBars(ofQuotedCodeLine span: MarkdownStyleSpan, quoteDepth: Int, in textStorage: NSTextStorage, source: NSString,
+                               baseFont: PlatformFont) {
+        guard NSMaxRange(span.range) <= source.length, NSMaxRange(span.range) <= textStorage.length else { return }
+        let lineRange = source.lineRange(for: NSRange(location: span.range.location, length: 0))
+        let line = source.substring(with: NSRange(location: lineRange.location, length: NSMaxRange(span.range) - lineRange.location))
+        let content = MarkdownQuoteSyntax.markersRemoved(from: line, maximumDepth: quoteDepth).content
+        let markersRange = NSRange(location: lineRange.location, length: line.utf16.count - content.utf16.count)
+        guard markersRange.length > 0 else { return }
+        textStorage.removeAttribute(.backgroundColor, range: markersRange)
+        replace(markersRange, with: .quoteBar, in: textStorage, baseFont: baseFont)
     }
 
     private func codeBoxStyles(codeFont: PlatformFont) -> CodeBoxStyles {

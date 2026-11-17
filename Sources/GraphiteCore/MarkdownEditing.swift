@@ -221,13 +221,13 @@ public enum MarkdownEditing {
     }
 
     /// How wide `indentation` is in columns, with a tab as wide as `tabSize` spaces.
-    private static func indentationWidth(_ indentation: String, tabSize: Int) -> Int {
+    static func indentationWidth(_ indentation: String, tabSize: Int) -> Int {
         indentation.utf16.reduce(0) { width, unit in width + (unit == 9 ? max(tabSize, 1) : 1) }
     }
 
     /// The number of the closest numbered item above `lineStart` at `indentationWidth`, or
     /// nil when the item there is a bullet or the list ends first.
-    private static func orderedNumber(ofItemAbove lineStart: Int, quotePrefix: String, indentationWidth targetWidth: Int,
+    static func orderedNumber(ofItemAbove lineStart: Int, quotePrefix: String, indentationWidth targetWidth: Int,
                                       in text: NSString, tabSize: Int) -> Int? {
         let quoteDepth = quotePrefix.filter { character in character == ">" }.count
         var location = lineStart
@@ -294,18 +294,23 @@ public enum MarkdownEditing {
     }
 
     /// Moves the selected lines one level in (Tab), keeping the selection on the same text.
-    public static func indenting(in text: NSString, selection: NSRange, indentUnit: String) -> MarkdownTextEdit {
-        transformingLines(in: text, selection: selection) { line in
+    /// The lines nested under a selected list item move with it, as Obsidian moves an item's
+    /// children: Tab on a parent keeps its children under it.
+    public static func indenting(in text: NSString, selection: NSRange, indentUnit: String, tabSize: Int = 4) -> MarkdownTextEdit {
+        let edit = transformingLines(in: text, selection: selection, through: endOfNestedLines(under: selection, in: text, tabSize: tabSize)) { line in
             guard !line.isEmpty else { return nil }
             let quotePrefixLength = MarkdownListSyntax.listLine(line)?.quotePrefix.utf16.count ?? 0
             return LineChange(range: NSRange(location: quotePrefixLength, length: 0), replacement: indentUnit)
         }
+        return renumberingLists(after: edit, in: text, tabSize: tabSize)
     }
 
-    /// Moves the selected lines one level out (Shift-Tab). `tabSize` is how many spaces one
-    /// level is when the vault indents with tabs.
+    /// Moves the selected lines one level out (Shift-Tab), with the lines nested under the last
+    /// selected list item when that item moves out. `tabSize` is how many spaces one level is
+    /// when the vault indents with tabs.
     public static func outdenting(in text: NSString, selection: NSRange, indentUnit: String, tabSize: Int = 4) -> MarkdownTextEdit {
-        transformingLines(in: text, selection: selection) { line in
+        let nestedLinesEnd = endOfNestedLines(under: selection, in: text, tabSize: tabSize, onlyWhenIndented: true)
+        let edit = transformingLines(in: text, selection: selection, through: nestedLinesEnd) { line in
             let quotePrefixLength = MarkdownListSyntax.listLine(line)?.quotePrefix.utf16.count ?? 0
             let whitespaceEnd = leadingWhitespaceEnd(in: line, after: quotePrefixLength)
             let leadingWhitespace = (line as NSString).substring(with: NSRange(location: quotePrefixLength, length: whitespaceEnd - quotePrefixLength))
@@ -313,6 +318,31 @@ public enum MarkdownEditing {
             guard remainingLength < leadingWhitespace.utf16.count else { return nil }
             return LineChange(range: NSRange(location: quotePrefixLength + remainingLength, length: leadingWhitespace.utf16.count - remainingLength), replacement: "")
         }
+        return renumberingLists(after: edit, in: text, tabSize: tabSize)
+    }
+
+    /// Where the lines nested under the list item on the last line `selection` touches end:
+    /// its child items and continuation lines, each more indented than the item and in the
+    /// same quote, up to the first blank or less indented line. The selection's own lines'
+    /// end when that line is no list item or has nothing under it, and, with
+    /// `onlyWhenIndented`, when the item has no indentation to give up.
+    private static func endOfNestedLines(under selection: NSRange, in text: NSString, tabSize: Int, onlyWhenIndented: Bool = false) -> Int {
+        let linesRange = lineRange(covering: selection, in: text)
+        let lastLineRange = text.lineRange(for: NSRange(location: max(NSMaxRange(linesRange) - 1, linesRange.location), length: 0))
+        guard let lastLine = lineContents(in: text, range: lastLineRange).first,
+              let item = MarkdownListSyntax.listLine(lastLine.content), item.isListItem,
+              !onlyWhenIndented || !item.indentation.isEmpty else { return NSMaxRange(linesRange) }
+        let itemWidth = indentationWidth(item.indentation, tabSize: tabSize)
+        var end = NSMaxRange(linesRange)
+        while end < text.length {
+            let nextLineRange = text.lineRange(for: NSRange(location: end, length: 0))
+            guard let nextLine = lineContents(in: text, range: nextLineRange).first, nextLine.content.hasPrefix(item.quotePrefix) else { break }
+            let afterQuote = String(nextLine.content.dropFirst(item.quotePrefix.count))
+            let indentation = String(afterQuote.prefix { character in character == " " || character == "\t" })
+            guard indentation.count < afterQuote.count, indentationWidth(indentation, tabSize: tabSize) > itemWidth else { break }
+            end = NSMaxRange(nextLineRange)
+        }
+        return end
     }
 
     /// `indentation` is spaces and tabs only, so its Characters and UTF-16 units agree.
@@ -386,7 +416,13 @@ public enum MarkdownEditing {
     /// `foldedSections` are the whole lines of the sections folded away. A folded section
     /// moves and is moved past as one unit, as in Obsidian: a line that swapped with its
     /// header alone would land in the part that is hidden and seem to vanish.
+    /// Numbered lists the lines move in are counted again, as Obsidian's smart lists do.
     public static func movingLines(up: Bool, in text: NSString, selection: NSRange, foldedSections: [NSRange] = []) -> MarkdownTextEdit? {
+        movingLinesAsWritten(up: up, in: text, selection: selection, foldedSections: foldedSections)
+            .map { edit in renumberingLists(after: edit, in: text, tabSize: 4) }
+    }
+
+    private static func movingLinesAsWritten(up: Bool, in text: NSString, selection: NSRange, foldedSections: [NSRange]) -> MarkdownTextEdit? {
         func wholeUnit(_ lines: NSRange) -> NSRange {
             foldedSections.reduce(lines) { unit, section in
                 NSIntersectionRange(section, unit).length > 0 && NSMaxRange(section) <= text.length ? NSUnionRange(unit, section) : unit
@@ -676,8 +712,10 @@ public enum MarkdownEditing {
     /// selection stays on the same text: a position before the changed part of its line
     /// does not move, one after it moves with the text, and one inside replaced markup goes
     /// to the end of the new markup.
-    private static func transformingLines(in text: NSString, selection: NSRange, _ change: (String) -> LineChange?) -> MarkdownTextEdit {
-        let linesRange = lineRange(covering: selection, in: text)
+    private static func transformingLines(in text: NSString, selection: NSRange, through linesEnd: Int? = nil,
+                                          _ change: (String) -> LineChange?) -> MarkdownTextEdit {
+        let selectedLines = lineRange(covering: selection, in: text)
+        let linesRange = NSRange(location: selectedLines.location, length: max(NSMaxRange(selectedLines), linesEnd ?? 0) - selectedLines.location)
         let lines = lineContents(in: text, range: linesRange)
         let selectionStart = min(max(selection.location, linesRange.location), NSMaxRange(linesRange))
         let selectionEnd = min(max(NSMaxRange(selection), selectionStart), NSMaxRange(linesRange))

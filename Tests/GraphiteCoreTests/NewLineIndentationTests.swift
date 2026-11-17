@@ -70,5 +70,19 @@ final class NewLineIndentationTests: XCTestCase {
         XCTAssertEqual(pressingShiftReturn(in: "```\n  code\n```", at: 10).text, "```\n  code\n  \n```")
         XCTAssertFalse(pressingShiftReturn(in: "plain", at: 5).text.contains("\u{2028}"))
     }
+
+    private func pressingBackspace(in text: String, at location: Int, indentUnit: String = "    ") -> String? {
+        let edit = MarkdownEditing.deletingIndentation(in: text as NSString, selection: NSRange(location: location, length: 0), indentUnit: indentUnit)
+        return edit.map { edit in (text as NSString).replacingCharacters(in: edit.range, with: edit.replacement) }
+    }
+
+    func testBackspaceInLeadingSpacesRemovesALevel() {
+        XCTAssertEqual(pressingBackspace(in: "        - item", at: 8), "    - item")
+        XCTAssertEqual(pressingBackspace(in: "      code", at: 6), "    code", "Six spaces go back to four, the level below.")
+        XCTAssertEqual(pressingBackspace(in: "a\n    b", at: 4), "a\n  b", "Two spaces into the line, the two go.")
+        XCTAssertNil(pressingBackspace(in: "word    ", at: 8), "After text, Backspace deletes one space.")
+        XCTAssertNil(pressingBackspace(in: "\t\tcode", at: 2, indentUnit: "\t"), "A vault indenting with tabs deletes one tab.")
+        XCTAssertNil(pressingBackspace(in: "line", at: 0))
+    }
 }
 

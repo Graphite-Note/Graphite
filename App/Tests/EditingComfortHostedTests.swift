@@ -15,6 +15,7 @@ import SwiftUI
 import GraphiteApple
 @testable import GraphiteCore
 import GraphiteIndex
+import UniformTypeIdentifiers
 @testable import GraphiteUI
 
 /// Typing helpers in the hosted workspace's own text view, typed as the keyboard types:
@@ -24,6 +25,12 @@ final class EditingComfortHostedTests: XCTestCase {
     private var window: UIWindow?
 
     override func tearDown() async throws {
+        closeWindow()
+    }
+
+    /// Ends editing first, so no hidden editor keeps the keyboard for the tests that follow.
+    private func closeWindow() {
+        window?.endEditing(true)
         window?.isHidden = true
         window?.rootViewController = nil
         window = nil
@@ -73,6 +80,27 @@ final class EditingComfortHostedTests: XCTestCase {
         attachScreenshot(named: "Return in a callout's code block")
     }
 
+    /// #201: with the cursor in a callout, its code lines' `>` markers are the callout's bars,
+    /// as its text lines' are, and the code's background starts after them.
+    func testACalloutsCodeLinesStayInsideItsBarsWhileTheCursorIsInIt() async throws {
+        let note = "Before\n\n> [!example] Title\n> Some text\n> ```python\n> x = 1\n>     y = 2\n> ```\n> After code\n\nOutside\n"
+        let (editor, _) = try await openNote(note, viewMode: .livePreview)
+        let source = note as NSString
+        try await startEditing(editor, at: source.range(of: "x = 1").location + 2)
+        func replacement(at location: Int) -> String? {
+            editor.textStorage.attribute(ConcealedReplacement.attributeKey, at: location, effectiveRange: nil) as? String
+        }
+        func hasBackground(at location: Int) -> Bool { editor.textStorage.attribute(.backgroundColor, at: location, effectiveRange: nil) != nil }
+        try await waitUntil("the callout's source shows") { replacement(at: source.range(of: "> Some").location) == ConcealedReplacement.quoteBar.rawValue }
+        for codeLine in ["> x = 1", ">     y = 2"] {
+            let marker = source.range(of: codeLine).location
+            try await waitUntil("the bar of \(codeLine)") { replacement(at: marker) == ConcealedReplacement.quoteBar.rawValue }
+            XCTAssertFalse(hasBackground(at: marker), "The marker of \(codeLine) is not code.")
+            XCTAssertTrue(hasBackground(at: marker + 2), "The code of \(codeLine) keeps its background.")
+        }
+        attachScreenshot(named: "A callout's code inside its bars")
+    }
+
     // MARK: Lists
 
     func testShiftReturnFromAHardwareKeyboardBreaksAnItemsLineWithoutANewItem() async throws {
@@ -114,11 +142,96 @@ final class EditingComfortHostedTests: XCTestCase {
         try await waitUntil("a typed fence left alone") { editor.autocorrectionType == .no }
     }
 
+    // MARK: Hand checks of #200, done by the editor's own controls
+
+    /// Each formatting button of the keyboard bar, pressed through its own action over a
+    /// selected word, makes its edit, and Undo takes it back.
+    func testEveryFormattingButtonOfTheKeyboardBarEditsTheSelectionAndUndoes() async throws {
+        let (editor, session) = try await openNote("one word\nnext", viewMode: .livePreview)
+        try await startEditing(editor, at: 0)
+        let toolbar = try XCTUnwrap(editor.inputAccessoryView as? EditorKeyboardToolbar, "The keyboard bar is the editor's accessory view.")
+        let buttons = descendants(of: toolbar, matching: UIButton.self)
+        let expectations: [(label: String, text: String)] = [
+            ("Bold", "one **word**\nnext"), ("Italic", "one *word*\nnext"), ("Strikethrough", "one ~~word~~\nnext"),
+            ("Highlight", "one ==word==\nnext"), ("Code", "one `word`\nnext"), ("Inline math", "one $word$\nnext"),
+            ("Link to note", "one [[word]]\nnext"), ("Tag", "one #word\nnext"), ("Bulleted list", "- one word\nnext"),
+            ("Numbered list", "1. one word\nnext"), ("Task", "- [ ] one word\nnext"), ("Indent", "\tone word\nnext"),
+            ("Move line down", "next\none word"),
+        ]
+        for (label, expectedText) in expectations {
+            let button = try XCTUnwrap(buttons.first { button in button.accessibilityLabel == label }, "The bar has \(label).")
+            editor.selectedRange = (editor.text as NSString).range(of: "word")
+            editor.delegate?.textViewDidChangeSelection?(editor)
+            button.sendActions(for: .touchUpInside)
+            try await waitUntil("\(label) edits the note") { session.text == expectedText }
+            editor.undoManager?.undo()
+            try await waitUntil("Undo takes \(label) back") { session.text == "one word\nnext" }
+        }
+        attachScreenshot(named: "The keyboard bar's formatting buttons")
+    }
+
+    /// A web address pasted over selected text makes a link of it, and rich text is pasted
+    /// as Markdown, as with Obsidian's "Auto convert HTML".
+    func testPastingAnAddressOverASelectionLinksItAndRichTextBecomesMarkdown() async throws {
+        let (editor, session) = try await openNote("Read the guide here.\n", viewMode: .livePreview)
+        try await startEditing(editor, at: 0)
+        // The simulator's pasteboard is only written: reading what another app left there can
+        // ask for permission to paste.
+        UIPasteboard.general.string = "https://help.obsidian.md"
+        editor.selectedRange = (editor.text as NSString).range(of: "guide")
+        editor.paste(nil)
+        try await waitUntil("the link") { session.text == "Read the [guide](https://help.obsidian.md) here.\n" }
+        UIPasteboard.general.setItems([[UTType.html.identifier: "<p><b>Bold</b> and <a href=\"https://example.org\">a link</a></p>",
+                                        UTType.utf8PlainText.identifier: "Bold and a link"]])
+        editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+        editor.paste(nil)
+        try await waitUntil("the Markdown") { session.text.contains("**Bold** and [a link](https://example.org)") }
+    }
+
+    /// The cursor stays where the typing is after a block it passed renders: a math block
+    /// typed key by key, then Return twice to leave it, puts the cursor below the formula.
+    func testTheCursorStaysBelowAMathBlockThatRendersAsItIsLeft() async throws {
+        let (editor, session) = try await openNote("Intro\n", viewMode: .livePreview)
+        try await startEditing(editor, at: 6)
+        typeAsKeyboard("$$\nx^2 + y^2\n$$\n\nAfter", in: editor)
+        try await waitUntil { session.text == "Intro\n$$\nx^2 + y^2\n$$\n\nAfter" }
+        XCTAssertEqual(editor.selectedRange, NSRange(location: (session.text as NSString).length, length: 0))
+        editor.layoutIfNeeded()
+        let caret = editor.caretRect(for: try XCTUnwrap(editor.selectedTextRange?.end))
+        let introRect = editor.caretRect(for: try XCTUnwrap(editor.position(from: editor.beginningOfDocument, offset: 5)))
+        XCTAssertGreaterThan(caret.minY, introRect.maxY + 20, "The cursor is below the rendered formula, not on top of it.")
+        XCTAssertTrue(caret.minY.isFinite && caret.height > 4, "The cursor has a line's height: \(caret)")
+        attachScreenshot(named: "The cursor after a math block")
+    }
+
+    /// A selection across a rendered table has its ends, where the handles go, at the
+    /// selected text before and after the table, each a line high.
+    func testASelectionAcrossARenderedTableHasItsEndsAtTheText() async throws {
+        let note = "Above the table\n\n| A | B |\n| - | - |\n| 1 | 2 |\n\nBelow the table\n"
+        let (editor, _) = try await openNote(note, viewMode: .livePreview)
+        let source = note as NSString
+        try await startEditing(editor, at: source.range(of: "Below").location)
+        let selection = NSUnionRange(source.range(of: "table\n"), source.range(of: "Below"))
+        editor.selectedRange = selection
+        editor.delegate?.textViewDidChangeSelection?(editor)
+        editor.layoutIfNeeded()
+        let selectedRange = try XCTUnwrap(editor.selectedTextRange)
+        let rects = editor.selectionRects(for: selectedRange)
+        let start = try XCTUnwrap(rects.first { rect in rect.containsStart }).rect
+        let end = try XCTUnwrap(rects.first { rect in rect.containsEnd }).rect
+        let aboveLine = editor.caretRect(for: try XCTUnwrap(editor.position(from: editor.beginningOfDocument, offset: selection.location)))
+        let belowLine = editor.caretRect(for: try XCTUnwrap(editor.position(from: editor.beginningOfDocument, offset: NSMaxRange(selection))))
+        XCTAssertEqual(start.midY, aboveLine.midY, accuracy: aboveLine.height, "The start handle is on the line above the table.")
+        XCTAssertEqual(end.midY, belowLine.midY, accuracy: belowLine.height, "The end handle is on the line below the table.")
+        XCTAssertGreaterThan(end.minY, start.maxY, "The table lies between the two handles.")
+        attachScreenshot(named: "A selection across a table")
+    }
+
     // MARK: Helpers
 
     /// Opens a vault holding the note in `viewMode` and returns its text view.
     private func openNote(_ text: String, viewMode: NoteViewMode) async throws -> (MarkdownTextView, MarkdownSession) {
-        window?.isHidden = true
+        closeWindow()
         let directory = try TemporaryVault.make(prefix: "EditingComfort", files: ["Comfort.md": text], for: self).root
         let workspace = WorkspaceModel()
         workspace.folderAccess = FolderAccess(root: directory)

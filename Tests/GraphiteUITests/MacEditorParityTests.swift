@@ -151,6 +151,20 @@ final class MacEditorParityTests: XCTestCase {
         XCTAssertEqual(editor.textView.string, "- item\n  ", "Control-Return makes the same break, with no U+2028.")
     }
 
+    func testTabCarriesAnItemsChildrenAndRenumbersAndBackspaceRemovesALevelOfSpaces() async throws {
+        let editor = try await makeEditor(text: "1. a\n2. b\n\t- child\n3. c", cursor: 7)
+        editor.textView.insertTab(nil)
+        XCTAssertEqual(editor.textView.string, "1. a\n\t1. b\n\t\t- child\n2. c")
+        editor.coordinator.noteUndoManager.undo()
+        XCTAssertEqual(editor.textView.string, "1. a\n2. b\n\t- child\n3. c", "One undo takes the move and the numbers back.")
+        let spaces = try await makeEditor(text: "        indented", cursor: 8)
+        var configuration = spaces.coordinator.configuration
+        configuration.editingBehavior.indentUnit = "    "
+        spaces.coordinator.configuration = configuration
+        spaces.textView.deleteBackward(nil)
+        XCTAssertEqual(spaces.textView.string, "    indented")
+    }
+
     func testTypedMarkerWrapsTheSelection() async throws {
         let editor = try await makeEditor(text: "word", cursor: 0)
         editor.textView.setSelectedRange(NSRange(location: 0, length: 4))
