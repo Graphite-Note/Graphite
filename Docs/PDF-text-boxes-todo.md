@@ -84,7 +84,8 @@ Issue: [#41](https://github.com/Graphite-Note/Graphite/issues/41)
 
 - [x] The lasso includes text boxes (as the lasso's pictures).
 - [x] Moving and resizing several kinds of objects together: a box resized with ink is scaled, its text with it.
-- [ ] Stacking order with pictures and ink: waits for "pictures above ink"; boxes are over the ink until then (decision 5).
+- [x] Stacking order with pictures and ink: waits for "pictures above ink"; boxes are over the ink until then (decision 5).
+  Done with `Docs/PDF-annotation-todo.md` section 2 (#181, 2026-11-16), which ended the wait: a text box is one of a page's objects with pictures and shapes, and Bring to Front, Bring Forward, Send Backward and Send to Back move it among them, Ink to Front and Ink to Back move the ink as one layer (`PDFStackingOrder`, invariant M-15 rewritten), each one step and kept in the file. Checked there on the iPad simulator, a text box in the middle of the stack moved over the shape, under both pictures and the ink and back (`PDFStackingOrderHostedTests` reads the screen's colours), and 2026-11-16 in the running Mac app (`MacPDFMarkupInAppHostedTests`): the box's right-click menu with the four commands, Send to Back from a shape's menu putting the shape under the box, Bring to Front from a picture's putting it over the box. Decision 5 holds for a new box, which is placed over the ink.
 
 ### 4. Text everywhere
 

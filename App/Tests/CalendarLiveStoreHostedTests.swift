@@ -125,6 +125,37 @@ final class CalendarLiveStoreHostedTests: XCTestCase {
         XCTAssertTrue(shopping.text.contains("- [ ] Buy milk 📅 2031-03-14"), shopping.text)
     }
 
+    /// A reminder completed while Graphite is closed is ticked in its note when Graphite next opens the vault.
+    func testAReminderCompletedWhileGraphiteIsClosedIsTickedAtTheNextLaunch() async throws {
+        guard ProcessInfo.processInfo.environment[Self.switchVariable] == "1" else { return }
+        let inbox = try makeList(titled: "Graphite Test Closed Inbox", for: .reminder)
+        addTeardownBlock { @MainActor in try? self.eventStore.removeCalendar(inbox, commit: true) }
+        let vault = try makeVault()
+        try Data(#"{"taskList": "Graphite Test Closed Inbox"}"#.utf8).write(to: vault.appendingPathComponent(".obsidian/graphite-calendar.json"))
+        let device = try makeDevice()
+        var running: WorkspaceModel? = try await launch(on: device, opening: vault)
+        _ = await running?.open(try VaultPath("Week.md"))
+        let session = try XCTUnwrap(running?.markdownSession)
+        await running?.sendTaskToReminders(from: session)
+        try await session.save()
+        running = nil
+
+        // Graphite is closed: the reminder is completed in Reminders.
+        let sent = try await reminders(in: inbox)
+        let reminder = try XCTUnwrap(sent.first { reminder in reminder.title == "Pay rent" })
+        reminder.isCompleted = true
+        try eventStore.save(reminder, commit: true)
+        await pause()
+        let week = vault.appendingPathComponent("Week.md")
+        XCTAssertTrue(try String(contentsOf: week, encoding: .utf8).hasPrefix("- [ ] Pay rent"), "Nothing ticked it while Graphite was closed.")
+
+        let relaunched = try await launch(on: device, opening: vault)
+        try await waitUntil("the task is ticked at the next launch", timeoutSeconds: 20) {
+            ((try? String(contentsOf: week, encoding: .utf8)) ?? "").hasPrefix("- [x] Pay rent")
+        }
+        XCTAssertNil(relaunched.errorMessage)
+    }
+
     // MARK: The simulator's calendars
 
     private func makeList(titled title: String, for entityType: EKEntityType) throws -> EKCalendar {
@@ -201,21 +232,35 @@ final class CalendarLiveStoreHostedTests: XCTestCase {
     // MARK: The workspace
 
     private func openedWorkspace() async throws -> (WorkspaceModel, URL) {
-        let vault = try TemporaryVault.make(prefix: "LiveCalendarVault", files: [
+        let vault = try makeVault()
+        return (try await launch(on: try makeDevice(), opening: vault), vault)
+    }
+
+    private func makeVault() throws -> URL {
+        try TemporaryVault.make(prefix: "LiveCalendarVault", files: [
             ".obsidian/graphite-calendar.json": #"{"eventNoteFolders": {"Graphite Test Courses": "Lectures"}, "taskList": "Graphite Test Inbox", "importedList": "Graphite Test Inbox"}"#,
             "Week.md": "- [ ] Pay rent 📅 2031-03-12\n",
             "Shopping.md": "",
         ], for: self).root
+    }
+
+    /// A device's preferences and folders, which a launch of Graphite reads again.
+    private func makeDevice() throws -> (defaults: UserDefaults, folders: URL) {
         let suiteName = "LiveCalendar-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
-        let folders = try TemporaryVault.make(prefix: "LiveCalendarFolders", for: self).root
         addTeardownBlock { UserDefaults().removePersistentDomain(forName: suiteName) }
-        let services = ProcessServices(defaults: defaults, applicationFolders: .temporary(below: folders), calendarStore: LiveCalendarStore()) { startRefusal in
+        return (defaults, try TemporaryVault.make(prefix: "LiveCalendarFolders", for: self).root)
+    }
+
+    /// Graphite started on the device with the vault open, over the simulator's own Calendar and Reminders.
+    private func launch(on device: (defaults: UserDefaults, folders: URL), opening vault: URL) async throws -> WorkspaceModel {
+        let defaults = device.defaults
+        let services = ProcessServices(defaults: defaults, applicationFolders: .temporary(below: device.folders), calendarStore: LiveCalendarStore()) { startRefusal in
             ReadAloudController(session: ReadAloudSession(speech: PenTestSpeech(), preferences: defaults), preferences: defaults, startRefusal: startRefusal)
         }
         let workspace = WorkspaceModel(processServices: services, clock: LiveApplicationClock())
         try await workspace.openFolderAsVault(vault)
-        return (workspace, vault)
+        return workspace
     }
 }
 #endif
