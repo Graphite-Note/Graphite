@@ -3,11 +3,12 @@
  * -----------------------------------------
  * Layer: UI
  * Description: Selecting PDF text by dragging on the iPad, shared by the finger's long press and the text highlighter,
- *              and marking the selection when the touch lifts while the text highlighter is chosen.
+ *              showing the text covered in the chosen style's colour as the touch moves, and marking the selection when
+ *              the touch lifts while the text highlighter is chosen.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -45,8 +46,10 @@ struct PDFTextSelectionDrag {
 }
 
 /// The text highlighter of a PDF view on the iPad (`PencilToolKind.textHighlighter`): a drag on a page's canvas selects
-/// the text from where it began to where it is, and lifting marks the selection in the style chosen on the bar, as one
-/// step of the PDF's history, then clears it. The decision to mark on lift is the Mac highlighter's
+/// the text from where it began to where it is, shown as it is covered in the style's colour (PDFKit does not draw a
+/// selection set during the drag: the owner's iPad and a simulator recording showed nothing until the lift, 2026-11-17),
+/// and lifting marks the selection in the style chosen on the bar, as one step of the PDF's history, then clears it.
+/// The decision to mark on lift is the Mac highlighter's
 /// (`PDFMarkupTool.styleToApplyOnMouseUp`); the marking is `PDFSelectionMarking`'s, as for the selection menu.
 @MainActor
 final class PDFTextHighlighterInteraction {
@@ -65,10 +68,10 @@ final class PDFTextHighlighterInteraction {
         switch dragEvent {
         case .began(let startPoint, let currentPoint):
             drag = PDFTextSelectionDrag(startingAt: pdfView.convert(startPoint, from: nil), in: pdfView)
-            pdfView.currentSelection = drag?.anchorWord
-            extend(to: currentPoint, in: pdfView)
+            showWhileSelecting(drag?.anchorWord, style: style)
+            extend(to: currentPoint, in: pdfView, style: style)
         case .moved(let windowPoint):
-            extend(to: windowPoint, in: pdfView)
+            extend(to: windowPoint, in: pdfView, style: style)
         case .lifted:
             guard drag != nil else { return }
             drag = nil
@@ -76,13 +79,40 @@ final class PDFTextHighlighterInteraction {
         case .cancelled:
             guard drag != nil else { return }
             drag = nil
+            stopShowingWhileSelecting()
             pdfView.clearSelection()
+        case .tapped:
+            // A tap selects nothing; the coordinator offers the menu of a mark tapped.
+            break
         }
     }
 
-    private func extend(to windowPoint: CGPoint, in pdfView: PDFView) {
+    private func extend(to windowPoint: CGPoint, in pdfView: PDFView, style: PDFMarkupStyle) {
         guard let drag, let selection = drag.selection(extendedTo: pdfView.convert(windowPoint, from: nil), in: pdfView) else { return }
+        showWhileSelecting(selection, style: style)
+    }
+
+    /// Selects `selection` and shows it as the touch covers it, in the style's colour, until the touch lifts: PDFKit draws
+    /// its highlighted selections in their own colours, which it does not do for a selection set while a touch is down.
+    func showWhileSelecting(_ selection: PDFSelection?, style: PDFMarkupStyle) {
+        guard let pdfView else { return }
         pdfView.currentSelection = selection
+        guard let selection else {
+            pdfView.highlightedSelections = nil
+            return
+        }
+        selection.color = Self.colorWhileSelecting(for: style)
+        pdfView.highlightedSelections = [selection]
+    }
+
+    /// The text shown while it is selected no longer is.
+    func stopShowingWhileSelecting() {
+        pdfView?.highlightedSelections = nil
+    }
+
+    /// A highlight's own colour as it will be marked; an underline's or a strikethrough's colour, lighter, behind the text.
+    static func colorWhileSelecting(for style: PDFMarkupStyle) -> UIColor {
+        style.kind == .highlight ? style.color.platformColor.withAlphaComponent(0.6) : style.color.platformColor.withAlphaComponent(0.25)
     }
 
     /// Marks the view's selection when a touch that selected it lifts, where `marksOnLift` (the text highlighter is
@@ -90,6 +120,7 @@ final class PDFTextHighlighterInteraction {
     @discardableResult
     func markSelectionOnLift(style: PDFMarkupStyle, marksOnLift: Bool) -> Bool {
         guard let pdfView else { return false }
+        stopShowingWhileSelecting()
         let tool: PDFMarkupTool = marksOnLift ? .highlight : .textSelection
         let selectionHasText = !(pdfView.currentSelection?.string ?? "").isEmpty
         guard let styleToApply = tool.styleToApplyOnMouseUp(style: style, selectionHasText: selectionHasText, clickChoseExistingMark: false) else {

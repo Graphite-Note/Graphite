@@ -7,8 +7,8 @@
  *              device.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -55,9 +55,9 @@ struct PDFTextHighlighterStyleChoices: View {
         Button {
             guard let anchorView = pickerAnchor.view else { return }
             let startColor = style.kind == .highlight ? style.color : PDFMarkupStyle.default.color
-            colorPicker.present(with: startColor, from: anchorView, at: CGPoint(x: anchorView.bounds.midX, y: anchorView.bounds.maxY)) { chosen in
-                style = .highlight(chosen)
-            }
+            // Each colour picked is a dot and the style at once, while the picker stays open.
+            colorPicker.present(with: startColor, from: anchorView, at: CGPoint(x: anchorView.bounds.midX, y: anchorView.bounds.maxY),
+                                pickedColorDidChange: { picked in style = .highlight(picked) }, choose: { _ in })
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 14, weight: .semibold))
@@ -67,6 +67,8 @@ struct PDFTextHighlighterStyleChoices: View {
         }
         .buttonStyle(.plain)
         .background { PDFTextMarkColorPickerAnchor(holder: pickerAnchor) }
+        // The picker is made while the tool's choices show, so the "+" opens it at once.
+        .onAppear { colorPicker.prepare() }
         .accessibilityLabel("Add Highlight Color")
     }
 

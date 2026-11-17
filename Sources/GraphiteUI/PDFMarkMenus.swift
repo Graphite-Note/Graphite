@@ -7,7 +7,7 @@
  *              and the system colour picker that item opens.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 17/11/2026
  */
 
@@ -66,36 +66,89 @@ enum PDFMarkMenus {
 /// colour is then saved with the text-mark colours. As a popover the picker has no close
 /// button and never reports finishing (`colorPickerViewControllerDidFinish` comes only from
 /// that button), so it is closed by a tap outside it, which its presentation reports.
+/// The "+" beside the text highlighter instead takes each colour as it is picked
+/// (`pickedColorDidChange`), into the saved colours and the style at once. One picker is made
+/// ahead (`prepare`) and kept, and shown without the popover's animation: the popover took 1 to
+/// 1.5 s to show after the "+" on the owner's iPad (2026-11-17).
 @MainActor
 final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     private let preferences: UserDefaults
     private var choose: ((PDFMarkupColor) -> Void)?
     private var pickedColor: PDFMarkupColor?
+    /// Takes each colour picked while the picker is open, in place of `choose` when it closes.
+    private var pickedColorDidChange: ((PDFMarkupColor) -> Void)?
+    /// The colour this picking added to the saved colours, replaced by the next one picked.
+    private var colorAddedWhilePicking: PDFMarkupColor?
+    /// The picker made ahead and kept, presented again once it is closed.
+    private var keptPicker: UIColorPickerViewController?
 
     init(preferences: UserDefaults) {
         self.preferences = preferences
     }
 
-    /// Presents the picker with `color` from the view's window, pointing at `sourcePoint` of
-    /// `view`, and calls `choose` once with the colour picked, if one was.
-    func present(with color: PDFMarkupColor, from view: UIView, at sourcePoint: CGPoint, choose: @escaping (PDFMarkupColor) -> Void) {
-        guard var presenter = view.window?.rootViewController else { return }
-        while let presented = presenter.presentedViewController { presenter = presented }
+    /// Makes the picker and loads its view ahead of the first tap, once.
+    func prepare() {
+        guard keptPicker == nil else { return }
         let picker = UIColorPickerViewController()
-        picker.selectedColor = color.platformColor
         picker.supportsAlpha = false
         picker.delegate = self
+        picker.loadViewIfNeeded()
+        keptPicker = picker
+    }
+
+    /// Presents the picker with `color` from the view's window, pointing at `sourcePoint` of
+    /// `view`, and calls `choose` once with the colour picked, if one was. With
+    /// `pickedColorDidChange`, each colour picked is saved at once, replacing the one picked
+    /// before it in this picking, and handed to it instead; `choose` is not called.
+    func present(with color: PDFMarkupColor, from view: UIView, at sourcePoint: CGPoint,
+                 pickedColorDidChange: ((PDFMarkupColor) -> Void)? = nil, choose: @escaping (PDFMarkupColor) -> Void) {
+        guard var presenter = view.window?.rootViewController else { return }
+        while let presented = presenter.presentedViewController { presenter = presented }
+        prepare()
+        guard let keptPicker else { return }
+        // The kept picker shows once at a time; while it is shown, another is made.
+        let picker = keptPicker.presentingViewController == nil ? keptPicker : UIColorPickerViewController()
+        picker.supportsAlpha = false
+        picker.delegate = self
+        picker.selectedColor = color.platformColor
         picker.modalPresentationStyle = .popover
         picker.popoverPresentationController?.sourceView = view
         picker.popoverPresentationController?.sourceRect = CGRect(origin: sourcePoint, size: .zero)
         picker.presentationController?.delegate = self
         self.choose = choose
+        self.pickedColorDidChange = pickedColorDidChange
         pickedColor = nil
-        presenter.present(picker, animated: true)
+        colorAddedWhilePicking = nil
+        // Shown without the popover's animation: with it the picker was fully shown 0.62 to 0.69 s after the tap in an
+        // iPad simulator (1 to 1.5 s on the owner's iPad), without it 0.09 to 0.13 s.
+        presenter.present(picker, animated: false)
     }
 
     func colorPickerViewController(_ viewController: UIColorPickerViewController, didSelect color: UIColor, continuously: Bool) {
-        pickedColor = PDFMarkupColor(platformColor: color)
+        let picked = PDFMarkupColor(platformColor: color)
+        pickedColor = picked
+        // A colour dragged over in the spectrum or a slider is taken where the drag ends.
+        guard !continuously, let pickedColorDidChange else { return }
+        keepWhilePicking(picked)
+        pickedColorDidChange(picked)
+    }
+
+    /// Saves `color` at once, in place of the colour this picking added before it: added
+    /// first, then the earlier one removed, so a full list still takes it. A colour saved
+    /// before the picking stays.
+    private func keepWhilePicking(_ color: PDFMarkupColor) {
+        let key = PDFAnnotationPreferenceKey.textMarkColors
+        var saved = PDFTextMarkColors(decoding: preferences.data(forKey: key))
+        let earlierColor = colorAddedWhilePicking
+        if !saved.contains(color) {
+            if let earlierColor { saved = saved.removing(earlierColor) }
+            saved = saved.adding(color)
+            colorAddedWhilePicking = color
+        } else if earlierColor != color, let earlierColor {
+            saved = saved.removing(earlierColor)
+            colorAddedWhilePicking = nil
+        }
+        preferences.set(saved.encoded, forKey: key)
     }
 
     /// The close button, shown when the popover becomes a sheet in a compact width.
@@ -108,13 +161,17 @@ final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, U
         finish()
     }
 
-    /// Saves the colour picked and hands it back, once; with no colour picked, nothing.
+    /// Saves the colour picked and hands it back, once; with no colour picked, nothing. A
+    /// picking that took each colour as it came is over: its colours are saved already.
     private func finish() {
         let chosenColor = pickedColor
         let chooseColor = choose
+        let tookEachColor = pickedColorDidChange != nil
         pickedColor = nil
         choose = nil
-        guard let chosenColor, let chooseColor else { return }
+        pickedColorDidChange = nil
+        colorAddedWhilePicking = nil
+        guard !tookEachColor, let chosenColor, let chooseColor else { return }
         PDFTextMarkColors.save(chosenColor, in: preferences)
         chooseColor(chosenColor)
     }

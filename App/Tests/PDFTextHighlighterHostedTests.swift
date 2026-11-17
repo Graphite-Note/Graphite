@@ -4,7 +4,8 @@
  * Layer: Tests
  * Description: The fixed bar's text highlighter on a PDF page in the hosted app: a drag over the text, of a finger
  *              where fingers draw or of touches typed as Apple Pencil's, marks it once in the chosen style as one undo
- *              step, a finger's long press marks it on lift, and no ink is drawn.
+ *              step, shown in the style's colour as it is covered, a finger's long press marks it on lift, no ink is
+ *              drawn, and the eraser removes a mark it passes over.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -108,6 +109,57 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         XCTAssertEqual(fixture.session.undoManager.undoActionName, PDFMarkupKind.highlight.title)
         fixture.session.undoAvailability.undo()
         try await waitUntil("one undo takes the mark away") { self.marks(on: fixture.page).isEmpty }
+    }
+
+    /// While the Pencil drags, the text it has covered shows in the style's colour, before it lifts: PDFKit drew nothing
+    /// for a selection set during the drag, so the owner saw the mark only after lifting (2026-11-17).
+    func testThePencilsDragShowsTheTextCoveredInTheStylesColourBeforeItLifts() async throws {
+        guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
+        restoreDevicePreferences.append(HostedDevicePreferences.set(PDFMarkupStyle.highlight(.green).rawValue, forKey: PDFAnnotationPreferenceKey.markupStyle))
+        let fixture = try await openTextPDF()
+        _ = try await canvasMarkingText(in: fixture)
+        let (start, end) = try lineEnds(in: fixture)
+        let middle = CGPoint(x: (start.x + end.x) / 2, y: start.y)
+
+        let touches = SynthesizedTouches(window: fixture.window, touchType: .pencil)
+        touches.begin(at: [start])
+        await touches.slide(to: [middle], steps: 12)
+        try await waitUntil("the text covered shows") { !(fixture.pdfView.highlightedSelections ?? []).isEmpty }
+        let shownHalfway = try XCTUnwrap(fixture.pdfView.highlightedSelections?.first)
+        XCTAssertTrue(marks(on: fixture.page).isEmpty, "Nothing is marked before the lift.")
+        XCTAssertTrue(Self.pageText.hasPrefix(shownHalfway.string ?? "-"), "The text from the first word to the Pencil shows.")
+        XCTAssertLessThan(shownHalfway.string?.count ?? 0, Self.pageText.count)
+        XCTAssertEqual(shownHalfway.color, PDFTextHighlighterInteraction.colorWhileSelecting(for: .highlight(.green)))
+        await touches.slide(to: [end], steps: 12)
+        XCTAssertEqual(fixture.pdfView.highlightedSelections?.first?.string, Self.pageText, "It grows with the drag.")
+        touches.end()
+
+        try await waitUntil("the line is marked") { !self.marks(on: fixture.page).isEmpty }
+        XCTAssertTrue((fixture.pdfView.highlightedSelections ?? []).isEmpty, "Only the mark shows once lifted.")
+    }
+
+    /// The eraser, dragged by the Pencil over a highlight, removes it, and one Undo puts it back: the owner found no way
+    /// to erase a mark (2026-11-17).
+    func testThePencilsEraserRemovesAHighlightItPassesOverAsOneStep() async throws {
+        guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
+        let fixture = try await openTextPDF()
+        _ = try await canvasMarkingText(in: fixture)
+        let (start, end) = try lineEnds(in: fixture)
+        await SynthesizedTouches(window: fixture.window, touchType: .pencil).drag(from: start, to: end, steps: 24, holdSeconds: 0.1)
+        try await waitUntil("the line is marked") { self.marks(on: fixture.page).count == 1 }
+
+        PencilToolbox.shared.use(.eraser)
+        let canvas = try XCTUnwrap(try editingCanvas(in: fixture))
+        try await waitUntil("the canvas erases") { canvas.chosenTool is PKEraserTool }
+        let across = CGPoint(x: (start.x + end.x) / 2, y: start.y)
+        await SynthesizedTouches(window: fixture.window, touchType: .pencil)
+            .drag(from: CGPoint(x: across.x, y: across.y - 40), to: CGPoint(x: across.x, y: across.y + 40), steps: 12, holdSeconds: 0.05)
+
+        try await waitUntil("the highlight is erased") { self.marks(on: fixture.page).isEmpty }
+        XCTAssertEqual(fixture.session.undoManager.undoActionName, "Remove \(PDFMarkupKind.highlight.title)")
+        fixture.session.undoAvailability.undo()
+        try await waitUntil("one undo puts it back") { self.marks(on: fixture.page).count == 1 }
+        XCTAssertTrue(fixture.page.annotations.allSatisfy(\.shouldDisplay), "The mark put back shows.")
     }
 
     /// The Pencil rested on the first word before it moves, as a hand often does, still marks the line once: no long

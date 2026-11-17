@@ -4,11 +4,11 @@
  * Layer: UI
  * Description: Highlights, underlines and strikethroughs on PDF pages: marking selected text (changing or joining
  *              a mark of the same kind already on it, never stacking another), recolouring and removing a mark,
- *              each one step of the PDF's history.
+ *              and removing the marks an eraser stroke passed over, each one step of the PDF's history.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -48,6 +48,26 @@ extension PDFSession {
         guard pageIndex != NSNotFound, let markup = PDFMarkup(annotation: annotation) else { return }
         try apply(.removeAnnotation(PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)))
         registerMarkupStep(named: "Remove \(markup.kind.title)", [.replace(removed: [markup], added: [], page: historyPage(for: page))])
+    }
+
+    /// Removes the marks, on any pages, as one step: one undo puts every one back on its page where it was. A mark no
+    /// longer on its page is skipped; none left, no step. The step is named for the one mark's kind, or "Remove Marks".
+    func removeMarkups(_ marks: [(annotation: PDFAnnotation, page: PDFPage)]) throws {
+        var removedByPage: [(page: PDFPage, removed: [PDFMarkup])] = []
+        for (annotation, page) in marks {
+            let pageIndex = document.index(for: page)
+            guard pageIndex != NSNotFound, annotation.page === page, let markup = PDFMarkup(annotation: annotation) else { continue }
+            try apply(.removeAnnotation(PDFAnnotationReference(annotation: annotation, pageIndex: pageIndex)))
+            if let pagePosition = removedByPage.firstIndex(where: { entry in entry.page === page }) {
+                removedByPage[pagePosition].removed.append(markup)
+            } else {
+                removedByPage.append((page, [markup]))
+            }
+        }
+        let removed = removedByPage.flatMap(\.removed)
+        guard let onlyMark = removed.first else { return }
+        let actionName = removed.count == 1 ? "Remove \(onlyMark.kind.title)" : "Remove Marks"
+        registerMarkupStep(named: actionName, removedByPage.map { entry in .replace(removed: entry.removed, added: [], page: historyPage(for: entry.page)) })
     }
 
     /// Gives a mark another colour, as one step; a mark that has the colour already is left alone.

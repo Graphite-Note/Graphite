@@ -3,12 +3,12 @@
  * -------------------------------
  * Layer: UI
  * Description: The text highlighter on one canvas of a PDF page: a drag of Apple Pencil, or of a finger where fingers
- *              draw, tells the canvas's owner where it began, moved and lifted, in the window. It draws no ink, and
- *              the canvas's `marksText` turns it on with PencilKit's drawing off.
+ *              draw, tells the canvas's owner where it began, moved and lifted, in the window, and a tap where it
+ *              was. It draws no ink, and the canvas's `marksText` turns it on with PencilKit's drawing off.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -21,6 +21,8 @@ enum TextHighlighterDrag: Equatable {
     case moved(to: CGPoint)
     case lifted
     case cancelled
+    /// A tap without a drag, as on a mark to remove or recolour it.
+    case tapped(at: CGPoint)
 }
 
 /// The text highlighter on one canvas of a PDF page. While it is chosen the canvas draws nothing
@@ -39,6 +41,12 @@ final class TextHighlighterToolController: NSObject, UIGestureRecognizerDelegate
         return recognizer
     }()
 
+    private lazy var tapRecognizer: UITapGestureRecognizer = {
+        let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
+        recognizer.delegate = self
+        return recognizer
+    }()
+
     init(canvas: HistoryCanvasView) {
         self.canvas = canvas
     }
@@ -46,9 +54,19 @@ final class TextHighlighterToolController: NSObject, UIGestureRecognizerDelegate
     var isActive = false {
         didSet {
             guard isActive != oldValue else { return }
-            if isActive, dragRecognizer.view == nil { canvas.addGestureRecognizer(dragRecognizer) }
+            if isActive, dragRecognizer.view == nil {
+                canvas.addGestureRecognizer(dragRecognizer)
+                canvas.addGestureRecognizer(tapRecognizer)
+            }
             dragRecognizer.isEnabled = isActive
+            tapRecognizer.isEnabled = isActive
         }
+    }
+
+    /// A tap of the Pencil, or of a finger where fingers draw: on a mark, its menu offers Remove and its colours.
+    @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
+        guard recognizer.state == .ended, let window = canvas.window else { return }
+        canvas.textHighlighterDragged?(.tapped(at: recognizer.location(in: window)))
     }
 
     /// Apple Pencil always; a finger only where fingers draw, and never a hand resting while the Pencil writes.

@@ -5,8 +5,8 @@
  * Description: Puts a PencilKit canvas on each PDF page and connects it to the tools, the palette, touches and saving.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if canImport(UIKit)
@@ -74,6 +74,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var selectionDrag: PDFTextSelectionDrag?
     /// The fixed bar's text highlighter: a drag on a page selects text and marks it on lift.
     private var textHighlighter: PDFTextHighlighterInteraction?
+    /// Erases the text marks the eraser passes over (`PDFTextMarkEraser`).
+    private var textMarkEraser: PDFTextMarkEraser?
     private var pageObserver: PDFViewPageObserver?
     private var pictureSelection: PDFPictureSelectionController?
     /// The page's text boxes: drawn over the ink, placed, selected and typed in.
@@ -208,6 +210,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         textBoxInteraction = PDFTextBoxInteraction(session: session, pdfView: view)
         if !isEmbedded { pictureDrops = PDFPictureDropInteraction(session: session, pdfView: view) }
         textHighlighter = PDFTextHighlighterInteraction(session: session, pdfView: view)
+        textMarkEraser = PDFTextMarkEraser(session: session, pdfView: view)
         session.registerPendingInkRecordWriter(for: self, inBackground: { [weak self] in
             await self?.writeDeferredInkRecordsInBackground()
         }) { [weak self] in self?.writeDeferredInkRecords() }
@@ -353,6 +356,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         pictureDrops = nil
         textBoxInteraction = nil
         textHighlighter = nil
+        textMarkEraser = nil
         if let toolboxObserver { NotificationCenter.default.removeObserver(toolboxObserver) }
         toolboxObserver = nil
         if let zoomObserver { NotificationCenter.default.removeObserver(zoomObserver) }
@@ -765,6 +769,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         canvas.drawingGestureRecognizer.addTarget(self, action: #selector(drawingGestureChanged(_:)))
         restoreStoredInkIfNeeded(on: canvas, knownStoredInk: storedInk)
         configure(canvas)
+        textMarkEraser?.follow(canvas)
         // PencilKit's own finger long press (its Select All and Insert Space menu) waits
         // until the press is known not to select PDF text.
         if let textSelectionRecognizer {
@@ -1105,15 +1110,26 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             beginInteraction?()
             editMenuInteraction?.dismissMenu()
             selectionDrag = PDFTextSelectionDrag(startingAt: viewPoint, in: pdfView)
-            pdfView.currentSelection = selectionDrag?.anchorWord
+            showTextSelection(selectionDrag?.anchorWord, in: pdfView)
         case .changed:
-            if let selection = selectionDrag?.selection(extendedTo: viewPoint, in: pdfView) { pdfView.currentSelection = selection }
+            if let selection = selectionDrag?.selection(extendedTo: viewPoint, in: pdfView) { showTextSelection(selection, in: pdfView) }
         case .ended:
             selectionDrag = nil
             let marked = textHighlighter?.markSelectionOnLift(style: input.markupStyle, marksOnLift: marksTextOnLift) ?? false
             if !marked { presentSelectionMenu() }
         default:
             selectionDrag = nil
+            textHighlighter?.stopShowingWhileSelecting()
+        }
+    }
+
+    /// With the text highlighter chosen, the selection shows as it will be marked while the finger moves; otherwise as
+    /// PDFKit shows a selection, for its menu.
+    private func showTextSelection(_ selection: PDFSelection?, in pdfView: PDFView) {
+        if marksTextOnLift, let textHighlighter {
+            textHighlighter.showWhileSelecting(selection, style: input.markupStyle)
+        } else {
+            pdfView.currentSelection = selection
         }
     }
 
@@ -1125,6 +1141,11 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         // A tool changed during the drag ends it unmarked.
         guard input.isEnabled, marksTextOnLift else {
             textHighlighter?.handle(.cancelled, style: input.markupStyle)
+            return
+        }
+        if case .tapped(let windowPoint) = dragEvent {
+            // A tap on a mark offers to remove or recolour it, as a finger's tap does.
+            if let pdfView { presentMarkupMenu(at: pdfView.convert(windowPoint, from: nil)) }
             return
         }
         if case .began = dragEvent {
@@ -1185,7 +1206,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         guard let pdfView else { return }
         let viewPoint = recognizer.location(in: pdfView)
-        guard let markup = markup(at: viewPoint) else {
+        guard presentMarkupMenu(at: viewPoint) else {
             pdfView.clearSelection()
             // A tap on a text box selects it, or types in the one selected; a tap beside it
             // ends typing or arranging.
@@ -1198,8 +1219,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             if session.selectedPicture != tappedPicture { session.selectedPicture = tappedPicture }
             return
         }
+    }
+
+    /// Offers to recolour or remove the mark at the point, and says whether there is one.
+    @discardableResult
+    private func presentMarkupMenu(at viewPoint: CGPoint) -> Bool {
+        guard let markup = markup(at: viewPoint) else { return false }
         tappedMarkup = markup
         editMenuInteraction?.presentEditMenu(with: UIEditMenuConfiguration(identifier: Self.markupMenuIdentifier, sourcePoint: viewPoint))
+        return true
     }
 
     /// Whether a picture is the topmost object under the point, over any text box there, while no box is typed in.
