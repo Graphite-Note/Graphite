@@ -4,8 +4,6 @@
 /// Spaces, tabs, `%%` comments and `%%{ … }%%` directives are skipped; a line break is a token.
 struct GitGraphLexer {
     var cursor: MermaidTextCursor
-    /// Whether a directive skipped so far sets options of Git graphs (`GitGraphOptionsDetection`).
-    private(set) var hasSkippedOptionsDirective = false
     /// Set once a directive had no end: none can have one further on, so no later search is made.
     private var hasNoDirectiveEnd = false
 
@@ -42,8 +40,8 @@ struct GitGraphLexer {
         }
     }
 
-    /// Skips a directive up to the first `}%%` followed by whitespace or the end, noting whether it sets options of
-    /// Git graphs. False, with nothing skipped, when there is no such `}%%`: the line is then a comment.
+    /// Skips a directive up to the first `}%%` followed by whitespace or the end; its options are read with the rest of
+    /// the configuration (`MermaidConfigurationOptions`). False, with nothing skipped, when there is no such `}%%`: the line is then a comment.
     private mutating func skipDirective() -> Bool {
         guard !hasNoDirectiveEnd else { return false }
         let bytes = cursor.bytes
@@ -52,7 +50,6 @@ struct GitGraphLexer {
             let afterEnd = index + Self.directiveEnd.count
             if bytes[index] == MermaidByte.closingBrace, bytes[index + 1] == MermaidByte.percent, bytes[index + 2] == MermaidByte.percent,
                afterEnd == bytes.count || MermaidByte.isWhitespace(bytes[afterEnd]) {
-                if GitGraphOptionsDetection.setsOptions(in: bytes[cursor.position..<afterEnd]) { hasSkippedOptionsDirective = true }
                 cursor.advance(by: afterEnd - cursor.position)
                 return true
             }

@@ -50,6 +50,41 @@ gitGraph
     merge feature
 ```
 
+## Options in a directive
+
+A directive's options are read as the front matter's, and over them.
+
+```mermaid
+%%{init: {'pie': {'donutHole': 0.5, 'legendPosition': 'bottom'}}}%%
+pie title Hours a week
+    "Lectures" : 12
+    "Exercises" : 8
+    "Reading" : 6
+```
+
+```mermaid
+%%{init: {'gitGraph': {'mainBranchName': 'trunk', 'rotateCommitLabel': false}}}%%
+gitGraph
+    commit id: "lab 1"
+    branch report
+    commit id: "draft"
+    checkout trunk
+    merge report
+```
+
+```mermaid
+---
+config:
+  sankey:
+    width: 900
+---
+%%{init: {'sankey': {'width': 500, 'showValues': false}}}%%
+sankey
+Study hours,Lectures,12
+Study hours,Exercises,8
+Exercises,Corrections,3
+```
+
 ## An empty diagram
 
 Graphite shows its source and why it is not drawn:

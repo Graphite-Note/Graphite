@@ -77,6 +77,17 @@ final class SankeyLayoutEngineTests: XCTestCase {
         XCTAssertEqual(prefixed.labels[0].value?.lines, ["$1.5 TWh"])
     }
 
+    func testADirectivesOptionsShapeTheChartOverTheFrontMatters() throws {
+        let source = "---\nconfig:\n  sankey:\n    width: 900\n    nodeWidth: 15\n---\n%%{init: {'sankey': {'width': 300, 'showValues': false}}}%%\n"
+            + "sankey\na,b,1\na,c,1"
+        let layout = try laidOut(source)
+        XCTAssertTrue(layout.labels.allSatisfy { label in label.value == nil }, "showValues: false")
+        XCTAssertEqual(layout.nodes[1].frame.minX - layout.nodes[0].frame.minX, 300 - 15, "The directive's width, the front matter's node width.")
+        XCTAssertThrowsError(try laidOut("%%{init: {'sankey': {'labelStyle': 'outlined'}}}%%\nsankey\na,b,1")) { error in
+            XCTAssertEqual(error as? SankeyLayoutError, .optionsNotDrawn)
+        }
+    }
+
     func testOptionsNotDrawnYetKeepTheDiagramFromBeingLaidOut() throws {
         for option in ["labelStyle: outlined", "linkColor: source", "nodeColors:\n      a: \"#4e79a7\""] {
             let source = "---\nconfig:\n  sankey:\n    \(option)\n---\nsankey\na,b,1"

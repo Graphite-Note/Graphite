@@ -1,8 +1,8 @@
 import XCTest
 @testable import MermaidDiagrams
 
-/// A Git graph whose front matter or directive sets options of Git graphs is known as such; other configuration and
-/// comments are not options.
+/// A Git graph's options from its front matter and its directives are applied, and one not applied, or written in a
+/// form not read, is known; other configuration and comments are not options.
 final class GitGraphOptionsDetectionTests: XCTestCase {
     private func setsOptions(_ source: String) throws -> Bool {
         try GitGraphReading.gitGraph(source).setsGitGraphOptions
@@ -17,9 +17,16 @@ final class GitGraphOptionsDetectionTests: XCTestCase {
         XCTAssertTrue(try setsOptions("---\nconfig:\n  gitGraph:\n    showBranches: maybe\n---\ngitGraph\n commit"), "A value of the wrong kind.")
     }
 
-    func testADirectiveBeforeTheKeywordOrAmongTheStatementsSetsOptions() throws {
-        XCTAssertTrue(try setsOptions("%%{init: { 'logLevel': 'debug', 'gitGraph': {'showBranches': false}} }%%\ngitGraph\n commit"))
-        XCTAssertTrue(try setsOptions("gitGraph\n commit\n %%{init: {\"gitGraph\": {\"mainBranchName\": \"dev\"}}}%%\n commit"))
+    func testADirectivesOptionsBeforeTheKeywordOrAmongTheStatementsAreAppliedAndThoseNotAppliedAreKnown() throws {
+        let before = try GitGraphReading.gitGraph("%%{init: { 'logLevel': 'debug', 'gitGraph': {'showBranches': false}} }%%\ngitGraph\n commit")
+        XCTAssertFalse(before.setsGitGraphOptions)
+        XCTAssertFalse(before.options.showsBranches)
+        let among = try GitGraphReading.gitGraph("gitGraph\n commit\n %%{init: {\"gitGraph\": {\"mainBranchName\": \"dev\"}}}%%\n commit")
+        XCTAssertFalse(among.setsGitGraphOptions)
+        XCTAssertEqual(among.branches.map(\.name), ["dev"])
+        XCTAssertTrue(try setsOptions("%%{init: {'gitGraph': {'nodeLabel': 'x'}}}%%\ngitGraph\n commit"), "An option not applied.")
+        XCTAssertFalse(try setsOptions("%%{init: {'gitGraph': {'showBranches': false},}}%%\ngitGraph\n commit"),
+                       "A directive whose JSON is not read sets nothing, as in Pele.")
     }
 
     func testOtherConfigurationAndCommentsSetNone() throws {

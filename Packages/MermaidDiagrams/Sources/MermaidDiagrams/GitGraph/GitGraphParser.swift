@@ -13,15 +13,15 @@ struct GitGraphParser {
     static func parse(_ cursor: MermaidTextCursor, limits: MermaidDiagramLimits) throws(MermaidDiagramReadError) -> GitGraphDiagram {
         let keywordStart = cursor.position - keyword.count
         let mentionsOptionsBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: keywordStart, of: cursor.bytes)
-        let setsOptionsInDirectiveBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: keywordStart, of: cursor.bytes, skipsFrontMatter: true)
-        let frontMatterOptions = MermaidFrontMatterOptions(section: "gitGraph", in: cursor.bytes)
-        var options = GitGraphOptions(frontMatterOptions)
+        let mentionsOptionsInDirectiveBefore = GitGraphOptionsDetection.setsOptions(inTextBefore: keywordStart, of: cursor.bytes, skipsFrontMatter: true)
+        let configurationOptions = MermaidConfigurationOptions(section: "gitGraph", in: cursor.bytes)
+        var options = GitGraphOptions(configurationOptions)
         // Options the front matter writes in another form (`config: {"gitGraph": …}`) are not read: not applied either.
-        if mentionsOptionsBefore, !setsOptionsInDirectiveBefore, frontMatterOptions.values.isEmpty { options.setsOptionsNotApplied = true }
+        if mentionsOptionsBefore, !mentionsOptionsInDirectiveBefore, configurationOptions.values.isEmpty { options.setsOptionsNotApplied = true }
         var parser = try GitGraphParser(cursor: cursor)
         try parser.readStatements()
         parser.diagram.options = options
-        parser.diagram.setsGitGraphOptions = setsOptionsInDirectiveBefore || parser.lexer.hasSkippedOptionsDirective || options.setsOptionsNotApplied
+        parser.diagram.setsGitGraphOptions = options.setsOptionsNotApplied
         try parser.play(limits: limits)
         return parser.diagram
     }

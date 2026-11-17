@@ -66,7 +66,7 @@ With `--graphite-files <build folder>` it then has Graphite's own writers make t
 | `Diagrams/Classes, states and entities.md` | a class diagram, a state diagram, an entity relationship diagram | Mermaid (Native-diagrams-todo.md) |
 | `Diagrams/Charts.md` | a pie chart, an XY chart, a quadrant chart, a Sankey diagram | Mermaid (Native-diagrams-todo.md) |
 | `Diagrams/Plans and maps.md` | a Gantt chart, a mind map, a timeline, a git graph, a user journey | Mermaid (Native-diagrams-todo.md) |
-| `Diagrams/Diagram options.md` | a compact Gantt chart, a pie chart with its labels outside, a hole and a legend, a git graph with its branch names hidden, and an empty diagram shown as its source | Mermaid options and safety (Native-diagrams-todo.md) |
+| `Diagrams/Diagram options.md` | a compact Gantt chart, a pie chart with its labels outside, a hole and a legend, a git graph with its branch names hidden, a pie chart, a git graph and a Sankey diagram whose options a directive sets (the Sankey's over its front matter's), and an empty diagram shown as its source | Mermaid options and safety (Native-diagrams-todo.md) |
 | `Embedded base.md` | a base written in the note with a table and a kanban board, and embedded views of the bases' gallery, map and list | Bases core plugin |
 | `Books.base` | table, grouped table, cards with covers and a numbered list of the books, formulas and summaries | Bases core plugin |
 | `Books/Dune.md`, `Books/Frank Herbert.md`, `Books/Gödel, Escher, Bach.md`, `Books/Middlemarch.md`, `Books/Reading notes.md`, `Books/The Left Hand of Darkness.md`, `Books/The Structure of Scientific Revolutions.md` | the books the base shows, with their properties | Bases core plugin |

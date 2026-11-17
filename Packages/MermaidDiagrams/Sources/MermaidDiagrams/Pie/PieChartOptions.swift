@@ -2,7 +2,7 @@
  * File: PieChartOptions.swift
  * ---------------------------
  * Layer: Core
- * Description: The options of a pie chart its front matter sets under `config:` and `pie:`.
+ * Description: The options of a pie chart its front matter (`config:`, `pie:`) and its directives set.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -11,7 +11,8 @@
 
 import CoreGraphics
 
-/// The options of pie charts a diagram's front matter sets (`config:`, then `pie:`): how far out the percentages stand,
+/// The options of pie charts a diagram's front matter (`config:`, then `pie:`) and its `%%{init: …}%%` directives set,
+/// a directive's over the front matter's: how far out the percentages stand,
 /// the hole that makes the pie a donut, and where the legend goes. A value out of its range, or of the wrong kind, is
 /// left at its default, as Mermaid's schema leaves it.
 public struct PieChartOptions: Equatable, Sendable {
@@ -29,7 +30,7 @@ public struct PieChartOptions: Equatable, Sendable {
     /// Options that set nothing: a full pie, percentages three quarters of the way out, the legend on the right.
     public init() {}
 
-    init(_ options: MermaidFrontMatterOptions) {
+    init(_ options: MermaidConfigurationOptions) {
         if case .number(let position) = options.values["textPosition"], position >= 0, position <= 1 { percentagePosition = CGFloat(position) }
         if case .number(let hole) = options.values["donutHole"], hole >= 0, hole <= Self.largestHoleShare { holeShare = CGFloat(hole) }
         if case .text(let written) = options.values["legendPosition"], let position = PieChartLegendPosition(rawValue: written.lowercased()) {

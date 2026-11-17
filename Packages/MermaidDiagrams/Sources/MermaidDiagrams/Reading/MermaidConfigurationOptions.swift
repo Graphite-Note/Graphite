@@ -1,11 +1,23 @@
+/**
+ * File: MermaidConfigurationOptions.swift
+ * ---------------------------------------
+ * Layer: Core
+ * Description: The options a diagram's front matter and its `%%{init: …}%%` directives give its type.
+ *
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.2
+ * Date: 17/11/2026
+ */
+
 import Foundation
 
-/// The options a diagram's front matter gives its type under `config:`, as Mermaid reads them from block YAML with
-/// the JSON schema (`config:`, then `sankey:`, then `showValues: false`, each level indented more): each option's
-/// value, a Boolean (`true`, `false`), a number, text (plain or quoted), or a collection (an option followed by a
-/// more indented mapping or list, or written in braces or brackets), whose content is not read. Comment lines and
-/// blank lines are skipped. Directives (`%%{init: …}%%`) are not read.
-struct MermaidFrontMatterOptions {
+/// The options a diagram gives its type, as Pele reads them: first the front matter's under `config:`, from block YAML
+/// with the JSON schema (`config:`, then `sankey:`, then `showValues: false`, each level indented more), then those of
+/// each `%%{init: …}%%` directive over them (`MermaidDirectiveConfiguration`). Each option's value is a Boolean
+/// (`true`, `false`), a number, text (plain or quoted), or a collection (an option followed by a more indented mapping
+/// or list, or written in braces or brackets, or a directive's object or array), whose content is not read. Comment
+/// lines and blank lines of the front matter are skipped.
+struct MermaidConfigurationOptions {
     enum Value: Equatable {
         case boolean(Bool)
         case number(Double)
@@ -15,10 +27,12 @@ struct MermaidFrontMatterOptions {
 
     private(set) var values: [String: Value] = [:]
 
-    /// The options under `config:` and then `section:` in the front matter at the start of `bytes`; none without one.
+    /// The options under `config:` and then `section:` in the front matter at the start of `bytes`, with those the
+    /// directives after it set under `section` over them; none without either.
     init(section: String, in bytes: [UInt8]) {
+        let frontMatter = Self.frontMatter(of: bytes)
         var keys: [(indent: Int, key: String)] = []
-        for line in Self.frontMatterLines(of: bytes) {
+        for line in frontMatter.lines {
             let indent = line.prefix { character in character == " " }.count
             let content = line.trimmingCharacters(in: .whitespaces)
             guard !content.isEmpty, !content.hasPrefix("#"), let (key, written) = Self.keyAndValue(content) else { continue }
@@ -31,23 +45,25 @@ struct MermaidFrontMatterOptions {
                 values[key] = Self.value(written)
             }
         }
+        MermaidDirectiveConfiguration.apply(section: section, in: bytes, from: frontMatter.end, to: &values)
     }
 
-    /// The lines between the opening `---` and the closing one, the opening first in the text after blank space.
-    private static func frontMatterLines(of bytes: [UInt8]) -> [Substring] {
+    /// The lines between the opening `---` and the closing one, the opening first in the text after blank space, and
+    /// where the text after the closing one starts; no lines and 0 without front matter.
+    private static func frontMatter(of bytes: [UInt8]) -> (lines: [Substring], end: Int) {
         var cursor = MermaidTextCursor(bytes: bytes)
         if cursor.hasPrefix(byteOrderMark) { cursor.advance(by: byteOrderMark.count) }
         cursor.skipWhitespace()
         // Most diagrams have no front matter: nothing past this is decoded for them.
-        guard cursor.hasPrefix(Self.fence), cursor.readRestOfLine() == "---" else { return [] }
+        guard cursor.hasPrefix(Self.fence), cursor.readRestOfLine() == "---" else { return ([], 0) }
         var lines: [Substring] = []
         while !cursor.isAtEnd {
             cursor.advance()
             let line = cursor.readRestOfLine()
-            if line.trimmingCharacters(in: .whitespaces) == "---" { return lines }
+            if line.trimmingCharacters(in: .whitespaces) == "---" { return (lines, cursor.position) }
             lines.append(Substring(line))
         }
-        return []
+        return ([], 0)
     }
 
     private static let byteOrderMark: [UInt8] = [0xEF, 0xBB, 0xBF]

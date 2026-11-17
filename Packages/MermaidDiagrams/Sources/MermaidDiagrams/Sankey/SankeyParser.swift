@@ -20,7 +20,7 @@ struct SankeyParser {
         try parser.expect(.newline)
         try parser.readRows()
         var diagram = parser.builder.diagram
-        diagram.options = SankeyOptions(MermaidFrontMatterOptions(section: "sankey", in: cursor.bytes))
+        diagram.options = SankeyOptions(MermaidConfigurationOptions(section: "sankey", in: cursor.bytes))
         return diagram
     }
 

@@ -58,15 +58,6 @@ final class GitGraphLexerTests: XCTestCase {
         XCTAssertEqual(try tokens("%%{ never closed\ncommit\n%%{ nor this one"), [.lineBreak, .statement(.commit), .lineBreak])
     }
 
-    func testADirectiveThatSetsOptionsOfGitGraphsIsNoted() throws {
-        var lexer = GitGraphLexer(cursor: MermaidTextCursor(bytes: Array("%%{init: {'theme': 'dark'}}%%\ncommit".utf8)))
-        _ = try lexer.readToken()
-        XCTAssertFalse(lexer.hasSkippedOptionsDirective)
-        lexer = GitGraphLexer(cursor: MermaidTextCursor(bytes: Array("%%{init: { 'gitGraph': {'showBranches': false}} }%%\ncommit".utf8)))
-        _ = try lexer.readToken()
-        XCTAssertTrue(lexer.hasSkippedOptionsDirective)
-    }
-
     func testACharacterNoTokenStartsWithIsUnexpected() {
         XCTAssertThrowsError(try tokens("commit é")) { error in
             XCTAssertEqual(error as? MermaidDiagramReadError, .invalidSyntax(line: 1, problem: .unexpectedText("é")))

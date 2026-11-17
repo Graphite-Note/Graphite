@@ -1,6 +1,8 @@
 /// Finds whether a diagram's front matter or a directive sets options of Git graphs: the key `gitGraph` followed by a
 /// colon, after a closing quotation mark and spaces where they stand, as YAML front matter (`gitGraph:`) and a
-/// directive's JSON (`'gitGraph': {`) write it. The options are not read: a graph that has them is refused by its layout.
+/// directive's JSON (`'gitGraph': {`) write it, so that options the front matter writes in a form not read (`config:
+/// {"gitGraph": …}`) are known and the graph refused by its layout; block options and directives are read
+/// (`MermaidConfigurationOptions`).
 enum GitGraphOptionsDetection {
     /// Whether `bytes` hold the key.
     static func setsOptions(in bytes: ArraySlice<UInt8>) -> Bool {

@@ -119,9 +119,10 @@ final class MermaidDiagramReaderTests: XCTestCase {
         XCTAssertEqual(try flowchart("flowchart TD\n%%{ never closed\nA --> B").edges.count, 1)
     }
 
-    func testAGitGraphKeepsItsMultiLineDirectiveForItsOptions() throws {
+    func testAGitGraphReadsTheOptionsOfItsMultiLineDirective() throws {
         let diagram = try GitGraphReading.gitGraph("%%{\n init: {'gitGraph': {'mainBranchName': 'trunk'}}\n}%%\ngitGraph\n commit")
-        XCTAssertTrue(diagram.setsGitGraphOptions)
+        XCTAssertFalse(diagram.setsGitGraphOptions)
+        XCTAssertEqual(diagram.branches.map(\.name), ["trunk"])
         XCTAssertEqual(diagram.commits.count, 1)
     }
 }

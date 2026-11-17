@@ -2,8 +2,8 @@
  * File: PieChartOptionsTests.swift
  * --------------------------------
  * Layer: Tests
- * Description: The pie chart options of the front matter applied: the percentages' position, the donut's hole and the
- *              legend's place, and values out of range left at their defaults.
+ * Description: The pie chart options of the front matter and directives applied: the percentages' position, the
+ *              donut's hole and the legend's place, and values out of range left at their defaults.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -38,6 +38,14 @@ final class PieChartOptionsTests: XCTestCase {
         XCTAssertEqual(wrong, PieChartOptions())
         guard case .pieChart(let plain) = try MermaidDiagramReader.read(slices, limits: .standard) else { return XCTFail("A pie") }
         XCTAssertEqual(plain.options, PieChartOptions())
+    }
+
+    func testADirectivesOptionsAreAppliedOverTheFrontMatters() throws {
+        let source = "---\nconfig:\n  pie:\n    donutHole: 0.2\n    legendPosition: bottom\n---\n%%{init: {'pie': {'donutHole': 0.5}}}%%\n" + slices
+        guard case .pieChart(let chart) = try MermaidDiagramReader.read(source, limits: .standard) else { return XCTFail("A pie") }
+        XCTAssertEqual(chart.options.holeShare, 0.5)
+        XCTAssertEqual(chart.options.legendPosition, .bottom)
+        XCTAssertEqual(chart.slices.count, 3)
     }
 
     func testTheTextPositionPlacesThePercentagesThatShareOfTheRadiusOut() throws {

@@ -2,14 +2,15 @@
  * File: GitGraphOptions.swift
  * ---------------------------
  * Layer: Core
- * Description: The options of a Git graph its front matter sets under `config:` and `gitGraph:`.
+ * Description: The options of a Git graph its front matter (`config:`, `gitGraph:`) and its directives set.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
  * Date: 12/11/2026
  */
 
-/// The options of Git graphs a diagram's front matter sets (`config:`, then `gitGraph:`), with Mermaid's defaults: the
+/// The options of Git graphs a diagram's front matter (`config:`, then `gitGraph:`) and its `%%{init: …}%%` directives
+/// set, a directive's over the front matter's, with Mermaid's defaults: the
 /// main branch's name and lane order, whether branch names and lanes, and commit ids, are shown, whether ids are turned
 /// an eighth of a turn, and whether commits stand by their distance from the first one rather than one after another.
 public struct GitGraphOptions: Equatable, Sendable {
@@ -26,7 +27,7 @@ public struct GitGraphOptions: Equatable, Sendable {
     /// `parallelCommits`: each commit one step past its farthest parent, so commits of different branches made from the
     /// same point stand side by side; else every commit one step past the commit made before it.
     public internal(set) var placesCommitsInParallel = false
-    /// Whether the front matter sets a `gitGraph` option this does not apply, or one of these to a value of the wrong
+    /// Whether the front matter or a directive sets a `gitGraph` option this does not apply, or one of these to a value of the wrong
     /// kind: such a graph is refused rather than drawn otherwise than Mermaid draws it.
     public internal(set) var setsOptionsNotApplied = false
 
@@ -36,7 +37,7 @@ public struct GitGraphOptions: Equatable, Sendable {
     /// Options without effect on a drawing of fixed size: `useMaxWidth` (the reading view always fits the column).
     private static let ignoredNames: Set<String> = ["useMaxWidth"]
 
-    init(_ options: MermaidFrontMatterOptions) {
+    init(_ options: MermaidConfigurationOptions) {
         for (name, value) in options.values {
             switch (name, value) {
             case ("mainBranchName", .text(let text)) where !text.isEmpty: mainBranchName = text

@@ -1,4 +1,5 @@
-/// A Sankey diagram's options from its front matter (`config:` then `sankey:`), as Pele applies them: the chart's
+/// A Sankey diagram's options from its front matter (`config:` then `sankey:`) and its `%%{init: …}%%` directives, a
+/// directive's over the front matter's, as Pele applies them: the chart's
 /// size, the nodes' width and the padding between them, whether values are shown with their prefix and suffix, and
 /// how nodes are put in columns. A number below its least is left at Pele's default, and one above its most is cut
 /// to it. Labels outlined in the page's color (`labelStyle: outlined`), a band color other than the gradient
@@ -25,7 +26,7 @@ public struct SankeyOptions: Equatable, Sendable {
 
     init() {}
 
-    init(_ options: MermaidFrontMatterOptions) {
+    init(_ options: MermaidConfigurationOptions) {
         chartWidth = Self.number(options.values["width"], least: 1, most: Self.largestChartSide) ?? chartWidth
         chartHeight = Self.number(options.values["height"], least: 1, most: Self.largestChartSide) ?? chartHeight
         nodeWidth = min(Self.number(options.values["nodeWidth"], least: 1, most: Self.largestNodeWidth) ?? nodeWidth, chartWidth)
@@ -39,13 +40,13 @@ public struct SankeyOptions: Equatable, Sendable {
         setsOptionsNotDrawn = isOutlined || colorsLinks || options.values["nodeColors"] != nil
     }
 
-    private static func number(_ value: MermaidFrontMatterOptions.Value?, least: Double, most: Double) -> Double? {
+    private static func number(_ value: MermaidConfigurationOptions.Value?, least: Double, most: Double) -> Double? {
         guard case .number(let number) = value, number >= least else { return nil }
         return min(number, most)
     }
 
     /// Text, or a finite number written as JavaScript writes it; empty otherwise.
-    private static func text(_ value: MermaidFrontMatterOptions.Value?) -> String {
+    private static func text(_ value: MermaidConfigurationOptions.Value?) -> String {
         switch value {
         case .text(let written): written
         case .number(let number) where number.isFinite: JavaScriptNumberText.text(number)

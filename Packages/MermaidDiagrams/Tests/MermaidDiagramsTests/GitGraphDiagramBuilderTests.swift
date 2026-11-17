@@ -169,10 +169,13 @@ final class GitGraphDiagramBuilderTests: XCTestCase {
         XCTAssertEqual(readError("gitGraph\n checkout nope\n commit oops"), .invalidSyntax(line: 3, problem: .unexpectedText("oops")))
     }
 
-    func testAGraphThatSetsOptionsInADirectiveStopsPlayingWithoutAnErrorWhereItsHistoryBreaks() throws {
+    func testTheMainBranchOfTheFrontMatterOrADirectiveIsPlayedAndAGraphThatSetsOptionsNotAppliedStopsWhereItsHistoryBreaks() throws {
         let diagram = try gitGraph("%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk\n commit")
-        XCTAssertTrue(diagram.setsGitGraphOptions)
-        XCTAssertEqual(diagram.commits.count, 1)
+        XCTAssertFalse(diagram.setsGitGraphOptions, "The directive's main branch is applied.")
+        XCTAssertEqual(diagram.commits.count, 2)
+        let notApplied = try gitGraph("%%{init: {'gitGraph': {'nodeLabel': 'x'}}}%%\ngitGraph\n commit\n checkout trunk\n commit")
+        XCTAssertTrue(notApplied.setsGitGraphOptions)
+        XCTAssertEqual(notApplied.commits.count, 1, "Its history stops without an error where it breaks.")
         let named = try gitGraph("---\nconfig:\n  gitGraph:\n    mainBranchName: trunk\n    mainBranchOrder: 2\n---\ngitGraph\n commit\n branch dev\n commit\n"
                                  + " checkout trunk\n commit")
         XCTAssertFalse(named.setsGitGraphOptions, "The front matter's main branch is applied.")
