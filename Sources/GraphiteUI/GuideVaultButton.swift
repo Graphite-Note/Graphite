@@ -14,8 +14,9 @@ import GraphiteCore
 
 /// Opens the Graphite Guide vault at `note` (`Start here` when nil). The vault is an add-on pack: the first press
 /// downloads it, showing its progress here, and opens it once it is here; a failed download says why and offers to try
-/// again. Only the pressed button shows the download. The vault opens through its `graphite://guide` link, which reaches a window of notes from the Guide's sheet
-/// and from the Mac's Guide window alike; `didOpen` then closes the sheet.
+/// again. Only the pressed button shows the download. The vault opens through its `graphite://guide` link, which
+/// reaches a window of notes from the Guide's sheet and from the Mac's Guide window alike; `didOpen` then closes the
+/// sheet.
 struct GuideVaultButton: View {
     let title: String
     let note: String?
