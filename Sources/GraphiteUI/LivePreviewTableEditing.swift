@@ -2,16 +2,22 @@
  * File: LivePreviewTableEditing.swift
  * -----------------------------------
  * Layer: UI
- * Description: Editing a rendered table's cells in place, its cell commands and its "+" strips.
+ * Description: Editing a rendered table's cells in place: the cell editor, its keys and moves, its cell commands, and the overlay that
+ *              puts its layer over the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 17/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
 import Textual
+
+/// Which side of a rendered block the note's caret goes to.
+enum RenderedBlockSide {
+    case before, after
+}
 
 /// What a rendered block's view uses to change the block's own source in the note.
 struct RenderedBlockSourceEditing {
@@ -26,6 +32,11 @@ struct RenderedBlockSourceEditing {
     var setDraftCommit: (_ editor: ObjectIdentifier, _ commit: (() -> Void)?) -> Void = { _, _ in }
     /// Gives the note's command palette and Edit menu the table's cell commands, as a cell begins editing.
     var offerCellCommands: (_ target: TableCellCommandTarget) -> Void = { _ in }
+    /// Gives the note's text the keyboard, the caret at the start of the line before or after
+    /// the block; an empty line is added first where the block starts or ends the note.
+    var placeCaretBesideBlock: (_ editor: ObjectIdentifier, _ side: RenderedBlockSide) -> Void = { _, _ in }
+    /// Undoes, or with `isRedo` redoes, the note's last change.
+    var undoInNote: (_ isRedo: Bool) -> Void = { _ in }
 }
 
 /// A cell of a rendered table: row 0 is the header, then the body rows.
@@ -39,11 +50,15 @@ extension EnvironmentValues {
     @Entry var livePreviewTableEditor: LivePreviewTableEditor? = nil
 }
 
-/// Edits a Live Preview table's cells in place, as Obsidian does: a tap on a cell opens an
-/// editor over it holding the cell's Markdown, Tab and Shift-Tab go to the next and previous
-/// cell, Return to the cell below, and the block's menu adds, moves and removes rows and
-/// columns. Each change is written into the note as one edit of that cell's characters only
-/// (`MarkdownTableEditing`): when typing pauses, and when the editor moves or closes.
+/// Edits a Live Preview table's cells in place, as Obsidian does: a click on a cell opens an
+/// editor over it holding the cell's Markdown, the caret where the click was; Tab and Shift-Tab
+/// go to the next and previous cell selecting its text, Return to the cell below, an arrow at a
+/// cell's edge to the next cell that way and out of the table at its edge; Shift with an arrow,
+/// a drag or a Shift-click selects a rectangle of cells to copy, cut, paste over, clear or
+/// delete (`LivePreviewTableSelection.swift`); ⌘Z undoes the note's own history; the block's
+/// menu and the grips add, move and remove rows and columns, a cell staying edited. Each change
+/// is written into the note as one edit of the characters it changes (`MarkdownTableEditing`):
+/// typing when it pauses, and when the editor moves or closes.
 ///
 /// One per table view, kept by the view; what it reads from the view (the table's source and
 /// the way to edit it) is given again at every update, without making the view draw again.
@@ -56,6 +71,9 @@ final class LivePreviewTableEditor {
     private static let commitDelay: Duration = .milliseconds(400)
 
     private(set) var editingCell: TableCellPosition?
+    /// The rectangle of selected cells, from the cell it began at to the one it reaches.
+    var selectionAnchor: TableCellPosition?
+    var selectionHead: TableCellPosition?
     /// The cell the command palette's and the Edit menu's table commands act on: the edited
     /// cell, or the one last edited once its editor closed, as when the palette took the keyboard.
     private(set) var commandCell: TableCellPosition?
@@ -66,10 +84,12 @@ final class LivePreviewTableEditor {
         didSet { if draftText != oldValue { draftDidChange(from: oldValue) } }
     }
 
+    /// Where the caret goes in the cell the editor opens next.
+    @ObservationIgnored private(set) var caret: TableCellCaret = .end
     @ObservationIgnored private(set) var textSize: Double = 16
-    @ObservationIgnored private var tableSource: String?
-    @ObservationIgnored private var table: MarkdownTable?
-    @ObservationIgnored private var sourceEditing: RenderedBlockSourceEditing?
+    @ObservationIgnored private(set) var tableSource: String?
+    @ObservationIgnored private(set) var table: MarkdownTable?
+    @ObservationIgnored private(set) var sourceEditing: RenderedBlockSourceEditing?
     /// The draft as last written into the note, or as the cell had it.
     @ObservationIgnored private var committedDraft = ""
     /// The cell's text in the table as this editor last left it: what the draft reads as once
@@ -78,7 +98,7 @@ final class LivePreviewTableEditor {
     @ObservationIgnored private var commitTask: Task<Void, Never>?
     /// The table's cells as last laid out, and where the table is in the block's view, which
     /// the "+" strips stay inside.
-    @ObservationIgnored var layout: StructuredText.TableLayout?
+    @ObservationIgnored var layout: TableCellGrid?
     @ObservationIgnored var tablePlacement = TablePlacementInBlock()
     var tableOriginInBlock: CGPoint { tablePlacement.origin }
     /// Where the vault's pictures in the table's cells are, in the block's coordinates: a tap
@@ -87,6 +107,8 @@ final class LivePreviewTableEditor {
     /// Where the edited cell was last drawn, for a cell the table has not laid out yet (a
     /// row just added), so the editor and its keyboard stay.
     @ObservationIgnored var lastEditingFrame: CGRect?
+    /// Where copied cells go and come from: the general pasteboard but in tests.
+    @ObservationIgnored var pasteboard = TablePasteboard.general
 
     var canEdit: Bool { sourceEditing != nil && table != nil }
 
@@ -108,17 +130,26 @@ final class LivePreviewTableEditor {
         return Self.text(ofCell: cell, in: table)
     }
 
-    private static func text(ofCell cell: TableCellPosition, in table: MarkdownTable?) -> String? {
+    static func text(ofCell cell: TableCellPosition, in table: MarkdownTable?) -> String? {
         guard let table, cell.row < table.rows.count, cell.column < table.columnCount else { return nil }
         let cellSource = cell.column < table.rows[cell.row].count ? table.rows[cell.row][cell.column].source : ""
         return MarkdownTableEditing.editableText(ofCellSource: cellSource)
     }
 
-    /// The cell changed in the note, not through this editor, as the top bar's Undo does: the
-    /// field shows what the note has now. It kept the old text, and the next key wrote all of
-    /// it back, redoing what was undone. After the view's update, which this runs in.
+    /// The cell changed in the note, not through this editor, as an undo does: the field shows
+    /// what the note has now. It kept the old text, and the next key wrote all of it back,
+    /// redoing what was undone. A cell the change took away closes the editor. After the view's
+    /// update, which this runs in.
     private func reloadDraftIfTheCellChangedElsewhere() {
-        guard let cell = editingCell, let cellText = cellTextInTable, cellText != cellTextAsWritten else { return }
+        guard let cell = editingCell else { return }
+        guard let cellText = cellTextInTable else {
+            Task { @MainActor [weak self] in
+                guard let self, self.editingCell == cell, self.cellTextInTable == nil else { return }
+                self.endEditing()
+            }
+            return
+        }
+        guard cellText != cellTextAsWritten else { return }
         cellTextAsWritten = cellText
         Task { @MainActor [weak self] in
             guard let self, self.editingCell == cell else { return }
@@ -131,18 +162,26 @@ final class LivePreviewTableEditor {
 
     // MARK: Editing a cell
 
+    /// The cell field's padding inside a cell, in text sizes, as the rendered cells have it.
+    static let horizontalPaddingScale = 0.6
+    static let verticalPaddingScale = 0.35
+
+    /// Edits the cell at `point`, in the table's coordinates, the caret nearest the point.
     func beginEditing(at point: CGPoint) {
         guard let layout, let cell = Self.cell(at: point, in: layout) else { return }
-        beginEditing(cell)
+        clearSelection()
+        let cellBounds = layout.cellBounds(row: cell.row, column: cell.column)
+        let pointInField = CGPoint(x: point.x - cellBounds.minX - textSize * Self.horizontalPaddingScale,
+                                   y: point.y - cellBounds.minY - textSize * Self.verticalPaddingScale)
+        beginEditing(cell, caret: .point(pointInField))
     }
 
-    func beginEditing(_ cell: TableCellPosition) {
+    func beginEditing(_ cell: TableCellPosition, caret: TableCellCaret = .end) {
         guard let table, cell.row < table.rows.count, cell.column < table.columnCount else { return }
-        let cellSource = cell.column < table.rows[cell.row].count ? table.rows[cell.row][cell.column].source : ""
-        startEditing(cell, text: MarkdownTableEditing.editableText(ofCellSource: cellSource))
+        startEditing(cell, text: Self.text(ofCell: cell, in: table) ?? "", caret: caret)
     }
 
-    private func startEditing(_ cell: TableCellPosition, text: String) {
+    func startEditing(_ cell: TableCellPosition, text: String, caret: TableCellCaret = .end) {
         // The text and the place were worked out from the cells as they were before the draft.
         guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
@@ -151,6 +190,7 @@ final class LivePreviewTableEditor {
             sourceEditing?.setIsEditingInView(true, ObjectIdentifier(self))
             sourceEditing?.setDraftCommit(ObjectIdentifier(self)) { [weak self] in self?.commitDraft() }
         }
+        self.caret = caret
         committedDraft = text
         cellTextAsWritten = text
         editingCell = cell
@@ -171,12 +211,13 @@ final class LivePreviewTableEditor {
         guard editingCell != nil else { return }
         commitDraft()
         editingCell = nil
+        clearSelection()
         lastEditingFrame = nil
         sourceEditing?.setDraftCommit(ObjectIdentifier(self), nil)
         sourceEditing?.setIsEditingInView(false, ObjectIdentifier(self))
     }
 
-    private func replaceSource(_ transform: @escaping (String) -> String?) {
+    func replaceSource(_ transform: @escaping (String) -> String?) {
         sourceEditing?.replaceSource(ObjectIdentifier(self), transform)
     }
 
@@ -197,7 +238,7 @@ final class LivePreviewTableEditor {
     }
 
     /// Whether writing the draft makes its `%%` pair with a marker in another cell.
-    private var draftMovesOtherCells: Bool {
+    var draftMovesOtherCells: Bool {
         guard let cell = editingCell, draftText != committedDraft, let tableSource else { return false }
         return !MarkdownTableEditing.keepsOtherCellsInPlace(writing: draftText, row: cell.row, column: cell.column, in: tableSource)
     }
@@ -214,42 +255,49 @@ final class LivePreviewTableEditor {
     }
 
     enum Movement {
-        case next, previous, up, down
+        case next, previous, down
     }
 
     /// The keys of the cell editor, as in Obsidian: Return goes to the cell below, Tab and
-    /// Shift-Tab to the next and previous cell, Escape closes the editor, and the arrows leave
-    /// a cell of one line. Whether the key was taken; one that was not is typed as usual.
+    /// Shift-Tab to the next and previous cell selecting its text, an arrow at a cell's edge to
+    /// the next cell that way (`leave`), Shift with an arrow selects cells, Escape ends a
+    /// selection and then the editor. Whether the key was taken; one that was not is typed as usual.
     func handle(_ key: TableCellKey) -> Bool {
         guard editingCell != nil else { return false }
         switch key {
-        case .returnKey: move(.down)
-        case .tab: move(.next)
-        case .backtab: move(.previous)
-        case .escape: endEditing()
-        case .upArrow, .downArrow:
-            guard !draftText.contains(where: \.isNewline) else { return false }
-            move(key == .upArrow ? .up : .down)
+        case .returnKey, .tab, .backtab:
+            clearSelection()
+            move(key == .returnKey ? .down : key == .tab ? .next : .previous)
+        case .escape:
+            if hasCellSelection { clearSelection() } else { endEditing() }
+        case .leave(let direction): leave(direction)
+        case .extendSelection(let direction): extendSelection(direction)
+        case .deleteSelection:
+            guard hasCellSelection else { return false }
+            deleteSelectedCells()
+        case .undo, .redo:
+            guard let sourceEditing else { return false }
+            commitDraft()
+            sourceEditing.undoInNote(key == .redo)
         }
         return true
     }
 
-    /// Moves the editor; past the last cell (Tab) or the last row (Return) it adds a row, as
-    /// Obsidian does.
+    /// Moves the editor; past the last cell (Tab) or the last row (Return) it adds a row, and
+    /// Shift-Tab in the first cell adds a row above the header, as Obsidian does.
     func move(_ movement: Movement) {
         guard let cell = editingCell, let table else { return }
         let lastRow = table.rows.count - 1
         let lastColumn = table.columnCount - 1
         switch movement {
         case .next:
-            if cell.column < lastColumn { beginEditing(TableCellPosition(row: cell.row, column: cell.column + 1)) }
-            else if cell.row < lastRow { beginEditing(TableCellPosition(row: cell.row + 1, column: 0)) }
+            if cell.column < lastColumn { beginEditing(TableCellPosition(row: cell.row, column: cell.column + 1), caret: .all) }
+            else if cell.row < lastRow { beginEditing(TableCellPosition(row: cell.row + 1, column: 0), caret: .all) }
             else { appendRow(editingColumn: 0) }
         case .previous:
-            if cell.column > 0 { beginEditing(TableCellPosition(row: cell.row, column: cell.column - 1)) }
-            else if cell.row > 0 { beginEditing(TableCellPosition(row: cell.row - 1, column: lastColumn)) }
-        case .up:
-            if cell.row > 0 { beginEditing(TableCellPosition(row: cell.row - 1, column: cell.column)) }
+            if cell.column > 0 { beginEditing(TableCellPosition(row: cell.row, column: cell.column - 1), caret: .all) }
+            else if cell.row > 0 { beginEditing(TableCellPosition(row: cell.row - 1, column: lastColumn), caret: .all) }
+            else { changeTable(MarkdownTableEditing.insertingRowAboveHeader, editing: TableCellPosition(row: 0, column: lastColumn)) }
         case .down:
             if cell.row < lastRow { beginEditing(TableCellPosition(row: cell.row + 1, column: cell.column)) }
             else { appendRow(editingColumn: cell.column) }
@@ -261,19 +309,31 @@ final class LivePreviewTableEditor {
         guard !draftMovesOtherCells else { return commitDraft() }
         commitDraft()
         let newRow = table.rows.count
+        // The editor opens first, so the view is kept across the edit's new key.
+        startEditing(TableCellPosition(row: newRow, column: column), text: "")
         replaceSource { source in
             guard let bodyRowCount = MarkdownTable.parse(source)?.bodyRowCount else { return nil }
             return MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowCount, in: source)
         }
-        startEditing(TableCellPosition(row: newRow, column: column), text: "")
     }
 
     // MARK: Rows and columns
 
     /// The cell menu's commands (`TableCellCommand`) for the cell at `point`, in the block
-    /// view's coordinates; for the edited cell when the point is not on one.
+    /// view's coordinates; for the edited cell when the point is not on one. On a grip, its row's
+    /// or column's commands; on selected cells, the selection's menu.
     func menuItems(at point: CGPoint) -> [RenderedBlockMenuItem] {
-        guard let table, sourceEditing != nil, let cell = menuCell(at: point) else { return [] }
+        guard let table, sourceEditing != nil else { return [] }
+        if let layout {
+            let pointInTable = CGPoint(x: point.x - tableOriginInBlock.x, y: point.y - tableOriginInBlock.y)
+            if let gripItems = gripMenuItems(at: pointInTable, layout: layout) { return gripItems }
+            if let range = selectedRange, isOnTable(point), let pointed = Self.cell(at: pointInTable, in: layout),
+               range.rows.contains(pointed.row), range.columns.contains(pointed.column) {
+                return selectionMenuItems(range)
+            }
+        }
+        clearSelection()
+        guard let cell = menuCell(at: point) else { return [] }
         return TableCellCommand.menuItems(at: cell, in: table) { [weak self] command in self?.perform(command, at: cell) }
     }
 
@@ -302,9 +362,10 @@ final class LivePreviewTableEditor {
         perform(command, at: commandCell)
     }
 
-    private func perform(_ command: TableCellCommand, at cell: TableCellPosition) {
+    func perform(_ command: TableCellCommand, at cell: TableCellPosition) {
         guard let table, command.isAvailable(at: cell, in: table) else { return }
-        changeTable(command.edit(at: cell, in: table))
+        if command == .deleteColumn, table.columnCount == 1 { return deleteTable() }
+        changeTable(command.edit(at: cell, in: table), editing: command.cellEdited(after: cell))
     }
 
     /// The "+" strip along the right edge: an empty last column, in one edit, with the editor
@@ -329,19 +390,29 @@ final class LivePreviewTableEditor {
         }
     }
 
-    /// A change of rows or columns closes the cell editor first, writing its draft: the cells
-    /// move under it.
-    private func changeTable(_ transform: @escaping (String) -> String?) {
-        let commandStillReachesItsCells = !draftMovesOtherCells
-        endEditing()
-        if commandStillReachesItsCells { replaceSource(transform) }
+    /// A change of rows or columns writes the draft first, as the cells move under it, then
+    /// edits `nextCell` of the changed table, as Obsidian keeps a cell focused after each change.
+    /// The editor opens before the edit, so the view is kept across the edit's new key. Without
+    /// a next cell the editor closes.
+    func changeTable(_ transform: @escaping (String) -> String?, editing nextCell: TableCellPosition? = nil) {
+        guard !draftMovesOtherCells else { return commitDraft() }
+        commitDraft()
+        clearSelection()
+        guard let nextCell, let tableSource, let written = transform(tableSource), let writtenTable = MarkdownTable.parse(written) else {
+            endEditing()
+            return replaceSource(transform)
+        }
+        let cell = TableCellPosition(row: min(max(nextCell.row, 0), writtenTable.rows.count - 1),
+                                     column: min(max(nextCell.column, 0), writtenTable.columnCount - 1))
+        startEditing(cell, text: Self.text(ofCell: cell, in: writtenTable) ?? "")
+        replaceSource(transform)
     }
 
     // MARK: Geometry
 
     /// The cell whose row and column contain `point`, in the table's coordinates; a point in
     /// the gap between cells goes to the nearer one, and one past an edge to the edge cell.
-    static func cell(at point: CGPoint, in layout: StructuredText.TableLayout) -> TableCellPosition? {
+    static func cell(at point: CGPoint, in layout: TableCellGrid) -> TableCellPosition? {
         guard layout.numberOfRows > 0, layout.numberOfColumns > 0 else { return nil }
         let row = layout.rowIndices.last { row in
             row == 0 || point.y >= (layout.rowBounds(row - 1).maxY + layout.rowBounds(row).minY) / 2
@@ -353,7 +424,7 @@ final class LivePreviewTableEditor {
     }
 
     /// Where the edited cell is drawn, or, for a row not laid out yet, below the last row.
-    func frame(of cell: TableCellPosition, in layout: StructuredText.TableLayout) -> CGRect? {
+    func frame(of cell: TableCellPosition, in layout: TableCellGrid) -> CGRect? {
         if cell.row < layout.numberOfRows, cell.column < layout.numberOfColumns {
             return layout.cellBounds(row: cell.row, column: cell.column)
         }
@@ -374,141 +445,11 @@ struct LivePreviewTableEditingOverlay: ViewModifier {
             content
                 .onPreferenceChange(ZoomablePictureFrame.Key.self) { frames in editor.pictureFrames = frames }
                 .textual.interactiveTableOverlay { layout, links in
-                    LivePreviewTableEditingLayer(layout: layout, links: links, editor: editor)
+                    LivePreviewTableEditingLayer(layout: TableCellGrid(layout), linkAt: links.url(at:), editor: editor)
                 }
         } else {
             content
         }
-    }
-}
-
-/// A tap target over the whole table, the edited cell's text field over that cell, and the
-/// "+" strips that add a column and a row while the pointer is over the table or a cell is edited.
-private struct LivePreviewTableEditingLayer: View {
-    let layout: StructuredText.TableLayout
-    /// The cells' links: this layer takes the table's taps from the text selection overlay,
-    /// which would otherwise follow them.
-    let links: StructuredText.TableLinks
-    @Bindable var editor: LivePreviewTableEditor
-    @Environment(\.openURL) private var openURL
-    @Environment(\.noteTypography) private var typography
-    @Environment(\.noteTheme) private var theme
-    @Environment(\.accent) private var accent
-    @Environment(\.readingImageActions) private var imageActions
-    @State private var isPointerOverTable = false
-    @State private var isPointerOverStrip = false
-    /// The picture the pointer rests on, whose magnifier and "Open in New Tab" show over it.
-    @State private var hoveredPicture: ZoomablePictureFrame?
-
-    private var showsAddStrips: Bool { isPointerOverTable || isPointerOverStrip || editor.editingCell != nil }
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { location in tapped(at: location) }
-                #if os(macOS)
-                // ⌘-click on a picture opens it in a new tab, as for a link; the gesture waits for ⌘.
-                // SwiftUI gives the iPad no modifier keys on a tap; the table's menu has the command.
-                .highPriorityGesture(SpatialTapGesture(coordinateSpace: .local).modifiers(.command).onEnded { tap in commandClicked(at: tap.location) },
-                                     including: imageActions?.tabOpening == nil ? .none : .all)
-                #endif
-            if let cell = editor.editingCell, let frame = editor.frame(of: cell, in: layout) {
-                cellField(for: cell, frame: frame)
-            }
-            if let hoveredPicture, let imageActions, editor.editingCell == nil {
-                pictureButtons(for: hoveredPicture, actions: imageActions)
-            }
-            if showsAddStrips {
-                LivePreviewTableAddStrips(geometry: TableAddStripsGeometry(tableBounds: layout.bounds, blockBounds: editor.tablePlacement.blockBoundsInTable),
-                                          editor: editor, isPointerOverStrip: $isPointerOverStrip)
-            }
-        }
-        .onGeometryChange(for: TablePlacementInBlock.self) { geometry in
-            let frame = geometry.frame(in: .named(LivePreviewTableEditor.blockCoordinateSpaceName))
-            let blockSize = geometry.bounds(of: .named(LivePreviewTableEditor.blockCoordinateSpaceName))?.size ?? frame.size
-            return TablePlacementInBlock(origin: frame.origin, blockSize: blockSize)
-        } action: { placement in
-            editor.tablePlacement = placement
-        }
-        .onChange(of: layout, initial: true) { _, newLayout in editor.layout = newLayout }
-        // The pointer, or an Apple Pencil held over the iPad's screen, shows the strips, and over a
-        // picture its buttons; on the whole layer, so moving onto the buttons stays over the table.
-        .onContinuousHover(coordinateSpace: .local) { phase in pointerMoved(phase) }
-        // Text selection's overlay would otherwise take the taps.
-        .textual.excludedFromTextInteraction()
-    }
-
-    private func pointerMoved(_ phase: HoverPhase) {
-        switch phase {
-        case .active(let location):
-            if !isPointerOverTable { isPointerOverTable = true }
-            let picture = imageActions == nil ? nil : editor.pictureFrames.last { picture in picture.frame.contains(pointInBlock(location)) }
-            if picture != hoveredPicture { hoveredPicture = picture }
-        case .ended:
-            isPointerOverTable = false
-            hoveredPicture = nil
-        }
-    }
-
-    private func pointInBlock(_ location: CGPoint) -> CGPoint {
-        CGPoint(x: location.x + editor.tableOriginInBlock.x, y: location.y + editor.tableOriginInBlock.y)
-    }
-
-    /// The magnifier and "Open in New Tab" at the picture's top-right corner, in the layer's coordinates.
-    private func pictureButtons(for picture: ZoomablePictureFrame, actions: ReadingImageActions) -> some View {
-        let frame = picture.frame.offsetBy(dx: -editor.tableOriginInBlock.x, dy: -editor.tableOriginInBlock.y)
-        return PictureHoverButtons(zoom: { actions.perform(.zoomIn, on: picture.path) },
-                                   openInNewTab: actions.tabOpening == nil ? nil : { actions.perform(.openInNewTab, on: picture.path) })
-            .frame(width: frame.width, alignment: .topTrailing)
-            .offset(x: frame.minX, y: frame.minY)
-    }
-
-    #if os(macOS)
-    /// ⌘-click on a picture opens it in a tab; anywhere else it edits the cell, as a click does.
-    private func commandClicked(at location: CGPoint) {
-        if let imageActions, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock(location)) }),
-           imageActions.open(picture.path, clickedWith: .command) {
-            return
-        }
-        tapped(at: location)
-    }
-    #endif
-
-    /// A tap on a picture zooms into it and one on a link follows it, as in Obsidian's Live
-    /// Preview; anywhere else in a cell edits the cell.
-    private func tapped(at location: CGPoint) {
-        if let viewImage = imageActions?.viewImage, let picture = editor.pictureFrames.last(where: { picture in picture.frame.contains(pointInBlock(location)) }) {
-            viewImage(picture.path)
-            return
-        }
-        if let url = links.url(at: location) {
-            editor.endEditing()
-            openURL(url)
-            return
-        }
-        editor.beginEditing(at: location)
-    }
-
-    private func cellField(for cell: TableCellPosition, frame: CGRect) -> some View {
-        let textSize = editor.textSize
-        return TableCellTextField(text: $editor.draftText,
-                                  font: typography.textFont(ofSize: textSize, weight: cell.row == 0 ? .semibold : .regular),
-                                  focusRequest: editor.focusRequest, handleKey: editor.handle,
-                                  focusDidChange: { isFocused in
-                                      // Focus going elsewhere, such as a tap in the note's text, closes the editor.
-                                      if !isFocused { editor.focusDidLeave() }
-                                  })
-            .padding(.vertical, textSize * 0.35)
-            .padding(.horizontal, textSize * 0.6)
-            // Centered in the row's height, as the rendered cells are.
-            .frame(width: frame.width, alignment: .leading)
-            .frame(minHeight: frame.height, alignment: .leading)
-            .background(theme?.background.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.background))
-            .overlay(Rectangle().stroke(accent, lineWidth: 2))
-            .offset(x: frame.minX, y: frame.minY)
-            .onAppear { editor.lastEditingFrame = frame }
-            .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }
     }
 }
 
@@ -517,6 +458,13 @@ private struct LivePreviewTableEditingLayer: View {
 struct TableControlOutsideTextSelection: ViewModifier {
     func body(content: Content) -> some View {
         content.textual.excludedFromTextInteraction()
+    }
+}
+
+extension TableCellGrid {
+    /// The cells as Textual laid them out.
+    init(_ layout: StructuredText.TableLayout) {
+        self.init(rowBounds: layout.rowIndices.map(layout.rowBounds), columnBounds: layout.columnIndices.map(layout.columnBounds), bounds: layout.bounds)
     }
 }
 

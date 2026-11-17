@@ -1464,6 +1464,11 @@ struct NativeMarkdownEditor: UIViewRepresentable {
                 self?.session.blockViews.draftCommits[editor] = commit
             }, offerCellCommands: { [weak self] target in
                 self?.session.blockViews.takeTableCellCommands(target)
+            }, placeCaretBesideBlock: { [weak self, weak textView] editor, side in
+                guard let self, let textView else { return }
+                self.placeCaret(besideBlockWithKey: key, editedBy: editor, side: side, in: textView)
+            }, undoInNote: { [weak textView] isRedo in
+                if isRedo { textView?.undoManager?.redo() } else { textView?.undoManager?.undo() }
             }), currentLocation: { [weak self] in
                 self?.blockEntries.first { candidate in candidate.key == key }?.range.location
             })
@@ -1486,6 +1491,21 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             guard let blockRange = renderedBlocks.rangeOfBlock(withKey: key, editedBy: editor, in: blockEntries, source: source),
                   let replacement = transform(source.substring(with: blockRange)) else { return }
             replaceText(with: source.replacingCharacters(in: blockRange, with: replacement), in: textView)
+        }
+
+        /// Gives the note's text the keyboard with the caret on the line before or after a
+        /// rendered block, as an arrow out of a table's edge does; an empty line is added first
+        /// where the block starts or ends the note.
+        func placeCaret(besideBlockWithKey key: LivePreviewBlockKey, editedBy editor: ObjectIdentifier, side: RenderedBlockSide, in textView: UITextView) {
+            let source = currentSource(of: textView)
+            guard let blockRange = renderedBlocks.rangeOfBlock(withKey: key, editedBy: editor, in: blockEntries, source: source) else { return }
+            let placement = RenderedBlockCaretPlacement(beside: blockRange, side: side, in: source)
+            if let lineBreakLocation = placement.lineBreakLocation {
+                replaceText(with: source.replacingCharacters(in: NSRange(location: lineBreakLocation, length: 0), with: "\n"), in: textView)
+            }
+            textView.becomeFirstResponder()
+            textView.selectedRange = NSRange(location: placement.caretLocation, length: 0)
+            textViewDidChangeSelection(textView)
         }
 
         /// When rendered blocks settle their heights after TextKit laid out the viewport, the

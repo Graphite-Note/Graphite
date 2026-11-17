@@ -2,7 +2,7 @@
 
 Created: 2026-10-24.
 
-Status: sections 1 and 2 built and tested on 2026-11-11 and 2026-11-12 except the checks by hand with the owner's table and the hover itself (tables in callouts built 2026-11-13); section 3 built except the device check (Live Preview's own text, 2026-11-12). Issue: [#107](https://github.com/Graphite-Note/Graphite/issues/107) (section 1), [#108](https://github.com/Graphite-Note/Graphite/issues/108) (section 2), [#109](https://github.com/Graphite-Note/Graphite/issues/109) (section 3).
+Status: sections 1 and 2 built and tested on 2026-11-11 and 2026-11-12 except the checks by hand with the owner's table and the hover itself (tables in callouts built 2026-11-13); section 3 built except the device check (Live Preview's own text, 2026-11-12). Issue: [#107](https://github.com/Graphite-Note/Graphite/issues/107) (section 1), [#108](https://github.com/Graphite-Note/Graphite/issues/108) (section 2), [#109](https://github.com/Graphite-Note/Graphite/issues/109) (section 3), [#206](https://github.com/Graphite-Note/Graphite/issues/206) to [#209](https://github.com/Graphite-Note/Graphite/issues/209) (sections 4 to 7, Obsidian's keys, cell selection and grips, planned 2026-11-17).
 
 ## Request
 
@@ -89,3 +89,125 @@ The owner, 2026-10-24, with the same table in Graphite and in Obsidian: "same ta
   Done 2026-10-24: in `AppProjectTextualPatchTests` (the splitter lives in the vendored Textual, so its tests are with the other Textual patch tests rather than in Core) and `ReadAloudReadingViewTests`; 297 tests of the math, reading view, table, Live Preview block and PDF export classes pass.
 - [ ] Checked on the Mac and the iPad with the owner's "3_SmallSignalAnalysis_II" table.
   Looked at 2026-11-12 in the iPad simulator (iPad Pro 11-inch, iOS 27.2, Debug of main 21ea6b1a with the release test vault): not checked: the release vault has no table of long formulas; the owner's table and the Mac are left
+
+## 4. Keys and the caret in a cell, and the lines around a table
+
+Issue: [#206](https://github.com/Graphite-Note/Graphite/issues/206)
+
+The owner, 2026-11-17, after the reference below: "idc as long as it is all implimented", so sections 4 to 7 build the rest of Obsidian's table editor.
+
+- [ ] A click on a cell puts the caret where the click was in the cell's text, not at its end. Built 2026-11-17, not yet verified: `LivePreviewTableEditor.beginEditing(at:)` gives the field the tap's point in the cell's text (`TableCellCaret.point`, `closestPosition` on the iPad, `characterIndexForInsertion` on the Mac); no test drives a real click, and it was not checked by hand.
+- [ ] Left at the start of a cell goes to the end of the cell before it, and Right at its end goes to the start of the next cell (in reading order, across rows). Right-to-left text swaps them. Built 2026-11-17, not yet verified: `TableCellTextField` gives the table an arrow only at the text's edge (`isAtEdge`, `logical` for right-to-left text) and `leave(_:)` moves to the cell before or after, caret at its end or start (`LivePreviewTableKeysAndSelectionTests.testTabSelectsTheNextCellsTextAndTheArrowsLeaveACellAtItsEdges`); the field's own edge test is not driven by a test, and it was not checked by hand.
+- [ ] Up on a cell's first line goes to the cell above, and Down on its last line goes to the cell below, also in a cell of several lines. Up from the header and Down from the last row leave the table: the caret goes to the start of the note's line above or below the table, and an empty line is added first when the table starts or ends the note. Built 2026-11-17, not yet verified: `leave(.up/.down)` and `RenderedBlockSourceEditing.placeCaretBesideBlock` on both editors, `RenderedBlockCaretPlacement` adding the empty line (`testTheArrowsLeaveTheTableAtItsEdgesForTheNotesLines`, `testTheCaretGoesToTheLineBesideTheTableAddingOneAtTheNotesEdges`); the field's first- and last-line test and the editors' caret placement are not driven by a test, and it was not checked by hand.
+- [ ] Tab and Shift-Tab select the whole text of the cell they go to. Shift-Tab in the header's first cell adds an empty row at the top, which becomes the header, as Obsidian does. Built 2026-11-17, not yet verified: Tab and Shift-Tab ask for `TableCellCaret.all`; Shift-Tab in the first cell runs `MarkdownTableEditing.insertingRowAboveHeader` (`testShiftTabInTheFirstCellAddsARowAboveTheHeader`, `MarkdownTableRangeEditingTests.testRowAboveTheHeaderBecomesTheHeader`); that the field selects its text is not tested, and it was not checked by hand.
+- [x] A new column takes the alignment of the column it was added beside (Add column to the left and to the right), and after each command of the cell menu, the palette or the Edit menu a cell stays edited where Obsidian puts it (the added, moved or copied row or column, or the one before a removed one), instead of the editor closing. Done 2026-11-17: `TableCellCommand.edit` inserts a column with its neighbour's alignment (`MarkdownTableEditing.insertingColumn(at:alignment:in:)`) and `LivePreviewTableEditor.changeTable(_:editing:)` opens the editor in `TableCellCommand.cellEdited(after:)` before the edit, so the view is kept. Tests: `LivePreviewTableKeysAndSelectionTests.testTheHeaderRowTakesTheRowCommandsAndACellStaysEdited`, `MarkdownTableRangeEditingTests.testNewColumnTakesTheGivenAlignment`, `LivePreviewTableCommandsTests` (the cell stays edited after a sort), `UiEditorMacTableMenuTests` (the palette keeps the cell after a menu command). Not checked by hand.
+- [x] The header row takes the row commands as in Obsidian: Add row above it adds a new empty header, Move row down and Move row up (from the first body row) swap the header with the first body row, and Delete row on the header makes the first body row the header. Done 2026-11-17: `TableCellCommand.isAvailable` and `edit` for the header: Add row above runs `insertingRowAboveHeader`, the moves `movingRow(_:to:)`, Delete row on the header moves the first body row up. Tests: `testTheHeaderRowTakesTheRowCommandsAndACellStaysEdited`, `MarkdownTableRangeEditingTests.testMovingTheHeaderIntoTheBody`, `testRowAboveTheHeaderBecomesTheHeader`, `LivePreviewTableCommandsTests`, `UiEditorMacTableMenuTests`, `WorkspaceCommandIdentifiersTests`. Not checked by hand.
+- [ ] ⌘Z and ⇧⌘Z in a cell (and Edit › Undo and Redo) write the cell's typing into the note, then undo or redo the note's own history, as Obsidian does: a row added by Tab or a cell written before can be undone without leaving the table. Built 2026-11-17, not yet verified: `TableCellKey.undo`/`.redo` from the field (⌘Z and ⇧⌘Z on both platforms) write the draft, then `RenderedBlockSourceEditing.undoInNote` undoes the note's history (`testUndoInACellWritesItsTypingThenUndoesTheNote`); the keys and Edit › Undo while a cell is edited are not driven by a test, and it was not checked by hand.
+- [x] Backspace at the start of the line right after a table selects the table instead of joining that line to it; typing at the end of a table's last line in its source, with the caret right after the table, starts a new line first so the text does not become a row. Done 2026-11-17: `MarkdownEditing.editBesideTable(typed:replacing:in:)` (Core), called first by `EditingBehavior.typingEdit` on both platforms: a character typed at the start of the empty line after a table's last row goes on a line of its own, and Backspace there selects the table. Tests: `MarkdownEditingBesideTablesTests` (3). Not checked by hand.
+- [ ] Tests: hosted Mac tests of each key; Core tests of the new source edits.
+
+## 5. Selecting cells: copy, cut, paste, clear and delete
+
+Issue: [#207](https://github.com/Graphite-Note/Graphite/issues/207)
+
+- [ ] Dragging across cells on the Mac selects a rectangle of them; a Shift-click extends from the edited cell; Shift with an arrow at a cell's edge starts or grows the rectangle by one cell; a quadruple click selects the whole table. On the iPad and the iPhone, a press held for 0.2 s then dragged selects cells. The selected cells are outlined in the accent colour; typing is off while cells are selected. Built 2026-11-17, not yet verified: `TableCellSelectionGesture` (a drag on the Mac, a 0.2 s press then a drag on a touch screen), Shift-click and a fourth click in the layer's tap, `extendSelection` for Shift-arrows, `TableCellSelectionOutline`, typing held in the field while cells are selected; Shift-arrows are tested (`testShiftArrowsSelectARectangleAndBackspaceEmptiesIt`), the drag, Shift-click and fourth click are not, and it was not checked by hand.
+- [ ] ⌘C copies the selection as a Markdown table (header from its first row, the columns' alignment kept), as HTML, and as Graphite's own grid type; ⌘X copies then deletes as below. Built 2026-11-17, not yet verified: `copySelectedCells(cut:)` writes `MarkdownTableGrid.markdownTable`, `htmlTable` and Graphite's cell type through `TablePasteboard` (`MarkdownTableRangeEditingTests.testCopiedCellsMakeAnAlignedMarkdownTableAndHTML`, `testCopiedCellsPasteAsAGridThatGrowsTheTable`); ⌘C and ⌘X in the field are not driven by a test, and it was not checked by hand.
+- [x] ⌘V of a copied grid writes it from the edited cell or the selection's first cell, growing the table by rows and columns as needed; pasted on the header row, the copied columns' alignment comes with it. A Markdown table copied from elsewhere pastes the same way. Done 2026-11-17: `pasteCells()` reads Graphite's cells or a Markdown table as text and writes them with `MarkdownTableEditing.pasting(_:atRow:column:in:)`, which grows the table and takes the copied alignments on the header row. Tests: `MarkdownTableRangeEditingTests.testPastingGrowsTheTableAndKeepsEscapes`, `LivePreviewTableKeysAndSelectionTests.testCopiedCellsPasteAsAGridThatGrowsTheTable` (on a pasteboard of the test's own). ⌘V in the field is not driven by a test; not checked by hand.
+- [x] Backspace or Delete on a selection: whole rows selected removes them, whole columns removes them, every cell removes the table, anything else empties the cells. One undoable edit each. Done 2026-11-17: `deleteSelectedCells()` with `MarkdownTableEditing.deletingCells(in:in:)` and `clearingCells`, the whole table through `deleteTable()`, one source edit each. Tests: `MarkdownTableRangeEditingTests.testDeletingWholeRowsColumnsOrPartOfTheTable`, `testClearingARangeEmptiesOnlyItsCells`, `testShiftArrowsSelectARectangleAndBackspaceEmptiesIt`, `testDeletingWholeRowsRemovesThemAndAnArrowEndsASelectionAtItsCorner`. Not checked by hand.
+- [x] The menu on a selection: Cut, Copy, Paste, Align left, center and right (every selected column), Clear cells, Delete cells. Done 2026-11-17: `selectionMenuItems(_:)`, which the block's menu gives when the point is on selected cells. Test: `testTheSelectionsMenuHasTheClipboardAlignmentAndClearAndDeleteCells`. Not checked by hand.
+- [ ] Tests: Core tests of the grid's Markdown, clearing and removing ranges and pasting with growth; hosted Mac tests of drag, Shift-arrows, copy and paste.
+
+## 6. Grips to select and drag rows and columns
+
+Issue: [#208](https://github.com/Graphite-Note/Graphite/issues/208)
+
+- [ ] On the Mac, a grip shows above each column and to the left of each row while the pointer is over it; on the iPad and the iPhone, only the grips of the edited cell's row and column show. Built 2026-11-17, not yet verified: `LivePreviewTableGrips` for the hovered and edited cell's row and column and each selected whole row or column; no test, not checked by hand.
+- [ ] A click on a grip selects its row or column (section 5's selection); dragging it moves the row or column, with a line where it will land, and the moved row or column stays selected. Built 2026-11-17, not yet verified: a tap selects (`selectRow`, `selectColumn`), a drag moves with a drop line (`moveRow(_:to:)`, `moveColumn(_:to:)`, the moved one kept selected); no test drives a grip, and it was not checked by hand.
+- [ ] A secondary click (or long press) on a column's grip opens its Column menu with the two sort commands; on a row's grip, its Row menu. Built 2026-11-17, not yet verified: `gripMenuItems(at:layout:)`, given by the block's menu for a point on a grip; not tested, not checked by hand.
+- [ ] The grips take no room in the note: like the "+" strips, each sits just outside the table where the block's view has the room and otherwise over the cells' padding (`TableGripsGeometry`); never in reading view, and they cost nothing while hidden (drawn in the editing layer only while the strips show). Built 2026-11-17, not yet verified: `TableGripsGeometry` (`testGripsGoOutsideTheTableWhereTheBlockHasRoomAndOverThePaddingWhereNot`); drawn only in the editing layer while the strips show, so reading view has none; their cost on scrolling not measured, not checked by hand. Found on the iPad simulator (hosted test screenshot, 2026-11-17): in a callout, the column grip goes above the table into the callout's own text and touches the line before the table; it should go over the header's padding there.
+- [ ] Tests: Core test of moving a row or column by more than one place; hosted Mac test that dragging a grip moves the column in the note.
+
+## 7. Checked on the devices
+
+Issue: [#209](https://github.com/Graphite-Note/Graphite/issues/209)
+
+- [ ] Sections 1, 2, 4, 5 and 6 checked by hand on the Mac (a separate Debug copy) and on the iPad simulator with a generated table note, then on the owner's iPad.
+
+## Reference: Obsidian's table editor, read from its code (2026-11-17)
+
+The owner, 2026-11-17: "tables in obsidian are so much nicer to use, study their behavior". Read from Obsidian 1.15.1's own code (`obsidian-1.15.1.asar`: the table widget, its cell editor and the `editor:table-*` commands), not from forum posts. The owner chose all of it (sections 4 to 7; 1 and 2 were built already). Decided 2026-11-17: the source keeps the writer's spacing (only the changed characters are rewritten), as before; the owner did not mind either way and nothing shown in Live Preview depends on it.
+
+### What Obsidian does
+
+**The cell editor is a full Markdown editor, and it shares the note's history.**
+- A click puts the caret in the cell under the pointer, where it was clicked. Nothing pops up over the cell. The cell keeps its size while its editor is open (`lockDimensions`), so the table does not jump.
+- Inside the cell, `<br>` shows as a line break and `\|` as `|`, except inside inline code (`lp`). Going the other way, a line break is written as `<br>` and a bare `|` as `\|` (`c7`).
+- Every keystroke is written into the note at once, with no pause. ⌘Z and ⇧⌘Z inside a cell undo the note's own history.
+- Spaces at a cell's ends are trimmed when the caret leaves it (`trimCell`).
+
+**Keys in a cell**
+- Tab goes to the next cell and selects all of its text; past the last cell it adds a row. Shift-Tab goes to the previous cell; before the first cell it adds a row at the top.
+- Return goes to the cell below; on the last row it adds a row. Shift-Return is not mapped, so it inserts a line break, which is saved as `<br>`.
+- The arrow keys leave a cell at its edges, and Left and Right do this too: Left at the cell's start goes to the end of the previous cell, Right at its end to the start of the next. Up on a cell's first line goes to the last line of the cell above, Down on its last line to the cell below. Right-to-left text is handled.
+- Arrows past the table's first or last cell leave the table: the caret goes to the line above or below it, and a blank line is added when the table starts or ends the note (`placeCursorAround`).
+- Shift with an arrow, pressed at a cell's edge, starts a rectangular cell selection. Later Shift-arrows grow it by one cell at a time.
+- With cells selected, Backspace and Delete act on the selection.
+- ⌘↑ and ⌘↓, Page Up and Page Down, and ⌘Home and ⌘End hand the caret back to the note.
+- No Escape binding was found in the cell editor's own keymap.
+
+**Cell selection: a rectangle of cells, as in a spreadsheet**
+- Dragging across cells selects a rectangle; Shift-click extends from the cell being edited. A quadruple click selects the whole table.
+- Selected cells are outlined, and the editor goes read-only while a range is selected.
+- Copying a range puts it on the pasteboard as an aligned Markdown table (plain text and `text/markdown`), as HTML, and as `obsidian/table` JSON holding the rows and alignments. Cut copies, then deletes.
+- Pasting `obsidian/table` data into a cell writes the grid from that cell, growing the table as needed. Pasted onto the header row, it also takes the copied columns' alignment.
+- Backspace and Delete on a selection:
+  - whole rows selected: the rows are removed;
+  - whole columns selected: the columns are removed;
+  - every cell selected: the table is removed;
+  - anything else: the cells are emptied.
+- Right-clicking a selection gives Cut, Copy and Paste, the formatting menu, Align left, center and right (for every selected column), Clear cells and Delete cells.
+- On the iPhone and iPad: a press held for 200 ms, then dragged, selects cells (`handleMobileCaretDrag`), and the view scrolls automatically at the table's edges.
+
+**Drag handles on rows and columns**
+- Every header cell has a grip above it, and every row's first cell has a grip to its left. On the Mac they appear when the pointer is over them. On touch devices, only the grips of the edited cell's row and column show.
+- Pressing a grip selects its whole row or column. Dragging it moves the row or column: a line shows where it will land, and the view scrolls automatically. After the drop on the Mac, the moved row or column stays selected.
+- Right-clicking a grip opens that row's or column's menu. The column menu also has the two sort commands.
+
+**"+" buttons**
+- A "+" strip sits along the bottom and right edges, as in section 1. It adds a row at the bottom or a column at the right, and the new cell takes the keyboard.
+- On touch devices they show only while a cell of the table is being edited.
+
+**Menus and commands**
+- The cell menu: Row › (Add row above and below, Move row up and down, Duplicate row, Delete row), Column › (Add column to the left and right, Move column left and right, Align left, center and right, Duplicate column, Delete column), then Sort by column (A to Z) and (Z to A).
+- The menu is split into sections (add, move, align, modify), and Move items that cannot apply are left out.
+- A new column takes the alignment of the column it was added beside.
+- Sorting compares the cells' rendered text (`innerText`), so `**b**` sorts as `b`, and the header row stays first.
+- Each of these is also a command-palette command, "Table: <command>", available while a cell is being edited, with no default hotkeys.
+- Insert table writes a two-by-two table with an empty header (`|     |     |`), on a new line if the current line has text, and puts the caret in the first cell.
+
+**The source stays aligned**
+- Editing a cell pads every cell of its column to the column's width (minimum 5 characters, 2 more than the longest text) and rewrites the delimiter row to match (`:---`, `:---:`, `---:`).
+- A table that is not aligned, or has rows of different lengths, is rewritten whole the first time a cell of it takes the caret (`isMalformed` → `dispatchTable`). Missing cells are added, and a half-typed last row is completed.
+
+**Around the table**
+- Backspace at the start of the line after a table selects the table instead of joining that line to it.
+- Typing right after a table's last line first adds a line break, so the text does not join the table.
+- A click in the table's margin puts the caret after the table.
+
+### Where Graphite differs, as of main `8bab697a` (2026-11-17)
+
+Corrected 2026-11-17: this comparison was first written from a checkout 128 commits behind main, before sections 1 and 2 were built; it is redone from main.
+
+| Obsidian | Graphite on main |
+|---|---|
+| Caret goes where the cell was clicked | At the end of the cell's text |
+| Left and Right leave a cell at its edges; Up and Down at a cell's first and last line, also in a cell of several lines; arrows leave the table above and below | Only Up and Down, only in a cell of one line, and inside the table only |
+| Tab selects the next cell's text; Shift-Tab before the first cell adds a row | Caret at the end; Shift-Tab before the first cell does nothing |
+| ⌘Z inside a cell undoes the note | Undoes the cell's own typing only |
+| Rectangular cell selection: drag, Shift-click, Shift-arrows, quadruple click; copy and paste of cell ranges as a table; Clear and Delete cells | None |
+| Grips to drag rows and columns, right-click for their menus | None |
+| "+" strips, Duplicate, Sort, the menu in Obsidian's words, the palette's "Table: …" commands | Built (sections 1 and 2), also in callouts |
+| A cell stays edited after a menu command; a new column takes its neighbour's alignment; the header row takes the row commands | The editor closes; no alignment; the header's row commands are dimmed |
+| Typing right after a table never joins it; Backspace after a table selects it | Not built |
+
+One difference is a decision for the owner, not a gap. Obsidian re-pads the source of any table it touches, so editing one cell can change every line of the table. Graphite's rule today is to rewrite only the characters an edit changes (see the comment on `MarkdownTableEditing`), which keeps a file's diffs small and leaves hand-written tables as they were. Aligning the source would mean dropping that rule.

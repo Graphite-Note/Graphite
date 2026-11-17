@@ -6,7 +6,7 @@
  *              commands change the note's source with the callout's quote markers kept, each one undoable edit.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 17/11/2026
  */
 #if os(iOS)
@@ -33,7 +33,7 @@ final class LivePreviewCalloutTableHostedTests: XCTestCase {
 
     /// The menu at the callout's table offers the table's rows and columns, above the title only
     /// Edit Source; Add row below and Add column to the right write lines with their `> `, drawn in
-    /// the callout at once, and one undo takes each back.
+    /// the callout at once (the column in the view kept for its edited cell), and one undo takes each back.
     func testTheCalloutTablesMenuAddsARowAndAColumnWithTheMarkersKept() async throws {
         let (session, editor) = try await openNote(Self.note)
         let calloutView = try await blockView(in: editor)
@@ -68,7 +68,11 @@ final class LivePreviewCalloutTableHostedTests: XCTestCase {
         try choose("Column", "Add column to the right", at: try XCTUnwrap(columnPoint), in: try XCTUnwrap(renderedBlockMenu(of: currentView)))
         try await waitUntil("the column is in the note") { session.text.contains("> | --- | --- | --- |\n") }
         assertCalloutKeepsItsMarkers(session.text)
-        try await waitUntil("the callout is drawn again for its new source") { self.currentBlockView(in: editor).map { view in view !== currentView && view.bounds.width == widthBefore } ?? false }
+        // As in Obsidian, the new column's header stays edited, so the callout keeps its view
+        // across the edit, as a table being typed in does, and draws the column in it.
+        try await waitUntil("the callout draws its new source in the view it keeps") {
+            self.currentBlockView(in: editor).map { view in view === currentView && view.bounds.width == widthBefore } ?? false
+        }
         attachScreenshot(named: "A column added to the callout's table")
 
         let undoManager = try XCTUnwrap(editor.undoManager)

@@ -46,7 +46,9 @@ final class LivePreviewCalloutTableEditors {
                 CalloutTables.editingTable(at: tableIndex, inCallout: calloutSource, using: transform)
             }
         }, setIsEditingInView: calloutEditing.setIsEditingInView, setDraftCommit: calloutEditing.setDraftCommit,
-           offerCellCommands: calloutEditing.offerCellCommands)
+           offerCellCommands: calloutEditing.offerCellCommands,
+           // Leaving a callout's table leaves the callout: its lines are drawn as one block.
+           placeCaretBesideBlock: calloutEditing.placeCaretBesideBlock, undoInNote: calloutEditing.undoInNote)
     }
 
     /// The cell menu of the table under `point`, in the callout view's coordinates, or of the

@@ -6,8 +6,8 @@
  *              changes the note in the iPad's own editor as one undoable edit.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -41,8 +41,8 @@ final class LivePreviewTableCommandsHostedTests: XCTestCase {
         let editor = try editFirstBodyCell(coordinator: coordinator, textView: textView, session: session)
         defer { withExtendedLifetime(editor) {} }
         let tableIdentifiers = paletteIdentifiers(in: workspace).filter { identifier in identifier.contains(":table-") }
-        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveRowUp && command != .moveColumnLeft }
-            .map(\.graphiteCommand.identifier), "The first body row's first cell can move neither up nor left.")
+        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveColumnLeft }
+            .map(\.graphiteCommand.identifier), "The first column cannot move left; the first body row moves up into the header, as in Obsidian.")
 
         // Opening the palette takes the keyboard from the cell, which closes its editor.
         editor.focusDidLeave()

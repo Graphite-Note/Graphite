@@ -5,19 +5,21 @@
  * Description: What a key typed in a note does beyond inserting itself, the same in the iPad's and the Mac's editors.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 import Foundation
 import GraphiteCore
 
 extension EditingBehavior {
-    /// Obsidian's typing helpers: lists that continue on Return, indentation kept on Return,
+    /// Obsidian's typing helpers: text kept off a table's last row, lists that continue on Return, indentation kept on Return,
     /// Tab to indent list items, bracket pairs, a code fence's closing line, and Backspace
     /// removing an empty pair or a level of spaces. The edit to make in place of replacing `range` with
     /// `replacement`, or nil to let the text view make that change.
     func typingEdit(replacing range: NSRange, with replacement: String, in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
+        // Text typed right after a table never joins it, and Backspace there selects it.
+        if selection.length == 0, let edit = MarkdownEditing.editBesideTable(typed: replacement, replacing: range, in: text) { return edit }
         switch replacement {
         case "\n":
             if continuesLists, let edit = MarkdownEditing.continuingList(in: text, selection: range, indentUnit: indentUnit, tabSize: tabSize) { return edit }

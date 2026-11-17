@@ -7,8 +7,8 @@
  *              Settings › Keyboard Shortcuts gives them.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -102,7 +102,7 @@ final class UiEditorMacTableMenuTests: XCTestCase {
 
         menu.performActionForItem(at: 3)
         XCTAssertEqual(textView.string, Self.tableNote.replacingOccurrences(of: "| 2024 | 2.0 |\n| 2025 | 1.8 |\n", with: "| 2025 | 1.8 |\n| 2024 | 2.0 |\n"))
-        XCTAssertNil(session.blockViews.tableCellCommandTarget, "A menu opened without editing a cell gives the palette nothing.")
+        XCTAssertNotNil(session.blockViews.tableCellCommandTarget, "As in Obsidian, the cell the menu was opened on stays edited after its command.")
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, Self.tableNote, "The sort is one edit.")
     }
@@ -183,7 +183,7 @@ final class UiEditorMacTableMenuTests: XCTestCase {
         XCTAssertEqual(menu.items[0].submenu?.items.map(\.title), ["Add row above", "Add row below", "Move row up", "Move row down", "Duplicate row", "Delete row"])
         XCTAssertEqual(menu.items[1].submenu?.items.map(\.title), ["Add column to the left", "Add column to the right", "Move column left", "Move column right",
                                                                    "Align left", "Align center", "Align right", "Duplicate column", "Delete column"])
-        XCTAssertFalse(try XCTUnwrap(item("Move row up", in: menu)).isEnabled, "The first body row cannot move up.")
+        XCTAssertTrue(try XCTUnwrap(item("Move row up", in: menu)).isEnabled, "As in Obsidian, the first body row moves up into the header.")
         XCTAssertTrue(try XCTUnwrap(item("Move row down", in: menu)).isEnabled)
 
         try choose(try XCTUnwrap(item("Move row down", in: menu)))

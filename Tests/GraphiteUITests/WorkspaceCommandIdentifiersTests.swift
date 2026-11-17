@@ -5,8 +5,8 @@
  * Description: The command palette's commands and the sidebar panels some of them show.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -114,8 +114,8 @@ final class WorkspaceCommandIdentifiersTests: XCTestCase {
 
         let identifiers = WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).map(\.id)
         let tableIdentifiers = identifiers.filter { identifier in identifier.contains(":table-") }
-        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveRowUp && command != .moveColumnLeft }
-            .map(\.graphiteCommand.identifier), "The first body row's first cell can move neither up nor left.")
+        XCTAssertEqual(tableIdentifiers, TableCellCommand.allCases.filter { command in command != .moveColumnLeft }
+            .map(\.graphiteCommand.identifier), "The first column cannot move left; the first body row moves up into the header, as in Obsidian.")
         XCTAssertEqual(Array(identifiers.filter { identifier in !identifier.contains(":table-") }), Self.identifiersWithANoteOpen)
         editor.focusDidLeave()
         try command("graphite:table-sort-ascending", in: workspace, window: makeWindowActions()).run()

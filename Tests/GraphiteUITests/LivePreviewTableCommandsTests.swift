@@ -76,9 +76,11 @@ final class LivePreviewTableCommandsTests: XCTestCase {
             let items = table.menu(at: cell)
             return (items[0].children + items[1].children + items.dropFirst(2)).filter(\.isEnabled).map(\.title)
         }
+        // The header row takes the row commands, as in Obsidian, except moving up.
         let header = enabledTitles(at: TableCellPosition(row: 0, column: 0))
-        XCTAssertFalse(header.contains("Add row above"))
-        XCTAssertFalse(header.contains("Delete row"))
+        XCTAssertTrue(header.contains("Add row above"))
+        XCTAssertTrue(header.contains("Delete row"))
+        XCTAssertTrue(header.contains("Move row down"))
         XCTAssertFalse(header.contains("Move row up"))
         XCTAssertFalse(header.contains("Move column left"))
         XCTAssertTrue(header.contains("Duplicate row"))
@@ -108,7 +110,7 @@ final class LivePreviewTableCommandsTests: XCTestCase {
         XCTAssertEqual(table.note, "Intro\n\n| Name | Value |\n| ---- | :---: |\n| row 2 | a |\n| row 10 | b |\n\nAfter\n")
         try table.run(nil, "Sort by column (Z to A)", at: TableCellPosition(row: 1, column: 1))
         XCTAssertEqual(table.note, Self.note)
-        XCTAssertNil(table.editor.editingCell, "A change of rows closes the cell's editor, as the other row commands do.")
+        XCTAssertEqual(table.editor.editingCell, TableCellPosition(row: 1, column: 1), "The cell stays edited, as in Obsidian.")
     }
 
     func testDuplicateRowAndDuplicateColumn() throws {
@@ -126,7 +128,7 @@ final class LivePreviewTableCommandsTests: XCTestCase {
         table.editor.beginEditing(TableCellPosition(row: 1, column: 0))
         let target = try XCTUnwrap(table.offeredTargets.last)
         XCTAssertTrue(target.editor === table.editor)
-        XCTAssertFalse(target.isAvailable(.moveRowUp), "The first body row cannot move up.")
+        XCTAssertTrue(target.isAvailable(.moveRowUp), "The first body row moves up into the header, as in Obsidian.")
         XCTAssertTrue(target.isAvailable(.moveRowDown))
         // The palette takes the keyboard, which closes the cell's editor.
         table.editor.focusDidLeave()

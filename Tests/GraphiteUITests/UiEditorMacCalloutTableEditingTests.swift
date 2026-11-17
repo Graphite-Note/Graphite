@@ -7,8 +7,8 @@
  *              each as one undoable edit, and the callout's view stays across the edits.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 #if os(macOS)
@@ -131,7 +131,9 @@ final class UiEditorMacCalloutTableEditingTests: XCTestCase {
         }
         let columnMenu = try XCTUnwrap(tableMenu?.items[1].submenu)
         columnMenu.performActionForItem(at: try XCTUnwrap(columnMenu.items.firstIndex { item in item.title == "Add column to the right" }))
-        XCTAssertTrue(textView.string.contains("> | --- | --- | --- |\n"), textView.string)
+        // The row's cell stays edited, as in Obsidian, so the callout's view is kept through the
+        // undo and its menu is found before the note has taken the undo in; the column waits a turn.
+        try await awaitConditionAfterLayout("The column is in the note") { textView.string.contains("> | --- | --- | --- |\n") }
         assertCalloutKeepsItsMarkers(textView.string)
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, Self.calloutNote, "Adding the column is one edit.")

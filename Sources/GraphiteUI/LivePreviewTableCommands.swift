@@ -115,17 +115,17 @@ enum TableCellCommand: CaseIterable {
         }
     }
 
-    /// Whether the command can apply to `cell`: the header row cannot move, be deleted or have a
-    /// row added above it, the first body row cannot move up, nor the last one down, the last
-    /// column cannot be deleted, and a table of fewer than two body rows has nothing to sort.
+    /// Whether the command can apply to `cell`, as in Obsidian: the header row moves and is
+    /// deleted like any row while there is a body row to take its place, the first row cannot
+    /// move up, nor the last one down, the last column cannot be deleted, and a table of fewer
+    /// than two body rows has nothing to sort.
     func isAvailable(at cell: TableCellPosition, in table: MarkdownTable) -> Bool {
         guard cell.row >= 0, cell.row < table.rows.count, cell.column >= 0, cell.column < table.columnCount else { return false }
-        let isHeader = cell.row == 0
-        let bodyRowIndex = cell.row - 1
         switch self {
-        case .addRowAbove, .deleteRow: return !isHeader
-        case .moveRowUp: return bodyRowIndex > 0
-        case .moveRowDown: return !isHeader && bodyRowIndex < table.bodyRowCount - 1
+        case .addRowAbove: return true
+        case .deleteRow: return table.bodyRowCount > 0
+        case .moveRowUp: return cell.row > 0
+        case .moveRowDown: return cell.row < table.rows.count - 1
         case .moveColumnLeft: return cell.column > 0
         case .moveColumnRight: return cell.column < table.columnCount - 1
         case .deleteColumn: return table.columnCount > 1
@@ -148,15 +148,24 @@ enum TableCellCommand: CaseIterable {
         let row = cell.row
         let bodyRowIndex = cell.row - 1
         let column = cell.column
+        // A new column takes the alignment of the one it is added beside, as in Obsidian.
+        let neighbourAlignment = column < table.alignments.count ? table.alignments[column] : .none
         switch self {
-        case .addRowAbove: return { source in MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowIndex, in: source) }
+        case .addRowAbove:
+            if row == 0 { return { source in MarkdownTableEditing.insertingRowAboveHeader(in: source) } }
+            return { source in MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowIndex, in: source) }
         case .addRowBelow: return { source in MarkdownTableEditing.insertingRow(atBodyIndex: bodyRowIndex + 1, in: source) }
-        case .moveRowUp: return { source in MarkdownTableEditing.movingRow(atBodyIndex: bodyRowIndex, by: -1, in: source) }
-        case .moveRowDown: return { source in MarkdownTableEditing.movingRow(atBodyIndex: bodyRowIndex, by: 1, in: source) }
+        case .moveRowUp: return { source in MarkdownTableEditing.movingRow(row, to: row - 1, in: source) }
+        case .moveRowDown: return { source in MarkdownTableEditing.movingRow(row, to: row + 1, in: source) }
         case .duplicateRow: return { source in MarkdownTableEditing.duplicatingRow(row, in: source) }
-        case .deleteRow: return { source in MarkdownTableEditing.removingRow(atBodyIndex: bodyRowIndex, in: source) }
-        case .addColumnToTheLeft: return { source in MarkdownTableEditing.insertingColumn(at: column, in: source) }
-        case .addColumnToTheRight: return { source in MarkdownTableEditing.insertingColumn(at: column + 1, in: source) }
+        case .deleteRow:
+            if row == 0 {
+                // The first body row becomes the header.
+                return { source in MarkdownTableEditing.movingRow(0, to: 1, in: source).flatMap { MarkdownTableEditing.removingRow(atBodyIndex: 0, in: $0) } }
+            }
+            return { source in MarkdownTableEditing.removingRow(atBodyIndex: bodyRowIndex, in: source) }
+        case .addColumnToTheLeft: return { source in MarkdownTableEditing.insertingColumn(at: column, alignment: neighbourAlignment, in: source) }
+        case .addColumnToTheRight: return { source in MarkdownTableEditing.insertingColumn(at: column + 1, alignment: neighbourAlignment, in: source) }
         case .moveColumnLeft: return { source in MarkdownTableEditing.movingColumn(at: column, by: -1, in: source) }
         case .moveColumnRight: return { source in MarkdownTableEditing.movingColumn(at: column, by: 1, in: source) }
         case .alignLeft, .alignCenter, .alignRight:
