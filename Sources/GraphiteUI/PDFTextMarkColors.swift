@@ -6,8 +6,8 @@
  *              pen colours: read and written as a list of colour names, with colours added and removed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -59,9 +59,11 @@ struct PDFTextMarkColors: Equatable, Sendable {
         preferences.set(PDFTextMarkColors(decoding: preferences.data(forKey: key)).adding(color).encoded, forKey: key)
     }
 
-    /// The list with `color` at its end, unless it is already in it or the list is full.
+    /// The list with `color` at its end, unless it is already in it. On a full list the first
+    /// (oldest) colour makes room, so a colour just picked is always kept.
     func adding(_ color: PDFMarkupColor) -> PDFTextMarkColors {
-        PDFTextMarkColors(colors: colors + [color])
+        guard !contains(color) else { return self }
+        return PDFTextMarkColors(colors: Array((colors + [color]).suffix(Self.maximumColorCount)))
     }
 
     func removing(_ color: PDFMarkupColor) -> PDFTextMarkColors {

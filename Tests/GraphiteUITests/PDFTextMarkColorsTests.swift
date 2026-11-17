@@ -3,11 +3,11 @@
  * ----------------------------------
  * Layer: Tests
  * Description: The colours saved for text marks on the device: the standard ones at first, a colour added once and
- *              kept in order, removed, read back from what was saved, and offered for each kind with a mark's own.
+ *              kept in order (the oldest making room on a full list), removed, read back from what was saved, and offered for each kind with a mark's own.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -39,6 +39,23 @@ final class PDFTextMarkColorsTests: XCTestCase {
     func testTheListIsBounded() {
         let many = (0..<40).map { level in PDFMarkupColor(redLevel: UInt8(level), greenLevel: 0, blueLevel: 0) }
         XCTAssertEqual(PDFTextMarkColors(colors: many).colors.count, PDFTextMarkColors.maximumColorCount)
+    }
+
+    func testAColourAddedToAFullListIsKeptAndTheOldestMakesRoom() throws {
+        let full = PDFTextMarkColors(colors: (0..<PDFTextMarkColors.maximumColorCount).map { level in
+            PDFMarkupColor(redLevel: UInt8(level), greenLevel: 0, blueLevel: 0)
+        })
+        let added = full.adding(orange)
+        XCTAssertEqual(added.colors.count, PDFTextMarkColors.maximumColorCount)
+        XCTAssertEqual(added.colors.last, orange, "The colour just picked is kept.")
+        XCTAssertEqual(Array(added.colors.dropLast()), Array(full.colors.dropFirst()), "The oldest colour made room.")
+        XCTAssertEqual(full.adding(try XCTUnwrap(full.colors.first)), full, "A colour already saved changes nothing.")
+
+        let preferences = try IsolatedDeviceState.make(prefix: "PDFTextMarkColorsFull", for: self).preferences
+        preferences.set(full.encoded, forKey: PDFAnnotationPreferenceKey.textMarkColors)
+        PDFTextMarkColors.save(orange, in: preferences)
+        XCTAssertEqual(PDFTextMarkColors(decoding: preferences.data(forKey: PDFAnnotationPreferenceKey.textMarkColors)).colors.last, orange,
+                       "Saved on a full list, as a picker's colour is.")
     }
 
     func testAColourIsSavedOnTheDevice() throws {

@@ -133,9 +133,8 @@ final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, U
         pickedColorDidChange(picked)
     }
 
-    /// Saves `color` at once, in place of the colour this picking added before it: added
-    /// first, then the earlier one removed, so a full list still takes it. A colour saved
-    /// before the picking stays.
+    /// Saves `color` at once, in place of the colour this picking added before it: the earlier
+    /// one removed, then this one added. A colour saved before the picking stays.
     private func keepWhilePicking(_ color: PDFMarkupColor) {
         let key = PDFAnnotationPreferenceKey.textMarkColors
         var saved = PDFTextMarkColors(decoding: preferences.data(forKey: key))
