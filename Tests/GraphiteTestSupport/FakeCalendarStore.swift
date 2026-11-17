@@ -77,9 +77,15 @@ public final class FakeCalendarStore: CalendarStore {
         return events.filter { event in event.startDate < end && (event.endDate > start || event.startDate >= start) }
     }
 
+    /// Set by a test to hold a read of the reminders after it has taken them, as EventKit's answer comes a moment later
+    /// on its own thread: the read returns what was stored when it was asked.
+    public var heldReminderRead: (@MainActor () async -> Void)?
+
     public func reminders() async throws -> [ReminderItem] {
         try checkReadable(.reminders)
-        return storedReminders
+        let taken = storedReminders
+        if let heldReminderRead { await heldReminderRead() }
+        return taken
     }
 
     @discardableResult public func save(_ change: ReminderChange) async throws -> ReminderItem {

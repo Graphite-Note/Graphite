@@ -114,7 +114,8 @@ enum MacPDFArrangeMenuItems {
     static func add(to menu: NSMenu, possibleArrangements: Set<PDFArrangement>, ink: PDFInkArrangeOptions = .none,
                     arrange: @escaping (PDFArrangement) -> Void) {
         menu.autoenablesItems = false
-        menu.addItem(.separator())
+        // Between the object's own items and these; a picture's menu starts with them, and a menu never opens on a line.
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
         for arrangement in PDFArrangement.menuArrangements {
             let item = MacPDFPageToolMenuItem(title: arrangement.title) { arrange(arrangement) }
             item.isEnabled = possibleArrangements.contains(arrangement)

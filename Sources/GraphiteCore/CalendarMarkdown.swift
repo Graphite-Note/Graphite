@@ -112,9 +112,18 @@ public enum EventNote {
 
     /// "2026-11-12 Lecture", so a course's notes sort by day.
     public static func fileStem(for event: CalendarEvent, calendar: Calendar) -> String {
-        let title = event.displayTitle.components(separatedBy: reservedCharacters).joined(separator: " ")
+        let stem = CalendarDay(event.startDate, in: calendar).isoText + " " + fileSafeTitle(event.displayTitle)
+        // A name of at most about 120 characters stays well within every file system's limit.
+        return String(stem.prefix(maximumStemLength)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// The event's title as part of a file name, as its note and a recording made during it are named: the characters
+    /// no file name or link may hold become spaces, runs of spaces one, "Event" for a title with nothing left, at most
+    /// about 120 characters.
+    public static func fileSafeTitle(_ title: String) -> String {
+        let safeTitle = title.components(separatedBy: reservedCharacters).joined(separator: " ")
             .split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
-        let stem = CalendarDay(event.startDate, in: calendar).isoText + " " + (title.isEmpty ? "Event" : title)
+        let stem = safeTitle.isEmpty ? "Event" : safeTitle
         // A name of at most about 120 characters stays well within every file system's limit.
         return String(stem.prefix(maximumStemLength)).trimmingCharacters(in: .whitespaces)
     }

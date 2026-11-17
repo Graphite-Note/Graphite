@@ -140,6 +140,23 @@ extension WorkspaceModel {
         } catch { errorMessage = CalendarFailureWording.words(for: error, doing: .makingEventNote) }
     }
 
+    /// The timed event under way at `moment`, read only where the Calendar plugin is on and the person has already let
+    /// Graphite read their calendars: what needs it, such as naming a recording, never asks. Nil otherwise, and when the
+    /// events cannot be read.
+    func eventUnderWayWithoutAsking(at moment: Date) async -> CalendarEvent? {
+        guard preferences.isEnabled(.calendar), await calendarAccess(to: .events, asking: false).canRead else { return nil }
+        let events = (try? await calendarEvents(on: CalendarDay(moment, in: personalCalendar))) ?? [] // Unreadable: named as without an event.
+        return events.first { event in !event.isAllDay && event.isUnderWay(at: moment) }
+    }
+
+    /// The note of `event` when it exists already; a recording made during the event is embedded there when no note is open.
+    func existingEventNotePath(for event: CalendarEvent) async -> VaultPath? {
+        // A note that cannot be found or read is as no note: the recording goes where it would without the event.
+        guard let vaultStore = store, let path = try? await eventNotePath(for: event, store: vaultStore) else { return nil } // As no note.
+        guard (try? await vaultStore.fileExists(path)) == true else { return nil } // Unreadable: as no note.
+        return path
+    }
+
     /// Opens the note of the event under way, or else of today's next one.
     func openNoteForCurrentEvent(at moment: Date) async {
         guard await calendarAccess(to: .events, asking: true).canRead else {

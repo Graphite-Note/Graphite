@@ -25,6 +25,10 @@ final class MacPDFToolSurface: NSView {
         self.tools = tools
         super.init(frame: frame)
         autoresizingMask = [.width, .height]
+        // A selected object reaching past the shown part of the page draws its frame and handles only over the page:
+        // since macOS 14 a view draws outside its bounds by default, and a picture's handles were drawn over the markup
+        // row above the PDF (seen in the running app, 2026-11-16).
+        clipsToBounds = true
         setAccessibilityElement(false)
     }
 

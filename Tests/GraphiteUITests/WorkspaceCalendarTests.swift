@@ -12,8 +12,9 @@
  */
 
 import XCTest
+import CoreMedia
 import GraphiteCore
-import GraphiteApple
+@testable import GraphiteApple
 @testable import GraphiteUI
 import GraphiteTestSupport
 
@@ -216,6 +217,81 @@ final class WorkspaceCalendarTests: XCTestCase {
         XCTAssertEqual(workspace.notice, "No event is under way or still to come today.")
     }
 
+    // MARK: Recordings during an event
+
+    private func lectureUnderWayNow() -> CalendarEvent {
+        CalendarEvent(id: "now", calendarTitle: "Courses", title: "VLSI 3: Clocking", startDate: .now.addingTimeInterval(-600),
+                      endDate: .now.addingTimeInterval(3_000), location: "ETZ E 6")
+    }
+
+    private func recordingWorkspace(files: [String: String]) async throws -> (WorkspaceModel, URL) {
+        let (workspace, vault) = try await openedWorkspace(files: files)
+        let recoveryFolder = try TemporaryVault.make(prefix: "CalendarRecordingRecovery", for: self).root
+        workspace.recording.recoveryFolderLocation = { recoveryFolder }
+        workspace.recording.makeVideoCaptureSource = { CalendarSilentCaptureSource() }
+        return (workspace, vault)
+    }
+
+    private func recordingName(in workspace: WorkspaceModel) throws -> String {
+        try XCTUnwrap(workspace.recording.destination?.lastPathComponent)
+    }
+
+    func testARecordingStartedDuringAnEventIsNamedAfterItAndGoesWithItsNoteWhenNoNoteIsOpen() async throws {
+        calendarStore.setAccess(.granted, for: .events)
+        calendarStore.events = [lectureUnderWayNow()]
+        let eventNote = EventNote.fileStem(for: lectureUnderWayNow(), calendar: calendar) + ".md"
+        let (workspace, _) = try await recordingWorkspace(files: [eventNote: "# VLSI 3\n", ".obsidian/app.json": #"{"attachmentFolderPath": "./attachments"}"#])
+
+        await workspace.startRecording(.video)
+
+        XCTAssertEqual(workspace.recording.state, .recording)
+        let name = try recordingName(in: workspace)
+        XCTAssertTrue(name.hasPrefix("VLSI 3 Clocking Recording "), name)
+        XCTAssertEqual(workspace.recordingNotePath?.rawValue, eventNote, "The recording is embedded in the event's note.")
+        XCTAssertEqual(workspace.recording.destination?.deletingLastPathComponent().lastPathComponent, "attachments")
+        XCTAssertEqual(calendarStore.accessRequestCount, 0)
+    }
+
+    func testARecordingDuringAnEventFromAnOpenNoteStaysWithThatNoteAndIsNamedAfterTheEvent() async throws {
+        calendarStore.setAccess(.granted, for: .events)
+        calendarStore.events = [lectureUnderWayNow()]
+        let (workspace, _) = try await recordingWorkspace(files: ["Course/Week 9.md": "Notes\n"])
+        _ = try await openedNote("Course/Week 9.md", in: workspace)
+
+        await workspace.startRecording(.video)
+
+        let name = try recordingName(in: workspace)
+        XCTAssertTrue(name.hasPrefix("VLSI 3 Clocking Recording "), name)
+        XCTAssertEqual(workspace.recordingNotePath?.rawValue, "Course/Week 9.md")
+    }
+
+    func testARecordingNeverAsksForCalendarAccessAndWithoutItIsNamedAfterTheNote() async throws {
+        calendarStore.events = [lectureUnderWayNow()]
+        let (workspace, _) = try await recordingWorkspace(files: ["Course/Week 9.md": "Notes\n"])
+        _ = try await openedNote("Course/Week 9.md", in: workspace)
+
+        await workspace.startRecording(.video)
+
+        let name = try recordingName(in: workspace)
+        XCTAssertTrue(name.hasPrefix("Week 9 Recording "), name)
+        XCTAssertEqual(calendarStore.accessRequestCount, 0)
+        XCTAssertEqual(calendarStore.readCount, 0, "No event is read without access.")
+    }
+
+    func testWithTheCalendarPluginOffARecordingReadsNoEvents() async throws {
+        calendarStore.setAccess(.granted, for: .events)
+        calendarStore.events = [lectureUnderWayNow()]
+        let (workspace, _) = try await recordingWorkspace(files: ["Course/Week 9.md": "Notes\n"])
+        workspace.preferences.setEnabled(.calendar, false)
+        _ = try await openedNote("Course/Week 9.md", in: workspace)
+
+        await workspace.startRecording(.video)
+
+        let name = try recordingName(in: workspace)
+        XCTAssertTrue(name.hasPrefix("Week 9 Recording "), name)
+        XCTAssertEqual(calendarStore.readCount, 0)
+    }
+
     // MARK: Tasks and Reminders
 
     func testSendingATaskAddsItsReminderAndLinksTheTaskByABlockIdentifier() async throws {
@@ -266,6 +342,44 @@ final class WorkspaceCalendarTests: XCTestCase {
         }, "A change made in Reminders is never written back to Reminders.")
     }
 
+    func testAnUpdateThatReadRemindersBeforeTheyChangedDoesNotUndoTheNewerOne() async throws {
+        let (workspace, _) = try await openedWorkspace(files: ["Week.md": "- [ ] Pay rent\n"])
+        let session = try await openedNote("Week.md", in: workspace)
+        await workspace.sendTaskToReminders(from: session)
+        try await session.save()
+        let reminder = try XCTUnwrap(calendarStore.storedReminders.first)
+
+        // An update reads Reminders while the reminder is still open, and its answer is held back.
+        let (holdReleased, release) = AsyncStream<Void>.makeStream()
+        let hold = ReminderReadHold()
+        calendarStore.heldReminderRead = {
+            hold.isHolding = true
+            for await _ in holdReleased { return }
+        }
+        let staleUpdate = Task { await workspace.updateLinkedTasksAndReminders() }
+        try await waitUntil("the first update is reading Reminders") { hold.isHolding }
+        // Meanwhile the reminder is completed in Reminders and heard of; the later update must not finish first and be
+        // written over by the stale one.
+        calendarStore.heldReminderRead = nil
+        calendarStore.completeInReminders(reminder.id)
+        let laterUpdate = Task { await workspace.updateLinkedTasksAndReminders() }
+        // A moment for the later update to run while the first is held. Before updates waited for each other, it ticked
+        // the task here and the held one, ending last, unticked it again from the reminder it had read while it was open.
+        _ = await XCTWaiter.fulfillment(of: [XCTestExpectation(description: "the later update's turn")], timeout: 0.3)
+        release.yield()
+        release.finish()
+        await staleUpdate.value
+        await laterUpdate.value
+        try await waitUntil("the task is ticked in its note") { session.text.hasPrefix("- [x] Pay rent ✅ ") }
+
+        // Unticked in the note, the reminder is reopened: the pair last agreed on done, so the note is the side that changed.
+        let line = try XCTUnwrap(MarkdownTaskLine.line(at: 0, in: session.text))
+        session.apply(try XCTUnwrap(TaskReminderEditing.completionEdit(lineRange: line.range, in: session.text, isDone: false, on: november12)))
+        await workspace.updateLinkedTasksAndReminders()
+        XCTAssertTrue(session.text.hasPrefix("- [ ] Pay rent"), session.text)
+        XCTAssertEqual(calendarStore.storedReminders.first?.isCompleted, false, "the reminder is open again")
+    }
+
     func testSendingAskForRemindersAccessOnceAndWithoutItNothingChanges() async throws {
         let (workspace, _) = try await openedWorkspace(files: ["Week.md": "- [ ] Pay rent\n"])
         calendarStore.answers = [.events: .refused, .reminders: .refused]
@@ -308,4 +422,20 @@ final class WorkspaceCalendarTests: XCTestCase {
 
         XCTAssertNil(device.defaults.object(forKey: WorkspaceModel.linkedTasksKey(for: firstVault)))
     }
+}
+
+/// A camera and microphone that deliver nothing, so a recording can start in a test without hardware or sound.
+private final class CalendarSilentCaptureSource: VideoCaptureSource, @unchecked Sendable {
+    func start(camera: CameraPosition, deliveringOn deliveryQueue: DispatchQueue, samples: @escaping @Sendable (CMSampleBuffer, CaptureMediaKind) -> Void,
+               events: @escaping @Sendable (VideoCaptureEvent) -> Void) async throws {}
+    func availableCameras() async -> [CameraPosition] { [.back] }
+    func switchCamera(to camera: CameraPosition) async throws {}
+    func resumeAfterInterruption() async throws {}
+    func stop() async {}
+}
+
+/// Whether a read of the reminders is being held, for the test that holds one.
+@MainActor
+private final class ReminderReadHold {
+    var isHolding = false
 }

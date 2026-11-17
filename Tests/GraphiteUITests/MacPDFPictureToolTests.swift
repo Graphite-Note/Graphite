@@ -64,6 +64,10 @@ final class MacPDFPictureToolTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(fixture.tools).takesPress(atViewPoint: fixture.view.convert(CGPoint(x: 50, y: 50), from: fixture.page)))
         try fixture.drag(through: [CGPoint(x: 200, y: 300)])
         XCTAssertEqual(fixture.session.selectedPicture?.pictureName, try picture(fixture).name)
+        // The selection's frame and handles stay inside the PDF view: they were drawn over the markup row above it.
+        let surfaces = fixture.view.subviews.filter { subview in subview is MacPDFToolSurface }
+        XCTAssertEqual(surfaces.count, 1)
+        XCTAssertEqual(surfaces.map(\.clipsToBounds), [true])
         try fixture.drag(through: [CGPoint(x: 50, y: 50)])
         XCTAssertNil(fixture.session.selectedPicture)
         assertRectangle(try picture(fixture).bounds, CGRect(x: 150, y: 275, width: 100, height: 50))
@@ -128,6 +132,9 @@ final class MacPDFPictureToolTests: XCTestCase {
         let fixture = try await makeFixture()
         let menu = try XCTUnwrap(fixture.tools?.menu(for: try fixture.event(.rightMouseDown, at: CGPoint(x: 210, y: 290))))
         XCTAssertNotNil(fixture.session.selectedPicture)
+        // Seen 2026-11-16 in the running app: the menu opened on a separator line above Bring to Front.
+        XCTAssertEqual(menu.items.map { item in item.isSeparatorItem ? "-" : item.title },
+                       ["Bring to Front", "Bring Forward", "Send Backward", "Send to Back", "-", "Delete Image"])
         let deleteItem = try XCTUnwrap(menu.items.first { item in item.title == "Delete Image" })
         fixture.step { menu.performActionForItem(at: menu.index(of: deleteItem)) }
         XCTAssertTrue(fixture.session.pictures(on: fixture.page).isEmpty)

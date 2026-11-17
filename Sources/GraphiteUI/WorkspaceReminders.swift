@@ -102,10 +102,26 @@ extension WorkspaceModel {
     /// Ticks each linked task whose reminder was completed, and each reminder whose task was ticked (and unticks
     /// likewise), as Graphite comes to the front or leaves it, opens a vault, or hears that Reminders changed. It asks
     /// nothing: until the person used Reminders through Graphite on this device, and without access, it reads nothing.
+    ///
+    /// Updates run one after another: Reminders answers a moment after it is asked, so two at once (a change heard while
+    /// the window comes to the front) let the one that read Reminders first decide last, from a reminder older than the
+    /// agreement the other had just stored, and untick a task Reminders had just completed (seen 2026-11-16 in the
+    /// simulator with real Reminders, where a task unticked in the note was then ticked again).
     func updateLinkedTasksAndReminders() async {
         guard preferences.isEnabled(.calendar), store != nil, deviceDefaults.bool(forKey: Self.usesRemindersKey),
               processServices.calendar.store.access(to: .reminders).canRead else { return }
         followReminderChanges()
+        let previousUpdate = linkedTasksUpdate
+        let update = Task { [weak self] in
+            await previousUpdate?.value
+            await self?.bringLinkedTasksAndRemindersIntoAgreement()
+        }
+        linkedTasksUpdate = update
+        await update.value
+    }
+
+    /// One update of `updateLinkedTasksAndReminders`, which runs it after the one before.
+    private func bringLinkedTasksAndRemindersIntoAgreement() async {
         do {
             let linked = try await linkedReminders()
             guard !linked.isEmpty else { return }

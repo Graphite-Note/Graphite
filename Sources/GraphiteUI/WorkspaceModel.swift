@@ -45,6 +45,9 @@ final class WorkspaceModel {
     @ObservationIgnored var rootListingNumber = 0
     /// Those waiting for the scan under way to end (`isIndexCompleteAfterRunningScan`).
     @ObservationIgnored var runningScanWaits: [AsyncStream<Void>.Continuation] = []
+    /// The last update of the tasks linked to reminders (`updateLinkedTasksAndReminders`): each update waits for the one
+    /// before it, so none decides from a reading older than another's result.
+    @ObservationIgnored var linkedTasksUpdate: Task<Void, Never>?
     @ObservationIgnored var rootListingInFlight: Task<Void, Never>?
     /// The root folder's own date just before its last listing, and when, on `clock`, the
     /// window last stopped being in front; together they tell whether coming back needs a listing.
@@ -1530,11 +1533,15 @@ final class WorkspaceModel {
             return
         }
         do {
-            let notePath = markdownSession?.path
+            // During a lecture or meeting of the person's calendars the recording is named after it, and goes with the
+            // event's note when no note is open (Docs/Calendar-and-reminders-todo.md).
+            let event = await eventUnderWayWithoutAsking(at: .now)
+            var notePath = markdownSession?.path
+            if notePath == nil, let event { notePath = await existingEventNotePath(for: event) }
             let directory = try await recordingDirectory(note: notePath, store: store)
             try await store.createDirectory(directory)
-            let path = try await store.uniquePath(directory: directory, stem: "\(selection?.stem ?? title) Recording \(Self.recordingTimestamp())",
-                                                  extension: kind.fileExtension)
+            let stem = event.map { event in EventNote.fileSafeTitle(event.displayTitle) } ?? selection?.stem ?? title
+            let path = try await store.uniquePath(directory: directory, stem: "\(stem) Recording \(Self.recordingTimestamp())", extension: kind.fileExtension)
             recordingNotePath = notePath
             recordingFolderAccess = folderAccess
             let destination = try path.url(in: folderAccess.root)
