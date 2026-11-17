@@ -6,8 +6,8 @@
  *              takes a lasso's move within its frame budget, and its pages' ink stays hidden under their canvases.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -189,7 +189,7 @@ final class DenseInkPageSmoothnessHostedTests: XCTestCase {
 /// Runs `step` at each frame of a display link until it returns false, recording the gap before each frame and the
 /// processor time the process spent meanwhile, on every thread (PDFKit and PencilKit draw away from the main thread).
 @MainActor
-private final class FrameRecorder: NSObject {
+final class FrameRecorder: NSObject {
     struct Recording {
         let gaps: [CFTimeInterval]
         let processorSeconds: Double

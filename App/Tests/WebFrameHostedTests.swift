@@ -8,8 +8,8 @@
  *              edited tag, with screenshots.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 16/11/2026
  */
 
 #if os(iOS)
@@ -85,7 +85,7 @@ final class WebFrameHostedTests: XCTestCase {
         let note = paths.enumerated().map { index, path in
             "## Frame \(index + 1)\n\n<iframe src=\"\(server.address(path).absoluteString)\" width=\"100%\" height=\"600\"></iframe>\n\nAfter frame \(index + 1)."
         }.joined(separator: "\n\n")
-        let footprintBefore = Self.memoryFootprintMegabytes()
+        let footprintBefore = appMemoryFootprintMegabytes()
         let controller = try await host(note: note, viewMode: .reading)
         _ = try await loadedWebView(showing: server.address("/frame1"), in: controller)
         XCTAssertLessThanOrEqual(webViews(in: controller.view).count, WebFrameLiveSelection.maximumLiveCount)
@@ -102,14 +102,14 @@ final class WebFrameHostedTests: XCTestCase {
             mostWebViews = max(mostWebViews, webViews(in: controller.view).count)
         }
         _ = try await loadedWebView(showing: server.address("/frame10"), in: controller)
-        let footprintScrolled = Self.memoryFootprintMegabytes()
+        let footprintScrolled = appMemoryFootprintMegabytes()
         XCTAssertLessThanOrEqual(mostWebViews, WebFrameLiveSelection.maximumLiveCount, "At most four pages at once while scrolling.")
         XCTAssertEqual(Set(server.requestedPaths), Set(paths), "Every frame the note scrolled past loaded its page.")
         XCTAssertFalse(webViews(in: controller.view).contains { webView in webView.url == server.address("/frame1") }, "The first page is given up.")
         attachScreenshot(named: "Ten frames: the end of the note")
         window?.rootViewController = nil
         try await waitUntil("the note's web views go") { WebFrameHostedTests.liveWebViewCount() == 0 }
-        let footprintClosed = Self.memoryFootprintMegabytes()
+        let footprintClosed = appMemoryFootprintMegabytes()
         let memory = "App memory footprint: before \(footprintBefore) MB, scrolled to the end \(footprintScrolled) MB, closed \(footprintClosed) MB; "
             + "most web views at once \(mostWebViews); pages asked for: \(server.requestedPaths.joined(separator: " "))"
         let record = XCTAttachment(string: memory)
@@ -269,19 +269,6 @@ final class WebFrameHostedTests: XCTestCase {
         parent.subviews.flatMap { child in
             ((child as? View).map { matchingChild in [matchingChild] } ?? []) + descendants(of: child, matching: type)
         }
-    }
-
-    /// The app's own memory, as the system counts it against the app; web pages are drawn in WebKit's processes of
-    /// their own, which this does not include.
-    private static func memoryFootprintMegabytes() -> Int {
-        var information = task_vm_info_data_t()
-        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
-        let result = withUnsafeMutablePointer(to: &information) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { integers in
-                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), integers, &count)
-            }
-        }
-        return result == KERN_SUCCESS ? Int(information.phys_footprint / 1_048_576) : -1
     }
 
     private func accessibilityLabels(in view: UIView) -> [String] {
