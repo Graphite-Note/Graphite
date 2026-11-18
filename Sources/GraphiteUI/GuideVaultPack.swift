@@ -20,7 +20,7 @@ import GraphiteCore
 /// against the commit and `GuideVaultContentsTests` against the vault in the checkout, so a change to the vault is
 /// pinned again before it ships.
 enum GuideVaultPack {
-    static let revision = "58dde7f395d5654402326c0d8ce79e1de1cf9c8d"
+    static let revision = "b26b1762265074ad1d9c4f3c1f2476fadbd299e4"
     /// The note the Guide vault opens at when no other is asked for.
     static let startNote = "Start here"
     private static let baseAddress = URL(string: "https://raw.githubusercontent.com/Graphite-Note/Graphite/\(revision)/Guide/Graphite%20Guide")
@@ -69,8 +69,8 @@ enum GuideVaultPack {
                   sha256: "a231a636eb25f97aa7d799ef29c006092e82ba840cdbc2ba25dec49214d48ef2"),
         AddOnFile(name: "3 Handwriting and PDFs/Notebooks and paper.md", byteCount: 1633,
                   sha256: "b76ef6c19fd5e8cfdfc1329bfa68e00d0dfa235637f8e1c56bb2221cc31836f3"),
-        AddOnFile(name: "3 Handwriting and PDFs/PDF markup on the Mac.md", byteCount: 1420,
-                  sha256: "96cadd05e9e9065ba268beefff67ee2f65121189c226679e172d079994f3531e"),
+        AddOnFile(name: "3 Handwriting and PDFs/PDF markup on the Mac.md", byteCount: 1495,
+                  sha256: "aa676ada09e574b049e79ce6aa0fd45547cc8ca75c9b259680468f2b927e6ebf"),
         AddOnFile(name: "3 Handwriting and PDFs/Pencil tools.md", byteCount: 2657,
                   sha256: "28241888bdcf2cb155e49f28163e0603dabdd799f9c9766d125f0deac4aaeb8f"),
         AddOnFile(name: "3 Handwriting and PDFs/Recording a lecture.md", byteCount: 1277,
@@ -213,6 +213,10 @@ enum GuideVaultPack {
                   sha256: "521acb9f6924c9342a9897a972072e36b6461e6eb5134e7c7d9d2794402e78ed"),
         AddOnFile(name: "Attachments/Screenshots/Mac - Recipes gallery, dark.jpg", byteCount: 66917,
                   sha256: "f9ab0e590028af28f9a88ca092fc4d78ad04f449dc0a16d582acda7d31e852f7"),
+        AddOnFile(name: "Attachments/Screenshots/Mac - The markup row, dark.jpg", byteCount: 78150,
+                  sha256: "fc4e916f2c5e8785a5b2f9806b9ae019247f9974776cbb2513a67838d45e69c8"),
+        AddOnFile(name: "Attachments/Screenshots/Mac - The markup row.jpg", byteCount: 70925,
+                  sha256: "476e2e30d8f78c0b9304dfec72c97e9a153457d754f343ebab28cee2f4f3f2c4"),
         AddOnFile(name: "Attachments/Screenshots/iPad - A drawing in a note.jpg", byteCount: 147312,
                   sha256: "2a2c1c489582b4404c8fb34a84c77e97c3cb31b3ba1806829b5ca498d6b7328f"),
         AddOnFile(name: "Attachments/Screenshots/iPad - A recipe.jpg", byteCount: 147539,
