@@ -337,6 +337,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
 
     func detach() {
         isDetached = true
+        paletteFrameFollowing?.cancel()
+        paletteFrameFollowing = nil
         healthMonitor?.stop()
         healthMonitor = nil
         presentedScreenObserver.isObserving = false
@@ -401,16 +403,48 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// A palette docked at the bottom of a phone covers the last 70 to 100 points of the pages, and the PDF reaches
     /// under the bottom safe area: the pages scroll that far past their end while it shows, and no further after.
     private func clearPagesOfPalette() {
-        guard let pdfView, let scrollView = pdfView.pagesScrollView else { return }
+        followPaletteFrameWhileItSettles(applyPaletteInset())
+    }
+
+    /// Insets the pages by the height the palette covers, and says whether the palette shows without a frame yet.
+    private func applyPaletteInset() -> Bool {
+        guard let pdfView, let scrollView = pdfView.pagesScrollView else { return false }
         var coveredHeight: CGFloat = 0
+        var awaitsPaletteFrame = false
         if pdfView.window != nil, toolPicker.isVisible {
             let obscured = toolPicker.frameObscured(in: pdfView)
-            if !obscured.isNull, !obscured.isEmpty { coveredHeight = pdfView.bounds.intersection(obscured).height }
+            if !obscured.isNull, !obscured.isEmpty { coveredHeight = pdfView.bounds.intersection(obscured).height } else { awaitsPaletteFrame = true }
         }
-        guard abs(scrollView.contentInset.bottom - coveredHeight) > 0.5 else { return }
-        scrollView.contentInset.bottom = coveredHeight
-        scrollView.verticalScrollIndicatorInsets.bottom = coveredHeight
+        if abs(scrollView.contentInset.bottom - coveredHeight) > 0.5 {
+            scrollView.contentInset.bottom = coveredHeight
+            scrollView.verticalScrollIndicatorInsets.bottom = coveredHeight
+        }
+        return awaitsPaletteFrame
     }
+
+    /// The palette tells its observers it shows before it knows where it docks, and does not tell them again when it
+    /// does (HUNT-273: on an iPhone 17 Pro simulator, iOS 27.2, the frame came a moment later and the pages kept no
+    /// inset). While it shows without a frame, the frame is looked at again every 50 ms for up to two seconds.
+    private func followPaletteFrameWhileItSettles(_ awaitsPaletteFrame: Bool) {
+        guard awaitsPaletteFrame else {
+            paletteFrameFollowing?.cancel()
+            paletteFrameFollowing = nil
+            return
+        }
+        guard paletteFrameFollowing == nil else { return }
+        paletteFrameFollowing = Task { [weak self, paletteFrameClock] in
+            for _ in 0..<40 {
+                try? await paletteFrameClock.sleep(for: .milliseconds(50)) // Cancelled when the frame is known or the palette goes; checked next.
+                guard !Task.isCancelled, let self else { return }
+                guard self.applyPaletteInset() else { break }
+            }
+            self?.paletteFrameFollowing = nil
+        }
+    }
+
+    private var paletteFrameFollowing: Task<Void, Never>?
+    private let paletteFrameClock: any Clock<Duration> = ContinuousClock()
+
     /// The height along the bottom of the window that a floating palette takes, with its margin.
     private static let floatingPaletteBand: CGFloat = 150
 
