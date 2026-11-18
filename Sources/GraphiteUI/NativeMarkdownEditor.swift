@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note editor (UITextView) with its coordinator; the Mac's is NativeMarkdownEditorMac.swift.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.77
- * Date: 16/11/2026
+ * Version: 0.78
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -1503,7 +1503,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             if let lineBreakLocation = placement.lineBreakLocation {
                 replaceText(with: source.replacingCharacters(in: NSRange(location: lineBreakLocation, length: 0), with: "\n"), in: textView)
             }
-            textView.becomeFirstResponder()
+            // The note's view takes the keyboard only after a touch or when asked: an arrow key is neither.
+            if let markdownTextView = textView as? MarkdownTextView { markdownTextView.beginEditing() } else { textView.becomeFirstResponder() }
             textView.selectedRange = NSRange(location: placement.caretLocation, length: 0)
             textViewDidChangeSelection(textView)
         }

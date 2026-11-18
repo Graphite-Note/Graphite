@@ -5,8 +5,8 @@
  * Description: What Live Preview draws as rendered blocks: properties, tables, math, embeds, callouts, rules.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 18/11/2026
  */
 
 import XCTest
@@ -168,5 +168,17 @@ final class LivePreviewBlockTests: XCTestCase {
         XCTAssertTrue(windows.isCutByComment)
         let oneRow = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| x | y |\n| - | - |\n| a %%n%% | b |\n| c | d %%m%% |\n" as NSString).first)
         XCTAssertFalse(oneRow.isCutByComment, "Each comment moves with its row.")
+    }
+
+    func testATableAndACalloutWithATableHoldAnEditableTable() throws {
+        let table = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| a | b |\n| - | - |\n| 1 | 2 |\n" as NSString).first)
+        XCTAssertTrue(table.holdsEditableTable)
+        let calloutWithTable = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "> [!note] Title\n> Text\n>\n> | a | b |\n> | - | - |\n> | 1 | 2 |\n" as NSString).first)
+        XCTAssertEqual(calloutWithTable.kind, .callout)
+        XCTAssertTrue(calloutWithTable.holdsEditableTable, "A table in the callout's body is edited in its view.")
+        let calloutWithoutTable = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "> [!note] Title\n> Text with a - dash | and a pipe\n" as NSString).first)
+        XCTAssertFalse(calloutWithoutTable.holdsEditableTable)
+        let cut = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| a | b |\n| - | - |\n| 1 %%x | 2 |\n| 3 | 4 %% |\n" as NSString).first)
+        XCTAssertFalse(cut.holdsEditableTable, "A table a comment cuts is edited as source.")
     }
 }

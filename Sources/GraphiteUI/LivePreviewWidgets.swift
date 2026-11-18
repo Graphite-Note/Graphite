@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.42
- * Date: 16/11/2026
+ * Version: 0.43
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -168,7 +168,10 @@ struct LivePreviewWidgetView: View {
         .accessibilityAction(named: "Edit Source", revealSource)
         // The reserved space follows the view's natural height, not the frame it was given.
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.vertical, 4)
+        // A table keeps room for its grips and "+" strips as Obsidian's does: above and below
+        // it, and beside it in the side margins its block's view reaches into.
+        .padding(.vertical, RenderedBlockTableRoom.aboveAndBelow(block) ?? 4)
+        .padding(.horizontal, RenderedBlockTableRoom.beside(block))
         // While an embed inside is loading, its placeholder's height is not reported: it
         // would replace the block's remembered height, so the text below would jump up
         // while the embed loads and back down when it appears. The measurement becomes a

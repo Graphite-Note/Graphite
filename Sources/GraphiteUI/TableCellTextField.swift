@@ -5,8 +5,8 @@
  * Description: The native text field of a Live Preview table's cell editor and the keys it gives the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 17/11/2026
+ * Version: 0.7
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -52,6 +52,8 @@ struct TableCellTextField {
     /// Whether the table took the key; one it did not take is typed as usual.
     let handleKey: (TableCellKey) -> Bool
     var actions = TableCellFieldActions()
+    /// While cells are selected the caret is hidden, as Obsidian's (`.has-selection`).
+    var hidesCaret = false
     let focusDidChange: (_ isFocused: Bool) -> Void
 }
 
@@ -114,6 +116,7 @@ extension TableCellTextField: UIViewRepresentable {
         textView.caret = caret
         textView.currentText = { [text = _text] in text.wrappedValue }
         if textView.font != font { textView.font = font }
+        textView.tintColor = hidesCaret ? .clear : nil
         if textView.text != text, textView.markedTextRange == nil {
             textView.showCellText(text)
         }
@@ -141,16 +144,16 @@ final class TableCellTextView: UITextView {
     var caret: (() -> TableCellCaret)?
     /// The draft as the table has it now, read at once after a key moved the editor.
     var currentText: (() -> String)?
-    /// Typing in the cell being edited is undone by the note's history (⌘Z goes to the table);
-    /// this one only keeps UIKit's own undo of the field from reaching another cell's text.
-    private let cellUndoManager = UndoManager()
-
+    /// Typing in the cell being edited is undone by the note's history. UIKit's keyboard answers
+    /// ⌘Z itself, before the key commands, once the cell has been typed in, with this undo
+    /// manager; it records nothing and gives its undo and redo to the table, as the key command
+    /// does, and keeps UIKit's own undo of the field from reaching another cell's text.
+    private lazy var cellUndoManager = TableCellUndoManager { [weak self] isRedo in _ = self?.perform(isRedo ? .redo : .undo) }
     override var undoManager: UndoManager? { cellUndoManager }
 
     /// Shows another cell's text with the caret where the table asks, and forgets the typing
     /// undo of the cell before.
     func showCellText(_ cellText: String) {
-        cellUndoManager.removeAllActions()
         text = cellText
         placeCaret()
     }
@@ -408,6 +411,7 @@ extension TableCellTextField: NSViewRepresentable {
         textField.handleKey = handleKey
         textField.actions = actions
         if textField.font != font { textField.font = font }
+        (textField.currentEditor() as? NSTextView)?.insertionPointColor = hidesCaret ? .clear : .textInsertionPointColor
         if textField.stringValue != text, (textField.currentEditor() as? NSTextView)?.hasMarkedText() != true {
             textField.cellUndoManager.removeAllActions()
             textField.stringValue = text
@@ -470,5 +474,24 @@ private extension NSTextView {
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
     }
+}
+#endif
+
+#if canImport(UIKit)
+/// A table cell's undo manager on iOS: it records no typing, and its undo and redo are the
+/// note's (`TableCellTextView.cellUndoManager`).
+final class TableCellUndoManager: UndoManager {
+    private let undoInNote: (_ isRedo: Bool) -> Void
+
+    init(undoInNote: @escaping (_ isRedo: Bool) -> Void) {
+        self.undoInNote = undoInNote
+        super.init()
+        disableUndoRegistration()
+    }
+
+    override var canUndo: Bool { true }
+    override var canRedo: Bool { true }
+    override func undo() { undoInNote(false) }
+    override func redo() { undoInNote(true) }
 }
 #endif

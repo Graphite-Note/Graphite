@@ -4,6 +4,17 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-18.
 
+## Obsidian's table editor checked on the iPad simulator: 2026-11-18
+
+`Docs/Table-editing-todo.md` sections 1, 4, 5, 6 and 7 (issues #107, #206 to #209). Each open item of the table editor was checked on an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2) with a generated table note and a callout's table, keys sent from a scratch UI-test bundle; three bugs found there were fixed, and the grips and the room around tables now match Obsidian's look (the owner asked whether they did).
+
+- **Fixed:** an arrow leaving a table on the iPad left the keyboard nowhere (`MarkdownTextView.beginEditing()` now takes it); dragging a row's grip scrolled the note (`TableGripTouchArea`); ⌘Z after typing in a cell undid nothing (`TableCellUndoManager`).
+- **Changed:** the room around a table (`RenderedBlockTableRoom`): its view reaches into the side margins and a table's block has a grip's size above and below, so the grips and both "+" strips sit outside the table instead of over its first cell and last row; the grips are Obsidian's six faint dots, the selection a rounded 2-point accent outline over a 10 % fill, the edited cell has no outline and the caret hides while cells are selected.
+- **Automated tests, passing on macOS (`swift test --filter`):** the table, callout, editing, rendered block and Mac editor classes; `UiEditorMacRenderedBlocksTests.testATableAwayFromTheCursorIsDrawnOverItsConcealedSource` now expects the table's view to start a grip's size left of the column.
+- **Hosted, iPad:** `LivePreviewCalloutTableHostedTests`, `LivePreviewTableCommandsHostedTests`, `LivePreviewTableStripsHostedTests`, `LivePreviewTableScrollingHostedTests`, `TableReadingSwitchHostedTests` on the same simulator.
+- **Checked by hand (iPad simulator):** a tap's caret in a cell; Left and Right across cells; Up and Down across rows and out of the table, typing then landing beside it; Tab and Shift-Tab selecting a cell's text; Shift-Tab in the first header cell adding a header, ⌘Z and ⇧⌘Z after it and after typing; a 0.2 s press and drag selecting cells, Shift-arrows growing a selection; ⌘C (Markdown, HTML and Graphite's cells on the pasteboard), ⌘X, ⌘V growing the table, the selection's menu and its Paste; the row and column grips' tap, drag and menus, Sort by column (Z to A), Duplicate row; the right strip adding a column; the cell menu's order. Each change was undone and the note compared with its original.
+- **Not established:** the Mac by hand (the request to control a separate Debug copy was declined), Apple Pencil hover, the iPhone, right-to-left text, a cell of several lines, the cost of the room on scrolling, and the owner's iPad; the edited cell's field still paints the note's background over a header's shading or a callout's tint (an open item in section 4).
+
 ## Ending the typing of a PDF text box no longer freezes the iPad: 2026-11-18
 
 `Docs/Bug-hunt-todo.md` HUNT-367 (issue #170). Done, or another tool on the fixed bar, while a PDF text box was typed in froze the app: the text view gave up first responder inside SwiftUI's update of the pane. `PDFTextBoxEditor.end` now commits the box at once, hides the text view, and resigns and removes it on the main queue's next turn.

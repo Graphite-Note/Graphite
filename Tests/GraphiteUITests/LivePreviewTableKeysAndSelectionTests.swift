@@ -3,11 +3,12 @@
  * -------------------------------------------------
  * Layer: Tests
  * Description: A Live Preview table's keys as in Obsidian (edges, Tab, Shift-Tab, undo), its selected cells (Shift-arrows, delete,
- *              copy and paste), the header row's commands, the grips' places and where the caret goes beside a table.
+ *              copy and paste), the header row's commands, the grips' places, the room kept around a table and where the caret
+ *              goes beside a table.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 import XCTest
@@ -194,4 +195,17 @@ final class LivePreviewTableKeysAndSelectionTests: XCTestCase {
         XCTAssertEqual(TableGripsGeometry(tableBounds: table, placement: plainBlock).columnGrip(for: CGRect(x: 0, y: 0, width: 80, height: 100)).maxY,
                        -TableGripsGeometry.gap, "A table that is its whole block keeps its grip outside it.")
     }
+
+    func testABlockHoldingATableKeepsTheGripsRoomAroundIt() throws {
+        let table = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "| a | b |\n| - | - |\n| 1 | 2 |\n" as NSString).first)
+        XCTAssertEqual(RenderedBlockTableRoom.beside(table), TableGripsGeometry.thickness)
+        XCTAssertEqual(RenderedBlockTableRoom.aboveAndBelow(table), TableGripsGeometry.thickness)
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "> [!note] Title\n> | a | b |\n> | - | - |\n> | 1 | 2 |\n" as NSString).first)
+        XCTAssertEqual(RenderedBlockTableRoom.beside(callout), TableGripsGeometry.thickness, "Its table's row grips go into the side margin.")
+        XCTAssertNil(RenderedBlockTableRoom.aboveAndBelow(callout), "The callout's own padding is above and below its table.")
+        let math = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: "$$\nx\n$$\n" as NSString).first)
+        XCTAssertEqual(RenderedBlockTableRoom.beside(math), 0)
+        XCTAssertNil(RenderedBlockTableRoom.aboveAndBelow(math))
+    }
 }
+

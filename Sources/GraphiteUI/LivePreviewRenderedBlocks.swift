@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.26
- * Date: 16/11/2026
+ * Version: 0.27
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -172,6 +172,9 @@ final class LivePreviewRenderedBlocks {
     /// scrolls back into view, or that the cursor leaves, shows again without being built
     /// again.
     private var hosts: [LivePreviewBlockKey: RenderedBlockHost] = [:]
+    /// How far each placed view holding a table reaches past the column on either side
+    /// (`RenderedBlockTableRoom.beside`), so its measured width can be read as the column's.
+    private var roomBesideByKey: [LivePreviewBlockKey: CGFloat] = [:]
     private var detachedHosts: DetachedWidgetPool<RenderedBlockHost>
     /// The note's properties keep one view while they are edited, so a field being typed
     /// in keeps its state when the frontmatter's key changes; and the key it was built for.
@@ -281,7 +284,9 @@ final class LivePreviewRenderedBlocks {
     func recordMeasuredHeight(_ height: CGFloat, forBlockWithKey key: LivePreviewBlockKey, isFrontmatter: Bool, columnWidth: CGFloat,
                               configuration: EditorConfiguration) -> Bool {
         guard height > 1 else { return false }
-        let measuredWidth = (isFrontmatter ? propertiesHost : hosts[key])?.placedView.bounds.width ?? columnWidth
+        let measuredWidth = (isFrontmatter ? propertiesHost : hosts[key]).map { host in
+            host.placedView.bounds.width - 2 * (roomBesideByKey[key] ?? 0)
+        } ?? columnWidth
         if let measuredKey = Self.measuredHeightKey(for: key, columnWidth: measuredWidth, configuration: configuration) {
             Self.measuredHeights.record(height, for: measuredKey)
         }
@@ -451,8 +456,8 @@ final class LivePreviewRenderedBlocks {
             let reservedHeight = reservedHeight(of: entry, columnWidth: column.width, configuration: configuration)
             if let keptHeight = heightsKeptInText[entry.key], abs(keptHeight - reservedHeight) > 1 { placement.entriesToRestyle.append(entry) }
             // The view takes the height its lines reserve now, so it covers them exactly.
-            let frame = CGRect(x: column.minX, y: fragment.layoutFragmentFrame.minY + column.textContainerTop,
-                               width: column.width, height: heightsKeptInText[entry.key] ?? reservedHeight)
+            let frame = viewFrame(of: entry, top: fragment.layoutFragmentFrame.minY + column.textContainerTop, column: column,
+                                  height: heightsKeptInText[entry.key] ?? reservedHeight)
             let placedView = host(for: entry, makeRootView: makeRootView).placedView
             // A frame set is read back with its last digits changed: compared exactly, every
             // view counted as moved at every pass, which spent the passes that follow a real
@@ -587,6 +592,15 @@ final class LivePreviewRenderedBlocks {
 
     // MARK: Views made ahead
 
+    /// A block's view over the column at `top`. A block holding a table reaches into the side
+    /// margins by its room (`RenderedBlockTableRoom.beside`), its content as wide as the column;
+    /// the room is kept so the view's measured width is read as the column's.
+    private func viewFrame(of entry: LivePreviewBlockEntry, top: CGFloat, column: RenderedBlockColumn, height: CGFloat) -> CGRect {
+        let roomBeside = RenderedBlockTableRoom.beside(entry.block)
+        roomBesideByKey[entry.key] = roomBeside > 0 ? roomBeside : nil
+        return CGRect(x: column.minX - roomBeside, y: top, width: column.width + 2 * roomBeside, height: height)
+    }
+
     /// Makes the view of the next block below the screen that has none (`RenderedBlockLookahead`
     /// says which and when), before it scrolls in, so the scroll that shows it does not build it
     /// within a frame. The view goes into the text view left of the column, where nothing shows,
@@ -605,8 +619,9 @@ final class LivePreviewRenderedBlocks {
         keysOfNewViews.insert(entry.key)
         hosts[entry.key] = host
         viewsMadeAhead[entry.key] = estimatedMegabytes
-        host.placedView.frame = CGRect(x: column.minX - column.width - 1_000, y: column.textContainerTop, width: column.width,
-                                       height: reservedHeight(of: entry, columnWidth: column.width, configuration: configuration))
+        host.placedView.frame = viewFrame(of: entry, top: column.textContainerTop, column: column,
+                                          height: reservedHeight(of: entry, columnWidth: column.width, configuration: configuration))
+            .offsetBy(dx: -column.width - 1_000, dy: 0)
         textView.addSubview(host.placedView)
         #if canImport(UIKit)
         host.placedView.layoutIfNeeded()

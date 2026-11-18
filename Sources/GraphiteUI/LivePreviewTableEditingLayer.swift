@@ -6,8 +6,8 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -24,7 +24,6 @@ struct LivePreviewTableEditingLayer: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
-    @Environment(\.accent) private var accent
     @Environment(\.readingImageActions) private var imageActions
     @State private var isPointerOverTable = false
     @State private var isPointerOverStrip = false
@@ -148,7 +147,7 @@ struct LivePreviewTableEditingLayer: View {
         return TableCellTextField(text: $editor.draftText,
                                   font: typography.textFont(ofSize: textSize, weight: cell.row == 0 ? .semibold : .regular),
                                   focusRequest: editor.focusRequest, caret: { [editor] in editor.caret }, handleKey: editor.handle,
-                                  actions: editor.fieldActions,
+                                  actions: editor.fieldActions, hidesCaret: editor.hasCellSelection,
                                   focusDidChange: { isFocused in
                                       // Focus going elsewhere, such as a tap in the note's text, closes the editor.
                                       if !isFocused { editor.focusDidLeave() }
@@ -158,8 +157,8 @@ struct LivePreviewTableEditingLayer: View {
             // Centered in the row's height, as the rendered cells are.
             .frame(width: frame.width, alignment: .leading)
             .frame(minHeight: frame.height, alignment: .leading)
+            // No outline: Obsidian shows the edited cell by its caret alone.
             .background(theme?.background.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.background))
-            .overlay(Rectangle().stroke(accent, lineWidth: 2))
             .offset(x: frame.minX, y: frame.minY)
             .onAppear { editor.lastEditingFrame = frame }
             .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }

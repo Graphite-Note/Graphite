@@ -6,8 +6,8 @@
  *              clearing and deleting them, as Obsidian's table editor does.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -271,8 +271,14 @@ struct TableGripsGeometry: Equatable {
     let blockBounds: CGRect
     var topLimit: CGFloat? = nil
 
-    static let thickness: CGFloat = 12
-    static let gap: CGFloat = 2
+    /// Obsidian's `--table-drag-handle-size` (16 px, 24 px on touch screens) less the
+    /// selection's 2 px border, against the table's edge.
+    #if canImport(UIKit)
+    static let thickness: CGFloat = 22
+    #else
+    static let thickness: CGFloat = 14
+    #endif
+    static let gap: CGFloat = 0
     /// How far a column grip short of room reaches into the header: about its top padding.
     static let reachIntoTable: CGFloat = 4
     static let minimumThickness: CGFloat = 8

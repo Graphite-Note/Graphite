@@ -5,8 +5,8 @@
  * Description: Finds the regions of note source that Live Preview draws as rendered blocks.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.19
- * Date: 16/11/2026
+ * Version: 0.20
+ * Date: 18/11/2026
  */
 
 import Foundation
@@ -57,10 +57,29 @@ public struct LivePreviewBlock: Equatable, Sendable {
     /// line break inside it. The lines alone then do not say what is hidden, and a command on a
     /// row would take part of the comment with it, so a table's cells are not edited in its view.
     public let isCutByComment: Bool
+    /// Whether the block shows a table whose cells are edited in its view: a table, or a
+    /// callout with a table in its body, not cut by a comment. Live Preview keeps room around
+    /// such a block for the table's grips and "+" strips.
+    public let holdsEditableTable: Bool
 
     /// A table's or callout's lines as the note has them, comments and line endings included,
     /// without the last line's break: what an edit of the block's own text starts from.
     public var sourceLines: String { writtenLines ?? markdown }
+
+    /// A table block, or a callout one of whose body's lines, without its `>` markers, is a
+    /// table's delimiter row.
+    private static func showsTable(kind: Kind, markdown: String) -> Bool {
+        switch kind {
+        case .table:
+            return true
+        case .callout:
+            return markdown.split(separator: "\n", omittingEmptySubsequences: true).contains { line in
+                MarkdownTableSyntax.isDelimiterRow(String(line.drop { character in character == ">" || character == " " }))
+            }
+        case .frontmatter, .mathBlock, .embed, .imageLine, .baseDefinition, .horizontalRule, .pluginCodeBlock, .mermaidDiagram, .webFrame:
+            return false
+        }
+    }
 
     init(kind: Kind, range: NSRange, markdown: String, writtenLines: String? = nil, isCutByComment: Bool = false) {
         self.kind = kind
@@ -68,6 +87,7 @@ public struct LivePreviewBlock: Equatable, Sendable {
         self.markdown = markdown
         self.writtenLines = writtenLines
         self.isCutByComment = isCutByComment
+        holdsEditableTable = !isCutByComment && Self.showsTable(kind: kind, markdown: markdown)
     }
 
     /// The same block, found in text that starts `distance` characters later, as when

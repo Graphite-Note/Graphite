@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note text view: paste and drop, focus, the readable column and Read Aloud's highlight.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
- * Date: 17/11/2026
+ * Version: 0.4
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -108,8 +108,8 @@ final class MarkdownTextView: UITextView {
     /// properties could end as a tap at the note's start.
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         if let touchedView = super.hitTest(gestureRecognizer.location(in: self), with: nil) {
-            // An image's corner handle resizes it; the note does not scroll under it.
-            if touchedView is ImageResizeTouchView, gestureRecognizer === panGestureRecognizer { return false }
+            // An image's corner handle resizes it and a table's grip moves its row or column; the note does not scroll under them.
+            if touchedView is ImageResizeTouchView || touchedView is TableGripTouchView, gestureRecognizer === panGestureRecognizer { return false }
             if gestureRecognizer !== panGestureRecognizer, !(gestureRecognizer is UIPinchGestureRecognizer), isOverlay(touchedView) { return false }
         }
         return super.gestureRecognizerShouldBegin(gestureRecognizer)

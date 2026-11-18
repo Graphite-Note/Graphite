@@ -6,8 +6,8 @@
  *              their concealed source, as the iPad does.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 18/11/2026
  */
 
 #if os(macOS)
@@ -169,7 +169,8 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         try await awaitConditionAfterLayout { self.blockViews(in: textView).count == 1 }
         let tableView = try XCTUnwrap(blockViews(in: textView).first)
         let textContainer = try XCTUnwrap(textView.textContainer)
-        XCTAssertEqual(tableView.frame.minX, textView.textContainerOrigin.x + textContainer.lineFragmentPadding)
+        // A table's view reaches a grip's size into the side margin, its content at the column (RenderedBlockTableRoom).
+        XCTAssertEqual(tableView.frame.minX, textView.textContainerOrigin.x + textContainer.lineFragmentPadding - TableGripsGeometry.thickness)
         XCTAssertGreaterThan(tableView.frame.minY, textView.textContainerOrigin.y + 10, "Below the intro line")
         // Once measured, the table's last line reserves its view's height, so the text after it starts below.
         try await awaitConditionAfterLayout {
