@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.56
+ * Version: 0.57
  * Date: 18/11/2026
  */
 
@@ -2966,7 +2966,8 @@ struct CalloutView<Body: View>: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint(folding == .notFoldable ? "" : (isExpanded ? "Collapses the callout" : "Expands the callout"))
-            if isExpanded { content() }
+            // A table cell's editor paints the callout's tint under the text it covers.
+            if isExpanded { content().environment(\.tableGroundTint, appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity)) }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)

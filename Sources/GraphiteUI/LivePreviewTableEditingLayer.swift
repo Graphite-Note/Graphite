@@ -6,7 +6,7 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 18/11/2026
  */
 
@@ -157,10 +157,38 @@ struct LivePreviewTableEditingLayer: View {
             // Centered in the row's height, as the rendered cells are.
             .frame(width: frame.width, alignment: .leading)
             .frame(minHeight: frame.height, alignment: .leading)
-            // No outline: Obsidian shows the edited cell by its caret alone.
-            .background(theme?.background.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.background))
+            // No outline: Obsidian shows the edited cell by its caret alone. The field covers the
+            // drawn cell with what is drawn under it, so the cell keeps its look while edited.
+            .background { TableCellEditorGround(row: cell.row, theme: theme) }
             .offset(x: frame.minX, y: frame.minY)
             .onAppear { editor.lastEditingFrame = frame }
             .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }
+    }
+}
+
+extension EnvironmentValues {
+    /// The tint a callout lays over the note's background behind its tables, which a cell's
+    /// editor paints under the text it covers; nil outside a callout.
+    @Entry var tableGroundTint: Color? = nil
+}
+
+/// What is drawn under a table cell, for the cell's editor to cover the drawn text with: the
+/// note's background, a callout's tint, then the header's shading or a theme's stripe on every
+/// second body row, as `ObsidianTableStyle` draws them.
+private struct TableCellEditorGround: View {
+    let row: Int
+    let theme: NoteThemeStyle?
+    @Environment(\.tableGroundTint) private var tint
+
+    var body: some View {
+        ZStack {
+            Rectangle().fill(theme?.background.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.background))
+            if let tint { Rectangle().fill(tint) }
+            if row == 0 {
+                Rectangle().fill(theme?.tableHeaderBackground.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.secondary.opacity(0.12)))
+            } else if row % 2 == 0, let stripe = theme?.tableStripeBackground {
+                Rectangle().fill(Color(stripe))
+            }
+        }
     }
 }
