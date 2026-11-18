@@ -3,10 +3,11 @@
  * -------------------------------------
  * Layer: Tests
  * Description: Graphite's own writes are not reported back to its vault monitor as other apps' changes, though macOS
- *              may report them (HUNT-368), while another write to the same file afterwards still is.
+ *              may report them (HUNT-368), while another write to the same file right after them still is: in place,
+ *              through another coordinator, or from another process.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 18/11/2026
  */
 
@@ -58,6 +59,36 @@ final class VaultMonitorOwnWriteTests: XCTestCase {
         // The same size, written in place without Graphite's writer, as another app writes.
         try Data("Third!".utf8).write(to: location)
         try await waitUntil("the other write is reported", timeoutSeconds: 5) { reported.total > 0 }
+    }
+
+    /// A sync provider's or Obsidian's write right after Graphite's save, well within the
+    /// time a save is remembered, is reported: one through another coordinator, which replaces
+    /// the file, and one from another process, which writes it in place at the same size.
+    func testAnOutsideWriteRightAfterGraphitesOwnIsReported() async throws {
+        let vault = try TemporaryVault.make(prefix: "VaultMonitorOutsideWrite", for: self)
+        let location = vault.location(of: "Note.md")
+        let reported = ReportedChanges()
+        let monitor = VaultMonitor(root: vault.root) { changedLocation in
+            if changedLocation?.lastPathComponent == "Note.md" { _ = reported.add() }
+        }
+        defer { monitor.stop() }
+        let writer = AtomicFileWriter(filePresenter: monitor)
+
+        _ = try writer.write(Data("Mine 1".utf8), to: location, expecting: .absent)
+        _ = try AtomicFileWriter().write(Data("Sync 1".utf8), to: location, expecting: .revision(FileRevision.read(location)))
+        try await waitUntil("another coordinator's write is reported", timeoutSeconds: 5) { reported.total > 0 }
+
+        #if os(macOS)
+        let reportsBefore = reported.total
+        _ = try writer.write(Data("Mine 2".utf8), to: location, expecting: .revision(FileRevision.read(location)))
+        let otherProcess = Process()
+        otherProcess.executableURL = URL(fileURLWithPath: "/bin/sh")
+        otherProcess.arguments = ["-c", "printf 'Them 2' > \"$0\"", location.path]
+        try otherProcess.run()
+        otherProcess.waitUntilExit()
+        XCTAssertEqual(try String(contentsOf: location, encoding: .utf8), "Them 2")
+        try await waitUntil("another process's write is reported", timeoutSeconds: 5) { reported.total > reportsBefore }
+        #endif
     }
 
     func testTheFingerprintChangesWithTheFileAndNotWithAReadingOfIt() throws {
