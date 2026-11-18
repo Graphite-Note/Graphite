@@ -5,7 +5,7 @@
  * Description: The native text field of a Live Preview table's cell editor and the keys it gives the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 18/11/2026
  */
 
@@ -433,10 +433,18 @@ extension TableCellTextField: NSViewRepresentable {
         }
     }
 
+    /// How far in from each side AppKit's text field cell measures and draws its text.
+    private static let cellTextInset: CGFloat = 2
+
     func sizeThatFits(_ proposal: ProposedViewSize, nsView textField: TableCellMacTextField, context: Context) -> CGSize? {
         let width = proposal.width ?? textField.bounds.width
         textField.preferredMaxLayoutWidth = width
-        let height = textField.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: width, height: .greatestFiniteMagnitude)).height ?? textField.intrinsicContentSize.height
+        // The cell measures its text 2 points in from each side, while the field editor that shows
+        // it while editing lays it out from the field's edges: measured at the field's width, a
+        // cell such as "M1 (cascode, bottom)" counted a second line and covered the row below.
+        let measuringWidth = width + 2 * Self.cellTextInset
+        let height = textField.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: measuringWidth, height: .greatestFiniteMagnitude)).height
+            ?? textField.intrinsicContentSize.height
         return CGSize(width: width, height: ceil(height))
     }
 }
@@ -445,13 +453,23 @@ extension TableCellTextField: NSViewRepresentable {
 /// typing: the window's field editor would apply typing undone after a move to another cell
 /// to that cell's text. ⌘Z and ⇧⌘Z go to the table, which undoes the note's own history.
 final class TableCellMacTextField: NSTextField {
-    let cellUndoManager = UndoManager()
+    /// As on iOS, Edit › Undo and ⌘Z in the cell undo the note's history: the field editor asks
+    /// this manager, which records no typing (with the typing in it, Edit › Undo undid only the
+    /// cell's typing and then dimmed, short of the note's earlier steps).
+    lazy var cellUndoManager = TableCellUndoManager { [weak self] isRedo in _ = self?.handleKey?(isRedo ? .redo : .undo) }
     var handleKey: ((TableCellKey) -> Bool)?
     var actions = TableCellFieldActions()
 
     /// Asked by the field editor, whose delegate the field is while it edits.
     @objc(undoManagerForTextView:)
     func undoManager(for textView: NSTextView) -> UndoManager? { cellUndoManager }
+
+    /// The field's cell gives it a field editor of its own (`TableCellFieldEditor`), so Edit ›
+    /// Copy, Cut and Paste reach the table's selected cells as ⌘C, ⌘X and ⌘V do.
+    override class var cellClass: AnyClass? {
+        get { TableCellMacTextFieldCell.self }
+        set {}
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard currentEditor() != nil, let characters = event.charactersIgnoringModifiers?.lowercased() else { return super.performKeyEquivalent(with: event) }
@@ -474,24 +492,5 @@ private extension NSTextView {
         isAutomaticQuoteSubstitutionEnabled = false
         isAutomaticTextReplacementEnabled = false
     }
-}
-#endif
-
-#if canImport(UIKit)
-/// A table cell's undo manager on iOS: it records no typing, and its undo and redo are the
-/// note's (`TableCellTextView.cellUndoManager`).
-final class TableCellUndoManager: UndoManager {
-    private let undoInNote: (_ isRedo: Bool) -> Void
-
-    init(undoInNote: @escaping (_ isRedo: Bool) -> Void) {
-        self.undoInNote = undoInNote
-        super.init()
-        disableUndoRegistration()
-    }
-
-    override var canUndo: Bool { true }
-    override var canRedo: Bool { true }
-    override func undo() { undoInNote(false) }
-    override func redo() { undoInNote(true) }
 }
 #endif

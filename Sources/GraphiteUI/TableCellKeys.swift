@@ -5,8 +5,8 @@
  * Description: What a Live Preview table's cell field tells its table: keys, where the caret goes, and copying and pasting cells.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 17/11/2026
+ * Version: 0.2
+ * Date: 18/11/2026
  */
 
 import Foundation
@@ -48,6 +48,8 @@ struct TableCellFieldActions {
     var copyCells: (_ cut: Bool) -> Bool = { _ in false }
     /// Pastes copied cells or a Markdown table into the table; false for other text.
     var pasteCells: () -> Bool = { false }
+    /// Selects every cell of the table, for a fourth click on the edited cell.
+    var selectAllCells: () -> Void = {}
 }
 
 /// The caret's place in a cell's text for a `TableCellCaret`, in UTF-16 offsets.

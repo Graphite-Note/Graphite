@@ -6,7 +6,7 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 18/11/2026
  */
 
@@ -160,6 +160,9 @@ struct LivePreviewTableEditingLayer: View {
             // No outline: Obsidian shows the edited cell by its caret alone. The field covers the
             // drawn cell with what is drawn under it, so the cell keeps its look while edited.
             .background { TableCellEditorGround(row: cell.row, theme: theme) }
+            // While cells are selected the field stays focused for the keys but is not seen, so the
+            // selection's tint covers its cell as it does the others.
+            .opacity(editor.hasCellSelection ? 0 : 1)
             .offset(x: frame.minX, y: frame.minY)
             .onAppear { editor.lastEditingFrame = frame }
             .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }

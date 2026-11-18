@@ -6,7 +6,7 @@
  *              clearing and deleting them, as Obsidian's table editor does.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 18/11/2026
  */
 
@@ -175,7 +175,8 @@ extension LivePreviewTableEditor {
     var fieldActions: TableCellFieldActions {
         TableCellFieldActions(hasCellSelection: { [weak self] in self?.hasCellSelection ?? false },
                               copyCells: { [weak self] cut in self?.copySelectedCells(cut: cut) ?? false },
-                              pasteCells: { [weak self] in self?.pasteCells() ?? false })
+                              pasteCells: { [weak self] in self?.pasteCells() ?? false },
+                              selectAllCells: { [weak self] in self?.selectAllCells() })
     }
 
     /// The selected cells' menu, as Obsidian's: the clipboard, the selected columns' alignment,
