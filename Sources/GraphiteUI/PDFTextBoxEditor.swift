@@ -5,8 +5,8 @@
  * Description: The view a PDF text box is typed in, and what gives the document the box as typed.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 02/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -170,13 +170,20 @@ final class PDFTextBoxEditor: NSObject, UITextViewDelegate {
         catch { session.reportFailedChange(error) }
     }
 
-    /// Commits the box and takes the text view away.
+    /// Commits the box and takes the text view away. Typing often ends in the middle of
+    /// SwiftUI's update of the pane (a tool chosen, Done), where the text view giving up first
+    /// responder made UIKit hand it on without end and froze the app (HUNT-367); so the view
+    /// is hidden now and gives up first responder, and leaves, on the main queue's next turn.
     func end() {
         commit()
         session.unregisterPendingInkRecordWriter(for: self)
         textView.delegate = nil
-        if textView.isFirstResponder { textView.resignFirstResponder() }
-        textView.removeFromSuperview()
+        textView.isHidden = true
+        let textView = textView
+        DispatchQueue.main.async {
+            if textView.isFirstResponder { textView.resignFirstResponder() }
+            textView.removeFromSuperview()
+        }
     }
 }
 #endif

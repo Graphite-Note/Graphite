@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-18.
 
+## Ending the typing of a PDF text box no longer freezes the iPad: 2026-11-18
+
+`Docs/Bug-hunt-todo.md` HUNT-367 (issue #170). Done, or another tool on the fixed bar, while a PDF text box was typed in froze the app: the text view gave up first responder inside SwiftUI's update of the pane. `PDFTextBoxEditor.end` now commits the box at once, hides the text view, and resigns and removes it on the main queue's next turn.
+
+- **Hosted tests, iPad Pro 11-inch (M5) simulator, iOS 27.2:** `PDFTextBoxEndTypingHostedTests` (3: Done, the pen on the bar, Done with nothing typed), which hung before the fix and pass with it: the main thread comes back, the text is kept on the page and in the saved file, and a second box starts and ends. `PDFStackingOrderHostedTests` passes; `PDFTextBoxesTests`' three fail at choosing the palette's text tool, as on main locally.
+- **Not established:** the commit that brought it in (being bisected); the owner's iPad.
+
 ## Several PDF objects arranged together, and the menus' names: 2026-11-17
 
 `Docs/PDF-annotation-todo.md` section 8 (issue #210). Several of a page's pictures, text boxes and shapes can be brought forward or sent back together, keeping their order among themselves, as one step (`PDFSession.arrange(_:on:_:)` with an array, `possibleArrangements(of:on:)`); no menu offers it yet. An object's own Arrange menu names what it arranges ("Bring Image to Front" on the Mac's picture menu, "Bring Item to Front" for a text box or shape on the iPad and the Mac) and no longer has Ink to Front and Ink to Back, which are in the PDF's More menu for the page shown and in the Mac's Tools › Arrange.
