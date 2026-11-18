@@ -29,6 +29,10 @@ public enum FixtureFolders {
     /// (`GuideVaultPack`, Docs/Guide-vault-todo.md).
     public static let guideVault = repositoryRoot.appendingPathComponent("Guide/Graphite Guide", isDirectory: true)
 
+    /// What Obsidian's Importer writes from a made-up Notion export and a made-up workspace answered as Notion's API answers
+    /// (`Tests/NotionImportedVault/README.md`), which the release pass opens in every view.
+    public static let notionImportedVault = repositoryRoot.appendingPathComponent("Tests/NotionImportedVault", isDirectory: true)
+
     /// The Mac and iPad application's property lists.
     public static let applicationFolder = repositoryRoot.appendingPathComponent("App", isDirectory: true)
 

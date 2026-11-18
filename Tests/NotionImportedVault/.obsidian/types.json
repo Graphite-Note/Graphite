@@ -1,0 +1,8 @@
+{
+  "types": {
+    "Date": "date",
+    "Status": "text",
+    "Reviewed": "checkbox",
+    "Pages": "number"
+  }
+}

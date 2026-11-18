@@ -5,7 +5,7 @@
  * Description: Obsidian's Importer importing a made-up Notion export in WebKit, inside the app, on the iPad and the Mac.
  *
  * Authors: Bahey Shalash
- * Version: 1.0
+ * Version: 1.1
  * Date: 17/11/2026
  */
 import XCTest
@@ -44,6 +44,8 @@ extension CommunityPluginHostTests {
         XCTAssertEqual(summary["imported"] as? Int, 17, "\(summary)")
         XCTAssertEqual(summary["attachments"] as? Int, 2, "\(summary)")
         XCTAssertEqual(summary["failed"] as? Int, 0, "\(summary)")
+        // Importer's writes name it, though they follow its awaits: leaving the vault now is refused in its name.
+        XCTAssertEqual(host.pluginChangingTheVault(at: host.clock.now), "Importer", "the vault was changed by Importer moments ago")
 
         let expected = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: Self.expectedImport)) as? [String: String])
         let imported = try importedFiles(in: vault)

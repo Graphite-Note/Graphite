@@ -5,7 +5,7 @@
  * Description: Obsidian's Vault, DataAdapter and FileManager for plugins, over Graphite's vault bridge.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
+ * Version: 0.11
  * Date: 17/11/2026
  */
 
@@ -223,7 +223,7 @@
         async writeData(path, payload, expectation, isReportingConflict = true, pluginIdentifier = runtime.callingPluginIdentifier()) {
             let response;
             try {
-                response = await hostBridge.send('vault.write', Object.assign({ path, expectation }, payload));
+                response = await hostBridge.send('vault.write', Object.assign({ path, expectation, pluginIdentifier }, payload));
             } catch (error) {
                 if (error.kind === 'conflict') {
                     if (expectation.kind === 'absent') throw new Error('File already exists.');

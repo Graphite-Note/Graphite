@@ -145,6 +145,7 @@
 				GraphiteUITests/GraphBenchmarkTests.swift,
 				GraphiteUITests/GuideVaultPassTests.swift,
 				GraphiteUITests/IsolatedWorkspaceDevice.swift,
+				GraphiteUITests/NotionImportedVaultPassTests.swift,
 				GraphiteUITests/PDFSessionMarkupTests.swift,
 				GraphiteUITests/PDFTextMarkColorsTests.swift,
 				GraphiteUITests/PerformanceBenchmarkTests.swift,

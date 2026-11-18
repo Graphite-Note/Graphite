@@ -5,7 +5,7 @@
  * Description: Obsidian's Importer, unmodified, importing a made-up workspace through Notion's API, and Notion failing.
  *
  * Authors: Bahey Shalash
- * Version: 1.0
+ * Version: 1.1
  * Date: 17/11/2026
  */
 
@@ -24,22 +24,32 @@ const fileSystem = require('node:fs');
 const path = require('node:path');
 const { plain } = require('../support/runtime-harness');
 const { makeNotionResponder, notionTestToken } = require('../support/notion-api-fixture');
-const { importerPackage, startImporter, runNotionApiImport, vaultSnapshot } = require('../support/notion-import-driver');
+const { importerPackage, startImporter, runNotionApiImport, vaultSnapshot, committedImportDifferences } = require('../support/notion-import-driver');
 
 const expectationPath = path.join(__dirname, '..', 'fixtures', 'notion-api-import-expected.json');
+/// The answers of the import, by request, which the app's hosted test gives Graphite's native requests (`NotionAnswers`).
+const answersPath = path.join(__dirname, '..', 'fixtures', 'notion-api-answers.json');
 const skip = importerPackage() ? false : 'Importer is not built (npm run build-compatibility-plugins)';
 
 async function importThroughApi(failures, secret) {
     const { harness } = await startImporter();
     const notion = makeNotionResponder(failures);
-    harness.host.networkResponder = notion.responder;
+    notion.answers = {};
+    harness.host.networkResponder = (message) => {
+        const answer = notion.responder(message);
+        notion.answers[message.method.toUpperCase() + ' ' + new URL(message.url).pathname] = answer;
+        return answer;
+    };
     const summary = await runNotionApiImport(harness, secret || notionTestToken);
     return { harness, notion, summary, notices: plain(harness.host.notificationsOf('notice.show').map((notice) => notice.message)) };
 }
 
 test('Importer 3.2.0 imports a workspace through Notion\'s API: notes, a base for the database, property types', { skip }, async () => {
-    const { harness, summary } = await importThroughApi({});
+    const { harness, notion, summary } = await importThroughApi({});
     try {
+        const answers = JSON.stringify(Object.fromEntries(Object.keys(notion.answers).sort().map((key) => [key, notion.answers[key]])), null, 2);
+        if (process.env.GRAPHITE_UPDATE_EXPECTATIONS === '1') fileSystem.writeFileSync(answersPath, answers.replace(/\n$/, '') + '\n');
+        assert.deepEqual(JSON.parse(fileSystem.readFileSync(answersPath, 'utf8')), notion.answers, 'fixtures/notion-api-answers.json holds the answers');
         assert.deepEqual({ imported: summary.imported, failed: summary.failed }, { imported: 3, failed: 0 }, summary.text || summary.stoppedAt);
         const snapshot = vaultSnapshot(harness, 'Notion');
         snapshot['.obsidian/types.json'] = harness.readVaultFile('.obsidian/types.json');
@@ -47,6 +57,7 @@ test('Importer 3.2.0 imports a workspace through Notion\'s API: notes, a base fo
         const expected = JSON.parse(fileSystem.readFileSync(expectationPath, 'utf8'));
         assert.deepEqual(Object.keys(snapshot).sort(), Object.keys(expected).sort());
         for (const vaultPath of Object.keys(expected)) assert.equal(snapshot[vaultPath], expected[vaultPath], vaultPath);
+        assert.deepEqual(committedImportDifferences(harness, Object.keys(expected)), [], 'Tests/NotionImportedVault holds this import');
         // The page embeds its database's base, as Obsidian's Importer writes it there.
         assert.match(snapshot['Notion/Signals and Systems/Signals and Systems.md'], /\n!\[\[Lectures\.base\]\]$/);
         assert.deepEqual(plain(harness.host.notificationsOf('plugin.unsupportedFeature')), []);

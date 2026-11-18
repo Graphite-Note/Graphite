@@ -1,0 +1,25 @@
+# Lectures
+
+filters:
+  and:
+    - note["base"] == link("Lectures.base")
+properties:
+  file.name:
+    displayName: Name
+  Date:
+    displayName: Date
+  Status:
+    displayName: Status
+  Reviewed:
+    displayName: Reviewed
+  Pages:
+    displayName: Pages
+views:
+  - type: table
+    name: Table View
+    order:
+      - file.name
+      - Date
+      - Status
+      - Reviewed
+      - Pages

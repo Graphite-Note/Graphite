@@ -5,8 +5,8 @@
  * Description: Vault switching, link following, external changes, and attachment saving in the
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.13
- * Date: 02/11/2026
+ * Version: 0.14
+ * Date: 17/11/2026
  */
 
 import XCTest
@@ -184,6 +184,36 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertEqual(workspace.currentVaultIdentifier, firstVaultIdentifier)
         XCTAssertEqual(workspace.folderAccess?.root.lastPathComponent, firstVault.lastPathComponent)
         XCTAssertNotNil(workspace.drawingEditorRequest)
+    }
+
+    /// Notion import, 5.3: leaving the vault unloads its plugins, so a switch is refused while a plugin
+    /// changes files in it, as Importer does page after page, and allowed once it has been quiet a while.
+    func testVaultSwitchIsRefusedWhileAPluginChangesTheVaultAndAllowedOnceItIsQuiet() async throws {
+        let firstVault = try makeVault(files: ["Note.md": "original"])
+        let secondVault = try makeVault()
+        let workspace = try await openedWorkspace(firstVault)
+        let firstVaultIdentifier = try XCTUnwrap(workspace.currentVaultIdentifier)
+        let plugins = workspace.communityPlugins
+        plugins.noteVaultChange(by: "obsidian-importer", at: plugins.clock.now)
+        plugins.noteVaultChange(by: nil, at: plugins.clock.now)
+
+        do {
+            try await workspace.openFolderAsVault(secondVault)
+            XCTFail("A plugin is changing the vault, so the vault switch is refused.")
+        } catch {
+            // Not installed in this vault, so the plugin is named by its identifier; a later change the
+            // runtime could not attribute keeps the name.
+            XCTAssertEqual(error as? VaultSwitchRefusal, .pluginIsChangingTheVault(pluginName: "obsidian-importer"))
+            XCTAssertEqual((error as? VaultSwitchRefusal)?.errorDescription,
+                           "“obsidian-importer” is still changing files in this vault. Wait for it to finish, or stop it, before switching vaults.")
+        }
+        XCTAssertEqual(workspace.currentVaultIdentifier, firstVaultIdentifier)
+
+        let quietPeriod = CommunityPluginHost.vaultChangeQuietPeriod
+        plugins.noteVaultChange(by: nil, at: plugins.clock.now - quietPeriod - .milliseconds(100))
+        XCTAssertNil(plugins.pluginChangingTheVault(at: plugins.clock.now))
+        try await workspace.openFolderAsVault(secondVault)
+        XCTAssertEqual(workspace.folderAccess?.root.lastPathComponent, secondVault.lastPathComponent)
     }
 
     /// The open vault's folder moved: the same vault opens again, and the drawing stays open.

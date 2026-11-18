@@ -6,8 +6,8 @@
  *              Graphite.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.38
- * Date: 07/11/2026
+ * Version: 0.39
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -325,6 +325,11 @@ final class CommunityPluginHost {
     @ObservationIgnored private var schemeHandler: CommunityPluginSchemeHandler?
     @ObservationIgnored private let messageReceiver = CommunityPluginMessageReceiver()
     @ObservationIgnored private var bridge: CommunityPluginVaultBridge?
+    /// When a plugin last changed a file or folder of the vault, and which plugin did when the
+    /// runtime could tell: leaving the vault unloads the plugins, which would cut an import short.
+    @ObservationIgnored private var lastVaultChange: (time: Duration, pluginIdentifier: String?)?
+    /// Counts the quiet period after a plugin's last change of the vault.
+    @ObservationIgnored let clock: any ApplicationClock
     @ObservationIgnored private var monitor: VaultMonitor?
     @ObservationIgnored private var secretStore: CommunityPluginSecretStore?
     /// Waiters for the runtime page to finish loading.
@@ -345,8 +350,9 @@ final class CommunityPluginHost {
 
     /// `defaults` is where consent is kept; the workspace passes its own, and the default
     /// is for the tests written before it could (Phase 2 removes it).
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, clock: any ApplicationClock = LiveApplicationClock()) {
         consentDefaults = defaults
+        self.clock = clock
         messageReceiver.host = self
     }
 
@@ -948,6 +954,7 @@ final class CommunityPluginHost {
         if CommunityPluginVaultBridge.handles(operation) {
             guard let bridge, let messageData = try? JSONSerialization.data(withJSONObject: message) else { return Self.failure("unavailable", "Community plugins are not running.") }
             let answerData = await bridge.respond(to: messageData)
+            if Self.changesTheVault(operation) { noteVaultChange(by: message["pluginIdentifier"] as? String, at: clock.now) }
             // Answered as JSON text, which the runtime parses in WebKit's process: a note or a
             // listing of the vault is not decoded on the app's main thread.
             return String(decoding: answerData, as: UTF8.self)
@@ -1263,6 +1270,27 @@ final class CommunityPluginHost {
             return CommunityPluginMenuRequest.Item(id: position, title: item["title"] as? String ?? "", isDisabled: item["isDisabled"] as? Bool == true,
                                                    isWarning: item["isWarning"] as? Bool == true, isChecked: item["isChecked"] as? Bool == true)
         }
+    }
+
+    /// The vault operations of the runtime that change a file or folder.
+    private static func changesTheVault(_ operation: String) -> Bool {
+        ["vault.write", "vault.createFolder", "vault.remove", "vault.rename", "vault.copy"].contains(operation)
+    }
+
+    /// How long after a plugin's last change the vault counts as still being changed by it. Importer
+    /// waits on Notion between pages (a second or two when Notion limits the rate), so a pause that
+    /// short is part of one import.
+    static let vaultChangeQuietPeriod: Duration = .seconds(5)
+
+    func noteVaultChange(by pluginIdentifier: String?, at time: Duration) {
+        lastVaultChange = (time, pluginIdentifier ?? lastVaultChange?.pluginIdentifier)
+    }
+
+    /// The plugin still changing the vault, named for the person (`""` when the runtime could not tell
+    /// which), or nil when no plugin changed it within the quiet period.
+    func pluginChangingTheVault(at time: Duration) -> String? {
+        guard let lastVaultChange, time - lastVaultChange.time < Self.vaultChangeQuietPeriod else { return nil }
+        return lastVaultChange.pluginIdentifier.map { identifier in pluginName(of: identifier) ?? identifier } ?? ""
     }
 
     func pluginName(of pluginIdentifier: String) -> String? {

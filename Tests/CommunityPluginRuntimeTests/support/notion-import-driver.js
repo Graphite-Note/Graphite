@@ -5,7 +5,7 @@
  * Description: Walks Obsidian's Importer through a Notion import on the plugin panel, as a person does.
  *
  * Authors: Bahey Shalash
- * Version: 1.0
+ * Version: 1.1
  * Date: 17/11/2026
  */
 
@@ -199,4 +199,24 @@ function vaultSnapshot(harness, folder) {
     return snapshot;
 }
 
-module.exports = { importerPackage, installWebPlatformFiles, startImporter, runNotionFileImport, runNotionApiImport, vaultSnapshot, settleMany, importSummary };
+/// The vault Importer wrote, committed in `Tests/NotionImportedVault` so the app's release pass can open each
+/// note in its three views and draw the base (`NotionImportedVaultPassTests`). Each of `vaultPaths` must be
+/// there byte for byte; GRAPHITE_UPDATE_EXPECTATIONS=1 copies them there first.
+const importedVaultFolder = path.join(__dirname, '..', '..', 'NotionImportedVault');
+
+function committedImportDifferences(harness, vaultPaths) {
+    const differences = [];
+    for (const vaultPath of vaultPaths) {
+        const written = fileSystem.readFileSync(path.join(harness.vaultFolder, vaultPath));
+        const committedLocation = path.join(importedVaultFolder, vaultPath);
+        if (process.env.GRAPHITE_UPDATE_EXPECTATIONS === '1') {
+            fileSystem.mkdirSync(path.dirname(committedLocation), { recursive: true });
+            fileSystem.writeFileSync(committedLocation, written);
+        }
+        if (!fileSystem.existsSync(committedLocation) || !fileSystem.readFileSync(committedLocation).equals(written)) differences.push(vaultPath);
+    }
+    return differences;
+}
+
+module.exports = { importerPackage, installWebPlatformFiles, startImporter, runNotionFileImport, runNotionApiImport, vaultSnapshot, settleMany, importSummary,
+    committedImportDifferences };

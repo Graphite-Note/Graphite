@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.89
- * Date: 16/11/2026
+ * Version: 0.90
+ * Date: 17/11/2026
  */
 
 import Foundation
@@ -354,7 +354,7 @@ final class WorkspaceModel {
         applicationFolders = processServices.applicationFolders
         preferences = processServices.preferences
         vaultLibrary = processServices.vaultLibrary
-        communityPlugins = CommunityPluginHost(defaults: processServices.defaults)
+        communityPlugins = CommunityPluginHost(defaults: processServices.defaults, clock: clock)
         if let applicationSupportFolder = processServices.applicationFolders.applicationSupportFolder {
             recording.recoveryFolderLocation = { try RecordingRecoveryFolder.location(in: applicationSupportFolder) }
         }
@@ -464,12 +464,13 @@ final class WorkspaceModel {
         processServices.graphColorGroups.forgetVault(vault.id)
     }
 
-    /// Refuses to leave the vault during a recording, or while a drawing is open in its editor,
-    /// and saves every open document. An open drawing saves through the open vault's store and
+    /// Refuses to leave the vault during a recording, a notebook import or a plugin's changes, or
+    /// while a drawing is open in its editor, and saves every open document. An open drawing saves through the open vault's store and
     /// settings, so it stays open only when this vault opens again at its folder's new place.
     private func prepareToLeaveCurrentVault(isReopeningCurrentVault: Bool) async throws {
         guard !recording.state.isActive else { throw GraphiteError.unavailable("Finish the current recording before switching vaults.") }
         guard notebookImport?.isImporting != true else { throw VaultSwitchRefusal.notebookImportIsRunning }
+        if let pluginName = communityPlugins.pluginChangingTheVault(at: clock.now) { throw VaultSwitchRefusal.pluginIsChangingTheVault(pluginName: pluginName) }
         guard isReopeningCurrentVault || drawingEditorRequest == nil else { throw VaultSwitchRefusal.drawingIsOpen }
         rememberPlacesOfOpenDocuments()
         try await saveOpenDocuments()
@@ -1865,11 +1866,17 @@ enum VaultSwitchRefusal: LocalizedError, Equatable {
     case drawingIsOpen
     /// Notebooks are being imported into the open vault.
     case notebookImportIsRunning
+    /// A community plugin changed the vault moments ago, as an import does file after file: leaving
+    /// unloads it part-way. The name is empty when the runtime could not tell which plugin it was.
+    case pluginIsChangingTheVault(pluginName: String)
 
     var errorDescription: String? {
         switch self {
         case .drawingIsOpen: "Insert or cancel the drawing before switching vaults."
         case .notebookImportIsRunning: "Wait for the notebook import to finish, or stop it, before switching vaults."
+        case .pluginIsChangingTheVault(let pluginName):
+            "\(pluginName.isEmpty ? "A community plugin" : "“\(pluginName)”") is still changing files in this vault. "
+                + "Wait for it to finish, or stop it, before switching vaults."
         }
     }
 }

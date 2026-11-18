@@ -5,7 +5,7 @@
  * Description: Obsidian's Importer, unmodified, importing made-up Notion exports in the runtime.
  *
  * Authors: Bahey Shalash
- * Version: 1.0
+ * Version: 1.1
  * Date: 17/11/2026
  */
 
@@ -24,7 +24,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const { plain, settle } = require('../support/runtime-harness');
 const notionExport = require('../support/notion-export-fixture');
-const { importerPackage, startImporter, runNotionFileImport, vaultSnapshot } = require('../support/notion-import-driver');
+const { importerPackage, startImporter, runNotionFileImport, vaultSnapshot, committedImportDifferences } = require('../support/notion-import-driver');
 
 const expectationPath = path.join(__dirname, '..', 'fixtures', 'notion-html-import-expected.json');
 const skip = importerPackage() ? false : 'Importer is not built (npm run build-compatibility-plugins)';
@@ -61,6 +61,8 @@ test('Importer 3.2.0 loads and imports a two-part Notion HTML export exactly as 
         const expected = JSON.parse(fileSystem.readFileSync(expectationPath, 'utf8'));
         assert.deepEqual(Object.keys(snapshot).sort(), Object.keys(expected).sort(), 'the same files, in the same folders');
         for (const vaultPath of Object.keys(expected)) assert.equal(snapshot[vaultPath], expected[vaultPath], vaultPath);
+        assert.deepEqual(committedImportDifferences(harness, Object.keys(expected).filter((vaultPath) => vaultPath !== 'Welcome.md')), [],
+            'Tests/NotionImportedVault holds this import (GRAPHITE_UPDATE_EXPECTATIONS=1 writes it)');
         assert.deepEqual(plain(harness.host.notificationsOf('plugin.unsupportedFeature')), []);
         assert.deepEqual(pageErrors(harness), []);
     } finally {
