@@ -5,8 +5,8 @@
  * Description: The pictures of paper the New Notebook sheet shows, and the library thumbnail of a dotted notebook.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 import XCTest
@@ -21,6 +21,44 @@ final class PaperPreviewRendererTests: XCTestCase {
         let image = try PaperPreviewRenderer.image(of: landscape, longerSidePixels: 200)
         XCTAssertEqual(image.width, 200)
         XCTAssertEqual(image.height, 141)
+    }
+
+    /// The sheet's picture of a paper is the first page of the notebook the sheet then makes, pixel for pixel: the notebook's
+    /// PDF, several pages long, drawn at the picture's size gives the same pixels as the picture.
+    func testThePictureOfAPaperIsTheFirstPageOfTheNotebookMade() throws {
+        let choices: [NewNotebookOptions] = [
+            NewNotebookOptions(paperChoice: .ruledNarrow, paperStyle: PaperSpecification(template: .blank), pageSize: .named(.a4, .portrait), pageCount: 4),
+            NewNotebookOptions(paperChoice: .ruledNarrow, paperStyle: PaperSpecification(template: .dotted), pageSize: .named(.a5, .landscape), pageCount: 3),
+        ]
+        for options in choices {
+            let picture = try PaperPreviewRenderer.image(of: options.paper, longerSidePixels: 400)
+            let notebookData = try NewNotebookDocument.data(for: options, titled: "Lecture", templateLocation: nil)
+            let notebook = try XCTUnwrap(CGPDFDocument(try XCTUnwrap(CGDataProvider(data: notebookData as CFData))))
+            XCTAssertEqual(notebook.numberOfPages, options.pageCount)
+            let firstPage = try drawn(try XCTUnwrap(notebook.page(at: 1)), width: picture.width, height: picture.height)
+            XCTAssertEqual(rgbaBytes(of: firstPage), rgbaBytes(of: picture), "\(options.paper)")
+        }
+    }
+
+    private func drawn(_ page: CGPDFPage, width: Int, height: Int) throws -> CGImage {
+        let pageBox = page.getBoxRect(.mediaBox)
+        let scale = Double(max(width, height)) / max(pageBox.width, pageBox.height)
+        let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                              space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.interpolationQuality = .high
+        context.scaleBy(x: scale, y: scale)
+        context.translateBy(x: -pageBox.minX, y: -pageBox.minY)
+        context.drawPDFPage(page)
+        return try XCTUnwrap(context.makeImage())
+    }
+
+    private func rgbaBytes(of image: CGImage) -> Data? {
+        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        return context.data.map { data in Data(bytes: data, count: image.width * image.height * 4) }
     }
 
     func testPictureSizeIsBounded() throws {

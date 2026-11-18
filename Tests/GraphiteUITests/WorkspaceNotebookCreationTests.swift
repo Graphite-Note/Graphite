@@ -1,3 +1,15 @@
+/**
+ * File: WorkspaceNotebookCreationTests.swift
+ * ------------------------------------------
+ * Layer: Tests
+ * Description: Creating a notebook from inside a note, embedded or in a folder, against real vault folders, and where an
+ *              embedded notebook goes for each attachment setting.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 18/11/2026
+ */
+
 import XCTest
 import PDFKit
 import GraphiteCore
@@ -42,6 +54,30 @@ final class WorkspaceNotebookCreationTests: XCTestCase {
         let pageBounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)
         XCTAssertEqual(pageBounds.width, 595.28, accuracy: 0.01)
         XCTAssertEqual(pageBounds.height, 419.53, accuracy: 0.01)
+    }
+
+    /// An embedded notebook goes where each of Obsidian's four attachment settings puts an attachment: the vault's root,
+    /// a folder named in the settings, the note's own folder, and a folder under the note's.
+    func testAnEmbeddedNotebookGoesWhereEachAttachmentSettingPutsAttachments() async throws {
+        let settingsAndFolders: [(attachmentFolderPath: String, expectedPath: String)] = [
+            ("/", "Sketches.pdf"),
+            ("Attachments", "Attachments/Sketches.pdf"),
+            ("./", "Courses/Sketches.pdf"),
+            ("./assets", "Courses/assets/Sketches.pdf"),
+        ]
+        for (attachmentFolderPath, expectedPath) in settingsAndFolders {
+            let vault = try makeVault(files: ["Courses/Week 1.md": "Notes", ".obsidian/app.json": #"{"attachmentFolderPath": "\#(attachmentFolderPath)"}"#])
+            let (workspace, session) = try await openedNote("Courses/Week 1.md", in: vault)
+            workspace.hasCompletedIndexScan = true
+
+            await workspace.createNotebook(named: "Sketches", options: options, placement: .embeddedInNote, from: session,
+                                           at: NSRange(location: 0, length: 0), textWhenChosen: session.text)
+
+            XCTAssertNil(workspace.errorMessage, attachmentFolderPath)
+            XCTAssertNotNil(PDFDocument(url: vault.appendingPathComponent(expectedPath)), "\(attachmentFolderPath) puts it at \(expectedPath)")
+            XCTAssertTrue(session.text.hasPrefix("![["), "\(attachmentFolderPath): \(session.text)")
+            XCTAssertTrue(session.text.contains("Sketches.pdf]]"), "\(attachmentFolderPath): \(session.text)")
+        }
     }
 
     func testNotebookInAFolderIsItsOwnFileWithALinkInTheNote() async throws {

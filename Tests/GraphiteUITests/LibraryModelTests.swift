@@ -5,8 +5,8 @@
  * Description: A look chosen in Graphite on the Mac is written where Finder reads it, so the tile
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 04/11/2026
+ * Version: 0.11
+ * Date: 18/11/2026
  */
 
 import XCTest
@@ -46,6 +46,31 @@ final class LibraryModelTests: XCTestCase {
         library.filter = .notebooks
         await library.filterTask?.value
         XCTAssertEqual(library.items.map(\.path.name), ["Photos", "Week 1.pdf"])
+    }
+
+    /// The library lists a folder in the file list's sort order, folders first in each, and a filter keeps that order.
+    func testTheListingFollowsTheSortOrderAndTheFilterKeepsIt() async throws {
+        let courses = vault.appendingPathComponent("Courses")
+        let older = Date(timeIntervalSince1970: 1_700_000_000), newer = Date(timeIntervalSince1970: 1_800_000_000)
+        try FileManager.default.setAttributes([.modificationDate: newer], ofItemAtPath: courses.appendingPathComponent("Summary.md").path)
+        try FileManager.default.setAttributes([.modificationDate: older], ofItemAtPath: courses.appendingPathComponent("Week 1.pdf").path)
+        let library = LibraryModel()
+        let orders: [(FileSortOrder, [String])] = [
+            (.alphabetical, ["Photos", "Summary.md", "Week 1.pdf"]),
+            (.alphabeticalReverse, ["Photos", "Week 1.pdf", "Summary.md"]),
+            (.byModifiedTime, ["Photos", "Summary.md", "Week 1.pdf"]),
+            (.byModifiedTimeReverse, ["Photos", "Week 1.pdf", "Summary.md"]),
+        ]
+        for (order, expectedNames) in orders {
+            await library.reload(source: source(), sortOrder: order)
+            await library.show(try VaultPath("Courses"))
+            library.filter = .all
+            await library.filterTask?.value
+            XCTAssertEqual(library.items.map(\.path.name), expectedNames, "\(order)")
+            library.filter = .notebooks
+            await library.filterTask?.value
+            XCTAssertEqual(library.items.map(\.path.name), expectedNames.filter { name in !name.hasSuffix(".md") }, "\(order) filtered")
+        }
     }
 
     func testAnotherVaultStartsAtItsRoot() async throws {
