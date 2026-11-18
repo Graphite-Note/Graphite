@@ -552,6 +552,21 @@ final class SelectionFrameView: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    /// The box around the frame as shown and its visible handles, in the superview: what a
+    /// toolbar beside the frame keeps clear of (`FloatingSelectionToolbar`).
+    var boxWithHandlesInSuperview: CGRect {
+        guard let superview else { return frame }
+        // The handles stand where the last layout put them: a frame just changed (Rotate Right
+        // turned it from wide to tall) lays them out again first, or the box is the old one's.
+        layoutIfNeeded()
+        return ([rotationHandle] + Array(handles.values)).filter { handle in !handle.isHidden }
+            .reduce(frame) { box, handle in box.union(convert(handle.frame, to: superview)) }
+    }
+
+    /// Shows or hides the drag preview while something other than the frame's own drags
+    /// changes it, as two fingers on a picture do (`SelectionFrameTwoFingerGesture`).
+    func showsDragPreview(_ isShown: Bool) { previewView.isHidden = !isShown || dragPreview == nil }
+
     @objc private func rotateClockwiseByAccessibilityStep() -> Bool { rotate(by: Self.accessibilityRotationStep) }
     @objc private func rotateCounterclockwiseByAccessibilityStep() -> Bool { rotate(by: -Self.accessibilityRotationStep) }
 

@@ -115,9 +115,8 @@ struct EmbeddedPDFViewer: View {
             #endif
             content
             #if canImport(UIKit)
-            if let session, isAnnotating, session.selectedPicture != nil {
-                PDFPictureArrangementBar(session: session)
-            } else if let session, isAnnotating, session.textBoxActivity != .idle {
+            // A selected picture's commands float beside it (`PDFPictureToolbar`).
+            if let session, isAnnotating, session.selectedPicture == nil, session.textBoxActivity != .idle {
                 PDFTextBoxArrangementBar(session: session)
             }
             #endif

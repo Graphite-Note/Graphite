@@ -2,11 +2,12 @@
  * File: PDFPictureControls.swift
  * ------------------------------
  * Layer: UI
- * Description: Where an image to place on a PDF page comes from.
+ * Description: Where an image to place on a PDF page comes from, and the selected picture's frame over an iPad PDF
+ *              view, with its floating toolbar (`PDFPictureToolbar`) and two-finger turn and pinch.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 16/11/2026
+ * Version: 1.0
+ * Date: 17/11/2026
  */
 #if canImport(UIKit)
 import SwiftUI
@@ -84,81 +85,6 @@ struct PDFPictureAdding: ViewModifier {
     }
 }
 
-/// Shown while a picture on a PDF page is selected, where the Pencil palette otherwise is.
-struct PDFPictureArrangementBar: View {
-    let session: PDFSession
-
-    var body: some View {
-        HStack(spacing: 16) {
-            if session.pictureCrop != nil {
-                Text("Drag a corner to choose the part to keep.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Spacer(minLength: 8)
-                Button("Cancel") { session.pictureCrop = nil }
-                    .tint(.primary)
-                Button("Crop") {
-                    guard let selection = session.selectedPicture, let crop = session.pictureCrop else { return }
-                    run { try await session.cropPicture(selection, to: crop) }
-                    session.pictureCrop = nil
-                }
-                .fontWeight(.semibold)
-                .tint(.primary)
-            } else {
-                Text("Drag the image to move it, a corner to resize it, or the arrow handle to rotate it.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Spacer(minLength: 8)
-                PictureEditingButtons(isEnabled: session.selectedPicture != nil, offeredArrangements: PDFArrangement.menuArrangements,
-                                      possibleArrangements: possibleArrangementsOfSelectedPicture, ink: inkOptionsOfSelectedPicture,
-                                      rotateRight: { run { if let selection = session.selectedPicture { try session.rotatePictureRight(selection) } } },
-                                      crop: { beginCropping() },
-                                      arrange: { arrangement in run { if let selection = session.selectedPicture { try session.arrangePicture(selection, arrangement) } } },
-                                      delete: { run { if let selection = session.selectedPicture { try session.removePicture(selection) } } })
-                Button("Done") { session.selectedPicture = nil }
-                    .fontWeight(.semibold)
-                    .tint(.primary)
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
-    }
-}
-
-extension PDFPictureArrangementBar {
-    /// Ink to Front and Ink to Back for the selected picture's page, read again with each edit.
-    private var inkOptionsOfSelectedPicture: PDFInkArrangeOptions {
-        _ = session.changeVersion
-        guard let page = session.selectedPicture?.page.page else { return .none }
-        return PDFInkArrangeOptions(possibleArrangements: session.possibleInkArrangements(on: page)) { arrangement in
-            run { try session.arrangeInk(on: page, arrangement) }
-        }
-    }
-
-    /// Read again whenever the session's edits change, as each arrangement does.
-    private var possibleArrangementsOfSelectedPicture: Set<PDFArrangement> {
-        _ = session.changeVersion
-        return session.selectedPicture.map(session.possibleArrangements(of:)) ?? []
-    }
-
-    /// The crop starts as the whole picture.
-    private func beginCropping() {
-        guard let selection = session.selectedPicture, let page = selection.page.page,
-              let picture = session.pictures(on: page).first(where: { picture in picture.name == selection.pictureName }) else { return }
-        session.pictureCrop = picture.bounds
-    }
-
-    private func run(_ change: @escaping () async throws -> Void) {
-        Task {
-            do { try await change() } catch { session.errorMessage.report(error) }
-        }
-    }
-}
-
 /// Rotate Right, Crop, Arrange and Delete for the image being arranged, on a drawing or a PDF page.
 struct PictureEditingButtons: View {
     let isEnabled: Bool
@@ -187,12 +113,19 @@ struct PictureEditingButtons: View {
 }
 
 /// Shows the selection frame of the session's selected picture over a PDF view, follows the
-/// page as it scrolls and zooms, and moves the picture when a drag ends.
+/// page as it scrolls and zooms, and moves the picture when a drag ends. Its floating toolbar
+/// shows when a picture is selected and after each change, and hides while it is dragged.
 @MainActor
 final class PDFPictureSelectionController {
     private let session: PDFSession
     private weak var pdfView: PDFView?
-    private var selectionView: SelectionFrameView?
+    private(set) var selectionView: SelectionFrameView?
+    private(set) var twoFingerGesture: SelectionFrameTwoFingerGesture?
+    private(set) var toolbar: PDFPictureToolbar?
+    /// The selection the frame and the toolbar were last shown for, so a new one shows the toolbar.
+    private var shownSelection: PDFPictureSelection?
+    /// What the frame's VoiceOver actions were made for, so they are made again only when it changes.
+    private var accessibilityActionsKey: AccessibilityActionsKey?
     private var scrollObservation: NSKeyValueObservation?
     private var notificationObservers: [NSObjectProtocol] = []
     /// Scroll views that wait for the selection's drags, so a drag does not scroll the page.
@@ -201,6 +134,7 @@ final class PDFPictureSelectionController {
     init(session: PDFSession, pdfView: PDFView) {
         self.session = session
         self.pdfView = pdfView
+        toolbar = PDFPictureToolbar(session: session, pdfView: pdfView) { [weak self] in self?.toolbarTargetRect() }
         let center = NotificationCenter.default
         // Zooming, page changes, and undo move the picture under the frame.
         for name in [Notification.Name.PDFViewScaleChanged, .PDFViewVisiblePagesChanged] {
@@ -224,8 +158,17 @@ final class PDFPictureSelectionController {
         for observer in notificationObservers { NotificationCenter.default.removeObserver(observer) }
         notificationObservers = []
         scrollObservation = nil
+        toolbar?.stop()
+        toolbar = nil
+        removeSelectionView()
+    }
+
+    private func removeSelectionView() {
+        twoFingerGesture?.stop()
+        twoFingerGesture = nil
         selectionView?.removeFromSuperview()
         selectionView = nil
+        accessibilityActionsKey = nil
     }
 
     /// The selected picture and its page, while both still exist.
@@ -238,15 +181,17 @@ final class PDFPictureSelectionController {
     /// Shows, moves or hides the frame after the selection or the page under it changed.
     func update() {
         guard let pdfView, pdfView.window != nil, let (picture, page) = selected else {
-            selectionView?.removeFromSuperview()
-            selectionView = nil
+            removeSelectionView()
+            toolbar?.dismiss()
+            shownSelection = nil
             // A picture that is gone (undo, a deleted page) is not selected any more.
             if session.selectedPicture != nil, selected == nil { session.selectedPicture = nil }
             return
         }
         let selection = selectionView ?? makeSelectionView(in: pdfView)
         // Not while a drag moves the frame: the picture follows when the drag ends.
-        guard !selection.dragRecognizers.contains(where: { recognizer in recognizer.state == .began || recognizer.state == .changed }) else { return }
+        guard !selection.dragRecognizers.contains(where: { recognizer in recognizer.state == .began || recognizer.state == .changed }),
+              twoFingerGesture?.isChanging != true else { return }
         // The picture's bounds before it is turned: the page's own quarter turns keep an
         // upright rectangle upright on screen, and a turn by hand looks the same on the page
         // at any of them.
@@ -255,6 +200,8 @@ final class PDFPictureSelectionController {
         selection.cropLimits = session.pictureCrop == nil ? nil : pictureFrame
         selection.unrotatedFrame = session.pictureCrop.map { crop in pdfView.convert(crop, from: page) } ?? pictureFrame
         selection.centerLimits = pdfView.convert(page.bounds(for: .cropBox), from: page)
+        // Two fingers can make a picture up to twice the page's longer side.
+        twoFingerGesture?.maximumSideLength = max(selection.centerLimits.width, selection.centerLimits.height) * 2
         // The preview is the picture as it is shown: turned by the page's quarter turns less
         // those it was placed at or turned back by with Rotate Right. It keeps until it changes.
         let pageTurns = ((page.rotation / 90) % 4 + 4) % 4
@@ -263,6 +210,54 @@ final class PDFPictureSelectionController {
             shownPreviewKey = previewKey
             selection.dragPreview = UIImage(data: picture.imageData).map { image in LassoAreaCapture.turned(image,
                 quarterTurnsClockwise: previewKey.quarterTurnsClockwise) }
+        }
+        updateAccessibilityActions(of: selection)
+        // A picture newly selected (by a tap, Add Image or a drop) shows its toolbar.
+        if session.selectedPicture != shownSelection {
+            shownSelection = session.selectedPicture
+            toolbar?.presentAfterChange()
+        } else {
+            toolbar?.followPicture()
+        }
+    }
+
+    /// A tap on the picture that was already selected shows or hides its toolbar.
+    func selectedPictureWasTapped() {
+        toolbar?.toggle()
+    }
+
+    /// Whether the frame is being dragged, turned or pinched, while the toolbar stays hidden.
+    private var isFrameChanging: Bool {
+        guard let selectionView else { return false }
+        return twoFingerGesture?.isChanging == true
+            || selectionView.dragRecognizers.contains { recognizer in recognizer.state == .began || recognizer.state == .changed }
+    }
+
+    /// The selected picture's frame with its handles, which the toolbar stands beside; none
+    /// while it is out of view or dragged.
+    private func toolbarTargetRect() -> CGRect? {
+        guard let pdfView, let selectionView, !isFrameChanging, selected != nil else { return nil }
+        let shown = selectionView.boxWithHandlesInSuperview
+        let visible = pdfView.bounds.inset(by: pdfView.safeAreaInsets)
+        return shown.intersects(visible) ? shown.intersection(visible) : nil
+    }
+
+    private struct AccessibilityActionsKey: Equatable {
+        let selection: PDFPictureSelection?
+        let changeVersion: Int
+        let isCropping: Bool
+    }
+
+    /// The toolbar's commands, as the selected image's VoiceOver actions, as the bar's buttons were.
+    private func updateAccessibilityActions(of selection: SelectionFrameView) {
+        let key = AccessibilityActionsKey(selection: session.selectedPicture, changeVersion: session.changeVersion, isCropping: session.pictureCrop != nil)
+        guard key != accessibilityActionsKey, let toolbar else { return }
+        accessibilityActionsKey = key
+        selection.additionalAccessibilityActions = toolbar.items().filter(\.isEnabled).map { item in
+            UIAccessibilityCustomAction(name: item.title, image: UIImage(systemName: item.systemImageName)) { _ in
+                item.action()
+                return true
+            }
         }
     }
 
@@ -277,8 +272,15 @@ final class PDFPictureSelectionController {
         shownPreviewKey = nil
         let selection = SelectionFrameView(frame: .zero)
         selection.allowsRotation = true
+        // The toolbar hides while the picture is dragged and comes back where it is let go.
+        selection.frameChangeDidBegin = { [weak self] in self?.toolbar?.dismiss() }
+        selection.frameChangeWasCancelled = { [weak self] in self?.toolbar?.presentAfterChange() }
         selection.frameChangeDidEnd = { [weak self] frame in self?.selectionFrameChangeDidEnd(frame) }
         selection.rotationChangeDidEnd = { [weak self] rotation in self?.selectionRotationChangeDidEnd(rotation) }
+        let twoFingerGesture = SelectionFrameTwoFingerGesture(frameView: selection)
+        twoFingerGesture.changeDidBegin = { [weak self] in self?.toolbar?.dismiss() }
+        twoFingerGesture.changeDidEnd = { [weak self] frame, rotation in self?.selectionTransformDidEnd(frame, rotation: rotation) }
+        self.twoFingerGesture = twoFingerGesture
         // Only what the PDF view shows takes touches: the tab bar is at its top edge.
         selection.staysInSuperviewSafeArea = true
         pdfView.addSubview(selection)
@@ -299,11 +301,22 @@ final class PDFPictureSelectionController {
         // A crop frame chooses the part to keep; the picture stays where it is until Crop.
         if session.pictureCrop != nil {
             session.pictureCrop = pdfView.convert(frame, to: page)
+            toolbar?.presentAfterChange()
             return
         }
         do { try session.movePicture(selection, to: pdfView.convert(frame, to: page)) }
         catch { session.errorMessage.report(error) }
         update()
+        toolbar?.presentAfterChange()
+    }
+
+    /// Two fingers moved, resized and turned the picture: one step, as the frame was left.
+    private func selectionTransformDidEnd(_ frame: CGRect, rotation: CGFloat) {
+        guard let pdfView, let selection = session.selectedPicture, let page = selection.page.page else { return }
+        do { try session.transformPicture(selection, to: pdfView.convert(frame, to: page), rotationRadians: Double(rotation)) }
+        catch { session.errorMessage.report(error) }
+        update()
+        toolbar?.presentAfterChange()
     }
 
     /// The picture keeps the angle its handle was let go at; the page shows it turned once
@@ -313,6 +326,7 @@ final class PDFPictureSelectionController {
         do { try session.rotatePicture(selection, to: Double(rotation)) }
         catch { session.errorMessage.report(error) }
         update()
+        toolbar?.presentAfterChange()
     }
 
     /// The picture at a point of the PDF view, with its page.

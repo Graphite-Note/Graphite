@@ -292,9 +292,8 @@ private struct PDFPaneContent: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if session.isWriting, session.selectedPicture != nil {
-                PDFPictureArrangementBar(session: session)
-            } else if session.isWriting, session.textBoxActivity != .idle {
+            // A selected picture's commands float beside it (`PDFPictureToolbar`).
+            if session.isWriting, session.selectedPicture == nil, session.textBoxActivity != .idle {
                 PDFTextBoxArrangementBar(session: session)
             }
         }

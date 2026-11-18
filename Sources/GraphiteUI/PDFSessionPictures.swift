@@ -144,6 +144,20 @@ extension PDFSession {
         try replacePicture(picture, with: turned, on: selection.page, actionName: "Rotate Image")
     }
 
+    /// Moves, resizes and turns the picture at once, as two fingers on it do, to bounds before
+    /// it is turned and an angle, as one step named after the largest change: a turn, else a
+    /// resize, else a move. It keeps its place in the page's stacking order.
+    func transformPicture(_ selection: PDFPictureSelection, to newBounds: CGRect, rotationRadians: Double) throws {
+        let (page, picture) = try pageAndPicture(of: selection)
+        var transformed = picture
+        transformed.bounds = Self.keepingCenter(of: newBounds, inside: page.bounds(for: .cropBox))
+        transformed.rotationRadians = PictureRotation.normalized(rotationRadians)
+        guard transformed != picture, transformed.bounds.width > 0, transformed.bounds.height > 0 else { return }
+        let actionName = transformed.rotationRadians != picture.rotationRadians ? "Rotate Image"
+            : transformed.bounds.size != picture.bounds.size ? "Resize Image" : "Move Image"
+        try replacePicture(picture, with: transformed, on: selection.page, actionName: actionName)
+    }
+
     /// Rotates the picture a quarter turn clockwise as it is shown, about its middle, as
     /// Rotate Right does in Preview; its angle from the rotate handle stays as it is. The
     /// picture's bytes stay as they are, so turning it four times loses nothing: it is drawn

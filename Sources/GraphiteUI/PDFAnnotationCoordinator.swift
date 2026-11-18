@@ -1216,6 +1216,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             // A tap on a picture selects it; a tap beside it ends arranging.
             let tappedPicture = input.isEnabled ? pictureSelection?.picture(at: viewPoint) : nil
             if tappedPicture != nil, session.textBoxActivity != .idle { session.textBoxActivity = .idle }
+            // A tap on the picture already selected shows or hides its menu; a newly selected one opens it.
+            if tappedPicture != nil, session.selectedPicture == tappedPicture { pictureSelection?.selectedPictureWasTapped() }
             if session.selectedPicture != tappedPicture { session.selectedPicture = tappedPicture }
             return
         }
@@ -1260,6 +1262,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        // A touch on a selection's floating toolbar is the bar's alone: it neither taps nor selects the page under it.
+        if FloatingSelectionToolbar.contains(touch.view) { return false }
         guard gestureRecognizer === markupTapRecognizer, let pdfView else { return true }
         // A touch on a picture's selection frame or one of its handles moves, resizes or turns
         // the picture. Taken as a tap too, a quick drag on a handle outside the picture ended

@@ -260,6 +260,10 @@ final class GraphitePDFDisplayView: PDFView {
     /// canvas draws only the input its drawing policy allows; the other touches still
     /// reach the scrolling, zooming, and text selection gestures of this view.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        // A selection's floating toolbar is over everything, the frame it stands beside included.
+        for case let toolbar as FloatingSelectionToolbar in subviews where toolbar.isShown {
+            if let touchedView = toolbar.hitTest(toolbar.convert(point, from: self), with: event) { return touchedView }
+        }
         // The text box being typed in, and the frame of a picture or box being arranged, are
         // over the page and its canvas: Scribble and the caret take the Pencil there.
         for case let editingView as PDFTextBoxEditingView in subviews {
