@@ -6,8 +6,8 @@
  *              the coordinator they make have files of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.43
- * Date: 16/11/2026
+ * Version: 0.44
+ * Date: 17/11/2026
  */
 
 import SwiftUI
@@ -84,6 +84,7 @@ struct GraphitePDFView: UIViewRepresentable {
         if isEmbedded {
             let margin = PDFEmbedFitting.pageMargin
             view.pageBreakMargins = UIEdgeInsets(top: margin, left: margin, bottom: margin, right: margin)
+            PDFViewDocumentAnalysis.turnOff(in: view)
         }
         // PDFKit asks for page overlays only when it creates page views, so the provider
         // must be in place before the document is.
@@ -181,6 +182,7 @@ struct GraphitePDFView: NSViewRepresentable {
         context.coordinator.pageInkLayers = pageInkLayers
         view.pageInkLayers = pageInkLayers
         view.pageOverlayViewProvider = pageInkLayers
+        if isEmbedded { PDFViewDocumentAnalysis.turnOff(in: view) }
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high
