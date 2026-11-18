@@ -4,9 +4,9 @@
  * Layer: Tests
  * Description: The reading view's Git graphs.
  *
- * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 import XCTest
@@ -17,7 +17,8 @@ import MermaidDiagrams
 import GraphiteTestSupport
 
 /// A ```mermaid block holding a Git graph: read and laid out with the note's other blocks, off the main actor, in the
-/// note's text size; one that cannot be read keeps its source and says why; one that sets Git graph options stays code.
+/// note's text size; one that cannot be read keeps its source and says why; one that sets Git graph options
+/// Graphite does not apply stays code.
 final class ReadingGitGraphTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17))
     private struct NotDrawnAsAGitGraph: Error {}
@@ -61,14 +62,20 @@ final class ReadingGitGraphTests: XCTestCase {
     }
 
     func testAGitGraphThatSetsOptionsNotAppliedShowsTheSourceAndWhy() {
-        for source in ["---\nconfig:\n  gitGraph:\n    nodeLabel: x\n---\ngitGraph\n commit",
-                       "%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk",
+        let source = "---\nconfig:\n  gitGraph:\n    nodeLabel: x\n---\ngitGraph\n commit"
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
+            return XCTFail("Shown with why: \(source)")
+        }
+        XCTAssertEqual(shownSource, source)
+        XCTAssertEqual(failure, .gitGraphLayout(.optionsNotApplied))
+    }
+
+    /// Options in a `%%{init: …}%%` directive, on one line or several, are read as Pele reads them (9fc1219f).
+    func testAGitGraphWithDirectiveOptionsIsDrawnWithThem() throws {
+        for source in ["%%{init: {'gitGraph': {'mainBranchName': 'trunk'}}}%%\ngitGraph\n commit\n checkout trunk",
                        "%%{\n  init: {'gitGraph': {'mainBranchName': 'trunk'}}\n}%%\ngitGraph\n commit"] {
-            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
-                return XCTFail("Shown with why: \(source)")
-            }
-            XCTAssertEqual(shownSource, source)
-            XCTAssertEqual(failure, .gitGraphLayout(.optionsNotApplied))
+            let gitGraph = try gitGraph(source)
+            XCTAssertEqual(gitGraph.branchTexts, ["trunk"], source)
         }
     }
 

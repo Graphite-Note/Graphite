@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.55
- * Date: 16/11/2026
+ * Version: 0.56
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -908,13 +908,17 @@ final class ReadingPosition {
     var hasLaidOutBlocks: Bool { !blockFrames.isEmpty }
 
     private func blockLocationAtTop() -> Int? {
-        guard max(verticalOffset, shownVerticalOffset) > 1 else { return nil }
         let shownBlocks = blockLocations.compactMap { location in blockFrames[location.blockIdentifier].map { frame in (location, frame) } }
             .filter { _, frame in frame.maxY > visibleTop + 1 }
         // One block lies across the top edge. A block let go after a jump can keep a frame
         // across it too, from where the view was then: the one that reported last is on screen.
         let acrossTheTop = shownBlocks.filter { _, frame in frame.minY <= visibleTop + 1 }
             .max { first, second in (blockReportNumbers[first.0.blockIdentifier] ?? 0) < (blockReportNumbers[second.0.blockIdentifier] ?? 0) }
+        // The offset the view reports can lag a jump: a row brought to the top far down the note
+        // still read as the top, and the editor went back to the note's first line. A block other
+        // than the first across the top edge says the view is down the note whatever the offset.
+        let isFirstBlockOrNone = acrossTheTop.map { location, _ in location.blockIdentifier == blockLocations.first?.blockIdentifier } ?? true
+        guard max(verticalOffset, shownVerticalOffset) > 1 || !isFirstBlockOrNone else { return nil }
         guard let (location, frame) = acrossTheTop ?? shownBlocks.min(by: { first, second in first.1.minY < second.1.minY }) else { return nil }
         let hiddenHeight = visibleTop - frame.minY
         guard hiddenHeight > 0, !location.lineNoteOffsets.isEmpty, frame.height > 0 else { return location.noteOffset }

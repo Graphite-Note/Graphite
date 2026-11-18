@@ -575,6 +575,13 @@ final class UiReadingViewTests: XCTestCase {
         position.forget(readingBuild.blocks[0].id)
         XCTAssertEqual(position.topLocation(), offset(of: "Third line"))
 
+        // The offset the view reports can lag a jump to a row far down: the blocks' frames say where the view is.
+        let lagging = ReadingPosition()
+        lagging.blockLocations = readingBuild.blockLocations
+        lagging.visibleTop = 50
+        lagging.record(CGRect(x: 0, y: -30, width: 700, height: 160), ofBlock: paragraph.blockIdentifier)
+        XCTAssertEqual(lagging.topLocation(), offset(of: "Third line"), "A block down the note across the top, before the view reports its offset")
+
         let shown = try XCTUnwrap(position.block(containing: offset(of: "Third line") + 3))
         XCTAssertEqual(shown.identifier, paragraph.blockIdentifier)
         XCTAssertEqual(shown.fractionDown, 0.5, accuracy: 0.001)
