@@ -155,6 +155,35 @@ extension PDFPageCanvasView: LassoCanvasContent {
         guard pageIndex != NSNotFound else { return }
         session.pastePicture(imageData, placement: (pageIndex, coordinates.pdfPoint(fromOverlay: drawingPoint)))
     }
+
+    /// The selected pictures and text boxes arranged together among the page's objects
+    /// (`PDFSession.arrange(_:on:_:)`), as one step named for what they are.
+    func arrangeLassoPictures(_ identifiers: [String], _ arrangement: PDFArrangement) {
+        guard let page, let session else { return }
+        do {
+            try session.arrange(objectAnnotations(identifiedBy: identifiers, on: page), on: page, arrangement)
+        } catch {
+            session.reportFailedChange(error)
+        }
+    }
+
+    func possibleLassoPictureArrangements(_ identifiers: [String]) -> Set<PDFArrangement> {
+        guard let page, let session else { return [] }
+        return session.possibleArrangements(of: objectAnnotations(identifiedBy: identifiers, on: page), on: page)
+    }
+
+    /// The annotations of the lasso's pictures, known by their names, and of its text boxes,
+    /// known by `textBoxIdentifierPrefix` and their names.
+    private func objectAnnotations(identifiedBy identifiers: [String], on page: PDFPage) -> [PDFAnnotation] {
+        let boxNames = Set(identifiers.filter { identifier in identifier.hasPrefix(Self.textBoxIdentifierPrefix) }
+            .map { identifier in String(identifier.dropFirst(Self.textBoxIdentifierPrefix.count)) })
+        let pictureNames = Set(identifiers.filter { identifier in !identifier.hasPrefix(Self.textBoxIdentifierPrefix) })
+        return page.annotations.filter { annotation in
+            guard let name = annotation.persistentName else { return false }
+            if annotation.type == PDFTextBox.annotationTypeName { return boxNames.contains(name) }
+            return PDFPageManager.isPicture(annotation) && pictureNames.contains(name)
+        }
+    }
 }
 
 extension PDFSession {

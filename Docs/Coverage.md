@@ -18,7 +18,8 @@ Last updated: 2026-11-18.
 - **Automated tests, passing on macOS (`swift test --filter`):** `PDFStackingOrderTests` (4 new: a group keeps its order going up and down, passes the ink only to pass an object, stays put when nothing would move it or every object is in it, and is put back by `placing`), `PDFStackingOrderSessionTests` (2 new: two objects and another application's note arranged together as one step that one Undo takes back, saved in that order; the titles), `MacPDFPictureToolTests` (the picture's menu: four image items, then Delete Image).
 - **Hosted (Mac):** `MacPDFArrangeMenusInAppHostedTests` and `MacPDFMarkupInAppHostedTests` with the new names (below).
 - **Checked by hand:** in the installed app on an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2), the More menu's "This Page's Ink": Ink to Front dimmed with the ink on top, Ink to Back put the ink under every object, one Undo put it back.
-- **Not established:** a menu that arranges several objects (the lasso's, if the owner wants it); the iPad text box bar's renamed items looked at on a device; the owner's iPad.
+- **The lasso's hooks (2026-11-18):** `LassoCanvasContent.arrangeLassoPictures(_:_:)` and `possibleLassoPictureArrangements(_:)` arrange the lasso's pictures and text boxes on a PDF page as one step named for them (`PDFArrangement.Objects.naming`); `PDFLassoArrangeHostedTests` (iPad Pro 11-inch (M5) simulator, iOS 27.2) and `PDFStackingOrderSessionTests.testTheMenusNameWhatTheyArrange` pass.
+- **Not established:** the lasso's menu entries that call them (the Select tool session's); the iPad text box bar's renamed items looked at on a device; the owner's iPad.
 
 ## The Mac's Arrange menus in the running app: 2026-11-17
 

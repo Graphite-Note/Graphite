@@ -43,6 +43,13 @@ extension PDFArrangement {
             case .items: "Items"
             }
         }
+
+        /// What a selection is called: "Image" for one picture, "Item" for one text box or
+        /// shape, "Items" for several of either.
+        static func naming(pictureCount: Int, otherObjectCount: Int) -> Objects {
+            if pictureCount + otherObjectCount > 1 { return .items }
+            return pictureCount == 1 ? .image : .item
+        }
     }
 
     /// The item's title in an object's own menu, naming what it arranges; Tools › Arrange keeps `title`.
@@ -106,12 +113,15 @@ extension PDFSession {
     }
 
     /// Arranges several pictures, text boxes and shapes of a page together, keeping their order
-    /// among themselves, as one step named after the arrangement (`itemsTitle`); Undo puts each
-    /// back where it was. Annotations that are not objects of the page, such as ink strokes,
-    /// text marks and links, are left out, so a selection can be passed as it is.
+    /// among themselves, as one step named after the arrangement and what was arranged ("Bring
+    /// Items to Front", or "Bring Image to Front" for one picture); Undo puts each back where it
+    /// was. Annotations that are not objects of the page, such as ink strokes, text marks and
+    /// links, are left out, so a selection can be passed as it is.
     func arrange(_ annotations: [PDFAnnotation], on page: PDFPage, _ arrangement: PDFArrangement) throws {
         let objects = PDFPageManager.objectAnnotations(among: annotations, on: page)
         guard !objects.isEmpty, PDFPageManager.possibleArrangements(of: objects, on: page).contains(arrangement) else { return }
+        let pictureCount = objects.filter(PDFPageManager.isPicture).count
+        let stepName = arrangement.title(of: .naming(pictureCount: pictureCount, otherObjectCount: objects.count - pictureCount))
         let historyPage = historyPage(for: page)
         let formerPositions = objects.compactMap { object in PDFPageManager.stackingPosition(of: object, on: page) }
         // The annotations keep their names, kinds and rectangles through a change of order.
@@ -128,7 +138,7 @@ extension PDFSession {
             session.stackingOrderDidChange()
         }
         try arrange(in: self)
-        registerStep(named: arrangement.itemsTitle) { session in
+        registerStep(named: stepName) { session in
             let (pageIndex, references) = try references(in: session)
             try session.apply(.placeObjects(page: pageIndex, references, positions: formerPositions))
             session.stackingOrderDidChange()

@@ -221,6 +221,19 @@ protocol LassoCanvasContent: AnyObject {
     /// Places an image as a picture with its middle at a point of the drawing, at its own
     /// size where that fits, selected to be arranged, as one step of the history.
     func pastePicture(_ imageData: Data, centeredAt drawingPoint: CGPoint)
+    /// Brings the selected pictures forward or sends them back among the page's objects
+    /// together, keeping their order among themselves, as one step of the history.
+    func arrangeLassoPictures(_ identifiers: [String], _ arrangement: PDFArrangement)
+    /// The arrangements that would move some of the selected pictures, for dimming the others;
+    /// none where the pictures have no stacking order of their own.
+    func possibleLassoPictureArrangements(_ identifiers: [String]) -> Set<PDFArrangement>
+}
+
+/// A drawing's pictures have no stacking order to change: only a PDF page's objects do.
+extension LassoCanvasContent {
+    func arrangeLassoPictures(_ identifiers: [String], _ arrangement: PDFArrangement) {}
+
+    func possibleLassoPictureArrangements(_ identifiers: [String]) -> Set<PDFArrangement> { [] }
 }
 
 /// Pictures of an area of a page or a drawing, taken with the lasso: the page's own

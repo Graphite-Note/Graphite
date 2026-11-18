@@ -210,5 +210,10 @@ final class PDFStackingOrderSessionTests: XCTestCase {
                        ["Bring Item to Front", "Bring Item Forward", "Send Item Backward", "Send Item to Back"])
         XCTAssertEqual(PDFArrangement.menuArrangements.map(\.itemsTitle),
                        ["Bring Items to Front", "Bring Items Forward", "Send Items Backward", "Send Items to Back"])
+        // A selection is named for what is in it.
+        XCTAssertEqual(PDFArrangement.Objects.naming(pictureCount: 1, otherObjectCount: 0), .image)
+        XCTAssertEqual(PDFArrangement.Objects.naming(pictureCount: 0, otherObjectCount: 1), .item)
+        XCTAssertEqual(PDFArrangement.Objects.naming(pictureCount: 2, otherObjectCount: 0), .items)
+        XCTAssertEqual(PDFArrangement.Objects.naming(pictureCount: 1, otherObjectCount: 1), .items)
     }
 }
