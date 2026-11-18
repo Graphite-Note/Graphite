@@ -1,3 +1,14 @@
+/**
+ * File: PDFPaneHealth.swift
+ * -------------------------
+ * Layer: UI
+ * Description: Tells when a PDF stopped taking touches and puts right the states that cannot last: canvases not the
+ *              page's own, gestures under way or left finished with no touch down, a page's scrolling left finished.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 18/11/2026
+ */
 import Foundation
 import CoreGraphics
 
@@ -427,7 +438,7 @@ final class PDFPaneHealthMonitor {
         DiagnosticContext.set(String(format: "%.0f x %.0f", pdfView.window?.bounds.width ?? 0, pdfView.window?.bounds.height ?? 0), for: "window")
         DiagnosticContext.set(String(format: "PDF, %@, zoom %.2f, %d pages", coordinator.isWriting ? "writing" : "reading",
                                      pdfView.scaleFactor, coordinator.session.pageCount), for: "document")
-        var repairs = coordinator.repairCanvases()
+        var repairs = coordinator.repairCanvases(touchIsDown: observer.hasTouchDown)
         switch repairScrollingLeftFinished(in: pdfView) {
         case .leave: break
         case .resetRecognizers: repairs.append("Reset the recognizers left finished after their gesture, the page's scrolling among them")
@@ -521,6 +532,11 @@ final class PDFTouchSequenceObserver: UIGestureRecognizer {
     var sequenceMoved: (([UITouch]) -> Void)?
     var sequenceEnded: (() -> Void)?
     private var activeTouches = Set<UITouch>()
+
+    /// Whether a touch the window delivered is still down, in the window.
+    var hasTouchDown: Bool {
+        activeTouches.contains { touch in touch.phase != .ended && touch.phase != .cancelled && touch.window != nil }
+    }
 
     init() {
         super.init(target: nil, action: nil)

@@ -1,3 +1,14 @@
+/**
+ * File: StrokeHold.swift
+ * ----------------------
+ * Layer: UI
+ * Description: Tells a hold at the end of a stroke, which turns the stroke into its shape: where the stroke came to
+ *              rest, the preference, and the recognizer that follows the stroke's touch on a canvas.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 18/11/2026
+ */
 import Foundation
 import CoreGraphics
 
@@ -103,13 +114,13 @@ final class StrokeHoldRecognizer: UIGestureRecognizer {
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let trackedTouch, touches.contains(trackedTouch) else { return }
-        endStroke(wasCancelled: false)
+        if let trackedTouch, touches.contains(trackedTouch) { endStroke(wasCancelled: false) }
+        failOnceEveryTouchHasLifted(event)
     }
 
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent) {
-        guard let trackedTouch, touches.contains(trackedTouch) else { return }
-        endStroke(wasCancelled: true)
+        if let trackedTouch, touches.contains(trackedTouch) { endStroke(wasCancelled: true) }
+        failOnceEveryTouchHasLifted(event)
     }
 
     override func reset() {
@@ -124,9 +135,10 @@ final class StrokeHoldRecognizer: UIGestureRecognizer {
         trackedTouch = nil
         rest = nil
         strokePoints = []
-        // It stays possible rather than failing: a failed recognizer hears no more touches
+        // It stays possible while another touch is down: a failed recognizer hears no more touches
         // until every touch has lifted, and a hand resting on the page keeps one down while
-        // the Pencil draws the next stroke, which then could not be held into a shape.
+        // the Pencil draws the next stroke, which then could not be held into a shape. Once
+        // none is, it fails, so UIKit resets the canvas's recognizers (`failOnceEveryTouchHasLifted`).
         touchDidEnd(wasCancelled)
     }
 

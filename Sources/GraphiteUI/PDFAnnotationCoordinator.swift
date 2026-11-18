@@ -44,6 +44,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     var beginWritingWithPencil: (() -> Void)?
     private var pencilWhileReadingRecognizer: PencilTouchDownRecognizer?
     private weak var pdfView: GraphitePDFDisplayView?
+    /// Canvases whose drawing recognizer is left finished with no touch down (`CanvasLeftDrawingWatch`).
+    private var leftDrawingWatch = CanvasLeftDrawingWatch()
     /// Apple's floating palette, which this view's canvases follow.
     let toolPicker = PencilToolPalette.makeToolPicker()
     private lazy var paletteAccessoryItem = PencilToolPalette.makeAccessoryItem(
@@ -955,7 +957,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// canvas is the page's own, counted as shown, recording its changes, and taking touches
     /// while the PDF is written on. A canvas on screen that is not the page's own cannot be
     /// trusted with the page's ink; the view is built again instead.
-    func repairCanvases() -> [String] {
+    /// - Parameters:
+    ///   - touchIsDown: Whether a touch is down anywhere in the PDF's window.
+    ///   - now: The uptime clock's time.
+    func repairCanvases(touchIsDown: Bool = false, now: TimeInterval = PencilActivity.now) -> [String] {
         guard !isDetached, let pdfView else { return [] }
         var repairs: [String] = []
         for overlay in Self.overlays(in: pdfView) where overlay.window != nil {
@@ -985,6 +990,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             if canvas.resumeDrawingLeftOff(forLongerThan: PDFPaneHealthMonitor.stuckGestureSeconds) {
                 repairs.append("Page \(pageIndex + 1)'s canvas had drawing switched off for a held shape whose touch never ended")
             }
+            if let repair = repairLeftDrawing(canvas, pageIndex: pageIndex, touchIsDown: touchIsDown, now: now) { repairs.append(repair) }
             if canvas.heldStoredInk != nil { applyHeldStoredInk(on: canvas) }
             if input.isEnabled, !canvas.isUserInteractionEnabled || canvas.isHidden {
                 repairs.append("Page \(pageIndex + 1)'s canvas took no touches while writing")
@@ -992,7 +998,15 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             }
             if needsConfiguring { configure(canvas) }
         }
+        leftDrawingWatch.keepOnly(Self.overlays(in: pdfView).map(\.canvas))
         return repairs
+    }
+
+    /// Resets a canvas left drawing a stroke whose touch has lifted (`CanvasLeftDrawingWatch`), and says so.
+    private func repairLeftDrawing(_ canvas: PDFPageCanvasView, pageIndex: Int, touchIsDown: Bool, now: TimeInterval) -> String? {
+        let stuckSeconds = PDFPaneHealthMonitor.stuckGestureSeconds
+        guard leftDrawingWatch.resetIfLeftDrawing(canvas, forLongerThan: stuckSeconds, touchIsDown: touchIsDown, now: now) else { return nil }
+        return "Page \(pageIndex + 1)'s canvas was left drawing a stroke whose touch had lifted; its recognizers were reset"
     }
 
     /// Each canvas on screen or kept, for a diagnostic record.
