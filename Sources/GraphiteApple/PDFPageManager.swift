@@ -5,8 +5,8 @@
  * Description: The edits of a PDF (`PDFEdit`) and how each is applied to a document.
  *
  * Authors: Bahey Shalash
- * Version: 0.18
- * Date: 16/11/2026
+ * Version: 0.19
+ * Date: 18/11/2026
  */
 import Foundation
 import PDFKit
@@ -197,8 +197,7 @@ public enum PDFPageManager {
                 document.insert(importedPage, at: insertionIndex + pageIndex)
             }
         case .duplicate(let pageIndex):
-            guard let duplicate = try page(at: pageIndex).copy() as? PDFPage else { throw GraphiteError.invalidFile("Cannot duplicate page.") }
-            document.insert(duplicate, at: pageIndex + 1)
+            try duplicate(try page(at: pageIndex), at: pageIndex, in: document)
         case .delete(let indices):
             let uniqueIndices = Set(indices)
             guard uniqueIndices.count < document.pageCount else { throw GraphiteError.invalidFile("A notebook must retain at least one page.") }
@@ -417,6 +416,11 @@ public enum PDFPageManager {
         }
     }
 
+    /// Graphite's keys of an annotation, and the standard ones PDFKit keeps without reading.
+    static let graphiteAnnotationKeys = [groupKey, drawingKey, strokeNamesKey, inkMultipliesKey, annotationNameKey, pictureKey, turnedPictureKey,
+                                         pictureTurnsKey, pictureRotationKey, pictureWidthKey, pictureHeightKey, textBoxRecordKey, textBoxRichTextKey,
+                                         textBoxLinkOwnerKey, defaultStyleKey, rotateKey]
+
     /// When a write also rewrites the page tree, PDFKit drops keys it does not know from
     /// annotations it read from the file, unless they were set again since. Setting
     /// Graphite's keys again keeps stroke data, stroke names and ink groups.
@@ -425,12 +429,9 @@ public enum PDFPageManager {
     /// in `annotationNameKey`; another application's named markup gets the same backup
     /// here, so edits recorded against its name still find it in the written file.
     public static func preserveGraphiteKeysThroughPageTreeRewrite(in document: PDFDocument) {
-        let graphiteKeys = [groupKey, drawingKey, strokeNamesKey, annotationNameKey, pictureKey, turnedPictureKey, pictureTurnsKey,
-                            pictureRotationKey, pictureWidthKey, pictureHeightKey, textBoxRecordKey, textBoxRichTextKey, textBoxLinkOwnerKey,
-                            defaultStyleKey, rotateKey]
         for pageIndex in 0..<document.pageCount {
             for annotation in document.page(at: pageIndex)?.annotations ?? [] {
-                for key in graphiteKeys {
+                for key in graphiteAnnotationKeys {
                     if let storedValue = annotation.value(forAnnotationKey: key) { annotation.setValue(storedValue, forAnnotationKey: key) }
                 }
                 if annotation.value(forAnnotationKey: annotationNameKey) == nil,

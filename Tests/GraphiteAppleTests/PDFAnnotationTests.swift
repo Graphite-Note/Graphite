@@ -1,3 +1,14 @@
+/**
+ * File: PDFAnnotationTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: PDF annotation editing: incremental ink, text markup, bookmarks, the save path, and pages duplicated
+ *              or exported with their ink.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 18/11/2026
+ */
 import XCTest
 import PDFKit
 import CoreGraphics
@@ -8,6 +19,7 @@ import UIKit
 import AppKit
 #endif
 import GraphiteCore
+import GraphiteTestSupport
 @testable import GraphiteApple
 
 /// PDF annotation editing: incremental ink, text markup, bookmarks, and the save path.
@@ -386,6 +398,33 @@ final class PDFAnnotationTests: XCTestCase {
         XCTAssertEqual(inkPage.annotations.first { annotation in annotation.type == "Underline" }?.persistentName, "H")
         let image = inkPage.thumbnail(of: CGSize(width: 595.28, height: 841.89), for: .cropBox)
         XCTAssertTrue(try InteroperabilityTests.hasDarkPixel(in: image, pdfPoint: CGPoint(x: 250, y: 408), pageHeight: 841.89), "The outlined appearance survives.")
+    }
+
+    /// HUNT-370: a written page duplicated in a PDF read from a file, as every save replays its edits on, keeps its
+    /// strokes as Graphite's ink: their group, names and the page's re-editing record, as the page it copies.
+    func testADuplicatedWrittenPageKeepsItsStrokesAsGraphitesInkWhenSaved() async throws {
+        let location = try TemporaryVault.make(prefix: "PDFDuplicate", for: self).location(of: "Written.pdf")
+        let created = try await PDFFileService().create(documentData: PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank), pageCount: 1),
+                                                        at: location)
+        let strokes = ["A", "B", "C"].enumerated().map { index, name in
+            stroke(named: name, from: CGPoint(x: 100, y: 300 + Double(index) * 60), to: CGPoint(x: 400, y: 300 + Double(index) * 60))
+        }
+        let written = try await PDFFileService().save(url: location, revision: created, edits: [
+            .updateInk(PDFInkUpdate(pageIndex: 0, group: "ink", removal: .strokes([]), addedStrokes: strokes,
+                                    editableRecord: PDFEditableInkRecord(drawingData: Data([1]), strokeNames: ["A", "B", "C"]))),
+        ])
+        _ = try await PDFFileService().save(url: location, revision: written, edits: [.duplicate(page: 0)])
+
+        let saved = try XCTUnwrap(PDFDocument(url: location))
+        XCTAssertEqual(saved.pageCount, 2)
+        for pageIndex in 0..<2 {
+            let page = try XCTUnwrap(saved.page(at: pageIndex))
+            let ink = page.annotations.filter { annotation in annotation.type == "Ink" }
+            XCTAssertEqual(ink.compactMap { annotation in annotation.value(forAnnotationKey: PDFPageManager.groupKey) as? String }, ["ink", "ink", "ink"],
+                           "Page \(pageIndex + 1)'s strokes are Graphite's ink.")
+            XCTAssertEqual(inkNames(on: page), ["A", "B", "C"])
+            XCTAssertEqual(PDFInkGroups.editableGroup(on: page)?.record.strokeNames, ["A", "B", "C"], "Page \(pageIndex + 1) can be edited stroke by stroke.")
+        }
     }
 
     func testExportedPagesKeepOutlinedInkAndMarkup() async throws {
