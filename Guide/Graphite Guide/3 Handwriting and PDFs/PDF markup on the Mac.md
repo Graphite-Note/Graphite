@@ -9,6 +9,8 @@ On the Mac, a PDF has a row of markup tools, so you can mark up slides and paper
 
 Show the row with View › **Show Markup Toolbar**, or the **Show Markup Toolbar** button (a pencil in a circle) in the PDF's toolbar.
 
+![[Mac - The markup row.jpg|420]] ![[Mac - The markup row, dark.jpg|420]]
+
 | Tool | What it does |
 | --- | --- |
 | **Text Selection** | selects text; right-click it to mark it |
