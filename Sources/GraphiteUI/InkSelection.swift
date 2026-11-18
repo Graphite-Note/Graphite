@@ -3,11 +3,12 @@
  * ------------------------
  * Layer: UI
  * Description: Graphite's lasso on a canvas (`InkSelectionController`) and the palette's switch for
- *              Graphite's own tools; the lasso's geometry and rules are `InkLasso`.
+ *              Graphite's own tools; the lasso's geometry and rules are `InkLasso`, its selection's
+ *              floating toolbar `LassoSelectionToolbar`.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 17/11/2026
+ * Version: 0.17
+ * Date: 18/11/2026
  */
 import Foundation
 
@@ -106,7 +107,12 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     private lazy var loopRecognizer = UIPanGestureRecognizer(target: self, action: #selector(handleLoop(_:)))
     private lazy var tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
     private lazy var selectionTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleSelectionTap(_:)))
-    private lazy var selectionMenu = UIEditMenuInteraction(delegate: self)
+    /// The floating toolbar beside the selection (`LassoSelectionToolbar`), in place of an edit
+    /// menu, to which iOS adds Ask Siri.
+    private(set) lazy var selectionToolbar = LassoSelectionToolbar(canvas: canvas,
+                                                                   frameView: { [weak self] in self?.selectionView }) { [weak self] width in
+        self?.selectionToolbarCommands(availableWidth: width) ?? LassoToolbarCommands(items: [], moreMenuElements: [])
+    }
     /// The menu of a tap beside the ink (Paste) and of a marked area.
     private lazy var canvasMenu = UIEditMenuInteraction(delegate: self)
     /// The loop's line, over a wider white halo, around a faint tint of the area.
@@ -169,7 +175,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     }
 
     /// What the canvas offers besides its ink: its pictures, and what lies under the ink.
-    fileprivate var content: LassoCanvasContent? { canvas as? LassoCanvasContent }
+    var content: LassoCanvasContent? { canvas as? LassoCanvasContent }
 
     private func installRecognizers() {
         guard loopRecognizer.view == nil else { return }
@@ -212,6 +218,8 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         guard canvas.drawingGestureRecognizer.allowedTouchTypes.contains(NSNumber(value: touch.type.rawValue)),
               !CanvasToolTouches.isHandResting(touch) else { return false }
         if let selectionView, let touchedView = touch.view, touchedView.isDescendant(of: selectionView) { return false }
+        // A touch on the selection's bar is the bar's: it neither ends the selection nor starts a loop.
+        if FloatingSelectionToolbar.contains(touch.view) { return false }
         if gestureRecognizer === loopRecognizer { touchDownLocation = drawingPoint(fromCanvas: touch.location(in: canvas)) }
         return true
     }
@@ -442,7 +450,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         guard hasSelection else { return clearSelection() }
         takeSelectionFromOtherCanvases()
         showSelectionFrame()
-        presentSelectionMenu()
+        selectionToolbar.present()
     }
 
     /// Marks an area the lasso enclosed that holds nothing selectable, and offers its menu.
@@ -490,6 +498,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         dragStart = nil
         selectionView?.removeFromSuperview()
         selectionView = nil
+        selectionToolbar.dismiss()
         removeArea()
         lassoedLoop = nil
         removeLoop()
@@ -531,9 +540,11 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         selection.dragPreviewInset = frameMargin
         selection.frame = frame(around: selectedStrokes, pictures: selectedPictures)
         selection.accessibilityLabel = selectionDescription
-        selection.additionalAccessibilityActions = accessibilityActions()
+        selection.additionalAccessibilityActions = toolbarAccessibilityActions()
         if selection.superview !== canvas { canvas.addSubview(selection) }
         shownScreenScale = screenPointsPerCanvasPoint
+        // A change (a colour, a move, Straighten) may change the bar's commands and place.
+        selectionToolbar.refresh()
     }
 
     /// The canvas was zoomed or scrolled: the frame and a marked area are placed again, and
@@ -544,6 +555,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         if hasSelection, let selectionView {
             let expectedFrame = frame(around: selectedStrokes, pictures: selectedPictures)
             if abs(scale - shownScreenScale) > 0.001 || selectionView.frame != expectedFrame { showSelectionFrame() }
+            selectionToolbar.follow()
         }
         if let lassoedLoop, loopLayer.superlayer != nil {
             if abs(scale - shownScreenScale) > 0.001 || abs(zoomScale - shownLoopZoomScale) > 0.0001 || lassoedLoop != loopInDrawing {
@@ -568,7 +580,6 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         selection.frameChangeDidEnd = { [weak self] frame in self?.selectionDragDidEnd(at: frame) }
         selection.frameChangeWasCancelled = { [weak self] in self?.selectionDragWasCancelled() }
         selection.addGestureRecognizer(selectionTapRecognizer)
-        selection.addInteraction(selectionMenu)
         // Dragging the selection must not scroll the page, or the drawing, with it.
         var ancestor: UIView? = canvas
         while let view = ancestor {
@@ -589,6 +600,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         let drawing = canvas.drawing
         let pictures = selectedPictures
         dragStart = (drawing, pictures, selectionView.frame)
+        selectionToolbar.suspend()
         selectionView.dragPreview = picture(of: selectedStrokes, pictures: pictures, in: selectionView.frame.insetBy(dx: frameMargin, dy: frameMargin))
         let selected = Set(selectedStrokeIndices)
         if !selected.isEmpty {
@@ -605,6 +617,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         moveSelection(in: dragStart.drawing, pictures: dragStart.pictures, from: dragStart.frame, to: frame)
         // A frame that gives the selection no size moves nothing: its strokes come back.
         if canvas.drawing.strokes.count != dragStart.drawing.strokes.count { canvas.showWithoutRecording(dragStart.drawing) }
+        if hasSelection { selectionToolbar.present() }
     }
 
     private func selectionDragWasCancelled() {
@@ -617,6 +630,7 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
             loopInDrawing = lassoedLoop
             showLoop(.aroundSelection)
         }
+        if hasSelection { selectionToolbar.present() }
     }
 
     /// Moves and resizes the selected strokes of a drawing so that the ink `frame` was
@@ -901,36 +915,30 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
     // MARK: Menus
 
     private enum MenuIdentifier {
-        static let selection = "selection"
         static let paste = "paste"
         static let area = "area"
     }
 
+    /// A tap on the selection shows its bar, or hides it.
     @objc private func handleSelectionTap(_ recognizer: UITapGestureRecognizer) {
-        if recognizer.state == .ended { presentSelectionMenu() }
+        if recognizer.state == .ended { selectionToolbar.toggle() }
     }
 
-    private func presentSelectionMenu() {
-        guard let selectionView, selectionView.window != nil else { return }
-        selectionMenu.presentEditMenu(with: UIEditMenuConfiguration(identifier: MenuIdentifier.selection as NSString,
-                                                                    sourcePoint: CGPoint(x: selectionView.bounds.midX, y: selectionView.bounds.minY)))
-    }
-
+    /// The canvas's own menus, the system's: Paste where a tap found no ink, and a marked area's.
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, menuFor configuration: UIEditMenuConfiguration, suggestedActions: [UIMenuElement]) -> UIMenu? {
-        if interaction === canvasMenu {
-            if (configuration.identifier as? String) == MenuIdentifier.area { return UIMenu(children: areaMenuElements()) }
-            return UIMenu(children: [UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
-                guard let self else { return }
-                self.paste(at: self.pastePoint)
-            }])
-        }
-        return UIMenu(children: selectionMenuElements())
+        if (configuration.identifier as? String) == MenuIdentifier.area { return UIMenu(children: areaMenuElements()) }
+        return UIMenu(children: [UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
+            guard let self else { return }
+            self.paste(at: self.pastePoint)
+        }])
     }
 
     /// The menu of an area that holds nothing selectable: its picture, and what the pasteboard
     /// holds placed in its middle.
     func areaMenuElements() -> [UIMenuElement] {
-        var elements: [UIMenuElement] = [takeScreenshotAction]
+        var elements: [UIMenuElement] = [UIAction(title: "Take Screenshot", image: UIImage(systemName: "camera.viewfinder")) { [weak self] _ in
+            self?.takeScreenshot()
+        }]
         if LassoPasteboard.hasContent, let lassoedLoop {
             let bounds = InkLasso.bounds(of: lassoedLoop)
             elements.append(UIAction(title: "Paste", image: UIImage(systemName: "doc.on.clipboard")) { [weak self] _ in
@@ -942,77 +950,11 @@ final class InkSelectionController: NSObject, UIGestureRecognizerDelegate, @prec
         return elements
     }
 
-    private var takeScreenshotAction: UIAction {
-        UIAction(title: "Take Screenshot", image: UIImage(systemName: "camera.viewfinder")) { [weak self] _ in self?.takeScreenshot() }
-    }
-
-    /// Take Screenshot first, then the colors of Settings › Colors and Delete, so the compact bar
-    /// shows them before iOS's own Ask Siri, which it adds after the menu's items (Docs/Lasso-todo.md
-    /// section 3); then Copy, Cut, Duplicate, and last Straighten (for a line of writing that runs
-    /// uphill or downhill) and Smooth. With pictures selected, Cut and Duplicate are not offered:
-    /// Graphite pastes ink, not pictures, and Copy puts a picture of the whole selection on the pasteboard.
-    func selectionMenuElements(palette: [PaletteColor] = GraphitePreferences.storedColorPalette()) -> [UIMenuElement] {
-        let hasInk = !selectedStrokeIndices.isEmpty
-        let hasPictures = !selectedPictureIdentifiers.isEmpty
-        var elements: [UIMenuElement] = [takeScreenshotAction]
-        if hasInk {
-            let colors = [PaletteColor(name: "black", hex: PencilInk.pen.defaultColorHex)] + palette
-            let swatches = colors.compactMap { favorite -> UIAction? in
-                guard let color = UIColor(graphiteHex: favorite.hex) else { return nil }
-                let swatch = UIImage(systemName: "circle.fill")?.withTintColor(color, renderingMode: .alwaysOriginal)
-                return UIAction(title: favorite.name, image: swatch) { [weak self] _ in self?.recolorSelection(color) }
-            }
-            elements.append(UIMenu(title: "Color", image: UIImage(systemName: "paintpalette"), options: .displayAsPalette, children: swatches))
-        }
-        elements.append(UIAction(title: "Delete", image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self] _ in self?.deleteSelection() })
-        elements.append(UIAction(title: "Copy", image: UIImage(systemName: "doc.on.doc")) { [weak self] _ in self?.copySelection() })
-        if !hasPictures {
-            elements.append(UIAction(title: "Cut", image: UIImage(systemName: "scissors")) { [weak self] _ in self?.cutSelection() })
-            elements.append(UIAction(title: "Duplicate", image: UIImage(systemName: "plus.square.on.square")) { [weak self] _ in self?.duplicateSelection() })
-        }
-        if hasInk, selectionSlant != nil {
-            elements.append(UIAction(title: "Straighten", image: UIImage(systemName: "level")) { [weak self] _ in self?.straightenSelection() })
-        }
-        if hasInk {
-            elements.append(UIAction(title: "Smooth", image: UIImage(systemName: "scribble.variable")) { [weak self] _ in self?.smoothSelection() })
-        }
-        return elements
-    }
-
-    /// The menu's actions for VoiceOver, on the frame itself, where the menu is out of reach
-    /// once VoiceOver moves on.
-    private func accessibilityActions() -> [UIAccessibilityCustomAction] {
-        selectionMenuElements().compactMap { element -> UIAccessibilityCustomAction? in
-            guard let action = element as? UIAction else { return nil }
-            return UIAccessibilityCustomAction(name: action.title) { [weak self] _ in
-                guard let self else { return false }
-                self.performMenuAction(named: action.title)
-                return true
-            }
-        }
-    }
-
-    private func performMenuAction(named title: String) {
-        switch title {
-        case "Cut": cutSelection()
-        case "Copy": copySelection()
-        case "Duplicate": duplicateSelection()
-        case "Straighten": straightenSelection()
-        case "Smooth": smoothSelection()
-        case "Take Screenshot": takeScreenshot()
-        case "Delete": deleteSelection()
-        default: break
-        }
-    }
-
     func editMenuInteraction(_ interaction: UIEditMenuInteraction, targetRectFor configuration: UIEditMenuConfiguration) -> CGRect {
-        if interaction === canvasMenu {
-            if (configuration.identifier as? String) == MenuIdentifier.area, let lassoedLoop {
-                return canvasRectangle(fromDrawing: InkLasso.bounds(of: lassoedLoop))
-            }
-            return CGRect(origin: pastePoint, size: .zero)
+        if (configuration.identifier as? String) == MenuIdentifier.area, let lassoedLoop {
+            return canvasRectangle(fromDrawing: InkLasso.bounds(of: lassoedLoop))
         }
-        return selectionView?.bounds ?? .null
+        return CGRect(origin: pastePoint, size: .zero)
     }
 }
 

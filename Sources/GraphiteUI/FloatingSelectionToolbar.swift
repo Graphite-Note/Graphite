@@ -7,8 +7,8 @@
  *              below the selection, or above it where there is no room, inside what its host view shows.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 17/11/2026
+ * Version: 0.2
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -205,7 +205,9 @@ final class FloatingSelectionToolbar: UIView {
     private static func makeButton(title: String, systemImageName: String, symbolColor: UIColor?, isDestructive: Bool) -> UIButton {
         var configuration = UIButton.Configuration.plain()
         let symbol = UIImage(systemName: systemImageName, withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .medium))
-        configuration.image = symbolColor.flatMap { color in symbol?.withTintColor(color, renderingMode: .alwaysOriginal) } ?? symbol
+        configuration.image = symbolColor.flatMap { color in
+            swatchImage(of: color) ?? symbol?.withTintColor(color, renderingMode: .alwaysOriginal)
+        } ?? symbol
         configuration.baseForegroundColor = isDestructive ? .systemRed : .white
         configuration.contentInsets = .zero
         let button = UIButton(configuration: configuration)
@@ -218,6 +220,22 @@ final class FloatingSelectionToolbar: UIView {
         NSLayoutConstraint.activate([button.widthAnchor.constraint(equalToConstant: buttonWidth),
                                      button.heightAnchor.constraint(equalToConstant: barHeight)])
         return button
+    }
+
+    /// A colour swatch as a dot; a dark one gets a light ring, or black would vanish on the dark bar.
+    static func swatchImage(of color: UIColor) -> UIImage? {
+        var white: CGFloat = 0, alpha: CGFloat = 0
+        let shown = color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        guard shown.getWhite(&white, alpha: &alpha), white < 0.3 else { return nil }
+        let side: CGFloat = 20, ringWidth: CGFloat = 1.5
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            let dot = UIBezierPath(ovalIn: CGRect(x: 0, y: 0, width: side, height: side).insetBy(dx: ringWidth / 2, dy: ringWidth / 2))
+            color.setFill()
+            dot.fill()
+            UIColor.white.withAlphaComponent(0.7).setStroke()
+            dot.lineWidth = ringWidth
+            dot.stroke()
+        }.withRenderingMode(.alwaysOriginal)
     }
 
     private static func makeDivider() -> UIView {

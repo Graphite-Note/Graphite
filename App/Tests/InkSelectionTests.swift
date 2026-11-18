@@ -6,8 +6,8 @@
  *              duplicating, copying and deleting what is selected.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
- * Date: 17/11/2026
+ * Version: 0.20
+ * Date: 18/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -88,12 +88,11 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertFalse(selection.selectStroke(at: CGPoint(x: 200, y: 400)))
         XCTAssertTrue(selection.selectedStrokeIndices.isEmpty)
 
-        // The menu offers the clipboard actions and the colors of Settings › Colors.
+        // The selection's bar offers Take Screenshot, black and the colors of Settings › Colors, the clipboard and Delete.
         selection.select([1])
-        let menu = selection.selectionMenuElements(palette: [PaletteColor(name: "red", hex: "#e93147")])
-        XCTAssertEqual(menu.compactMap { element in (element as? UIAction)?.title }, ["Take Screenshot", "Delete", "Copy", "Cut", "Duplicate", "Smooth"])
-        let colorMenu = try XCTUnwrap(menu.compactMap { element in element as? UIMenu }.first)
-        XCTAssertEqual(colorMenu.children.map(\.title), ["black", "red"])
+        let commands = selection.selectionToolbarCommands(palette: [PaletteColor(name: "red", hex: "#e93147")])
+        XCTAssertEqual(commands.items.filter { item in !item.isInMoreMenu }.map(\.title), ["Take Screenshot", "Black", "Red", "Cut", "Copy", "Duplicate", "Delete"])
+        XCTAssertEqual(commands.items.filter(\.isInMoreMenu).map(\.title), ["Smooth"])
 
         // Choosing a tool again ends selecting, and the selection with it.
         selection.select([0])
@@ -487,7 +486,7 @@ final class InkSelectionTests: XCTestCase {
         selection.select(Array(letters.indices))
         let slant = try XCTUnwrap(selection.selectionSlant)
         XCTAssertEqual(slant, 12 * .pi / 180, accuracy: 0.03)
-        XCTAssertTrue(selection.selectionMenuElements().contains { element in element.title == "Straighten" })
+        XCTAssertTrue(selection.selectionToolbarCommands().items.contains { item in item.title == "Straighten" && item.isInMoreMenu })
         let middleBefore = selection.selectedStrokes.reduce(CGRect.null) { bounds, stroke in bounds.union(stroke.renderBounds) }
 
         // Each change is recorded once the canvas reports it; the next waits for that.
@@ -498,7 +497,7 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertEqual(straightened.midX, middleBefore.midX, accuracy: 2, "Turned about its middle.")
         XCTAssertEqual(straightened.midY, middleBefore.midY, accuracy: 2)
         XCTAssertLessThan(straightened.height, middleBefore.height - 40, "The line runs level now.")
-        XCTAssertFalse(selection.selectionMenuElements().contains { element in element.title == "Straighten" })
+        XCTAssertFalse(selection.selectionToolbarCommands().items.contains { item in item.title == "Straighten" })
         endEvent(of: session.undoManager)
 
         // Smoothing keeps each stroke's ends and flattens its zigzag.
@@ -852,8 +851,9 @@ extension InkSelectionTests {
         selection.selectContents(enclosedBy: loop(around: picture.frame.insetBy(dx: -20, dy: -50)).map { point in canvasPoint(point, on: canvas) })
         XCTAssertEqual(selection.selectedStrokeIndices, [0])
         XCTAssertEqual(selection.selectedPictureIdentifiers, [picture.identifier])
-        XCTAssertEqual(selection.selectionMenuElements(palette: []).compactMap { element in (element as? UIAction)?.title },
-                       ["Take Screenshot", "Delete", "Copy", "Smooth"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
+        let titles = selection.selectionToolbarCommands(palette: []).items.map(\.title)
+        XCTAssertEqual(titles.filter { title in ["Take Screenshot", "Cut", "Copy", "Duplicate", "Delete", "Smooth"].contains(title) },
+                       ["Take Screenshot", "Copy", "Delete", "Smooth"], "Ink and pictures are copied as a picture; Cut and Duplicate would lose the pictures.")
         let frameView = try XCTUnwrap(descendants(of: canvas, matching: SelectionFrameView.self).first)
         XCTAssertEqual(frameView.accessibilityLabel, "Selected ink and images")
         XCTAssertTrue(frameView.accessibilityCustomActions?.contains { action in action.name == "Take Screenshot" } ?? false)

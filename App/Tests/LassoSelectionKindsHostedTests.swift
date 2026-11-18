@@ -2,12 +2,12 @@
  * File: LassoSelectionKindsHostedTests.swift
  * ------------------------------------------
  * Layer: Tests
- * Description: Graphite's lasso on a canvas follows the Lasso panel's "Included in Selection" switches, and the
- *              selection's menu starts with Take Screenshot, Color and Delete (Docs/Lasso-todo.md).
+ * Description: Graphite's lasso on a canvas follows the Lasso panel's "Included in Selection" switches
+ *              (Docs/Lasso-todo.md); the selection's bar is tested in LassoSelectionToolbarHostedTests.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -69,13 +69,5 @@ final class LassoSelectionKindsHostedTests: XCTestCase {
         XCTAssertEqual(controller.selectedStrokeIndices, [0])
     }
 
-    func testTheSelectionsMenuStartsWithTakeScreenshotColorAndDelete() throws {
-        // Owner, 2026-11-17: Color and Delete were behind the bar's ">", after iOS's Ask Siri.
-        let controller = try controller(showing: [horizontalStroke(y: 50)])
-        controller.select([0])
-        let titles = controller.selectionMenuElements(palette: []).map(\.title)
-        XCTAssertEqual(Array(titles.prefix(6)), ["Take Screenshot", "Color", "Delete", "Copy", "Cut", "Duplicate"])
-        XCTAssertEqual(titles.last, "Smooth")
-    }
 }
 #endif
