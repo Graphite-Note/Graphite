@@ -519,7 +519,7 @@ struct MarkdownPane: View {
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
         // Its icons take the tint of the items themselves: the column's accent, faint on the menu's
         // material in the dark, reached them past the bar's own (HUNT-280).
-        ToolbarOverflowMenu { moreMenuItems.tint(.primary) }
+        MoreToolbarMenu { moreMenuItems.tint(.primary) }
         #endif
     }
 

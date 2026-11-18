@@ -215,10 +215,12 @@ final class RenderedPassagePlayer {
     // Connecting and starting report failures as errors.
 
     private func connect(_ node: AVAudioNode, to destination: AVAudioNode, format: AVAudioFormat, in engine: AVAudioEngine) throws {
+        guard #available(macOS 27, iOS 27, *) else { engine.connect(node, to: destination, format: format); return }
         try engine.connectNode(node, to: destination, format: format)
     }
 
     private func startPlayer(_ player: AVAudioPlayerNode) throws {
+        guard #available(macOS 27, iOS 27, *) else { player.play(); return }
         try player.playAudio()
     }
 }

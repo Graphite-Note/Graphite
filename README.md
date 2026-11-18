@@ -133,7 +133,7 @@ Graphite is in beta on TestFlight as **Graphite Note**, for iPad, iPhone and Mac
 
 ## Building
 
-Requirements: Xcode 27 and the iOS 27 and macOS 27 SDKs.
+Requirements: Xcode 27 and the iOS 27 and macOS 27 SDKs. The app runs on iOS and iPadOS 26 and macOS 26 or later ([what 26 shows instead](Docs/OS-26-support-todo.md)).
 
 1. Open `Graphite.xcodeproj` and run the **Graphite** scheme on an iPad, an iPhone, a simulator or My Mac. Set your own development team under Signing & Capabilities.
 2. Run the package tests from the command line:

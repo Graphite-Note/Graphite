@@ -151,6 +151,13 @@ final class VideoRecording: @unchecked Sendable {
 
     private static func makePreviewOutput(showingIn renderer: AVSampleBufferVideoRenderer) -> PreviewOutput {
         let synchronizer = AVSampleBufferRenderSynchronizer()
+        guard #available(macOS 27, iOS 27, *) else {
+            synchronizer.addRenderer(renderer)
+            return PreviewOutput(synchronizer: synchronizer) { frame in
+                if renderer.requiresFlushToResumeDecoding { renderer.flush() }
+                renderer.enqueue(frame)
+            }
+        }
         let receiver = synchronizer.sampleBufferReceiver(adding: renderer)
         return PreviewOutput(synchronizer: synchronizer) { frame in
             // The frame is a copy nothing else holds, so handing it over unchecked is safe.

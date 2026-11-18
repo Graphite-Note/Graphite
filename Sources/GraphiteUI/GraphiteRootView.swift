@@ -478,7 +478,7 @@ struct GraphiteRootView: View {
     /// in the system's overflow menu (•••), the one such menu of the bar.
     @ToolbarContentBuilder private var windowMoreMenu: some ToolbarContent {
         #if os(iOS)
-        ToolbarOverflowMenu { WorkspaceMoreMenuItems().tint(.primary) }
+        MoreToolbarMenu { WorkspaceMoreMenuItems().tint(.primary) }
         #else
         ToolbarItem(placement: .primaryAction) {
             Menu("More", systemImage: "ellipsis") { WorkspaceMoreMenuItems() }
@@ -533,12 +533,12 @@ struct GraphiteRootView: View {
                 // A page with a magnifier: it finds a file by name, and the sidebar's field is the search of text.
                 Button("Quick Switcher", systemImage: "doc.text.magnifyingglass") { activePalette = .quickSwitcher }.tint(.primary)
             }
-            .visibilityPriority(.high)
+            .keptInViewWhenNarrow()
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
                 Button("New Note", systemImage: "square.and.pencil") { creation = CreationRequest(kind: .note) }.tint(.primary)
             }
-            .visibilityPriority(.high)
+            .keptInViewWhenNarrow()
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
                 Button(action: showTabOverview) {
@@ -547,7 +547,7 @@ struct GraphiteRootView: View {
                 .accessibilityValue(workspace.openTabCount == 1 ? "1 open" : "\(workspace.openTabCount) open")
                 .tint(.primary)
             }
-            .visibilityPriority(.high)
+            .keptInViewWhenNarrow()
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
                 Button("Command Palette", systemImage: "command") { activePalette = .commandPalette }.tint(.primary)

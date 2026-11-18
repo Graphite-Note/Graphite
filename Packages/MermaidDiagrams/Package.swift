@@ -16,7 +16,7 @@ import PackageDescription
 // Foundation, CoreGraphics and CoreText only: it knows no app, and reads and writes no file.
 let package = Package(
     name: "MermaidDiagrams",
-    platforms: [.iOS("27.0"), .macOS("27.0")],
+    platforms: [.iOS("26.0"), .macOS("26.0")],
     products: [
         .library(name: "MermaidDiagrams", targets: ["MermaidDiagrams"])
     ],

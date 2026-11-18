@@ -324,9 +324,7 @@ struct LibraryView: View {
                                                      minimumColumnWidthPoints: minimumColumnWidth, spacingPoints: Self.columnSpacingPoints,
                                                      isDividedByFold: true)
             } action: { columnCount in columnCountOverFold = columnCount }
-            // A drag that starts on a chosen tile carries every chosen tile.
-            .dragContainer(for: VaultItemTransfer.self, itemID: \.path) { draggedPaths in draggedPaths.map(draggedItem(forRawPath:)) }
-            .dragContainerSelection(selection.chosenPaths.map(\.rawValue))
+            .modifier(LibraryGridDragContainer(entries: entries, chosenRawPaths: selection.chosenPaths.map(\.rawValue)))
             .modifier(LibraryDropDestination(folder: library.folder, actions: dropActions, isTargeted: $isDropTargeted))
             .modifier(LibraryDropRing(isTargeted: isDropTargeted))
         }
@@ -351,11 +349,6 @@ struct LibraryView: View {
     }
 
     /// A dragged item as other apps take it too: its path for Graphite, its file for the rest.
-    private func draggedItem(forRawPath rawPath: String) -> VaultItemTransfer {
-        let location = (try? VaultPath(rawPath)).flatMap(entries.fileLocation) // A name no vault path can hold has no file to give.
-        return VaultItemTransfer(path: rawPath, fileLocation: location, vaultRoot: entries.fileLocation(.root))
-    }
-
     private func open(_ entry: VaultEntry) {
         if entry.isDirectory {
             Task { await library.show(entry.path) }

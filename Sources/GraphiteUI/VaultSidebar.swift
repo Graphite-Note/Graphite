@@ -232,7 +232,7 @@ struct VaultSidebar: View {
                 // An item of its own, kept in view when the narrow sidebar folds New and the
                 // list's options into one menu.
                 ToolbarItem(placement: .primaryAction) { graphButton }
-                    .visibilityPriority(.high)
+                    .keptInViewWhenNarrow()
             }
             if workspace.store != nil {
                 ToolbarItemGroup(placement: .primaryAction) {
