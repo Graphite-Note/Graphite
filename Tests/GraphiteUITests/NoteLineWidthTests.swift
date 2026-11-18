@@ -7,8 +7,8 @@
  *              the Format menu's Line Width switch changes Readable Line Length.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 18/11/2026
  */
 
 #if os(macOS)
@@ -120,6 +120,13 @@ final class NoteLineWidthTests: XCTestCase {
 
     /// The properties, the embedded base, the base code block, the table and the picture row.
     private static let livePreviewBlockCount = 5
+    /// The table's place among them: its view reaches a grip's size into either side margin, its
+    /// content as wide as the column, as Obsidian's table widget (`RenderedBlockTableRoom.beside`).
+    private static let tableBlockPosition = 3
+
+    private static func roomBeside(blockAt position: Int) -> CGFloat {
+        position == tableBlockPosition ? TableGripsGeometry.thickness : 0
+    }
 
     func testLivePreviewPutsTheTitleThePropertiesAndEveryBlockBetweenTheTextsEdgesAtEitherLineWidth() async throws {
         let (coordinator, textView) = try await makeEditor(vault: try makeVault())
@@ -132,7 +139,9 @@ final class NoteLineWidthTests: XCTestCase {
                 : textView.frame.width - 2 * (MarkdownMacTextView.minimumHorizontalInset + padding)
             let isPlaced = {
                 let views = self.blockViews(in: textView)
-                return views.count == Self.livePreviewBlockCount && views.allSatisfy { view in abs(view.frame.width - expectedWidth) < 0.5 }
+                return views.count == Self.livePreviewBlockCount && views.enumerated().allSatisfy { position, view in
+                    abs(view.frame.width - (expectedWidth + 2 * Self.roomBeside(blockAt: position))) < 0.5
+                }
             }
             try? await waitUntil("\(lineWidth): every block's view at the column's width") {
                 self.layOutWindows()
@@ -151,8 +160,9 @@ final class NoteLineWidthTests: XCTestCase {
             XCTAssertEqual(title.frame.minX, columnMinX, accuracy: 0.5, "\(lineWidth): the title starts where the text does")
             XCTAssertEqual(title.frame.maxX, columnMaxX, accuracy: 0.5, "\(lineWidth): the title ends where the text does")
             for (position, view) in blockViews(in: textView).enumerated() {
-                XCTAssertEqual(view.frame.minX, columnMinX, accuracy: 0.5, "\(lineWidth): block \(position) starts where the text does")
-                XCTAssertEqual(view.frame.maxX, columnMaxX, accuracy: 0.5, "\(lineWidth): block \(position) ends where the text does")
+                let room = Self.roomBeside(blockAt: position)
+                XCTAssertEqual(view.frame.minX + room, columnMinX, accuracy: 0.5, "\(lineWidth): block \(position)'s content starts where the text does")
+                XCTAssertEqual(view.frame.maxX - room, columnMaxX, accuracy: 0.5, "\(lineWidth): block \(position)'s content ends where the text does")
             }
         }
     }
