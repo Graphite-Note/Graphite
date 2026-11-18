@@ -2,11 +2,12 @@
  * File: FolderAccess.swift
  * ------------------------
  * Layer: Apple
- * Description: Finds and opens vault folders, and watches a vault for changes other apps and windows make.
+ * Description: Finds and opens vault folders, and watches a vault for changes other apps and windows make, telling
+ *              Graphite's own writes apart when macOS reports them too.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.5
+ * Date: 18/11/2026
  */
 
 import Foundation
@@ -143,20 +144,36 @@ public enum VaultLocator {
 /// `presentedItemURL` from any thread. The vault's current URL is the only mutable state,
 /// and it is guarded by a mutex; the callbacks and the queue never change. No document
 /// state is accessed here. Consumers hop to their actor.
-public final class VaultMonitor: NSObject, NSFilePresenter, @unchecked Sendable {
+public final class VaultMonitor: NSObject, NSFilePresenter, OwnWriteRecording, @unchecked Sendable {
     public var presentedItemURL: URL? { vaultURL.withLock { url in url } }
     public let presentedItemOperationQueue: OperationQueue
     private let vaultURL: Mutex<URL>
     private let onChange: @Sendable (URL?) -> Void
     private let onVaultMove: (@Sendable (URL?) -> Void)?
     private let onItemMove: (@Sendable (URL, URL) -> Void)?
+    /// What Graphite's own writes left, by the file's path, kept for `ownWriteMemory`.
+    private let ownWrites = Mutex<[String: OwnWrite]>([:])
+    private let currentTime: @Sendable () -> ContinuousClock.Instant
+
+    private struct OwnWrite {
+        let fingerprint: FileWriteFingerprint
+        let recordedTime: ContinuousClock.Instant
+    }
+
+    /// How long a write is remembered. macOS's report of a write comes about a second after it
+    /// (HUNT-368), later under load; a write by another app afterwards changes the file and is
+    /// reported whatever this is.
+    static let ownWriteMemory: Duration = .seconds(30)
     /// `onChange` receives changed items inside the vault. `onVaultMove` receives the vault
     /// folder's new URL when it is moved or renamed, or nil when it is deleted; changes
     /// inside it keep being reported at its new place. `onItemMove` receives an item's old
     /// and new URLs when another app or window moved it, besides both being changes.
+    /// `currentTime` dates Graphite's own writes, for `ownWriteMemory`.
     public init(root: URL, onChange: @escaping @Sendable (URL?) -> Void, onVaultMove: (@Sendable (URL?) -> Void)? = nil,
-                onItemMove: (@Sendable (URL, URL) -> Void)? = nil) {
+                onItemMove: (@Sendable (URL, URL) -> Void)? = nil,
+                currentTime: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock().now }) {
         vaultURL = Mutex(root)
+        self.currentTime = currentTime
         self.onChange = onChange
         self.onVaultMove = onVaultMove
         self.onItemMove = onItemMove
@@ -196,9 +213,29 @@ public final class VaultMonitor: NSObject, NSFilePresenter, @unchecked Sendable 
     public func presentedSubitem(at url: URL, didResolve version: NSFileVersion) { report(url) }
 
     private func report(_ url: URL) {
-        guard !Self.isGraphiteStagingFile(url) else { return }
+        guard !Self.isGraphiteStagingFile(url), !isOwnWrite(url) else { return }
         onChange(url)
     }
+
+    public func recordOwnWrite(at url: URL) {
+        guard let fingerprint = FileWriteFingerprint.read(url) else { return }
+        let now = currentTime()
+        ownWrites.withLock { writes in
+            writes = writes.filter { _, write in now - write.recordedTime < Self.ownWriteMemory }
+            writes[Self.recordKey(url)] = OwnWrite(fingerprint: fingerprint, recordedTime: now)
+        }
+    }
+
+    /// Whether the file at `url` is as Graphite's own recent write left it. The record stays, as
+    /// macOS may report one write more than once.
+    private func isOwnWrite(_ url: URL) -> Bool {
+        guard let write = ownWrites.withLock({ writes in writes[Self.recordKey(url)] }),
+              currentTime() - write.recordedTime < Self.ownWriteMemory else { return false }
+        return FileWriteFingerprint.read(url) == write.fingerprint
+    }
+
+    /// The path a record is kept by: macOS may report `/private/var/…` for a write made at `/var/…`.
+    private static func recordKey(_ url: URL) -> String { url.resolvingSymlinksInPath().standardizedFileURL.path }
 
     /// Graphite's atomic writes stage content in a hidden `.<UUID>.tmp` file next to the
     /// destination (`AtomicFileWriter.replace`). That staging is not coordinated, and on

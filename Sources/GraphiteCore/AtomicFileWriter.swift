@@ -2,11 +2,12 @@
  * File: AtomicFileWriter.swift
  * ----------------------------
  * Layer: Core
- * Description: File revisions, and coordinated reads and whole-or-nothing writes of the person's files.
+ * Description: File revisions, and coordinated reads and whole-or-nothing writes of the person's files, each write
+ *              recorded on Graphite's own presenter so macOS's report of it is not taken for another app's change.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 17/11/2026
+ * Version: 0.5
+ * Date: 18/11/2026
  */
 
 import Foundation
@@ -38,6 +39,33 @@ public struct FileSnapshot: Sendable {
 
 public enum WriteExpectation: Sendable { case absent, revision(FileRevision) }
 
+/// What a write left at a file, read from its metadata without its contents: the file's
+/// identifier, size and modification time. Another app's write changes at least one of them;
+/// a replacement gives the file a new identifier.
+public struct FileWriteFingerprint: Equatable, Sendable {
+    let deviceIdentifier: Int64
+    let fileIdentifier: UInt64
+    let size: Int64
+    let modificationSeconds: Int
+    let modificationNanoseconds: Int
+
+    /// The fingerprint of the file at `url` as it is now, or nil when nothing is there.
+    public static func read(_ url: URL) -> FileWriteFingerprint? {
+        var status = stat()
+        guard stat(url.path, &status) == 0 else { return nil }
+        return FileWriteFingerprint(deviceIdentifier: Int64(status.st_dev), fileIdentifier: UInt64(status.st_ino), size: Int64(status.st_size),
+                                    modificationSeconds: Int(status.st_mtimespec.tv_sec), modificationNanoseconds: Int(status.st_mtimespec.tv_nsec))
+    }
+}
+
+/// A presenter told of each write made through a coordinator that names it. macOS does not
+/// reliably keep a presenter's own coordinated writes from it: about a second later it may
+/// report them as changes all the same (HUNT-368), so the presenter keeps what each write
+/// left and lets a report go when the file still matches it.
+public protocol OwnWriteRecording: AnyObject, Sendable {
+    func recordOwnWrite(at url: URL)
+}
+
 /// All synchronous work belongs on a worker actor, never the main actor.
 /// Revision comparison and replacement share one coordinated write accessor.
 public struct AtomicFileWriter: Sendable {
@@ -50,6 +78,11 @@ public struct AtomicFileWriter: Sendable {
     }
 
     public func makeCoordinator() -> NSFileCoordinator { NSFileCoordinator(filePresenter: filePresenter) }
+
+    /// Tells Graphite's presenter what a write coordinated with it left at `location`.
+    private func recordOwnWrite(at location: URL) {
+        (filePresenter as? any OwnWriteRecording)?.recordOwnWrite(at: location)
+    }
 
     /// Gives the file at `location` these dates. Importers mark each imported note with its source's
     /// time, and on importing again tell a note edited since (a later date) from one nothing has
@@ -65,6 +98,7 @@ public struct AtomicFileWriter: Sendable {
         makeCoordinator().coordinate(writingItemAt: location, options: .contentIndependentMetadataOnly, error: &coordinationError) { coordinatedLocation in
             do {
                 try FileManager.default.setAttributes(attributes, ofItemAtPath: coordinatedLocation.path)
+                recordOwnWrite(at: coordinatedLocation)
             } catch {
                 settingError = error
             }
@@ -125,6 +159,7 @@ public struct AtomicFileWriter: Sendable {
                     try FileManager.default.moveItem(at: staging, to: destination)
                 }
                 Self.flushToPermanentStorage(directoryOf: destination)
+                recordOwnWrite(at: destination)
             }
         }
         if let coordinationError { throw coordinationError }
@@ -185,7 +220,10 @@ public extension AtomicFileWriter {
         var coordinationError: NSError?
         var creationResult: Result<Void, Error>?
         makeCoordinator().coordinate(writingItemAt: url, options: [], error: &coordinationError) { location in
-            creationResult = Result { try FileManager.default.createDirectory(at: location, withIntermediateDirectories: true) }
+            creationResult = Result {
+                try FileManager.default.createDirectory(at: location, withIntermediateDirectories: true)
+                recordOwnWrite(at: location)
+            }
         }
         if let coordinationError { throw coordinationError }
         guard let creationResult else { throw GraphiteError.unavailable("The file provider did not allow creating the folder.") }
