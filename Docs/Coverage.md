@@ -10,7 +10,7 @@ Last updated: 2026-11-18.
 
 - **Hosted tests, iPad Pro 11-inch (M5) simulator, iOS 27.2:** `PDFTextBoxEndTypingHostedTests` (3: Done, the pen on the bar, Done with nothing typed), which hung before the fix and pass with it: the main thread comes back, the text is kept on the page and in the saved file, and a second box starts and ends. `PDFStackingOrderHostedTests` passes; `PDFTextBoxesTests`' three fail at choosing the palette's text tool, as on main locally.
 - **Checked by hand (2026-11-18):** in the app built from e7378760 on the same simulator, the fixed bar's text box tool, a tap on the page, text typed, then the bar's Done: the box keeps its text, the keyboard goes, the app stays at under 1 % CPU.
-- **Not established:** the commit that brought it in (the freeze is there on c97e8c81 of 2026-11-10, too); the owner's iPad.
+- **Not established:** the commit that brought it in (present since at least c97e8c81 of 2026-11-10; not looked for further); the owner's iPad.
 
 ## Several PDF objects arranged together, and the menus' names: 2026-11-17
 
