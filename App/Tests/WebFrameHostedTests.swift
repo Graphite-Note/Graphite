@@ -8,8 +8,8 @@
  *              edited tag, with screenshots.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 17/11/2026
  */
 
 #if os(iOS)
@@ -116,6 +116,63 @@ final class WebFrameHostedTests: XCTestCase {
         record.name = "Memory with ten frames"
         record.lifetime = .keepAlways
         add(record)
+    }
+
+    /// Section 6, offline: ten frames whose site answers nothing each say so as the note reaches them, and the note opens
+    /// and scrolls from top to bottom about as fast as the same note with text in place of the frames.
+    func testFramesThatCannotLoadEachSaySoAndTheNoteScrollsAsFastAsWithoutThem() async throws {
+        let closedServer = try await LoopbackWebServer(pages: [:])
+        closedServer.stop()
+        func note(withFrames: Bool) -> String {
+            (1...10).map { number in
+                let frame = withFrames ? "<iframe src=\"\(closedServer.address("/frame\(number)").absoluteString)\" width=\"100%\" height=\"400\"></iframe>"
+                    : String(repeating: "A line of text standing where the frame was.\n\n", count: 12)
+                return "## Part \(number)\n\n\(frame)\n\nAfter part \(number)."
+            }.joined(separator: "\n\n")
+        }
+        try Self.setAccessibilityRuntimeEnabled(true)
+        defer { try? Self.setAccessibilityRuntimeEnabled(false) }
+        var timings: [String] = []
+        var messagesSeen: [Int] = []
+        for withFrames in [false, true] {
+            let opening = ContinuousClock.now
+            let controller = try await host(note: note(withFrames: withFrames), viewMode: .reading)
+            let scrollView = try await scrollableNote(in: controller)
+            let opened = ContinuousClock.now - opening
+            let scrolling = ContinuousClock.now
+            var offset: CGFloat = 0
+            while offset < scrollView.contentSize.height - scrollView.bounds.height {
+                offset = min(offset + scrollView.bounds.height / 2, scrollView.contentSize.height - scrollView.bounds.height)
+                scrollView.setContentOffset(CGPoint(x: 0, y: offset), animated: false)
+                try await settle(controller)
+                if withFrames {
+                    try await waitUntil("the frames on screen say they cannot load", timeoutSeconds: 30) {
+                        self.accessibilityLabels(in: controller.view).contains("This page can't be shown here.")
+                    }
+                    messagesSeen.append(accessibilityLabels(in: controller.view).filter { label in label == "This page can't be shown here." }.count)
+                }
+            }
+            let scrolled = ContinuousClock.now - scrolling
+            timings.append("\(withFrames ? "ten frames" : "no frames"): opened in \(opened), scrolled to the end in \(scrolled)")
+            if withFrames {
+                attachScreenshot(named: "The end of a note whose ten frames cannot load")
+            }
+            window?.rootViewController = nil
+        }
+        let record = XCTAttachment(string: timings.joined(separator: "\n") + "\nmessages on screen at each step: \(messagesSeen)")
+        record.name = "Opening and scrolling with frames that cannot load"
+        record.lifetime = .keepAlways
+        add(record)
+        XCTAssertFalse(messagesSeen.contains(0), "Every step of the scroll showed the message of the frames on screen: \(messagesSeen)")
+    }
+
+    private func scrollableNote(in controller: UIViewController) async throws -> UIScrollView {
+        var found: UIScrollView?
+        try await waitUntil("the note is laid out", timeoutSeconds: 30) {
+            found = try? self.noteScrollView(in: controller)
+            return found != nil
+        }
+        return try XCTUnwrap(found)
     }
 
     func testAPageThatCannotLoadSaysSoWithItsAddress() async throws {

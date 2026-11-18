@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.40
- * Date: 12/11/2026
+ * Version: 0.41
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -124,6 +124,10 @@ struct SettingsView: View {
                     .formStyle(.grouped)
                     #if canImport(UIKit)
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+                    #else
+                    // The Mac's sidebar list draws no section footer, so the window's title names the vault
+                    // the pages change, under the page's name: with two windows open, the one in front (HUNT-252).
+                    .navigationSubtitle(shownVaultName.map { vaultName in "Vault “\(vaultName)”" } ?? "")
                     #endif
             }
             // Another page starts at its own first screen, not on a screen the old page pushed.
