@@ -8,8 +8,8 @@
  *              drawn, and the eraser removes a mark it passes over.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -38,6 +38,9 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
     override func setUp() async throws {
         // Touches are what these tests are about: without them they fail rather than pass unseen.
         if let reason = SynthesizedTouches.unavailableReason { throw TouchesUnavailable(reason: reason) }
+        // A finger landing within moments of a Pencil test's last touch is a hand resting while the Pencil writes.
+        PencilActivity.forgetPencil()
+        try await waitUntil("the last test's Pencil is no longer active") { !PencilActivity.isActive(at: PencilActivity.now) }
         restoreDevicePreferences.append(HostedDevicePreferences.saving([PDFAnnotationPreferenceKey.markupStyle, PencilToolbox.storageKey]))
         restoreDevicePreferences.append(HostedDevicePreferences.set(false, forKey: PDFAnnotationPreferenceKey.drawsWithFinger))
         restoreDevicePreferences.append(HostedDevicePreferences.set(PencilToolbarStyle.fixed.rawValue, forKey: PencilToolbarStyle.preferenceKey))
@@ -112,7 +115,8 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
     }
 
     /// While the Pencil drags, the text it has covered shows in the style's colour, before it lifts: PDFKit drew nothing
-    /// for a selection set during the drag, so the owner saw the mark only after lifting (2026-11-17).
+    /// for a selection set during the drag, so the owner saw the mark only after lifting (2026-11-17). It is Graphite's
+    /// own layer, not PDFKit's highlighted selections, which left a frame without fill at each move and are read aloud's.
     func testThePencilsDragShowsTheTextCoveredInTheStylesColourBeforeItLifts() async throws {
         guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
         restoreDevicePreferences.append(HostedDevicePreferences.set(PDFMarkupStyle.highlight(.green).rawValue, forKey: PDFAnnotationPreferenceKey.markupStyle))
@@ -124,18 +128,53 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         let touches = SynthesizedTouches(window: fixture.window, touchType: .pencil)
         touches.begin(at: [start])
         await touches.slide(to: [middle], steps: 12)
-        try await waitUntil("the text covered shows") { !(fixture.pdfView.highlightedSelections ?? []).isEmpty }
-        let shownHalfway = try XCTUnwrap(fixture.pdfView.highlightedSelections?.first)
+        try await waitUntil("the text covered shows") { self.coveredText(in: fixture.pdfView) != nil }
+        let shownHalfway = try XCTUnwrap(coveredText(in: fixture.pdfView))
+        let selectedHalfway = try XCTUnwrap(fixture.pdfView.currentSelection?.string)
         XCTAssertTrue(marks(on: fixture.page).isEmpty, "Nothing is marked before the lift.")
-        XCTAssertTrue(Self.pageText.hasPrefix(shownHalfway.string ?? "-"), "The text from the first word to the Pencil shows.")
-        XCTAssertLessThan(shownHalfway.string?.count ?? 0, Self.pageText.count)
-        XCTAssertEqual(shownHalfway.color, PDFTextHighlighterInteraction.colorWhileSelecting(for: .highlight(.green)))
+        XCTAssertTrue(Self.pageText.hasPrefix(selectedHalfway), "The text from the first word to the Pencil is selected.")
+        XCTAssertLessThan(selectedHalfway.count, Self.pageText.count)
+        XCTAssertEqual(shownHalfway.fillColor, PDFTextHighlighterInteraction.colorWhileSelecting(for: .highlight(.green)).cgColor)
+        let lineInWindow = (start.x - 4)...(end.x + 4)
+        let shownHalfwayInWindow = fixture.pdfView.convert(try XCTUnwrap(shownHalfway.path).boundingBox, to: fixture.window)
+        XCTAssertEqual(shownHalfwayInWindow.minX, lineInWindow.lowerBound, accuracy: 6, "It shows from the line's start.")
+        XCTAssertLessThan(shownHalfwayInWindow.maxX, end.x - 20, "Only as far as the Pencil.")
+        XCTAssertNil(fixture.pdfView.highlightedSelections, "PDFKit's highlighted selections are left to read aloud.")
         await touches.slide(to: [end], steps: 12)
-        XCTAssertEqual(fixture.pdfView.highlightedSelections?.first?.string, Self.pageText, "It grows with the drag.")
+        XCTAssertEqual(fixture.pdfView.currentSelection?.string, Self.pageText, "It grows with the drag.")
+        let shownAtTheEnd = fixture.pdfView.convert(try XCTUnwrap(coveredText(in: fixture.pdfView)?.path).boundingBox, to: fixture.window)
+        XCTAssertGreaterThan(shownAtTheEnd.maxX, end.x - 4, "And shows to the line's end.")
         touches.end()
 
         try await waitUntil("the line is marked") { !self.marks(on: fixture.page).isEmpty }
-        XCTAssertTrue((fixture.pdfView.highlightedSelections ?? []).isEmpty, "Only the mark shows once lifted.")
+        XCTAssertNotNil(coveredText(in: fixture.pdfView), "The text covered stays over the mark until PDFKit has drawn it.")
+        try await waitUntil("only the mark shows once lifted") { self.coveredText(in: fixture.pdfView) == nil }
+    }
+
+    /// A drag whose first move goes far at once, as a quick Pencil's or a finger's can, still selects from the word where
+    /// it landed: the pan begins only once the touch has moved and its translation leaves out the first points of the
+    /// move, so a finger landing on a line's first word selected from the next one in an iPad simulator (2026-11-17).
+    func testADragWhoseFirstMoveGoesFarSelectsFromTheWordWhereItLanded() async throws {
+        guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
+        let fixture = try await openTextPDF()
+        _ = try await canvasMarkingText(in: fixture)
+        let (start, end) = try lineEnds(in: fixture)
+
+        let touches = SynthesizedTouches(window: fixture.window, touchType: .pencil)
+        touches.begin(at: [start])
+        await touches.slide(to: [CGPoint(x: (start.x + end.x) / 2, y: start.y)], steps: 1)
+        await touches.slide(to: [end], steps: 4)
+        touches.end()
+
+        try await waitUntil("the line is marked") { !self.marks(on: fixture.page).isEmpty }
+        let markedText = try XCTUnwrap(markedStrings(on: fixture.page).first)
+        XCTAssertEqual(markedText, Self.pageText, "From the first word, where the Pencil landed, to the last.")
+    }
+
+    /// The layer showing the text covered while the touch is down, when it shows any.
+    private func coveredText(in pdfView: PDFView) -> CAShapeLayer? {
+        let layer = pdfView.layer.sublayers?.first { $0.name == PDFTextHighlighterInteraction.coveredTextLayerName } as? CAShapeLayer
+        return layer?.path == nil ? nil : layer
     }
 
     /// The eraser, dragged by the Pencil over a highlight, removes it, and one Undo puts it back: the owner found no way
@@ -384,6 +423,15 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
 
     private func marks(on page: PDFPage) -> [PDFMarkup] {
         page.annotations.compactMap { annotation in PDFMarkup(annotation: annotation) }
+    }
+
+    /// The text under each mark on the page.
+    private func markedStrings(on page: PDFPage) -> [String] {
+        page.annotations.filter { annotation in PDFMarkup(annotation: annotation) != nil }.map { annotation in
+            PDFMarkup.lineRectangles(of: annotation).compactMap { lineRectangle in
+                page.selection(for: lineRectangle.insetBy(dx: 1, dy: lineRectangle.height / 4))?.string
+            }.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
     private func attachScreenshot(of window: UIWindow, named name: String) {

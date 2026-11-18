@@ -7,8 +7,8 @@
  *              the touch lifts while the text highlighter is chosen.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -46,8 +46,7 @@ struct PDFTextSelectionDrag {
 }
 
 /// The text highlighter of a PDF view on the iPad (`PencilToolKind.textHighlighter`): a drag on a page's canvas selects
-/// the text from where it began to where it is, shown as it is covered in the style's colour (PDFKit does not draw a
-/// selection set during the drag: the owner's iPad and a simulator recording showed nothing until the lift, 2026-11-17),
+/// the text from where it began to where it is, shown as it is covered in the style's colour (`showWhileSelecting`),
 /// and lifting marks the selection in the style chosen on the bar, as one step of the PDF's history, then clears it.
 /// The decision to mark on lift is the Mac highlighter's
 /// (`PDFMarkupTool.styleToApplyOnMouseUp`); the marking is `PDFSelectionMarking`'s, as for the selection menu.
@@ -92,27 +91,70 @@ final class PDFTextHighlighterInteraction {
         showWhileSelecting(selection, style: style)
     }
 
-    /// Selects `selection` and shows it as the touch covers it, in the style's colour, until the touch lifts: PDFKit draws
-    /// its highlighted selections in their own colours, which it does not do for a selection set while a touch is down.
+    /// Selects `selection` and shows it as the touch covers it, in the style's colour, until the touch lifts. PDFKit draws
+    /// no selection set while a touch is down, and its highlighted selections, set at each move, left a frame with no fill
+    /// between two (a simulator recording of 2026-11-17: the yellow flickered as the finger moved), redrew the page each
+    /// time and are read aloud's word: so the text covered is drawn by Graphite, one layer over the PDF view, its lines'
+    /// rectangles in one path, changed without animation.
     func showWhileSelecting(_ selection: PDFSelection?, style: PDFMarkupStyle) {
         guard let pdfView else { return }
         pdfView.currentSelection = selection
-        guard let selection else {
-            pdfView.highlightedSelections = nil
-            return
+        guard let selection else { return stopShowingWhileSelecting() }
+        coveredTextShowing += 1
+        let coveredText = CGMutablePath()
+        for line in selection.selectionsByLine() {
+            for page in line.pages { coveredText.addRect(pdfView.convert(line.bounds(for: page), from: page)) }
         }
-        selection.color = Self.colorWhileSelecting(for: style)
-        pdfView.highlightedSelections = [selection]
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if coveredTextLayer.superlayer !== pdfView.layer { pdfView.layer.addSublayer(coveredTextLayer) }
+        coveredTextLayer.frame = pdfView.layer.bounds
+        coveredTextLayer.fillColor = Self.colorWhileSelecting(for: style).cgColor
+        coveredTextLayer.path = coveredText
+        CATransaction.commit()
     }
 
     /// The text shown while it is selected no longer is.
     func stopShowingWhileSelecting() {
-        pdfView?.highlightedSelections = nil
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        coveredTextLayer.path = nil
+        coveredTextLayer.removeFromSuperlayer()
+        CATransaction.commit()
     }
 
-    /// A highlight's own colour as it will be marked; an underline's or a strikethrough's colour, lighter, behind the text.
+    /// Removes the text covered once PDFKit has drawn the mark made of it: removed at once, it left a frame with neither
+    /// at the lift (a simulator recording of 2026-11-18). A drag begun meanwhile keeps its own.
+    private func stopShowingWhileSelectingOnceMarked() {
+        let showingWhenMarked = coveredTextShowing
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.coveredTextSecondsAfterMarking)) // Never cancelled; cut short, the layer only goes sooner.
+            guard let self, self.coveredTextShowing == showingWhenMarked else { return }
+            self.stopShowingWhileSelecting()
+        }
+    }
+
+    /// How long the text covered stays over the mark made of it, a few frames.
+    static let coveredTextSecondsAfterMarking: Double = 0.1
+
+    /// Counts each showing of the text covered, so a removal planned for one leaves the next.
+    private var coveredTextShowing = 0
+
+    /// The name of the layer that shows the text covered while the touch is down, for the hosted tests.
+    static let coveredTextLayerName = "Graphite.textHighlighter.coveredText"
+
+    private lazy var coveredTextLayer: CAShapeLayer = {
+        let layer = CAShapeLayer()
+        layer.name = Self.coveredTextLayerName
+        // Rectangles of lines that overlap are filled once.
+        layer.fillRule = .nonZero
+        return layer
+    }()
+
+    /// A highlight's own colour as it will be marked, light enough to read the text through; an underline's or a
+    /// strikethrough's colour, lighter.
     static func colorWhileSelecting(for style: PDFMarkupStyle) -> UIColor {
-        style.kind == .highlight ? style.color.platformColor.withAlphaComponent(0.6) : style.color.platformColor.withAlphaComponent(0.25)
+        style.kind == .highlight ? style.color.platformColor.withAlphaComponent(0.4) : style.color.platformColor.withAlphaComponent(0.2)
     }
 
     /// Marks the view's selection when a touch that selected it lifts, where `marksOnLift` (the text highlighter is
@@ -120,13 +162,14 @@ final class PDFTextHighlighterInteraction {
     @discardableResult
     func markSelectionOnLift(style: PDFMarkupStyle, marksOnLift: Bool) -> Bool {
         guard let pdfView else { return false }
-        stopShowingWhileSelecting()
         let tool: PDFMarkupTool = marksOnLift ? .highlight : .textSelection
         let selectionHasText = !(pdfView.currentSelection?.string ?? "").isEmpty
         guard let styleToApply = tool.styleToApplyOnMouseUp(style: style, selectionHasText: selectionHasText, clickChoseExistingMark: false) else {
+            stopShowingWhileSelecting()
             return false
         }
         PDFSelectionMarking.markSelection(of: pdfView, in: session, as: styleToApply)
+        stopShowingWhileSelectingOnceMarked()
         return true
     }
 }

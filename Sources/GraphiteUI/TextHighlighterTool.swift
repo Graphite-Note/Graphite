@@ -7,8 +7,8 @@
  *              was. It draws no ink, and the canvas's `marksText` turns it on with PencilKit's drawing off.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -47,6 +47,11 @@ final class TextHighlighterToolController: NSObject, UIGestureRecognizerDelegate
         return recognizer
     }()
 
+    /// Where the drag's touch landed, in the window: the pan begins only once the touch has moved, and its translation
+    /// then leaves out the first points of the move (a finger landing on "The" selected from the word after it in an
+    /// iPad simulator, 2026-11-17), so the landing is kept as the drag receives the touch.
+    private var landingPoint: CGPoint?
+
     init(canvas: HistoryCanvasView) {
         self.canvas = canvas
     }
@@ -71,7 +76,9 @@ final class TextHighlighterToolController: NSObject, UIGestureRecognizerDelegate
 
     /// Apple Pencil always; a finger only where fingers draw, and never a hand resting while the Pencil writes.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        Self.takesTouch(ofType: touch.type, fingersDraw: canvas.drawingPolicy == .anyInput) && !CanvasToolTouches.isHandResting(touch)
+        let takesTouch = Self.takesTouch(ofType: touch.type, fingersDraw: canvas.drawingPolicy == .anyInput) && !CanvasToolTouches.isHandResting(touch)
+        if takesTouch, gestureRecognizer === dragRecognizer, dragRecognizer.numberOfTouches == 0 { landingPoint = touch.location(in: canvas.window) }
+        return takesTouch
     }
 
     /// Whether the tool takes a touch of this type: the Pencil, or a finger where fingers draw (a pointer selects as
@@ -92,7 +99,7 @@ final class TextHighlighterToolController: NSObject, UIGestureRecognizerDelegate
         case .began:
             // The pan begins once the touch has moved; it selects from where the touch landed.
             let translation = recognizer.translation(in: window)
-            let startPoint = CGPoint(x: currentPoint.x - translation.x, y: currentPoint.y - translation.y)
+            let startPoint = landingPoint ?? CGPoint(x: currentPoint.x - translation.x, y: currentPoint.y - translation.y)
             canvas.textHighlighterDragged?(.began(startPoint: startPoint, currentPoint: currentPoint))
         case .changed:
             canvas.textHighlighterDragged?(.moved(to: currentPoint))
