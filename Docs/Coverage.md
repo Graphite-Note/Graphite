@@ -9,7 +9,8 @@ Last updated: 2026-11-18.
 `Docs/Bug-hunt-todo.md` HUNT-367 (issue #170). Done, or another tool on the fixed bar, while a PDF text box was typed in froze the app: the text view gave up first responder inside SwiftUI's update of the pane. `PDFTextBoxEditor.end` now commits the box at once, hides the text view, and resigns and removes it on the main queue's next turn.
 
 - **Hosted tests, iPad Pro 11-inch (M5) simulator, iOS 27.2:** `PDFTextBoxEndTypingHostedTests` (3: Done, the pen on the bar, Done with nothing typed), which hung before the fix and pass with it: the main thread comes back, the text is kept on the page and in the saved file, and a second box starts and ends. `PDFStackingOrderHostedTests` passes; `PDFTextBoxesTests`' three fail at choosing the palette's text tool, as on main locally.
-- **Not established:** the commit that brought it in (being bisected); the owner's iPad.
+- **Checked by hand (2026-11-18):** in the app built from e7378760 on the same simulator, the fixed bar's text box tool, a tap on the page, text typed, then the bar's Done: the box keeps its text, the keyboard goes, the app stays at under 1 % CPU.
+- **Not established:** the commit that brought it in (the freeze is there on c97e8c81 of 2026-11-10, too); the owner's iPad.
 
 ## Several PDF objects arranged together, and the menus' names: 2026-11-17
 
@@ -19,7 +20,8 @@ Last updated: 2026-11-18.
 - **Hosted (Mac):** `MacPDFArrangeMenusInAppHostedTests` and `MacPDFMarkupInAppHostedTests` with the new names (below).
 - **Checked by hand:** in the installed app on an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2), the More menu's "This Page's Ink": Ink to Front dimmed with the ink on top, Ink to Back put the ink under every object, one Undo put it back.
 - **The lasso's hooks (2026-11-18):** `LassoCanvasContent.arrangeLassoPictures(_:_:)` and `possibleLassoPictureArrangements(_:)` arrange the lasso's pictures and text boxes on a PDF page as one step named for them (`PDFArrangement.Objects.naming`); `PDFLassoArrangeHostedTests` (iPad Pro 11-inch (M5) simulator, iOS 27.2) and `PDFStackingOrderSessionTests.testTheMenusNameWhatTheyArrange` pass.
-- **Not established:** the lasso's menu entries that call them (the Select tool session's); the iPad text box bar's renamed items looked at on a device; the owner's iPad.
+- **Checked by hand (2026-11-18):** in the app built from e7378760 on an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, a demo vault), a text box selected by a finger tap: the bar's Arrange menu reads Send Item to Back, Send Item Backward, Bring Item Forward and Bring Item to Front, without the ink's items; Bring Item to Front put the box over the shape, and one Undo put it back.
+- **Not established:** the lasso's menu entries that call them (the Select tool session's); the owner's iPad.
 
 ## The Mac's Arrange menus in the running app: 2026-11-17
 
