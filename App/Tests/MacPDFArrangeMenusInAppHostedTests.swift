@@ -4,8 +4,9 @@
  * Layer: Tests
  * Description: The Mac's Arrange menus used in Graphite's own window inside the running Mac app: two overlapping
  *              pictures, ink, a text box and a shape on a generated page; each object's four commands chosen from its
- *              right-click menu and all six through what Tools › Arrange's items call; the dimmed items, one Undo for each
- *              move, the colour the screen shows where the objects overlap and the saved file's order at each step.
+ *              right-click menu and all six through the actions the menu bar's Tools › Arrange calls; the dimmed items,
+ *              one Undo for each move, the colour the screen shows where the objects overlap and the saved file's order
+ *              at each step.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -22,11 +23,14 @@ import GraphiteCore
 
 /// Docs/PDF-annotation-todo.md, section 2: "On the Mac, the same with overlapping pictures, a text box and a shape". The
 /// owner declined computer use and a Mac UI test needs Automation Mode, so this runs inside the app as a hosted test, as
-/// MacPDFMarkupInAppHostedTests does: Graphite's root view in a window of the app, clicks and keys put in the app's event
-/// queue, right-click menus asked of the view under the pointer and their items chosen as a click on them chooses them.
-/// The menu bar's Tools › Arrange is read from `NSApp.mainMenu`, but its items stay dimmed for a test's window
-/// (`ArrangeRoute.toolsArrangeActions`), so its six commands are chosen through the actions its items call. Runs only
-/// with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE` given to xcodebuild as a folder, where it writes a picture of each step and a
+/// MacPDFMarkupInAppHostedTests does, but in the app's own window, which SwiftUI's scene made: clicks and keys put in the
+/// app's event queue, right-click menus asked of the view under the pointer and their items chosen as a click chooses
+/// them. Tools › Arrange's items are checked through the actions they call and the dimming they read
+/// (`PDFArrangeMenuActions`, made from the markup row as the row makes it for the menu bar), and the menu bar is read for
+/// their titles. A click in the menu bar itself is not made: SwiftUI enables those items only while the app is in front,
+/// and macOS 27 refuses to bring a test host there (`NSApp.activate()`, `activateIgnoringOtherApps:` and Launch Services
+/// opening the app's own bundle, 2026-11-17), so the owner checks that click by hand (Docs/PDF-annotation-todo.md,
+/// section 2). Runs only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE` given to xcodebuild as a folder, where it writes a picture of each step and a
 /// line of notes for each; a person looks at them.
 @MainActor
 final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
@@ -54,10 +58,8 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
     private enum ArrangeRoute: String {
         /// The object's four, named after it; the page's ink is arranged from the More menu and Tools › Arrange.
         case rightClickMenu = "right-click menu"
-        /// What Tools › Arrange's items call (`PDFArrangeMenuActions`, made from the markup row's model) and what they
-        /// read to dim themselves. The menu bar's own items stay dimmed for a window of a hosted test: SwiftUI gives the
-        /// commands the focused values of its own scene windows only, and only while the app is in front (2026-11-17:
-        /// every item dimmed, the app in the background and in front alike).
+        /// What Tools › Arrange's six items (`PDFArrangeCommandsMenu`) call and the dimming they read, from the
+        /// `PDFArrangeMenuActions` the markup row gives the menu bar, with the object selected by a click.
         case toolsArrangeActions = "Tools › Arrange's actions"
 
         var commands: [ArrangeCommand] {
@@ -101,21 +103,21 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
         var layersInMemory: [ArrangedLayer] { ArrangedLayer.layers(of: page, pictureNames: pictureNames) }
     }
 
-    func testEachArrangeCommandFromBothMenusInTheRunningApp() async {
+    func testEachArrangeCommandFromItsRightClickMenuAndToolsArrangesActionsInTheRunningApp() async {
         // Returns rather than skipping: the suites' skip count may not rise (FR-93), and this is not a missing capability.
         guard let outputPath = ProcessInfo.processInfo.environment[Self.switchVariable] else { return }
         outputFolder = URL(fileURLWithPath: outputPath, isDirectory: true)
         // An error is caught here and reported: one thrown out of an async test method was seen to abort the app in
         // XCTest's error observation (2026-11-17, "freed pointer was not the last allocation").
         do {
-            try await arrangeWithBothMenus()
+            try await arrangeThroughBothRoutes()
         } catch {
             try? note("stopped by an error: \(error)")
             XCTFail("stopped by an error: \(error)")
         }
     }
 
-    private func arrangeWithBothMenus() async throws {
+    private func arrangeThroughBothRoutes() async throws {
         try note("started")
         // Twice on 2026-11-17 the app started hidden, its windows ordered out, and no click reached them. Shown again
         // without coming to the front, so the owner's app in front keeps the keyboard.
@@ -241,23 +243,30 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
                 menu.performActionForItem(at: menu.index(of: item))
             }, heldMenu: menu)
         case .toolsArrangeActions:
-            let toolbar = try XCTUnwrap(stage.view.markupInteraction?.toolbar)
-            let enabled = Set(ArrangeCommand.all.filter { command in
-                (command.movesInk ? toolbar.selectedPageInkArrangements : toolbar.selectedObjectArrangements).contains(command.arrangement)
-            })
-            return ArrangeChoices(enabled: enabled, choose: { command in
-                guard enabled.contains(command) else { return XCTFail("\(command.title) is dimmed") }
-                if command.movesInk { toolbar.arrangeInkOfSelectedPage?(command.arrangement) } else { toolbar.arrangeSelectedObject?(command.arrangement) }
+            let toolbar = try XCTUnwrap(stage.view.markupInteraction?.toolbar, "the PDF's markup row")
+            let actions = PDFArrangeMenuActions(toolbar: toolbar)
+            let enabled = ArrangeCommand.all.filter { command in actions.allows(command.arrangement, ofInk: command.movesInk) }
+            return ArrangeChoices(enabled: Set(enabled), choose: { command in
+                guard actions.allows(command.arrangement, ofInk: command.movesInk) else { return XCTFail("\(command.title) is dimmed") }
+                actions.choose(command.arrangement, ofInk: command.movesInk)
             }, heldMenu: nil)
         }
     }
 
-    /// The menu bar's Tools › Arrange holds the six items, in the menus' order, the ink's after a line.
-    private func expectToolsArrangeInTheMenuBar() throws {
+    /// The menu bar's Tools › Arrange, brought up to date as when it opens.
+    private func toolsArrangeMenu() throws -> NSMenu {
         let toolsMenu = try XCTUnwrap(NSApp.mainMenu?.items.first { item in item.title == "Tools" }?.submenu, "a Tools menu in the menu bar")
+        toolsMenu.delegate?.menuNeedsUpdate?(toolsMenu)
         toolsMenu.update()
         let arrangeMenu = try XCTUnwrap(toolsMenu.items.first { item in item.title == "Arrange" }?.submenu, "Tools › Arrange")
+        arrangeMenu.delegate?.menuNeedsUpdate?(arrangeMenu)
         arrangeMenu.update()
+        return arrangeMenu
+    }
+
+    /// The menu bar's Tools › Arrange holds the six items, in the menus' order, the ink's after a line.
+    private func expectToolsArrangeInTheMenuBar() throws {
+        let arrangeMenu = try toolsArrangeMenu()
         let titles = arrangeMenu.items.map { item in item.isSeparatorItem ? "—" : item.title }
         XCTAssertEqual(titles, PDFArrangement.menuArrangements.map(\.title) + ["—"] + PDFArrangement.inkMenuArrangements.map(\.inkTitle))
         try note("the menu bar's Tools › Arrange: \(titles)")
@@ -268,11 +277,16 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
     private func openStackingPage() async throws -> ArrangeStage {
         let vaultRoot = try TemporaryVault.make(prefix: "MacArrangeInApp", for: self).root
         try ArrangeTestPage.writeBlankPDF(to: vaultRoot.appendingPathComponent("Stacking.pdf"))
-        let device = try IsolatedWorkspaceDevice.make(for: self)
-        let workspace = device.makeWorkspace()
+        // The app's own window, so the menu bar's commands see what it focuses; sized as the test's windows are, which
+        // the markup row's places were read in.
+        let window = try XCTUnwrap(AppSceneWindow.workspaceWindow(), "the app's own window")
+        let workspace = try XCTUnwrap(AppSceneWindow.workspace(of: window), "the workspace of the app's own window")
+        window.appearance = NSAppearance(named: .aqua)
+        window.setContentSize(NSSize(width: 1_280, height: 860))
+        // Hidden when the test ends, which gives the front back to the app that had it.
+        addTeardownBlock { @MainActor in NSApp.hide(nil) }
         try await workspace.openFolderAsVault(vaultRoot)
         try await waitUntil("the vault is indexed", timeoutSeconds: 60) { workspace.hasCompletedIndexScan && !workspace.isIndexing }
-        let window = try ReleaseVaultWindow.show(GraphiteRootView(workspace: workspace), for: self)
         _ = await workspace.open(try VaultPath("Stacking.pdf"), placement: .currentTab)
         try await waitUntil("the PDF is shown", timeoutSeconds: 30) { (workspace.pdfSession?.pageCount ?? 0) > 0 }
         try await settle(window)

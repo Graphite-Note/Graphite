@@ -3,7 +3,8 @@
  * -------------------------------------
  * Layer: Tests
  * Description: What MacPDFArrangeMenusInAppHostedTests checks against: the layers of its test page, the order the six
- *              Arrange commands should leave them in, the points where objects overlap and the colour each should show.
+ *              Arrange commands should leave them in, the points where objects overlap and the colour each should show;
+ *              and the app's own window it runs in.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -207,6 +208,44 @@ struct WindowPicture {
         let column = Int(point.x.rounded(.down)), row = bitmap.pixelsHigh - 1 - Int(point.y.rounded(.down))
         guard (0..<bitmap.pixelsWide).contains(column), (0..<bitmap.pixelsHigh).contains(row) else { return nil }
         return bitmap.colorAt(x: column, y: row)
+    }
+}
+
+/// The app's own window, which SwiftUI's scene made at launch: the menu bar's commands read the focused values of such
+/// windows only, not of a window a test makes (2026-11-17).
+@MainActor
+enum AppSceneWindow {
+    /// The first window of the scene of workspaces, with no vault in a hosted launch.
+    static func workspaceWindow() -> NSWindow? {
+        NSApp.windows.first { window in window.contentView.map { view in "\(type(of: view))".contains("GraphiteWindowScene") } ?? false }
+    }
+
+    /// The window's workspace. SwiftUI keeps it in the window's view state and offers no way to it, so it is looked for
+    /// among what the window's hosting view holds, by reflection (on 2026-11-17 after 237 objects, in a binding the root
+    /// view hands a presentation). Only this test needs it, and it fails, rather than misleads, if SwiftUI keeps it elsewhere.
+    static func workspace(of window: NSWindow) -> WorkspaceModel? {
+        guard let contentView = window.contentView else { return nil }
+        var search = ReflectedSearch()
+        return search.firstWorkspace(in: contentView, depth: 0)
+    }
+
+    private struct ReflectedSearch {
+        var visitedObjects: Set<ObjectIdentifier> = []
+
+        mutating func firstWorkspace(in value: Any, depth: Int) -> WorkspaceModel? {
+            if let workspace = value as? WorkspaceModel { return workspace }
+            guard depth < 18, visitedObjects.count < 100_000 else { return nil }
+            let mirror = Mirror(reflecting: value)
+            if mirror.displayStyle == .class, !visitedObjects.insert(ObjectIdentifier(value as AnyObject)).inserted { return nil }
+            var level: Mirror? = mirror
+            while let current = level {
+                for child in current.children {
+                    if let workspace = firstWorkspace(in: child.value, depth: depth + 1) { return workspace }
+                }
+                level = current.superclassMirror
+            }
+            return nil
+        }
     }
 }
 

@@ -462,7 +462,7 @@ struct PDFMarkupControls: ViewModifier {
         }
         .environment(\.pdfMarkupToolbar, toolbar)
         .focusedSceneValue(\.pdfMarkupMenuActions, isFocused ? menuActions : nil)
-        .focusedSceneValue(\.pdfArrangeMenuActions, isFocused ? arrangeActions : nil)
+        .focusedSceneValue(\.pdfArrangeMenuActions, isFocused ? PDFArrangeMenuActions(toolbar: toolbar) : nil)
         // The PDF view's Draw tool reads the style from the row's model when a stroke begins.
         .onChange(of: inkStyle, initial: true) { toolbar.useInkStyle(inkStyle) }
         .onChange(of: shapeStyle, initial: true) { toolbar.useShapeStyle(shapeStyle) }
@@ -484,14 +484,6 @@ struct PDFMarkupControls: ViewModifier {
     private func markSelection(_ style: PDFMarkupStyle) {
         guard let view = session.pdfView else { return }
         PDFSelectionMarking.markSelection(of: view, in: session, as: style)
-    }
-
-    /// Tools › Arrange for the selected text box or shape and its page's ink.
-    private var arrangeActions: PDFArrangeMenuActions {
-        PDFArrangeMenuActions(possibleArrangements: toolbar.selectedObjectArrangements, arrange: { arrangement in toolbar.arrangeSelectedObject?(arrangement) },
-                              ink: PDFInkArrangeOptions(possibleArrangements: toolbar.selectedPageInkArrangements) { arrangement in
-                                  toolbar.arrangeInkOfSelectedPage?(arrangement)
-                              })
     }
 
     private var menuActions: PDFMarkupMenuActions {

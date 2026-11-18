@@ -2,7 +2,7 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-17.
+Last updated: 2026-11-18.
 
 ## Several PDF objects arranged together, and the menus' names: 2026-11-17
 
@@ -17,8 +17,8 @@ Last updated: 2026-11-17.
 
 `Docs/PDF-annotation-todo.md` section 2 (issue #181). On a PDF page on the Mac, a picture's, a text box's and a shape's right-click menus and Tools › Arrange offer Bring to Front, Bring Forward, Send Backward and Send to Back (in the right-click menus named after the object since section 8: "Bring Image to Front", "Bring Item to Front"), and Tools › Arrange Ink to Front and Ink to Back for the page's ink as one layer (the right-click menus had them too until section 8), those that would move nothing dimmed.
 
-- **Hosted:** `MacPDFArrangeMenusInAppHostedTests` in the running Mac app (built unsigned as `com.graphite.study.repro`, only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE=<folder>`): two overlapping pictures, ink, a text box and a shape on a generated page; the four object commands from the right-click menu of a picture ("Bring Image to Front" …), a text box and a shape ("Bring Item to Front" …), which have no ink items, and all six, Ink to Front and Ink to Back included, through the actions Tools › Arrange's items call; the dimmed items, one Undo each, the saved file's order and the colour of 383 overlap points in each of the 91 pictures of the window (run 2026-11-17).
-- **Not established:** a click on Tools › Arrange's own items in the menu bar, which stay dimmed for a test's window (SwiftUI feeds the menu bar from its own scene windows, with the app in front).
+- **Hosted:** `MacPDFArrangeMenusInAppHostedTests` in the running Mac app (built unsigned as `com.graphite.study.repro`, only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE=<folder>`): two overlapping pictures, ink, a text box and a shape on a generated page; the four object commands from the right-click menu of a picture ("Bring Image to Front" …), a text box and a shape ("Bring Item to Front" …), which have no ink items, and all six, Ink to Front and Ink to Back included, through the actions Tools › Arrange's items call; the dimmed items, one Undo each, the saved file's order and the colour of 383 overlap points in each of the 91 pictures of the window (run 2026-11-17). Since 2026-11-18 it runs in the app's own window, which SwiftUI's scene makes, and reads Tools › Arrange through the same `PDFArrangeMenuActions(toolbar:)` the menu bar gets (`allows` for an item's dimming, `choose` for its action); passed 2026-11-18 (91 pictures, 31 saves in order).
+- **Not established:** a click on Tools › Arrange's own items in the menu bar. SwiftUI enables them only while the app is in front, and macOS 27 refuses to bring a test host there (`NSApp.activate()`, `activateIgnoringOtherApps:`, Launch Services opening the app's own bundle); the owner checks it by hand.
 
 ## PDFs dropped onto the page list: 2026-11-17
 

@@ -99,6 +99,28 @@ struct PDFArrangeMenuActions {
     let arrange: (PDFArrangement) -> Void
     /// Ink to Front and Ink to Back for the selected object's page.
     let ink: PDFInkArrangeOptions
+
+    /// Whether Tools › Arrange leaves the item for `arrangement` enabled: the selected object's, or `ofInk`, its page's ink's.
+    func allows(_ arrangement: PDFArrangement, ofInk: Bool) -> Bool {
+        (ofInk ? ink.possibleArrangements : possibleArrangements).contains(arrangement)
+    }
+
+    /// What choosing the item does.
+    func choose(_ arrangement: PDFArrangement, ofInk: Bool) {
+        if ofInk { ink.arrange(arrangement) } else { arrange(arrangement) }
+    }
+}
+
+extension PDFArrangeMenuActions {
+    /// What a PDF pane's markup row gives Tools › Arrange: its selected text box, shape or picture, and that object's
+    /// page's ink.
+    @MainActor
+    init(toolbar: PDFMarkupToolbar) {
+        self.init(possibleArrangements: toolbar.selectedObjectArrangements, arrange: { arrangement in toolbar.arrangeSelectedObject?(arrangement) },
+                  ink: PDFInkArrangeOptions(possibleArrangements: toolbar.selectedPageInkArrangements) { arrangement in
+                      toolbar.arrangeInkOfSelectedPage?(arrangement)
+                  })
+    }
 }
 
 extension FocusedValues {
@@ -113,14 +135,14 @@ struct PDFArrangeCommandsMenu: View {
     var body: some View {
         Menu("Arrange") {
             ForEach(PDFArrangement.menuArrangements, id: \.self) { arrangement in
-                Button(arrangement.title) { actions?.arrange(arrangement) }
+                Button(arrangement.title) { actions?.choose(arrangement, ofInk: false) }
                     .keyboardShortcut(arrangement.command.flatMap(shortcut))
-                    .disabled(actions?.possibleArrangements.contains(arrangement) != true)
+                    .disabled(actions?.allows(arrangement, ofInk: false) != true)
             }
             Divider()
             ForEach(PDFArrangement.inkMenuArrangements, id: \.self) { arrangement in
-                Button(arrangement.inkTitle) { actions?.ink.arrange(arrangement) }
-                    .disabled(actions?.ink.possibleArrangements.contains(arrangement) != true)
+                Button(arrangement.inkTitle) { actions?.choose(arrangement, ofInk: true) }
+                    .disabled(actions?.allows(arrangement, ofInk: true) != true)
             }
         }
     }
