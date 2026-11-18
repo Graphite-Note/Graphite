@@ -5,11 +5,11 @@
  * Description: Hosted tests of the fixed Pencil bar's row of colors as the owner's iPad shows it: the row scrolls sideways
  *              only, a swipe on it moves no color, a vertical drag neither scrolls nor moves it, more colors scroll inside
  *              a row that keeps its size, black stays in view before it, a shorter strip leaves no gap, and "+" saves a
- *              color as a swatch, a picked one at once (Docs/PDF-annotation-todo.md section 3).
+ *              color as a swatch, a picked one at once, scrolling the strip to it (Docs/PDF-annotation-todo.md section 3).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 #if os(iOS)
@@ -319,8 +319,13 @@ final class PencilColorRowScrollingHostedTests: XCTestCase {
         window.layoutIfNeeded()
         XCTAssertEqual(try stripFrame(in: window), stripBefore, "The tenth color scrolls inside the strip, which keeps its size.")
         let strip = try XCTUnwrap(colorRow(in: window).flatMap(colorStrip(of:)))
-        XCTAssertGreaterThan(strip.contentSize.width, strip.bounds.width + 1, "The new swatch is past the strip's edge, to scroll to.")
-        attachScreenshot(of: window, named: "After the plus saved the color in use")
+        XCTAssertGreaterThan(strip.contentSize.width, strip.bounds.width + 1, "The new swatch is past the strip's first colors.")
+        // The strip scrolls to its end, where the new color stands, so the color saved comes into view.
+        try await waitUntil("the strip scrolls to the new color") {
+            window.layoutIfNeeded()
+            return abs(strip.contentOffset.x - (strip.contentSize.width - strip.bounds.width)) < 0.5
+        }
+        attachScreenshot(of: window, named: "After the plus saved the color in use, the strip at its end")
     }
 
     func testThePlusOpensThePickerForANewColorWhenTheStripHasTheColorInUse() async throws {
@@ -342,6 +347,14 @@ final class PencilColorRowScrollingHostedTests: XCTestCase {
         XCTAssertEqual(toolbox.presetInUse.colorHex, "#8d5524", "The ink draws in the color picked.")
         try await waitUntil("the first color picked is saved at once") { self.storedHexes(in: defaults).last == "#8d5524" }
         XCTAssertNotNil(window.rootViewController?.presentedViewController, "The picker is still open.")
+        // Eight favorites fill the strip, so the ninth is past its edge: the strip scrolls to it with the picker open.
+        let strip = try XCTUnwrap(colorRow(in: window).flatMap(colorStrip(of:)))
+        try await waitUntil("the strip scrolls to the color picked") {
+            window.layoutIfNeeded()
+            let largestOffset = strip.contentSize.width - strip.bounds.width
+            return largestOffset > 1 && abs(strip.contentOffset.x - largestOffset) < 0.5
+        }
+        attachScreenshot(of: window, named: "The first color picked, on the strip with the picker open")
         let secondColor = UIColor(red: 0x26 / 255, green: 0x46 / 255, blue: 0x53 / 255, alpha: 1)
         picker.selectedColor = secondColor
         picker.delegate?.colorPickerViewController?(picker, didSelect: secondColor, continuously: false)

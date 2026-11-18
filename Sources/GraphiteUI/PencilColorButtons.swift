@@ -3,13 +3,13 @@
  * ------------------------------
  * Layer: UI
  * Description: The Pencil bar's colors: black before the favorite colors, or the highlighter's own, in a strip that
- *              scrolls sideways only and keeps its size, the plus that saves a color as a swatch (a picked one at once),
- *              Other Color, and the arranging (by dragging, `PencilColorSwatchRow`), changing and removal with Undo of a
- *              color at the bar itself.
+ *              scrolls sideways only and keeps its size, the plus that saves a color as a swatch (a picked one at once)
+ *              and scrolls the strip to it, Other Color, and the arranging (by dragging, `PencilColorSwatchRow`),
+ *              changing and removal with Undo of a color at the bar itself.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 17/11/2026
+ * Version: 0.7
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -52,6 +52,10 @@ struct PencilColorButtons: View {
     @State private var removalUndo = PencilColorRemovalUndo()
     /// The color picker the plus opens for a new color, pointing at the plus.
     @State private var additionPicker = PencilColorPickerPresenter()
+    /// How many colors the plus has saved while this bar is shown: each one scrolls the strip to its end, where the
+    /// new color stands, so a color saved past the strip's edge comes into view (the owner's request of 2026-11-17 that
+    /// a color picked from the plus be added "immediately").
+    @State private var savedAdditionCount = 0
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
     @AppStorage(GraphitePreferences.colorPaletteKey) private var storedColorPalette: Data?
 
@@ -76,7 +80,8 @@ struct PencilColorButtons: View {
             // Black stands before the strip, so scrolling the colors never takes it out of view (the owner's report of
             // 2026-11-17 that black was "not saved": ten colors scrolled it off the strip's start).
             if let fixedLeadingColor { PencilFixedColorSwatch(toolbox: toolbox, color: fixedLeadingColor, rowHeight: rowHeight, density: density) }
-            PencilColorStrip(rowHeight: rowHeight, density: density, visibleSwatchCount: max(0, shownCount - leadingCount)) { scrolling in
+            PencilColorStrip(rowHeight: rowHeight, density: density, visibleSwatchCount: max(0, shownCount - leadingCount),
+                             revealedAdditionCount: savedAdditionCount) { scrolling in
                 swatches(colors, scrolling: scrolling)
             }
             if let removal = offeredRemoval {
@@ -176,6 +181,7 @@ struct PencilColorButtons: View {
             withAnimation(.snappy(duration: 0.22)) {
                 store(FavoriteColorEditing.adding(hex: toolbox.presetInUse.colorHex, to: palette(editedPalette)), as: editedPalette)
             }
+            savedAdditionCount += 1
         case .chooseNewColor:
             // The first color picked is saved at once as a new swatch, which later picks change, so the strip shows
             // the new color while the picker is still open (the owner's request of 2026-11-17).
@@ -186,8 +192,10 @@ struct PencilColorButtons: View {
                 guard phase != .moving else { return }
                 let saved = FavoriteColorEditing.savingPickedColor(hex: pickedHex, addedColorIdentifier: addedColorIdentifier,
                                                                    in: palette(editedPalette))
+                let isNewSwatch = addedColorIdentifier == nil && saved.addedColorIdentifier != nil
                 addedColorIdentifier = saved.addedColorIdentifier
                 withAnimation(.snappy(duration: 0.22)) { store(saved.palette, as: editedPalette) }
+                if isNewSwatch { savedAdditionCount += 1 }
             }
         }
     }
@@ -220,11 +228,13 @@ struct PencilColorButtons: View {
 
 /// The colors as a strip that scrolls sideways only, as wide as `visibleSwatchCount` whole colors and coming to rest on
 /// a color's edge, so none is ever cut in half. Up or down it neither scrolls nor gives, and a strip that holds no more
-/// colors than it shows does not move at all.
+/// colors than it shows does not move at all. A color the plus saves goes at the end, and the strip scrolls there.
 struct PencilColorStrip<Swatches: View>: View {
     let rowHeight: CGFloat
     let density: PencilToolRowLayout.Density
     let visibleSwatchCount: Int
+    /// How many colors the plus has saved; each new one scrolls the strip to its end, where the color stands.
+    var revealedAdditionCount = 0
     /// The row of colors, given how the strip scrolls under a drag held near either end.
     @ViewBuilder let swatches: (PencilColorRowScrolling) -> Swatches
     @State private var scrollPosition = ScrollPosition(x: 0)
@@ -249,6 +259,12 @@ struct PencilColorStrip<Swatches: View>: View {
             // A removal shortens the strip under it: it then scrolls back to its new end, leaving no gap after the last
             // color (the owner's recording of 2026-11-17).
             if scrollOffset > largestScrollOffset + 0.5 { settle() }
+        }
+        .onChange(of: revealedAdditionCount) { _, _ in
+            // After the layout that lengthens the strip, so its end is where the new color stands.
+            Task { @MainActor in
+                withAnimation(.snappy(duration: 0.22)) { scrollPosition.scrollTo(edge: .trailing) }
+            }
         }
         .frame(width: visibleWidth, height: rowHeight)
     }
