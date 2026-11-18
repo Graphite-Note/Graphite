@@ -18,6 +18,15 @@ final class SelectionFrameView: UIView, UIGestureRecognizerDelegate {
     var frameChangeDidEnd: ((CGRect) -> Void)?
     /// Called when a drag is cancelled, after the frame is back where it was.
     var frameChangeWasCancelled: (() -> Void)?
+    /// Called for a tap on the selected thing itself, not on a handle. The frame takes taps
+    /// only while this is set: an owner whose page tap leaves the frame's touches alone (the
+    /// PDF view's) shows or hides the selection's toolbar with it.
+    var bodyWasTapped: (() -> Void)? {
+        didSet {
+            guard (bodyWasTapped == nil) != (oldValue == nil) else { return }
+            if bodyWasTapped == nil { removeGestureRecognizer(bodyTapRecognizer) } else { addGestureRecognizer(bodyTapRecognizer) }
+        }
+    }
     /// Called while the rotate handle turns the frame, with the new `rotation`.
     var rotationDidChange: ((CGFloat) -> Void)?
     /// Called when the frame has been turned, by its handle or by an accessibility action,
@@ -482,6 +491,19 @@ final class SelectionFrameView: UIView, UIGestureRecognizerDelegate {
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard gestureRecognizer === moveRecognizer else { return true }
         return !handles.values.contains { handle in touch.view === handle } && touch.view !== rotationHandle
+    }
+
+    private(set) lazy var bodyTapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleBodyTap(_:)))
+
+    @objc private func handleBodyTap(_ recognizer: UITapGestureRecognizer) {
+        bodyWasTapped(at: recognizer.location(in: self))
+    }
+
+    /// Calls `bodyWasTapped` when `point`, in the frame's own space, is on the selected thing
+    /// rather than on one of its handles, which stand partly over its corners.
+    func bodyWasTapped(at point: CGPoint) {
+        guard hitTest(point, with: nil) === self else { return }
+        bodyWasTapped?()
     }
 
     @objc private func handleMove(_ recognizer: UIPanGestureRecognizer) {

@@ -275,6 +275,8 @@ final class PDFPictureSelectionController {
         // The toolbar hides while the picture is dragged and comes back where it is let go.
         selection.frameChangeDidBegin = { [weak self] in self?.toolbar?.dismiss() }
         selection.frameChangeWasCancelled = { [weak self] in self?.toolbar?.presentAfterChange() }
+        // The page's tap leaves touches on the frame alone, so the frame says when it was tapped.
+        selection.bodyWasTapped = { [weak self] in self?.selectedPictureWasTapped() }
         selection.frameChangeDidEnd = { [weak self] frame in self?.selectionFrameChangeDidEnd(frame) }
         selection.rotationChangeDidEnd = { [weak self] rotation in self?.selectionRotationChangeDidEnd(rotation) }
         let twoFingerGesture = SelectionFrameTwoFingerGesture(frameView: selection)

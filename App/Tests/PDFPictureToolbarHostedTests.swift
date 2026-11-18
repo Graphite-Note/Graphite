@@ -112,10 +112,17 @@ final class PDFPictureToolbarHostedTests: XCTestCase {
         for title in ["Send Image to Back", "Send Image Backward", "Rotate Right", "Crop", "Delete Image"] { XCTAssertTrue(actionNames.contains(title), "\(title) in \(actionNames)") }
         XCTAssertFalse(actionNames.contains("Bring Image to Front"))
 
-        // A tap on the selected picture hides its toolbar, another shows it again.
-        controller.selectedPictureWasTapped()
+        // A tap on the selected picture hides its toolbar, another shows it again. The page's
+        // own tap leaves touches on the frame alone, so the frame's tap does it; a tap on a
+        // handle does not.
+        let tappedFrame = try XCTUnwrap(controller.selectionView)
+        XCTAssertTrue(tappedFrame.gestureRecognizers?.contains(tappedFrame.bodyTapRecognizer) ?? false, "The frame takes taps.")
+        let middle = CGPoint(x: tappedFrame.bounds.midX, y: tappedFrame.bounds.midY)
+        tappedFrame.bodyWasTapped(at: middle)
         XCTAssertFalse(toolbar.isShown)
-        controller.selectedPictureWasTapped()
+        tappedFrame.bodyWasTapped(at: CGPoint(x: tappedFrame.bounds.minX, y: tappedFrame.bounds.minY))
+        XCTAssertFalse(toolbar.isShown, "A tap on a corner handle leaves the bar as it is.")
+        tappedFrame.bodyWasTapped(at: middle)
         XCTAssertTrue(toolbar.isShown)
 
         // Send Image to Back, pressed on the bar, is one step and leaves the bar on the picture.
@@ -125,6 +132,17 @@ final class PDFPictureToolbarHostedTests: XCTestCase {
         let page = try XCTUnwrap(session.document.page(at: 0))
         XCTAssertEqual(session.pictures(on: page).first?.name, selectedName, "The selected picture is now under the other.")
         try await waitUntil("the bar is back with Bring Image to Front enabled") { toolbar.isShown && (toolbar.toolbar?.buttons.first?.isEnabled ?? false) }
+
+        // VoiceOver's actions follow the change, and one run as VoiceOver runs it is one step too.
+        // (The simulator has no VoiceOver: this is the action VoiceOver's rotor would perform.)
+        XCTAssertTrue(frame.isAccessibilityElement)
+        XCTAssertEqual(frame.accessibilityLabel, "Selected image")
+        let bringToFront = try XCTUnwrap(frame.accessibilityCustomActions?.first { action in action.name == "Bring Image to Front" },
+                                         "Bring Image to Front is an action once the image is under the other.")
+        XCTAssertFalse(frame.accessibilityCustomActions?.contains { action in action.name == "Send Image to Back" } ?? true)
+        XCTAssertTrue(bringToFront.actionHandler?(bringToFront) ?? false)
+        XCTAssertEqual(session.undoManager.undoActionName, "Bring to Front")
+        XCTAssertEqual(session.pictures(on: page).last?.name, selectedName, "The selected picture is on top again.")
     }
 
     func testRotateCropAndDeleteFromTheToolbarAreOneStepEach() async throws {
