@@ -7,8 +7,8 @@
  *              stroke that draws its whole combined ink group (`PDFCombinedInkGroup`).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 18/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -37,6 +37,11 @@ final class PDFShownInkAnnotation: PDFAnnotation {
 
     override func draw(with box: PDFDisplayBox, in context: CGContext) {
         guard shouldDisplay, !isDrawnByPageInkLayer else { return }
+        #if os(iOS)
+        // On the iPad the page's overlay shows the group's picture as a layer's contents; drawn here, PDFKit drew 16 MB
+        // of it into a layer of the page's size on the main thread each time it arrived (54 ms frames, 2026-11-18).
+        if combinedGroup != nil { return }
+        #endif
         drawEvenWhenHidden(with: box, in: context)
     }
 
@@ -62,8 +67,11 @@ public extension PDFAnnotation {
     func becomeCombinedInk(_ group: PDFCombinedInkGroup) -> Bool {
         guard let shownInk = self as? PDFShownInkAnnotation, let page else { return false }
         shownInk.combinedGroup = group
-        // PDFKit draws an annotation within its bounds; the group's strokes cover the page.
+        #if !os(iOS)
+        // PDFKit draws an annotation within its bounds; the group's strokes cover the page. On the iPad it draws
+        // nothing, the page's overlay showing the group, so its layer stays the size of its own stroke.
         shownInk.bounds = page.bounds(for: .mediaBox)
+        #endif
         return true
     }
 }

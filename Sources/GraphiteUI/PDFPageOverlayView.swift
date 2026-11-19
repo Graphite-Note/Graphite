@@ -3,11 +3,12 @@
  * ------------------------------
  * Layer: UI
  * Description: What PDFKit places over a PDF page on the iPad: the page's Pencil canvas, drawn at the zoom
- *              over the whole page or the part of it on screen, the writing guides and the objects over the ink.
+ *              over the whole page or the part of it on screen, the writing guides, the pictures of the page's combined
+ *              ink groups and the objects over the ink.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 #if canImport(UIKit)
 import UIKit
@@ -28,6 +29,9 @@ import GraphiteCore
 final class PDFPageOverlayView: UIView {
     let canvas: PDFPageCanvasView
     private let guideView = DrawingPaperView()
+    /// The pictures of the page's combined ink groups (`PDFCombinedInkPictures`), under the canvas: a layer's contents,
+    /// which Core Animation shows without the main thread drawing anything.
+    private let combinedInkView = PDFCombinedInkView()
     /// The page's objects over the ink: text boxes, pictures and shapes (`PDFPageObjectsOverInkView`).
     let objectsOverInkView = PDFPageObjectsOverInkView(frame: .zero)
     /// How many times the page's size the canvas draws at (`renderingScale(forZoom:)`).
@@ -63,12 +67,22 @@ final class PDFPageOverlayView: UIView {
         backgroundColor = .clear
         isOpaque = false
         addSubview(guideView)
+        addSubview(combinedInkView)
         addSubview(canvas)
         addSubview(objectsOverInkView)
         canvas.placeIn(self)
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Shows the pictures of the page's combined ink groups as the page is shown, over each other, or hides them while
+    /// the canvas shows the page's ink.
+    func showCombinedInk(_ pictures: [CGImage], isShown: Bool) {
+        combinedInkView.show(pictures, isShown: isShown)
+    }
+
+    /// The pictures shown, which a test asks.
+    var shownCombinedInk: [CGImage] { combinedInkView.isHidden ? [] : combinedInkView.pictures }
 
     /// Writing guides under the ink, which the page's file never gets.
     var writingGuides: DrawingPaper {
@@ -116,6 +130,7 @@ final class PDFPageOverlayView: UIView {
         // The guides and the objects over the ink start at the page's top-left corner, in its points.
         guideView.frame = bounds
         guideView.drawingRegion = bounds
+        combinedInkView.frame = bounds
         objectsOverInkView.frame = bounds
         // A box with emoji, a picture or a shape is drawn at the zoom's resolution once the zoom settles.
         objectsOverInkView.screenPixelsPerPagePoint = renderingScale * (window?.screen.scale ?? traitCollection.displayScale)
@@ -154,6 +169,45 @@ final class PDFPageOverlayView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let touchedView = super.hitTest(point, with: event)
         return touchedView === self ? nil : touchedView
+    }
+}
+/// The pictures of a page's combined ink groups, each a layer filling the page, as the page is shown.
+private final class PDFCombinedInkView: UIView {
+    private(set) var pictures: [CGImage] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        isHidden = true
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show(_ pictures: [CGImage], isShown: Bool) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if pictures.map(ObjectIdentifier.init) != self.pictures.map(ObjectIdentifier.init) {
+            self.pictures = pictures
+            layer.sublayers?.forEach { sublayer in sublayer.removeFromSuperlayer() }
+            for picture in pictures {
+                let pictureLayer = CALayer()
+                pictureLayer.contents = picture
+                // The picture is the whole page as shown; magnified while a zoom settles, as PDFKit's tiles are.
+                pictureLayer.contentsGravity = .resize
+                pictureLayer.frame = bounds
+                layer.addSublayer(pictureLayer)
+            }
+        }
+        isHidden = !isShown || pictures.isEmpty
+        CATransaction.commit()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.sublayers?.forEach { sublayer in sublayer.frame = bounds }
+        CATransaction.commit()
     }
 }
 #endif

@@ -5,8 +5,8 @@
  * Description: Puts a PencilKit canvas on each PDF page and connects it to the tools, the palette, touches and saving.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 18/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 
 #if canImport(UIKit)
@@ -774,7 +774,10 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private func showCombinedInk(of page: PDFPage) {
         guard !isDetached, let pdfView else { return }
         if combinedInkPictures == nil {
-            combinedInkPictures = PDFCombinedInkPictures(view: pdfView, changeVersion: { [weak session] in session?.changeVersion ?? 0 })
+            combinedInkPictures = PDFCombinedInkPictures(view: pdfView, changeVersion: { [weak session] in session?.changeVersion ?? 0 },
+                                                         showPictures: { [weak self] page, pictures, isShown in
+                self?.canvasesByPage[ObjectIdentifier(page)]?.overlayView?.showCombinedInk(pictures, isShown: isShown)
+            })
         }
         combinedInkPictures?.pageAppeared(page)
     }
@@ -912,9 +915,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// While a canvas covers a page, it shows the ink; the ink annotations are hidden so
     /// translucent strokes are not drawn twice.
     private func setInkAnnotationsHidden(_ isHidden: Bool, on page: PDFPage, group: String) {
+        var holdsCombinedInk = false
         for annotation in page.annotations where annotation.value(forAnnotationKey: PDFPageManager.groupKey) as? String == group {
             if annotation.shouldDisplay == isHidden { annotation.shouldDisplay = !isHidden }
+            if annotation.combinedInkGroup != nil { holdsCombinedInk = true }
         }
+        // The group's picture, in the page's overlay, shows and hides with its annotation.
+        if holdsCombinedInk { combinedInkPictures?.updateShownPictures(of: page) }
     }
 
     /// Hides the annotations just added with these names, while the rest of the group is

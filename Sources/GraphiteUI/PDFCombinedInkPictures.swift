@@ -7,8 +7,8 @@
  *              an erasure.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 18/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 #if os(iOS)
 import UIKit
@@ -21,7 +21,8 @@ import GraphiteApple
 /// (`PDFShownInkCombining`). The picture is drawn here, off the main thread, from a separate copy of the file
 /// (`PDFPageInkRenderer`), at the page's size on screen times the screen's scale, at most `maximumPixelsPerPicture`; it
 /// comes a few frames after the page, as PDFKit's own tiles do, and is drawn again when a zoom ends, when strokes of
-/// the group are erased, or when the page is turned. A page leaving the screen lets its pictures go; its canvas, kept
+/// the group are erased, or when the page is turned. The page's overlay shows it as a layer's contents
+/// (`PDFPageOverlayView.showCombinedInk`), hidden while the page's canvas shows the ink. A page leaving the screen lets its pictures go; its canvas, kept
 /// for scrolling back, shows its ink meanwhile.
 @MainActor
 final class PDFCombinedInkPictures {
@@ -38,13 +39,17 @@ final class PDFCombinedInkPictures {
 
     private weak var view: PDFView?
     private let changeVersion: () -> Int
+    /// Shows a page's pictures in its overlay, `isShown` false while its canvas shows the page's ink.
+    private let showPictures: (_ page: PDFPage, _ pictures: [CGImage], _ isShown: Bool) -> Void
     private let renderer = PDFPageInkRenderer()
     private var shownPages: [ObjectIdentifier: ShownPage] = [:]
     private var redrawTimer: Timer?
 
-    init(view: PDFView, changeVersion: @escaping () -> Int) {
+    init(view: PDFView, changeVersion: @escaping () -> Int,
+         showPictures: @escaping (_ page: PDFPage, _ pictures: [CGImage], _ isShown: Bool) -> Void) {
         self.view = view
         self.changeVersion = changeVersion
+        self.showPictures = showPictures
         NotificationCenter.default.addObserver(self, selector: #selector(scheduleRedraw), name: .PDFViewScaleChanged, object: view)
         observeEdits()
     }
@@ -70,6 +75,19 @@ final class PDFCombinedInkPictures {
         guard let shownPage = shownPages.removeValue(forKey: ObjectIdentifier(page)) else { return }
         shownPage.drawing?.cancel()
         for combinedGroup in Self.combinedGroups(on: page) { combinedGroup.show(nil) }
+        showPictures(page, [], false)
+    }
+
+    /// Shows or hides the page's pictures as its groups' annotations are shown or hidden under its canvas.
+    func updateShownPictures(of page: PDFPage) {
+        guard shownPages[ObjectIdentifier(page)] != nil else { return }
+        let holders = page.annotations.filter { annotation in annotation.combinedInkGroup != nil }
+        let pictures = holders.compactMap { annotation in annotation.combinedInkGroup.flatMap(Self.upToDatePicture(of:)) }
+        showPictures(page, pictures, holders.contains(where: \.shouldDisplay))
+    }
+
+    private static func upToDatePicture(of combinedGroup: PDFCombinedInkGroup) -> CGImage? {
+        combinedGroup.picture.flatMap { picture in picture.version == combinedGroup.version ? picture.image : nil }
     }
 
     /// Pages whose groups' pictures are all drawn and up to date, which a test asks.
@@ -102,7 +120,10 @@ final class PDFCombinedInkPictures {
                   picture.rotation == rotation else { return true }
             return abs(CGFloat(picture.image.width) - pixelSize.width) > pixelSize.width * Self.sizeTolerance
         }
-        guard !groupsToDraw.isEmpty else { return }
+        guard !groupsToDraw.isEmpty else {
+            updateShownPictures(of: page)
+            return
+        }
         shownPages[identifier]?.drawing?.cancel()
         let renderer = renderer
         shownPages[identifier]?.drawing = Task { [weak self, weak page] in
@@ -114,8 +135,7 @@ final class PDFCombinedInkPictures {
             }
             guard !Task.isCancelled, let self, let page else { return }
             self.shownPages[ObjectIdentifier(page)]?.drawing = nil
-            // PDFKit draws the group's one annotation again, now with its picture.
-            self.view?.annotationsChanged(on: page)
+            self.updateShownPictures(of: page)
         }
     }
 
