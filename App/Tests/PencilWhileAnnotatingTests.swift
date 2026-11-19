@@ -3,11 +3,12 @@
  * --------------------------------------
  * Layer: Tests
  * Description: What holds around a PDF being written on: the note around an embed waits for palm
- *              rejection, and Apple Pencil's double tap and squeeze are answered with the bar hidden.
+ *              rejection and a hand on the embed as the Pencil writes leaves the note still, and Apple Pencil's
+ *              double tap and squeeze are answered with the bar hidden.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -79,6 +80,62 @@ final class PencilWhileAnnotatingTests: XCTestCase {
         XCTAssertEqual(note.panGestureRecognizer.allowedTouchTypes, touchTypesWhileReading)
         XCTAssertFalse(PalmRejection.isHandResting(isPalmRejectionOn: true, isWriting: coordinator.isWriting, isPencilActive: true),
                        "Palm rejection takes no finger while reading, so what waits for it goes on")
+    }
+
+    /// HUNT-016 through UIKit's own touches: while a PDF embedded in a long note is annotated, a hand that touches it as
+    /// the Pencil lifts (as a resting hand does between strokes) does not scroll the note; once the Pencil has been off
+    /// the screen for a moment, one finger scrolls the note as before.
+    func testAHandOnTheEmbedAsThePencilWritesLeavesTheNoteWhereItIs() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        XCTAssertTrue(SynthesizedTouches.canMakePencilTouches)
+        let palmRejection = AppStorage(wrappedValue: true, PalmRejectionPreference.key)
+        let palmRejectionBefore = palmRejection.wrappedValue
+        palmRejection.wrappedValue = true
+        defer { palmRejection.wrappedValue = palmRejectionBefore }
+        let location = try makeHostedBlankNotebook(named: "EmbedHand")
+        temporaryLocations.append(location)
+        let session = try await PDFSession.open(location)
+        let annotating = PDFAnnotationInput(isEnabled: true, drawsWithFinger: false, showsToolPicker: false)
+        let reading = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false)
+        let (_, window) = try hostedWindow(ScrollView {
+            Color.clear.frame(height: 200)
+            GraphitePDFView(session: session, input: reading, isEmbedded: true).frame(height: 600)
+            Color.clear.frame(height: 2_000)
+        })
+        defer { window.isHidden = true; window.rootViewController = nil }
+        try await waitUntil("the PDF is shown") { session.pdfView?.window != nil }
+        let pdfView = try XCTUnwrap(session.pdfView as? GraphitePDFDisplayView)
+        let coordinator = try XCTUnwrap(pdfView.annotationCoordinator)
+        var ancestor = pdfView.superview
+        var noteScrollView: UIScrollView?
+        while let view = ancestor, noteScrollView == nil {
+            noteScrollView = view as? UIScrollView
+            ancestor = view.superview
+        }
+        let note = try XCTUnwrap(noteScrollView)
+        let pages = try XCTUnwrap(pdfView.pagesScrollView)
+        // Writing is turned on with the embed on screen, as the embed's Write button does.
+        coordinator.update(input: annotating)
+        XCTAssertTrue(coordinator.waitsForPalmRejection(note.panGestureRecognizer))
+        let middle = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.midY), to: window)
+        let offsetBefore = note.contentOffset
+        let pagesOffsetBefore = pages.contentOffset
+
+        // The Pencil writes a stroke, and the hand slides on the embed as the Pencil lifts.
+        await SynthesizedTouches(window: window, touchType: .pencil).drag(from: CGPoint(x: middle.x - 60, y: middle.y),
+                                                                          to: CGPoint(x: middle.x + 60, y: middle.y), steps: 10, holdSeconds: 0)
+        await SynthesizedTouches(window: window).drag(from: CGPoint(x: middle.x, y: middle.y + 100), to: CGPoint(x: middle.x + 10, y: middle.y - 100),
+                                                      steps: 12, holdSeconds: 0)
+        XCTAssertEqual(note.contentOffset.y, offsetBefore.y, accuracy: 0.5, "The resting hand does not scroll the note.")
+        XCTAssertEqual(pages.contentOffset.y, pagesOffsetBefore.y, accuracy: 0.5, "Nor the embed's pages.")
+
+        // Off the screen for longer than palm rejection waits, one finger on the note beside the embed scrolls the note.
+        try await waitUntil("the Pencil counts as lifted", timeoutSeconds: 3) {
+            !PencilActivity.isActive(at: ProcessInfo.processInfo.systemUptime)
+        }
+        let belowEmbed = pdfView.convert(CGPoint(x: pdfView.bounds.midX, y: pdfView.bounds.maxY + 150), to: window)
+        await SynthesizedTouches(window: window).drag(from: belowEmbed, to: CGPoint(x: belowEmbed.x, y: belowEmbed.y - 250), steps: 12)
+        try await waitUntil("one finger scrolls the note") { note.contentOffset.y > offsetBefore.y + 50 }
     }
 
     /// HUNT-025: double tap and squeeze were heard only by the bar, so hiding the bar silenced them.
