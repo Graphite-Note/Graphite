@@ -2,7 +2,7 @@
 
 Created: 2026-10-24. Issue: [#105](https://github.com/Graphite-Note/Graphite/issues/105).
 
-Status: main is over its size budget on both platforms, so `scripts/archive-for-testflight.sh` stops before the next upload. Section 1 is not started; section 2 (the welcome tour's pictures with the app) is built and tested in the simulator and the Mac package, and waits for its check on a TestFlight install.
+Status, 2026-11-19: section 1 has the link map left (its other items accepted or moved to section 3, #216); section 2 waits only for the owner's own check on a TestFlight install; section 3 is later. Before: main is over its size budget on both platforms, so `scripts/archive-for-testflight.sh` stops before the next upload. Section 1 is not started; section 2 (the welcome tour's pictures with the app) is built and tested in the simulator and the Mac package, and waits for its check on a TestFlight install.
 
 ## Request
 
@@ -29,10 +29,11 @@ The growth is all in the binary; assets and resource bundles did not change. Sym
 
 ### 1. Back under the budget
 
-- [ ] The PostgreSQL Mirror's client costs nothing in the app while the plugin is off, or the owner accepts its size. The mirror feeds desktop apps such as QGIS; one option is to build it only into the Mac app.
-- [ ] `MermaidDiagrams` within its size target, or a new target agreed in `Docs/Native-diagrams-todo.md`.
+- ~~The PostgreSQL Mirror's client costs nothing in the app while the plugin is off, or the owner accepts its size. The mirror feeds desktop apps such as QGIS; one option is to build it only into the Mac app.~~ Moved to #216 on 2026-11-19 (section 3): the owner, "that plugin should not ship with the app, but that is a later discussion".
+- [x] `MermaidDiagrams` within its size target, or a new target agreed in `Docs/Native-diagrams-todo.md`.
+  Done 2026-11-19: the owner accepted the package's 1.3 MB as its target ("Accept, move rest"), recorded in `Docs/Native-diagrams-todo.md`'s Performance targets.
 - [ ] The remaining growth named by module (a link map of the Release build) and each part kept or moved out.
-- [ ] The budget recorded again (`scripts/app-size-budget.py --record`) only for growth the owner accepts, and the next TestFlight upload passes without `--allow-size-growth`.
+- ~~The budget recorded again (`scripts/app-size-budget.py --record`) only for growth the owner accepts, and the next TestFlight upload passes without `--allow-size-growth`.~~ Moved to #216 on 2026-11-19 (section 3): what ships and what becomes a download is decided there first.
 
 ### 2. The welcome tour's pictures arrive with the app
 
@@ -48,6 +49,16 @@ The owner, 2026-11-12, after a first launch in the simulator showed the tour's f
 - [x] Tests: the tour's first page shows a picture with no network on a first launch; a deleted pack is reported as such and asked for again; the size budget counts the tag's files as the App Store does.
   Done 2026-11-13: `WelcomeTourPicturesHostedTests.testOnAFirstLaunchTheFirstPageShowsItsPictureThroughTheTagWithNoNetwork` (the pack fetched as `FirstLaunchWelcomeTour` asks for it, through the tag, with every network request refused and nothing written to Application Support; the first page drawn beside the same page with no pictures until its right half has more than twice the edges: 3,898 against 1,524; screenshot looked at: the welcome page with the iPad picture of a Fourier-series note), `testARemovedPackIsReportedRemovedAndAskedForAgain` (removed, not looked for after a relaunch, then fetched again through the tag), and on the Mac `AddOnIncludedCopiesTests` (the tag used without a download, Settings looking for it, the tour asking for it while Settings looks, a removed tag reported removed across a relaunch and asked for again, the system's download, the GitHub fallback, the bundle). `scripts/app-size-budget.py` now counts the asset packs of initial install tags in `app` and in a new part, `initialInstallTags`, as the App Store counts them in the install size, and leaves other tags out: an archive keeps its asset packs in `Products/OnDemandResources`, and a pack of an initial install tag is the one whose `Info.plist` has `Priority` 1 (found by archiving a small project with and without the setting: without it the key is absent). `--self-test` checks this on a made-up archive; measured on the simulator build, `initialInstallTags` is 3.1 MB. `scripts/check-add-on-packs.py` checks that the project takes exactly the pack's files, each with its platform and tag, and the tag as an initial install tag.
 - [ ] Checked on a TestFlight install on an iPad and a Mac: the first page's picture shows at once, and Delete frees the space.
+
+### 3. Later: downloadable extras
+
+Issue: [#216](https://github.com/Graphite-Note/Graphite/issues/216)
+
+The owner, 2026-11-19: "that plugin should not ship with the app, but that is a later discussion a lot of things should be downloadable and not ship with the app and be able to download it... but right now we need to focus on getting it to work".
+
+- [ ] The PostgreSQL Mirror's client (at least 5.6 MB: PostgresNIO, SwiftNIO, BoringSSL, AsyncAlgorithms) does not ship with the app; it is a download, or the plugin is left out of the app.
+- [ ] Which other parts of the app become downloads that can be deleted later, chosen with the owner from the growth named by module (section 1).
+- [ ] The budget recorded again (`scripts/app-size-budget.py --record`) for what still ships, and the next TestFlight upload passes without `--allow-size-growth`.
 
 ## Decisions
 
