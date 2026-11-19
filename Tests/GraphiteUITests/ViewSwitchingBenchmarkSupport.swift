@@ -99,6 +99,9 @@ struct MainThreadQuietWatch {
         let mainThreadProcessor: Duration
         /// The longest single step, which the person sees as the window frozen.
         let longestStep: Duration
+        /// The main thread's own processor time in the longest step: near its length when the thread worked through it,
+        /// near zero when the thread was free and only the watch's next poll came late.
+        var longestStepMainThreadProcessor: Duration = .zero
     }
 
     let window: Window
@@ -117,6 +120,8 @@ struct MainThreadQuietWatch {
         var lastBusyEnd = stepStart
         var processorAtLastBusy = ProcessResourceUsage.mainThreadProcessorSeconds()
         var longestStep = start.duration(to: stepStart)
+        var processorAtStepStart = ProcessResourceUsage.mainThreadProcessorSeconds()
+        var longestStepProcessor = processorAtStepStart - processorStart
         var quietSteps = 0
         var shownAt: ContinuousClock.Instant?
         try await waitUntil("the window shows what the switch asked for, then is quiet", timeoutSeconds: 60, pollingIntervalSeconds: Self.step) {
@@ -124,7 +129,9 @@ struct MainThreadQuietWatch {
             let stepEnd = ContinuousClock.now
             let stepLength = stepStart.duration(to: stepEnd)
             stepStart = stepEnd
-            longestStep = max(longestStep, stepLength)
+            let processorAtStepEnd = ProcessResourceUsage.mainThreadProcessorSeconds()
+            if stepLength > longestStep { longestStep = stepLength; longestStepProcessor = processorAtStepEnd - processorAtStepStart }
+            processorAtStepStart = processorAtStepEnd
             let showsIt = isShown()
             if showsIt { shownAt = shownAt ?? stepEnd } else { shownAt = nil }
             if stepLength > Self.busyStep {
@@ -135,7 +142,8 @@ struct MainThreadQuietWatch {
             return quietSteps >= quietStepsToStop
         }
         return Measurement(busy: start.duration(to: lastBusyEnd), shown: start.duration(to: shownAt ?? .now),
-                           mainThreadProcessor: .seconds(processorAtLastBusy - processorStart), longestStep: longestStep)
+                           mainThreadProcessor: .seconds(processorAtLastBusy - processorStart), longestStep: longestStep,
+                           longestStepMainThreadProcessor: .seconds(longestStepProcessor))
     }
 
     private func layOut() {

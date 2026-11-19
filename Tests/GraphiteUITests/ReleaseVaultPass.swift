@@ -7,8 +7,8 @@
  *              a screenshot of each page, and what went wrong; the Mac's and the iPad's tests run it.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 19/11/2026
  */
 
 import Foundation
@@ -62,11 +62,18 @@ final class ReleaseVaultPass {
     let vaultRoot: URL
     private let webServer: LoopbackWebServer
     private let quietWatch: MainThreadQuietWatch
+    #if os(macOS)
+    /// Samples the process while the main thread is stuck, so a freeze comes with its stacks.
+    private let freezeSampler: ReleaseVaultFreezeSampler
+    #endif
     private(set) var findings: [ReleaseVaultFinding] = []
     private(set) var screenshotCount = 0
     private(set) var openedFileCount = 0
     private(set) var longestStep: (duration: Duration, place: String) = (.zero, "")
     private(set) var part: ReleaseVaultPassPart?
+    /// Files whose freeze came while the Mac was overloaded, to be measured again once it is quiet.
+    private var filesToMeasureAgain: Set<VaultPath> = []
+    private var isMeasuringAgain = false
 
     private init(testCase: XCTestCase, workspace: WorkspaceModel, window: MainThreadQuietWatch.Window, vaultRoot: URL, webServer: LoopbackWebServer) {
         self.testCase = testCase
@@ -76,6 +83,13 @@ final class ReleaseVaultPass {
         self.webServer = webServer
         // A fifth of a second without work ends each step: the pass measures several hundred.
         quietWatch = MainThreadQuietWatch(window: window, quietStepsToStop: 40)
+        #if os(macOS)
+        let sampleFolder = ProcessInfo.processInfo.environment[Self.screenshotFolderVariable].map { path in URL(fileURLWithPath: path, isDirectory: true) }
+            ?? (try? TemporaryVault.make(prefix: "ReleaseVaultFreezeSamples", for: testCase).root)
+        freezeSampler = ReleaseVaultFreezeSampler(folder: sampleFolder ?? vaultRoot.deletingLastPathComponent())
+        freezeSampler.start()
+        testCase.addTeardownBlock { [freezeSampler] in freezeSampler.stop() }
+        #endif
     }
 
     /// The vault copied, indexed and shown in a window that closes when the test ends: `Tests/ReleaseVault`, or another
@@ -97,6 +111,7 @@ final class ReleaseVaultPass {
     /// it. The first part also records a file that no part opens, so a new folder of the vault is not left out unseen.
     func run(_ part: ReleaseVaultPassPart) async throws {
         self.part = part
+        try await ReleaseVaultMachineLoad.waitUntilQuiet(before: "the \(part.rawValue) part")
         if part.contains("Notebooks/") { try await importNotebooks() }
         if part.contains("Plugins/") { try await turnOnCommunityPlugins() }
         let files = try filesToOpen()
@@ -120,6 +135,8 @@ final class ReleaseVaultPass {
     }
 
     /// A note in its three views, a PDF, picture, base or canvas in its own; audio, video and other files are not opened.
+    /// A file whose only freeze came while the Mac was overloaded is opened again, from the start, once the Mac is quiet,
+    /// and a freeze then counts whatever the load.
     private func passAnyFile(_ path: VaultPath) async throws {
         switch DocumentKind(path: path) {
         case .markdown: try await passNote(path)
@@ -127,6 +144,11 @@ final class ReleaseVaultPass {
         case .media, .other: return
         }
         openedFileCount += 1
+        guard filesToMeasureAgain.remove(path) != nil else { return }
+        try await ReleaseVaultMachineLoad.waitUntilQuiet(before: "measuring \(path.rawValue) again")
+        isMeasuringAgain = true
+        defer { isMeasuringAgain = false }
+        if case .markdown = DocumentKind(path: path) { try await passNote(path) } else { try await passFile(path) }
     }
 
     /// Findings that are not the vault's own deliberate failures.
@@ -140,6 +162,7 @@ final class ReleaseVaultPass {
 
     /// One `GRAPHITE-RELEASE-PASS` line for the log, then each finding on a line of its own.
     func printReport() {
+        attachFreezeSamples()
         let longestMilliseconds = Int(longestStep.duration / .milliseconds(1))
         print("GRAPHITE-RELEASE-PASS part=\(part?.rawValue ?? "none") files=\(openedFileCount) screenshots=\(screenshotCount) findings=\(findings.count)"
               + " known_open=\(findings.filter(\.isKnownOpenDefect).count) unexpected=\(unexpectedFindings.count) longest_step_ms=\(longestMilliseconds) at=\"\(longestStep.place)\"")
@@ -308,15 +331,50 @@ final class ReleaseVaultPass {
 
     /// Makes `change` and waits until the window shows it and the main thread is quiet, recording a freeze and an error.
     private func measure(_ path: String, _ step: String, _ change: () -> Void, until isShown: () -> Bool = { true }) async throws {
+        let measurementStart = Date()
         let measurement = try await quietWatch.measure(change, until: isShown)
         if measurement.longestStep > longestStep.duration { longestStep = (measurement.longestStep, "\(path), \(step)") }
         if measurement.longestStep > Self.freezeBudget {
-            record(ReleaseVaultFinding(path: path, shown: .wholeVault, problem: .freeze(milliseconds: Int(measurement.longestStep / .milliseconds(1)))))
+            let load = ReleaseVaultMachineLoad.current
+            reportFreeze(path, step, measurement, since: measurementStart, load: load)
+            // On 2026-11-19 the same opening took 270 to 320 ms on a quiet Mac, 1.5 s at a load of 55 and 4.5 s at 201, the
+            // main thread working 141 ms of it: a freeze under that load is the machine's until it repeats on a quiet one.
+            if load.isOverloaded, !isMeasuringAgain, let file = try? VaultPath(path) {
+                filesToMeasureAgain.insert(file)
+            } else {
+                record(ReleaseVaultFinding(path: path, shown: .wholeVault, problem: .freeze(milliseconds: Int(measurement.longestStep / .milliseconds(1)))))
+            }
         }
         if let message = workspace.errorMessage {
             record(ReleaseVaultFinding(path: path, shown: .wholeVault, problem: .error(message)))
             workspace.errorMessage = nil
         }
+    }
+
+    /// The freeze's main-thread processor time (low when the thread waited rather than worked) and, on the Mac, the samples
+    /// taken while it lasted, which `printReport` attaches once `sample` has written them.
+    private func reportFreeze(_ path: String, _ step: String, _ measurement: MainThreadQuietWatch.Measurement, since start: Date,
+                              load: ReleaseVaultMachineLoad) {
+        let kind = load.isOverloaded && !isMeasuringAgain ? "GRAPHITE-RELEASE-FREEZE-UNDER-LOAD" : "GRAPHITE-RELEASE-FREEZE"
+        var line = "\(kind) load=\(load.description) path=\"\(path)\" step=\"\(step)\" longest_step_ms=\(Int(measurement.longestStep / .milliseconds(1)))"
+            + " busy_ms=\(Int(measurement.busy / .milliseconds(1))) main_cpu_ms=\(Int(measurement.mainThreadProcessor / .milliseconds(1)))"
+            + " longest_step_main_cpu_ms=\(Int(measurement.longestStepMainThreadProcessor / .milliseconds(1)))"
+        #if os(macOS)
+        line += " main_queue_gap_ms=\(Int(freezeSampler.longestBeatGap(since: start) * 1_000))"
+        line += freezeSampler.reports(since: start).map { report in " sample=\"\(report.path)\"" }.joined()
+        #endif
+        print(line)
+    }
+
+    private func attachFreezeSamples() {
+        #if os(macOS)
+        for report in freezeSampler.reports(since: .distantPast) where FileManager.default.fileExists(atPath: report.path) {
+            let attachment = XCTAttachment(contentsOfFile: report)
+            attachment.name = "freeze sample — \(report.lastPathComponent)"
+            attachment.lifetime = .keepAlways
+            testCase.add(attachment)
+        }
+        #endif
     }
 
     private func record(_ finding: ReleaseVaultFinding) {

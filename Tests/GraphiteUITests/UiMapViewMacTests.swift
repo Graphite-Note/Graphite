@@ -88,7 +88,9 @@ final class UiMapViewMacTests: XCTestCase {
     }
 
     private func show(_ view: some View) async throws -> MKMapView {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled], backing: .buffered, defer: false)
+        // Closable: choosing a marker dismisses the map screen, which asks its window to close (`performClose`), and a
+        // window without a close button answers with the Mac's alert sound (2026-11-19, heard during the Mac suites).
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 500), styleMask: [.titled, .closable], backing: .buffered, defer: false)
         // Swift owns the window; closing it in tearDown must not release it a second time.
         window.isReleasedWhenClosed = false
         window.contentView = NSHostingView(rootView: view)

@@ -3,11 +3,11 @@
  * -----------------------------------
  * Layer: Tests
  * Description: The release pass's window (shown as the app shows it, and its screenshots), its scrolling a page at a
- *              time, and the copy of the vault whose web frames point at the pass's own loopback server.
+ *              time, the copy of the vault whose web frames point at the pass's own loopback server, and the Mac's load.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 19/11/2026
  */
 
 import Foundation
@@ -18,6 +18,9 @@ import GraphiteCore
 import GraphiteFixtures
 #endif
 @testable import GraphiteUI
+#if canImport(GraphiteTestSupport)
+import GraphiteTestSupport
+#endif
 #if canImport(UIKit)
 import UIKit
 #else
@@ -257,5 +260,36 @@ enum ReleaseVaultPassWebPages {
             if location.pathExtension == "md", !insideVault.contains("/.") { notes.append(location) }
         }
         return notes.sorted { first, second in first.path < second.path }
+    }
+}
+
+/// How busy the Mac is, which a simulator shares: the one-minute load average against the processor count. Other
+/// sessions' builds load the owner's Mac to 30 or more on its 18 processors, and a main thread starved of processor time
+/// then looks frozen to the pass (Docs/Release-test-vault-todo.md, section 2).
+struct ReleaseVaultMachineLoad {
+    let oneMinuteAverage: Double
+    let processorCount: Int
+
+    static var current: ReleaseVaultMachineLoad {
+        var averages = [Double](repeating: 0, count: 3)
+        let read = getloadavg(&averages, 3)
+        return ReleaseVaultMachineLoad(oneMinuteAverage: read > 0 ? averages[0] : 0, processorCount: ProcessInfo.processInfo.activeProcessorCount)
+    }
+
+    /// More work waiting than processors to run it.
+    var isOverloaded: Bool { oneMinuteAverage > Double(processorCount) }
+    var description: String { String(format: "%.1f/%d", oneMinuteAverage, processorCount) }
+
+    /// Waits until the Mac is no longer overloaded, at most five minutes (twice in a part stays within the simulators'
+    /// twenty minutes a test), then goes on whatever the load, printing what it waited for.
+    static func waitUntilQuiet(before step: String) async throws {
+        guard current.isOverloaded else { return }
+        let started = ContinuousClock.now
+        let givingUpAt = started + .seconds(300)
+        print("GRAPHITE-RELEASE-WAIT load=\(current.description) before \(step)")
+        try await waitUntil("the Mac is quiet or five minutes have passed", timeoutSeconds: 360, pollingIntervalSeconds: 5) {
+            !current.isOverloaded || ContinuousClock.now >= givingUpAt
+        }
+        print("GRAPHITE-RELEASE-WAIT ended load=\(current.description) after \(Int(started.duration(to: .now) / .seconds(1))) s")
     }
 }

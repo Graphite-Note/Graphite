@@ -107,6 +107,37 @@ final class UiLivePreviewEmbedContinuityTests: XCTestCase {
         XCTAssertNil(LivePreviewEmbedImageLocations.foundImage(for: embed, in: vault))
     }
 
+    /// A view's lookup given up (its task cancelled as SwiftUI discards or remakes the view) leaves where the picture was
+    /// found for the other views of the same embed; an unreadable file is forgotten, and a read one remembered.
+    func testALookupGivenUpLeavesThePictureFoundForTheOtherViewsOfTheEmbed() async throws {
+        let location = try writeRedPNG(named: "Shared.png")
+        let (_, embed) = try embedBlock("![[Shared.png]]")
+        let path = try VaultPath("Shared.png")
+        let foundImage = LivePreviewEmbedImageLocations.FoundImage(path: path, location: location)
+        LivePreviewEmbedImageLocations.remember(foundImage, for: embed, in: vault)
+
+        // A width never decoded before, so the cache decodes rather than answering from what it kept.
+        let givenUpLookup = Task { @MainActor [vault] in
+            await LivePreviewEmbedImageLocations.lookUpPicture(for: embed, path: path, location: location, in: try XCTUnwrap(vault), displayPixelWidth: 37)
+        }
+        givenUpLookup.cancel()
+        guard case .givenUp = try await givenUpLookup.value else { return XCTFail("A cancelled lookup decoded the picture or called it unreadable.") }
+        XCTAssertEqual(LivePreviewEmbedImageLocations.foundImage(for: embed, in: vault), foundImage, "A lookup given up forgot where the picture is.")
+
+        guard case .found = await LivePreviewEmbedImageLocations.lookUpPicture(for: embed, path: path, location: location, in: vault, displayPixelWidth: 37) else {
+            return XCTFail("The picture was not read.")
+        }
+        let brokenLocation = vault.appendingPathComponent("Broken.png")
+        try Data("not a picture".utf8).write(to: brokenLocation)
+        let (_, brokenEmbed) = try embedBlock("![[Broken.png]]")
+        LivePreviewEmbedImageLocations.remember(.init(path: try VaultPath("Broken.png"), location: brokenLocation), for: brokenEmbed, in: vault)
+        guard case .unreadable = await LivePreviewEmbedImageLocations.lookUpPicture(for: brokenEmbed, path: try VaultPath("Broken.png"), location: brokenLocation,
+                                                                                    in: vault, displayPixelWidth: 37) else {
+            return XCTFail("A file that is not a picture was read.")
+        }
+        XCTAssertNil(LivePreviewEmbedImageLocations.foundImage(for: brokenEmbed, in: vault), "An unreadable file stayed remembered.")
+    }
+
     func testTheRememberedImagesStartOverPastTheirLimit() throws {
         let (_, firstEmbed) = try embedBlock("![[First.png]]")
         let firstImage = LivePreviewEmbedImageLocations.FoundImage(path: try VaultPath("First.png"), location: vault.appendingPathComponent("First.png"))

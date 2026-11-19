@@ -8,8 +8,8 @@
  *              edited tag, with screenshots.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 17/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 
 #if os(iOS)
@@ -92,7 +92,7 @@ final class WebFrameHostedTests: XCTestCase {
         XCTAssertFalse(server.requestedPaths.contains("/frame10"), "The last frame, screens below, is not loaded: \(server.requestedPaths)")
         attachScreenshot(named: "Ten frames: the top of the note")
 
-        let scrollView = try noteScrollView(in: controller)
+        let scrollView = try XCTUnwrap(noteScrollView(in: controller))
         var mostWebViews = 0
         var offset: CGFloat = 0
         while offset < scrollView.contentSize.height - scrollView.bounds.height {
@@ -169,7 +169,8 @@ final class WebFrameHostedTests: XCTestCase {
     private func scrollableNote(in controller: UIViewController) async throws -> UIScrollView {
         var found: UIScrollView?
         try await waitUntil("the note is laid out", timeoutSeconds: 30) {
-            found = try? self.noteScrollView(in: controller)
+            // Not XCTUnwrap while polling: it records a failure each time the note is not laid out yet.
+            found = self.noteScrollView(in: controller)
             return found != nil
         }
         return try XCTUnwrap(found)
@@ -282,12 +283,12 @@ final class WebFrameHostedTests: XCTestCase {
         editor.delegate?.textViewDidChangeSelection?(editor)
     }
 
-    private func noteScrollView(in controller: UIViewController) throws -> UIScrollView {
+    private func noteScrollView(in controller: UIViewController) -> UIScrollView? {
         let scrollViews = descendants(of: controller.view, matching: UIScrollView.self).filter { scrollView in
             scrollView.window != nil && !(scrollView.superview is WKWebView) && scrollView.contentSize.height > scrollView.bounds.height
                 && scrollView.bounds.width > 300 && !self.isInsideWebView(scrollView)
         }
-        return try XCTUnwrap(scrollViews.max { leftView, rightView in leftView.contentSize.height < rightView.contentSize.height })
+        return scrollViews.max { leftView, rightView in leftView.contentSize.height < rightView.contentSize.height }
     }
 
     private func isInsideWebView(_ view: UIView) -> Bool {

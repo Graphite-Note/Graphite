@@ -6,7 +6,7 @@
  *              lines of images.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.49
+ * Version: 0.50
  * Date: 19/11/2026
  */
 
@@ -725,6 +725,8 @@ struct LivePreviewEmbedView: View {
 
     private func resolve() async {
         guard let path = await environment.resolve(embed.target, embed.isWiki), let location = try? path.url(in: environment.root) else {
+            // A lookup given up as SwiftUI discarded or remade the view says nothing about the file.
+            guard !Task.isCancelled else { return }
             LivePreviewEmbedImageLocations.forget(embed, in: environment.root)
             resolution = .missing
             return
@@ -736,12 +738,13 @@ struct LivePreviewEmbedView: View {
         if DocumentKind(path: path) == .image || isDrawingPDF {
             // Widget views are discarded off screen and after a drawing is saved; the shared
             // cache makes an image again only when its file changed.
-            guard let thumbnail = try? await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth) else {
-                LivePreviewEmbedImageLocations.forget(embed, in: environment.root)
-                resolution = .unreadable(path); return
+            switch await LivePreviewEmbedImageLocations.lookUpPicture(for: embed, path: path, location: location, in: environment.root,
+                                                                      displayPixelWidth: displayPixelWidth) {
+            case .found(let thumbnail):
+                resolution = .image(path: path, image: thumbnail.image, aspectRatio: thumbnail.aspectRatio, isEditableDrawing: thumbnail.isEditableDrawing)
+            case .unreadable: resolution = .unreadable(path)
+            case .givenUp: return
             }
-            LivePreviewEmbedImageLocations.remember(LivePreviewEmbedImageLocations.FoundImage(path: path, location: location), for: embed, in: environment.root)
-            resolution = .image(path: path, image: thumbnail.image, aspectRatio: thumbnail.aspectRatio, isEditableDrawing: thumbnail.isEditableDrawing)
             return
         }
         LivePreviewEmbedImageLocations.forget(embed, in: environment.root)
@@ -803,6 +806,27 @@ enum LivePreviewEmbedImageLocations {
 
     private static func key(for embed: EmbedReference, in root: URL) -> String {
         "\(root.standardizedFileURL.path)|\(embed.isWiki)|\(embed.target)"
+    }
+
+    enum PictureLookup {
+        case found(ReadingThumbnail)
+        case unreadable
+        /// The view's task was cancelled, as SwiftUI discarded or remade the view, before the picture was decoded.
+        case givenUp
+    }
+
+    /// Decodes the picture an embed's view found and remembers where, for the next view of the embed. A lookup given up
+    /// remembers and forgets nothing: forgetting took the picture's place from every other view of the same embed, which
+    /// then showed a progress indicator for a few frames (seen 2026-11-19 on an iPhone, where `Pictures.md` embeds one
+    /// picture twice and its row of pictures is laid out again as it wraps).
+    static func lookUpPicture(for embed: EmbedReference, path: VaultPath, location: URL, in root: URL, displayPixelWidth: Int?) async -> PictureLookup {
+        guard let thumbnail = try? await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth) else {
+            if Task.isCancelled { return .givenUp }
+            forget(embed, in: root)
+            return .unreadable
+        }
+        remember(FoundImage(path: path, location: location), for: embed, in: root)
+        return .found(thumbnail)
     }
 }
 
