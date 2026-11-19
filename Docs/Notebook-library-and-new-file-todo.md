@@ -170,7 +170,7 @@ Issue: [#36](https://github.com/Graphite-Note/Graphite/issues/36)
 - [x] The last paper and size are remembered; spacing and colors start as Settings has them.
 - [x] Not checked yet: the sheet at iPad portrait and landscape and on the iPhone.
   Done 2026-11-17: looked at in my own iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, Debug of main bbef1358 with the release test vault and made-up files) and in an iPhone 17 Pro simulator (iOS 27.2). iPad portrait: the sheet full height, the preview beside name, size, colour, pages and cover, the templates below; landscape: a centred sheet with the same layout, nothing cut off; iPhone (New › Notebook): the preview above the options, which scroll. The dotted paper's dots show in the preview at full resolution, faint at small sizes.
-- [ ] Handwriting language (only with handwriting recognition).
+- [x] ~~Handwriting language (only with handwriting recognition).~~ The owner wants it later (2026-11-19), once there is handwriting recognition: moved to [Later](#later) (#217).
   Not a priority (the owner, 2026-11-12). Graphite has no handwriting recognition: its only text recognition is Vision on printed scanned pages, which finds the language itself.
   Looked at 2026-11-12, left open: Graphite has no handwriting recognition. Its only text recognition is Vision's on printed pages (`ScannedPageWordRecognizer` for scanned documents' text layer, `RecognizeTextRequest` and `RecognizeDocumentsRequest` in `PDFReadAloudPage` for reading a scanned PDF aloud), both detecting the page's language themselves; nothing reads a notebook's ink, and `HandwritingTidying` is geometry only (Apple's handwriting model has no public API). A language choice would have no recognizer to go to, so the sheet does not offer one until handwriting recognition exists.
 
@@ -183,7 +183,7 @@ Issue: [#37](https://github.com/Graphite-Note/Graphite/issues/37)
   - [x] In a folder: the note's folder or one above it, with a link (default) or an embed.
 - [x] New Drawing stays exactly as it was, beside New Notebook.
 - [x] Undo of the insert is the editor's undo of the inserted text; the PDF is kept. Not tested by an automated test.
-- [ ] "New Linked Note" from a notebook.
+- [x] ~~"New Linked Note" from a notebook.~~ The owner wants it later (2026-11-19): moved to [Later](#later) (#217).
   Wanted (the owner, 2026-11-12), once PDFs can hold such a link in a standard way that Obsidian also reads; Obsidian's own PDF support is expected to bring one. Waits for that.
 
 ## Part 7: choosing how you take notes
@@ -203,6 +203,15 @@ Issue: [#38](https://github.com/Graphite-Note/Graphite/issues/38)
   Done 2026-11-17: checked in my own iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, Debug of main bbef1358 with the release test vault and made-up files). In the Library, a folder given orange and the tortoise symbol was written to the vault's `.obsidian/graphite-folder-styles.json` and to Finder's own attributes (the Orange tag and `com.apple.icon.folder#S`); after the app was ended and reopened the tile was still orange with the tortoise. With Finder's attributes then removed from the folder and the app reopened again, the tile kept the look from the vault's file alone, so another device that receives the vault, whatever syncs it, shows it too.
 - [x] `Architecture.md`, `Coverage.md` and `Obsidian-mobile-gaps.md` updated as each part lands, with the checks that ran.
   Done 2026-11-19: `Architecture.md` › "Library and new files" (the library, My Templates, the cover, the New menu's photo items, Insert › New Notebook, scanning) and `Coverage.md`'s three notebook library rounds (2026-10-19, the leftovers and the Finder folder icons) describe what was built and how it was checked; `Obsidian-mobile-gaps.md` names notebooks among what Graphite has beyond Obsidian (its line on PDF annotation and paper templates), which is all a list of Obsidian's features says of them.
+
+## Later
+
+Issue: [#217](https://github.com/Graphite-Note/Graphite/issues/217)
+
+The owner, 2026-11-19: build these later, after the open issues are finished ("dont open new doors").
+
+- [ ] Handwriting language in the New Notebook sheet, offered once Graphite recognizes handwriting (today nothing reads a notebook's ink; Vision reads printed scanned pages only, and finds their language itself).
+- [ ] "New Linked Note" from a notebook, once a PDF can hold such a link in a standard way that Obsidian also reads.
 
 ## Open questions
 
