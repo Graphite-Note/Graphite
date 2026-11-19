@@ -8,8 +8,8 @@
  *              reveals its folder, and the command that puts the cursor in the field.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 
 #if os(macOS)
@@ -189,6 +189,25 @@ final class FileTreeFilterMacTests: XCTestCase {
         XCTAssertTrue(workspace.expandedFolders.contains(try VaultPath("Batikha-hour")))
         try await waitUntil { (outlineView.item(atRow: outlineView.selectedRow) as? FileTreeNode)?.path.rawValue == "Batikha-hour" }
         XCTAssertTrue(outlineView.isItemExpanded(try node(named: "Batikha-hour", in: outlineView)))
+    }
+
+    /// The sidebar's list scrolls under its top bar, so its clip view starts above the list's first row. A folder revealed near
+    /// the top was scrolled to an origin of 0, half under the Filter field (seen in the Mac app, 2026-11-19); it is now
+    /// wholly below the bar.
+    func testARevealedFolderNearTheTopIsNotHiddenUnderTheTopBar() async throws {
+        // A list longer than the view, as a vault's is: one that fits never scrolls.
+        let workspace = try await indexedWorkspace(files: Self.files + (1...40).map { number in "Z note \(number).md" })
+        let (_, outlineView) = try await showSidebar(of: workspace)
+        let scrollView = try XCTUnwrap(outlineView.enclosingScrollView)
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 60, left: 0, bottom: 0, right: 0)
+        workspace.revealFolder(try VaultPath("Batikha-hour"))
+        try await waitUntil { (outlineView.item(atRow: outlineView.selectedRow) as? FileTreeNode)?.path.rawValue == "Batikha-hour" }
+        let clipView = scrollView.contentView
+        let rowFrame = outlineView.rect(ofRow: outlineView.selectedRow)
+        let visibleTop = clipView.bounds.minY + clipView.contentInsets.top
+        XCTAssertGreaterThanOrEqual(rowFrame.minY, visibleTop - 0.5, "The revealed row starts below the top bar")
+        XCTAssertLessThanOrEqual(rowFrame.maxY, clipView.bounds.maxY + 0.5, "and ends above the list's bottom")
     }
 
     /// The outline makes rows only for what it shows, so a keystroke in a 30,000-file vault redraws in a moment even when

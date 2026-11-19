@@ -5,8 +5,8 @@
  * Description: The Mac's file tree on AppKit's outline view, with its dragging and dropping.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 11/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 
 #if os(macOS)
@@ -350,8 +350,13 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         guard let scrollView = outlineView.enclosingScrollView else { return }
         let clipView = scrollView.contentView
         let rowFrame = outlineView.rect(ofRow: row)
-        let highestOrigin = max(0, outlineView.bounds.height - clipView.bounds.height)
-        clipView.scroll(to: NSPoint(x: 0, y: min(highestOrigin, max(0, rowFrame.midY - clipView.bounds.height / 2))))
+        // The list scrolls under the sidebar's top bar: its top is at minus the inset, and the row goes to the middle of
+        // what shows below the bar. An origin of 0 left a row near the top half under the Filter field.
+        let insets = clipView.contentInsets
+        let shownHeight = clipView.bounds.height - insets.top - insets.bottom
+        let lowestOrigin = -insets.top
+        let highestOrigin = max(lowestOrigin, outlineView.bounds.height - clipView.bounds.height + insets.bottom)
+        clipView.scroll(to: NSPoint(x: 0, y: min(highestOrigin, max(lowestOrigin, rowFrame.midY - insets.top - shownHeight / 2))))
         scrollView.reflectScrolledClipView(clipView)
     }
 
