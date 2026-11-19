@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: Why a diagram is not drawn, in a sentence.
  *
- * Authors: Félix Chevalier
- * Version: 0.20
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.22
+ * Date: 19/11/2026
  */
 
 import MermaidDiagrams
@@ -26,7 +26,7 @@ extension SequenceStatementNotLaidOut {
     }
 }
 
-extension ReadingDiagramFailure {
+extension MermaidDiagramPreparationFailure {
     /// `items` as a sentence part in a steady order: “boxes”, “boxes and half arrows”, “a, b and c”.
     private static func listed(_ items: [String]) -> String {
         let sorted = items.sorted()
@@ -34,9 +34,11 @@ extension ReadingDiagramFailure {
         return sorted.dropLast().joined(separator: ", ") + " and " + sorted[sorted.count - 1]
     }
 
-    /// Why the diagram is not drawn, in a sentence.
+    /// Why the diagram is not drawn, in a sentence. Switched as an optional, so that a refusal a later version of the
+    /// package adds (a new type's layout error) is worded by its kind (`category`) instead of needing a sentence here
+    /// first: every warning is an error in Graphite, and a switch that lists every case cannot have a default.
     var explanation: String {
-        switch self {
+        switch Optional(self) {
         case .reading(.invalidSyntax(let line, let problem)): "This diagram could not be drawn: line \(line), \(problem.explanation)."
         case .reading(.noDiagram): "This block does not name a diagram type."
         case .nothingToDraw: "This diagram has nothing to draw yet."
@@ -45,23 +47,21 @@ extension ReadingDiagramFailure {
         case .reading(.tooManyNodes(let limit)): "This diagram has more than \(limit) nodes, too many to draw."
         case .reading(.tooManyEdges(let limit)): "This diagram has more than \(limit) links, too many to draw."
         case .reading(.unsupportedDiagramType(let keyword)): "Diagrams of type “\(keyword)” are not drawn yet; the source is shown instead."
-        case .layout(.tooManyLayoutPoints): "This diagram is too large to lay out."
-        case .layout(.subgraphsNotLaidOut): "Flowcharts with a collapsed subgraph, or a link from a subgraph to itself, are not drawn yet."
+        case .flowchartLayout(.subgraphsNotLaidOut): "Flowcharts with a collapsed subgraph, or a link from a subgraph to itself, are not drawn yet."
         case .sequenceLayout(.statementsNotLaidOut(let statements)): "Sequence diagrams with \(Self.listed(statements.map(\.wording))) are not drawn yet."
         case .gitGraphLayout(.optionsNotApplied):
             "Git graphs whose options are set in a directive, or in the front matter other than as its gitGraph options "
                 + "(mainBranchName, mainBranchOrder, showBranches, showCommitLabel, rotateCommitLabel, parallelCommits), are not drawn yet."
         case .sankeyLayout(.circularLinks): "Sankey diagrams whose links lead back to a node they come from are not drawn."
         case .sankeyLayout(.optionsNotDrawn): "Sankey diagrams whose front matter sets this option are not drawn yet."
-        case .stateLayout(.tooManyLayoutPoints): "This state diagram is too large to lay out."
-        case .stateLayout(.compositeStatesNotLaidOut):
+        case .stateDiagramLayout(.tooManyLayoutPoints): "This state diagram is too large to lay out."
+        case .stateDiagramLayout(.compositeStatesNotLaidOut):
             "State diagrams whose transitions join a composite state to itself or to a state inside it, or with notes beside a composite state, "
                 + "are not drawn yet."
-        case .classLayout(.tooManyLayoutPoints): "This class diagram is too large to lay out."
-        case .classLayout(.namespacesNotLaidOut): "Class diagrams with namespaces are not drawn yet."
+        case .classDiagramLayout(.tooManyLayoutPoints): "This class diagram is too large to lay out."
+        case .classDiagramLayout(.namespacesNotLaidOut): "Class diagrams with namespaces are not drawn yet."
         case .reading(.tooManyParticipants(let limit)): "This diagram has more than \(limit) participants, too many to draw."
         case .reading(.tooManySequenceStatements(let limit)): "This diagram has more than \(limit) messages, notes and blocks, too many to draw."
-        case .entityRelationshipLayout(.tooManyLayoutPoints): "This diagram is too large to lay out."
         case .entityRelationshipLayout(.subgraphsNotLaidOut): "Entity relationship diagrams with subgraphs are not drawn yet."
         case .ganttLayout(.statementNotDrawn): "Gantt charts with “click” or “vert” are not drawn yet."
         case .ganttLayout(.unreadableDate(let text)): "The date “\(text)” is not in the chart’s date format."
@@ -69,13 +69,32 @@ extension ReadingDiagramFailure {
         case .ganttLayout(.tooManyScheduledDays): "This Gantt chart’s tasks are too long to schedule around the excluded days."
         case .reading(.tooManyChartValues(let limit)): "This chart has more than \(limit) categories and values, too many to draw."
         case .xyChartLayout(.noSeries): "This XY chart has no bar or line to draw."
+        // A flowchart's or an entity relationship diagram's layout past its limit, and what a later version of the
+        // package refuses: worded by its kind.
+        default: category.explanation
+        }
+    }
+}
+
+extension MermaidDiagramPreparationFailure.Category {
+    /// Why a diagram of this kind of refusal is not drawn, for a refusal worded by its kind alone.
+    var explanation: String {
+        switch self {
+        case .unreadable: "This diagram could not be read."
+        case .typeNotDrawn: "Diagrams of this type are not drawn yet; the source is shown instead."
+        case .notDrawnYet: "This diagram holds statements that are not drawn yet."
+        case .beyondLimits: "This diagram is too large to lay out."
+        case .refusedContent: "This diagram could not be drawn as written."
         }
     }
 }
 
 extension MermaidSyntaxProblem {
+    /// What is wrong on the line, as the end of the sentence `MermaidDiagramPreparationFailure.explanation` starts.
+    /// Switched as an optional, as that sentence is, so that a problem a later version of the package reads is worded
+    /// in general terms instead of needing a sentence here first.
     var explanation: String {
-        switch self {
+        switch Optional(self) {
         case .unknownDirection(let direction): "“\(direction)” is not a direction (TB, TD, BT, LR or RL)"
         case .expectedNode: "a node is missing"
         case .unclosedShape(let closingText): "a node’s text is not closed with “\(closingText)”"
@@ -125,6 +144,7 @@ extension MermaidSyntaxProblem {
         case .expectedCategories: "the categories are not names between “[” and “]”, separated by commas"
         case .expectedSeriesValues: "a series’ values are not numbers between “[” and “]”, separated by commas"
         case .expectedSankeyFields: "a row is not its source, target and value, separated by commas"
+        default: "a statement is not written as its diagram type reads it"
         }
     }
 }

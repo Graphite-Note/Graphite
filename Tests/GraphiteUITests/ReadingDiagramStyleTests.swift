@@ -2,11 +2,11 @@
  * File: ReadingDiagramStyleTests.swift
  * ------------------------------------
  * Layer: Tests
- * Description: Checks that a flowchart's colors reach the reading view's shapes, and that diagrams whose styling is not drawn say so.
+ * Description: Checks that a flowchart's colors reach the reading view's painting, and that diagrams whose styling is not drawn say so.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 
 import XCTest
@@ -19,28 +19,38 @@ import MermaidDiagrams
 final class ReadingDiagramStyleTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 16))
 
-    private func flowchart(_ source: String) throws -> ReadingFlowchart {
-        guard case .flowchart(let flowchart) = ReadingDiagram(source: source, typography: typography) else { throw NotAFlowchart() }
-        return flowchart
+    private func flowchart(_ source: String) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: .flowchart)
     }
 
-    private struct NotAFlowchart: Error {}
+    /// The paints of the scene's shapes, their fills' and strokes' alike.
+    private func paints(of scene: DiagramScene) -> [DiagramPaint] {
+        scene.shapes.flatMap { shape -> [DiagramPaint] in
+            switch shape.painting {
+            case .fill(let paint), .stroke(let paint, _): [paint]
+            case .fillAndStroke(let fill, let stroke, _): [fill, stroke]
+            case .gradientFill(let gradient): [gradient.startPaint, gradient.endPaint]
+            }
+        }
+    }
 
-    func testAStyledNodeAndEdgeReachTheShapesWithTheirColors() throws {
+    func testAStyledNodeAndEdgeReachThePaintingWithTheirColors() throws {
         let flowchart = try flowchart("flowchart TD\nA[Start] --> B\nclassDef warm fill:#ff0000,stroke:#0000ff,color:#00ff00\nclass A warm\nlinkStyle 0 stroke:#00aa00,stroke-width:3px")
-        XCTAssertEqual(flowchart.shapes.styledNodes.count, 1)
-        XCTAssertEqual(flowchart.shapes.styledNodes[0].style.fill, DiagramColor(red: 1, green: 0, blue: 0))
-        XCTAssertEqual(flowchart.shapes.styledNodes[0].textLines.map(\.text), ["Start"])
-        XCTAssertEqual(flowchart.shapes.styledEdges.count, 1)
-        XCTAssertEqual(flowchart.shapes.styledEdges[0].lineWidth, 3)
+        let paints = paints(of: flowchart.scene)
+        XCTAssertTrue(paints.contains(.color(DiagramColor(red: 1, green: 0, blue: 0))), "The node's fill")
+        XCTAssertTrue(paints.contains(.color(DiagramColor(red: 0, green: 0, blue: 1))), "The node's outline")
+        XCTAssertTrue(flowchart.scene.shapes.contains { shape in
+            if case .stroke(let paint, let stroke) = shape.painting { paint == .color(DiagramColor(red: 0, green: 0xAA / 255, blue: 0)) && stroke.lineWidth == 3 } else { false }
+        }, "The edge's own stroke and width")
+        XCTAssertEqual(flowchart.scene.texts(reading: "Start").map(\.paint), [.color(DiagramColor(red: 0, green: 1, blue: 0))],
+                       "The styled node's text is painted with its own color")
+        XCTAssertEqual(flowchart.scene.texts(reading: "B").map(\.paint), [.foreground])
         XCTAssertEqual(flowchart.unappliedStatementCount, 0)
-        XCTAssertEqual(flowchart.shapes.nodeTextLines.map(\.text), ["B"], "The styled node's text is painted with its own color")
     }
 
-    func testAFlowchartWithoutStylingHasNoStyledShapes() throws {
+    func testAFlowchartWithoutStylingHasNoWrittenColors() throws {
         let flowchart = try flowchart("flowchart TD\nA --> B")
-        XCTAssertTrue(flowchart.shapes.styledNodes.isEmpty)
-        XCTAssertTrue(flowchart.shapes.styledEdges.isEmpty)
+        XCTAssertFalse(paints(of: flowchart.scene).contains { paint in if case .color = paint.source { true } else { false } })
         XCTAssertEqual(ReadingDiagram(source: "flowchart TD\nA --> B", typography: typography).unappliedStatementCount, 0)
     }
 
@@ -52,6 +62,7 @@ final class ReadingDiagramStyleTests: XCTestCase {
         XCTAssertGreaterThan(ReadingDiagram(source: "erDiagram\nCUSTOMER ||--o{ ORDER : places\nstyle CUSTOMER fill:#f00", typography: typography)
             .unappliedStatementCount, 0)
         XCTAssertEqual(ReadingDiagram(source: "pie\n\"A\" : 1", typography: typography).unappliedStatementCount, 0)
+        XCTAssertEqual(ReadingDiagram(source: "flowchart TD\nA[never closed", typography: typography).unappliedStatementCount, 0, "A source shown with why")
     }
 
     func testAColorWrittenInAStatementIsTheSameColorOnScreen() {

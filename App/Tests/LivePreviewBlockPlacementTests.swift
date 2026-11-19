@@ -4,9 +4,9 @@
  * Layer: Tests
  * Description: Live Preview's rendered blocks stay over the space their text reserves for them.
  *
- * Authors: Bahey Shalash, felixchvl, Félix Chevalier
- * Version: 0.8
- * Date: 04/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.10
+ * Date: 19/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -210,14 +210,14 @@ final class LivePreviewBlockPlacementTests: XCTestCase {
         let environment = LivePreviewEnvironment(root: try XCTUnwrap(vaultDirectory), textSize: Double(textSize), colorsEnabled: true, paletteHexByName: [:],
                                                  drawingVersion: 0, resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
         let request = LivePreviewDiagramRequest(source: Self.diagramCode, environment: environment)
-        guard case .diagram(.flowchart(let flowchart)) = LivePreviewDiagramPreparation.content(of: request) else {
+        guard case .diagram(.drawn(let flowchart)) = LivePreviewDiagramPreparation.content(of: request) else {
             return XCTFail("The flowchart is drawn natively")
         }
-        let diagramScale = min(1, diagramView.frame.width / flowchart.layout.size.width)
+        let diagramScale = min(1, diagramView.frame.width / flowchart.scene.size.width)
         let blockVerticalPadding: CGFloat = 8
         // The view keeps its 300 point estimate until the diagram has reported its height, which on a loaded machine comes
         // after the placement has looked settled.
-        let laidOutHeight = flowchart.layout.size.height * diagramScale + blockVerticalPadding
+        let laidOutHeight = flowchart.scene.size.height * diagramScale + blockVerticalPadding
         try await waitUntil("the view holds the laid-out diagram, not its code", timeoutSeconds: 8) {
             abs(diagramView.frame.height - laidOutHeight) <= 1
         }

@@ -1,7 +1,18 @@
+/**
+ * File: ReadingSequenceWording.swift
+ * ----------------------------------
+ * Layer: UI
+ * Description: What is wrong on a line of a sequence diagram, in words.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 19/11/2026
+ */
+
 import MermaidDiagrams
 
 extension SequenceSyntaxProblem {
-    /// What is wrong on the line, as the end of the sentence `ReadingDiagramFailure.explanation` starts.
+    /// What is wrong on the line, as the end of the sentence `MermaidDiagramPreparationFailure.explanation` starts.
     var explanation: String {
         switch self {
         case .expectedParticipant: "a participant’s name is missing"

@@ -1,3 +1,14 @@
+/**
+ * File: ReadingUserJourneyTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: The reading view's user journeys.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 19/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -5,36 +16,32 @@ import MermaidDiagrams
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// A ```mermaid block holding a user journey: read and laid out with the note's other blocks, off the main actor, in
-/// the note's text size; one that cannot be read keeps its source and says why.
 final class ReadingUserJourneyTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17))
-    private struct NotDrawnAsAUserJourney: Error {}
 
-    private func journey(_ source: String) throws -> ReadingUserJourney {
-        guard case .userJourney(let journey) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else { throw NotDrawnAsAUserJourney() }
-        return journey
+    private func journey(_ source: String) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: .userJourney)
     }
 
     func testAUserJourneyIsLaidOutInTheNotesTextSize() throws {
         let journey = try journey("journey\n  title My working day\n  section Go to work\n    Make tea: 5: Me\n    Do work: 1: Me, Cat\n    Rest: x")
-        XCTAssertEqual(journey.layout.font.size, 17)
-        XCTAssertEqual(journey.layout.tasks.count, 3)
-        XCTAssertEqual(journey.taskTexts, ["Make tea: 5 (Me)", "Do work: 1 (Me, Cat)", "Rest"])
+        XCTAssertEqual(journey.scene.font.size, 17)
+        XCTAssertEqual(journey.accessibility.summary, ["Make tea: 5 (Me)", "Do work: 1 (Me, Cat)", "Rest"])
+        XCTAssertEqual(journey.accessibility.value, "Make tea: 5 (Me); Do work: 1 (Me, Cat); Rest")
     }
 
     func testAccessibilityTextComesFromTheDiagram() throws {
         let titled = try journey("journey\n  title My day\n  accDescr: How the day felt\n  a: 3.5")
-        XCTAssertEqual(titled.title, "My day")
-        XCTAssertEqual(titled.description, "How the day felt")
-        XCTAssertEqual(titled.taskTexts, ["a: 3.5"])
-        XCTAssertEqual(try journey("journey\n  accTitle: Named\n  title Shown\n  a: 9").title, "Named")
-        XCTAssertEqual(try journey("journey\n  a: 9").taskTexts, ["a: 5"], "The level the face shows")
+        XCTAssertEqual(titled.accessibility.title, "My day")
+        XCTAssertEqual(titled.accessibility.description, "How the day felt")
+        XCTAssertEqual(titled.accessibility.summary, ["a: 3.5"])
+        XCTAssertEqual(try journey("journey\n  accTitle: Named\n  title Shown\n  a: 9").accessibility.title, "Named")
+        XCTAssertEqual(try journey("journey\n  a: 9").accessibility.summary, ["a: 5"], "The level the face shows")
     }
 
     func testAUserJourneyThatCannotBeReadKeepsItsSourceAndWhy() throws {
         let source = "journey\n  A task"
-        guard case .unreadable(let shownSource, let failure) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else {
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
             return XCTFail("Shown as unreadable")
         }
         XCTAssertEqual(shownSource, source)
@@ -55,7 +62,7 @@ final class ReadingUserJourneyTests: XCTestCase {
                                                            note: try VaultPath("Note.md"), root: vault, index: index,
                                                            configuration: ReadingConfiguration()).blocks
         XCTAssertEqual(blocks.count, 3)
-        guard case .diagram(_, .userJourney(let journey)) = blocks[1] else { return XCTFail("The user journey is drawn") }
-        XCTAssertEqual(journey.layout.legend.count, 1)
+        guard case .diagram(_, let diagram) = blocks[1] else { return XCTFail("The user journey is drawn") }
+        XCTAssertEqual(try diagram.drawn(as: .userJourney).scene.texts(reading: "Me").count, 1, "The legend names the one actor.")
     }
 }

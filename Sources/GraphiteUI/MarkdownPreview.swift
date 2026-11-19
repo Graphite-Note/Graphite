@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.57
- * Date: 18/11/2026
+ * Version: 0.71
+ * Date: 19/11/2026
  */
 
 import SwiftUI
@@ -1129,6 +1129,8 @@ struct MarkdownPreview: View {
                 ReadingTaskContext(note: path) { note, location in await toggle(location, in: note, with: toggleTask) }
             })
             .environment(\.embeddedImageColumnWidth, configuration.usesReadableLineLength ? readableColumnWidth : nil)
+            // A diagram's SVG without a title is named after the note.
+            .environment(\.readingDiagramNoteName, path.stem)
             // Runs again once blocks exist: a note opened by a link or a search match is
             // asked to scroll before it has built anything to scroll to.
             .task(id: "\(blocks.count)-\(headingScrollRequest?.token.uuidString ?? "")") {

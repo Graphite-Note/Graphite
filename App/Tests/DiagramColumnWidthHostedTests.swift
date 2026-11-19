@@ -7,8 +7,8 @@
  *              paint them in the dark appearance, with screenshots.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 
 #if os(iOS)
@@ -65,24 +65,23 @@ final class DiagramColumnWidthHostedTests: XCTestCase {
 
     func testTheFourteenShapesRunDownReadablyInAnIPadColumnAndAnIPhoneColumn() async throws {
         let diagram = ReadingDiagram(source: Self.fourteenShapes, typography: DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17)))
-        guard case .flowchart(let flowchart) = diagram, let narrow = flowchart.narrow else { return XCTFail("A flowchart with a narrow layout") }
+        guard case .drawn(let flowchart) = diagram, let narrow = flowchart.narrowScene else { return XCTFail("A flowchart with a narrow layout") }
         for columnWidth in [Self.iPadColumnWidth, Self.iPhoneColumnWidth] {
             let drawn = try await show(diagram, columnWidth: columnWidth)
-            XCTAssertEqual(drawn.width, narrow.layout.size.width, accuracy: 1, "Shown at its own size, not scaled down, in a column \(columnWidth) wide.")
-            XCTAssertEqual(drawn.height, narrow.layout.size.height, accuracy: 1)
+            XCTAssertEqual(drawn.width, narrow.size.width, accuracy: 1, "Shown at its own size, not scaled down, in a column \(columnWidth) wide.")
+            XCTAssertEqual(drawn.height, narrow.size.height, accuracy: 1)
             XCTAssertGreaterThan(drawn.height, drawn.width, "The shapes run down.")
             attachScreenshot(named: "Fourteen shapes in a column \(Int(columnWidth)) points wide")
         }
-        let wideColumn = flowchart.layout.size.width + 40
+        let wideColumn = flowchart.scene.size.width + 40
         let drawn = try await show(diagram, columnWidth: wideColumn)
-        XCTAssertEqual(drawn.width, flowchart.layout.size.width, accuracy: 1, "A column wide enough shows the row as written.")
+        XCTAssertEqual(drawn.width, flowchart.scene.size.width, accuracy: 1, "A column wide enough shows the row as written.")
     }
 
     func testCompositeStatesAndTheirRegionsAreDrawnAsBoxesInBothColumns() async throws {
         let diagram = ReadingDiagram(source: Self.compositeStates, typography: DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17)))
-        guard case .stateDiagram(let states) = diagram else { return XCTFail("The state diagram is drawn") }
-        XCTAssertEqual(states.layout.composites.count, 1)
-        XCTAssertEqual(states.layout.regionDividers.count, 1)
+        guard case .drawn(let states) = diagram, states.kind == .stateDiagram else { return XCTFail("The state diagram is drawn") }
+        XCTAssertTrue(states.scene.shapes.contains { shape in shape.part == .cluster }, "The composite state is a box.")
         for columnWidth in [Self.iPadColumnWidth, Self.iPhoneColumnWidth] {
             let drawn = try await show(diagram, columnWidth: columnWidth)
             XCTAssertLessThanOrEqual(drawn.width, columnWidth + 0.5)
@@ -103,10 +102,13 @@ final class DiagramColumnWidthHostedTests: XCTestCase {
         XCTAssertGreaterThan(drawn.width, 0)
         let screenshot = attachScreenshot(named: "A pie in the theme's dark --pele-series-1")
         let pieFrame = try XCTUnwrap(Self.diagramFrame(in: try XCTUnwrap(window)))
-        guard case .pieChart(let chart) = pie else { return XCTFail("A pie") }
+        guard case .drawn(let chart) = pie, let slice = chart.scene.shapes.first(where: { shape in shape.painting == .fill(.series(0)) }) else {
+            return XCTFail("A pie with its slice")
+        }
         // The pie's middle, a quarter of its radius up from its center, inside the only slice.
-        let center = CGPoint(x: pieFrame.minX + chart.layout.center.x * pieFrame.width / chart.layout.size.width,
-                             y: pieFrame.minY + (chart.layout.center.y - chart.layout.radius / 2) * pieFrame.height / chart.layout.size.height)
+        let pieBox = slice.path.boundingBox
+        let center = CGPoint(x: pieFrame.minX + pieBox.midX * pieFrame.width / chart.scene.size.width,
+                             y: pieFrame.minY + (pieBox.midY - pieBox.height / 4) * pieFrame.height / chart.scene.size.height)
         let pixel = try XCTUnwrap(Self.pixel(of: try XCTUnwrap(screenshot), at: center))
         XCTAssertEqual(pixel.red, 1, accuracy: 0.03)
         XCTAssertEqual(pixel.green, 0.4, accuracy: 0.03)

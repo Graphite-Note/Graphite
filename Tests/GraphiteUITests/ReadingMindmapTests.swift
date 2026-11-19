@@ -1,3 +1,14 @@
+/**
+ * File: ReadingMindmapTests.swift
+ * -------------------------------
+ * Layer: Tests
+ * Description: The reading view's mindmaps.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 19/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -5,35 +16,31 @@ import MermaidDiagrams
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// A ```mermaid block holding a mindmap: read and laid out with the note's other blocks, off the main actor, in the
-/// note's text size; one that cannot be read keeps its source and says why.
 final class ReadingMindmapTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17))
-    private struct NotDrawnAsAMindmap: Error {}
 
-    private func mindmap(_ source: String) throws -> ReadingMindmap {
-        guard case .mindmap(let mindmap) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else { throw NotDrawnAsAMindmap() }
-        return mindmap
+    private func mindmap(_ source: String) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: .mindmap)
     }
 
     func testAMindmapIsLaidOutInTheNotesTextSize() throws {
         let mindmap = try mindmap("mindmap\n  root((Plans))\n    Study\n    Rest")
-        XCTAssertEqual(mindmap.layout.font.size, 17)
-        XCTAssertEqual(mindmap.layout.nodes.count, 3)
-        XCTAssertEqual(mindmap.nodeTexts, ["Plans", "Study", "Rest"])
+        XCTAssertEqual(mindmap.scene.font.size, 17)
+        XCTAssertEqual(mindmap.accessibility.summary, ["Plans", "Study", "Rest"])
     }
 
     func testAccessibilityTextComesFromTheDiagram() throws {
         let titled = try mindmap("---\ntitle: Front title\n---\nmindmap\n  root\n  accDescr: How it branches")
-        XCTAssertEqual(titled.title, "Front title")
-        XCTAssertEqual(titled.description, "How it branches")
-        XCTAssertEqual(try mindmap("mindmap\n  accTitle: Named\n  root").title, "Named")
-        XCTAssertNil(try mindmap("mindmap\n  root").title)
+        XCTAssertEqual(titled.accessibility.title, "Front title")
+        XCTAssertEqual(titled.accessibility.description, "How it branches")
+        XCTAssertEqual(try mindmap("mindmap\n  accTitle: Named\n  root").accessibility.title, "Named")
+        XCTAssertNil(try mindmap("mindmap\n  root").accessibility.title)
+        XCTAssertEqual(try mindmap("mindmap\n  root").accessibility.label, "Mindmap")
     }
 
     func testAMindmapThatCannotBeReadKeepsItsSourceAndWhy() throws {
         let source = "mindmap\n  root\n  second"
-        guard case .unreadable(let shownSource, let failure) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else {
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
             return XCTFail("Shown as unreadable")
         }
         XCTAssertEqual(shownSource, source)
@@ -56,7 +63,7 @@ final class ReadingMindmapTests: XCTestCase {
                                                            note: try VaultPath("Note.md"), root: vault, index: index,
                                                            configuration: ReadingConfiguration()).blocks
         XCTAssertEqual(blocks.count, 3)
-        guard case .diagram(_, .mindmap(let mindmap)) = blocks[1] else { return XCTFail("The mindmap is drawn") }
-        XCTAssertEqual(mindmap.layout.edges.count, 1)
+        guard case .diagram(_, let diagram) = blocks[1] else { return XCTFail("The mindmap is drawn") }
+        XCTAssertEqual(try diagram.drawn(as: .mindmap).accessibility.summary, ["root", "child"])
     }
 }

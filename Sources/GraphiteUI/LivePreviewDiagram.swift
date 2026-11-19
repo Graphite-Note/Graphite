@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: A mermaid block in Live Preview, drawn over its concealed fence.
  *
- * Authors: Félix Chevalier
- * Version: 0.3
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 
 import SwiftUI
@@ -21,6 +21,9 @@ struct LivePreviewDiagramView: View {
     let source: String
     let environment: LivePreviewEnvironment
     let revealSource: () -> Void
+    /// Whether the diagram is the block itself, whose menu then offers Copy as SVG and Save as SVG above Edit Source; a
+    /// diagram inside a callout's body leaves the callout's menu to the callout.
+    var isTheBlock = false
     @State private var preparation: LivePreviewDiagramPreparation?
 
     var body: some View {
@@ -45,7 +48,9 @@ struct LivePreviewDiagramView: View {
         case .diagram(let diagram):
             ReadingDiagramView(diagram: diagram, textSize: environment.textSize, root: environment.root, navigate: environment.follow,
                                // `follow` scrolls the note to a heading written as `#heading`.
-                               scrollToHeading: { anchor in environment.follow("#" + anchor, true) })
+                               scrollToHeading: { anchor in environment.follow("#" + anchor, true) },
+                               svgCommandsPlacement: isTheBlock ? .blockMenu : .none)
+                .environment(\.readingDiagramNoteName, environment.notePath?.stem)
         case nil:
             Color.clear.frame(height: 0)
         }
@@ -79,15 +84,21 @@ struct LivePreviewDiagramPreparation: Sendable {
     let request: LivePreviewDiagramRequest
     let content: LivePreviewDiagramContent
 
-    /// Reads and lays the code out away from the main actor, as the reading view's builder does. Each block makes the
-    /// measurers of its font (`DiagramTypography`, about 40 µs in `Coverage.md`), less than its hosted view costs to make;
-    /// the view is made once while the block stays concealed and kept off screen after (`DetachedWidgetPool`).
-    static func prepared(for request: LivePreviewDiagramRequest) async -> LivePreviewDiagramPreparation {
+    /// Reads and lays the code out away from the main actor, as the reading view's builder does, in every case: the
+    /// first layout, new code, a new text size or font, a view made again after the pool let it go; the view draws
+    /// nothing until it is done (`LivePreviewEmbedLoadingKey`), and an earlier layout of the same code in proportion
+    /// meanwhile. `preparing` is the work, given by a test that observes where it runs. Each block makes the measurers
+    /// of its font (`DiagramTypography`, about 40 µs in `Coverage.md`), less than its hosted view costs to make; the
+    /// view is made once while the block stays concealed and kept off screen after (`DetachedWidgetPool`).
+    static func prepared(for request: LivePreviewDiagramRequest,
+                         preparing: @escaping @Sendable (LivePreviewDiagramRequest) -> LivePreviewDiagramContent = content(of:))
+        async -> LivePreviewDiagramPreparation {
         await Task.detached(priority: .userInitiated) {
-            LivePreviewDiagramPreparation(request: request, content: content(of: request))
+            LivePreviewDiagramPreparation(request: request, content: preparing(request))
         }.value
     }
 
+    /// The work itself, on the thread that calls it: only `prepared(for:preparing:)` calls it in the app.
     static func content(of request: LivePreviewDiagramRequest) -> LivePreviewDiagramContent {
         .diagram(ReadingDiagram(source: request.source, typography: DiagramTypography(font: request.font)))
     }

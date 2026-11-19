@@ -6,8 +6,8 @@
  *              column shows; diagrams with nothing to draw or too large to draw shown as their source with why.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 
 import XCTest
@@ -25,76 +25,81 @@ final class ReadingDiagramNarrowColumnTests: XCTestCase {
           G --> H>Flag] --> I{Diamond} --> J{{Hexagon}} --> K[/Lean right/] --> L[\\Lean left\\] --> M[/Trapezoid\\] --> N[\\Inverted/]
         """
 
-    func testTheColumnShowsTheNarrowLayoutOnlyWhereTheRegularOneDoesNotFitAndTheNarrowOneIsNarrower() {
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: 200, columnWidth: 700), .regular, "It fits.")
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: 200, columnWidth: 400), .narrow)
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: 500, columnWidth: 300), .narrow, "Scaled down less.")
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: 600, columnWidth: 300), .regular, "No narrower.")
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: nil, columnWidth: 300), .regular)
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: 600, narrowWidth: 200, columnWidth: 0), .regular, "Not measured yet.")
+    private func drawn(_ source: String, as kind: MermaidDiagramKind) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: kind)
+    }
+
+    /// The reading view's column is laid out for the narrowest column the reading view has, an iPhone's in portrait.
+    func testTheNarrowestColumnIsAPhonesInPortrait() {
+        XCTAssertEqual(PreparedMermaidDiagram.standardNarrowestColumnWidth, 280)
+    }
+
+    func testTheColumnShowsTheNarrowLayoutOnlyWhereTheRegularOneDoesNotFitAndTheNarrowOneIsNarrower() throws {
+        let flowchart = try drawn(Self.fourteenShapesInARow, as: .flowchart)
+        let regularWidth = flowchart.scene.size.width
+        let narrowWidth = try XCTUnwrap(flowchart.narrowScene).size.width
+        XCTAssertFalse(flowchart.showsNarrowScene(inColumnWidth: regularWidth + 1), "It fits.")
+        XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: regularWidth - 1))
+        XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: narrowWidth / 2), "Scaled down less.")
+        XCTAssertFalse(flowchart.showsNarrowScene(inColumnWidth: 0), "Not measured yet.")
+        XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: regularWidth, scale: 1.2), "At a larger text size the regular one no longer fits.")
+        XCTAssertFalse(try drawn("flowchart LR\n  A --> B", as: .flowchart).showsNarrowScene(inColumnWidth: 100), "No narrow layout.")
     }
 
     func testTheFourteenShapesInARowAreTurnedToRunDownWithTighterGapsForANarrowColumn() throws {
-        guard case .flowchart(let flowchart) = ReadingDiagram(source: Self.fourteenShapesInARow, typography: typography) else {
-            return XCTFail("A flowchart is drawn")
-        }
-        XCTAssertGreaterThan(flowchart.layout.size.width, 2_000)
-        let narrow = try XCTUnwrap(flowchart.narrow).layout
+        let flowchart = try drawn(Self.fourteenShapesInARow, as: .flowchart)
+        XCTAssertGreaterThan(flowchart.scene.size.width, 2_000)
+        let narrow = try XCTUnwrap(flowchart.narrowScene)
         XCTAssertLessThan(narrow.size.width, 360, "It fits an iPhone's column without being scaled down.")
-        let centers = narrow.nodes.map(\.frame.midY)
+        let names = ["Rectangle", "Rounded", "Stadium", "Subroutine", "Database", "Circle", "Double circle", "Flag", "Diamond", "Hexagon"]
+        let centers = names.compactMap { name in narrow.texts(reading: name).first?.block.center.y }
+        XCTAssertEqual(centers.count, names.count)
         XCTAssertEqual(centers, centers.sorted(), "The shapes follow each other down.")
-        let gaps = zip(narrow.nodes, narrow.nodes.dropFirst()).map { upper, lower in lower.frame.minY - upper.frame.maxY }
-        XCTAssertEqual(gaps.min() ?? 0, 32, accuracy: 0.5, "Ranks 32 points apart, tighter than the regular 48.")
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: flowchart.layout.size.width, narrowWidth: narrow.size.width, columnWidth: 700), .narrow)
-        XCTAssertEqual(ReadingDiagramVariant.shown(regularWidth: flowchart.layout.size.width, narrowWidth: narrow.size.width, columnWidth: 350), .narrow)
+        XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: 700))
+        XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: 350))
     }
 
-    func testADiagramNarrowerThanTheNarrowestColumnIsLaidOutOnce() {
-        guard case .flowchart(let flowchart) = ReadingDiagram(source: "flowchart LR\n  A --> B", typography: typography) else { return XCTFail("Drawn") }
-        XCTAssertLessThanOrEqual(flowchart.layout.size.width, ReadingDiagramVariant.narrowestColumnWidth)
-        XCTAssertNil(flowchart.narrow)
+    func testADiagramNarrowerThanTheNarrowestColumnIsLaidOutOnce() throws {
+        let flowchart = try drawn("flowchart LR\n  A --> B", as: .flowchart)
+        XCTAssertLessThanOrEqual(flowchart.scene.size.width, PreparedMermaidDiagram.standardNarrowestColumnWidth)
+        XCTAssertNil(flowchart.narrowScene)
     }
 
     func testAWideFlowchartThatRunsDownIsStillTightenedForANarrowColumn() throws {
         let source = "flowchart TD\n  Root --> " + (1...8).map { child in "C\(child)[Child number \(child)]" }.joined(separator: " & ")
-        guard case .flowchart(let flowchart) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Drawn") }
-        let narrow = try XCTUnwrap(flowchart.narrow).layout
-        XCTAssertLessThan(narrow.size.width, flowchart.layout.size.width)
+        let flowchart = try drawn(source, as: .flowchart)
+        XCTAssertLessThan(try XCTUnwrap(flowchart.narrowScene).size.width, flowchart.scene.size.width)
     }
 
     func testGitGraphsTimelinesAndGraphsRunningAcrossAreTurnedToRunDown() throws {
         let commits = (1...14).map { commit in "  commit id: \"c\(commit)\"" }.joined(separator: "\n")
-        guard case .gitGraph(let gitGraph) = ReadingDiagram(source: "gitGraph\n\(commits)", typography: typography) else { return XCTFail("Git graph") }
-        let gitNarrow = try XCTUnwrap(gitGraph.narrow).layout
-        XCTAssertLessThan(gitNarrow.size.width, gitGraph.layout.size.width)
+        let gitGraph = try drawn("gitGraph\n\(commits)", as: .gitGraph)
+        let gitNarrow = try XCTUnwrap(gitGraph.narrowScene)
+        XCTAssertLessThan(gitNarrow.size.width, gitGraph.scene.size.width)
         XCTAssertGreaterThan(gitNarrow.size.height, gitNarrow.size.width, "Commits follow each other down.")
 
         let periods = (2000...2010).map { year in "  \(year) : Event of \(year)" }.joined(separator: "\n")
-        guard case .timeline(let timeline) = ReadingDiagram(source: "timeline\n\(periods)", typography: typography) else { return XCTFail("Timeline") }
-        XCTAssertLessThan(try XCTUnwrap(timeline.narrow).layout.size.width, timeline.layout.size.width)
+        let timeline = try drawn("timeline\n\(periods)", as: .timeline)
+        XCTAssertLessThan(try XCTUnwrap(timeline.narrowScene).size.width, timeline.scene.size.width)
 
         let chain = (1...6).map { state in "S\(state) --> S\(state + 1)" }.joined(separator: "\n")
-        guard case .stateDiagram(let states) = ReadingDiagram(source: "stateDiagram-v2\ndirection LR\n\(chain)", typography: typography) else {
-            return XCTFail("State diagram")
-        }
-        XCTAssertLessThan(try XCTUnwrap(states.narrow).layout.size.width, states.layout.size.width)
-        guard case .entityRelationship(let entities) = ReadingDiagram(
-            source: "erDiagram\ndirection LR\n" + (1...6).map { entity in "E\(entity) ||--o{ E\(entity + 1) : has" }.joined(separator: "\n"),
-            typography: typography) else { return XCTFail("Entity relationship diagram") }
-        XCTAssertLessThan(try XCTUnwrap(entities.narrow).layout.size.width, entities.layout.size.width)
-        guard case .classDiagram(let classes) = ReadingDiagram(
-            source: "classDiagram\ndirection LR\n" + (1...6).map { node in "Class\(node) <|-- Class\(node + 1)" }.joined(separator: "\n"),
-            typography: typography) else { return XCTFail("Class diagram") }
-        XCTAssertLessThan(try XCTUnwrap(classes.narrow).layout.size.width, classes.layout.size.width)
+        let states = try drawn("stateDiagram-v2\ndirection LR\n\(chain)", as: .stateDiagram)
+        XCTAssertLessThan(try XCTUnwrap(states.narrowScene).size.width, states.scene.size.width)
+        let entities = try drawn("erDiagram\ndirection LR\n" + (1...6).map { entity in "E\(entity) ||--o{ E\(entity + 1) : has" }.joined(separator: "\n"),
+                                 as: .entityRelationship)
+        XCTAssertLessThan(try XCTUnwrap(entities.narrowScene).size.width, entities.scene.size.width)
+        let classes = try drawn("classDiagram\ndirection LR\n" + (1...6).map { node in "Class\(node) <|-- Class\(node + 1)" }.joined(separator: "\n"),
+                                as: .classDiagram)
+        XCTAssertLessThan(try XCTUnwrap(classes.narrowScene).size.width, classes.scene.size.width)
     }
 
     func testAStateDiagramRunningAcrossIsTurnedWithItsComposites() throws {
         let source = "stateDiagram-v2\ndirection LR\n[*] --> Idle\nIdle --> Working\nstate Working {\n  direction LR\n  Reading --> Writing\n  Writing --> Saving\n}\n"
             + "Working --> Done\nDone --> [*]"
-        guard case .stateDiagram(let diagram) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("State diagram") }
-        let narrow = try XCTUnwrap(diagram.narrow).layout
-        XCTAssertLessThan(narrow.size.width, diagram.layout.size.width)
-        XCTAssertEqual(narrow.composites.count, 1)
+        let diagram = try drawn(source, as: .stateDiagram)
+        let narrow = try XCTUnwrap(diagram.narrowScene)
+        XCTAssertLessThan(narrow.size.width, diagram.scene.size.width)
+        XCTAssertTrue(narrow.shapes.contains { shape in shape.part == .cluster }, "The composite is still a box.")
     }
 
     func testADiagramWithNothingToDrawOrTooLargeToDrawShowsItsSourceAndWhy() {

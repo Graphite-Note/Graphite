@@ -4,12 +4,13 @@
  * Layer: Tests
  * Description: The reading view's Gantt charts.
  *
- * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.3
+ * Date: 19/11/2026
  */
 
 import XCTest
+import SwiftUI
 import MermaidDiagrams
 @testable import GraphiteUI
 
@@ -17,7 +18,6 @@ import MermaidDiagrams
 /// that day; the moment and time zone are given wherever they matter.
 final class ReadingGanttChartTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17))
-    private struct NotDrawnAsAGanttChart: Error {}
     private let chart = """
     gantt
         title Launch plan
@@ -27,71 +27,82 @@ final class ReadingGanttChartTests: XCTestCase {
         Implement : after a1, 20d
     """
 
-    private func ganttChart(_ source: String) throws -> ReadingGanttChart {
-        guard case .ganttChart(let chart) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else { throw NotDrawnAsAGanttChart() }
-        return chart
+    private func ganttChart(_ source: String) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: .ganttChart)
     }
 
     func testAGanttChartIsLaidOutInTheNotesTextSize() throws {
         let gantt = try ganttChart(chart)
-        XCTAssertEqual(gantt.layout.font.size, 17)
-        XCTAssertEqual(gantt.layout.plot?.tasks.count, 2)
-        XCTAssertEqual(gantt.layout.plot?.tasks.first?.label.fontSize, 14, "Thirteen sixteenths of the text size, rounded")
+        XCTAssertEqual(gantt.scene.font.size, 17)
+        XCTAssertEqual(gantt.scene.texts(reading: "Design").first?.block.fontSize, 14, "Thirteen sixteenths of the text size, rounded")
     }
 
     func testAScreenReaderHearsTheTitleAndTheTasks() throws {
         let gantt = try ganttChart(chart)
-        XCTAssertEqual(gantt.title, "Launch plan")
-        XCTAssertEqual(gantt.taskNames, ["Design", "Implement"])
+        XCTAssertEqual(gantt.accessibility.label, "Launch plan")
+        XCTAssertEqual(gantt.accessibility.summary, ["Design", "Implement"])
         let described = try ganttChart("gantt\naccTitle: Spoken\naccDescr: What it plans\nA : 2014-01-01, 1d")
-        XCTAssertEqual(described.title, "Spoken")
-        XCTAssertEqual(described.description, "What it plans")
+        XCTAssertEqual(described.accessibility.label, "Spoken")
+        XCTAssertEqual(described.accessibility.description, "What it plans")
     }
 
+    /// Today's line is drawn on the moment the chart is prepared, in its time zone: inside the chart's days it is one more
+    /// accent line than on a day after them.
     func testTodaysLineFollowsTheMomentAndTimeZoneGiven() throws {
-        let parsed = try XCTUnwrap(try? MermaidDiagramReader.read(chart, limits: .standard))
-        guard case .ganttChart(let gantt) = parsed else { return XCTFail("A Gantt chart") }
         let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
-        let inside = ReadingGanttChart.diagram(source: chart, chart: gantt, typography: typography, now: Date(timeIntervalSince1970: 1_389_182_400),
-                                               timeZone: utc)
-        guard case .ganttChart(let drawn) = inside else { return XCTFail("Drawn") }
-        XCTAssertNotNil(drawn.layout.plot?.todayOffset)
-        XCTAssertFalse(drawn.shapes.todayLine.isEmpty)
+        func accentStrokes(now: Date) throws -> Int {
+            try MermaidDiagramPreparation.prepare(source: chart, typography: typography, now: now, timeZone: utc).scene.shapes.filter { shape in
+                if case .stroke(let paint, _) = shape.painting { paint == .accent } else { false }
+            }.count
+        }
+        XCTAssertGreaterThan(try accentStrokes(now: Date(timeIntervalSince1970: 1_389_182_400)), try accentStrokes(now: Date(timeIntervalSince1970: 1_700_000_000)))
     }
 
     func testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy() {
-        let reasons: [(source: String, failure: ReadingDiagramFailure)] = [
+        let reasons: [(source: String, failure: MermaidDiagramPreparationFailure)] = [
             ("gantt\nA : a, 2014-01-01, 1d\nclick a href \"https://example.com\"", .ganttLayout(.statementNotDrawn(.click))),
             ("gantt\nA : vert, 2014-01-01, 1d", .ganttLayout(.statementNotDrawn(.verticalMarker))),
             ("gantt\nA : March 7 2014, 1d", .ganttLayout(.unreadableDate("March 7 2014"))),
         ]
         for reason in reasons {
-            guard case .unreadable(_, let failure) = ReadingDiagram(source: reason.source, typography: typography) else {
-                XCTFail("Shown with why: \(reason.source)")
-                continue
-            }
-            XCTAssertEqual(failure, reason.failure, reason.source)
+            XCTAssertEqual(ReadingDiagram(source: reason.source, typography: typography).failure, reason.failure, reason.source)
         }
     }
 
     func testAChartThatCannotBeScheduledKeepsItsSourceAndWhy() throws {
         let source = "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends,monday,tuesday,wednesday,thursday,friday\nForever : 2019-02-01, 7d"
-        guard case .unreadable(let shownSource, let failure) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else {
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
             return XCTFail("Shown as unreadable")
         }
         XCTAssertEqual(shownSource, source)
         XCTAssertEqual(failure, .ganttLayout(.noDayLeftAfterExclusions(task: "Forever")))
-        let unreadable = try XCTUnwrap(ReadingDiagram(source: "gantt\nNo colon here", typography: typography))
-        guard case .unreadable(_, .reading(.invalidSyntax(line: 2, problem: .expectedTaskData))) = unreadable else { return XCTFail("Why") }
+        guard case .unreadable(_, .reading(.invalidSyntax(line: 2, problem: .expectedTaskData))) = ReadingDiagram(source: "gantt\nNo colon here",
+                                                                                                                  typography: typography) else {
+            return XCTFail("Why")
+        }
     }
 
     func testTheGanttChartsFailuresAreExplainedApart() {
-        let failures: [ReadingDiagramFailure] = [
+        let failures: [MermaidDiagramPreparationFailure] = [
             .ganttLayout(.statementNotDrawn(.click)), .ganttLayout(.unreadableDate("x")), .ganttLayout(.noDayLeftAfterExclusions(task: "A")),
             .ganttLayout(.tooManyScheduledDays(limit: 1)), .reading(.invalidSyntax(line: 1, problem: .expectedTaskData)),
             .reading(.invalidSyntax(line: 1, problem: .taskWithoutEnd(task: "A"))),
             .reading(.invalidSyntax(line: 1, problem: .taskWithTooManyFields(task: "A"))),
         ]
         XCTAssertEqual(Set(failures.map(\.explanation)).count, failures.count)
+    }
+
+    /// The chart's quieter colors sit between the page and the text, where Pele's own colors put them, unless a theme sets them.
+    func testTheChartsColorsSitBetweenThePageAndTheTextWhereThemeLeavesThem() {
+        let colors = ReadingDiagramColors(background: Color(.sRGB, red: 1, green: 1, blue: 1),
+                                          foreground: Color(.sRGB, red: 0x1F / 255, green: 0x1F / 255, blue: 0x1F / 255))
+        func red(_ color: Color) -> CGFloat {
+            let resolved = color.resolve(in: EnvironmentValues()).cgColor
+            guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB) else { return -1 }
+            return (resolved.converted(to: sRGB, intent: .defaultIntent, options: nil)?.components?.first ?? 0) * 255
+        }
+        XCTAssertEqual(red(colors.muted), 0x6E, accuracy: 1.5)
+        XCTAssertEqual(red(colors.alternateSurface), 0xE6, accuracy: 1.5)
+        XCTAssertEqual(red(colors.critical), 0xE4, accuracy: 1)
     }
 }

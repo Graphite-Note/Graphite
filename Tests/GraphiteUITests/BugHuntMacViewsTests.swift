@@ -9,8 +9,8 @@
  *              labels the iPhone gets.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 
 #if os(macOS)
@@ -21,6 +21,7 @@ import XCTest
 import GraphiteApple
 import GraphiteCore
 import GraphiteFixtures
+import MermaidDiagrams
 @testable import GraphiteUI
 import GraphiteTestSupport
 
@@ -325,8 +326,13 @@ final class BugHuntMacViewsTests: XCTestCase {
     /// A diagram laid out 1,000 points wide in a phone's column of 390 was shrunk to 39 % with no way to enlarge it.
     /// It now keeps 60 % of its size and scrolls sideways; one that fits at 60 % or more is fitted to the column.
     func testADiagramTooWideForAPhonesColumnScrollsSidewaysAtSixtyPercent() async throws {
+        let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 16))
+        let template = try MermaidDiagramPreparation.prepare(source: "pie\n  \"A\" : 1", typography: typography)
         func diagram(width: CGFloat) -> some View {
-            ReadingScaledDiagram(size: CGSize(width: width, height: 200), layoutTextSize: 16, textSize: 16) { Color.red }
+            // A scene of the width alone: the presentation reads nothing else of it.
+            let prepared = PreparedMermaidDiagram(kind: template.kind, scene: DiagramScene(size: CGSize(width: width, height: 200), font: template.scene.font, items: []),
+                                                  accessibility: template.accessibility)
+            return ReadingScaledDiagram(prepared: prepared, textSize: 16) { _ in Color.red }
                 .frame(width: 390, height: 400, alignment: .top)
         }
         let wide = show(diagram(width: 1_000), size: CGSize(width: 390, height: 400))

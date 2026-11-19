@@ -5,9 +5,9 @@
  * Description: Live Preview's rendered stand-ins for concealed source: callouts, tables, math, embeds and
  *              lines of images.
  *
- * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.43
- * Date: 18/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.49
+ * Date: 19/11/2026
  */
 
 import SwiftUI
@@ -307,7 +307,7 @@ struct LivePreviewWidgetView: View {
             } else {
                 RenderedMarkdownBlock(markdown: "```" + language + "\n" + block.markdown + "\n```", environment: environment)
             }
-        case .mermaidDiagram: LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource)
+        case .mermaidDiagram: LivePreviewDiagramView(source: block.markdown, environment: environment, revealSource: revealSource, isTheBlock: true)
         case .webFrame(let frame): LivePreviewWebFrameView(frame: frame, textSize: CGFloat(environment.textSize), revealSource: revealSource)
         case .callout:
             calloutContent

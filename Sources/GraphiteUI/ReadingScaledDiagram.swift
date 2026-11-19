@@ -2,15 +2,16 @@
  * File: ReadingScaledDiagram.swift
  * --------------------------------
  * Layer: UI
- * Description: Places a laid-out diagram in the reading column: its layout for a narrow column when the column needs it, scaled down to
+ * Description: Places a prepared diagram in the reading column: its scene for a narrow column when the column needs it, scaled down to
  *              fit, or scrolling sideways once fitting would make its text too small to read (never on paper, which is always fitted).
  *
- * Authors: Félix Chevalier
- * Version: 0.2
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.5
+ * Date: 19/11/2026
  */
 
 import SwiftUI
+import MermaidDiagrams
 
 /// How a laid-out diagram is shown in a column of some width.
 enum ReadingDiagramPresentation: Equatable {
@@ -34,83 +35,39 @@ enum ReadingDiagramPresentation: Equatable {
     }
 }
 
-/// Which of a diagram's layouts a column shows: the one for the width it was written for, or the one laid out again
-/// for a narrow column (turned to run down, its gaps tightened), as Pele chooses by its container's width.
-enum ReadingDiagramVariant: Equatable, Sendable {
-    case regular
-    case narrow
-
-    /// The width past which a diagram is laid out a second time for a narrow column: an iPhone's in portrait, the
-    /// narrowest column the reading view has. A diagram no wider fits every column as it is.
-    static let narrowestColumnWidth: CGFloat = 280
-
-    /// The layout a column `columnWidth` wide shows, the widths in proportion to the text size now: the regular one when
-    /// it fits, or when there is no narrow one or it is no narrower; the narrow one otherwise, which is then scaled down
-    /// less, or not at all. A column not measured yet (0) shows the regular one.
-    static func shown(regularWidth: CGFloat, narrowWidth: CGFloat?, columnWidth: CGFloat) -> ReadingDiagramVariant {
-        guard let narrowWidth, columnWidth > 0, regularWidth > columnWidth, narrowWidth < regularWidth else { return .regular }
-        return .narrow
-    }
-}
-
-/// A diagram laid out again for a narrow column, with the shapes its view paints.
-struct ReadingNarrowLayout<Layout: Sendable, Shapes: Sendable>: Sendable {
-    let layout: Layout
-    let shapes: Shapes
-}
-
-/// A laid-out diagram's painting, centered and as wide as it was laid out (in proportion to the text size now, if
-/// that changed since the note was built), scaled down when the column is narrower. A diagram that would have to be
+/// A prepared diagram's painting, centered and as wide as it was laid out (in proportion to the text size now, if
+/// that changed since the note was built), scaled down when the column is narrower. The column shows the diagram's
+/// scene for a narrow column where the regular one does not fit and the narrow one is narrower, as Pele chooses by its
+/// container's width (`PreparedMermaidDiagram.showsNarrowScene(inColumnWidth:scale:)`). A diagram that would have to be
 /// shrunk below `ReadingDiagramPresentation.smallestReadableScale` keeps that size instead and scrolls sideways, so its
 /// text stays readable on an iPhone or an iPad in portrait.
 struct ReadingScaledDiagram<Painting: View>: View {
-    /// The size the diagram was laid out at.
-    let regularSize: CGSize
-    /// The size it was laid out at for a narrow column, or nil when it has no such layout.
-    let narrowSize: CGSize?
-    /// The text size the diagram was laid out in.
-    let layoutTextSize: CGFloat
+    let prepared: PreparedMermaidDiagram
     /// The note's text size now.
     let textSize: Double
-    /// The painting of the layout shown.
-    let painting: (ReadingDiagramVariant) -> Painting
+    /// The painting of the scene shown.
+    @ViewBuilder let painting: (DiagramScene) -> Painting
     @State private var columnWidth: CGFloat = 0
     /// On paper the diagram is always fitted: paper does not scroll, and a drawing for a PDF
     /// shows no scroll view.
     @Environment(\.readingIsPrinted) private var isPrinted
 
-    init(size: CGSize, layoutTextSize: CGFloat, textSize: Double, @ViewBuilder painting: () -> Painting) {
-        let built = painting()
-        self.init(size: size, narrowSize: nil, layoutTextSize: layoutTextSize, textSize: textSize) { _ in built }
-    }
-
-    /// A diagram with a second layout for a narrow column: `painting` paints the one the column shows.
-    init(size: CGSize, narrowSize: CGSize?, layoutTextSize: CGFloat, textSize: Double,
-         @ViewBuilder painting: @escaping (ReadingDiagramVariant) -> Painting) {
-        regularSize = size
-        self.narrowSize = narrowSize
-        self.layoutTextSize = layoutTextSize
-        self.textSize = textSize
-        self.painting = painting
-    }
-
-    private var scaleAtNaturalWidth: CGFloat { CGFloat(textSize) / layoutTextSize }
+    /// The share of the laid-out size the diagram is at the text size now: both scenes are laid out in one font.
+    private var scaleAtNaturalWidth: CGFloat { CGFloat(textSize) / prepared.scene.font.size }
 
     var body: some View {
-        let variant = ReadingDiagramVariant.shown(regularWidth: regularSize.width * scaleAtNaturalWidth,
-                                                  narrowWidth: narrowSize.map { size in size.width * scaleAtNaturalWidth }, columnWidth: columnWidth)
-        let size = variant == .narrow ? narrowSize ?? regularSize : regularSize
-        let naturalWidth = size.width * scaleAtNaturalWidth
+        let scene = prepared.scene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth)
+        let naturalWidth = scene.size.width * scaleAtNaturalWidth
         let presentation = ReadingDiagramPresentation.presentation(naturalWidth: naturalWidth, scaleAtNaturalWidth: scaleAtNaturalWidth,
                                                                    columnWidth: columnWidth)
         Group {
             switch presentation {
             case .fitted:
-                fitted(painting(variant), size: size, naturalWidth: naturalWidth)
+                fitted(painting(scene), size: scene.size, naturalWidth: naturalWidth)
             case .scrolling where isPrinted:
-                fitted(painting(variant), size: size, naturalWidth: naturalWidth)
+                fitted(painting(scene), size: scene.size, naturalWidth: naturalWidth)
             case .scrolling(let scale):
-                scrolling(painting(variant), size: size, at: scale)
+                scrolling(painting(scene), size: scene.size, at: scale)
             }
         }
         .frame(maxWidth: .infinity)

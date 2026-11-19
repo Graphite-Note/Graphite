@@ -1,3 +1,14 @@
+/**
+ * File: ReadingQuadrantChartTests.swift
+ * -------------------------------------
+ * Layer: Tests
+ * Description: The reading view's quadrant charts.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 19/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteIndex
@@ -5,36 +16,29 @@ import MermaidDiagrams
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// A ```mermaid block holding a quadrant chart: read and laid out with the note's other blocks, off the main actor, in
-/// the note's text size; one that cannot be read keeps its source and says why.
 final class ReadingQuadrantChartTests: XCTestCase {
     private let typography = DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17))
-    private struct NotDrawnAsAQuadrantChart: Error {}
 
-    private func chart(_ source: String) throws -> ReadingQuadrantChart {
-        guard case .quadrantChart(let chart) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else {
-            throw NotDrawnAsAQuadrantChart()
-        }
-        return chart
+    private func chart(_ source: String) throws -> PreparedMermaidDiagram {
+        try ReadingDiagram(source: source, typography: typography).drawn(as: .quadrantChart)
     }
 
     func testAQuadrantChartIsLaidOutInTheNotesTextSize() throws {
         let chart = try chart("quadrantChart\n  quadrant-1 Plan\n  quadrant-3 Delegate\n  Campaign A: [0.3, 0.6]\n  Off the chart: [0x5, 1]\n  Corner: [1, 0]")
-        XCTAssertEqual(chart.layout.font.size, 17)
-        XCTAssertEqual(chart.layout.points.count, 2)
-        XCTAssertEqual(chart.summaries, ["Plan", "Delegate", "Campaign A (0.3, 0.6)", "Corner (1, 0)"])
+        XCTAssertEqual(chart.scene.font.size, 17)
+        XCTAssertEqual(chart.accessibility.summary, ["Plan", "Delegate", "Campaign A (0.3, 0.6)", "Corner (1, 0)"])
     }
 
     func testAccessibilityTextComesFromTheChart() throws {
         let titled = try chart("quadrantChart\n  title Priorities\n  accDescr: Four boxes\n  quadrant-1 Plan")
-        XCTAssertEqual(titled.title, "Priorities")
-        XCTAssertEqual(titled.description, "Four boxes")
-        XCTAssertEqual(try chart("quadrantChart\n  accTitle: Named\n  title Shown").title, "Named")
+        XCTAssertEqual(titled.accessibility.title, "Priorities")
+        XCTAssertEqual(titled.accessibility.description, "Four boxes")
+        XCTAssertEqual(try chart("quadrantChart\n  accTitle: Named\n  title Shown").accessibility.title, "Named")
     }
 
     func testAQuadrantChartThatCannotBeReadKeepsItsSourceAndWhy() throws {
         let source = "quadrantChart\n  A: [0.1, 0.1] color: red"
-        guard case .unreadable(let shownSource, let failure) = try XCTUnwrap(ReadingDiagram(source: source, typography: typography)) else {
+        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
             return XCTFail("Shown as unreadable")
         }
         XCTAssertEqual(shownSource, source)
@@ -56,7 +60,8 @@ final class ReadingQuadrantChartTests: XCTestCase {
                                                            note: try VaultPath("Note.md"), root: vault, index: index,
                                                            configuration: ReadingConfiguration()).blocks
         XCTAssertEqual(blocks.count, 3)
-        guard case .diagram(_, .quadrantChart(let chart)) = blocks[1] else { return XCTFail("The quadrant chart is drawn") }
-        XCTAssertEqual(chart.layout.axisLabels.count, 2)
+        guard case .diagram(_, let diagram) = blocks[1] else { return XCTFail("The quadrant chart is drawn") }
+        let scene = try diagram.drawn(as: .quadrantChart).scene
+        XCTAssertEqual(scene.texts(reading: "Low").count + scene.texts(reading: "High").count, 2, "Both ends of the axis are drawn.")
     }
 }

@@ -1,3 +1,14 @@
+/**
+ * File: ReadingDiagramColors.swift
+ * --------------------------------
+ * Layer: UI
+ * Description: The colors a diagram is painted in: the note's, and a theme's Pele variables.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.9
+ * Date: 19/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import MermaidDiagrams
