@@ -3,11 +3,12 @@
  * ------------------------------------
  * Layer: Tests
  * Description: On the Mac, a page's saved ink is drawn in one layer over the page, where and as PDFKit draws it, upright
- *              and turned; an edit gives the page back to PDFKit; thumbnails still show the ink; pictures stay bounded.
+ *              and turned, from an IOSurface held once; an edit gives the page back to PDFKit; thumbnails still show the
+ *              ink; pictures stay bounded and go with their page.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 import XCTest
 import PDFKit
@@ -18,6 +19,7 @@ import GraphiteApple
 
 #if os(macOS)
 import AppKit
+import IOSurface
 import GraphiteTestSupport
 
 @MainActor
@@ -70,6 +72,27 @@ final class MacPDFPageInkLayersTests: XCTestCase {
         XCTAssertEqual(shownCenter.x, referenceCenter.x, accuracy: 2)
         XCTAssertEqual(shownCenter.y, referenceCenter.y, accuracy: 2, "Upright as PDFKit draws the page.")
         XCTAssertFalse(overlay.layer?.contentsAreFlipped() ?? true, "The layer shows the picture upright.")
+        let contents = try XCTUnwrap(overlay.layer?.contents)
+        XCTAssertEqual(CFGetTypeID(contents as CFTypeRef), IOSurfaceGetTypeID(),
+                       "The layer shows an IOSurface, which Core Animation does not copy as it copies a CGImage.")
+    }
+
+    /// A page PDFKit stops showing lets its picture go at once (a picture of a page at fit width on a Retina screen is
+    /// about 7.5 MB), rather than when PDFKit lets go of its overlay.
+    func testAPageNoLongerShownLetsItsPictureGo() async throws {
+        let location = try await makeSavedPDF(rotation: 0)
+        let (window, pdfView, _) = try await show(location)
+        defer { window.close() }
+        let page = try XCTUnwrap(pdfView.document?.page(at: 0))
+        _ = try await waitForPicture(of: page, in: pdfView)
+        let overlay = try XCTUnwrap(Self.inkViews(in: pdfView).first)
+        let pageInkLayers = try XCTUnwrap(pdfView.pageInkLayers)
+
+        pageInkLayers.pdfView(pdfView, willEndDisplayingOverlayView: overlay, for: page)
+
+        XCTAssertFalse(overlay.isShowingInk)
+        XCTAssertNil(overlay.layer?.contents, "The layer holds no picture.")
+        XCTAssertTrue(pageInkLayers.pagesWithPictures.isEmpty)
     }
 
     func testAnEditGivesThePageBackToPDFKit() async throws {

@@ -6,11 +6,12 @@
  *              file and off the main thread, instead of PDFKit drawing every stroke in a layer of its own.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 18/11/2026
+ * Version: 0.4
+ * Date: 19/11/2026
  */
 #if os(macOS)
 import AppKit
+import IOSurface
 import PDFKit
 import Synchronization
 import GraphiteApple
@@ -21,8 +22,9 @@ import GraphiteApple
 /// thread, the first time it makes a page's view: a page written with 520 strokes stopped a note's scrolling for 50 to
 /// 66 ms each time a handwritten PDF came into view. Here a page of the file as it was read gets a view over it (a page
 /// overlay) whose layer holds one picture of the page's ink, drawn from a separate copy of the file
-/// (`PDFSession.originalFileData`) by `PDFPageInkRenderer`, off the main thread, at the screen's pixels per point; the
-/// strokes' own layers draw nothing meanwhile (`PDFPageInkLayerState`, `PDFShownInkAnnotation`). The picture comes a few
+/// (`PDFSession.originalFileData`) by `PDFPageInkRenderer`, off the main thread, at the screen's pixels per point, into
+/// an IOSurface the layer shows as it is (a `CGImage` would be copied by Core Animation, so each page's picture took its
+/// memory twice: 15 MB a page at fit width on a Retina screen); the strokes' own layers draw nothing meanwhile (`PDFPageInkLayerState`, `PDFShownInkAnnotation`). The picture comes a few
 /// frames after the page, as PDFKit's own tiles do, and is drawn again at the end of a zoom.
 ///
 /// The copy holds the file as it was read, so a page that has been edited (a stroke drawn, erased or undone, a
@@ -32,7 +34,7 @@ import GraphiteApple
 /// until the zoom comes back. The file is never changed.
 @MainActor
 final class MacPDFPageInkLayers: NSObject, @preconcurrency PDFPageOverlayViewProvider {
-    /// A page's picture holds at most this many pixels (64 MB); a page zoomed in further is drawn by PDFKit.
+    /// A page's picture holds at most this many pixels (64 MB, in one IOSurface); a page zoomed in further is drawn by PDFKit.
     static let maximumPixelsPerPage = 16 * 1_048_576
     /// The pictures are drawn again this long after the zoom last changed, not at every step of a pinch.
     private static let redrawDelayAfterZoom: TimeInterval = 0.15
@@ -83,7 +85,7 @@ final class MacPDFPageInkLayers: NSObject, @preconcurrency PDFPageOverlayViewPro
 
     /// Pages whose picture is shown, which a test asks.
     var pagesWithPictures: [PDFPage] {
-        shownPages.values.compactMap { shownPage in shownPage.overlay?.picture == nil ? nil : shownPage.page }
+        shownPages.values.compactMap { shownPage in shownPage.overlay?.isShowingInk == true ? shownPage.page : nil }
     }
 
     // MARK: Page overlays
@@ -104,6 +106,8 @@ final class MacPDFPageInkLayers: NSObject, @preconcurrency PDFPageOverlayViewPro
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: NSView, for page: PDFPage) {
         shownPages.removeValue(forKey: ObjectIdentifier(page))?.drawing?.cancel()
+        // The page's picture goes with it at once, not when PDFKit lets its overlay go.
+        (overlayView as? MacPDFPageInkView)?.showInk(nil)
     }
 
     /// A page of the file, not edited since it was read, while the document is claimed.
@@ -153,7 +157,7 @@ final class MacPDFPageInkLayers: NSObject, @preconcurrency PDFPageOverlayViewPro
         guard let shownPage = shownPages[identifier], pixelSize.width >= 1, pixelSize.height >= 1, pixelSize != shownPage.drawnPixelSize else { return }
         let request = PDFPageInkRequest(fileData: fileData, pageNumber: corePage.pageNumber, filePageCount: documentReference.numberOfPages,
                                         cropBox: page.bounds(for: .cropBox), rotation: ((page.rotation % 360) + 360) % 360,
-                                        pixelWidth: Int(pixelSize.width), pixelHeight: Int(pixelSize.height))
+                                        pixelWidth: Int(pixelSize.width), pixelHeight: Int(pixelSize.height), drawsIntoSurface: true)
         shownPage.drawing?.cancel()
         let renderer = renderer
         shownPages[identifier]?.drawnPixelSize = pixelSize
@@ -173,9 +177,10 @@ final class MacPDFPageInkLayers: NSObject, @preconcurrency PDFPageOverlayViewPro
         }
         guard !pagesGivenForZoom.contains(identifier) else { return }
         switch drawing {
-        case .picture(let picture): shownPages[identifier]?.overlay?.showInk(picture)
+        case .surface(let surface): shownPages[identifier]?.overlay?.showInk(surface)
         case .noInk: shownPages[identifier]?.overlay?.showInk(nil)
-        case .unavailable: giveToPDFKit(page)
+        // A `CGImage` is drawn only for a request that does not ask for a surface, which this one did.
+        case .picture, .unavailable: giveToPDFKit(page)
         }
     }
 
@@ -247,13 +252,18 @@ final class MacPDFPageInkView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     /// The picture of the page's ink the layer shows.
-    private(set) var picture: CGImage?
+    private var surface: IOSurface?
 
-    func showInk(_ picture: CGImage?) {
-        self.picture = picture
+    var isShowingInk: Bool { surface != nil }
+
+    /// A copy of the picture the layer shows, which tests compare with PDFKit's drawing.
+    var picture: CGImage? { surface.flatMap(PDFPageInkSurface.image(of:)) }
+
+    func showInk(_ surface: IOSurface?) {
+        self.surface = surface
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.contents = picture
+        layer?.contents = surface
         CATransaction.commit()
     }
 }

@@ -6,11 +6,12 @@
  *              file, off the main thread: the Mac's page ink layers and the iPad's combined ink groups show it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 18/11/2026
+ * Version: 0.2
+ * Date: 19/11/2026
  */
 import Foundation
 import CoreGraphics
+import IOSurface
 import PDFKit
 import Synchronization
 import GraphiteApple
@@ -34,11 +35,17 @@ struct PDFPageInkRequest: Sendable {
     /// Draws the strokes with the page turned and cropped as the request says, rather than refusing a copy whose page
     /// is not (a combined group's picture on the iPad follows the live page, which may have been turned since).
     var adoptsShownGeometry = false
+    /// Draws into an IOSurface, for a layer to show, instead of a `CGImage`. Core Animation keeps a copy of its own of
+    /// a `CGImage` a layer shows, so a page's picture took its memory twice; an IOSurface it shows as it is.
+    var drawsIntoSurface = false
 }
 
 /// A page's ink drawn by `PDFPageInkRenderer`.
 enum PDFPageInkDrawing: Sendable {
     case picture(CGImage)
+    /// The picture, in an IOSurface of premultiplied BGRA in sRGB, its first row the page's top, for a request that
+    /// `drawsIntoSurface`.
+    case surface(IOSurface)
     /// The page has no Graphite ink.
     case noInk
     /// The copy does not have the page as shown (another page count, crop box or turn).
@@ -107,9 +114,17 @@ actor PDFPageInkRenderer {
             return group == requestedGroup && !(annotation.persistentName.map(request.excludedNames.contains) ?? false)
         }
         guard !strokes.isEmpty else { return .noInk }
-        guard let context = CGContext(data: nil, width: request.pixelWidth, height: request.pixelHeight, bitsPerComponent: 8, bytesPerRow: 0,
-                                      space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return .unavailable }
+        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let surface = request.drawsIntoSurface ? PDFPageInkSurface.make(pixelWidth: request.pixelWidth, pixelHeight: request.pixelHeight,
+                                                                        colorSpace: colorSpace) : nil
+        if request.drawsIntoSurface, surface == nil { return .unavailable }
+        surface?.lock(options: [], seed: nil)
+        defer { surface?.unlock(options: [], seed: nil) }
+        guard let context = CGContext(data: surface?.baseAddress, width: request.pixelWidth, height: request.pixelHeight, bitsPerComponent: 8,
+                                      bytesPerRow: surface?.bytesPerRow ?? 0, space: colorSpace,
+                                      bitmapInfo: surface == nil ? CGImageAlphaInfo.premultipliedLast.rawValue : PDFPageInkSurface.bitmapInfo)
+        else { return .unavailable }
+        if surface != nil { context.clear(CGRect(x: 0, y: 0, width: request.pixelWidth, height: request.pixelHeight)) }
         // As the thumbnails draw annotations: in a context with the PDF's upward y axis, scaled to the page as shown; each
         // annotation applies the crop box and the page's turn itself.
         let displayedWidth = request.rotation % 180 == 0 ? request.cropBox.width : request.cropBox.height
@@ -117,7 +132,40 @@ actor PDFPageInkRenderer {
         let pixelsPerPagePoint = CGFloat(request.pixelWidth) / displayedWidth
         context.scaleBy(x: pixelsPerPagePoint, y: pixelsPerPagePoint)
         for stroke in strokes { stroke.draw(with: .cropBox, in: context) }
+        if let surface { return .surface(surface) }
         return context.makeImage().map(PDFPageInkDrawing.picture) ?? .unavailable
+    }
+}
+
+/// The IOSurfaces the Mac's page ink layers show (`PDFPageInkRequest.drawsIntoSurface`).
+enum PDFPageInkSurface {
+    /// Premultiplied BGRA, the order Core Animation shows without converting.
+    static let bitmapInfo = CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+    private static let bytesPerPixel = 4
+    /// 'BGRA'.
+    private static let pixelFormat: UInt32 = 0x4247_5241
+
+    /// A surface of the size asked, tagged with the color space the picture is drawn in, so the layer shows its colors
+    /// as a `CGImage` of that space would be shown.
+    static func make(pixelWidth: Int, pixelHeight: Int, colorSpace: CGColorSpace) -> IOSurface? {
+        guard let surface = IOSurface(properties: [.width: pixelWidth, .height: pixelHeight, .bytesPerElement: bytesPerPixel,
+                                                   .pixelFormat: pixelFormat]) else { return nil }
+        if let colorSpaceDescription = colorSpace.copyPropertyList() {
+            IOSurfaceSetValue(surface, kIOSurfaceColorSpace, colorSpaceDescription)
+        }
+        return surface
+    }
+
+    /// A copy of the surface's picture as a `CGImage`, which tests compare with PDFKit's drawing.
+    static func image(of surface: IOSurface) -> CGImage? {
+        surface.lock(options: .readOnly, seed: nil)
+        defer { surface.unlock(options: .readOnly, seed: nil) }
+        let bytes = Data(bytes: surface.baseAddress, count: surface.bytesPerRow * surface.height)
+        guard let provider = CGDataProvider(data: bytes as CFData) else { return nil }
+        return CGImage(width: surface.width, height: surface.height, bitsPerComponent: 8, bitsPerPixel: bytesPerPixel * 8,
+                       bytesPerRow: surface.bytesPerRow, space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                       bitmapInfo: CGBitmapInfo(rawValue: bitmapInfo), provider: provider, decode: nil, shouldInterpolate: true,
+                       intent: .defaultIntent)
     }
 }
 
