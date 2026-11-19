@@ -331,7 +331,13 @@ public enum PDFPageManager {
             case .entireGroup:
                 page.removeAnnotation(annotation)
             case .strokes(let names):
-                if let name = annotation.persistentName, names.contains(name) { page.removeAnnotation(annotation) }
+                // The one annotation of a combined group stays on the page while it draws any of the group's strokes:
+                // the strokes erased are noted, its own among them (`PDFCombinedInkGroup`).
+                if let combinedGroup = annotation.combinedInkGroup {
+                    combinedGroup.remove(named: names)
+                } else if let name = annotation.persistentName, names.contains(name) {
+                    page.removeAnnotation(annotation)
+                }
             }
         }
     }
@@ -345,7 +351,14 @@ public enum PDFPageManager {
     private static func authorsOfStrokes(removedBy removal: PDFInkUpdate.Removal, group: String, on page: PDFPage) -> [String: String?] {
         var authorsByStrokeName: [String: String?] = [:]
         for annotation in annotations(inGroup: group, on: page) {
-            guard let name = annotation.persistentName else { continue }
+            for stroke in annotation.combinedInkGroup?.remainingStrokes ?? [] {
+                guard let name = stroke.name else { continue }
+                switch removal {
+                case .entireGroup: authorsByStrokeName[name] = stroke.author
+                case .strokes(let names): if names.contains(name) { authorsByStrokeName[name] = stroke.author }
+                }
+            }
+            guard annotation.combinedInkGroup == nil, let name = annotation.persistentName else { continue }
             switch removal {
             case .entireGroup: authorsByStrokeName[name] = annotation.userName
             case .strokes(let names): if names.contains(name) { authorsByStrokeName[name] = annotation.userName }

@@ -5,8 +5,8 @@
  * Description: An open PDF: its pages, edits, saving and conflicts.
  *
  * Authors: Bahey Shalash
- * Version: 0.21
- * Date: 16/11/2026
+ * Version: 0.22
+ * Date: 18/11/2026
  */
 
 import Foundation
@@ -66,6 +66,8 @@ private struct LoadedPDF: @unchecked Sendable {
     let hasDigitalSignatures: Bool
     let formFieldPageNumbers: Set<Int>?
     let originalFileData: Data?
+    /// The copy the shown document is read from when it holds densely written ink groups combined.
+    let shownCopy: PDFBaselineSnapshot?
 }
 
 /// A PDF that opens only with its password.
@@ -85,31 +87,75 @@ enum PDFProtection: Equatable {
 }
 
 private actor PDFLoader {
-    func load(_ location: URL, password: String?, writer: AtomicFileWriter) throws -> LoadedPDF {
+    func load(_ location: URL, password: String?, writer: AtomicFileWriter, combinesDenseInk: Bool) throws -> LoadedPDF {
         var coordinationError: NSError?
         var loaded: Result<LoadedPDF, Error>?
         writer.makeCoordinator().coordinate(readingItemAt: location, options: [], error: &coordinationError) { source in
             loaded = Result {
                 let baseline = PDFBaselineSnapshot(location: PDFBaselineSnapshot.makeLocation())
                 try FileManager.default.copyItem(at: source, to: baseline.location)
-                guard let document = PDFShownDocument(url: baseline.location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
-                PDFPageManager.prepareForDisplay(document)
+                var (document, shownCopy) = try Self.shownDocument(of: baseline, combinesDenseInk: combinesDenseInk)
                 if document.isLocked {
                     guard let password else { throw PDFPasswordRequired(wasPasswordWrong: false) }
                     guard document.unlock(withPassword: password) else { throw PDFPasswordRequired(wasPasswordWrong: true) }
                 }
                 // A separate copy of an encrypted PDF would need its password to open.
                 let originalFileData = document.isEncrypted ? nil : try? Data(contentsOf: baseline.location, options: .alwaysMapped) // nil: PDFKit draws every stroke
+                if let combined = shownCopy, !Self.combineInk(of: document, planAt: combined, fileData: originalFileData) {
+                    // A group whose one annotation cannot draw it would show a single stroke: the page is shown whole.
+                    (document, shownCopy) = (try Self.openShown(baseline.location), nil)
+                }
                 return LoadedPDF(document: document, revision: try FileRevision.read(baseline.location), baseline: baseline,
                                  structureEntriesLostByPageChanges: PDFStructureInspection.entriesLostByPageChanges(in: baseline.location),
                                  hasDigitalSignatures: PDFSignatureDetection.hasDigitalSignatures(at: baseline.location),
                                  formFieldPageNumbers: PDFFormFieldPages.pageNumbers(at: baseline.location),
-                                 originalFileData: originalFileData)
+                                 originalFileData: originalFileData, shownCopy: shownCopy?.copy)
             }
         }
         if let coordinationError { throw coordinationError }
         guard let loaded else { throw GraphiteError.unavailable("The PDF is unavailable.") }
         return try loaded.get()
+    }
+
+    private struct ShownCopy {
+        let copy: PDFBaselineSnapshot
+        let plan: PDFShownInkCombining.Plan
+    }
+
+    /// The document shown, read from a copy of the baseline that leaves combined groups' strokes out of their pages
+    /// when there are any, or from the baseline itself.
+    private static func shownDocument(of baseline: PDFBaselineSnapshot, combinesDenseInk: Bool) throws -> (PDFShownDocument, ShownCopy?) {
+        if combinesDenseInk {
+            let copy = PDFBaselineSnapshot(location: PDFBaselineSnapshot.makeLocation())
+            if let plan = try? PDFShownInkCombining.writeShownCopy(of: baseline.location, to: copy.location), // Or shown from the baseline.
+               let document = try? openShown(copy.location) { // As above.
+                return (document, ShownCopy(copy: copy, plan: plan))
+            }
+        }
+        return (try openShown(baseline.location), nil)
+    }
+
+    private static func openShown(_ location: URL) throws -> PDFShownDocument {
+        guard let document = PDFShownDocument(url: location) else { throw GraphiteError.invalidFile("This PDF is unreadable.") }
+        PDFPageManager.prepareForDisplay(document)
+        return document
+    }
+
+    /// Gives each combined group's one annotation its group; false when one of them is missing or cannot draw it.
+    private static func combineInk(of document: PDFShownDocument, planAt shownCopy: ShownCopy, fileData: Data?) -> Bool {
+        guard let fileData else { return false }
+        let filePageCount = document.pageCount
+        for (pageIndex, groups) in shownCopy.plan.groupsByPageIndex {
+            guard let page = document.page(at: pageIndex) else { return false }
+            let annotations = page.annotations
+            for group in groups {
+                let firstOfGroup = annotations.first { annotation in annotation.value(forAnnotationKey: PDFPageManager.groupKey) as? String == group.group }
+                guard let annotation = firstOfGroup,
+                      annotation.becomeCombinedInk(PDFCombinedInkGroup(group: group.group, fileData: fileData, filePageCount: filePageCount,
+                                                                         filePageIndex: pageIndex, strokes: group.strokes)) else { return false }
+            }
+        }
+        return true
     }
 }
 
@@ -390,6 +436,17 @@ final class PDFSession {
     /// does not change; the Mac draws the pages' ink from a separate copy of it (`MacPDFPageInkLayers`). Nil for an
     /// encrypted PDF or when it could not be mapped.
     let originalFileData: Data?
+    /// Whether the shown document holds a densely written page's ink groups as one annotation each
+    /// (`PDFShownInkCombining`): on the iPad; the Mac draws each page's ink in a layer of its own (`MacPDFPageInkLayers`).
+    /// `open(_:combinesDenseInk:)` takes it unless told otherwise, as tests of the combined groups do on the Mac.
+    #if os(iOS)
+    static let combinesDenseInkByDefault = true
+    #else
+    static let combinesDenseInkByDefault = false
+    #endif
+    /// The copy of the file the document is read from while it holds densely written ink groups combined
+    /// (`PDFShownInkCombining`), removed with the session; nil when the document is read from the baseline.
+    private let shownCopy: PDFBaselineSnapshot?
     var acceptsSignatureInvalidation = false
     /// Why every edit is refused, or nil when the PDF takes edits. A password outranks a
     /// signature, because accepting the signature's loss does not unlock an encrypted PDF.
@@ -410,6 +467,7 @@ final class PDFSession {
         hasDigitalSignatures = loaded.hasDigitalSignatures
         formFieldPageNumbers = loaded.formFieldPageNumbers
         originalFileData = loaded.originalFileData
+        shownCopy = loaded.shownCopy
         revision = loaded.revision
         baseline = loaded.baseline
         pageCount = loaded.document.pageCount
@@ -424,8 +482,9 @@ final class PDFSession {
     ///   - clock: Times autosave. It keeps a default, the live clock, only because the workspace and about a
     ///     hundred tests open sessions through here; it goes when the workspace is given its clock (`FR-47`).
     static func open(_ location: URL, password: String? = nil, writer: AtomicFileWriter = AtomicFileWriter(),
-                     clock: any ApplicationClock = LiveApplicationClock()) async throws -> PDFSession {
-        let loaded = try await PDFLoader().load(location, password: password, writer: writer)
+                     clock: any ApplicationClock = LiveApplicationClock(),
+                     combinesDenseInk: Bool = PDFSession.combinesDenseInkByDefault) async throws -> PDFSession {
+        let loaded = try await PDFLoader().load(location, password: password, writer: writer, combinesDenseInk: combinesDenseInk)
         return PDFSession(location: location, loaded: loaded, writer: writer, clock: clock)
     }
 

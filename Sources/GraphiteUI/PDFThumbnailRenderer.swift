@@ -5,8 +5,8 @@
  * Description: Renders and caches small page images for the pages sidebar.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 16/11/2026
+ * Version: 0.7
+ * Date: 18/11/2026
  */
 
 import SwiftUI
@@ -47,6 +47,8 @@ final class PDFThumbnailRenderer {
     /// This viewer's entries in the shared cache, removed when it releases its PDF.
     private var cacheKeys: [PDFThumbnailCacheKey.Identity: PDFThumbnailCacheKey] = [:]
     private let contentRenderer = PDFPageContentRenderer()
+    /// Draws the combined ink groups of densely written pages (`PDFCombinedInkGroup`) at the thumbnail's size.
+    private let combinedInkRenderer = PDFPageInkRenderer()
     private weak var mappedDocument: PDFDocument?
     /// The file `mappedDocument` was read from, mapped into memory (see `PDFPageContentSource`).
     private var mappedFileData: NSData?
@@ -86,9 +88,11 @@ final class PDFThumbnailRenderer {
         let image: PDFThumbnailImage
         if let content = PDFPageContent(page: page, fitting: pointSize, scale: scale, source: contentSource(for: page)) {
             guard let contentImage = await contentRenderer.render(content) else { return nil }
+            let combinedInk = await combinedInkPictures(of: page, pixelSize: CGSize(width: contentImage.width, height: contentImage.height))
             if let cached = Self.cache.object(forKey: cacheKey), cached.version == version { return cached.image }
             // The page may have been turned while its content was drawn.
-            image = content.matches(page) ? composite(contentImage, annotationsOf: page, content: content) : render(page, fitting: pointSize, scale: scale)
+            image = content.matches(page) ? composite(contentImage, annotationsOf: page, content: content, combinedInk: combinedInk)
+                : render(page, fitting: pointSize, scale: scale)
         } else {
             image = render(page, fitting: pointSize, scale: scale)
         }
@@ -119,7 +123,19 @@ final class PDFThumbnailRenderer {
     /// Draws the page's annotations over its content, as PDFKit's own thumbnails show them.
     /// Ink under a live Pencil canvas, and text boxes drawn over it, are hidden in the
     /// document; they are drawn here too.
-    private func composite(_ contentImage: CGImage, annotationsOf page: PDFPage, content: PDFPageContent) -> PDFThumbnailImage {
+    /// The pictures of the page's combined ink groups at this size, by their annotation, drawn off the main thread.
+    private func combinedInkPictures(of page: PDFPage, pixelSize: CGSize) async -> [ObjectIdentifier: CGImage] {
+        var pictures: [ObjectIdentifier: CGImage] = [:]
+        for annotation in page.annotations {
+            guard let combinedGroup = annotation.combinedInkGroup,
+                  let picture = await PDFPageInkRenderer.picture(of: combinedGroup, on: page, pixelSize: pixelSize, with: combinedInkRenderer) else { continue }
+            pictures[ObjectIdentifier(annotation)] = picture.image
+        }
+        return pictures
+    }
+
+    private func composite(_ contentImage: CGImage, annotationsOf page: PDFPage, content: PDFPageContent,
+                           combinedInk: [ObjectIdentifier: CGImage] = [:]) -> PDFThumbnailImage {
         let annotations = page.annotations.filter { annotation in
             annotation.type != "Popup" && (annotation.shouldDisplay || Self.isHiddenUnderLiveOverlay(annotation))
         }
@@ -129,7 +145,17 @@ final class PDFThumbnailRenderer {
         context.draw(contentImage, in: CGRect(x: 0, y: 0, width: contentImage.width, height: contentImage.height))
         // A bitmap context already has the PDF's upward y axis.
         context.scaleBy(x: content.pixelsPerPagePoint, y: content.pixelsPerPagePoint)
-        for annotation in annotations { annotation.drawAsShown(with: .cropBox, in: context) }
+        for annotation in annotations {
+            if let combinedPicture = combinedInk[ObjectIdentifier(annotation)] {
+                // Drawn for the page as shown, at the thumbnail's pixels.
+                context.saveGState()
+                context.scaleBy(x: 1 / content.pixelsPerPagePoint, y: 1 / content.pixelsPerPagePoint)
+                context.draw(combinedPicture, in: CGRect(x: 0, y: 0, width: contentImage.width, height: contentImage.height))
+                context.restoreGState()
+            } else if annotation.combinedInkGroup == nil {
+                annotation.drawAsShown(with: .cropBox, in: context)
+            }
+        }
         guard let compositeImage = context.makeImage() else { return Self.image(contentImage, pointSize: content.outputSize, scale: content.scale) }
         return Self.image(compositeImage, pointSize: content.outputSize, scale: content.scale)
     }

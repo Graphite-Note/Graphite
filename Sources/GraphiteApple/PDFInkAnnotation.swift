@@ -5,8 +5,8 @@
  * Description: Standard PDF ink for one Pencil stroke.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 12/11/2026
+ * Version: 0.7
+ * Date: 18/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -375,11 +375,15 @@ public enum PDFInkGroups {
                                                          annotationNames: [], multipliedNames: []))
                 continue
             }
-            let multipliedNames = groupAnnotations.filter
+            // A group the shown page holds combined has its strokes' names in memory, the first annotation's own among them.
+            let combinedStrokes = carrier.combinedInkGroup?.remainingStrokes
+            let annotationsOfTheirOwn = combinedStrokes == nil ? groupAnnotations[...] : groupAnnotations.dropFirst()
+            let multipliedNames = (combinedStrokes ?? []).filter(\.multipliesOverPage).compactMap(\.name) + annotationsOfTheirOwn.filter
                 { annotation in annotation.value(forAnnotationKey: PDFPageManager.inkMultipliesKey) != nil }.compactMap(\.persistentName)
+            let annotationNames = (combinedStrokes ?? []).map { stroke in stroke.name ?? "" }
+                + annotationsOfTheirOwn.map { annotation in annotation.persistentName ?? "" }
             candidates.append(PDFStoredInk.Candidate(group: group, encodedDrawing: encodedDrawing, encodedNames: encodedNames,
-                                                     annotationNames: groupAnnotations.map { annotation in annotation.persistentName ?? "" },
-                                                     multipliedNames: multipliedNames))
+                                                     annotationNames: annotationNames, multipliedNames: multipliedNames))
         }
         return PDFStoredInk(candidates: candidates, usesDefaultGroup: annotationsByGroup[defaultGroup] != nil)
     }

@@ -3,7 +3,7 @@
  * ------------------------------
  * Layer: Apple
  * Description: Duplicates a page of a PDF with its annotations and their Graphite keys, which PDFKit's copy of a page
- *              read from a file leaves out.
+ *              read from a file leaves out, and a shown page's combined ink groups.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -19,6 +19,7 @@ extension PDFPageManager {
         guard let duplicate = source.copy() as? PDFPage else { throw GraphiteError.invalidFile("Cannot duplicate page.") }
         document.insert(duplicate, at: pageIndex + 1)
         carryGraphiteKeys(from: source, to: duplicate)
+        carryCombinedInk(from: source, to: duplicate)
     }
 
     /// Gives a duplicate's annotations the Graphite keys of those they copy: a page whose annotations PDFKit read from
@@ -32,6 +33,19 @@ extension PDFPageManager {
                 guard let value = sourceAnnotation.value(forAnnotationKey: key), duplicateAnnotation.value(forAnnotationKey: key) == nil else { continue }
                 duplicateAnnotation.setValue(value, forAnnotationKey: key)
             }
+        }
+    }
+
+    /// A duplicate of a shown page draws its combined ink groups as the page does (`PDFCombinedInkGroup`): the copy of
+    /// each group's one annotation draws a copy of the group.
+    static func carryCombinedInk(from source: PDFPage, to duplicate: PDFPage) {
+        let sourceAnnotations = source.annotations
+        guard sourceAnnotations.contains(where: { annotation in annotation.combinedInkGroup != nil }) else { return }
+        let duplicateAnnotations = duplicate.annotations
+        guard duplicateAnnotations.count == sourceAnnotations.count else { return }
+        for (sourceAnnotation, duplicateAnnotation) in zip(sourceAnnotations, duplicateAnnotations) {
+            guard let combinedGroup = sourceAnnotation.combinedInkGroup else { continue }
+            duplicateAnnotation.becomeCombinedInk(combinedGroup.copy())
         }
     }
 }

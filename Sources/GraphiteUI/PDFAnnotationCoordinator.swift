@@ -5,8 +5,8 @@
  * Description: Puts a PencilKit canvas on each PDF page and connects it to the tools, the palette, touches and saving.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 18/11/2026
  */
 
 #if canImport(UIKit)
@@ -46,6 +46,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private weak var pdfView: GraphitePDFDisplayView?
     /// Canvases whose drawing recognizer is left finished with no touch down (`CanvasLeftDrawingWatch`).
     private var leftDrawingWatch = CanvasLeftDrawingWatch()
+    /// The pictures of the combined ink groups of the pages shown (`PDFCombinedInkPictures`), made with the first page shown.
+    private(set) var combinedInkPictures: PDFCombinedInkPictures?
     /// Apple's floating palette, which this view's canvases follow.
     let toolPicker = PencilToolPalette.makeToolPicker()
     private lazy var paletteAccessoryItem = PencilToolPalette.makeAccessoryItem(
@@ -339,6 +341,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         isDetached = true
         paletteFrameFollowing?.cancel()
         paletteFrameFollowing = nil
+        combinedInkPictures?.stop()
+        combinedInkPictures = nil
         healthMonitor?.stop()
         healthMonitor = nil
         presentedScreenObserver.isObserving = false
@@ -761,14 +765,25 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             (overlayView as? PDFPageOverlayView)?.followVisibleArea()
         }
         configure(canvas)
+        showCombinedInk(of: page)
         placeReadAloudMarkers(on: canvas)
         if let overlay = overlayView as? PDFPageOverlayView { textBoxInteraction?.pageDidAppear(page, in: overlay) }
+    }
+
+    /// Draws the pictures of the page's combined ink groups (`PDFCombinedInkPictures`).
+    private func showCombinedInk(of page: PDFPage) {
+        guard !isDetached, let pdfView else { return }
+        if combinedInkPictures == nil {
+            combinedInkPictures = PDFCombinedInkPictures(view: pdfView, changeVersion: { [weak session] in session?.changeVersion ?? 0 })
+        }
+        combinedInkPictures?.pageAppeared(page)
     }
 
     func pdfView(_ pdfView: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
         guard overlayView is PDFPageOverlayView else { return }
         let identifier = ObjectIdentifier(page)
         displayedPages.remove(identifier)
+        combinedInkPictures?.pageLeft(page)
         // The page's ink annotations stay hidden while its canvas is kept: PDFKit gives every annotation a layer of its
         // own, drawn on the main thread from its appearance whenever it is shown, so showing a page's ink each time its
         // view left the screen, and hiding it again as it came back, drew every stroke of the page twice. On a page of

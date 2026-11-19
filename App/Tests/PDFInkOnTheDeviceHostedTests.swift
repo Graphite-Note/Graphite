@@ -2,12 +2,13 @@
  * File: PDFInkOnTheDeviceHostedTests.swift
  * ----------------------------------------
  * Layer: Tests
- * Description: On the owner's iPad, a densely written notebook zoomed in gives its memory back at a memory warning, and
- *              pausing while writing on a full page, or writing on one as it comes on screen, freezes no frame at the
- *              autosave that follows (HUNT-014, HUNT-017, HUNT-313).
+ * Description: On the owner's iPad, a densely written notebook zoomed in gives its memory back at a memory warning,
+ *              scrolling through it in Read mode freezes no frame as each page's ink is read, and pausing while writing
+ *              on a full page, or writing on one as it comes on screen, freezes no frame at the autosave that follows
+ *              (HUNT-014, HUNT-015, HUNT-017, HUNT-313).
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 17/11/2026
  */
 #if os(iOS)
@@ -78,6 +79,58 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
         XCTAssertLessThan(peakFootprint, 1_500, "The notebook zoomed in stays well inside what iPadOS lets an app keep.")
     }
 
+    /// HUNT-015: in Read mode, a notebook of nine 6,000-stroke pages scrolled through for the first time, a page a
+    /// second as a person reads: each page's ink is read as it comes on screen, and the main thread works under 50 ms
+    /// in every frame.
+    func testScrollingADenseNotebookInReadModeFreezesNoFrameAsEachPagesInkIsRead() async throws {
+        try await scrollInReadMode(strokesPerPage: DenseHandwritingNotebook.formulaSheetStrokeCount)
+    }
+
+    private func scrollInReadMode(strokesPerPage: Int) async throws {
+        try TimingBudgets.requireTheOwnersDevice()
+        let pageCount = 9
+        let (session, pdfView) = try await openNotebook(pageCount: pageCount, strokesPerPage: strokesPerPage, writing: false)
+        let firstPage = try XCTUnwrap(session.document.page(at: 0))
+        try await waitUntil("the first page's ink is read", timeoutSeconds: 120) {
+            self.restoredCanvas(of: firstPage, in: pdfView, strokeCount: strokesPerPage) != nil
+        }
+        try await settle(seconds: 2)
+        let scrollView = try XCTUnwrap(pdfView.pagesScrollView)
+        let framesPerPage = 60
+        // When each page's canvas came, and when it showed the page's ink: until then the page shows none.
+        var canvasSeenAt: [Int: Date] = [:]
+        var inkShownAt: [Int: Date] = [:]
+        let catcher = MainThreadStallCatcher(stallSeconds: 0.05)
+        let scroll = await FrameRecorder.record { frameIndex in
+            let maximumOffset = max(0, scrollView.contentSize.height - scrollView.bounds.height)
+            scrollView.contentOffset.y = maximumOffset * min(1, Double(frameIndex) / Double(framesPerPage * (pageCount - 1)))
+            if frameIndex % 4 == 0 {
+                for canvas in self.canvases(in: pdfView) where canvas.window != nil {
+                    guard let page = canvas.page else { continue }
+                    let pageIndex = session.document.index(for: page)
+                    if canvasSeenAt[pageIndex] == nil { canvasSeenAt[pageIndex] = Date() }
+                    if inkShownAt[pageIndex] == nil, !canvas.isRestoringStoredInk, canvas.drawing.strokes.count == strokesPerPage { inkShownAt[pageIndex] = Date() }
+                }
+            }
+            return frameIndex < framesPerPage * pageCount
+        }
+        let stalls = MainThreadStallCatcher.report(catcher.stop())
+        try await settle(seconds: 1)
+        let lastPage = try XCTUnwrap(session.document.page(at: pageCount - 1))
+        try await waitUntil("the last page's ink is read", timeoutSeconds: 60) {
+            self.restoredCanvas(of: lastPage, in: pdfView, strokeCount: strokesPerPage) != nil
+        }
+        let longestWork = (scroll.mainThreadWork.max() ?? 0) * 1_000
+        let inkWaits = canvasSeenAt.keys.sorted().map { pageIndex in
+            "page \(pageIndex + 1) " + (inkShownAt[pageIndex].map { shown in "\(Int(shown.timeIntervalSince(canvasSeenAt[pageIndex]!) * 1_000)) ms" } ?? "not in the scroll")
+        }
+        print("PDFInkOnTheDeviceHostedTests Read mode scroll: still reading \(!session.isWriting), main thread's longest work in one frame "
+              + "\(Int(longestWork)) ms, \(scroll.report); from a page's canvas to its ink shown: \(inkWaits.joined(separator: ", "))\n\(stalls)")
+        XCTAssertFalse(session.isWriting, "The notebook was scrolled in Read mode.")
+        XCTAssertGreaterThan(scroll.gaps.count, framesPerPage * pageCount - 2, "The scroll went through the notebook.")
+        XCTAssertLessThan(longestWork, 50, "The main thread works under 50 ms in every frame of the scroll: \(scroll.report).")
+    }
+
     /// HUNT-017: writing on a 6,000-stroke page and pausing three times: at each autosave, two seconds or more after the
     /// stroke, the main thread works under 50 ms in every frame.
     func testPausingWhileWritingOnAFullPageFreezesNoFrameAtTheAutosave() async throws {
@@ -94,7 +147,7 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
         for pauseIndex in 0..<3 {
             let canvas = try XCTUnwrap(restoredCanvas(of: page, in: pdfView, strokeCount: strokesPerPage + pauseIndex))
             let pause = try await recordTheAutosave(after: canvas, of: session, seed: UInt64(10 + pauseIndex))
-            reports.append("pause \(pauseIndex + 1): \(pause.report)")
+            reports.append("pause \(pauseIndex + 1): \(pause.report)\n\(pause.stalls)")
             if pause.autosaveLongestMainThreadWorkMilliseconds >= 50 { autosavesThatFroze += 1 }
         }
         print("PDFInkOnTheDeviceHostedTests autosave on a full page: " + reports.joined(separator: "; "))
@@ -127,7 +180,7 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
             if canvas.isRestoringStoredInk { wroteWhileDecoding += 1 }
             let strokesBefore = canvas.isRestoringStoredInk ? nil : canvas.drawing.strokes.count
             let writing = try await recordTheAutosave(after: canvas, of: session, seed: UInt64(20 + pageIndex))
-            reports.append("page \(pageIndex + 1)\(strokesBefore == nil ? " (written while decoding)" : ""): \(writing.recording.report)")
+            reports.append("page \(pageIndex + 1)\(strokesBefore == nil ? " (written while decoding)" : ""): \(writing.recording.report)\n\(writing.stalls)")
             longestMilliseconds = max(longestMilliseconds, writing.recording.longestMilliseconds)
             try await waitUntil("the page's ink and the new stroke are on its canvas", timeoutSeconds: 30) {
                 !canvas.isRestoringStoredInk && canvas.drawing.strokes.count > strokesPerPage
@@ -151,6 +204,8 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
         /// The first frame gap the autosave's work can be in: the save records the canvases' ink on the main thread
         /// just before it is seen running, so the gap before the first frame that sees it running or done.
         let autosaveStartGapIndex: Int?
+        /// Where the main thread was in each stretch of 100 ms or more without a frame (`MainThreadStallCatcher`).
+        let stalls: String
 
         private var waitingGaps: ArraySlice<CFTimeInterval> { recording.gaps.prefix(autosaveStartGapIndex ?? recording.gaps.count) }
         private var autosaveGaps: ArraySlice<CFTimeInterval> { recording.gaps.dropFirst(autosaveStartGapIndex ?? recording.gaps.count) }
@@ -175,24 +230,28 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
         let recordingEnd = Date().addingTimeInterval(45)
         var savedAt: Date?
         var autosaveSeenAtFrame: Int?
+        let catcher = MainThreadStallCatcher()
         let recording = await FrameRecorder.record { frameIndex in
             if autosaveSeenAtFrame == nil, session.isSaving || !session.hasUnsavedChanges { autosaveSeenAtFrame = frameIndex }
             if savedAt == nil, !session.hasUnsavedChanges { savedAt = Date() }
             return Date() < (savedAt?.addingTimeInterval(0.5) ?? recordingEnd)
         }
+        let stalls = MainThreadStallCatcher.report(catcher.stop())
         XCTAssertNotNil(savedAt, "The autosave ran within the recording.")
         // The gap ending at frame k has index k - 1; the work came in the gap before the frame that saw it.
-        return AutosaveRecording(recording: recording, autosaveStartGapIndex: autosaveSeenAtFrame.map { frame in max(0, frame - 2) })
+        return AutosaveRecording(recording: recording, autosaveStartGapIndex: autosaveSeenAtFrame.map { frame in max(0, frame - 2) },
+                                 stalls: stalls)
     }
 
     // MARK: Hosting
 
     /// The notebook written to a new file, as Graphite writes its ink, then opened in a PDF pane.
-    private func openNotebook(pageCount: Int, strokesPerPage: Int) async throws -> (PDFSession, GraphitePDFDisplayView) {
+    private func openNotebook(pageCount: Int, strokesPerPage: Int, writing: Bool = true) async throws -> (PDFSession, GraphitePDFDisplayView) {
         let location = hostedTemporaryLocation(named: "DeviceInk").appendingPathExtension("pdf")
         temporaryLocations.append(location)
         try DenseHandwritingNotebook.write(pageCount: pageCount, strokesPerPage: strokesPerPage, to: location)
         let session = try await PDFSession.open(location)
+        session.isWriting = writing
         let controller = UIHostingController(rootView: NavigationStack { PDFPane(session: session, resolveConflict: { _ in }) })
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
