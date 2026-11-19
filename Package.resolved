@@ -1,5 +1,5 @@
 {
-  "originHash" : "a93613ba24fe3331901cfe540dbc416f75606dddb119633872dd24f6da4a8724",
+  "originHash" : "87b7b627c5107ae56750fddfb4ee31db0eca9d8db313d7fc944fd0c83d70005c",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "b83108d10f42680d78f23fe4d4d80fc88dab3212",
         "version" : "7.11.1"
+      }
+    },
+    {
+      "identity" : "mermaiddiagrams",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Graphite-Note/MermaidDiagrams.git",
+      "state" : {
+        "revision" : "5f78cfb2c8f407c358c4201d034a152c31f097ac",
+        "version" : "0.1.0"
       }
     },
     {

@@ -34,7 +34,8 @@ let package = Package(
         .package(path: "Vendor/mlx-audio-swift"),
         // Standalone packages (Docs/solid/rewrite-foundations.md section 3.5): they know nothing of Graphite.
         .package(path: "Packages/NotebookImport"),
-        .package(path: "Packages/MermaidDiagrams")
+        // Mermaid diagrams read, laid out and drawn natively, in Pele's style: Graphite's own package, in a repository of its own.
+        .package(url: "https://github.com/Graphite-Note/MermaidDiagrams.git", exact: "0.1.0")
     ],
     targets: [
         .target(name: "GraphiteCore", dependencies: [
