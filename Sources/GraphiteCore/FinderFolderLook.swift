@@ -48,24 +48,56 @@ public enum FinderTagColor: Int, CaseIterable, Sendable {
 
 /// One of Finder's tags as `com.apple.metadata:_kMDItemUserTags` keeps it: its name, then a
 /// line break and its color number when it has one.
+///
+/// A tag named after a tag color shows that color in Finder whatever number follows its name:
+/// iCloud Drive on macOS 27 rewrites every tag's number to 1 (gray) a few seconds after it is
+/// written (`"Red\n6"` becomes `"Red\n1"`, tried on 2026-11-19 with tags written by Graphite
+/// and by the system's tag API alike), and Finder still draws the folder red. The system's
+/// icon of the folder (`NSWorkspace`) goes by the number and draws it gray.
 public struct FinderTag: Equatable, Sendable {
     public let name: String
+    /// The color Finder shows: the color the name stands for, or else the stored number's.
     public let color: FinderTagColor?
+    /// The color number kept after the name, which the system's icon of the folder draws.
+    public let storedColor: FinderTagColor?
 
+    /// A tag whose stored number is the color it shows, as Graphite and Finder write it.
     public init(name: String, color: FinderTagColor?) {
+        self.init(name: name, color: color, storedColor: color)
+    }
+
+    public init(name: String, color: FinderTagColor?, storedColor: FinderTagColor?) {
         self.name = name
         self.color = color
+        self.storedColor = storedColor
     }
 
     /// As the tag attribute keeps it: "Green\n2", or the name alone for a tag without a color.
+    /// The stored number is kept as it was read.
     public var storedText: String {
-        color.map { color in "\(name)\n\(color.rawValue)" } ?? name
+        storedColor.map { color in "\(name)\n\(color.rawValue)" } ?? name
     }
 
-    init(storedText: String) {
+    /// Reads a stored tag. `colorTagNames` are the system's names of the color tags; a tag
+    /// with a color and one of these names, or a color's English name, shows the color it is
+    /// named after. A tag stored without a color shows none, whatever its name.
+    init(storedText: String, colorTagNames: [FinderTagColor: String]) {
         let parts = storedText.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
-        name = String(parts[0])
-        color = parts.count == 2 ? Int(parts[1]).flatMap(FinderTagColor.init(rawValue:)) : nil
+        let name = String(parts[0])
+        let storedColor = parts.count == 2 ? Int(parts[1]).flatMap(FinderTagColor.init(rawValue:)) : nil
+        let shownColor = storedColor.map { storedColor in FinderTagColor(tagName: name, colorTagNames: colorTagNames) ?? storedColor }
+        self.init(name: name, color: shownColor, storedColor: storedColor)
+    }
+}
+
+extension FinderTagColor {
+    /// The tag color a tag name stands for: one of the system's names of the color tags, or
+    /// a color's English name; nil for any other name.
+    public init?(tagName: String, colorTagNames: [FinderTagColor: String]) {
+        guard let tagColor = FinderTagColor.allCases.first(where: { tagColor in
+            colorTagNames[tagColor] == tagName || tagColor.defaultTagName == tagName
+        }) else { return nil }
+        self = tagColor
     }
 }
 
@@ -114,8 +146,10 @@ public struct FinderFolderLook: Equatable, Sendable {
     }
 
     /// Reads the attributes as stored; data that is not in the expected form counts as absent.
-    public init(tagsData: Data?, iconData: Data?, finderInformationData: Data?, hasCustomIconFile: Bool) {
-        self.init(tags: Self.tags(from: tagsData), iconMark: Self.mark(from: iconData),
+    /// `colorTagNames` are the system's names of the color tags, which decide a color tag's color.
+    public init(tagsData: Data?, iconData: Data?, finderInformationData: Data?, hasCustomIconFile: Bool,
+                colorTagNames: [FinderTagColor: String]) {
+        self.init(tags: Self.tags(from: tagsData, colorTagNames: colorTagNames), iconMark: Self.mark(from: iconData),
                   hasCustomIconFlag: Self.hasCustomIconFlag(in: finderInformationData), hasCustomIconFile: hasCustomIconFile)
     }
 
@@ -132,18 +166,24 @@ public struct FinderFolderLook: Equatable, Sendable {
     /// beside the name: Finder tints a folder only when it has a symbol or emoji.
     public var isCustomized: Bool { mark != nil || (hasCustomIconFlag && hasCustomIconFile) }
 
-    /// The look in Graphite's terms, for drawing where the system's icon is not available.
+    /// Whether the system's icon of the folder draws it as Finder does: false when a tag's
+    /// stored number is not the color its name shows (iCloud Drive's rewrite, see `FinderTag`)
+    /// and no custom icon file, which carries its own colors, is drawn instead.
+    public var systemIconMatchesFinder: Bool {
+        showsCustomIconFile || tags.allSatisfy { tag in tag.color == tag.storedColor }
+    }
+
     /// The look in Graphite's terms: the tag color and the symbol or emoji. A picture set in
     /// Finder has no place in Graphite's style; the system's icon shows it.
     public var style: FolderStyle {
         FolderStyle(color: color?.folderColor, mark: mark)
     }
 
-    static func tags(from tagsData: Data?) -> [FinderTag] {
+    static func tags(from tagsData: Data?, colorTagNames: [FinderTagColor: String]) -> [FinderTag] {
         guard let tagsData, tagsData.count <= maximumTagsBytes,
               let storedTexts = try? PropertyListSerialization.propertyList(from: tagsData, format: nil) as? [String] // Not a tag list: no tags.
         else { return [] }
-        return storedTexts.map(FinderTag.init(storedText:))
+        return storedTexts.map { storedText in FinderTag(storedText: storedText, colorTagNames: colorTagNames) }
     }
 
     static func mark(from iconData: Data?) -> FolderMark? {

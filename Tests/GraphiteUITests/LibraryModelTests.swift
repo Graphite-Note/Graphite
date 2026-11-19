@@ -197,6 +197,32 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertEqual(library.folderLooks.shownLook(of: try VaultPath("Courses")), .drawnByFinder(FolderStyle(mark: .symbol("star.fill"))))
     }
 
+    /// HUNT-373, the owner's folder of 2026-11-19: iCloud Drive left its red tag as
+    /// `"Red\n1"`, Finder showed it red, and Graphite had saved it gray. Listing it gives the
+    /// style its red back, and Graphite draws the tile, as the system's icon would be gray.
+    func testAFolderWhoseTagNumberICloudRewroteShowsItsNamedColor() async throws {
+        let styleFile = vault.appendingPathComponent(FolderStyleList.configurationPath)
+        try FileManager.default.createDirectory(at: styleFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(#"{"folders": {"Courses": {"color": "gray", "symbol": "frying.pan.fill"}}}"#.utf8).write(to: styleFile)
+        let path = vault.appendingPathComponent("Courses").path
+        let tags = try PropertyListSerialization.data(fromPropertyList: ["Red\n1"], format: .binary, options: 0)
+        let icon = Data(#"{"sym":"frying.pan.fill"}"#.utf8)
+        let information = Data([0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0x02] + [UInt8](repeating: 0, count: 22))
+        for (name, attributeData) in [(FinderFolderLook.tagsAttributeName, tags), (FinderFolderLook.iconAttributeName, icon),
+                                      (FinderFolderLook.finderInformationAttributeName, information)] {
+            XCTAssertEqual(attributeData.withUnsafeBytes { buffer in setxattr(path, name, buffer.baseAddress, buffer.count, 0, 0) }, 0)
+        }
+        let library = LibraryModel()
+
+        await library.reload(source: source(), sortOrder: .alphabetical)
+
+        let courses = try VaultPath("Courses")
+        let red = FolderStyle(color: .red, mark: .symbol("frying.pan.fill"))
+        XCTAssertEqual(try FolderStyleList(configurationData: Data(contentsOf: styleFile)).style(for: courses), red)
+        XCTAssertEqual(library.folderLooks.shownLook(of: courses), .drawnByGraphite(red))
+        XCTAssertEqual(library.folderLooks.tagColors(of: courses), [.red])
+    }
+
     func testHomeStartsShownAndStepsBackWhenADocumentIsChosen() async {
         let library = LibraryModel()
         XCTAssertTrue(library.isShownAsHome)

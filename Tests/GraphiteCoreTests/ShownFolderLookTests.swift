@@ -48,6 +48,16 @@ final class ShownFolderLookTests: XCTestCase {
         let iPadFolder = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red)], iconMark: nil, hasCustomIconFlag: false, hasCustomIconFile: false)
         XCTAssertEqual(resolve(stored, iPadFolder, canWritePictures: false), .drawnByGraphite(stored))
     }
+
+    /// The owner's bug of 2026-11-19: iCloud Drive left the red tag's number at 1, so the
+    /// system's icon was gray while Finder showed red. Graphite draws the look itself.
+    func testATagWhoseNumberICloudRewroteIsDrawnByGraphiteInItsNamedColor() {
+        let stored = FolderStyle(color: .red, mark: .symbol("frying.pan.fill"))
+        let rewritten = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red, storedColor: .gray)], iconMark: .symbol("frying.pan.fill"),
+                                         hasCustomIconFlag: true, hasCustomIconFile: false)
+        XCTAssertEqual(resolve(stored, rewritten), .drawnByGraphite(stored))
+        XCTAssertEqual(resolve(nil, rewritten), .drawnByGraphite(stored))
+    }
 }
 
 final class FolderLookReconciliationTests: XCTestCase {
@@ -84,6 +94,16 @@ final class FolderLookReconciliationTests: XCTestCase {
         let picture = FolderPicture(path: try VaultPath(".obsidian/graphite-folder-icons/0123456789abcdef.png"), layout: .onFolder)
         let finder = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red)], iconMark: nil, hasCustomIconFlag: false, hasCustomIconFile: false)
         XCTAssertEqual(action(FolderStyle(color: .red, mark: .picture(picture)), finder, canWritePictures: false), .none)
+    }
+
+    /// A style that took the gray of a rewritten number before Graphite read tags by name
+    /// takes the tag's named color back, as Finder shows it; a matching style stays.
+    func testAStyleGrayedByARewrittenNumberTakesTheNamedColorBack() {
+        let rewritten = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red, storedColor: .gray)], iconMark: .symbol("frying.pan.fill"),
+                                         hasCustomIconFlag: true, hasCustomIconFile: false)
+        XCTAssertEqual(action(FolderStyle(color: .gray, mark: .symbol("frying.pan.fill")), rewritten),
+                       .adoptFinderLook(FolderStyle(color: .red, mark: .symbol("frying.pan.fill"))))
+        XCTAssertEqual(action(FolderStyle(color: .red, mark: .symbol("frying.pan.fill")), rewritten), .none)
     }
 
     func testNearestTagColors() {

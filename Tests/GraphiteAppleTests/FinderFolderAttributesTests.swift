@@ -18,6 +18,20 @@ final class FinderFolderAttributesTests: XCTestCase {
         XCTAssertEqual(FinderFolderAttributes(root: vault.root).look(of: try VaultPath("Missing")), .plain)
     }
 
+    /// iCloud Drive leaves a color tag's number at 1; the tag's name still gives its color.
+    func testATagWhoseNumberWasRewrittenReadsAsItsNamedColor() throws {
+        let vault = try TemporaryVault.make(prefix: "FinderLook", files: ["Lab/Note.md": "x"], for: self)
+        let path = vault.location(of: "Lab").path
+        try setAttribute(FinderFolderLook.tagsAttributeName, PropertyListSerialization.data(fromPropertyList: ["Red\n1"], format: .binary, options: 0), path)
+        try setAttribute(FinderFolderLook.iconAttributeName, Data(#"{"sym":"frying.pan.fill"}"#.utf8), path)
+        try setAttribute(FinderFolderLook.finderInformationAttributeName, Data([0, 0, 0, 0, 0, 0, 0, 0, 0x04, 0x02] + [UInt8](repeating: 0, count: 22)), path)
+
+        let look = FinderFolderAttributes(root: vault.root).look(of: try VaultPath("Lab"))
+
+        XCTAssertEqual(look.style, FolderStyle(color: .red, mark: .symbol("frying.pan.fill")))
+        XCTAssertFalse(look.systemIconMatchesFinder)
+    }
+
     #if os(macOS)
     /// The written attributes are the ones the system draws from: the folder's icon changes.
     func testAWrittenLookIsWhatTheSystemDraws() async throws {

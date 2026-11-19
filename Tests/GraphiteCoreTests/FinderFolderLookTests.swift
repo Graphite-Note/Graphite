@@ -15,16 +15,49 @@ final class FinderFolderLookTests: XCTestCase {
 
     func testReadsWhatFinderWrote() {
         let look = FinderFolderLook(tagsData: Data(finderTagsBytes), iconData: finderIconBytes,
-                                    finderInformationData: Data(finderInformationBytes), hasCustomIconFile: false)
-        XCTAssertEqual(look.tags, [FinderTag(name: "Green", color: .gray)])
+                                    finderInformationData: Data(finderInformationBytes), hasCustomIconFile: false, colorTagNames: [:])
+        XCTAssertEqual(look.tags, [FinderTag(name: "Green", color: .green, storedColor: .gray)])
         XCTAssertEqual(look.mark, .emoji("🥸"))
         XCTAssertTrue(look.isCustomized)
-        // The tag is named Green but carries color 1, which Finder draws gray.
-        XCTAssertEqual(look.style, FolderStyle(color: .gray, mark: .emoji("🥸")))
+        // The tag is named Green but carries color 1, as iCloud Drive leaves every tag: Finder
+        // draws it green, the system's icon gray.
+        XCTAssertEqual(look.style, FolderStyle(color: .green, mark: .emoji("🥸")))
+        XCTAssertFalse(look.systemIconMatchesFinder)
+    }
+
+    /// The owner's shared folder on 2026-11-19: Finder showed it red, Graphite gray.
+    func testAColorTagShowsTheColorItIsNamedAfterWhateverItsNumber() {
+        XCTAssertEqual(FinderTag(storedText: "Red\n1", colorTagNames: [:]).color, .red)
+        XCTAssertEqual(FinderTag(storedText: "Rot\n1", colorTagNames: [.red: "Rot"]).color, .red)
+        XCTAssertEqual(FinderTag(storedText: "Blue\n4", colorTagNames: [:]), FinderTag(name: "Blue", color: .blue))
+        // Other names show their number's color; a tag stored without a color shows none.
+        XCTAssertEqual(FinderTag(storedText: "Work\n1", colorTagNames: [:]).color, .gray)
+        XCTAssertNil(FinderTag(storedText: "Orange", colorTagNames: [:]).color)
+        XCTAssertNil(FinderTag(storedText: "Orange\n0", colorTagNames: [:]).color)
+    }
+
+    func testARewrittenNumberIsKeptWhenTheTagsAreWrittenBack() throws {
+        let tags = FinderFolderLook.tags(from: try PropertyListSerialization.data(fromPropertyList: ["Red\n1", "Work"], format: .binary, options: 0),
+                                         colorTagNames: [:])
+        let tagsData = try XCTUnwrap(FinderFolderLook.tagsAttributeData(for: tags))
+        XCTAssertEqual(try PropertyListSerialization.propertyList(from: tagsData, format: nil) as? [String], ["Red\n1", "Work"])
+    }
+
+    func testTheSystemIconMatchesFinderWhenEveryNumberIsItsTagsColor() {
+        let rewritten = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red, storedColor: .gray)], iconMark: .symbol("frying.pan.fill"),
+                                         hasCustomIconFlag: true, hasCustomIconFile: false)
+        XCTAssertFalse(rewritten.systemIconMatchesFinder)
+        let asWritten = FinderFolderLook(tags: [FinderTag(name: "Red", color: .red), FinderTag(name: "Work", color: nil)], iconMark: .symbol("frying.pan.fill"),
+                                         hasCustomIconFlag: true, hasCustomIconFile: false)
+        XCTAssertTrue(asWritten.systemIconMatchesFinder)
+        // A custom icon file carries its own colors.
+        let picture = FinderFolderLook(tags: rewritten.tags, iconMark: nil, hasCustomIconFlag: true, hasCustomIconFile: true)
+        XCTAssertTrue(picture.systemIconMatchesFinder)
     }
 
     func testTheMarkCountsOnlyWithTheCustomIconFlag() {
-        let look = FinderFolderLook(tagsData: nil, iconData: Data(#"{"sym":"star.fill"}"#.utf8), finderInformationData: nil, hasCustomIconFile: false)
+        let look = FinderFolderLook(tagsData: nil, iconData: Data(#"{"sym":"star.fill"}"#.utf8), finderInformationData: nil, hasCustomIconFile: false,
+                                    colorTagNames: [:])
         XCTAssertNil(look.mark)
         XCTAssertFalse(look.isCustomized)
     }
@@ -48,9 +81,9 @@ final class FinderFolderLookTests: XCTestCase {
     }
 
     func testMalformedTagsAreNoTags() {
-        XCTAssertEqual(FinderFolderLook.tags(from: Data("garbage".utf8)), [])
-        XCTAssertEqual(FinderFolderLook.tags(from: Data(repeating: 0, count: FinderFolderLook.maximumTagsBytes + 1)), [])
-        XCTAssertEqual(FinderTag(storedText: "Work\n9"), FinderTag(name: "Work", color: nil))
+        XCTAssertEqual(FinderFolderLook.tags(from: Data("garbage".utf8), colorTagNames: [:]), [])
+        XCTAssertEqual(FinderFolderLook.tags(from: Data(repeating: 0, count: FinderFolderLook.maximumTagsBytes + 1), colorTagNames: [:]), [])
+        XCTAssertEqual(FinderTag(storedText: "Work\n9", colorTagNames: [:]), FinderTag(name: "Work", color: nil))
     }
 
     func testTheCustomIconFlagAndLabelKeepTheOtherBytes() throws {
@@ -65,7 +98,7 @@ final class FinderFolderLookTests: XCTestCase {
 
     func testTagsAreWrittenAsFinderWritesThem() throws {
         let tagsData = try XCTUnwrap(FinderFolderLook.tagsAttributeData(for: [FinderTag(name: "Work", color: nil), FinderTag(name: "Green", color: .green)]))
-        XCTAssertEqual(FinderFolderLook.tags(from: tagsData), [FinderTag(name: "Work", color: nil), FinderTag(name: "Green", color: .green)])
+        XCTAssertEqual(FinderFolderLook.tags(from: tagsData, colorTagNames: [:]), [FinderTag(name: "Work", color: nil), FinderTag(name: "Green", color: .green)])
         XCTAssertEqual(try PropertyListSerialization.propertyList(from: tagsData, format: nil) as? [String], ["Work", "Green\n2"])
         XCTAssertNil(FinderFolderLook.tagsAttributeData(for: []))
     }

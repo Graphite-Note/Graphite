@@ -7,7 +7,8 @@ public enum ShownFolderLook: Equatable, Sendable {
     /// A folder like any other.
     case plain
     /// A look the system cannot draw from the folder's attributes: a picture where Finder's
-    /// custom icon cannot be written (iOS), or a style not written yet.
+    /// custom icon cannot be written (iOS), a style not written yet, or a color tag whose
+    /// stored number iCloud Drive rewrote, which the system's icon draws gray.
     case drawnByGraphite(FolderStyle)
     /// A look the folder's attributes hold, so the tile is the system's own icon of the folder.
     /// The style is the same look in Graphite's terms.
@@ -23,14 +24,18 @@ public enum ShownFolderLook: Equatable, Sendable {
 
     /// The attributes' look when Graphite's style agrees with it or there is none; Graphite's
     /// style while the attributes are still plain (its write is pending); the attributes'
-    /// look when they changed after Graphite's style, as Finder's is then the newer.
+    /// look when they changed after Graphite's style, as Finder's is then the newer. Graphite
+    /// draws a look the system's icon would draw in another color than Finder.
     public static func resolve(stored: FolderStyle?, finder: FinderFolderLook, canWritePictures: Bool) -> ShownFolderLook {
         let finderShows = FolderLookRepresentation(finder)
-        guard let stored else { return finderShows.isPlain ? .plain : .drawnByFinder(finder.style) }
-        if FolderLookRepresentation(stored, canWritePictures: canWritePictures) == finderShows {
-            return stored.picture != nil && !canWritePictures ? .drawnByGraphite(stored) : .drawnByFinder(stored)
+        let attributesLook: (FolderStyle) -> ShownFolderLook = { style in
+            finder.systemIconMatchesFinder ? .drawnByFinder(style) : .drawnByGraphite(style)
         }
-        return finderShows.isPlain ? .drawnByGraphite(stored) : .drawnByFinder(finder.style)
+        guard let stored else { return finderShows.isPlain ? .plain : attributesLook(finder.style) }
+        if FolderLookRepresentation(stored, canWritePictures: canWritePictures) == finderShows {
+            return stored.picture != nil && !canWritePictures ? .drawnByGraphite(stored) : attributesLook(stored)
+        }
+        return finderShows.isPlain ? .drawnByGraphite(stored) : attributesLook(finder.style)
     }
 }
 

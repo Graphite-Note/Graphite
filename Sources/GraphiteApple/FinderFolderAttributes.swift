@@ -10,9 +10,12 @@ import AppKit
 /// system draws it.
 public struct FinderFolderAttributes: Sendable {
     public let root: URL
+    /// The system's names of the color tags, read once: a color tag shows the color it is named after.
+    let colorTagNames: [FinderTagColor: String]
 
     public init(root: URL) {
         self.root = root
+        colorTagNames = Self.colorTagNames()
     }
 
     /// Finder's look of a folder; a folder that cannot be read looks plain. Reads a few
@@ -25,7 +28,8 @@ public struct FinderFolderAttributes: Sendable {
             iconData: Self.attribute(FinderFolderLook.iconAttributeName, of: path, maximumBytes: FinderFolderLook.maximumIconAttributeBytes),
             finderInformationData: Self.attribute(FinderFolderLook.finderInformationAttributeName, of: path,
                                                   maximumBytes: FinderFolderLook.finderInformationBytes),
-            hasCustomIconFile: FileManager.default.fileExists(atPath: location.appendingPathComponent(FinderFolderLook.customIconFileName).path))
+            hasCustomIconFile: FileManager.default.fileExists(atPath: location.appendingPathComponent(FinderFolderLook.customIconFileName).path),
+            colorTagNames: colorTagNames)
     }
 
     /// An extended attribute's bytes; nil when it is missing or larger than `maximumBytes`.
