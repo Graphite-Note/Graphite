@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-19.
 
+## Mermaid diagrams through MermaidDiagrams 0.4.0: all 33 of Pele's types, compared with Pele: 2026-11-20
+
+Graphite pins MermaidDiagrams 0.4.0 (github.com/Graphite-Note/MermaidDiagrams), which draws every diagram type Pele draws; what it adds is listed in Docs/Native-diagrams-todo.md ("MermaidDiagrams 0.4.0").
+
+- **Automated tests, passing on macOS:** in the package, 2,047 tests, among them per-type parser tests on the inputs of Pele's `tests/compat`, corpus tests on the documentation examples, scene, SVG, preparation and safety tests, and `PeleDifferentialTests`, `FlowchartSpecDifferentialTests` and `PeleCompatCoverageTests`, which compare the package with fixtures recorded from Pele itself (693 of 765 corpus inputs agree on refusal, page size within 2 points or 1 % and the counts of texts and edges; the 72 others are listed with reasons in `PeleKnownDifferences.md`). In Graphite, the diagram, Live Preview and reading view tests (263 UI, 51 Core), `ReadingDiagramScenePaintingTests` with a sample of all 33 types painted in light and dark and compared with the package's renderer (3 % of pixels, 15 % for pages that are mostly text, as SwiftUI and Core Text smooth glyphs differently), and its monospaced and outline tests.
+- **Measured, release, Apple M5 Max, macOS 27.2.1, load average 3 to 4, 2026-11-20** (the package's `MermaidDiagramsBenchmark --pele-comparison`, beside Pele's own `--bench` run in Deno on the same Mac): reading and laying out Pele's 114 flowchart examples, 8.6 µs a diagram (99th percentile 9.7) against Pele's 22.1 µs (54.8), 2.6 times faster; a tree of 500 nodes 0.8 ms against 1.5 ms; a mesh of 500 nodes 8.3 ms against 5.7 ms, slower. By type, the package is faster than Pele for 21 types and slower for 12 (treemap 66 µs against 16, tree view 36 against 9, C4 170 against 73, requirement 77 against 28, packet 25 against 9). The targets of Docs/Native-diagrams-todo.md (10 times faster than Pele, 5 to 30 µs) are missed in 44 places, which `--check-targets` names.
+- **Not checked:** the 19 new types and the features 0.3.0 and 0.4.0 add on screen (iPad simulator, Mac app), the full Mac suite with 0.4.0, a device, the iPad and iPhone measurements.
+
 ## Mermaid diagrams through MermaidDiagrams 0.2.0: one preparation, one painter, SVG export: 2026-11-19
 
 Items of [Native-diagrams-todo.md](Native-diagrams-todo.md) (Later, issue #214): Graphite pins MermaidDiagrams 0.2.0 and every type goes through the package's one preparation (`MermaidDiagramPreparation.prepare`) and one SwiftUI painter of its scene (`ReadingDiagramScenePainting`); the fourteen types' reading structs, shapes and drawings are gone. A drawn diagram offers Copy as SVG and Save as SVG; Live Preview prepares a diagram off the main thread in every case.

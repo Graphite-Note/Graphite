@@ -5,8 +5,8 @@
  * Description: The reading view's mermaid blocks: diagrams prepared for drawing, unreadable diagrams, types not drawn yet.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 19/11/2026
+ * Version: 0.10
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -37,11 +37,11 @@ final class ReadingDiagramTests: XCTestCase {
 
     /// HUNT-236: a type not drawn yet was a bare code block, with no word that the diagram was meant to be drawn.
     func testATypeNotDrawnYetShowsTheSourceAndSaysSo() {
-        let source = "requirementDiagram\n  requirement test_req {\n  }"
+        let source = "zenuml\n  Alice->Bob: Hi"
         guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
         XCTAssertEqual(shownSource, source)
-        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
-        XCTAssertTrue(failure.explanation.contains("requirementDiagram"))
+        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "zenuml")))
+        XCTAssertTrue(failure.explanation.contains("zenuml"))
         XCTAssertTrue(failure.explanation.contains("not drawn yet"))
     }
 
@@ -52,11 +52,10 @@ final class ReadingDiagramTests: XCTestCase {
         XCTAssertEqual(flowchart.accessibility.summary, ["X", "A", "B", "The group"], "The node standing for the group is its box, read by its title")
     }
 
-    func testAFlowchartWhoseSubgraphsAreNotLaidOutShowsTheSourceAndWhy() {
+    func testAFlowchartWithACollapsedGroupOrAnEdgeIntoItsGroupIsDrawn() throws {
         for source in ["flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }", "flowchart TD\nsubgraph one\nA\nend\nA --> one"] {
-            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
-            XCTAssertEqual(shownSource, source)
-            XCTAssertEqual(failure, .flowchartLayout(.subgraphsNotLaidOut))
+            XCTAssertNil(ReadingDiagram(source: source, typography: typography).failure, source)
+            XCTAssertNoThrow(try ReadingDiagram(source: source, typography: typography).drawn(as: .flowchart), source)
         }
     }
 

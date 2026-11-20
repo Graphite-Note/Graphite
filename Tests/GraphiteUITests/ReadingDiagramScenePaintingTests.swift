@@ -5,8 +5,8 @@
  * Description: The one painter of every diagram type: a sample of each drawn at its scene's size, not blank, in the theme's colors.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 19/11/2026
+ * Version: 0.2
+ * Date: 20/11/2026
  */
 
 #if os(macOS)
@@ -43,14 +43,26 @@ final class ReadingDiagramScenePaintingTests: XCTestCase {
                                                            size: scene.size, scale: scale), label)
                 XCTAssertEqual(painted.width, Int((scene.size.width * scale).rounded()), label)
                 XCTAssertEqual(painted.height, Int((scene.size.height * scale).rounded()), label)
-                XCTAssertGreaterThan(painted.share { pixel in !pixel.isClose(to: painted.pixel(atX: 0, y: 0)) }, 0.01, "Not blank: \(label)")
+                XCTAssertGreaterThan(painted.share { pixel in !pixel.isClose(to: painted.pixel(atX: 0, y: 0)) }, 0.005, "Not blank (a Wardley map is mostly empty plane): \(label)")
                 let sRGB = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
                 let text = try XCTUnwrap(palette.foreground.converted(to: sRGB, intent: .defaultIntent, options: nil)?.components)
-                XCTAssertGreaterThan(painted.share { pixel in pixel.isClose(to: DiagramPixel(red: text[0], green: text[1], blue: text[2])) }, 0, "The theme's text color: \(label)")
+                if scene.texts.contains(where: { $0.paint == .foreground }) {
+                    XCTAssertGreaterThan(painted.share { pixel in pixel.isClose(to: DiagramPixel(red: text[0], green: text[1], blue: text[2])) }, 0,
+                                         "The theme's text color: \(label)")
+                }
                 let drawn = try XCTUnwrap(DiagramPicture(scene: scene, palette: palette, scale: scale), label)
-                XCTAssertLessThan(painted.share(differingFrom: drawn), 0.03, "As the package draws it: \(label)")
+                XCTAssertLessThan(painted.share(differingFrom: drawn), Self.differingShareAllowed(scene), "As the package draws it: \(label)")
             }
         }
+    }
+
+    /// The share of pixels the painting may differ from the package's drawing by: SwiftUI and Core Text smooth the edges of
+    /// glyphs a little differently, so a page that is nearly all text (the info line, a tree view's file names) differs
+    /// more than one of shapes.
+    private static func differingShareAllowed(_ scene: DiagramScene) -> Double {
+        let textArea = scene.texts.reduce(0) { area, text in area + text.block.size.width * text.block.size.height }
+        let pageArea = max(scene.size.width * scene.size.height, 1)
+        return textArea / pageArea > 0.2 ? 0.15 : 0.03
     }
 
     /// A theme change paints the same scene again: nothing but the colors changes.
@@ -62,6 +74,24 @@ final class ReadingDiagramScenePaintingTests: XCTestCase {
                                                 background: colors(dark: true).background, size: scene.size, scale: scale))
         XCTAssertEqual(light.width, dark.width)
         XCTAssertGreaterThan(light.share(differingFrom: dark), 0.5)
+    }
+
+    /// Text the scene marks monospaced (railroad terminals, data) is set in the system's monospaced font, as the package
+    /// measures it, and not in the note's font.
+    func testMonospacedTextIsSetInTheSystemsMonospacedFont() {
+        let font = DiagramFont(postScriptName: nil, size: 14)
+        XCTAssertEqual(ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: false, isMonospaced: true),
+                       Font.system(size: 14, design: .monospaced))
+        XCTAssertNotEqual(ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: false, isMonospaced: true),
+                          ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: false))
+    }
+
+    /// An outlined text's outline is set at eight places around it, each half the outline's width away.
+    func testAnOutlineIsSetAtEightPlacesHalfItsWidthAround() {
+        let offsets = ReadingDiagramSceneText.outlineOffsets(radius: 1.5)
+        XCTAssertEqual(offsets.count, 8)
+        for offset in offsets { XCTAssertEqual((offset.width * offset.width + offset.height * offset.height).squareRoot(), 1.5, accuracy: 1e-9) }
+        XCTAssertEqual(Set(offsets.map { "\(($0.width * 1000).rounded()),\(($0.height * 1000).rounded())" }).count, 8)
     }
 }
 

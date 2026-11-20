@@ -5,8 +5,8 @@
  * Description: The reading view's sequence diagrams.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -37,16 +37,10 @@ final class ReadingSequenceTests: XCTestCase {
         XCTAssertEqual(titled.accessibility.value, "Alice, Bob. Alice to Bob: Hello there. Bob to Alice")
     }
 
-    func testADiagramWithStatementsNotLaidOutShowsTheSourceAndWhy() {
+    func testEveryStatementOnceNotLaidOutIsDrawn() {
         for statement in ["box Team\nparticipant A\nend", "create participant C\nA->>C: Hi", "A-|\\B: Half", "link A: Wiki @ https://example.com",
                           "participant A@{ \"type\": \"database\" }", "A()->>B: Circle", "destroy A\nA->>B: Bye"] {
-            guard case .unreadable(_, let failure) = ReadingDiagram(source: "sequenceDiagram\n\(statement)", typography: typography) else {
-                XCTFail("Shown with why: \(statement)")
-                continue
-            }
-            guard case .sequenceLayout(.statementsNotLaidOut(let statements)) = failure else { XCTFail("\(failure)"); continue }
-            XCTAssertFalse(statements.isEmpty, statement)
-            XCTAssertTrue(failure.explanation.hasSuffix("are not drawn yet."), failure.explanation)
+            XCTAssertNoThrow(try ReadingDiagram(source: "sequenceDiagram\n\(statement)", typography: typography).drawn(as: .sequence), statement)
         }
     }
 

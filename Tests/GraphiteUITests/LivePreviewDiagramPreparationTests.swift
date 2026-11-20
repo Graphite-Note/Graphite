@@ -5,8 +5,8 @@
  * Description: How Live Preview prepares a mermaid block as the reading view does, away from the main thread.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
- * Date: 19/11/2026
+ * Version: 0.5
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -50,8 +50,8 @@ final class LivePreviewDiagramPreparationTests: XCTestCase {
     }
 
     func testATypeNotDrawnNativelyShowsItsSourceAndWhy() {
-        XCTAssertEqual(diagram("requirementDiagram\n  requirement test_req {\n  }").failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
-        XCTAssertEqual(diagram("flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }").failure, .flowchartLayout(.subgraphsNotLaidOut))
+        XCTAssertEqual(diagram("zenuml\n  Alice->Bob: Hi").failure, .reading(.unsupportedDiagramType(keyword: "zenuml")))
+        XCTAssertNil(diagram("flowchart TD\nsubgraph one\nA --> B\nend\none@{ view: collapsed }").failure, "A collapsed group is drawn")
     }
 
     /// The preparation says which code and font it was made for, so a view drawing it knows whether it is current.

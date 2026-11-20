@@ -5,8 +5,8 @@
  * Description: The reading view's state diagrams.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
- * Date: 19/11/2026
+ * Version: 0.5
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -44,12 +44,9 @@ final class ReadingStateDiagramTests: XCTestCase {
         XCTAssertEqual(diagram.accessibility.summary, ["Active", "On", "Off"])
     }
 
-    func testAStateDiagramWhoseCompositeCannotBeLaidOutShowsTheSourceAndWhy() {
+    func testATransitionIntoACompositeAndANoteBesideItAreDrawn() {
         for source in ["stateDiagram-v2\nstate First {\n  [*] --> second\n}\nFirst --> First", "stateDiagram-v2\nstate First {\n  a\n}\nnote left of First: aside"] {
-            guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Shown with why") }
-            XCTAssertEqual(shownSource, source)
-            XCTAssertEqual(failure, .stateDiagramLayout(.compositeStatesNotLaidOut))
-            XCTAssertTrue(failure.explanation.hasSuffix("are not drawn yet."), failure.explanation)
+            XCTAssertNoThrow(try ReadingDiagram(source: source, typography: typography).drawn(as: .stateDiagram), source)
         }
     }
 

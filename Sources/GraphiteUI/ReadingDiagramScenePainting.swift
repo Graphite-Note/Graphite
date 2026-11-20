@@ -5,8 +5,8 @@
  * Description: Paints any laid-out diagram's scene as SwiftUI shapes and text in the note's colors.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 19/11/2026
+ * Version: 0.2
+ * Date: 20/11/2026
  */
 
 import SwiftUI
@@ -28,7 +28,8 @@ struct ReadingDiagramScenePainting: View {
             ForEach(scene.items.indices, id: \.self) { index in
                 switch scene.items[index] {
                 case .shape(let shape): ReadingDiagramSceneShape(shape: shape, sceneSize: scene.size, colors: colors)
-                case .text(let text): ReadingDiagramSceneText(text: text, font: text.font(in: scene), color: colors.color(of: text.paint))
+                case .text(let text): ReadingDiagramSceneText(text: text, font: text.font(in: scene), color: colors.color(of: text.paint),
+                                                                outlineColor: text.outline.map { colors.color(of: $0.paint) })
                 }
             }
         }
@@ -75,22 +76,39 @@ private struct ReadingDiagramSceneShape: View {
 /// scene says. The package measured the lines in the regular font, so a bold title or class name centered by its own
 /// width stays centered, where one started at the measured start, as the package's Core Graphics renderer does, would
 /// lean right. A turned text turns each line about its own middle and moves that middle about the block's center,
-/// which turns the block as a whole.
-private struct ReadingDiagramSceneText: View {
+/// which turns the block as a whole. Monospaced text (railroad terminals, data) is set in the system's monospaced font;
+/// an outlined text (a Sankey diagram's labels) has its outline under it, the line set again in the outline's color at
+/// eight places a half line width around it, as SwiftUI strokes no glyph outline.
+struct ReadingDiagramSceneText: View {
     let text: DiagramSceneText
     let font: DiagramFont
     let color: Color
+    let outlineColor: Color?
 
     var body: some View {
         let lines = text.lines
-        let swiftUIFont = Self.swiftUIFont(font, isBold: text.isBold, isItalic: text.isItalic)
+        let swiftUIFont = Self.swiftUIFont(font, isBold: text.isBold, isItalic: text.isItalic, isMonospaced: text.isMonospaced)
         ForEach(lines.indices, id: \.self) { index in
-            Text(verbatim: lines[index].text)
-                .font(swiftUIFont)
-                .foregroundStyle(color)
-                .fixedSize()
-                .rotationEffect(.radians(text.rotation ?? 0))
-                .position(turned(lines[index].center))
+            ZStack {
+                if let outlineColor, let outline = text.outline {
+                    ForEach(Self.outlineOffsets(radius: outline.lineWidth / 2).indices, id: \.self) { place in
+                        let offset = Self.outlineOffsets(radius: outline.lineWidth / 2)[place]
+                        Text(verbatim: lines[index].text).font(swiftUIFont).foregroundStyle(outlineColor).fixedSize()
+                            .offset(x: offset.width, y: offset.height)
+                    }
+                }
+                Text(verbatim: lines[index].text).font(swiftUIFont).foregroundStyle(color).fixedSize()
+            }
+            .rotationEffect(.radians(text.rotation ?? 0))
+            .position(turned(lines[index].center))
+        }
+    }
+
+    /// The eight places around a glyph's edge an outline of half width `radius` is set at.
+    static func outlineOffsets(radius: CGFloat) -> [CGSize] {
+        (0..<8).map { step in
+            let angle = CGFloat(step) * .pi / 4
+            return CGSize(width: cos(angle) * radius, height: sin(angle) * radius)
         }
     }
 
@@ -104,9 +122,11 @@ private struct ReadingDiagramSceneText: View {
                        y: center.y + offset.x * sin(rotation) + offset.y * cos(rotation))
     }
 
-    /// The font the text was measured in: the system font, or the installed font by its PostScript name.
-    static func swiftUIFont(_ font: DiagramFont, isBold: Bool, isItalic: Bool) -> Font {
-        var swiftUIFont = font.postScriptName.map { name in Font.custom(name, fixedSize: font.size) } ?? .system(size: font.size)
+    /// The font the text was measured in: the system font, or the installed font by its PostScript name; the system's
+    /// monospaced font for monospaced text, as the package measures it.
+    static func swiftUIFont(_ font: DiagramFont, isBold: Bool, isItalic: Bool, isMonospaced: Bool = false) -> Font {
+        var swiftUIFont: Font = isMonospaced ? .system(size: font.size, design: .monospaced)
+            : font.postScriptName.map { name in Font.custom(name, fixedSize: font.size) } ?? .system(size: font.size)
         if isBold { swiftUIFont = swiftUIFont.bold() }
         if isItalic { swiftUIFont = swiftUIFont.italic() }
         return swiftUIFont

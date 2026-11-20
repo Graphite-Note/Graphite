@@ -5,8 +5,8 @@
  * Description: The reading view's Sankey diagrams.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -36,10 +36,10 @@ final class ReadingSankeyDiagramTests: XCTestCase {
         XCTAssertNil(try sankey("sankey\na,b,1").accessibility.title)
     }
 
-    func testCircularLinksAndOptionsNotDrawnYetShowTheSourceAndWhy() {
+    func testCircularLinksShowTheSourceAndWhyAndOutlinedLabelsAreDrawn() {
         XCTAssertEqual(ReadingDiagram(source: "sankey\na,b,1\nb,a,1", typography: typography).failure, .sankeyLayout(.circularLinks))
-        XCTAssertEqual(ReadingDiagram(source: "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\na,b,1", typography: typography).failure,
-                       .sankeyLayout(.optionsNotDrawn))
+        XCTAssertNoThrow(try ReadingDiagram(source: "---\nconfig:\n  sankey:\n    labelStyle: outlined\n---\nsankey\na,b,1", typography: typography)
+                            .drawn(as: .sankey))
     }
 
     func testASankeyDiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {

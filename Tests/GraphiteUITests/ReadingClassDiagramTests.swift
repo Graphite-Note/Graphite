@@ -5,8 +5,8 @@
  * Description: The reading view's class diagrams.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -45,9 +45,10 @@ final class ReadingClassDiagramTests: XCTestCase {
         XCTAssertEqual(try classDiagram("classDiagram\naccTitle: Named\nclass A").accessibility.label, "Named")
     }
 
-    func testAClassDiagramWithNamespacesShowsTheSourceAndWhy() {
+    func testAClassDiagramWithNamespacesIsDrawnWithItsNamespacesAsBoxes() throws {
         let diagram = ReadingDiagram(source: "classDiagram\nnamespace Shapes {\n  class Triangle\n}", typography: typography)
-        XCTAssertEqual(diagram.failure, .classDiagramLayout(.namespacesNotLaidOut))
+        XCTAssertNil(diagram.failure)
+        XCTAssertTrue(try diagram.drawn(as: .classDiagram).scene.lineTexts.contains("Shapes"))
     }
 
     func testAClassDiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {

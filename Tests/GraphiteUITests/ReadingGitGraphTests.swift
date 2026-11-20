@@ -5,8 +5,8 @@
  * Description: The reading view's Git graphs.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
- * Date: 19/11/2026
+ * Version: 0.6
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -58,13 +58,9 @@ final class ReadingGitGraphTests: XCTestCase {
         XCTAssertEqual(gitGraph.accessibility.summary, ["trunk"])
     }
 
-    func testAGitGraphThatSetsOptionsNotAppliedShowsTheSourceAndWhy() {
+    func testAGitGraphWithAnOptionPeleDoesNotKnowIsDrawnAsPeleDrawsIt() {
         let source = "---\nconfig:\n  gitGraph:\n    nodeLabel: x\n---\ngitGraph\n commit"
-        guard case .unreadable(let shownSource, let failure) = ReadingDiagram(source: source, typography: typography) else {
-            return XCTFail("Shown with why: \(source)")
-        }
-        XCTAssertEqual(shownSource, source)
-        XCTAssertEqual(failure, .gitGraphLayout(.optionsNotApplied))
+        XCTAssertNoThrow(try ReadingDiagram(source: source, typography: typography).drawn(as: .gitGraph))
     }
 
     /// Options in a `%%{init: …}%%` directive, on one line or several, are read as Pele reads them (9fc1219f).

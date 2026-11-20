@@ -5,8 +5,8 @@
  * Description: Mermaid blocks in the reading view's build.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.12
- * Date: 19/11/2026
+ * Version: 0.13
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -54,19 +54,20 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
     }
 
     func testATypeNotDrawnYetIsADiagramBlockThatShowsItsSourceAndSaysSo() async throws {
-        let blocks = try await build("```mermaid\nrequirementDiagram\n  requirement test_req {\n  }\n```").blocks
+        let blocks = try await build("```mermaid\nzenuml\n  Alice->Bob: Hi\n```").blocks
         guard case .diagram(_, .unreadable(let source, let failure)) = blocks.first else { return XCTFail("Shown with why") }
-        XCTAssertEqual(source, "requirementDiagram\n  requirement test_req {\n  }")
-        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "requirementDiagram")))
+        XCTAssertEqual(source, "zenuml\n  Alice->Bob: Hi")
+        XCTAssertEqual(failure, .reading(.unsupportedDiagramType(keyword: "zenuml")))
     }
 
-    func testASequenceDiagramBecomesADiagramBlockAndOneWithABoxShowsWhy() async throws {
+    func testASequenceDiagramBecomesADiagramBlockAndOneWithABoxToo() async throws {
         let drawn = try await build("Before\n\n```mermaid\nsequenceDiagram\n  Alice->>Bob: Hi\n```\n\nAfter").blocks
         XCTAssertEqual(drawn.count, 3)
         guard case .diagram(_, let sequence) = drawn[1] else { return XCTFail("The sequence diagram is a diagram block") }
         XCTAssertTrue(try sequence.drawn(as: .sequence).accessibility.value.hasPrefix("Alice, Bob."))
         let boxed = try await build("```mermaid\nsequenceDiagram\n  box Team\n  participant A\n  end\n```").blocks
-        guard case .diagram(_, .unreadable(_, .sequenceLayout)) = boxed.first else { return XCTFail("A diagram with a box shows its source and why") }
+        guard case .diagram(_, let boxedDiagram) = boxed.first else { return XCTFail("A diagram with a box is a diagram block") }
+        XCTAssertNoThrow(try boxedDiagram.drawn(as: .sequence))
     }
 
     func testAFlowchartWithSubgraphsBecomesADiagramBlockWithItsBoxes() async throws {
@@ -77,10 +78,10 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         XCTAssertEqual(flowchart.scene.texts(reading: "Group").map(\.part), [.clusterLabel])
     }
 
-    func testAFlowchartWithACollapsedGroupShowsItsSourceAndWhy() async throws {
+    func testAFlowchartWithACollapsedGroupIsADrawnDiagramBlock() async throws {
         let source = "```mermaid\nflowchart TD\n  subgraph one\n    A\n  end\n  one@{ view: collapsed }\n```"
-        guard case .diagram(_, .unreadable(_, let failure)) = try await build(source).blocks.first else { return XCTFail("Shown with why") }
-        XCTAssertEqual(failure, .flowchartLayout(.subgraphsNotLaidOut))
+        guard case .diagram(_, let flowchart) = try await build(source).blocks.first else { return XCTFail("A diagram block") }
+        XCTAssertNoThrow(try flowchart.drawn(as: .flowchart))
     }
 
     func testAFlowchartInACalloutIsDrawnInsideIt() async throws {
@@ -88,14 +89,14 @@ final class ReadingViewBuilderDiagramTests: XCTestCase {
         guard case .callout(_, _, _, _, let body) = blocks.first, case .diagram = body.first else { return XCTFail("Drawn in the callout") }
     }
 
-    func testAClassDiagramBecomesADiagramBlockAndOneWithNamespacesShowsWhy() async throws {
+    func testAClassDiagramBecomesADiagramBlockAndOneWithNamespacesToo() async throws {
         let drawn = "```mermaid\nclassDiagram\n  Animal <|-- Duck\n```"
         let blocks = try await build(drawn + "\n\n```mermaid\nclassDiagram\nnamespace Shapes {\n  class Square\n}\n```").blocks
         XCTAssertEqual(blocks.count, 2)
         guard case .diagram(_, let classDiagram) = blocks[0] else { return XCTFail("The class diagram is a diagram block") }
         XCTAssertEqual(try classDiagram.drawn(as: .classDiagram).accessibility.summary.count, 2)
-        guard case .diagram(_, .unreadable(_, let failure)) = blocks[1] else { return XCTFail("Shown with why") }
-        XCTAssertEqual(failure, .classDiagramLayout(.namespacesNotLaidOut))
+        guard case .diagram(_, let namespaced) = blocks[1] else { return XCTFail("The class diagram with a namespace is a diagram block") }
+        XCTAssertNoThrow(try namespaced.drawn(as: .classDiagram))
     }
 
     func testAnEntityRelationshipDiagramBecomesADiagramBlock() async throws {

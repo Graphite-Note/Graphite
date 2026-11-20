@@ -5,8 +5,8 @@
  * Description: The reading view's entity relationship diagrams.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 20/11/2026
  */
 
 import XCTest
@@ -37,8 +37,8 @@ final class ReadingEntityRelationshipDiagramTests: XCTestCase {
         XCTAssertEqual(summarized.accessibility.summary, ["CUSTOMER", "ORDER", "INVOICE", "CUSTOMER places ORDER", "ORDER INVOICE"])
     }
 
-    func testADiagramWithSubgraphsShowsTheSourceAndWhy() {
-        XCTAssertEqual(ReadingDiagram(source: "erDiagram\nsubgraph group\nA\nend", typography: typography).failure, .entityRelationshipLayout(.subgraphsNotLaidOut))
+    func testADiagramWithSubgraphsIsDrawnWithItsGroupsAsBoxes() {
+        XCTAssertNoThrow(try ReadingDiagram(source: "erDiagram\nsubgraph group\nA\nend", typography: typography).drawn(as: .entityRelationship))
     }
 
     func testADiagramThatCannotBeReadKeepsItsSourceAndWhy() throws {
