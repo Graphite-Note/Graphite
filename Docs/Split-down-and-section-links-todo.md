@@ -44,25 +44,18 @@ Issue: [#221](https://github.com/Graphite-Note/Graphite/issues/221)
 
 Issue: [#222](https://github.com/Graphite-Note/Graphite/issues/222)
 
-Open questions, to settle with the requester and the owner before building:
-
-- What is dragged: a heading (its whole section), a block (`^id`), selected text, or an embed already in the note?
-- Is the preview drawn again when the section changes, or kept as it was when dropped?
-- Does it work only with the note and the PDF side by side, or also from the sidebar, the file tree and another app's window?
-- What does a link show when its section is renamed or deleted?
-
-Items:
-
-- [ ] Settle the questions above; record the answers under Decisions.
-- [ ] A note's heading or block can be dragged out of the editor (Source and Live Preview) and the reading view, carrying its link (`[[Note#Heading]]` or `[[Note#^block]]`) and its text.
+- [ ] A note's heading (its whole section) or block (a paragraph, list item, picture or embed) can be dragged out of the editor (Source and Live Preview) and the reading view, carrying its link (`[[Note#Heading]]`, or `[[Note#^block]]` with a block ID added as Obsidian's Copy Link to Block adds one) and its text. Dragged selected text links the block it starts in; a note dragged from the file tree links the whole note.
 - [ ] A PDF page accepts the drop where it lands, and places a section link there: a `/Link` annotation to the section (an `obsidian://open` link with the vault, the file and the heading, read back by `VaultURI`) whose appearance is a picture of the section as the reading view draws it, at most 60% of the page, selected after it is placed.
 - [ ] A section link is moved, resized and deleted like a picture, taken by the lasso with ink, pictures and text boxes, and every step is in the PDF's undo history.
 - [ ] Tapping a section link opens the section on the other side, or in the PDF's side when there is none.
-- [ ] The preview follows the section as decided above; a missing section says so on the link instead of a stale picture.
+- [ ] The preview is drawn again whenever the section changes, the next time the PDF shows that page, and saved into the annotation's appearance so other readers see the new version. A renamed note or heading keeps its links, as Obsidian updates links on rename; a deleted section says so on the link instead of a stale picture.
 - [ ] Other PDF readers show the picture and follow the link; Obsidian opens the note.
 - [ ] Tests: the link's address read and written; the annotation saved and read back; a drop placing a link; a changed and a missing section.
 - [ ] Checked on the iPad (note and PDF in Split Right and Split Down, dragging with a finger and the Pencil) and on the Mac, and the saved PDF in Preview and Obsidian.
 
 ## Decisions
 
-None yet.
+1. **The preview stays live** (owner, 2026-11-21: "obviously it would update"): editing the section redraws its preview on the PDF; it is never a snapshot frozen at the drop.
+2. **Headings and blocks can be dragged** (default, 2026-11-21): a heading brings its section, any other block brings itself with a block ID; selected text links the block it starts in.
+3. **Drags work from wherever a note shows** (default, 2026-11-21): the editor and reading view on either side of a split, another Graphite window, and the file tree for a whole note.
+4. **Links follow renames; a deleted section says so** (default, 2026-11-21), as Obsidian treats links.
