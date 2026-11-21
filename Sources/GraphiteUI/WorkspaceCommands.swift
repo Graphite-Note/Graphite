@@ -5,7 +5,7 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.20
+ * Version: 0.21
  * Date: 21/11/2026
  */
 
@@ -231,40 +231,7 @@ enum WorkspaceCommandList {
                 Task { await workspace.reopenClosedTab() }
             })
         }
-        return commands + splitCommands(for: workspace, offersSplit: offersSplit)
-    }
-
-    /// Obsidian's split commands: going to or closing the other side, splitting right or down,
-    /// and moving the tab across.
-    private static func splitCommands(for workspace: WorkspaceModel, offersSplit: Bool) -> [PaletteCommand] {
-        let layout = workspace.layout
-        let tab = layout.activeTab
-        var commands: [PaletteCommand] = []
-        let isSideBySide = layout.splitDirection == .sideBySide
-        if layout.isSplit {
-            let focusedGroupID = layout.focusedGroupID
-            commands += [
-                PaletteCommand(id: "focus-other-side", command: .focusOtherSide, systemImage: isSideBySide ? "arrow.left.arrow.right" : "arrow.up.arrow.down") {
-                    if let other = layout.otherGroup(than: focusedGroupID) { workspace.focusGroup(other.id) }
-                },
-                PaletteCommand(id: "close-side", command: .closeThisSide, systemImage: "xmark.rectangle") { Task { await workspace.closeGroup(focusedGroupID) } },
-            ]
-        }
-        // Both where there is no split; on a split, the one that turns it the other way.
-        if offersSplit && (!layout.isSplit || !isSideBySide) {
-            commands.append(PaletteCommand(id: "split-right", command: .splitRight, systemImage: "rectangle.split.2x1") { workspace.splitRight() })
-        }
-        if offersSplit && (!layout.isSplit || isSideBySide) {
-            commands.append(PaletteCommand(id: "split-down", command: .splitDown, systemImage: "rectangle.split.1x2") { workspace.splitDown() })
-        }
-        if offersSplit && (tab.path != nil || tab.coreView != nil || layout.focusedGroup.tabs.count > 1 || layout.isSplit) {
-            let isFirstSide = layout.groups.first?.id == layout.focusedGroupID
-            commands.append(PaletteCommand(id: "move-tab", command: .moveTabToOtherSide, title: moveTabTitle(isFirstSide: isFirstSide, isSideBySide: isSideBySide),
-                                           systemImage: moveTabSymbol(isFirstSide: isFirstSide, isSideBySide: isSideBySide)) {
-                workspace.moveTabToOtherGroup(tab.id)
-            })
-        }
-        return commands
+        return commands + workspace.paletteSplitCommands(offersSplit: offersSplit)
     }
 
     /// The commands of the table cell being edited, or last edited (`TableCellCommandTarget`),
@@ -280,7 +247,7 @@ enum WorkspaceCommandList {
 
     /// Where "Move current tab" sends the tab: to the other side of the split, or of the one
     /// it would open, side by side or one above the other.
-    private static func moveTabTitle(isFirstSide: Bool, isSideBySide: Bool) -> String {
+    fileprivate static func moveTabTitle(isFirstSide: Bool, isSideBySide: Bool) -> String {
         switch (isSideBySide, isFirstSide) {
         case (true, true): "Move current tab to the right"
         case (true, false): "Move current tab to the left"
@@ -289,7 +256,7 @@ enum WorkspaceCommandList {
         }
     }
 
-    private static func moveTabSymbol(isFirstSide: Bool, isSideBySide: Bool) -> String {
+    fileprivate static func moveTabSymbol(isFirstSide: Bool, isSideBySide: Bool) -> String {
         switch (isSideBySide, isFirstSide) {
         case (true, true): "rectangle.righthalf.inset.filled.arrow.right"
         case (true, false): "rectangle.lefthalf.inset.filled.arrow.left"
@@ -347,6 +314,43 @@ enum WorkspaceCommandList {
             commands.append(PaletteCommand(id: "draw", command: .insertDrawing, systemImage: "pencil.tip.crop.circle.badge.plus") { workspace.beginNewDrawing(in: session) })
         }
         #endif
+        return commands
+    }
+}
+
+/// The palette's split commands, the workspace being the one they act on.
+fileprivate extension WorkspaceModel {
+    /// Obsidian's split commands: going to or closing the other side, splitting right or down,
+    /// and moving the tab across.
+    func paletteSplitCommands(offersSplit: Bool) -> [PaletteCommand] {
+        let workspace = self
+        let layout = workspace.layout
+        let tab = layout.activeTab
+        var commands: [PaletteCommand] = []
+        let isSideBySide = layout.splitDirection == .sideBySide
+        if layout.isSplit {
+            let focusedGroupID = layout.focusedGroupID
+            commands += [
+                PaletteCommand(id: "focus-other-side", command: .focusOtherSide, systemImage: isSideBySide ? "arrow.left.arrow.right" : "arrow.up.arrow.down") {
+                    if let other = layout.otherGroup(than: focusedGroupID) { workspace.focusGroup(other.id) }
+                },
+                PaletteCommand(id: "close-side", command: .closeThisSide, systemImage: "xmark.rectangle") { Task { await workspace.closeGroup(focusedGroupID) } },
+            ]
+        }
+        // Both where there is no split; on a split, the one that turns it the other way.
+        if offersSplit && (!layout.isSplit || !isSideBySide) {
+            commands.append(PaletteCommand(id: "split-right", command: .splitRight, systemImage: "rectangle.split.2x1") { workspace.splitRight() })
+        }
+        if offersSplit && (!layout.isSplit || isSideBySide) {
+            commands.append(PaletteCommand(id: "split-down", command: .splitDown, systemImage: "rectangle.split.1x2") { workspace.splitDown() })
+        }
+        if offersSplit && (tab.path != nil || tab.coreView != nil || layout.focusedGroup.tabs.count > 1 || layout.isSplit) {
+            let isFirstSide = layout.groups.first?.id == layout.focusedGroupID
+            commands.append(PaletteCommand(id: "move-tab", command: .moveTabToOtherSide, title: WorkspaceCommandList.moveTabTitle(isFirstSide: isFirstSide, isSideBySide: isSideBySide),
+                                           systemImage: WorkspaceCommandList.moveTabSymbol(isFirstSide: isFirstSide, isSideBySide: isSideBySide)) {
+                workspace.moveTabToOtherGroup(tab.id)
+            })
+        }
         return commands
     }
 }
