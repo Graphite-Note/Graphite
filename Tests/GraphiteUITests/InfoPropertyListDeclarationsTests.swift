@@ -34,13 +34,14 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
     func testTheDragTypesAreDeclaredAsDataTypesAndMatchTheCode() throws {
         let declarations = try XCTUnwrap(try infoPropertyList()["UTExportedTypeDeclarations"] as? [[String: Any]])
         XCTAssertEqual(declarations.compactMap { $0["UTTypeIdentifier"] as? String },
-                       ["com.graphite.study.vault-item", "com.graphite.study.tab", "com.graphite.study.pdf-page"])
+                       ["com.graphite.study.vault-item", "com.graphite.study.tab", "com.graphite.study.pdf-page", "com.graphite.study.section-link"])
         for declaration in declarations {
             XCTAssertEqual(declaration["UTTypeConformsTo"] as? [String], ["public.data"], declaration["UTTypeIdentifier"] as? String ?? "")
         }
         XCTAssertEqual(UTType.graphiteVaultItem.identifier, "com.graphite.study.vault-item")
         XCTAssertEqual(UTType.graphiteTab.identifier, "com.graphite.study.tab")
         XCTAssertEqual(UTType.graphitePDFPage.identifier, "com.graphite.study.pdf-page")
+        XCTAssertEqual(UTType.graphiteSectionLink.identifier, "com.graphite.study.section-link")
     }
 
     func testTheVoiceDownloadSessionHasItsIdentifier() {

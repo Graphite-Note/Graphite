@@ -6,8 +6,8 @@
  *              the coordinator they make have files of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.44
- * Date: 17/11/2026
+ * Version: 0.45
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -169,6 +169,8 @@ struct GraphitePDFView: NSViewRepresentable {
         var markupInteraction: MacPDFMarkupInteraction?
         /// Draws each page's ink in one layer (`MacPDFPageInkLayers`); nil when PDFKit draws every stroke.
         var pageInkLayers: MacPDFPageInkLayers?
+        /// The view's delegate for links to addresses, which opens the vault's sections in Graphite.
+        var linkClicks: PDFLinkClicks?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -205,6 +207,10 @@ struct GraphitePDFView: NSViewRepresentable {
             view.pictureDrops = pictureDrops
             view.registerForDraggedTypes(MacPDFPictureDropTarget.pasteboardTypes)
         }
+        let linkClicks = PDFLinkClicks()
+        linkClicks.sectionLinks = linkActions?.sectionLinks
+        context.coordinator.linkClicks = linkClicks
+        view.delegate = linkClicks
         session.pdfView = view
         return view
     }
@@ -214,6 +220,8 @@ struct GraphitePDFView: NSViewRepresentable {
         if let markupInteraction = context.coordinator.markupInteraction {
             markupInteraction.input = input
             markupInteraction.linkActions = linkActions
+            (view as? GraphiteMacPDFView)?.pictureDrops?.sectionLinks = linkActions?.sectionLinks
+            context.coordinator.linkClicks?.sectionLinks = linkActions?.sectionLinks
             if markupInteraction.toolbar !== context.environment.pdfMarkupToolbar { markupInteraction.toolbar = context.environment.pdfMarkupToolbar }
         }
     }

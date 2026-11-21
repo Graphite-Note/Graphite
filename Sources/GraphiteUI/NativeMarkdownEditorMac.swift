@@ -5,8 +5,8 @@
  * Description: The Mac's note editor: the NSViewRepresentable and its coordinator.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 #if os(macOS)
@@ -107,6 +107,12 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         let cursorLocation = min(session.selection.location, textLength)
         textView.setSelectedRange(NSRange(location: cursorLocation, length: min(session.selection.length, textLength - cursorLocation)))
         textView.delegate = coordinator
+        textView.sectionLinkForDrag = { [weak coordinator] location in
+            guard let session = coordinator?.session else { return nil }
+            let text = session.text
+            let (transfer, identifierEdit) = MarkdownEditorSectionDrag.transfer(startingAt: location, in: session)
+            return (transfer, { MarkdownEditorSectionDrag.addIdentifier(identifierEdit, to: session, expectingText: text) })
+        }
         coordinator.connect(textView)
         textView.updateDragTypeRegistration()
         if let savedScrollLocation = session.savedScrollLocation { coordinator.pendingJump = .topOfCharacter(savedScrollLocation) }

@@ -8,8 +8,8 @@
  *              image's VoiceOver actions.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 17/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 #if canImport(UIKit)
@@ -27,6 +27,8 @@ final class PDFPictureToolbar {
     /// The selected picture's box in the PDF view, handles included; nil while it is out of view or dragged.
     private let targetRect: () -> CGRect?
     private(set) var toolbar: FloatingSelectionToolbar?
+    /// Opens a section a picture links to, on the other side of the split; nil where the PDF opens none.
+    var openSection: ((SectionLink) -> Void)?
 
     init(session: PDFSession, pdfView: PDFView, targetRect: @escaping () -> CGRect?) {
         self.session = session
@@ -84,13 +86,19 @@ final class PDFPictureToolbar {
                     FloatingToolbarItem(title: "Crop", systemImageName: "checkmark", group: 1) { [weak self] in self?.cropToChosenPart(of: selection) }]
         }
         let possible = session.possibleArrangements(of: selection)
+        let linkedSection = selectedSectionLink(selection)
         func arrangement(_ arrangement: PDFArrangement, inMoreMenu: Bool = false) -> FloatingToolbarItem {
             FloatingToolbarItem(title: arrangement.title(of: .image), systemImageName: arrangement.systemImageName, isEnabled: possible.contains(arrangement),
                                 isInMoreMenu: inMoreMenu) { [weak self] in
                 self?.run { session in try session.arrangePicture(selection, arrangement) }
             }
         }
-        return [
+        let openItems = linkedSection.map { link in
+            [FloatingToolbarItem(title: "Open \u{201C}\(link.title)\u{201D}", systemImageName: "arrow.up.forward.square") { [weak self] in
+                self?.openSection?(link)
+            }]
+        } ?? []
+        return openItems + [
             arrangement(.bringToFront),
             arrangement(.sendToBack),
             FloatingToolbarItem(title: "Rotate Right", systemImageName: "rotate.right", group: 1) { [weak self] in
@@ -104,6 +112,14 @@ final class PDFPictureToolbar {
             arrangement(.bringForward, inMoreMenu: true),
             arrangement(.sendBackward, inMoreMenu: true),
         ]
+    }
+
+    /// The section the selected picture links to, when the workspace can open it.
+    private func selectedSectionLink(_ selection: PDFPictureSelection) -> SectionLink? {
+        guard openSection != nil, let page = selection.page.page,
+              let address = session.pictures(on: page).first(where: { picture in picture.name == selection.pictureName })?.sectionLinkAddress,
+              let url = URL(string: address) else { return nil }
+        return SectionLink(openingURL: url)
     }
 
     private func run(_ change: (PDFSession) throws -> Void) {

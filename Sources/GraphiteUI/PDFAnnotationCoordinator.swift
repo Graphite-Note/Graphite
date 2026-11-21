@@ -5,8 +5,8 @@
  * Description: Puts a PencilKit canvas on each PDF page and connects it to the tools, the palette, touches and saving.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 19/11/2026
+ * Version: 0.5
+ * Date: 21/11/2026
  */
 
 #if canImport(UIKit)
@@ -37,7 +37,20 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// An embed sits inside the note's own scroll view, which annotating restricts too.
     let isEmbedded: Bool
     var beginInteraction: (() -> Void)?
-    var linkActions: PDFLinkActions?
+    var linkActions: PDFLinkActions? {
+        didSet { passSectionLinks() }
+    }
+    /// The view's delegate for links to addresses, which opens the vault's sections in Graphite.
+    private let linkClicks = PDFLinkClicks()
+
+    /// Gives the drops, the links and the pictures' bar the workspace's part in section links;
+    /// the view's pane sets its link actions once the view is attached, and at every update.
+    private func passSectionLinks() {
+        if let pdfView, pdfView.delegate !== linkClicks { pdfView.delegate = linkClicks }
+        pictureDrops?.sectionLinks = linkActions?.sectionLinks
+        linkClicks.sectionLinks = linkActions?.sectionLinks
+        pictureSelection?.toolbar?.openSection = linkActions?.sectionLinks?.open
+    }
     /// Where the lasso's pictures of a page can be added as an attachment.
     var noteDestination: LassoNoteDestination?
     /// See `GraphitePDFView.beginWritingWithPencil`.

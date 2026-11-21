@@ -6,7 +6,7 @@
  *              that can be dragged or held on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.51
+ * Version: 0.52
  * Date: 21/11/2026
  */
 
@@ -269,6 +269,23 @@ private struct TabBar: View {
     }
     private var isLibraryHomeShown: Bool { showsLibraryHome && library?.isShownAsHome == true }
     private var groupIndex: Int { layout.groups.firstIndex { candidate in candidate.id == group.id } ?? 0 }
+    /// Where a tab's Move sends it: across a split side by side, up or down one above the other.
+    private var moveTitle: String {
+        switch (layout.splitDirection, groupIndex == 0) {
+        case (.sideBySide, true): "Move to the Right"
+        case (.sideBySide, false): "Move to the Left"
+        case (.aboveAndBelow, true): "Move Below"
+        case (.aboveAndBelow, false): "Move Above"
+        }
+    }
+    private var moveSymbol: String {
+        switch (layout.splitDirection, groupIndex == 0) {
+        case (.sideBySide, true): "rectangle.righthalf.inset.filled.arrow.right"
+        case (.sideBySide, false): "rectangle.lefthalf.inset.filled.arrow.left"
+        case (.aboveAndBelow, true): "rectangle.bottomhalf.inset.filled"
+        case (.aboveAndBelow, false): "rectangle.tophalf.inset.filled"
+        }
+    }
     /// The room at each end of the row of tabs.
     private static let tabsInset: CGFloat = 8
 
@@ -437,9 +454,7 @@ private struct TabBar: View {
         Divider()
         if let path = tab.path, let navigator = workspace.readAloudNavigator { ReadAloudQueueMenuItems(navigator: navigator, path: path) }
         Button(tab.isPinned ? "Unpin" : "Pin", systemImage: tab.isPinned ? "pin.slash" : "pin") { workspace.togglePin(tab.id) }
-        Button(groupIndex == 0 ? "Move to the Right" : "Move to the Left", systemImage: groupIndex == 0 ? "rectangle.righthalf.inset.filled.arrow.right" : "rectangle.lefthalf.inset.filled.arrow.left") {
-            workspace.moveTabToOtherGroup(tab.id)
-        }
+        Button(moveTitle, systemImage: moveSymbol) { workspace.moveTabToOtherGroup(tab.id) }
         .disabled(!layout.isSplit && group.tabs.count == 1 && tab.path == nil && tab.coreView == nil)
         if let path = tab.path {
             Divider()
@@ -713,6 +728,7 @@ struct TabDocumentView: View {
                 Task { await workspace.resolvePDFConflict(opening: location, inTab: tab.id) }
             }
             .environment(\.pdfSignatureStore, workspace.processServices.pdfSignatures)
+            .background { sectionPictureRefresh(for: session) }
             // A PDF's pane keeps state of its own (pages shown, a reading start), which
             // another PDF must not take over.
             .id(ObjectIdentifier(session))
@@ -788,7 +804,23 @@ extension TabDocumentView {
             noteName: note.map { note in workspace.preferences.displayName(for: note.path) },
             addImageToNote: note.map { note in
                 { pngData, name in Task { await workspace.addLassoPicture(pngData, named: name, to: note) } }
-            })
+            },
+            sectionLinks: sectionLinkActions())
+    }
+
+    /// Keeps the PDF's pictures of notes' sections up to date (`PDFSectionPictureRefresh`).
+    fileprivate func sectionPictureRefresh(for session: PDFSession) -> some View {
+        PDFSectionPictureRefresh(indexVersion: { [workspace] in workspace.indexVersion }, session: session, actions: sectionLinkActions())
+    }
+
+    /// The workspace's part in the sections of notes a PDF's pages link to.
+    fileprivate func sectionLinkActions() -> PDFSectionLinkActions {
+        let workspace = workspace
+        return PDFSectionLinkActions(vaultRoot: workspace.folderAccess?.root,
+                                     prepare: { link in try await workspace.preparedSectionPicture(for: link) },
+                                     currentDigest: { link in await workspace.currentSectionTextDigest(for: link) },
+                                     open: { link in Task { await workspace.openSection(link) } },
+                                     openAddress: { url in Task { await workspace.openSectionAddress(url) } })
     }
 }
 

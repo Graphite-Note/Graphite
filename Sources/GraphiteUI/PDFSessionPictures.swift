@@ -5,8 +5,8 @@
  * Description: The picture of a PDF page that is selected for moving, resizing or removing.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 16/11/2026
+ * Version: 0.11
+ * Date: 21/11/2026
  */
 import Foundation
 import PDFKit
@@ -42,7 +42,11 @@ extension PDFSession {
     ///     coordinates, as where a paste was asked for; the middle of the page in view when nil.
     ///   - preferredWidth: How wide it is shown, in points, when narrower than the 60% of the
     ///     page a picture is at most, as a pasted image keeps its own size.
-    func addPicture(imageData: Data, placement requestedPlacement: (pageIndex: Int, center: CGPoint)? = nil, preferredWidth: CGFloat? = nil) async throws {
+    ///
+    /// - Parameter sectionLinkAddress: For the picture of a note's section, the section's address,
+    ///   which the page links to over the picture (`PDFPicture.sectionLinkAddress`).
+    func addPicture(imageData: Data, placement requestedPlacement: (pageIndex: Int, center: CGPoint)? = nil, preferredWidth: CGFloat? = nil,
+                    sectionLinkAddress: String? = nil, sectionTextDigest: String? = nil) async throws {
         let placement = requestedPlacement ?? visiblePageCenter?()
         let pageIndex = placement?.pageIndex ?? currentPageIndex
         guard pageIndex >= 0, pageIndex < document.pageCount, let page = document.page(at: pageIndex) else {
@@ -67,10 +71,11 @@ extension PDFSession {
         let middle = center ?? CGPoint(x: cropBox.midX, y: cropBox.midY)
         let bounds = Self.keepingCenter(of: CGRect(x: middle.x - sizeOnPage.width / 2, y: middle.y - sizeOnPage.height / 2,
                                                    width: sizeOnPage.width, height: sizeOnPage.height), inside: cropBox)
-        let picture = PDFPicture(imageData: prepared.imageData, bounds: bounds.integral, quarterTurns: quarterTurns)
+        let picture = PDFPicture(imageData: prepared.imageData, bounds: bounds.integral, quarterTurns: quarterTurns, sectionLinkAddress: sectionLinkAddress,
+                                 sectionTextDigest: sectionTextDigest)
         let historyPage = historyPage(for: page)
         try apply(.addPicture(page: document.index(for: page), picture: picture))
-        registerStep(named: "Add Image") { session in
+        registerStep(named: sectionLinkAddress == nil ? "Add Image" : "Add Section Link") { session in
             try session.removePictureWithoutHistory(picture, on: historyPage)
         } redo: { session in
             try session.apply(.addPicture(page: session.currentIndex(of: historyPage), picture: picture))
@@ -168,7 +173,8 @@ extension PDFSession {
         let turnedBounds = Self.keepingCenter(of: CGRect(x: bounds.midX - bounds.height / 2, y: bounds.midY - bounds.width / 2,
                                                          width: bounds.height, height: bounds.width), inside: page.bounds(for: .cropBox))
         let turned = PDFPicture(name: picture.name, imageData: picture.imageData, bounds: turnedBounds, quarterTurns: picture.quarterTurns - 1,
-                                rotationRadians: picture.rotationRadians)
+                                rotationRadians: picture.rotationRadians, sectionLinkAddress: picture.sectionLinkAddress,
+                                sectionTextDigest: picture.sectionTextDigest)
         try replacePicture(picture, with: turned, on: selection.page, actionName: "Rotate Image Right")
     }
 

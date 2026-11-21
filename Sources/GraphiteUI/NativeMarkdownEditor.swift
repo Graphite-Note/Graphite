@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note editor (UITextView) with its coordinator; the Mac's is NativeMarkdownEditorMac.swift.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.78
- * Date: 18/11/2026
+ * Version: 0.79
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -142,6 +142,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         let cursorLocation = min(session.selection.location, textLength)
         textView.selectedRange = NSRange(location: cursorLocation, length: min(session.selection.length, textLength - cursorLocation))
         textView.delegate = coordinator
+        // A drag of the text also carries the section it starts in, for a PDF page (`MarkdownEditorSectionDrag`).
+        textView.textDragDelegate = coordinator
         coordinator.observeCharacterEdits(in: textView)
         coordinator.observeMemoryWarnings()
         session.undoAvailability.follow(textView.undoManager)

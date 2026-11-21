@@ -5,8 +5,8 @@
  * Description: The Mac's note text view: paste and drop, focus, the readable column and link cards.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 #if os(macOS)
@@ -19,6 +19,12 @@ import AppKit
 /// items dragged from the sidebar become links, and a click on a link whose markup is
 /// concealed follows it, as on the iPad.
 final class MarkdownMacTextView: NSTextView {
+    /// The section a drag of the text starting at a location carries, and what gives its
+    /// block an identifier (`MarkdownEditorSectionDrag`); set by the editor. Optional: this
+    /// view is made by `init(usingTextLayoutManager:)`, which skips Swift's property defaults.
+    var sectionLinkForDrag: ((Int) -> (transfer: SectionLinkTransfer, prepare: () -> Void)?)?
+    /// The section of the drag in progress, which a PDF page it is dropped on prepares and reads.
+    var pendingSectionDrag: (transfer: SectionLinkTransfer, prepare: () -> Void)?
     /// The inherited convenience factory currently creates TextKit 1. Source
     /// highlights and native geometry require an explicitly owned TextKit 2 view.
     static func makeScrollableTextView() -> NSScrollView {

@@ -6,8 +6,8 @@
  *              the view shows the page, and the pictures placed there, each one step "Add Image" of the history.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -61,6 +61,23 @@ extension PDFSession {
             }
         }
         return placedCount
+    }
+
+    /// Places the picture of a note's section where it was dropped, linking to the section;
+    /// one step "Add Section Link". Says why in the banner when it cannot be drawn or placed.
+    ///
+    /// - Returns: Whether it was placed.
+    @discardableResult
+    func placeDroppedSectionLink(_ link: SectionLink, actions: PDFSectionLinkActions, at location: PDFDropLocation) async -> Bool {
+        do {
+            let prepared = try await actions.prepare(link)
+            try await addPicture(imageData: prepared.imageData, placement: (location.pageIndex, location.pagePoint),
+                                 preferredWidth: prepared.widthInPoints, sectionLinkAddress: prepared.address, sectionTextDigest: prepared.textDigest)
+            return true
+        } catch {
+            reportFailedChange(error)
+            return false
+        }
     }
 
     /// Why a drop was not taken, in the PDF's banner: a PDF file, which is not placed as a

@@ -6,8 +6,8 @@
  *              drop goes: the first where it was dropped, the others a little further down and to the right.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -23,6 +23,9 @@ enum PDFDroppedItemKind: Equatable {
     /// would lose the page's text, links and sharpness, and its pages belong in the PDF as
     /// pages (decided 2026-11-16, `Docs/PDF-annotation-todo.md` section 1).
     case pdfDocument
+    /// A section of a note dragged from the editor, or a note from the sidebar, placed as the
+    /// section's picture linking to it.
+    case sectionLink
     /// Anything else (text, a link, another kind of file), which the page does not take.
     case unsupported
 }

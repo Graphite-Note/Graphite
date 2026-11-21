@@ -5,8 +5,8 @@
  * Description: Linked and unlinked mentions of a note, and turning a mention into a link.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -127,7 +127,7 @@ extension WorkspaceModel {
     }
 
     /// A note's text: as open in a tab, with unsaved changes, else as saved.
-    private func currentText(of path: VaultPath) async -> String? {
+    func currentText(of path: VaultPath) async -> String? {
         if let session = openMarkdownSession(at: path) { return session.text }
         guard let store, let snapshot = try? await store.read(path, maximumBytes: MarkdownSession.maximumEditableBytes) else { return nil }
         return NoteTextEncoding.decode(snapshot.data)?.text

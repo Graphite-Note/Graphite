@@ -5,8 +5,8 @@
  * Description: The edits of a PDF (`PDFEdit`) and how each is applied to a document.
  *
  * Authors: Bahey Shalash
- * Version: 0.19
- * Date: 18/11/2026
+ * Version: 0.20
+ * Date: 21/11/2026
  */
 import Foundation
 import PDFKit
@@ -185,6 +185,7 @@ public enum PDFPageManager {
             guard index >= 0, index < document.pageCount, let page = document.page(at: index) else { throw GraphiteError.invalidFile("Page no longer exists.") }
             return page
         }
+        defer { synchronizeSectionLinks(after: edit, in: document) }
         switch edit {
         case .insert(let data, let insertionIndex):
             guard insertionIndex >= 0, insertionIndex <= document.pageCount,
@@ -432,7 +433,8 @@ public enum PDFPageManager {
     /// Graphite's keys of an annotation, and the standard ones PDFKit keeps without reading.
     static let graphiteAnnotationKeys = [groupKey, drawingKey, strokeNamesKey, inkMultipliesKey, annotationNameKey, pictureKey, turnedPictureKey,
                                          pictureTurnsKey, pictureRotationKey, pictureWidthKey, pictureHeightKey, textBoxRecordKey, textBoxRichTextKey,
-                                         textBoxLinkOwnerKey, defaultStyleKey, rotateKey]
+                                         textBoxLinkOwnerKey, sectionLinkKey, sectionTextDigestKey, sectionLinkOwnerKey,
+                                         defaultStyleKey, rotateKey]
 
     /// When a write also rewrites the page tree, PDFKit drops keys it does not know from
     /// annotations it read from the file, unless they were set again since. Setting

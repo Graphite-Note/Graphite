@@ -6,8 +6,8 @@
  *              Files and Safari, and image files dragged from Graphite's own sidebar and library.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 21/11/2026
  */
 
 #if canImport(UIKit)
@@ -19,6 +19,8 @@ import GraphiteCore
 enum PDFDroppedItem: Equatable {
     /// An image's own bytes, which the page's picture is made from.
     case picture(Data)
+    /// A section of a note, or a whole note, to place as its picture linking to it.
+    case sectionLink(SectionLinkTransfer)
     /// An item the page does not take, by its kind.
     case refused(PDFDroppedItemKind)
     /// A picture that could not be read: its app did not deliver it, or it is too large.
@@ -37,8 +39,10 @@ enum PDFPictureDropReader {
     /// (`suggestedName`), so a PDF is turned away as it is dragged in; an item that names none
     /// says which file it is only once read, so it counts as a picture until then.
     static func kind(of provider: NSItemProvider) -> PDFDroppedItemKind {
+        if provider.hasItemConformingToTypeIdentifier(UTType.graphiteSectionLink.identifier) { return .sectionLink }
         if isVaultItem(provider) {
             guard let name = provider.suggestedName, !name.isEmpty else { return .picture }
+            if DocumentKind(fileExtension: (name as NSString).pathExtension) == .markdown { return .sectionLink }
             return PDFPictureDropPlan.kind(ofFileAt: URL(fileURLWithPath: name))
         }
         if provider.canLoadObject(ofClass: UIImage.self) && !provider.registeredContentTypes.contains(where: { type in type.conforms(to: .pdf) }) {
@@ -57,6 +61,7 @@ enum PDFPictureDropReader {
     }
 
     private static func read(_ provider: NSItemProvider) async -> PDFDroppedItem {
+        if let transfer = await SectionLinkTransfer.load(from: provider) { return .sectionLink(transfer) }
         if isVaultItem(provider) { return await vaultPicture(of: provider) }
         let kind = kind(of: provider)
         guard kind == .picture else { return .refused(kind) }
@@ -98,7 +103,11 @@ enum PDFPictureDropReader {
                 continuation.resume(returning: transfer)
             }
         }
-        guard let location = transfer?.sourceLocation else { return .unreadable }
+        guard let transfer, let location = transfer.sourceLocation else { return .unreadable }
+        // A note of the vault links its whole text.
+        if let notePath = try? VaultPath(transfer.path), DocumentKind(path: notePath) == .markdown { // A path no vault holds is no note.
+            return .sectionLink(SectionLinkTransfer(link: SectionLink(notePath: notePath, subpath: nil), vaultRoot: transfer.vaultRoot))
+        }
         let kind = PDFPictureDropPlan.kind(ofFileAt: location)
         guard kind == .picture else { return .refused(kind) }
         do {

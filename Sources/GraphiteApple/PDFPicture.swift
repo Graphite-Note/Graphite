@@ -3,11 +3,11 @@
  * ----------------------
  * Layer: Apple
  * Description: A picture placed on a PDF page, as in a paper notebook where a printed figure is glued
- *              in.
+ *              in, or the picture of a note's section that links to it.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 16/11/2026
+ * Version: 0.12
+ * Date: 21/11/2026
  */
 import Foundation
 import CoreGraphics
@@ -40,6 +40,13 @@ public struct PDFPicture: Sendable, Equatable {
             if normalizedRadians != rotationRadians { rotationRadians = normalizedRadians }
         }
     }
+    /// For the picture of a note's section: Obsidian's address of the section
+    /// (`SectionLink.openingURL`), which a `/Link` over the picture follows in every reader
+    /// (`PDFPageManager.synchronizeSectionLinks`). Nil for any other picture.
+    public var sectionLinkAddress: String?
+    /// For the picture of a note's section: a digest of the section's text it was drawn from,
+    /// so a changed section is drawn again and an unchanged one is not.
+    public var sectionTextDigest: String?
 
     /// Bound on one picture's bytes, which the annotation stores twice.
     public static let maximumImageBytes = 8 * 1_048_576
@@ -49,12 +56,15 @@ public struct PDFPicture: Sendable, Equatable {
     /// starts with one (`/9j/`), which came back without its first characters.
     static let storedImagePrefix = "base64:"
 
-    public init(name: String = UUID().uuidString, imageData: Data, bounds: CGRect, quarterTurns: Int, rotationRadians: Double = 0) {
+    public init(name: String = UUID().uuidString, imageData: Data, bounds: CGRect, quarterTurns: Int, rotationRadians: Double = 0,
+                sectionLinkAddress: String? = nil, sectionTextDigest: String? = nil) {
         self.name = name
         self.imageData = imageData
         self.bounds = bounds
         self.quarterTurns = ((quarterTurns % 4) + 4) % 4
         self.rotationRadians = PictureRotation.normalized(rotationRadians)
+        self.sectionLinkAddress = sectionLinkAddress
+        self.sectionTextDigest = sectionTextDigest
     }
 
     /// The picture a Graphite stamp annotation holds, or nil for any other annotation. A
@@ -69,7 +79,9 @@ public struct PDFPicture: Sendable, Equatable {
               let name = annotation.persistentName else { return nil }
         let storedTurns = (annotation.value(forAnnotationKey: PDFPageManager.pictureTurnsKey) as? NSNumber)?.intValue ?? 0
         let turn = Self.storedTurn(of: annotation)
-        self.init(name: name, imageData: imageData, bounds: turn?.bounds ?? annotation.bounds, quarterTurns: storedTurns, rotationRadians: turn?.rotationRadians ?? 0)
+        self.init(name: name, imageData: imageData, bounds: turn?.bounds ?? annotation.bounds, quarterTurns: storedTurns, rotationRadians: turn?.rotationRadians ?? 0,
+                  sectionLinkAddress: PDFPageManager.sectionLinkAddress(of: annotation),
+                  sectionTextDigest: annotation.value(forAnnotationKey: PDFPageManager.sectionTextDigestKey) as? String)
     }
 
     /// The frame and angle of a picture turned by hand, from its annotation: nil for an
@@ -141,6 +153,12 @@ public struct PDFPicture: Sendable, Equatable {
             annotation.setValue(NSNumber(value: rotationRadians), forAnnotationKey: PDFPageManager.pictureRotationKey)
             annotation.setValue(NSNumber(value: Double(bounds.width)), forAnnotationKey: PDFPageManager.pictureWidthKey)
             annotation.setValue(NSNumber(value: Double(bounds.height)), forAnnotationKey: PDFPageManager.pictureHeightKey)
+        }
+        if let sectionLinkAddress {
+            annotation.setValue(sectionLinkAddress, forAnnotationKey: PDFPageManager.sectionLinkKey)
+            if let sectionTextDigest { annotation.setValue(sectionTextDigest, forAnnotationKey: PDFPageManager.sectionTextDigestKey) }
+            // What other readers say of the stamp: the section it shows.
+            annotation.contents = URL(string: sectionLinkAddress).flatMap(SectionLink.init(openingURL:))?.title
         }
         // A picture has no border or note of its own.
         annotation.shouldPrint = true

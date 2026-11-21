@@ -7,8 +7,8 @@
  *              strokes and pictures go.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 import Foundation
 import PDFKit
@@ -37,7 +37,9 @@ extension PDFPageManager {
     /// What an annotation is to the stacking order.
     static func stackingEntry(of annotation: PDFAnnotation) -> PDFStackingEntry {
         if annotation.value(forAnnotationKey: groupKey) != nil { return .ink }
-        if let ownerName = annotation.value(forAnnotationKey: textBoxLinkOwnerKey) as? String { return .attached(ownerName: ownerName) }
+        if let ownerName = (annotation.value(forAnnotationKey: textBoxLinkOwnerKey) ?? annotation.value(forAnnotationKey: sectionLinkOwnerKey)) as? String {
+            return .attached(ownerName: ownerName)
+        }
         if isPicture(annotation) { return .object(.picture, name: annotation.persistentName) }
         if annotation.type == PDFTextBox.annotationTypeName { return .object(.textBox, name: annotation.persistentName) }
         if PDFShape.isShape(annotation) { return .object(.shape, name: annotation.persistentName) }

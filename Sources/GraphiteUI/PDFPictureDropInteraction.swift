@@ -7,8 +7,8 @@
  *              over a page are refused with the reason in the banner.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 21/11/2026
  */
 
 #if canImport(UIKit)
@@ -25,6 +25,8 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
     private(set) var interaction: UIDropInteraction?
     /// The drag's last place was a page and it carries PDF files alone.
     private var refusedDragIsOverPage = false
+    /// The workspace's part in section links; nil where the PDF takes none, as in a test of pictures.
+    var sectionLinks: PDFSectionLinkActions?
 
     init(session: PDFSession, pdfView: PDFView) {
         self.session = session
@@ -40,9 +42,13 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
         interaction = nil
     }
 
-    /// Whether the PDF takes the dragged items: it can be changed, and one of them is a picture.
+    /// Whether the PDF takes the dragged items: it can be changed, and one of them is a picture,
+    /// or a note's section where the workspace draws sections.
     func takesDrop(of providers: [NSItemProvider]) -> Bool {
-        !session.isProtected && providers.contains { provider in PDFPictureDropReader.kind(of: provider) == .picture }
+        !session.isProtected && providers.contains { provider in
+            let kind = PDFPictureDropReader.kind(of: provider)
+            return kind == .picture || (kind == .sectionLink && sectionLinks != nil)
+        }
     }
 
     /// Whether a drag the PDF does not take is one a person expects to land, so letting go over
@@ -77,6 +83,11 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
         guard takesDrop(of: providers), let location = pdfView?.dropLocation(atViewPoint: viewPoint) else { return 0 }
         let items = await PDFPictureDropReader.read(providers)
         let imagesData = items.compactMap { item in if case .picture(let imageData) = item { imageData } else { nil } }
+        let sections = items.compactMap { item in if case .sectionLink(let transfer) = item { transfer } else { nil } }
+        if let sectionLinks, !sections.isEmpty {
+            let placedSections = await placeSections(sections, actions: sectionLinks, at: location)
+            return placedSections + (imagesData.isEmpty ? 0 : await session.placeDroppedPictures(imagesData, at: location))
+        }
         guard !imagesData.isEmpty else {
             if items.contains(.unreadable) {
                 session.errorMessage = "The dropped image couldn't be read."
@@ -86,6 +97,18 @@ final class PDFPictureDropInteraction: NSObject, UIDropInteractionDelegate {
             return 0
         }
         return await session.placeDroppedPictures(imagesData, at: location)
+    }
+
+    /// Places each section of the vault the PDF is in where it landed, the first at the drop.
+    private func placeSections(_ sections: [SectionLinkTransfer], actions: PDFSectionLinkActions, at location: PDFDropLocation) async -> Int {
+        let ownSections = sections.filter { transfer in transfer.isInVault(at: actions.vaultRoot) }
+        guard !ownSections.isEmpty else {
+            session.errorMessage = "A section of a note in another vault can't be linked from this PDF."
+            return 0
+        }
+        var placedCount = 0
+        for transfer in ownSections where await session.placeDroppedSectionLink(transfer.link, actions: actions, at: location) { placedCount += 1 }
+        return placedCount
     }
 
     // MARK: UIDropInteractionDelegate

@@ -5,8 +5,8 @@
  * Description: Links to pages and quotes for notes, offered in a PDF's text selection menu.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -24,6 +24,8 @@ struct PDFLinkActions {
     let noteName: String?
     /// Adds a picture taken with the lasso to that note, as an attachment.
     var addImageToNote: ((_ pngData: Data, _ name: String) -> Void)? = nil
+    /// Draws and opens the sections of the vault's notes that pages link to.
+    var sectionLinks: PDFSectionLinkActions? = nil
 
     /// Where the lasso's pictures of the page can be added: the note open beside the PDF.
     var noteDestination: LassoNoteDestination? {

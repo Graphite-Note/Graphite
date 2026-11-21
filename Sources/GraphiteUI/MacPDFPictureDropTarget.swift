@@ -7,8 +7,8 @@
  *              a protected or signed PDF takes none, and a dropped PDF file is refused with the reason in the banner.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 21/11/2026
  */
 
 #if os(macOS)
@@ -26,11 +26,17 @@ final class MacPDFPictureDropTarget {
     /// Called once a drop has placed its pictures, the last one selected: the markup row
     /// chooses its Images tool, so the picture can be moved and resized at once.
     var picturesWerePlaced: () -> Void = {}
+    /// The workspace's part in section links; nil where the PDF takes none.
+    var sectionLinks: PDFSectionLinkActions?
 
     /// Image data a drag can carry without a file: what Safari and other apps put on the pasteboard.
     static let imagePasteboardTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, NSPasteboard.PasteboardType(UTType.jpeg.identifier)]
     /// What the view registers for: files by address and by promise, and image data.
-    static var pasteboardTypes: [NSPasteboard.PasteboardType] { MacDroppedFiles.pasteboardTypes + imagePasteboardTypes }
+    static var pasteboardTypes: [NSPasteboard.PasteboardType] {
+        [sectionLinkType, MacPastedAttachment.vaultItemType] + MacDroppedFiles.pasteboardTypes + imagePasteboardTypes
+    }
+    /// A note's section dragged from the editor (`SectionLinkTransfer`).
+    static let sectionLinkType = NSPasteboard.PasteboardType(UTType.graphiteSectionLink.identifier)
 
     init(session: PDFSession, view: PDFView) {
         self.session = session
@@ -42,6 +48,7 @@ final class MacPDFPictureDropTarget {
     /// What each dragged item is: files by their names' extensions or promised types, else
     /// one picture when the pasteboard holds image data.
     static func kinds(on pasteboard: NSPasteboard) -> [PDFDroppedItemKind] {
+        if !sectionLinks(on: pasteboard).isEmpty { return [.sectionLink] }
         let addresses = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !addresses.isEmpty { return addresses.map(PDFPictureDropPlan.kind(ofFileAt:)) }
         let receivers = pasteboard.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver] ?? []
@@ -51,9 +58,27 @@ final class MacPDFPictureDropTarget {
         return imageData(on: pasteboard) == nil ? [] : [.picture]
     }
 
-    /// Whether the PDF takes a drag: it can be changed, and the drag carries a picture.
+    /// Whether the PDF takes a drag: it can be changed, and the drag carries a picture, or a
+    /// note's section where the workspace draws sections.
     func takesDrop(from pasteboard: NSPasteboard) -> Bool {
-        !session.isProtected && Self.kinds(on: pasteboard).contains(.picture)
+        let kinds = Self.kinds(on: pasteboard)
+        return !session.isProtected && (kinds.contains(.picture) || (kinds.contains(.sectionLink) && sectionLinks != nil))
+    }
+
+    /// The sections a drag carries: one dragged from the editor, or a note of the file tree,
+    /// which links the whole note.
+    static func sectionLinks(on pasteboard: NSPasteboard) -> [SectionLinkTransfer] {
+        let decoder = JSONDecoder()
+        let items = pasteboard.pasteboardItems ?? []
+        let dragged = items.compactMap { item in item.data(forType: sectionLinkType) }
+            .compactMap { encoded in try? decoder.decode(SectionLinkTransfer.self, from: encoded) } // Unreadable: no section.
+        if !dragged.isEmpty { return dragged }
+        return items.compactMap { item in item.data(forType: MacPastedAttachment.vaultItemType) }
+            .compactMap { encoded in try? decoder.decode(VaultItemTransfer.self, from: encoded) } // Unreadable: no note.
+            .compactMap { transfer in
+                guard let notePath = try? VaultPath(transfer.path), DocumentKind(path: notePath) == .markdown else { return nil } // No note.
+                return SectionLinkTransfer(link: SectionLink(notePath: notePath, subpath: nil), vaultRoot: transfer.vaultRoot)
+            }
     }
 
     /// The pasteboard's image as bytes ImageIO reads: PNG or JPEG as they are, TIFF as PNG.
@@ -91,9 +116,32 @@ final class MacPDFPictureDropTarget {
             if isRefusedWithReason(pasteboard) { session.reportRefusedDrop(of: Self.kinds(on: pasteboard)) }
             return false
         }
+        let sections = Self.sectionLinks(on: pasteboard)
+        if let sectionLinks, !sections.isEmpty {
+            // A block dragged from the editor gets the identifier its link names.
+            (draggingInfo.draggingSource as? MarkdownMacTextView)?.prepareSectionDrag()
+            Task { await placeSections(sections, actions: sectionLinks, at: location) }
+            return true
+        }
         let imageOnPasteboard = Self.imageData(on: pasteboard)
         Task { await placePictures(from: pasteboard, imageOnPasteboard: imageOnPasteboard, at: location) }
         return true
+    }
+
+    /// Places each section of the vault the PDF is in where it landed; the last is selected.
+    ///
+    /// - Returns: How many sections were placed.
+    @discardableResult
+    func placeSections(_ sections: [SectionLinkTransfer], actions: PDFSectionLinkActions, at location: PDFDropLocation) async -> Int {
+        let ownSections = sections.filter { transfer in transfer.isInVault(at: actions.vaultRoot) }
+        guard !ownSections.isEmpty else {
+            session.errorMessage = "A section of a note in another vault can't be linked from this PDF."
+            return 0
+        }
+        var placedCount = 0
+        for transfer in ownSections where await session.placeDroppedSectionLink(transfer.link, actions: actions, at: location) { placedCount += 1 }
+        if placedCount > 0 { picturesWerePlaced() }
+        return placedCount
     }
 
     /// Reads the files the drop carries, or else its image, and places the pictures.
