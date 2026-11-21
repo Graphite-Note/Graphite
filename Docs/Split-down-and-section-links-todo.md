@@ -2,7 +2,7 @@
 
 Created: 2026-11-21.
 
-Status: planned 2026-11-21; nothing built. Request: [#220](https://github.com/Graphite-Note/Graphite/issues/220). Issues: [#221](https://github.com/Graphite-Note/Graphite/issues/221) (section 1), [#222](https://github.com/Graphite-Note/Graphite/issues/222) (section 2).
+Status: planned 2026-11-21. Section 1 (Split Down) built 2026-11-21 and checked in Mac package tests and on an iPad simulator; its View menu, landscape, Stage Manager, the Mac app and a real iPad are left. Section 2 not built. Request: [#220](https://github.com/Graphite-Note/Graphite/issues/220). Issues: [#221](https://github.com/Graphite-Note/Graphite/issues/221) (section 1), [#222](https://github.com/Graphite-Note/Graphite/issues/222) (section 2).
 
 ## Request
 
@@ -29,16 +29,26 @@ From [#220](https://github.com/Graphite-Note/Graphite/issues/220) (shantni, iPad
 
 Issue: [#221](https://github.com/Graphite-Note/Graphite/issues/221)
 
-- [ ] `TabLayout` and `SavedTabLayout` keep the split's direction (side by side or one above the other); a saved layout without one reads as side by side. The fraction is the first group's share of the width or the height.
+- [x] `TabLayout` and `SavedTabLayout` keep the split's direction (side by side or one above the other); a saved layout without one reads as side by side. The fraction is the first group's share of the width or the height.
+  Done 2026-11-21: `SplitDirection` and `TabLayout.split(_:)` (Core); `SavedTabLayout.splitDirection` is written only for a split one above the other and a name a newer build saves reads as side by side. A side opened again by Open to the Right or by moving a tab goes where the last split put it. Tests: `TabLayoutTests.testSplitDownPutsTheNewSideBelowAndTurningKeepsBothSides`, `testTheSplitDirectionIsSavedOnlyWhenOneAboveTheOther`, `SplitDownTests.testTheDirectionIsKeptBetweenLaunches`.
 - [ ] Split Down, as Obsidian names it: in the palette, the menu bar's View menu, the tab menu and Settings › Keyboard Shortcuts, beside Split Right. Choosing the other one on a split layout turns the split, keeping both sides' tabs.
-- [ ] `WorkspacePanes` lays the sides out top and bottom with a horizontal divider that is dragged up and down (`SplitDividerDrag` in height), within the same 0.25 to 0.75.
-- [ ] Each side's toolbar and tab bar are decided by its own size; a document's controls never sit under the other side (the thresholds of invariant U-02 read width, which both sides now share).
-- [ ] A touch focuses the side it lands on; the focused side is marked as it is side by side.
-- [ ] The divider snaps to a display's fold only where the fold runs across the window, so a side-by-side fold keeps the split side by side.
-- [ ] In a compact window only the focused side shows, as today.
-- [ ] The Guide and the Welcome tour name Split Down.
-- [ ] Tests: the layout's direction, its saving and reading, turning a split; the panes' layout top and bottom; the divider drag in height.
+  Built 2026-11-21: `GraphiteCommand.splitDown` (Obsidian's `workspace:split-horizontal`), the palette's `split-down` (`WorkspaceCommandIdentifiersTests`, `LayoutFitsNarrowWindowsTests`), the View menu's second item (Split Down, or Split Right on a split one above the other), and the menu of the tab bar's Split Right and Close This Side buttons and of Show All Tabs. Checked on an iPad simulator: holding Split Right offers Split Right and Split Down; holding Close This Side on a split one above the other offers Split Right, which turned it. Left: the View menu opened by hand, on the Mac and the iPad.
+- [x] `WorkspacePanes` lays the sides out top and bottom with a horizontal divider that is dragged up and down (`SplitDividerDrag` in height), within the same 0.25 to 0.75.
+  Done 2026-11-21: one `AnyLayout` (a horizontal or vertical stack), so turning the split keeps both sides' editors; `SplitDivider` runs across; `SplitDividerDrag` takes the length along the split. Tests: `SplitDownTests.testSplitDownShowsTheSidesOneAboveTheOtherAndTurningKeepsTheirEditors` (the same text views before and after turning), `SplitDividerDragTests`. Checked on an iPad simulator: the divider dragged up and the sides followed.
+- [x] Each side's toolbar and tab bar are decided by its own size; a document's controls never sit under the other side (the thresholds of invariant U-02 read width, which both sides now share).
+  Done 2026-11-21: nothing changed; each side's tab bar reads its own width, which is the window's when one is above the other. Checked in the pictures of `SplitDownTests` and on an iPad simulator in portrait: both tab bars with Write, Undo and Redo, and the PDF's fixed Pencil bar on the lower side.
+- [x] A touch focuses the side it lands on; the focused side is marked as it is side by side.
+  Done 2026-11-21: unchanged (`groupFrames`). Checked on an iPad simulator: a tap on the upper note moved the window's title and the tab's underline to it from the PDF below.
+- [x] The divider snaps to a display's fold only where the fold runs across the window, so a side-by-side fold keeps the split side by side.
+  Done 2026-11-21: `DisplayFoldLayout.splitFraction(direction:)` takes a fold down the middle for sides side by side and one across for sides one above the other. Tests: `DisplayFoldLayoutTests.testASplitAboveAndBelowPutsItsDividerOnAFoldAcross`. Not tried on a folding display.
+- [x] In a compact window only the focused side shows, as today.
+  Done 2026-11-21: unchanged (`showsBothGroups` needs a regular width either way), and a phone's palette offers neither split (`LayoutFitsNarrowWindowsTests.testThePaletteOffersNoSplitOnAPhone`).
+- [x] The Guide and the Welcome tour name Split Down.
+  Done 2026-11-21: `GuideCopyOrganizing` (touch: hold Split Right for Split Down) and `WelcomeTourCopy`.
+- [x] Tests: the layout's direction, its saving and reading, turning a split; the panes' layout top and bottom; the divider drag in height.
+  Done 2026-11-21: the tests above; the full Mac package suite (5,077 tests, 30 skipped) failed only `ReadingGanttChartTests.testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy`, which expects MermaidDiagrams to refuse Gantt statements that 0.4.0 on main now draws.
 - [ ] Checked on the iPad in portrait (a PDF above a note, writing in both), in landscape and with Stage Manager windows, and on the Mac.
+  2026-11-21, iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, portrait, a demo vault of the test vault's files): a note above a PDF, the divider dragged, the keyboard shrinking both sides with the PDF still shown, turned side by side and back. Left: writing with Apple Pencil in the lower PDF, landscape, Stage Manager, the Mac app, a real iPad.
 
 ## 2. Section links on PDF pages
 
@@ -59,3 +69,4 @@ Issue: [#222](https://github.com/Graphite-Note/Graphite/issues/222)
 2. **Headings and blocks can be dragged** (default, 2026-11-21): a heading brings its section, any other block brings itself with a block ID; selected text links the block it starts in.
 3. **Drags work from wherever a note shows** (default, 2026-11-21): the editor and reading view on either side of a split, another Graphite window, and the file tree for a whole note.
 4. **Links follow renames; a deleted section says so** (default, 2026-11-21), as Obsidian treats links.
+5. **A side opened again goes where the last split put it** (default, 2026-11-21): the direction is kept while there is one side, so Open to the Right or moving a tab after Split Down opens the side below. Obsidian's names for those commands are kept.

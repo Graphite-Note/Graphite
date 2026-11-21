@@ -3,11 +3,11 @@
  * ----------------------------------
  * Layer: Tests
  * Description: Placing content around the fold of a partly folded display: the region left beside a fold, the
- *              divider held on it, and even columns over it.
+ *              divider held on it (down a split side by side, across one above the other), and even columns over it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import XCTest
@@ -50,8 +50,8 @@ final class DisplayFoldLayoutTests: XCTestCase {
     }
 
     func testTheDividerIsCentredOnTheFold() throws {
-        let fraction = try XCTUnwrap(DisplayFoldLayout.splitFraction(dividingAt: [bookFold], splitWidthPoints: 951, dividerWidthPoints: 11,
-                                                                     allowedRange: 0.25...0.75))
+        let fraction = try XCTUnwrap(DisplayFoldLayout.splitFraction(dividingAt: [bookFold], splitLengthPoints: 951, dividerThicknessPoints: 11,
+                                                                     direction: .sideBySide, allowedRange: 0.25...0.75))
         let dividerCentre = (951 - 11) * fraction + 11 / 2
         XCTAssertEqual(dividerCentre, Double(bookFold.midX), accuracy: 0.0001)
     }
@@ -59,14 +59,27 @@ final class DisplayFoldLayoutTests: XCTestCase {
     func testAFoldTooCloseToAnEdgeLeavesTheSplitAsItIs() {
         // With the sidebar shown, the fold falls near the start of the documents area.
         let foldNearTheStart = CGRect(x: 100, y: 0, width: 40, height: 669)
-        XCTAssertNil(DisplayFoldLayout.splitFraction(dividingAt: [foldNearTheStart], splitWidthPoints: 631, dividerWidthPoints: 11,
-                                                     allowedRange: 0.25...0.75))
+        XCTAssertNil(DisplayFoldLayout.splitFraction(dividingAt: [foldNearTheStart], splitLengthPoints: 631, dividerThicknessPoints: 11,
+                                                     direction: .sideBySide, allowedRange: 0.25...0.75))
     }
 
     func testAFoldAcrossTheDisplayDoesNotMoveTheDivider() {
         let foldAcross = CGRect(x: 0, y: 300, width: 951, height: 40)
-        XCTAssertNil(DisplayFoldLayout.splitFraction(dividingAt: [foldAcross], splitWidthPoints: 951, dividerWidthPoints: 11,
-                                                     allowedRange: 0.25...0.75))
+        XCTAssertNil(DisplayFoldLayout.splitFraction(dividingAt: [foldAcross], splitLengthPoints: 951, dividerThicknessPoints: 11,
+                                                     direction: .sideBySide, allowedRange: 0.25...0.75))
+    }
+
+    func testASplitAboveAndBelowPutsItsDividerOnAFoldAcross() throws {
+        let portrait = CGRect(x: 0, y: 0, width: 669, height: 951)
+        let foldAcross = CGRect(x: 0, y: 455, width: portrait.width, height: 40)
+        let fraction = try XCTUnwrap(DisplayFoldLayout.splitFraction(dividingAt: [foldAcross], splitLengthPoints: portrait.height,
+                                                                     dividerThicknessPoints: 11, direction: .aboveAndBelow,
+                                                                     allowedRange: 0.25...0.75))
+        let dividerCentre = (portrait.height - 11) * fraction + 11 / 2
+        XCTAssertEqual(dividerCentre, Double(foldAcross.midY), accuracy: 0.0001)
+        XCTAssertNil(DisplayFoldLayout.splitFraction(dividingAt: [bookFold], splitLengthPoints: portrait.height, dividerThicknessPoints: 11,
+                                                     direction: .aboveAndBelow, allowedRange: 0.25...0.75),
+                     "A fold down the middle does not separate sides one above the other.")
     }
 
     func testColumnsOverAFoldAreEven() {

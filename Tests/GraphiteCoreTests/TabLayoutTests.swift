@@ -2,11 +2,12 @@
  * File: TabLayoutTests.swift
  * --------------------------
  * Layer: Tests
- * Description: The tab layout: opening, closing, moving, stacking and saving tabs.
+ * Description: The tab layout: opening, closing, moving, stacking and saving tabs, and splitting side by side or
+ *              one above the other.
  *
- * Authors: felixchvl, Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.9
+ * Date: 21/11/2026
  */
 
 import XCTest
@@ -283,6 +284,52 @@ final class TabLayoutTests: XCTestCase {
         XCTAssertTrue(stacked.focusedGroup.isStacked, "The format of a stacked group (ST-19).")
         layout.setStacked(false, inGroup: groupID)
         XCTAssertFalse(layout.focusedGroup.isStacked)
+    }
+
+    func testSplitDownPutsTheNewSideBelowAndTurningKeepsBothSides() throws {
+        var layout = TabLayout()
+        let notes = try openHere("Notes.md", in: &layout)
+        XCTAssertEqual(layout.splitDirection, .sideBySide)
+        let lowerGroup = layout.split(.aboveAndBelow)
+        XCTAssertTrue(layout.isSplit)
+        XCTAssertEqual(layout.splitDirection, .aboveAndBelow)
+        XCTAssertEqual(layout.focusedGroupID, lowerGroup, "The new side is focused, as after Split right.")
+        XCTAssertNil(layout.focusedGroup.activeTab.path)
+        let slides = layout.tabForOpeningHere()
+        layout.show(try path("Slides.pdf"), inTab: slides, recordsHistory: true)
+
+        XCTAssertEqual(layout.split(.sideBySide), lowerGroup, "Turning a split keeps the focused side.")
+        XCTAssertEqual(layout.splitDirection, .sideBySide)
+        XCTAssertEqual(layout.groups.map { group in group.tabs.map(\.id) }, [[notes], [slides]], "Turning moves no tab.")
+        XCTAssertEqual(layout.split(.sideBySide), layout.groups[0].id, "Split right on a split side by side goes to the other side.")
+
+        layout.split(.aboveAndBelow)
+        layout.closeGroup(lowerGroup)
+        XCTAssertFalse(layout.isSplit)
+        layout.moveTabToOtherGroup(notes)
+        XCTAssertEqual(layout.splitDirection, .aboveAndBelow, "A side opened again goes where the last split put it.")
+    }
+
+    func testTheSplitDirectionIsSavedOnlyWhenOneAboveTheOther() throws {
+        var layout = TabLayout()
+        _ = try openHere("Notes.md", in: &layout)
+        layout.split(.sideBySide)
+        let sideBySideSave = String(decoding: try JSONEncoder().encode(layout.saved), as: UTF8.self)
+        XCTAssertFalse(sideBySideSave.contains("splitDirection"), "A split side by side saves as before Split down existed.")
+        layout.split(.aboveAndBelow)
+        layout.splitFraction = 0.4
+        let saved = try JSONDecoder().decode(SavedTabLayout.self, from: try JSONEncoder().encode(layout.saved))
+        XCTAssertEqual(saved.splitDirection, "aboveAndBelow")
+        let restored = TabLayout(saved: saved, fileExists: { _ in true })
+        XCTAssertEqual(restored.splitDirection, .aboveAndBelow)
+        XCTAssertEqual(restored.splitFraction, 0.4)
+
+        let olderSave = Data(#"{"groups":[{"tabs":[{"path":"A.md","isPinned":false}],"activeTabIndex":0},{"tabs":[{"isPinned":false}],"activeTabIndex":0}],"focusedGroupIndex":0,"splitFraction":0.5}"#.utf8)
+        let older = TabLayout(saved: try JSONDecoder().decode(SavedTabLayout.self, from: olderSave), fileExists: { _ in true })
+        XCTAssertEqual(older.splitDirection, .sideBySide)
+        let newerSave = Data(#"{"groups":[{"tabs":[{"isPinned":false}],"activeTabIndex":0}],"focusedGroupIndex":0,"splitFraction":0.5,"splitDirection":"diagonal"}"#.utf8)
+        let newer = TabLayout(saved: try JSONDecoder().decode(SavedTabLayout.self, from: newerSave), fileExists: { _ in true })
+        XCTAssertEqual(newer.splitDirection, .sideBySide, "A direction saved by a newer build reads as side by side.")
     }
 
     func testSavedLayoutsRestoreWithoutMissingOrRepeatedFiles() throws {

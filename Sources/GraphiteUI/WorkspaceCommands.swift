@@ -5,8 +5,8 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 12/11/2026
+ * Version: 0.20
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -231,21 +231,36 @@ enum WorkspaceCommandList {
                 Task { await workspace.reopenClosedTab() }
             })
         }
+        return commands + splitCommands(for: workspace, offersSplit: offersSplit)
+    }
+
+    /// Obsidian's split commands: going to or closing the other side, splitting right or down,
+    /// and moving the tab across.
+    private static func splitCommands(for workspace: WorkspaceModel, offersSplit: Bool) -> [PaletteCommand] {
+        let layout = workspace.layout
+        let tab = layout.activeTab
+        var commands: [PaletteCommand] = []
+        let isSideBySide = layout.splitDirection == .sideBySide
         if layout.isSplit {
             let focusedGroupID = layout.focusedGroupID
             commands += [
-                PaletteCommand(id: "focus-other-side", command: .focusOtherSide, systemImage: "arrow.left.arrow.right") {
+                PaletteCommand(id: "focus-other-side", command: .focusOtherSide, systemImage: isSideBySide ? "arrow.left.arrow.right" : "arrow.up.arrow.down") {
                     if let other = layout.otherGroup(than: focusedGroupID) { workspace.focusGroup(other.id) }
                 },
                 PaletteCommand(id: "close-side", command: .closeThisSide, systemImage: "xmark.rectangle") { Task { await workspace.closeGroup(focusedGroupID) } },
             ]
-        } else if offersSplit {
+        }
+        // Both where there is no split; on a split, the one that turns it the other way.
+        if offersSplit && (!layout.isSplit || !isSideBySide) {
             commands.append(PaletteCommand(id: "split-right", command: .splitRight, systemImage: "rectangle.split.2x1") { workspace.splitRight() })
         }
+        if offersSplit && (!layout.isSplit || isSideBySide) {
+            commands.append(PaletteCommand(id: "split-down", command: .splitDown, systemImage: "rectangle.split.1x2") { workspace.splitDown() })
+        }
         if offersSplit && (tab.path != nil || tab.coreView != nil || layout.focusedGroup.tabs.count > 1 || layout.isSplit) {
-            let isLeftSide = layout.groups.first?.id == layout.focusedGroupID
-            commands.append(PaletteCommand(id: "move-tab", command: .moveTabToOtherSide, title: isLeftSide ? "Move current tab to the right" : "Move current tab to the left",
-                                           systemImage: isLeftSide ? "rectangle.righthalf.inset.filled.arrow.right" : "rectangle.lefthalf.inset.filled.arrow.left") {
+            let isFirstSide = layout.groups.first?.id == layout.focusedGroupID
+            commands.append(PaletteCommand(id: "move-tab", command: .moveTabToOtherSide, title: moveTabTitle(isFirstSide: isFirstSide, isSideBySide: isSideBySide),
+                                           systemImage: moveTabSymbol(isFirstSide: isFirstSide, isSideBySide: isSideBySide)) {
                 workspace.moveTabToOtherGroup(tab.id)
             })
         }
@@ -260,6 +275,26 @@ enum WorkspaceCommandList {
             PaletteCommand(id: command.graphiteCommand.identifier, command: command.graphiteCommand, systemImage: command.symbolName) {
                 target.perform(command)
             }
+        }
+    }
+
+    /// Where "Move current tab" sends the tab: to the other side of the split, or of the one
+    /// it would open, side by side or one above the other.
+    private static func moveTabTitle(isFirstSide: Bool, isSideBySide: Bool) -> String {
+        switch (isSideBySide, isFirstSide) {
+        case (true, true): "Move current tab to the right"
+        case (true, false): "Move current tab to the left"
+        case (false, true): "Move current tab below"
+        case (false, false): "Move current tab above"
+        }
+    }
+
+    private static func moveTabSymbol(isFirstSide: Bool, isSideBySide: Bool) -> String {
+        switch (isSideBySide, isFirstSide) {
+        case (true, true): "rectangle.righthalf.inset.filled.arrow.right"
+        case (true, false): "rectangle.lefthalf.inset.filled.arrow.left"
+        case (false, true): "rectangle.bottomhalf.inset.filled"
+        case (false, false): "rectangle.tophalf.inset.filled"
         }
     }
 

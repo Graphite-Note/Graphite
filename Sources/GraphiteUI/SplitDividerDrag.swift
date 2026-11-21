@@ -5,8 +5,8 @@
  * Description: A drag of the divider between the two sides, kept apart from the saved layout until it ends.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import CoreGraphics
@@ -23,11 +23,13 @@ struct SplitDividerDrag: Equatable {
 
     /// The split after the finger moved `translation` from where the drag began, at a layout
     /// that was split at `layoutFraction` then, within the range a split may have.
-    mutating func change(translation: CGFloat, availableWidth: CGFloat, layoutFraction: Double) -> Double {
+    /// `translation` and `availableLength` run along the split: across for sides side by side,
+    /// down for sides one above the other.
+    mutating func change(translation: CGFloat, availableLength: CGFloat, layoutFraction: Double) -> Double {
         let start = startFraction ?? layoutFraction
         startFraction = start
         let range = TabLayout.splitFractionRange
-        let moved = min(max(start + Double(translation / max(availableWidth, 1)), range.lowerBound), range.upperBound)
+        let moved = min(max(start + Double(translation / max(availableLength, 1)), range.lowerBound), range.upperBound)
         fraction = moved
         return moved
     }

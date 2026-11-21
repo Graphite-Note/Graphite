@@ -5,8 +5,8 @@
  * Description: Each tab's documents and opening a file in a tab.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.33
- * Date: 04/11/2026
+ * Version: 0.34
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -262,10 +262,12 @@ extension WorkspaceModel {
         if layout.activeTab.id != activeTab.id { saveInBackground(activeTab.id) }
     }
 
-    /// Opens an empty group on the right, or focuses it when the layout is already split.
-    func splitRight() {
-        layout.openOtherGroup()
-    }
+    /// Opens an empty side on the right, or turns a split one above the other side by side
+    /// (`TabLayout.split`).
+    func splitRight() { layout.split(.sideBySide) }
+
+    /// Opens an empty side below, or turns a split side by side one above the other.
+    func splitDown() { layout.split(.aboveAndBelow) }
 
     /// Stacks the group's tabs side by side, or unstacks them (Obsidian's "Stack tabs"); the
     /// focused group when none is named.

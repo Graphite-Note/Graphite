@@ -5,8 +5,8 @@
  * Description: Dragging the divider between two sides saves the layout once, and a tab dropped from another window.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import XCTest
@@ -25,21 +25,21 @@ final class SplitDividerDragTests: XCTestCase {
         var drag = SplitDividerDrag()
         XCTAssertNil(drag.fraction)
 
-        XCTAssertEqual(drag.change(translation: 100, availableWidth: 1_000, layoutFraction: 0.5), 0.6, accuracy: 0.0001)
-        XCTAssertEqual(drag.change(translation: -200, availableWidth: 1_000, layoutFraction: 0.5), 0.3, accuracy: 0.0001, "Measured from where the drag began, not from the last frame.")
-        XCTAssertEqual(drag.change(translation: -900, availableWidth: 1_000, layoutFraction: 0.5), TabLayout.splitFractionRange.lowerBound)
-        XCTAssertEqual(drag.change(translation: 900, availableWidth: 1_000, layoutFraction: 0.5), TabLayout.splitFractionRange.upperBound)
+        XCTAssertEqual(drag.change(translation: 100, availableLength: 1_000, layoutFraction: 0.5), 0.6, accuracy: 0.0001)
+        XCTAssertEqual(drag.change(translation: -200, availableLength: 1_000, layoutFraction: 0.5), 0.3, accuracy: 0.0001, "Measured from where the drag began, not from the last frame.")
+        XCTAssertEqual(drag.change(translation: -900, availableLength: 1_000, layoutFraction: 0.5), TabLayout.splitFractionRange.lowerBound)
+        XCTAssertEqual(drag.change(translation: 900, availableLength: 1_000, layoutFraction: 0.5), TabLayout.splitFractionRange.upperBound)
     }
 
     func testTheDragEndsOnceWithTheSplitToKeep() {
         var drag = SplitDividerDrag()
-        _ = drag.change(translation: 50, availableWidth: 1_000, layoutFraction: 0.5)
-        _ = drag.change(translation: 80, availableWidth: 1_000, layoutFraction: 0.5)
+        _ = drag.change(translation: 50, availableLength: 1_000, layoutFraction: 0.5)
+        _ = drag.change(translation: 80, availableLength: 1_000, layoutFraction: 0.5)
 
         XCTAssertEqual(try XCTUnwrap(drag.end()), 0.58, accuracy: 0.0001)
         XCTAssertNil(drag.fraction)
         XCTAssertNil(drag.end(), "A drag that did not move leaves the layout alone.")
-        XCTAssertEqual(drag.change(translation: 10, availableWidth: 1_000, layoutFraction: 0.58), 0.59, accuracy: 0.0001, "The next drag begins from the layout's split.")
+        XCTAssertEqual(drag.change(translation: 10, availableLength: 1_000, layoutFraction: 0.58), 0.59, accuracy: 0.0001, "The next drag begins from the layout's split.")
     }
 
     /// HUNT-185: every frame of a drag assigned the layout, which encoded it and wrote it to the
@@ -52,7 +52,7 @@ final class SplitDividerDragTests: XCTestCase {
         var drag = SplitDividerDrag()
 
         for frame in 1...50 {
-            _ = drag.change(translation: CGFloat(frame), availableWidth: 1_000, layoutFraction: workspace.layout.splitFraction)
+            _ = drag.change(translation: CGFloat(frame), availableLength: 1_000, layoutFraction: workspace.layout.splitFraction)
         }
         XCTAssertEqual(workspace.savedLayoutChangeCount, changesBefore, "Nothing is saved while the finger moves.")
         if let draggedFraction = drag.end() { workspace.layout.splitFraction = draggedFraction }

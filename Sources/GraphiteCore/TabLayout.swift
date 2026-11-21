@@ -2,11 +2,12 @@
  * File: TabLayout.swift
  * ---------------------
  * Layer: Core
- * Description: The open tabs, in one group or two side by side, and how opening, closing and moving them changes the layout.
+ * Description: The open tabs, in one group or two side by side or one above the other, and how opening, closing and
+ *              moving them changes the layout.
  *
- * Authors: felixchvl, Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.9
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -64,16 +65,24 @@ public struct TabGroup: Identifiable, Equatable, Sendable {
     public var activeTabIndex: Int { tabs.firstIndex { tab in tab.id == activeTabID } ?? 0 }
 }
 
-/// The open tabs, in one group or two side by side, as in Obsidian's workspace after
-/// "Split right". Only the layout lives here; the documents open in the tabs belong to
-/// the app.
+/// How the two sides of a split share the window: Obsidian's "Split right" puts them side by
+/// side, its "Split down" one above the other.
+public enum SplitDirection: String, Sendable {
+    case sideBySide
+    case aboveAndBelow
+}
+
+/// The open tabs, in one group or two, side by side or one above the other, as in Obsidian's
+/// workspace after "Split right" or "Split down". Only the layout lives here; the documents
+/// open in the tabs belong to the app.
 ///
 /// A file is open in at most one tab, so two editors never save over each other; opening
 /// a file that is already open switches to its tab.
 public struct TabLayout: Equatable, Sendable {
     public static let maximumGroupCount = 2
     public static let maximumClosedTabCount = 20
-    /// The left group's share of the width, when split.
+    /// The first group's share of the width (side by side) or of the height (one above the
+    /// other), when split.
     public static let splitFractionRange = 0.25...0.75
 
     public private(set) var groups: [TabGroup]
@@ -81,6 +90,10 @@ public struct TabLayout: Equatable, Sendable {
     public var splitFraction: Double {
         didSet { splitFraction = min(max(splitFraction, Self.splitFractionRange.lowerBound), Self.splitFractionRange.upperBound) }
     }
+    /// How the two groups share the window when split. It is kept while there is one group,
+    /// so a side opened again, by "Open to the right" or moving a tab, goes where the last
+    /// split put it.
+    public private(set) var splitDirection: SplitDirection = .sideBySide
     /// Files of recently closed tabs, the most recent last, for "Reopen closed tab".
     public private(set) var closedPaths: [VaultPath] = []
     /// The plugin views restored empty tabs showed (`SavedTabLayout.Tab.pluginView`), by tab;
@@ -220,8 +233,22 @@ public struct TabLayout: Equatable, Sendable {
         return tabID
     }
 
-    /// Focuses the group on the right, creating it with an empty tab when there is only
-    /// one group, and returns it.
+    /// Splits the layout in `direction`, as Obsidian's "Split right" and "Split down": with one
+    /// group, opens the second (focused, with an empty tab); split the other way, turns the
+    /// split so the two groups keep their tabs and focus; split this way already, focuses the
+    /// other group, as Split right always did. Returns the group focused.
+    @discardableResult
+    public mutating func split(_ direction: SplitDirection) -> UUID {
+        guard !isSplit || splitDirection == direction else {
+            splitDirection = direction
+            return focusedGroupID
+        }
+        splitDirection = direction
+        return openOtherGroup()
+    }
+
+    /// Focuses the other group (on the right, or below), creating it with an empty tab when
+    /// there is only one group, and returns it.
     @discardableResult
     public mutating func openOtherGroup() -> UUID {
         if let other = otherGroup(than: focusedGroupID) {
@@ -425,7 +452,8 @@ public struct TabLayout: Equatable, Sendable {
                 SavedTabLayout.Tab(path: tab.path?.rawValue, isPinned: tab.isPinned, coreView: tab.coreView?.rawValue)
             },
                                  activeTabIndex: group.activeTabIndex, isStacked: group.isStacked)
-        }, focusedGroupIndex: groups.firstIndex { group in group.id == focusedGroupID } ?? 0, splitFraction: splitFraction)
+        }, focusedGroupIndex: groups.firstIndex { group in group.id == focusedGroupID } ?? 0, splitFraction: splitFraction,
+           splitDirection: splitDirection)
     }
 
     /// Restores a saved layout. Tabs of files that no longer exist are left out, and a
@@ -460,6 +488,7 @@ public struct TabLayout: Equatable, Sendable {
             focusedGroupID = restoredGroups[min(focusedGroupIndex, restoredGroups.count - 1)].id
         }
         splitFraction = saved.splitFraction
+        splitDirection = saved.splitDirection.flatMap(SplitDirection.init(rawValue:)) ?? .sideBySide
     }
 
     // MARK: Private
@@ -542,14 +571,19 @@ public struct SavedTabLayout: Codable, Equatable, Sendable {
     public var groups: [Group]
     public var focusedGroupIndex: Int
     public var splitFraction: Double
+    /// `SplitDirection.aboveAndBelow`'s name for a split one above the other; absent for one
+    /// side by side, so layouts saved before Split down existed read and write as they did.
+    /// A name this build does not know, saved by a newer one, reads as side by side.
+    public var splitDirection: String?
     /// Plugins' views in the sidebar, opened again unless their plugin opens them itself.
     public var sidebarPluginViews: [PluginView]?
     /// The type of the plugin view the sidebar showed, if it showed one.
     public var shownSidebarPluginViewType: String?
 
-    public init(groups: [Group], focusedGroupIndex: Int, splitFraction: Double) {
+    public init(groups: [Group], focusedGroupIndex: Int, splitFraction: Double, splitDirection: SplitDirection = .sideBySide) {
         self.groups = groups
         self.focusedGroupIndex = focusedGroupIndex
         self.splitFraction = splitFraction
+        self.splitDirection = splitDirection == .sideBySide ? nil : splitDirection.rawValue
     }
 }

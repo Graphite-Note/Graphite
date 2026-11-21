@@ -3,11 +3,12 @@
  * -----------------------------
  * Layer: Core
  * Description: Where content goes on a display that folds, as iPhone Duo's inner display does: the largest part no
- *              fold crosses, the split fraction that puts a divider on the fold, and an even column count over it.
+ *              fold crosses, the split fraction that puts a divider on the fold (down the split or across it), and an
+ *              even column count over it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 21/11/2026
  */
 
 import CoreGraphics
@@ -30,19 +31,25 @@ public enum DisplayFoldLayout {
         } ?? container
     }
 
-    /// The split fraction that centres a divider `dividerWidthPoints` wide on the first fold
-    /// running down a split `splitWidthPoints` wide (whose sides share the width the divider
-    /// leaves, the first side taking the fraction), or nil when no fold runs down the split
-    /// or the fraction that reaches it falls outside `allowedRange`.
-    public static func splitFraction(dividingAt divisions: [CGRect], splitWidthPoints: CGFloat, dividerWidthPoints: CGFloat,
-                                     allowedRange: ClosedRange<Double>) -> Double? {
-        let sidesWidthPoints = splitWidthPoints - dividerWidthPoints
-        guard sidesWidthPoints > 0,
+    /// The split fraction that centres a divider `dividerThicknessPoints` thick on the first
+    /// fold that separates the split's sides: a fold down the middle for sides side by side, a
+    /// fold across for sides one above the other. `splitLengthPoints` is the split's width
+    /// (side by side) or height (one above the other); the sides share what the divider
+    /// leaves, the first side taking the fraction. Nil when no such fold crosses the split or
+    /// the fraction that reaches it falls outside `allowedRange`.
+    public static func splitFraction(dividingAt divisions: [CGRect], splitLengthPoints: CGFloat, dividerThicknessPoints: CGFloat,
+                                     direction: SplitDirection, allowedRange: ClosedRange<Double>) -> Double? {
+        let sidesLengthPoints = splitLengthPoints - dividerThicknessPoints
+        let separatesSides: (CGRect) -> Bool = { division in
+            direction == .sideBySide ? isFoldDownTheMiddle(division) : !isFoldDownTheMiddle(division)
+        }
+        let foldMiddle: (CGRect) -> CGFloat = { division in direction == .sideBySide ? division.midX : division.midY }
+        guard sidesLengthPoints > 0,
               let fold = divisions.first(where: { division in
-                  isFoldDownTheMiddle(division) && division.midX > 0 && division.midX < splitWidthPoints
+                  separatesSides(division) && foldMiddle(division) > 0 && foldMiddle(division) < splitLengthPoints
               })
         else { return nil }
-        let fraction = Double((fold.midX - dividerWidthPoints / 2) / sidesWidthPoints)
+        let fraction = Double((foldMiddle(fold) - dividerThicknessPoints / 2) / sidesLengthPoints)
         return allowedRange.contains(fraction) ? fraction : nil
     }
 

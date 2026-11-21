@@ -6,8 +6,8 @@
  *              where they stand, and the phone's palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 16/11/2026
+ * Version: 0.5
+ * Date: 21/11/2026
  */
 
 import XCTest
@@ -142,12 +142,11 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
         let onTablet = WorkspaceCommandList.commands(for: workspace, window: makeWindowActions()).map(\.id)
         let onPhone = WorkspaceCommandList.commands(for: workspace, window: makeWindowActions(), offersSplit: false).map(\.id)
 
-        XCTAssertTrue(onTablet.contains("split-right"))
-        XCTAssertTrue(onTablet.contains("move-tab"))
-        XCTAssertFalse(onPhone.contains("split-right"), "Split right would only make an empty second group of tabs.")
-        XCTAssertFalse(onPhone.contains("move-tab"))
-        XCTAssertEqual(onPhone.filter { identifier in identifier != "split-right" && identifier != "move-tab" },
-                       onTablet.filter { identifier in identifier != "split-right" && identifier != "move-tab" }, "Nothing else changes.")
+        let splitCommands: Set = ["split-right", "split-down", "move-tab"]
+        XCTAssertTrue(splitCommands.isSubset(of: onTablet))
+        XCTAssertTrue(splitCommands.isDisjoint(with: onPhone), "Split right or down would only make an empty second group of tabs.")
+        XCTAssertEqual(onPhone.filter { identifier in !splitCommands.contains(identifier) },
+                       onTablet.filter { identifier in !splitCommands.contains(identifier) }, "Nothing else changes.")
     }
 
     func testAGraphBookmarkOpensTheGraphView() async throws {

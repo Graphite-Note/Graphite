@@ -5,8 +5,8 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.17
- * Date: 12/11/2026
+ * Version: 0.18
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -276,6 +276,14 @@ public struct GraphiteCommands: Commands {
             if workspace.layout.isSplit { Task { await workspace.closeGroup(workspace.layout.focusedGroupID) } } else { workspace.splitRight() }
         }
         .keyboardShortcut(shortcut(workspace?.layout.isSplit == true ? .closeThisSide : .splitRight))
+        .disabled(workspace == nil)
+        // Split Down where there is no split, as Obsidian has both; on a split, the one that
+        // turns it the other way.
+        let turnsToSideBySide = workspace?.layout.isSplit == true && workspace?.layout.splitDirection == .aboveAndBelow
+        Button(turnsToSideBySide ? "Split Right" : "Split Down") {
+            if turnsToSideBySide { workspace?.splitRight() } else { workspace?.splitDown() }
+        }
+        .keyboardShortcut(shortcut(turnsToSideBySide ? .splitRight : .splitDown))
         .disabled(workspace == nil)
         Button(workspace?.layout.focusedGroup.isStacked == true ? "Unstack Tabs" : "Stack Tabs") { workspace?.toggleStackedTabs() }
             .keyboardShortcut(shortcut(.toggleStackedTabs))

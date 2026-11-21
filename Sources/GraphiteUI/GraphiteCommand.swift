@@ -6,8 +6,8 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.10
- * Date: 12/11/2026
+ * Version: 0.11
+ * Date: 21/11/2026
  */
 import Foundation
 import GraphiteCore
@@ -65,7 +65,7 @@ enum GraphiteCommand: String, CaseIterable {
     case toggleLeftSidebar = "app:toggle-left-sidebar", toggleRightSidebar = "app:toggle-right-sidebar"
     case openGraph = "graph:open", openLocalGraph = "graph:open-local", openMap = "graphite:open-map", openLocalMap = "graphite:open-local-map"
     case splitRight = "workspace:split-vertical", closeThisSide = "workspace:close-tab-group", commandPalette = "command-palette:open"
-    case toggleFocusMode = "graphite:toggle-focus-mode"
+    case splitDown = "workspace:split-horizontal", toggleFocusMode = "graphite:toggle-focus-mode"
     case increaseFontSize = "graphite:increase-font-size", decreaseFontSize = "graphite:decrease-font-size", resetFontSize = "graphite:reset-font-size"
     case showBookmarks = "bookmarks:open", bookmarkCurrentFile = "bookmarks:bookmark-current-view", bookmarkCurrentSearch = "bookmarks:bookmark-current-search"
     case showCalendar = "graphite:calendar-show"
@@ -231,6 +231,7 @@ extension GraphiteCommand {
         case .openMap: return Descriptor(title: "Map view: Open map view", group: .view, binding: .menuBar, corePlugin: .map, macMenuTitles: ["Map View"])
         case .openLocalMap: return Descriptor(title: "Map view: Open local map", group: .view, corePlugin: .map)
         case .splitRight: return Descriptor(title: "Split right", group: .view, binding: .menuBar, macMenuTitles: ["Split Right"])
+        case .splitDown: return Descriptor(title: "Split down", group: .view, binding: .menuBar, macMenuTitles: ["Split Down"])
         case .closeThisSide: return Descriptor(title: "Close this side of the split", group: .view, binding: .menuBar, macMenuTitles: ["Close This Side"])
         case .commandPalette:
             return Descriptor(title: "Command palette: Open command palette", group: .view,

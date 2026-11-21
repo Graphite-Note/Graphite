@@ -2,12 +2,12 @@
  * File: WorkspacePanes.swift
  * --------------------------
  * Layer: UI
- * Description: The documents area: one group of tabs or two side by side with a divider that can be dragged or held
- *              on a display's fold, each side's tab bar, and the document of its active tab.
+ * Description: The documents area: one group of tabs or two, side by side or one above the other, with a divider
+ *              that can be dragged or held on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.50
- * Date: 11/11/2026
+ * Version: 0.51
+ * Date: 21/11/2026
  */
 
 import SwiftUI
@@ -15,9 +15,9 @@ import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
 
-/// The documents area: one group of tabs, or two side by side with a divider that can be
-/// dragged, as after Obsidian's "Split right". In a narrow window only the focused side
-/// is shown.
+/// The documents area: one group of tabs, or two with a divider that can be dragged, side by
+/// side as after Obsidian's "Split right" or one above the other as after its "Split down".
+/// In a narrow window only the focused side is shown.
 struct WorkspacePanes: View {
     @Bindable var workspace: WorkspaceModel
     @Binding var showsLinksInspector: Bool
@@ -73,20 +73,28 @@ struct WorkspacePanes: View {
                 // Read again here: the reader's content can update after a side closes and
                 // before the check above does.
                 let groups = workspace.layout.groups
-                let availableWidth = max(geometry.size.width - SplitDivider.width, 1)
+                let direction = workspace.layout.splitDirection
+                let splitLength = direction == .sideBySide ? geometry.size.width : geometry.size.height
+                let availableLength = max(splitLength - SplitDivider.thickness, 1)
                 // On a partly folded display the divider sits on the fold, as a split view's
                 // columns do, so neither side's document runs across it.
                 let foldFraction = DisplayFoldLayout.splitFraction(dividingAt: DisplayFolds.activeDivisions(in: geometry),
-                                                                   splitWidthPoints: geometry.size.width,
-                                                                   dividerWidthPoints: SplitDivider.width,
+                                                                   splitLengthPoints: splitLength,
+                                                                   dividerThicknessPoints: SplitDivider.thickness,
+                                                                   direction: direction,
                                                                    allowedRange: TabLayout.splitFractionRange)
                 let fraction = foldFraction ?? dividerDrag.fraction ?? workspace.layout.splitFraction
+                let firstSideLength = availableLength * fraction
                 if groups.count > 1 {
-                    HStack(spacing: 0) {
+                    // One layout that changes axis, not a stack of each kind: turning the split
+                    // keeps both sides' views, so their editors and PDFs are not built again.
+                    let sidesLayout = direction == .sideBySide ? AnyLayout(HStackLayout(spacing: 0)) : AnyLayout(VStackLayout(spacing: 0))
+                    sidesLayout {
                         pane(for: groups[0])
-                            .frame(width: availableWidth * fraction)
-                        SplitDivider(fraction: fraction, isHeldByFold: foldFraction != nil) { translation in
-                            _ = dividerDrag.change(translation: translation, availableWidth: availableWidth, layoutFraction: workspace.layout.splitFraction)
+                            .frame(width: direction == .sideBySide ? firstSideLength : nil,
+                                   height: direction == .aboveAndBelow ? firstSideLength : nil)
+                        SplitDivider(direction: direction, fraction: fraction, isHeldByFold: foldFraction != nil) { translation in
+                            _ = dividerDrag.change(translation: translation, availableLength: availableLength, layoutFraction: workspace.layout.splitFraction)
                         } endDrag: {
                             if let draggedFraction = dividerDrag.end() { workspace.layout.splitFraction = draggedFraction }
                         } setFraction: { fraction in
@@ -377,15 +385,17 @@ private struct TabBar: View {
                 .help("New tab (⌘T)")
             if layout.isSplit && !showsBothGroups {
                 // Only one side fits; this shows the other one.
-                Button("Show Other Side", systemImage: "arrow.left.arrow.right") {
+                Button("Show Other Side", systemImage: layout.splitDirection == .sideBySide ? "arrow.left.arrow.right" : "arrow.up.arrow.down") {
                     if let other = layout.otherGroup(than: group.id) { workspace.focusGroup(other.id) }
                 }
             } else if layout.isSplit {
                 Button("Close This Side", systemImage: "xmark.rectangle") { Task { await workspace.closeGroup(group.id) } }
-                    .help("Close this side of the split and its tabs")
+                    .help("Close this side of the split and its tabs; its menu turns the split")
+                    .contextMenu { splitButtons }
             } else {
                 Button("Split Right", systemImage: "rectangle.split.2x1") { workspace.splitRight() }
-                    .help("Open a second side, to keep a note beside a PDF")
+                    .help("Open a second side, to keep a note beside a PDF; its menu splits down instead")
+                    .contextMenu { splitButtons }
             }
         }
         .labelStyle(.iconOnly)
@@ -402,6 +412,20 @@ private struct TabBar: View {
         }
         Button(group.isStacked ? "Unstack Tabs" : "Stack Tabs", systemImage: group.isStacked ? "rectangle" : "rectangle.stack") {
             withAnimation(GraphiteMotion.animation(.snappy)) { workspace.toggleStackedTabs(inGroup: group.id) }
+        }
+        if showsBothGroups || !layout.isSplit {
+            Section { splitButtons }
+        }
+    }
+
+    /// Split Right and Split Down where the window has no split; on a split, the one that
+    /// turns it the other way.
+    @ViewBuilder private var splitButtons: some View {
+        if !layout.isSplit || layout.splitDirection == .aboveAndBelow {
+            Button("Split Right", systemImage: "rectangle.split.2x1") { workspace.splitRight() }
+        }
+        if !layout.isSplit || layout.splitDirection == .sideBySide {
+            Button("Split Down", systemImage: "rectangle.split.1x2") { workspace.splitDown() }
         }
     }
 
@@ -536,36 +560,47 @@ struct QuietIconButtonStyle: ButtonStyle {
 // MARK: Divider
 
 /// The line between the two sides; dragging it resizes them, and a double tap evens them.
-/// Held on a display's fold, it does neither: the fold decides the sides' widths until the
-/// display opens flat, when the sides take back the widths they had.
+/// It runs down between sides side by side and across between sides one above the other.
+/// Held on a display's fold, it does neither: the fold decides the sides' sizes until the
+/// display opens flat, when the sides take back the sizes they had.
 private struct SplitDivider: View {
-    static let width: CGFloat = 11
+    /// Across the line: its width between sides side by side, its height between sides one
+    /// above the other.
+    static let thickness: CGFloat = 11
     static let coordinateSpaceName = "WorkspacePanes"
+    private static let handleThickness: CGFloat = 5
+    private static let handleLength: CGFloat = 40
+    let direction: SplitDirection
     let fraction: Double
     let isHeldByFold: Bool
     let drag: (CGFloat) -> Void
     let endDrag: () -> Void
     let setFraction: (Double) -> Void
 
+    private var isSideBySide: Bool { direction == .sideBySide }
+
     var body: some View {
         ZStack {
-            Rectangle().fill(.separator).frame(width: 1)
-            Capsule().fill(.tertiary).frame(width: 5, height: 40).opacity(isHeldByFold ? 0 : 1)
+            Rectangle().fill(.separator)
+                .frame(width: isSideBySide ? 1 : nil, height: isSideBySide ? nil : 1)
+            Capsule().fill(.tertiary)
+                .frame(width: isSideBySide ? Self.handleThickness : Self.handleLength, height: isSideBySide ? Self.handleLength : Self.handleThickness)
+                .opacity(isHeldByFold ? 0 : 1)
         }
-        .frame(width: Self.width)
-        .frame(maxHeight: .infinity)
+        .frame(width: isSideBySide ? Self.thickness : nil, height: isSideBySide ? nil : Self.thickness)
+        .frame(maxWidth: isSideBySide ? nil : .infinity, maxHeight: isSideBySide ? .infinity : nil)
         // Drawn thin and touched over 27 points, so a finger finds it without taking the
         // text beside it.
         .contentShape(Rectangle().inset(by: -8))
         .allowsHitTesting(!isHeldByFold)
         // Measured in the panes' space: the divider itself moves while it is dragged.
         .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.coordinateSpaceName))
-            .onChanged { value in drag(value.translation.width) }
+            .onChanged { value in drag(isSideBySide ? value.translation.width : value.translation.height) }
             .onEnded { _ in endDrag() })
         .onTapGesture(count: 2) { setFraction(0.5) }
         .accessibilityElement()
         .accessibilityLabel("Divider between the two sides")
-        .accessibilityValue(isHeldByFold ? "At the fold" : "\(Int((fraction * 100).rounded())) percent for the left side")
+        .accessibilityValue(isHeldByFold ? "At the fold" : "\(Int((fraction * 100).rounded())) percent for the \(isSideBySide ? "left" : "top") side")
         .accessibilityAdjustableAction { direction in
             guard !isHeldByFold else { return }
             switch direction {

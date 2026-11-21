@@ -5,8 +5,8 @@
  * Description: The welcome tour's words, page by page.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 21/10/2026
+ * Version: 0.7
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -192,7 +192,7 @@ enum WelcomeTourCopy {
             WelcomeTourPoint(systemImage: "point.3.connected.trianglepath.dotted", title: .words("Graph view"),
                              detail: "See how your notes link. Open it from the Command Palette, or the local graph in the right sidebar."),
             WelcomeTourPoint(systemImage: "rectangle.split.2x1", title: .words("Tabs and split view"),
-                             detail: "Keep several files open in tabs, and two side by side with Split Right."),
+                             detail: "Keep several files open in tabs, and two side by side with Split Right, or one above the other with Split Down."),
             WelcomeTourPoint(systemImage: "calendar", title: .words("Templates and daily notes"),
                              detail: "Insert a template into a note, or open today's daily note from New."),
             WelcomeTourPoint(systemImage: "speaker.wave.2", title: .words("Read Aloud"),

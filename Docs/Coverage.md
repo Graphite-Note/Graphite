@@ -2,7 +2,18 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-19.
+Last updated: 2026-11-21.
+
+## Split Down: the two sides one above the other: 2026-11-21
+
+[Split-down-and-section-links-todo.md](Split-down-and-section-links-todo.md) section 1 (issue #221), from the request in #220: Obsidian's "Split down" beside Split Right, for a PDF above a note on an iPad held upright.
+
+- **Built:** `SplitDirection` in `TabLayout` and `SavedTabLayout` (written only for a split one above the other); `WorkspacePanes` lays the sides out with one `AnyLayout`, so turning a split keeps both editors; the divider runs across and its drag and the fold it snaps to follow the direction; Split Down in the palette, the View menu and the menus of the tab bar's split buttons; the Guide and the Welcome tour name it.
+- **Automated tests, passing on macOS:** `TabLayoutTests` (splitting down, turning, focusing the other side, saving and reading the direction, an older and a newer save), `DisplayFoldLayoutTests.testASplitAboveAndBelowPutsItsDividerOnAFoldAcross`, `SplitDividerDragTests`, `SplitDownTests` (a hosted Mac window shows the sides one above the other, each the window's width; turning keeps the same text views; the direction kept between launches), `WorkspaceCommandIdentifiersTests`, `LayoutFitsNarrowWindowsTests`.
+- **Full Mac package suite:** 5,077 tests run with the Read Aloud, speech, dictation, audio, voice and recording classes left out, 30 skipped, one failure away from this change: `ReadingGanttChartTests.testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy` expects MermaidDiagrams to refuse Gantt statements that 0.4.0, on main since e7c43832, draws. No audio assertion during the run.
+- **Checks:** `scripts/check-rules.py` (passing; `lines-over-160-characters` recorded at 805), `scripts/size-report.py` (passing), `scripts/check-test-registration.py`, the iOS app and hosted tests built for an arm64 simulator (`TEST BUILD SUCCEEDED`).
+- **Checked by hand (iPad simulator):** an iPad Pro 11-inch (M5) simulator (iOS 27.2, portrait) of its own with a demo vault of two notes and a PDF from the test vault: holding Split Right offers Split Down; a PDF opened below a note with its Pencil bar; the divider dragged; a tap on the upper note focused it; the keyboard shrank both sides and kept the PDF in view; Close This Side's menu turned the split side by side, keeping the note's cursor.
+- **Not established:** the View menu opened by hand, landscape and Stage Manager windows, writing with Apple Pencil in the lower side, the Mac app, a folding display and a physical iPad.
 
 ## Mermaid diagrams through MermaidDiagrams 0.4.0: all 33 of Pele's types, compared with Pele: 2026-11-20
 

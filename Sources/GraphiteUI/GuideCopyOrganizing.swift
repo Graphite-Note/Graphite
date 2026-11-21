@@ -5,8 +5,8 @@
  * Description: The Guide's words for organizing a vault: folders, links, search, the command palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 11/11/2026
+ * Version: 0.9
+ * Date: 21/11/2026
  */
 
 import Foundation
@@ -60,8 +60,10 @@ enum GuideOrganizingCopy {
                        "On iPhone, the bottom bar's **Tabs** button lists your tabs and opens new ones.",
                 mac: "**New Tab** (+ at the end of the tab bar, ⌘T) opens another tab.")),
             GuideStep("⌘ with a click on a link opens it in a new tab."),
-            GuideStep(forPlatform(touch: "On iPad, **Split Right** shows two files side by side; **Close This Side** ends the split.",
-                                  mac: "**Split Right** shows two files side by side; **Close This Side** ends the split.")),
+            GuideStep(forPlatform(touch: "On iPad, **Split Right** shows two files side by side; touch and hold it for **Split Down**, " +
+                                         "one above the other. **Close This Side** ends the split.",
+                                  mac: "**Split Right** shows two files side by side, **Split Down** one above the other; " +
+                                       "**Close This Side** ends the split.")),
             GuideStep(forPlatform(touch: "Touch and hold a tab to **Pin** it, close the others, or **Reveal in Sidebar**.",
                                   mac: "Right-click a tab to **Pin** it, close the others, or **Reveal in Sidebar**.")),
             GuideStep("**More** › **Focus** hides the sidebars and tabs. **Exit Focus** brings them back.")
