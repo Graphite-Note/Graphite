@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.71
- * Date: 19/11/2026
+ * Version: 0.72
+ * Date: 23/11/2026
  */
 
 import SwiftUI
@@ -2199,8 +2199,10 @@ struct ObsidianMarkdownParser: MarkupParser {
         // A numbered formula that is a block of its own is drawn by `NumberedEquationView`;
         // one that reaches here is among other text, and takes its numbers after its rows.
         // A table row of empty cells, as the "+" strip adds, is drawn too (`MarkdownTableEmptyRows`).
-        let markdown = MarkdownTableEmptyRows.keepingEmptyRows(in: ReadingMathPreparation.inliningEquationNumbers(in: input))
+        // The markers are framed as punctuation, so bold beside them parses as beside Obsidian's syntax.
+        let markdown = ReadingMarkerPunctuation.framing(MarkdownTableEmptyRows.keepingEmptyRows(in: ReadingMathPreparation.inliningEquationNumbers(in: input)))
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
+        ReadingMarkerPunctuation.removingFrames(from: &attributed)
         Self.applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
             if let color = Color(graphiteHex: hex) { text[range].foregroundColor = color }
         }

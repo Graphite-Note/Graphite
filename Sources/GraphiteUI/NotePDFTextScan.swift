@@ -7,8 +7,8 @@
  *              Foundation's Markdown parser off the main thread.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/10/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -24,6 +24,9 @@ struct NotePDFTextScan: Sendable {
 
     /// The Unicode private use area, where the reading view's markers are.
     private static let privateUseScalars: ClosedRange<UInt32> = 0xE000...0xF8FF
+    /// Around a colour's hex, which opens a coloured run of a heading.
+    private static let colorStartScalar = ReadingMarkers.colorStartMarker.unicodeScalars.first
+    private static let colorHexEndScalar = ReadingMarkers.colorHexEndMarker.unicodeScalars.first
     /// Schemes of links a PDF reader opens; Graphite's own links lead nowhere outside the app.
     private static let webSchemes: Set<String> = ["http", "https", "mailto"]
 
@@ -62,12 +65,25 @@ struct NotePDFTextScan: Sendable {
     /// A heading's words without its Markdown, for the PDF's outline.
     static func plainText(of markdown: String, root: URL) async -> String {
         await Task.detached(priority: .userInitiated) {
-            guard let attributedText = try? AttributedString(markdown: markdown, options: parsingOptions, baseURL: root) else { // Unparsed: listed as written.
+            // Framed as the reading view frames them, so bold beside a marker loses its `**` here too.
+            let framed = ReadingMarkerPunctuation.framing(markdown)
+            guard var attributedText = try? AttributedString(markdown: framed, options: parsingOptions, baseURL: root) else { // Unparsed: listed as written.
                 return markdown
             }
-            // Graphite's private-use markers (highlights, colours) are not words.
-            let wordScalars = String(attributedText.characters).unicodeScalars.filter { scalar in !privateUseScalars.contains(scalar.value) }
-            let words = String(String.UnicodeScalarView(wordScalars))
+            ReadingMarkerPunctuation.removingFrames(from: &attributedText)
+            // Graphite's private-use markers (highlights, colours) and a colour's hex between its markers are not words.
+            var wordScalars = String.UnicodeScalarView()
+            var isInColorHex = false
+            for scalar in String(attributedText.characters).unicodeScalars {
+                if scalar == colorStartScalar {
+                    isInColorHex = true
+                } else if scalar == colorHexEndScalar {
+                    isInColorHex = false
+                } else if !isInColorHex, !privateUseScalars.contains(scalar.value) {
+                    wordScalars.append(scalar)
+                }
+            }
+            let words = String(wordScalars)
             return words.trimmingCharacters(in: .whitespacesAndNewlines)
         }.value
     }

@@ -2,7 +2,16 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-21.
+Last updated: 2026-11-23.
+
+## Bold beside a formula in a colour reads bold in the reading view: 2026-11-23
+
+`Docs/Bug-hunt-todo.md` HUNT-374 (section 14, issue #127), seen by the owner on the iPad: `~={#d29922}**If $C_{GS} \gg (1 + g_mR_D)C_{GD}$**=~` showed its `**` in the reading view while Live Preview showed it bold. The reading view's markers for `~={…}`, `=~`, `==`, `<u>`, `<mark>` and `<br>` are private-use characters, which CommonMark reads as letters, so a `**` between a marker and a formula's `$` could neither open nor close; `ReadingMarkerPunctuation` frames them with punctuation while the block is parsed.
+
+- **Automated tests, passing on macOS:** `ReadingEmphasisBesideMarkersTests` (3, new: eight lines of the shape, in a colour, a highlight, `<mark>`, `<u>` and before `<br>`, with `**`, `*` and `_`, read bold or italic, coloured, with no asterisks; the text around markers and a note's own U+2E31 stay; the PDF outline's words of such a heading; 17 failures before the change). Also passing with the change: `ReadingBlockTextTests`, `HighlightBehindFormulaTests`, `UiReadingViewTests`, `UiReadingTaskTests`, `UiNumberedEquationTests`, `UiReadingInlineImagesTests`, `ReleaseVaultFindingsTests`, `NotePreviewDocumentTests`, `MarkdownBlockRuleTests`, `TextColorMarkupTests`, `CoreHtmlColorsTextColorMarkupTests`, `NotePDFExportTests`, `NotePDFRendererTests`, `NotePDFFormulasAndEmbedsTests`, `NotePDFOptionsTests`.
+- **Checks:** `scripts/check-rules.py`, `scripts/size-report.py`, `scripts/check-test-registration.py`; the iOS app and hosted tests built for an arm64 simulator.
+- **Checked by hand (iPad simulator):** a made-up demo vault opened in the reading view: both of the owner's shapes, bold starting with a formula, italic with `*` and `_` in a colour, a highlight, an underline and a line before `<br>`, all bold or italic and coloured with no asterisks.
+- **Not established:** the full Mac package suite (only the classes above ran); an exported PDF looked at by eye (it draws through the same parser, and the PDF tests pass); a physical iPad; the Mac app.
 
 ## Section links on PDF pages: a note's section dropped on a page, kept up to date: 2026-11-21
 
