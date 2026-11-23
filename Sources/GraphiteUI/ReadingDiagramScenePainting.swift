@@ -2,10 +2,11 @@
  * File: ReadingDiagramScenePainting.swift
  * ---------------------------------------
  * Layer: UI
- * Description: Paints any laid-out diagram's scene as SwiftUI shapes and text in the note's colors.
+ * Description: Paints any laid-out diagram's scene as SwiftUI shapes and text in the note's colors, its series in the colors its own
+ *              theme variables set.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 23/11/2026
  */
 
@@ -16,14 +17,25 @@ import MermaidDiagrams
 /// path filled, stroked, or filled and stroked, each line of text one `Text` at the middle of its line box. The package
 /// has merged what is painted alike one after the other into one path already, so a scene paints as few views as it
 /// can. Its paints are the palette's roles until here, where they take the note's colors (`ReadingDiagramColors`):
-/// a theme or appearance change paints the same scene again. No `Canvas`: a canvas starts a graphics device, which held
-/// about 200 MB while a note scrolled, and the shapes and text stay vector in a printed PDF
-/// (`Docs/Native-diagrams-todo.md`, decision 5).
+/// a theme or appearance change paints the same scene again. A diagram whose own theme variables set its series (`pie1`,
+/// `git0`, `cScale0`, `xyChart.plotColorPalette` …, `DiagramScene.seriesColors`) has its series painted in them over the
+/// note's, as Pele sets them over the page's; the label inks Pele writes on them are colors of the scene already. No
+/// `Canvas`: a canvas starts a graphics device, which held about 200 MB while a note scrolled, and the shapes and text stay
+/// vector in a printed PDF (`Docs/Native-diagrams-todo.md`, decision 5).
 struct ReadingDiagramScenePainting: View {
     let scene: DiagramScene
-    let colors: ReadingDiagramColors
+    let noteColors: ReadingDiagramColors
+    /// The appearance the series a diagram's theme variables set are resolved in (`light-dark()`, the note's colors they
+    /// refer to); read alone, as the SVG commands read it, so no other change of the environment paints the scene again.
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(scene: DiagramScene, colors: ReadingDiagramColors) {
+        self.scene = scene
+        noteColors = colors
+    }
 
     var body: some View {
+        let colors = noteColors.overSeriesColors(of: scene, colorScheme: colorScheme)
         ZStack(alignment: .topLeading) {
             ForEach(scene.items.indices, id: \.self) { index in
                 switch scene.items[index] {

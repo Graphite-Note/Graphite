@@ -2,11 +2,12 @@
  * File: ReadingDiagramColors.swift
  * --------------------------------
  * Layer: UI
- * Description: The colors a diagram is painted in: the note's, and a theme's Pele variables.
+ * Description: The colors a diagram is painted in: the note's, a theme's Pele variables, and the series a diagram's own theme
+ *              variables set.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 19/11/2026
+ * Version: 0.10
+ * Date: 23/11/2026
  */
 
 import SwiftUI
@@ -30,8 +31,9 @@ struct ReadingDiagramColors {
     let surface: Color
     let border: Color
     /// Pele's series colors, which a chart's slices take in turn, the same on a light page and a dark one, each replaced
-    /// by the theme's `--pele-series-1` to `--pele-series-8` where it sets them.
-    let series: [Color]
+    /// by the theme's `--pele-series-1` to `--pele-series-8` where it sets them, and by a diagram's own theme variables
+    /// where it sets them (`overSeriesColors(of:in:)`).
+    private(set) var series: [Color]
     /// What a chart marks, a Gantt chart's tasks and today's line: the vault theme's accent, else the app's.
     let accent: Color
     /// A Gantt chart's critical tasks: Pele's critical color.
@@ -68,6 +70,18 @@ struct ReadingDiagramColors {
                   foreground: pele.foreground ?? Color(theme?.textNormal ?? NoteThemeStyle.systemLabel),
                   accent: pele.accent ?? theme?.accent.map { accent in Color(accent) } ?? .accentColor,
                   muted: pele.muted ?? theme?.textMuted.map { muted in Color(muted) }, overrides: pele)
+    }
+
+    /// These colors with the series a scene's own theme variables set in their colors, resolved over these colors in the
+    /// appearance `colorScheme` as a browser resolves Pele's variables over a page (`DiagramScene.palette(over:)`):
+    /// `var(--pele-accent)` as the accent, `light-dark()` by whether the page is dark. Unchanged for a scene that sets none.
+    func overSeriesColors(of scene: DiagramScene, colorScheme: ColorScheme) -> ReadingDiagramColors {
+        guard !scene.seriesColors.isEmpty else { return self }
+        var environment = EnvironmentValues()
+        environment.colorScheme = colorScheme
+        var painted = self
+        painted.series = scene.palette(over: palette(in: environment)).series.map { color in Color(cgColor: color) }
+        return painted
     }
 
     /// The color of the `index`th series, the colors taken in turn.

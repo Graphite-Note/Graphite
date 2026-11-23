@@ -7,8 +7,8 @@
  *              makes a warning in any of its targets fail the build.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.17
- * Date: 04/11/2026
+ * Version: 0.18
+ * Date: 23/11/2026
  */
 import PackageDescription
 
@@ -35,7 +35,7 @@ let package = Package(
         // Standalone packages (Docs/solid/rewrite-foundations.md section 3.5): they know nothing of Graphite.
         .package(path: "Packages/NotebookImport"),
         // Mermaid diagrams read, laid out and drawn natively, in Pele's style: Graphite's own package, in a repository of its own.
-        .package(url: "https://github.com/Graphite-Note/MermaidDiagrams.git", exact: "0.5.0")
+        .package(url: "https://github.com/Graphite-Note/MermaidDiagrams.git", exact: "0.6.0")
     ],
     targets: [
         .target(name: "GraphiteCore", dependencies: [
