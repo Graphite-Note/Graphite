@@ -7,8 +7,8 @@
  *              paint them in the dark appearance, with screenshots.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 19/11/2026
+ * Version: 0.3
+ * Date: 23/11/2026
  */
 
 #if os(iOS)
@@ -65,7 +65,7 @@ final class DiagramColumnWidthHostedTests: XCTestCase {
 
     func testTheFourteenShapesRunDownReadablyInAnIPadColumnAndAnIPhoneColumn() async throws {
         let diagram = ReadingDiagram(source: Self.fourteenShapes, typography: DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17)))
-        guard case .drawn(let flowchart) = diagram, let narrow = flowchart.narrowScene else { return XCTFail("A flowchart with a narrow layout") }
+        guard case .drawn(let flowchart, _) = diagram, let narrow = flowchart.narrowScene else { return XCTFail("A flowchart with a narrow layout") }
         for columnWidth in [Self.iPadColumnWidth, Self.iPhoneColumnWidth] {
             let drawn = try await show(diagram, columnWidth: columnWidth)
             XCTAssertEqual(drawn.width, narrow.size.width, accuracy: 1, "Shown at its own size, not scaled down, in a column \(columnWidth) wide.")
@@ -80,7 +80,7 @@ final class DiagramColumnWidthHostedTests: XCTestCase {
 
     func testCompositeStatesAndTheirRegionsAreDrawnAsBoxesInBothColumns() async throws {
         let diagram = ReadingDiagram(source: Self.compositeStates, typography: DiagramTypography(font: DiagramFont(postScriptName: nil, size: 17)))
-        guard case .drawn(let states) = diagram, states.kind == .stateDiagram else { return XCTFail("The state diagram is drawn") }
+        guard case .drawn(let states, _) = diagram, states.kind == .stateDiagram else { return XCTFail("The state diagram is drawn") }
         XCTAssertTrue(states.scene.shapes.contains { shape in shape.part == .cluster }, "The composite state is a box.")
         for columnWidth in [Self.iPadColumnWidth, Self.iPhoneColumnWidth] {
             let drawn = try await show(diagram, columnWidth: columnWidth)
@@ -102,7 +102,7 @@ final class DiagramColumnWidthHostedTests: XCTestCase {
         XCTAssertGreaterThan(drawn.width, 0)
         let screenshot = attachScreenshot(named: "A pie in the theme's dark --pele-series-1")
         let pieFrame = try XCTUnwrap(Self.diagramFrame(in: try XCTUnwrap(window)))
-        guard case .drawn(let chart) = pie, let slice = chart.scene.shapes.first(where: { shape in shape.painting == .fill(.series(0)) }) else {
+        guard case .drawn(let chart, _) = pie, let slice = chart.scene.shapes.first(where: { shape in shape.painting == .fill(.series(0)) }) else {
             return XCTFail("A pie with its slice")
         }
         // The pie's middle, a quarter of its radius up from its center, inside the only slice.

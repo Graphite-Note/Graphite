@@ -2,11 +2,12 @@
  * File: ReadingScaledDiagram.swift
  * --------------------------------
  * Layer: UI
- * Description: Places a prepared diagram in the reading column: its scene for a narrow column when the column needs it, scaled down to
- *              fit, or scrolling sideways once fitting would make its text too small to read (never on paper, which is always fitted).
+ * Description: Places a prepared diagram in the reading column: its scene for a narrow column when the column needs it, laid out
+ *              again at the column's real width, scaled down to fit, or scrolling sideways once fitting would make its text too
+ *              small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.6
+ * Version: 0.7
  * Date: 23/11/2026
  */
 
@@ -41,14 +42,21 @@ enum ReadingDiagramPresentation: Equatable {
 /// narrower (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`): a chart configured 900 points wide in a 750-point column
 /// is the regular one at 83 %, not the one laid out for a phone's 280 points. A diagram that would have to be
 /// shrunk below `ReadingDiagramPresentation.smallestReadableScale` keeps that size instead and scrolls sideways, so its
-/// text stays readable on an iPhone or an iPad in portrait.
+/// text stays readable on an iPhone or an iPad in portrait. The narrow scene is laid out again at the column's real
+/// width, as Obsidian draws Pele at its container's width (`ReadingDiagramNarrowScenes`): until that is done, and where
+/// the column rounds to the standard 280 points, the standard narrow scene is shown.
 struct ReadingScaledDiagram<Painting: View>: View {
     let prepared: PreparedMermaidDiagram
+    /// What the diagram was prepared from, to lay its narrow scene out again; nil to show the standard narrow scene.
+    var source: ReadingDiagramSource? = nil
     /// The note's text size now.
     let textSize: Double
     /// The painting of the scene shown.
     @ViewBuilder let painting: (DiagramScene) -> Painting
     @State private var columnWidth: CGFloat = 0
+    /// The narrow scene last laid out again for this view and the request it was for: setting it paints the view again
+    /// once the scene is ready.
+    @State private var redrawn: (request: ReadingDiagramNarrowRequest, scene: ReadingDiagramRedrawnNarrowScene)?
     /// On paper the diagram is always fitted: paper does not scroll, and a drawing for a PDF
     /// shows no scroll view.
     @Environment(\.readingIsPrinted) private var isPrinted
@@ -57,7 +65,12 @@ struct ReadingScaledDiagram<Painting: View>: View {
     private var scaleAtNaturalWidth: CGFloat { CGFloat(textSize) / prepared.scene.font.size }
 
     var body: some View {
-        let scene = Self.shownScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
+        let narrowRequest = Self.narrowRequest(of: prepared, source: source, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
+        let standardScene = Self.shownScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
+        let redrawnScene = narrowRequest.flatMap { request in
+            redrawn?.request == request ? redrawn?.scene : ReadingDiagramNarrowScenes.shared.redrawnScene(for: request)
+        }
+        let scene = redrawnScene?.scene ?? standardScene
         let naturalWidth = scene.size.width * scaleAtNaturalWidth
         let presentation = ReadingDiagramPresentation.presentation(naturalWidth: naturalWidth, scaleAtNaturalWidth: scaleAtNaturalWidth,
                                                                    columnWidth: columnWidth)
@@ -73,6 +86,24 @@ struct ReadingScaledDiagram<Painting: View>: View {
         }
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in columnWidth = width }
+        .task(id: narrowRequest) {
+            // On paper the page is drawn at once: the standard narrow scene stays.
+            guard let narrowRequest, !isPrinted, ReadingDiagramNarrowScenes.shared.redrawnScene(for: narrowRequest) == nil else { return }
+            guard let scene = await ReadingDiagramNarrowScenes.shared.prepare(narrowRequest), !Task.isCancelled else { return }
+            redrawn = (narrowRequest, scene)
+        }
+    }
+
+    /// The narrow scene to lay out again for a column `columnWidth` wide: when the column shows the narrow scene
+    /// (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`) and its width in layout points, rounded
+    /// (`ReadingDiagramNarrowWidth`), is not the standard 280 points; nil otherwise, or without a source.
+    static func narrowRequest(of prepared: PreparedMermaidDiagram, source: ReadingDiagramSource?, inColumnWidth columnWidth: CGFloat,
+                              scaleAtNaturalWidth: CGFloat) -> ReadingDiagramNarrowRequest? {
+        guard let source, prepared.narrowScene != nil,
+              showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth),
+              let layoutWidth = ReadingDiagramNarrowWidth.layoutWidth(columnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
+        else { return nil }
+        return ReadingDiagramNarrowRequest(source: source, columnWidth: layoutWidth)
     }
 
     /// The scene a column `columnWidth` wide shows: the narrow one where the package would show it
@@ -83,11 +114,18 @@ struct ReadingScaledDiagram<Painting: View>: View {
     static func shownScene(of prepared: PreparedMermaidDiagram, inColumnWidth columnWidth: CGFloat,
                            scaleAtNaturalWidth: CGFloat) -> DiagramScene {
         guard let narrowScene = prepared.narrowScene,
-              prepared.showsNarrowScene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth) else { return prepared.scene }
+              showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth) else { return prepared.scene }
+        return narrowScene
+    }
+
+    /// Whether a column `columnWidth` wide shows the diagram's narrow scene rather than its regular one
+    /// (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`).
+    static func showsNarrowScene(of prepared: PreparedMermaidDiagram, inColumnWidth columnWidth: CGFloat, scaleAtNaturalWidth: CGFloat) -> Bool {
+        guard prepared.showsNarrowScene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth) else { return false }
         let regular = ReadingDiagramPresentation.presentation(naturalWidth: prepared.scene.size.width * scaleAtNaturalWidth,
                                                               scaleAtNaturalWidth: scaleAtNaturalWidth, columnWidth: columnWidth)
-        if case .fitted = regular { return prepared.scene }
-        return narrowScene
+        if case .fitted = regular { return false }
+        return true
     }
 
     /// As wide as it was laid out, and no wider than the column, scaled to the width it is given.

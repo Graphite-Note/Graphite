@@ -5,8 +5,8 @@
  * Description: A mermaid block in the reading view: the prepared diagram painted and placed in the column, or its source with why.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.19
- * Date: 19/11/2026
+ * Version: 0.20
+ * Date: 23/11/2026
  */
 
 import SwiftUI
@@ -26,15 +26,15 @@ struct ReadingDiagramView: View {
 
     var body: some View {
         switch diagram {
-        case .drawn(let prepared) where prepared.unappliedStatementCount > 0:
+        case .drawn(let prepared, let source) where prepared.unappliedStatementCount > 0:
             VStack(alignment: .leading, spacing: 6) {
-                ReadingPreparedDiagramDrawing(prepared: prepared, textSize: textSize, svgCommandsPlacement: svgCommandsPlacement)
+                ReadingPreparedDiagramDrawing(prepared: prepared, source: source, textSize: textSize, svgCommandsPlacement: svgCommandsPlacement)
                 // The diagram has styling or click actions that are read and not applied: it may look different from Obsidian's.
                 Label("Some styling or click actions in this diagram are not applied here.", systemImage: "info.circle")
                     .font(.footnote).foregroundStyle(.secondary)
             }
-        case .drawn(let prepared):
-            ReadingPreparedDiagramDrawing(prepared: prepared, textSize: textSize, svgCommandsPlacement: svgCommandsPlacement)
+        case .drawn(let prepared, let source):
+            ReadingPreparedDiagramDrawing(prepared: prepared, source: source, textSize: textSize, svgCommandsPlacement: svgCommandsPlacement)
         case .unreadable(let source, let failure):
             VStack(alignment: .leading, spacing: 6) {
                 ObsidianMarkdownText(markdown: "```mermaid\n" + source + "\n```", root: root, textSize: textSize, navigate: navigate,
@@ -47,9 +47,11 @@ struct ReadingDiagramView: View {
 }
 
 /// A prepared diagram, whatever its type, in the note's colors (`ReadingDiagramScenePainting`), placed in the column
-/// (`ReadingScaledDiagram`), one image for a screen reader with the package's label and value, and its SVG commands.
+/// (`ReadingScaledDiagram`, its narrow scene laid out again at the column's width), one image for a screen reader with
+/// the package's label and value, and its SVG commands.
 private struct ReadingPreparedDiagramDrawing: View {
     let prepared: PreparedMermaidDiagram
+    let source: ReadingDiagramSource
     let textSize: Double
     let svgCommandsPlacement: ReadingDiagramSVGCommandsPlacement
     @Environment(\.noteTheme) private var theme
@@ -57,7 +59,7 @@ private struct ReadingPreparedDiagramDrawing: View {
 
     var body: some View {
         let colors = ReadingDiagramColors(theme: theme, colorScheme: colorScheme)
-        ReadingScaledDiagram(prepared: prepared, textSize: textSize) { scene in
+        ReadingScaledDiagram(prepared: prepared, source: source, textSize: textSize) { scene in
             ReadingDiagramScenePainting(scene: scene, colors: colors)
         }
         .accessibilityElement(children: .ignore)

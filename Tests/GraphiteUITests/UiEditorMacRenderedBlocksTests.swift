@@ -6,8 +6,8 @@
  *              their concealed source, as the iPad does.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.13
- * Date: 19/11/2026
+ * Version: 0.14
+ * Date: 23/11/2026
  */
 
 #if os(macOS)
@@ -359,7 +359,7 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
     /// font (the system's) and size (17 points), with the space `LivePreviewWidgetView` keeps above and below every block.
     private func reportedHeight(ofFlowchart code: String) -> CGFloat {
         let request = LivePreviewDiagramRequest(source: code, font: DiagramFont(postScriptName: nil, size: 17))
-        guard case .diagram(.drawn(let flowchart)) = LivePreviewDiagramPreparation.content(of: request) else {
+        guard case .diagram(.drawn(let flowchart, _)) = LivePreviewDiagramPreparation.content(of: request) else {
             XCTFail("The flowchart is drawn natively")
             return 0
         }

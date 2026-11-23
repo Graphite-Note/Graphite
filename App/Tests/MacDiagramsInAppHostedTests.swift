@@ -7,7 +7,7 @@
  *              commands, and every diagram of a folder of notes written as SVG and read back.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 23/11/2026
  */
 
@@ -54,7 +54,7 @@ final class MacDiagramsInAppHostedTests: XCTestCase {
                 case .unreadable(_, let failure):
                     failures.append("\(label): \(failure)")
                     try note("NOT DRAWN \(label): \(failure)")
-                case .drawn(let prepared):
+                case .drawn(let prepared, _):
                     drawnCount += 1
                     for scheme in [ColorScheme.light, .dark] {
                         var environment = EnvironmentValues()
@@ -120,7 +120,7 @@ final class MacDiagramsInAppHostedTests: XCTestCase {
         try XCTUnwrap(workspace.markdownSession).viewMode = .reading
         try await settle(window)
         let source = try XCTUnwrap(Self.diagramSources(in: try XCTUnwrap(texts.first).1).first)
-        guard case .drawn(let prepared) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("not drawn") }
+        guard case .drawn(let prepared, _) = ReadingDiagram(source: source, typography: typography) else { return XCTFail("not drawn") }
         var environment = EnvironmentValues()
         environment.colorScheme = .light
         let palette = ReadingDiagramColors(theme: nil, colorScheme: .light).palette(in: environment)

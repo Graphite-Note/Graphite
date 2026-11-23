@@ -5,8 +5,8 @@
  * Description: What the diagram tests read of a mermaid block: the prepared diagram of a type, or why it is shown as its source.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 19/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import MermaidDiagrams
@@ -19,7 +19,7 @@ struct DiagramNotDrawnAsExpected: Error, CustomStringConvertible {
 
     var description: String {
         switch shown {
-        case .drawn(let prepared): "Drawn as \(prepared.kind), not \(expected)"
+        case .drawn(let prepared, _): "Drawn as \(prepared.kind), not \(expected)"
         case .unreadable(_, let failure): "Shown as its source (\(failure)), not drawn as \(expected)"
         }
     }
@@ -28,7 +28,7 @@ struct DiagramNotDrawnAsExpected: Error, CustomStringConvertible {
 extension ReadingDiagram {
     /// The prepared diagram, or nil for a source shown with why.
     var prepared: PreparedMermaidDiagram? {
-        guard case .drawn(let prepared) = self else { return nil }
+        guard case .drawn(let prepared, _) = self else { return nil }
         return prepared
     }
 

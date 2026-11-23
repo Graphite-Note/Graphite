@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks stay over the space their text reserves for them.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.10
- * Date: 19/11/2026
+ * Version: 0.11
+ * Date: 23/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -210,7 +210,7 @@ final class LivePreviewBlockPlacementTests: XCTestCase {
         let environment = LivePreviewEnvironment(root: try XCTUnwrap(vaultDirectory), textSize: Double(textSize), colorsEnabled: true, paletteHexByName: [:],
                                                  drawingVersion: 0, resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
         let request = LivePreviewDiagramRequest(source: Self.diagramCode, environment: environment)
-        guard case .diagram(.drawn(let flowchart)) = LivePreviewDiagramPreparation.content(of: request) else {
+        guard case .diagram(.drawn(let flowchart, _)) = LivePreviewDiagramPreparation.content(of: request) else {
             return XCTFail("The flowchart is drawn natively")
         }
         let diagramScale = min(1, diagramView.frame.width / flowchart.scene.size.width)
