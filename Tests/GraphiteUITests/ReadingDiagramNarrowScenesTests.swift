@@ -79,6 +79,21 @@ final class ReadingDiagramNarrowScenesTests: XCTestCase {
         XCTAssertGreaterThan(wider.size.width, standard.size.width + 60)
     }
 
+    /// A scene laid out again is shown only where it fits the column readably: a long flowchart laid out for 750 points
+    /// stays across (Pele turns it only under 640) and 2,000 points wide, so the column keeps the standard one running down.
+    func testASceneLaidOutAgainIsShownOnlyWhereItFitsTheColumnReadably() throws {
+        let (flowchart, source) = try drawn(ReadingDiagramNarrowColumnTests.fourteenShapesInARow, as: .flowchart)
+        let at750 = try XCTUnwrap(ReadingScaledDiagram<EmptyView>.narrowRequest(of: flowchart, source: source, inColumnWidth: 750, scaleAtNaturalWidth: 1))
+        let across = try XCTUnwrap(ReadingDiagramNarrowRequest.narrowScene(of: at750))
+        XCTAssertGreaterThan(across.size.width, 1_500)
+        XCTAssertNil(ReadingScaledDiagram<EmptyView>.readableScene(across, inColumnWidth: 750, scaleAtNaturalWidth: 1))
+        let (packet, packetSource) = try drawn(Self.packet, as: .packet)
+        let at400 = try XCTUnwrap(ReadingScaledDiagram<EmptyView>.narrowRequest(of: packet, source: packetSource, inColumnWidth: 400, scaleAtNaturalWidth: 1))
+        let fitted = try XCTUnwrap(ReadingDiagramNarrowRequest.narrowScene(of: at400))
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.readableScene(fitted, inColumnWidth: 400, scaleAtNaturalWidth: 1)?.size, fitted.size)
+        XCTAssertNil(ReadingScaledDiagram<EmptyView>.readableScene(nil, inColumnWidth: 400, scaleAtNaturalWidth: 1))
+    }
+
     /// Asked from the main actor, as the view's task asks, the work never runs on the main thread; a width laid out once is
     /// kept, another width is laid out again.
     func testThePreparationRunsOffTheMainThreadAndIsKeptPerWidth() async throws {

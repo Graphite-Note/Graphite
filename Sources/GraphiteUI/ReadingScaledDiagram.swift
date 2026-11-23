@@ -70,7 +70,7 @@ struct ReadingScaledDiagram<Painting: View>: View {
         let redrawnScene = narrowRequest.flatMap { request in
             redrawn?.request == request ? redrawn?.scene : ReadingDiagramNarrowScenes.shared.redrawnScene(for: request)
         }
-        let scene = redrawnScene?.scene ?? standardScene
+        let scene = Self.readableScene(redrawnScene?.scene, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth) ?? standardScene
         let naturalWidth = scene.size.width * scaleAtNaturalWidth
         let presentation = ReadingDiagramPresentation.presentation(naturalWidth: naturalWidth, scaleAtNaturalWidth: scaleAtNaturalWidth,
                                                                    columnWidth: columnWidth)
@@ -92,6 +92,18 @@ struct ReadingScaledDiagram<Painting: View>: View {
             guard let scene = await ReadingDiagramNarrowScenes.shared.prepare(narrowRequest), !Task.isCancelled else { return }
             redrawn = (narrowRequest, scene)
         }
+    }
+
+    /// A narrow scene laid out again for the column, where it fits the column without being shrunk below the readable
+    /// scale; nil otherwise, and the standard narrow scene is shown. Pele draws a flowchart for a column of 640 points or
+    /// more across, only tighter: for a 750-point column a long chain is laid out 2,130 points wide, which Obsidian shrinks
+    /// to a third and which would scroll here, where the standard narrow scene runs down 155 points wide.
+    static func readableScene(_ redrawn: DiagramScene?, inColumnWidth columnWidth: CGFloat, scaleAtNaturalWidth: CGFloat) -> DiagramScene? {
+        guard let redrawn else { return nil }
+        let presentation = ReadingDiagramPresentation.presentation(naturalWidth: redrawn.size.width * scaleAtNaturalWidth,
+                                                                   scaleAtNaturalWidth: scaleAtNaturalWidth, columnWidth: columnWidth)
+        guard case .fitted = presentation else { return nil }
+        return redrawn
     }
 
     /// The narrow scene to lay out again for a column `columnWidth` wide: when the column shows the narrow scene
