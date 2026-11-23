@@ -3,11 +3,12 @@
  * ---------------------------------------
  * Layer: Tests
  * Description: Mermaid diagrams in Graphite's own window inside the running Mac app: a note's diagrams drawn in the reading
- *              view in the light and the dark appearance, the diagram's context menu and its Copy as SVG and Save as SVG
- *              commands, and every diagram of a folder of notes written as SVG and read back.
+ *              view in the light and the dark appearance, in the vault's theme, the diagram's context menu and its Copy as SVG
+ *              and Save as SVG commands, every diagram of a folder of notes written as SVG and read back, and notes exported
+ *              to PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 23/11/2026
  */
 
@@ -16,6 +17,7 @@ import XCTest
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
+import PDFKit
 import GraphiteCore
 import MermaidDiagrams
 @testable import GraphiteUI
@@ -139,6 +141,50 @@ final class MacDiagramsInAppHostedTests: XCTestCase {
         found.cancel(nil)
     }
 
+    // MARK: The vault's theme and Export to PDF
+
+    /// The notes in the vault's theme (the notes folder's `.obsidian`, a snippet setting Obsidian's `--mermaid-*` and colour
+    /// variables) in the reading view, light and dark, and each exported to PDF as Export to PDF makes it
+    /// (`NotePDFRenderer`), its pages written as pictures.
+    func testTheNotesInTheVaultsThemeAndExportedToPDF() async throws {
+        guard try start() else { return }
+        let picked = ProcessInfo.processInfo.environment[Self.pickedVariable].map { list in Set(list.split(separator: ",").map(String.init)) }
+        let texts = try noteTexts().filter { name, _ in picked?.contains(name) ?? true }
+        let (window, workspace, _) = try await openWindow(notes: texts)
+        try await waitUntil("the vault's theme is measured", timeoutSeconds: 60) { workspace.noteTheme != nil }
+        let theme = try XCTUnwrap(workspace.noteTheme)
+        try note("theme diagram colors light: \(theme.tokens.light.diagramColors.keys.sorted()) dark: \(theme.tokens.dark.diagramColors.keys.sorted())")
+        let vault = try XCTUnwrap(ReadingVault(workspace.folderAccess?.root, workspace.index, store: workspace.store))
+        for (name, text) in texts {
+            _ = await workspace.open(try VaultPath(name + ".md"), placement: .currentTab)
+            try await waitUntil("the note is open", timeoutSeconds: 20) { workspace.markdownSession?.path.rawValue == name + ".md" }
+            try XCTUnwrap(workspace.markdownSession).viewMode = .reading
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                window.appearance = NSAppearance(named: appearance)
+                workspace.preferences.appearanceMode = appearance == .aqua ? .light : .dark
+                try await settle(window)
+                try writePicture("\(name) themed \(appearance == .aqua ? "light" : "dark")", of: window)
+            }
+            window.appearance = NSAppearance(named: .aqua)
+            workspace.preferences.appearanceMode = .light
+            let source = NotePDFSource(text: text, path: try VaultPath(name + ".md"), vault: vault, readingConfiguration: ReadingConfiguration(), title: name,
+                                       appearance: NotePDFAppearance(typography: workspace.noteTypography, codeColorTheme: workspace.preferences.codeColorTheme,
+                                                                     accent: workspace.preferences.accentColor))
+            let pdf = try await NotePDFRenderer(source: source, options: NotePDFOptions()).render { _ in }
+            let folder = try XCTUnwrap(outputFolder)
+            try pdf.data.write(to: folder.appendingPathComponent("\(name).pdf"))
+            let document = try XCTUnwrap(PDFDocument(data: pdf.data))
+            for pageIndex in 0..<document.pageCount {
+                let page = try XCTUnwrap(document.page(at: pageIndex))
+                let bounds = page.bounds(for: .mediaBox)
+                let image = page.thumbnail(of: CGSize(width: bounds.width * 2, height: bounds.height * 2), for: .mediaBox)
+                let picture = try XCTUnwrap(image.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:))?.representation(using: .png, properties: [:]))
+                try picture.write(to: folder.appendingPathComponent("\(name) PDF page \(pageIndex + 1).png"))
+            }
+            try note("\(name): PDF of \(pdf.pageCount) pages, \(pdf.data.count) bytes; page text: \(document.page(at: 0)?.string?.prefix(160) ?? "")")
+        }
+    }
+
     // MARK: The window and the menu
 
     private func noteTexts() throws -> [(String, String)] {
@@ -164,6 +210,12 @@ final class MacDiagramsInAppHostedTests: XCTestCase {
     private func openWindow(notes: [(String, String)]) async throws -> (NSWindow, WorkspaceModel, MarkdownSession?) {
         let vaultRoot = try TemporaryVault.make(prefix: "MacDiagramsInApp", for: self).root
         for (name, text) in notes { try Data(text.utf8).write(to: vaultRoot.appendingPathComponent(name + ".md")) }
+        // The notes folder's Obsidian settings (a theme or snippet) come along.
+        let notesFolder = URL(fileURLWithPath: try XCTUnwrap(ProcessInfo.processInfo.environment[Self.notesVariable]), isDirectory: true)
+        let settings = notesFolder.appendingPathComponent(".obsidian", isDirectory: true)
+        if FileManager.default.fileExists(atPath: settings.path) {
+            try FileManager.default.copyItem(at: settings, to: vaultRoot.appendingPathComponent(".obsidian", isDirectory: true))
+        }
         let device = try IsolatedWorkspaceDevice.make(for: self)
         let workspace = device.makeWorkspace()
         try await workspace.openFolderAsVault(vaultRoot)
