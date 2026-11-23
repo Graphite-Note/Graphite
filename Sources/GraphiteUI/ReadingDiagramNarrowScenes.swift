@@ -2,12 +2,12 @@
  * File: ReadingDiagramNarrowScenes.swift
  * --------------------------------------
  * Layer: UI
- * Description: A diagram's narrow scene laid out again at the real width of the column that shows it, off the main actor, once
- *              the column settles, and kept per width so that a rotation or a split being resized does not lay it out on
- *              every frame.
+ * Description: A diagram's narrow scene laid out again at the real width of the column that shows it, off the main actor, from
+ *              the diagram already read: at once when the column jumps to a width, once it settles when it keeps changing,
+ *              and kept per width so that a split being resized does not lay it out on every frame.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 23/11/2026
  */
 
@@ -35,14 +35,16 @@ enum ReadingDiagramNarrowWidth {
     }
 }
 
-/// A narrow scene to lay out again: the diagram's source and the column's width in layout points.
+/// A narrow scene to lay out again: the diagram's source (with the diagram read) and the column's width in layout points.
 struct ReadingDiagramNarrowRequest: Equatable, Sendable {
     let source: ReadingDiagramSource
     let columnWidth: CGFloat
 
     /// The work itself, on the thread that calls it: only `ReadingDiagramNarrowScenes.prepare(_:preparing:)` calls it in the app.
     static func narrowScene(of request: ReadingDiagramNarrowRequest) -> DiagramScene? {
-        request.source.narrowScene(forColumnWidth: request.columnWidth)
+        ReadingDiagramRelayoutTrace.measureLayout(forLayoutWidth: request.columnWidth) {
+            request.source.narrowScene(forColumnWidth: request.columnWidth)
+        }
     }
 }
 
@@ -55,14 +57,21 @@ struct ReadingDiagramRedrawnNarrowScene: Sendable {
 /// The narrow scenes of one diagram's view laid out again at its column's real widths, so that a rotation back, a split
 /// resized and back, or the view drawn again shows a width laid out before at once. Bounded: at most
 /// `sceneCountLimit` widths, and `NSCache` lets them go when the system runs short of memory. Owned by the view
-/// (`ReadingScaledDiagram`), which a lazy stack and Live Preview's pool keep while the diagram is scrolled away. A request
-/// is prepared only after the column has kept its width for `settlingDelay` on `clock`, so a split dragged across the
-/// screen lays the diagram out once, where the drag ends, and never on the main actor.
+/// (`ReadingScaledDiagram`), which a lazy stack and Live Preview's pool keep while the diagram is scrolled away.
+///
+/// When a request is laid out: a column that jumps to a width after keeping its last one for `settlingDelay` (a rotation,
+/// a sidebar shown or hidden, a split snapped to a size, the view first measured) has it laid out at once, so the scene
+/// is shown within a frame or two of the jump; a request that comes within `settlingDelay` of the one before (a split
+/// being dragged, whose rounded width changes every few frames) waits until the column has kept its width for
+/// `settlingDelay` on `clock`, so a drag lays the diagram out where it starts and where it ends, never on every frame.
+/// The layout is never on the main actor.
 @MainActor
 final class ReadingDiagramNarrowScenes {
     /// A few widths: the column's in each orientation and in a split, and one more.
     static let sceneCountLimit = 4
-    static let defaultSettlingDelay = Duration.milliseconds(150)
+    /// Longer than the gaps between a dragged split's widths, rounded to 8 points (one to a few frames), so that a drag
+    /// waits; short enough that its end is laid out soon after the finger stops.
+    static let defaultSettlingDelay = Duration.milliseconds(100)
 
     private final class Entry {
         let redrawn: ReadingDiagramRedrawnNarrowScene
@@ -71,11 +80,18 @@ final class ReadingDiagramNarrowScenes {
 
     private let entries = NSCache<NSString, Entry>()
     private let settlingDelay: Duration
-    private let clock: any Clock<Duration>
+    /// The time on the settling clock since this object was made.
+    private let elapsedTime: @Sendable () -> Duration
+    private let sleep: @Sendable (Duration) async throws -> Void
+    /// When the last request came, on `elapsedTime`; nil before the first.
+    private var lastRequestTime: Duration?
 
-    init(settlingDelay: Duration = ReadingDiagramNarrowScenes.defaultSettlingDelay, clock: any Clock<Duration> = ContinuousClock()) {
+    init<SettlingClock: Clock<Duration>>(settlingDelay: Duration = ReadingDiagramNarrowScenes.defaultSettlingDelay,
+                                         clock: SettlingClock = ContinuousClock()) {
         self.settlingDelay = settlingDelay
-        self.clock = clock
+        let origin = clock.now
+        elapsedTime = { origin.duration(to: clock.now) }
+        sleep = { duration in try await clock.sleep(for: duration) }
         entries.countLimit = Self.sceneCountLimit
     }
 
@@ -84,14 +100,21 @@ final class ReadingDiagramNarrowScenes {
         entries.object(forKey: Self.key(for: request))?.redrawn
     }
 
-    /// The scene for `request`: the one kept, else, once the column has kept its width for the settling delay, laid out
-    /// in a detached task and kept. Nil when the task is cancelled first (the column changed width again, or the view
-    /// went). `preparing` is the work, given by a test that observes where it runs.
+    /// The scene for `request`: the one kept, else laid out in a detached task and kept, at once when the column had
+    /// kept its width for the settling delay before this request, after the delay when it had not. Nil when the task is
+    /// cancelled while it waits (the column changed width again, or the view went). `preparing` is the work, given by a
+    /// test that observes where it runs.
     func prepare(_ request: ReadingDiagramNarrowRequest,
                  preparing: @escaping @Sendable (ReadingDiagramNarrowRequest) -> DiagramScene? = ReadingDiagramNarrowRequest.narrowScene(of:))
         async -> ReadingDiagramRedrawnNarrowScene? {
+        let requestTime = elapsedTime()
+        let columnIsMoving = lastRequestTime.map { lastTime in requestTime - lastTime < settlingDelay } ?? false
+        lastRequestTime = requestTime
         if let kept = redrawnScene(for: request) { return kept }
-        try? await clock.sleep(for: settlingDelay) // A cancelled wait ends early, and the check below stops the work.
+        ReadingDiagramRelayoutTrace.narrowSceneWasRequested(forLayoutWidth: request.columnWidth, waitsForTheColumnToSettle: columnIsMoving)
+        if columnIsMoving {
+            try? await sleep(settlingDelay) // A cancelled wait ends early, and the check below stops the work.
+        }
         guard !Task.isCancelled else { return nil }
         let redrawn = await Task.detached(priority: .userInitiated) {
             ReadingDiagramRedrawnNarrowScene(scene: preparing(request))

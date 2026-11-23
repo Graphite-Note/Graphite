@@ -2,11 +2,11 @@
  * File: ReadingDiagramNarrowScenesTests.swift
  * -------------------------------------------
  * Layer: Tests
- * Description: A diagram's narrow scene laid out again at the column's real width: which width, when, off the main thread,
- *              and kept per width.
+ * Description: A diagram's narrow scene laid out again at the column's real width: which width, when (at once after a jump,
+ *              once the column settles while it moves), off the main thread, from the diagram already read, and kept per width.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 23/11/2026
  */
 
@@ -115,18 +115,80 @@ final class ReadingDiagramNarrowScenesTests: XCTestCase {
         XCTAssertNil(scenes.redrawnScene(for: ReadingDiagramNarrowRequest(source: source, columnWidth: 600)))
     }
 
-    /// A column that changes width again before it settles (a split being dragged) lays nothing out for the width it left.
-    func testARequestCancelledWhileTheColumnSettlesIsNotLaidOut() async throws {
+    /// Two sources compare by their text, font and day, which the diagram is read from (the view's task compares its request
+    /// at each update without walking the diagram): the same text read twice is the same source, another text another.
+    func testSourcesCompareByTheirTextFontAndDayNotByWalkingTheDiagram() throws {
         let (_, source) = try drawn(Self.packet, as: .packet)
-        let scenes = ReadingDiagramNarrowScenes(settlingDelay: .seconds(5))
+        let readAgain = try ReadingDiagramSource(text: source.text, font: source.font, now: source.now, timeZone: source.timeZone)
+        XCTAssertEqual(readAgain, source)
+        let other = try ReadingDiagramSource(text: "flowchart LR\n  A --> B", font: source.font, now: source.now, timeZone: source.timeZone)
+        XCTAssertNotEqual(other, source)
+        let laterDay = try ReadingDiagramSource(text: source.text, font: source.font, now: source.now.addingTimeInterval(86_400), timeZone: source.timeZone)
+        XCTAssertNotEqual(laterDay, source)
+        let otherFont = try ReadingDiagramSource(text: source.text, font: DiagramFont(postScriptName: nil, size: 22), now: source.now, timeZone: source.timeZone)
+        XCTAssertNotEqual(otherFont, source)
+        XCTAssertEqual(ReadingDiagramNarrowLayout.package, ReadingDiagramNarrowLayout(name: "package", layOut: { _ in nil }), "Layouts compare by name")
+        XCTAssertNotEqual(ReadingDiagramNarrowLayout.package, ReadingDiagramNarrowLayout(name: "counted", layOut: ReadingDiagramNarrowRequest.narrowScene(of:)))
+    }
+
+    /// A column that jumps to a width after keeping its last one (a rotation, the view first measured) has it laid out at
+    /// once, without the settling wait: with a wait of a minute, the scene still comes at once.
+    func testAColumnThatJumpsToAWidthHasItLaidOutAtOnce() async throws {
+        let (_, source) = try drawn(Self.packet, as: .packet)
+        let scenes = ReadingDiagramNarrowScenes(settlingDelay: .seconds(60))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let redrawn = await scenes.prepare(ReadingDiagramNarrowRequest(source: source, columnWidth: 400))
+        XCTAssertNotNil(redrawn?.scene)
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(30), "Laid out without waiting for the column to settle")
+    }
+
+    /// A request that comes within the settling delay of the one before (a split being dragged) waits for the column to
+    /// keep its width; one that changes again while it waits lays nothing out for the width it left.
+    func testARequestWhileTheColumnMovesWaitsAndIsNotLaidOutWhenTheColumnMovesOn() async throws {
+        let (_, source) = try drawn(Self.packet, as: .packet)
+        let scenes = ReadingDiagramNarrowScenes(settlingDelay: .seconds(60))
         let observation = NarrowPreparationObservation()
-        let request = ReadingDiagramNarrowRequest(source: source, columnWidth: 400)
-        let task = Task { await scenes.prepare(request) { request in observation.record(pthread_main_np() != 0); return nil } }
+        let recording: @Sendable (ReadingDiagramNarrowRequest) -> DiagramScene? = { request in
+            observation.record(pthread_main_np() != 0)
+            return ReadingDiagramNarrowRequest.narrowScene(of: request)
+        }
+        _ = await scenes.prepare(ReadingDiagramNarrowRequest(source: source, columnWidth: 400), preparing: recording)
+        XCTAssertEqual(observation.observations.count, 1, "Where the drag starts")
+        let moved = ReadingDiagramNarrowRequest(source: source, columnWidth: 408)
+        let task = Task { await scenes.prepare(moved, preparing: recording) }
+        // The view's task is cancelled when the column changes width again.
         task.cancel()
         let redrawn = await task.value
         XCTAssertNil(redrawn)
-        XCTAssertEqual(observation.observations, [])
-        XCTAssertNil(scenes.redrawnScene(for: request))
+        XCTAssertEqual(observation.observations.count, 1, "Nothing laid out for a width the column left")
+        XCTAssertNil(scenes.redrawnScene(for: moved))
+    }
+
+    /// The last request of a moving column is laid out once the column has kept its width for the settling delay.
+    func testTheLastRequestOfAMovingColumnIsLaidOutOnceTheColumnSettles() async throws {
+        let (_, source) = try drawn(Self.packet, as: .packet)
+        let settlingDelay = Duration.milliseconds(50)
+        let scenes = ReadingDiagramNarrowScenes(settlingDelay: settlingDelay)
+        _ = await scenes.prepare(ReadingDiagramNarrowRequest(source: source, columnWidth: 400))
+        let clock = ContinuousClock()
+        let start = clock.now
+        let settled = await scenes.prepare(ReadingDiagramNarrowRequest(source: source, columnWidth: 520))
+        XCTAssertNotNil(settled?.scene)
+        XCTAssertGreaterThanOrEqual(start.duration(to: clock.now), settlingDelay, "Waited for the column to keep its width")
+    }
+
+    /// A width change lays out the diagram read when the note was built: a source whose text is not a diagram at all, with
+    /// the packet's diagram read, lays the packet out for the new width, as the packet's own source does.
+    func testAWidthChangeLaysOutTheDiagramAlreadyReadWithoutReadingItsText() throws {
+        let (_, source) = try drawn(Self.packet, as: .packet)
+        let unreadableText = "not a diagram"
+        XCTAssertThrowsError(try ReadingDiagramSource(text: unreadableText, font: source.font, now: source.now, timeZone: source.timeZone))
+        let readAlready = ReadingDiagramSource(text: unreadableText, diagram: source.diagram, font: source.font, now: source.now, timeZone: source.timeZone)
+        let fromTheDiagram = try XCTUnwrap(readAlready.narrowScene(forColumnWidth: 400))
+        let fromTheSource = try XCTUnwrap(source.narrowScene(forColumnWidth: 400))
+        XCTAssertEqual(fromTheDiagram.size, fromTheSource.size)
+        XCTAssertEqual(fromTheDiagram.texts.count, fromTheSource.texts.count)
     }
 }
 

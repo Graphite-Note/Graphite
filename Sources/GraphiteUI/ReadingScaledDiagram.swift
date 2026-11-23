@@ -7,7 +7,7 @@
  *              small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 23/11/2026
  */
 
@@ -62,6 +62,10 @@ struct ReadingScaledDiagram<Painting: View>: View {
     /// On paper the diagram is always fitted: paper does not scroll, and a drawing for a PDF
     /// shows no scroll view.
     @Environment(\.readingIsPrinted) private var isPrinted
+    /// When the column last changed width, in a build that measures it (`ReadingDiagramRelayoutTrace`); nil otherwise.
+    @State private var columnWidthChange: ContinuousClock.Instant?
+    /// The layout of a narrow scene for a column's width, given by a test that counts what is laid out.
+    @Environment(\.readingDiagramNarrowLayout) private var narrowLayout
 
     /// The share of the laid-out size the diagram is at the text size now: both scenes are laid out in one font.
     private var scaleAtNaturalWidth: CGFloat { CGFloat(textSize) / prepared.scene.font.size }
@@ -72,7 +76,8 @@ struct ReadingScaledDiagram<Painting: View>: View {
         let redrawnScene = narrowRequest.flatMap { request in
             redrawn?.request == request ? redrawn?.scene : narrowScenes?.redrawnScene(for: request)
         }
-        let scene = Self.readableScene(redrawnScene?.scene, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth) ?? standardScene
+        let readableRedrawnScene = Self.readableScene(redrawnScene?.scene, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
+        let scene = readableRedrawnScene ?? standardScene
         let naturalWidth = scene.size.width * scaleAtNaturalWidth
         let presentation = ReadingDiagramPresentation.presentation(naturalWidth: naturalWidth, scaleAtNaturalWidth: scaleAtNaturalWidth,
                                                                    columnWidth: columnWidth)
@@ -87,16 +92,31 @@ struct ReadingScaledDiagram<Painting: View>: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in columnWidth = width }
-        .task(id: narrowRequest) {
-            // On paper the page is drawn at once: the standard narrow scene stays.
-            guard let narrowRequest, !isPrinted else { return }
-            let scenes = narrowScenes ?? ReadingDiagramNarrowScenes()
-            narrowScenes = scenes
-            guard scenes.redrawnScene(for: narrowRequest) == nil else { return }
-            guard let scene = await scenes.prepare(narrowRequest), !Task.isCancelled else { return }
-            redrawn = (narrowRequest, scene)
+        .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in
+            if let change = ReadingDiagramRelayoutTrace.columnDidChangeWidth(to: width) { columnWidthChange = change }
+            columnWidth = width
         }
+        #if DEBUG || GRAPHITE_DIAGRAM_TRACE
+        .onChange(of: readableRedrawnScene == nil ? nil : narrowRequest) { _, shownRequest in
+            if let shownRequest {
+                ReadingDiagramRelayoutTrace.narrowSceneWasShown(forLayoutWidth: shownRequest.columnWidth, sinceColumnWidthChange: columnWidthChange)
+            }
+        }
+        #endif
+        .task(id: narrowRequest) { await layOutNarrowScene(for: narrowRequest) }
+    }
+
+    /// The narrow scene for `request` laid out again off the main actor (`ReadingDiagramNarrowScenes`), set as `redrawn`
+    /// once ready unless the column moved on meanwhile. On paper the page is drawn at once: the standard narrow scene stays.
+    private func layOutNarrowScene(for request: ReadingDiagramNarrowRequest?) async {
+        guard let request, !isPrinted else { return }
+        let scenes = narrowScenes ?? ReadingDiagramNarrowScenes()
+        narrowScenes = scenes
+        // A width laid out before is shown by the body already; asking for it still tells the scenes the column moved.
+        let wasKept = scenes.redrawnScene(for: request) != nil
+        guard let scene = await scenes.prepare(request, preparing: narrowLayout.layOut), !Task.isCancelled, !wasKept else { return }
+        ReadingDiagramRelayoutTrace.narrowSceneIsReady(forLayoutWidth: request.columnWidth, sinceColumnWidthChange: columnWidthChange)
+        redrawn = (request, scene)
     }
 
     /// A narrow scene laid out again for the column, where it fits the column without being shrunk below the readable
@@ -169,4 +189,22 @@ struct ReadingScaledDiagram<Painting: View>: View {
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
+}
+
+/// How a view lays a diagram's narrow scene out for a column's width: the diagram already read laid out again
+/// (`ReadingDiagramNarrowRequest.narrowScene(of:)`), off the main actor; a test gives one that counts what is laid out.
+struct ReadingDiagramNarrowLayout: Equatable, Sendable {
+    /// Tells two layouts apart, as their work cannot be compared.
+    let name: String
+    let layOut: @Sendable (ReadingDiagramNarrowRequest) -> DiagramScene?
+
+    static let package = ReadingDiagramNarrowLayout(name: "package", layOut: ReadingDiagramNarrowRequest.narrowScene(of:))
+
+    static func == (leftLayout: ReadingDiagramNarrowLayout, rightLayout: ReadingDiagramNarrowLayout) -> Bool {
+        leftLayout.name == rightLayout.name
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var readingDiagramNarrowLayout = ReadingDiagramNarrowLayout.package
 }
