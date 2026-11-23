@@ -16,6 +16,8 @@ Put the cursor where a sketch belongs and tap **Draw**. The drawing is saved as 
 
 Obsidian's PDF viewer only reads. Graphite writes ink, highlights, underlines, text boxes, pictures and bookmarks into the PDF itself, as standard annotations, and adds, moves, turns and deletes pages. Notebooks are PDFs with real paper. On the Mac, PDFs get a markup row: highlight, draw, text boxes, signatures and shapes. See [[Writing on slides]], [[Notebooks and paper]] and [[PDF markup on the Mac]].
 
+A heading dragged from a note onto a page becomes a picture of its section that links back to it, an `obsidian://` link that stays up to date with the note. See [[Writing on slides#Put a section of a note on a page]].
+
 A slide can sit in a note at the height you choose:
 
 ```markdown

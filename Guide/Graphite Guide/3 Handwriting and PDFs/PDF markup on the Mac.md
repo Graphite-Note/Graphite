@@ -23,6 +23,14 @@ Show the row with View › **Show Markup Toolbar**, or the **Show Markup Toolbar
 
 Keyboard: ⌃⌘H highlights the selected text and ⌃⌘U underlines it.
 
+## Sections of notes on a page
+
+Drag a heading from a note in the reading view onto a page, or select text while writing and drag the selection there: the page gets a picture of the section that links back to it (see [[Writing on slides#Put a section of a note on a page]]). The row switches to **Images**, so the picture can be moved and resized at once. To open the section, choose **Text Selection** and click the picture: it opens on the other side of the split, and the PDF stays.
+
+![[Mac - A section link on a slide.jpg|560]]
+
+*The Power section of the Week 1 lecture note on the first slide, on the Mac.*
+
 Try it on [[Week 1 slides.pdf]].
 
 > [!info] Where signatures are kept

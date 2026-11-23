@@ -1,0 +1,7 @@
+/* Diagram colours: the first four series of every diagram, as Obsidian's --mermaid-* variables give them. Turn it on to try a theme's diagram colours. */
+body {
+  --mermaid-color-1: #3d5a80;
+  --mermaid-color-2: #ee6c4d;
+  --mermaid-color-3: #98c1d9;
+  --mermaid-color-4: #81b29a;
+}

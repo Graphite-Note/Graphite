@@ -18,4 +18,10 @@ Coming from Goodnotes, the library will feel familiar: your notebooks as covers,
 
 ## Tabs and splits
 
-Several files can be open in tabs. **Split Right** shows two side by side, such as a PDF and the note about it; **Close This Side** ends the split. **More** › **Focus** hides everything but the page.
+Several files can be open in tabs. **Split Right** shows two side by side, such as a PDF and the note about it; **Split Down** shows them one above the other, as Obsidian's *Split down* does. On iPad, touch and hold **Split Right** in the tab bar for **Split Down**; on the Mac it is in the View menu; both are in the Command Palette. Choosing the other one turns a split around and keeps both sides' tabs. Drag the line between the sides to share the space differently, and **Close This Side** ends the split. **More** › **Focus** hides everything but the page.
+
+![[iPad - A PDF above its note.jpg|380]]
+
+*Split Down on an iPad held upright: the course's slides above the lecture note, each side with its own tabs and tools.*
+
+On iPhone, one side shows at a time.

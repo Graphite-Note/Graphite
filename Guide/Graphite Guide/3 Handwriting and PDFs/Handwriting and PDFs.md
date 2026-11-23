@@ -16,7 +16,7 @@ Both use the same tools: [[Pencil tools]].
 | [[Drawings in notes]] | Draw, insert, edit later; PNG, PDF or SVG |
 | [[Pencil tools]] | Pens, colours arranged by dragging, the lasso, shapes, the eraser, palm rejection |
 | [[Notebooks and paper]] | New notebooks, paper templates, pages, bookmarks |
-| [[Writing on slides]] | Ink, highlights and text boxes on any PDF, slides in notes |
+| [[Writing on slides]] | Ink, highlights and text boxes on any PDF, slides in notes, sections of notes on slides |
 | [[Recording a lecture]] | Audio or video while you write |
 | [[PDF markup on the Mac]] | Highlight, draw, text boxes, signatures and shapes with a mouse or trackpad |
 
