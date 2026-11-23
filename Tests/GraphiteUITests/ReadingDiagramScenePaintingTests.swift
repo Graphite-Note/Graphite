@@ -5,8 +5,8 @@
  * Description: The one painter of every diagram type: a sample of each drawn at its scene's size, not blank, in the theme's colors.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 20/11/2026
+ * Version: 0.3
+ * Date: 23/11/2026
  */
 
 #if os(macOS)
@@ -92,6 +92,22 @@ final class ReadingDiagramScenePaintingTests: XCTestCase {
         XCTAssertEqual(offsets.count, 8)
         for offset in offsets { XCTAssertEqual((offset.width * offset.width + offset.height * offset.height).squareRoot(), 1.5, accuracy: 1e-9) }
         XCTAssertEqual(Set(offsets.map { "\(($0.width * 1000).rounded()),\(($0.height * 1000).rounded())" }).count, 8)
+    }
+
+    /// A label's `**bold**` and `<i>` spans are set in their own emphasis, the rest of the line in the text's font, in
+    /// the order the package measured them.
+    func testALabelsSpansAreSetInTheirOwnEmphasis() throws {
+        let prepared = try MermaidDiagramPreparation.prepare(source: "flowchart LR\n  A[\"Plain <b>bold</b> and <i>slanted</i>\"]", typography: typography)
+        let text = try XCTUnwrap(prepared.scene.texts.first { text in text.styledRuns != nil })
+        let line = ReadingDiagramSceneText.styledLine(try XCTUnwrap(text.lines.first).runs, of: text, in: prepared.scene.font)
+        XCTAssertEqual(String(line.characters), "Plain bold and slanted")
+        let font = prepared.scene.font
+        let pieces = line.runs.map { run in (String(line[run.range].characters), run.font) }
+        XCTAssertEqual(pieces.map(\.0), ["Plain ", "bold", " and ", "slanted"])
+        XCTAssertEqual(pieces.map(\.1), [ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: false),
+                                          ReadingDiagramSceneText.swiftUIFont(font, isBold: true, isItalic: false),
+                                          ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: false),
+                                          ReadingDiagramSceneText.swiftUIFont(font, isBold: false, isItalic: true)])
     }
 }
 

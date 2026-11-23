@@ -148,6 +148,7 @@
 				GraphiteUITests/PDFSessionMarkupTests.swift,
 				GraphiteUITests/PDFTextMarkColorsTests.swift,
 				GraphiteUITests/PerformanceBenchmarkTests.swift,
+				GraphiteUITests/ReleaseVaultFreezeSampler.swift,
 				GraphiteUITests/ReleaseVaultPass.swift,
 				GraphiteUITests/ReleaseVaultPassChecks.swift,
 				GraphiteUITests/ReleaseVaultPassSupport.swift,

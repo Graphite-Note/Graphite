@@ -5,8 +5,8 @@
  * Description: Paints any laid-out diagram's scene as SwiftUI shapes and text in the note's colors.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 20/11/2026
+ * Version: 0.3
+ * Date: 23/11/2026
  */
 
 import SwiftUI
@@ -88,20 +88,35 @@ struct ReadingDiagramSceneText: View {
     var body: some View {
         let lines = text.lines
         let swiftUIFont = Self.swiftUIFont(font, isBold: text.isBold, isItalic: text.isItalic, isMonospaced: text.isMonospaced)
+        let isStyled = text.styledRuns != nil
         ForEach(lines.indices, id: \.self) { index in
+            let line = isStyled ? Text(Self.styledLine(lines[index].runs, of: text, in: font)) : Text(verbatim: lines[index].text).font(swiftUIFont)
             ZStack {
                 if let outlineColor, let outline = text.outline {
                     ForEach(Self.outlineOffsets(radius: outline.lineWidth / 2).indices, id: \.self) { place in
                         let offset = Self.outlineOffsets(radius: outline.lineWidth / 2)[place]
-                        Text(verbatim: lines[index].text).font(swiftUIFont).foregroundStyle(outlineColor).fixedSize()
+                        line.foregroundStyle(outlineColor).fixedSize()
                             .offset(x: offset.width, y: offset.height)
                     }
                 }
-                Text(verbatim: lines[index].text).font(swiftUIFont).foregroundStyle(color).fixedSize()
+                line.foregroundStyle(color).fixedSize()
             }
             .rotationEffect(.radians(text.rotation ?? 0))
             .position(turned(lines[index].center))
         }
+    }
+
+    /// A line of a label with spans in their own emphasis (`**bold**`, `<i>`, `<code>`), each run in the text's font with
+    /// the run's emphasis added to the text's own, as the package measured it.
+    static func styledLine(_ runs: [DiagramTextRun], of text: DiagramSceneText, in font: DiagramFont) -> AttributedString {
+        var line = AttributedString()
+        for run in runs {
+            var piece = AttributedString(run.text)
+            piece.font = swiftUIFont(font, isBold: text.isBold || run.style.contains(.bold), isItalic: text.isItalic || run.style.contains(.italic),
+                                     isMonospaced: text.isMonospaced || run.style.contains(.monospaced))
+            line += piece
+        }
+        return line
     }
 
     /// The eight places around a glyph's edge an outline of half width `radius` is set at.

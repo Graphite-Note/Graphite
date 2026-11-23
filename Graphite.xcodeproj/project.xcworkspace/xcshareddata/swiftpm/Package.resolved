@@ -1,5 +1,5 @@
 {
-  "originHash" : "40b30d2ce9bb34c5069dd278ebd899f7963dde16a3f0664aa8e09f907b8dfdf3",
+  "originHash" : "b61a6d42829293019c1213b87784d34ad5209259660b8cd587bd3ad6e158700d",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Graphite-Note/MermaidDiagrams.git",
       "state" : {
-        "revision" : "2cbb9a3bf8fcee95f16ff20d7b80c0b4c2e1d5e3",
-        "version" : "0.4.0"
+        "revision" : "f7affb8b6c457e83bf0549b44d48df22560335c0",
+        "version" : "0.5.0"
       }
     },
     {
@@ -96,8 +96,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "f96b909e1a9e469620bc5037c1e24e00153f376f",
-        "version" : "1.7.5"
+        "revision" : "88754449ab766a739610b660e117762115fabc9c",
+        "version" : "1.7.6"
       }
     },
     {
@@ -141,8 +141,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "e3da04078777e6a1b72ce19981fbd6539b0847d8",
-        "version" : "1.17.0"
+        "revision" : "c7413d967b97aae67c46452bf7645bdb7b200e8e",
+        "version" : "1.17.2"
       }
     },
     {
@@ -159,8 +159,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-metrics.git",
       "state" : {
-        "revision" : "2c13e7385089ea705ee3009ea6cbe41db843930e",
-        "version" : "2.13.0"
+        "revision" : "5da0b6ea2a89dcce222eec559289e298d357d0a5",
+        "version" : "2.13.1"
       }
     },
     {
@@ -222,8 +222,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-system.git",
       "state" : {
-        "revision" : "869129b7bf4ecc57b97d0193ad29690ca2134750",
-        "version" : "1.8.1"
+        "revision" : "640e5755b5826f4437eaeedd366fd776737db62c",
+        "version" : "1.9.0"
       }
     },
     {

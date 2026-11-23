@@ -58,14 +58,16 @@ final class ReadingGanttChartTests: XCTestCase {
         XCTAssertGreaterThan(try accentStrokes(now: Date(timeIntervalSince1970: 1_389_182_400)), try accentStrokes(now: Date(timeIntervalSince1970: 1_700_000_000)))
     }
 
-    func testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy() {
-        let reasons: [(source: String, failure: MermaidDiagramPreparationFailure)] = [
-            ("gantt\nA : a, 2014-01-01, 1d\nclick a href \"https://example.com\"", .ganttLayout(.statementNotDrawn(.click))),
-            ("gantt\nA : vert, 2014-01-01, 1d", .ganttLayout(.statementNotDrawn(.verticalMarker))),
-            ("gantt\nA : March 7 2014, 1d", .ganttLayout(.unreadableDate("March 7 2014"))),
+    /// MermaidDiagrams 0.3.0 and 0.4.0 draw what 0.2.0 refused: a click statement, a vertical marker and a start date that
+    /// `dateFormat` does not read but JavaScript's `Date` does, so none of them keeps its source any more.
+    func testAChartWithAClickAVerticalMarkerOrAJavaScriptDateIsDrawn() {
+        let sources = [
+            "gantt\nA : a, 2014-01-01, 1d\nclick a href \"https://example.com\"",
+            "gantt\nA : vert, 2014-01-01, 1d",
+            "gantt\nA : March 7 2014, 1d",
         ]
-        for reason in reasons {
-            XCTAssertEqual(ReadingDiagram(source: reason.source, typography: typography).failure, reason.failure, reason.source)
+        for source in sources {
+            guard case .drawn = ReadingDiagram(source: source, typography: typography) else { return XCTFail("Not drawn: \(source)") }
         }
     }
 

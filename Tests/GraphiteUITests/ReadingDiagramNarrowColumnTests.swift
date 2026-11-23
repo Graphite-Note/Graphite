@@ -6,11 +6,12 @@
  *              column shows; diagrams with nothing to draw or too large to draw shown as their source with why.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 19/11/2026
+ * Version: 0.3
+ * Date: 23/11/2026
  */
 
 import XCTest
+import SwiftUI
 import MermaidDiagrams
 @testable import GraphiteUI
 
@@ -44,6 +45,25 @@ final class ReadingDiagramNarrowColumnTests: XCTestCase {
         XCTAssertFalse(flowchart.showsNarrowScene(inColumnWidth: 0), "Not measured yet.")
         XCTAssertTrue(flowchart.showsNarrowScene(inColumnWidth: regularWidth, scale: 1.2), "At a larger text size the regular one no longer fits.")
         XCTAssertFalse(try drawn("flowchart LR\n  A --> B", as: .flowchart).showsNarrowScene(inColumnWidth: 100), "No narrow layout.")
+    }
+
+    /// A diagram a little wider than the column is the regular one shrunk, not the one laid out for a phone's column;
+    /// one that would have to be shrunk below the smallest readable scale is the narrow one (an XY chart configured 900
+    /// points wide was drawn 230 points wide in a 750-point column).
+    func testTheColumnShrinksTheRegularSceneUntilItWouldBeTooSmallToReadAndOnlyThenShowsTheNarrowOne() throws {
+        let flowchart = try drawn(Self.fourteenShapesInARow, as: .flowchart)
+        let regularWidth = flowchart.scene.size.width
+        let narrow = try XCTUnwrap(flowchart.narrowScene)
+        let smallest = ReadingDiagramPresentation.smallestReadableScale
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.shownScene(of: flowchart, inColumnWidth: regularWidth * 0.83, scaleAtNaturalWidth: 1).size,
+                       flowchart.scene.size)
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.shownScene(of: flowchart, inColumnWidth: regularWidth * (smallest + 0.01), scaleAtNaturalWidth: 1).size,
+                       flowchart.scene.size)
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.shownScene(of: flowchart, inColumnWidth: regularWidth * (smallest - 0.01), scaleAtNaturalWidth: 1).size,
+                       narrow.size)
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.shownScene(of: flowchart, inColumnWidth: 700, scaleAtNaturalWidth: 1).size, narrow.size)
+        XCTAssertEqual(ReadingScaledDiagram<EmptyView>.shownScene(of: flowchart, inColumnWidth: 0, scaleAtNaturalWidth: 1).size, flowchart.scene.size,
+                       "Not measured yet.")
     }
 
     func testTheFourteenShapesInARowAreTurnedToRunDownWithTighterGapsForANarrowColumn() throws {

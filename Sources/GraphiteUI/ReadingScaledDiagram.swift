@@ -6,8 +6,8 @@
  *              fit, or scrolling sideways once fitting would make its text too small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
- * Date: 19/11/2026
+ * Version: 0.6
+ * Date: 23/11/2026
  */
 
 import SwiftUI
@@ -37,8 +37,9 @@ enum ReadingDiagramPresentation: Equatable {
 
 /// A prepared diagram's painting, centered and as wide as it was laid out (in proportion to the text size now, if
 /// that changed since the note was built), scaled down when the column is narrower. The column shows the diagram's
-/// scene for a narrow column where the regular one does not fit and the narrow one is narrower, as Pele chooses by its
-/// container's width (`PreparedMermaidDiagram.showsNarrowScene(inColumnWidth:scale:)`). A diagram that would have to be
+/// scene for a narrow column only where the regular one could not be shrunk to fit and stay readable and the narrow one is
+/// narrower (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`): a chart configured 900 points wide in a 750-point column
+/// is the regular one at 83 %, not the one laid out for a phone's 280 points. A diagram that would have to be
 /// shrunk below `ReadingDiagramPresentation.smallestReadableScale` keeps that size instead and scrolls sideways, so its
 /// text stays readable on an iPhone or an iPad in portrait.
 struct ReadingScaledDiagram<Painting: View>: View {
@@ -56,7 +57,7 @@ struct ReadingScaledDiagram<Painting: View>: View {
     private var scaleAtNaturalWidth: CGFloat { CGFloat(textSize) / prepared.scene.font.size }
 
     var body: some View {
-        let scene = prepared.scene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth)
+        let scene = Self.shownScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
         let naturalWidth = scene.size.width * scaleAtNaturalWidth
         let presentation = ReadingDiagramPresentation.presentation(naturalWidth: naturalWidth, scaleAtNaturalWidth: scaleAtNaturalWidth,
                                                                    columnWidth: columnWidth)
@@ -72,6 +73,21 @@ struct ReadingScaledDiagram<Painting: View>: View {
         }
         .frame(maxWidth: .infinity)
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in columnWidth = width }
+    }
+
+    /// The scene a column `columnWidth` wide shows: the narrow one where the package would show it
+    /// (`PreparedMermaidDiagram.showsNarrowScene(inColumnWidth:scale:)`) and the regular one, fitted to the column, would
+    /// be smaller than `ReadingDiagramPresentation.smallestReadableScale`; the regular one otherwise. The narrow scene of a
+    /// chart is laid out for the narrowest column (280 points), so a regular scene a little wider than the column reads
+    /// better shrunk a little than redrawn for a phone.
+    static func shownScene(of prepared: PreparedMermaidDiagram, inColumnWidth columnWidth: CGFloat,
+                           scaleAtNaturalWidth: CGFloat) -> DiagramScene {
+        guard let narrowScene = prepared.narrowScene,
+              prepared.showsNarrowScene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth) else { return prepared.scene }
+        let regular = ReadingDiagramPresentation.presentation(naturalWidth: prepared.scene.size.width * scaleAtNaturalWidth,
+                                                              scaleAtNaturalWidth: scaleAtNaturalWidth, columnWidth: columnWidth)
+        if case .fitted = regular { return prepared.scene }
+        return narrowScene
     }
 
     /// As wide as it was laid out, and no wider than the column, scaled to the width it is given.
