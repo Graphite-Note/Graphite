@@ -2,8 +2,9 @@
  * File: ReadingDiagramNarrowScenes.swift
  * --------------------------------------
  * Layer: UI
- * Description: A diagram's narrow scene laid out again at the real width of the column that shows it, off the main actor, and
- *              kept per width so that a rotation or a split being resized does not lay it out on every frame.
+ * Description: A diagram's narrow scene laid out again at the real width of the column that shows it, off the main actor, once
+ *              the column settles, and kept per width so that a rotation or a split being resized does not lay it out on
+ *              every frame.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -51,17 +52,16 @@ struct ReadingDiagramRedrawnNarrowScene: Sendable {
     let scene: DiagramScene?
 }
 
-/// The narrow scenes laid out again at columns' real widths, shared by the reading view and Live Preview so that a diagram
-/// scrolled back into view, or the same diagram in both, shows its scene at once instead of the standard one first, then
-/// jumping in height. Bounded: at most `sceneCountLimit` scenes (a few widths of a few diagrams: a rotation, a split
-/// resized, two panes), and `NSCache` lets them go when the system runs short of memory. A request is prepared only after
-/// the column has kept its width for `settlingDelay`, so a split dragged across the screen lays the diagram out once,
-/// where the drag ends, and never on the main actor.
-final class ReadingDiagramNarrowScenes: @unchecked Sendable {
-    // Sendable by hand: NSCache is thread-safe, and the class has no other mutable state.
-    static let shared = ReadingDiagramNarrowScenes()
-
-    static let sceneCountLimit = 32
+/// The narrow scenes of one diagram's view laid out again at its column's real widths, so that a rotation back, a split
+/// resized and back, or the view drawn again shows a width laid out before at once. Bounded: at most
+/// `sceneCountLimit` widths, and `NSCache` lets them go when the system runs short of memory. Owned by the view
+/// (`ReadingScaledDiagram`), which a lazy stack and Live Preview's pool keep while the diagram is scrolled away. A request
+/// is prepared only after the column has kept its width for `settlingDelay` on `clock`, so a split dragged across the
+/// screen lays the diagram out once, where the drag ends, and never on the main actor.
+@MainActor
+final class ReadingDiagramNarrowScenes {
+    /// A few widths: the column's in each orientation and in a split, and one more.
+    static let sceneCountLimit = 4
     static let defaultSettlingDelay = Duration.milliseconds(150)
 
     private final class Entry {
@@ -71,9 +71,11 @@ final class ReadingDiagramNarrowScenes: @unchecked Sendable {
 
     private let entries = NSCache<NSString, Entry>()
     private let settlingDelay: Duration
+    private let clock: any Clock<Duration>
 
-    init(settlingDelay: Duration = ReadingDiagramNarrowScenes.defaultSettlingDelay) {
+    init(settlingDelay: Duration = ReadingDiagramNarrowScenes.defaultSettlingDelay, clock: any Clock<Duration> = ContinuousClock()) {
         self.settlingDelay = settlingDelay
+        self.clock = clock
         entries.countLimit = Self.sceneCountLimit
     }
 
@@ -89,8 +91,7 @@ final class ReadingDiagramNarrowScenes: @unchecked Sendable {
                  preparing: @escaping @Sendable (ReadingDiagramNarrowRequest) -> DiagramScene? = ReadingDiagramNarrowRequest.narrowScene(of:))
         async -> ReadingDiagramRedrawnNarrowScene? {
         if let kept = redrawnScene(for: request) { return kept }
-        // A cancelled wait ends early; the check below then stops the preparation.
-        try? await Task.sleep(for: settlingDelay)
+        try? await clock.sleep(for: settlingDelay) // A cancelled wait ends early, and the check below stops the work.
         guard !Task.isCancelled else { return nil }
         let redrawn = await Task.detached(priority: .userInitiated) {
             ReadingDiagramRedrawnNarrowScene(scene: preparing(request))

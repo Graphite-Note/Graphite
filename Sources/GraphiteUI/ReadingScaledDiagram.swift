@@ -57,6 +57,8 @@ struct ReadingScaledDiagram<Painting: View>: View {
     /// The narrow scene last laid out again for this view and the request it was for: setting it paints the view again
     /// once the scene is ready.
     @State private var redrawn: (request: ReadingDiagramNarrowRequest, scene: ReadingDiagramRedrawnNarrowScene)?
+    /// The narrow scenes laid out again for this view's column widths, made when the column first asks for one.
+    @State private var narrowScenes: ReadingDiagramNarrowScenes?
     /// On paper the diagram is always fitted: paper does not scroll, and a drawing for a PDF
     /// shows no scroll view.
     @Environment(\.readingIsPrinted) private var isPrinted
@@ -68,7 +70,7 @@ struct ReadingScaledDiagram<Painting: View>: View {
         let narrowRequest = Self.narrowRequest(of: prepared, source: source, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
         let standardScene = Self.shownScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
         let redrawnScene = narrowRequest.flatMap { request in
-            redrawn?.request == request ? redrawn?.scene : ReadingDiagramNarrowScenes.shared.redrawnScene(for: request)
+            redrawn?.request == request ? redrawn?.scene : narrowScenes?.redrawnScene(for: request)
         }
         let scene = Self.readableScene(redrawnScene?.scene, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth) ?? standardScene
         let naturalWidth = scene.size.width * scaleAtNaturalWidth
@@ -88,8 +90,11 @@ struct ReadingScaledDiagram<Painting: View>: View {
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in columnWidth = width }
         .task(id: narrowRequest) {
             // On paper the page is drawn at once: the standard narrow scene stays.
-            guard let narrowRequest, !isPrinted, ReadingDiagramNarrowScenes.shared.redrawnScene(for: narrowRequest) == nil else { return }
-            guard let scene = await ReadingDiagramNarrowScenes.shared.prepare(narrowRequest), !Task.isCancelled else { return }
+            guard let narrowRequest, !isPrinted else { return }
+            let scenes = narrowScenes ?? ReadingDiagramNarrowScenes()
+            narrowScenes = scenes
+            guard scenes.redrawnScene(for: narrowRequest) == nil else { return }
+            guard let scene = await scenes.prepare(narrowRequest), !Task.isCancelled else { return }
             redrawn = (narrowRequest, scene)
         }
     }

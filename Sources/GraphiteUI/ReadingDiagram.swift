@@ -69,6 +69,6 @@ struct ReadingDiagramSource: Equatable, Sendable {
     /// nil where its type draws it no narrower there. The whole diagram is read and laid out again, in measurers made
     /// for the font (about 40 µs): call it off the main actor.
     func narrowScene(forColumnWidth columnWidth: CGFloat) -> DiagramScene? {
-        try? prepared(in: DiagramTypography(font: font), narrowestColumnWidth: columnWidth).narrowScene
+        try? prepared(in: DiagramTypography(font: font), narrowestColumnWidth: columnWidth).narrowScene // A failure keeps the standard scene.
     }
 }
