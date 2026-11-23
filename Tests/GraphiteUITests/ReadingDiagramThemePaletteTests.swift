@@ -6,7 +6,7 @@
  *              written in its SVG.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 23/11/2026
  */
 
@@ -50,6 +50,15 @@ final class ReadingDiagramThemePaletteTests: XCTestCase {
         let plain = try painted(pie(firstSlice: nil), colors: light(), colorScheme: .light)
         XCTAssertGreaterThan(themed.share { pixel in pixel.isClose(to: red, tolerance: 8 / 255) }, 0.05, "The largest slice in pie1's red")
         XCTAssertEqual(plain.share { pixel in pixel.isClose(to: red, tolerance: 8 / 255) }, 0, "Without pie1 no slice is red")
+    }
+
+    /// A pie with `legendPosition: none` stopped the app as its note opened (MermaidDiagrams 0.6.0 and earlier); since 0.6.1
+    /// it is drawn, its first slice in pie1's red.
+    func testAPieChartWithoutALegendIsDrawn() throws {
+        let source = "---\nconfig:\n  pie:\n    legendPosition: none\n  themeVariables:\n    pie1: \"#ff0000\"\n---\n"
+            + "pie title Pets\n  \"Dogs\" : 386\n  \"Cats\" : 85\n  \"Rats\" : 15"
+        let picture = try painted(source, colors: light(), colorScheme: .light)
+        XCTAssertGreaterThan(picture.share { pixel in pixel.isClose(to: red, tolerance: 8 / 255) }, 0.05, "The largest slice drawn")
     }
 
     /// The painting matches the package's own renderer, which paints the scene's series over the same palette.

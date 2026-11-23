@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-23.
 
+## MermaidDiagrams 0.6.1: a pie chart without a legend is drawn: 2026-11-23
+
+`Docs/Native-diagrams-todo.md` (Later, issue #214, the pie chart's options). A pie chart with `legendPosition: none` stopped the app as its note opened (MermaidDiagrams 0.6.0 and earlier counted the pie's fills from its legend). MermaidDiagrams 0.6.1 counts them from the slices and the legend; Graphite pins it.
+
+- **Automated tests:** package `PieChartOptionsTests.testAPieWithoutALegendIsPreparedAndPaintsEverySlice` (stops on 0.6.0; package suite 2,195 tests, 0 failures); Graphite `ReadingDiagramThemePaletteTests.testAPieChartWithoutALegendIsDrawn`. The whole Mac package suite on the pin: 5,116 tests, 0 failures (Read Aloud, speech, dictation, audio, voice and recording left out).
+- **Checked on screen:** an iPad Pro 11-inch (M5) simulator of its own (iOS 27.2), the demo vault's `P1_Pie_options_4`: the pie drawn without a legend, reading view in light, Live Preview in dark.
+
 ## MermaidDiagrams 0.6.0: a diagram's own palette, the narrow scene at the column's width, a vault theme's colours as Obsidian maps them: 2026-11-23
 
 `Docs/Native-diagrams-todo.md` (Later, issue #214; the paragraph "MermaidDiagrams 0.6.0"). Graphite pins MermaidDiagrams 0.6.0 (Pele's theme palettes, narrow layouts at any width, the device benchmark). The painter lays a diagram's own series colours over the note's (`ReadingDiagramColors.overSeriesColors(of:colorScheme:)`) and Copy and Save as SVG write them; a column that shows a diagram's narrow scene has it laid out again at its width off the main actor once the column settles (`ReadingDiagramNarrowScenes`, owned by the view, up to 4 widths; `ReadingDiagramSource`), shown where it fits readably; the theme probe reads Pele's variables inside a `.mermaid` container through Obsidian's `--mermaid-*` mapping, now in Graphite's default layer (version 5, resolver 8).
