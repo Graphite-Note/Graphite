@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.72
+ * Version: 0.73
  * Date: 23/11/2026
  */
 
@@ -1009,6 +1009,8 @@ struct MarkdownPreview: View {
     @State private var blocks: [RenderedBlock] = []
     @State private var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
     @State private var foldKeys = ReadingFoldKeys()
+    /// Where the note's own top-level blocks start in its text, by block, for dragging headings (`ReadingSectionDrags`).
+    @State private var blockOffsets: [String: Int] = [:]
     /// The word read, where it is drawn and where the view is scrolled, for following the
     /// word; kept out of the view's state, which each would otherwise update at every word.
     @State private var readingFollow = ReadingFollowState()
@@ -1120,6 +1122,7 @@ struct MarkdownPreview: View {
             .environment(\.baseEmbedContext, baseContext)
             .environment(\.readingSourceTokensByBlock, readingSourceTokensByBlock)
             .environment(\.readingFoldKeys, foldKeys)
+            .environment(\.readingSectionDrags, ReadingSectionDrags(notePath: path, noteText: source, vaultRoot: root, blockOffsets: blockOffsets))
             .environment(\.readingWordCells, wordCells)
             .environment(\.readingFollowsSource, followsReading)
             .environment(\.readingMediaPlayers, mediaPlayers)
@@ -1309,6 +1312,7 @@ struct MarkdownPreview: View {
         savedPosition?.blockLocations = build.blockLocations
         readingSourceTokensByBlock = build.readingSourceTokensByBlock
         foldKeys = build.foldKeys
+        blockOffsets = Dictionary(build.blockLocations.map { location in (location.blockIdentifier, location.noteOffset) }) { first, _ in first }
         wordCells.index(build.readingSourceTokensByBlock)
         wordDidMove(to: readingFollow.range)
         blocks = build.blocks; errorMessage = nil
@@ -1636,6 +1640,7 @@ struct ReadingBlocksView: View {
     // (`ReadingCallout`), read it.
     @Environment(\.readingSourceTokensByBlock) private var readingSourceTokensByBlock
     @Environment(\.readingFoldKeys) private var foldKeys
+    @Environment(\.readingSectionDrags) private var sectionDrags
     /// Draws plugins' code blocks; nil where plugins do not draw, which shows them as code.
     @Environment(\.communityPluginCodeBlocks) private var pluginCodeBlocks
 
@@ -1718,7 +1723,8 @@ struct ReadingBlocksView: View {
                             .accessibilityLabel(isFolded ? "Unfold \(text)" : "Fold \(text)")
                         }
                     }
-                if let anchor { heading.id(anchor) } else { heading }
+                let draggableHeading = heading.sectionDrag(ofBlock: block.id, from: sectionDrags)
+                if let anchor { draggableHeading.id(anchor) } else { draggableHeading }
             case .callout(_, let type, let title, let folding, let body):
                 ReadingCallout(type: type, title: title, foldKeyTitle: foldKeys.calloutTitlesByBlock[block.id],
                                foldOccurrence: foldKeys.calloutOccurrencesByBlock[block.id] ?? 0, folding: folding, root: root, textSize: textSize,

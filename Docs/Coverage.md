@@ -4,6 +4,16 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-23.
 
+## Section links follow renamed notes; headings dragged from the reading view: 2026-11-23
+
+[Split-down-and-section-links-todo.md](Split-down-and-section-links-todo.md) section 2 (issue #222).
+
+- **Built:** the index records a PDF's section pictures as links of the PDF (migration `pdf-section-links-13` reads every PDF again once); moving or renaming a note with its links updated rewrites the addresses of the PDFs that link to it, open or closed (`WorkspaceSectionLinkMoves`); the reading view's headings can be dragged onto a PDF page, or into a note as `[[Note#Heading]]` (`ReadingSectionDrags`).
+- **Automated tests, passing on macOS:** `SectionLinkTests` (6), `PDFSectionLinkTests` (5), `SectionLinksOnPDFTests` (8: a rename relinks a closed PDF on disk and an open one in place, the index lists the PDF as linking to the note, a reading-view heading carries its section and a link as text), `VaultIndexMigrationsTests`, the index, move and rename classes.
+- **Full Mac package suite:** 5,099 tests run with the Read Aloud, speech, dictation, audio, voice and recording classes left out, 30 skipped; the one failure is `ReadingGanttChartTests.testAChartWithAStatementNotDrawnOrADateNotReadShowsTheSourceAndWhy`, failing on main since MermaidDiagrams 0.4.0. No audio assertion during the run.
+- **Checks:** `scripts/check-rules.py`, `scripts/size-report.py` (`WorkspaceModel.completeMove` reviewed at 42, `VaultIndex.init` at 63), the iOS app and hosted tests built for an arm64 simulator, the Mac app built.
+- **Not established:** the reading view's drag and a rename tried on an iPad simulator (the simulator panel's access was not granted), the Mac app by hand (computer use declined), Preview and Obsidian following the link, a physical iPad.
+
 ## Bold beside a formula in a colour reads bold in the reading view: 2026-11-23
 
 `Docs/Bug-hunt-todo.md` HUNT-374 (section 14, issue #127), seen by the owner on the iPad: `~={#d29922}**If $C_{GS} \gg (1 + g_mR_D)C_{GD}$**=~` showed its `**` in the reading view while Live Preview showed it bold. The reading view's markers for `~={…}`, `=~`, `==`, `<u>`, `<mark>` and `<br>` are private-use characters, which CommonMark reads as letters, so a `**` between a marker and a formula's `$` could neither open nor close; `ReadingMarkerPunctuation` frames them with punctuation while the block is parsed.

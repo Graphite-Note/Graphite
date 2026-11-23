@@ -5,8 +5,8 @@
  * Description: The vault's SQLite index of files, text, links, tags and aliases, and how links resolve through it.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 11/11/2026
+ * Version: 0.12
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -257,6 +257,7 @@ public actor VaultIndex {
             try database.execute(sql: "CREATE TABLE index_facts (name TEXT PRIMARY KEY NOT NULL, value INTEGER NOT NULL)")
         }
         Self.registerNaturalFileNameOrderMigration(in: &migrator)
+        Self.registerPDFSectionLinksMigration(in: &migrator)
         try migrator.migrate(databasePool)
     }
 
@@ -370,7 +371,7 @@ public actor VaultIndex {
             if let text = file.markdown, DocumentKind(path: file.path) == .canvas {
                 semantics = try? CanvasLinks.semantics(ofCanvasText: text) // Unreadable: no links, and `isUnreadableCanvas` records it.
             } else if DocumentKind(path: file.path) == .pdf {
-                semantics = file.markdown.map(NoteSemantics.plainText)
+                semantics = try file.markdown.map(NoteSemantics.pdfText)
             } else {
                 semantics = try file.markdown.map { text in try MarkdownSemantics.parse(text) }
             }

@@ -5,8 +5,8 @@
  * Description: The shape of the index database: the migrations it records, its full-text tokenizer, the
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 23/11/2026
  */
 
 import XCTest
@@ -30,7 +30,7 @@ final class VaultIndexMigrationsTests: XCTestCase {
         "inventory-and-links-1", "bounded-update-lookups-2", "filename-search-and-row-identities-3",
         "vault-path-markdown-link-targets-4", "base-properties-and-creation-dates-5", "unicode-name-keys-6",
         "search-whole-note-text-7", "case-folded-link-keys-8", "markdown-link-written-targets-9", "unreadable-canvas-state-10",
-        "finished-scan-fact-11", "natural-file-name-order-12",
+        "finished-scan-fact-11", "natural-file-name-order-12", "pdf-section-links-13",
     ]
 
     private func recordedMigrations(in index: VaultIndex) async throws -> [String] {

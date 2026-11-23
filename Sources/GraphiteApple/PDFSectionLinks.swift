@@ -6,8 +6,8 @@
  *              picture, so every PDF reader follows it to the section.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -70,6 +70,25 @@ extension PDFPageManager {
             guard let url = URL(string: picture.address) else { continue }
             page.addAnnotation(makeSectionLinkAnnotation(url: url, bounds: picture.bounds, ownerName: name))
         }
+    }
+
+    /// The edits that give each section picture of the document the address `rewrite` returns
+    /// for its own; none for a picture `rewrite` leaves as it is (nil). The pictures keep
+    /// everything else, so the edits change only where they link.
+    public static func sectionLinkEdits(in document: PDFDocument, rewriting rewrite: (String) -> String?) -> [PDFEdit] {
+        var edits: [PDFEdit] = []
+        for pageIndex in 0..<document.pageCount {
+            guard let page = document.page(at: pageIndex), page.annotations.contains(where: { annotation in sectionLinkAddress(of: annotation) != nil }) else {
+                continue
+            }
+            for picture in pictures(on: page) {
+                guard let address = picture.sectionLinkAddress, let newAddress = rewrite(address), newAddress != address else { continue }
+                var relinked = picture
+                relinked.sectionLinkAddress = newAddress
+                edits.append(.replacePicture(picture.reference(onPageAt: pageIndex), with: relinked))
+            }
+        }
+        return edits
     }
 
     private static func makeSectionLinkAnnotation(url: URL, bounds: CGRect, ownerName: String) -> PDFAnnotation {

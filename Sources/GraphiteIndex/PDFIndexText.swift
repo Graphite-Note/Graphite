@@ -1,5 +1,18 @@
+/**
+ * File: PDFIndexText.swift
+ * ------------------------
+ * Layer: Index
+ * Description: What the index reads of a PDF: the text of its text boxes and notes, and the sections of notes its
+ *              pictures link to, read with Core Graphics without loading the pages' content.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.3
+ * Date: 23/11/2026
+ */
+
 import Foundation
 import CoreGraphics
+import GRDB
 import GraphiteCore
 
 /// What Search reads of a PDF: the text of its text boxes and notes (`PDFTypedAnnotationText`), not its
@@ -18,7 +31,7 @@ enum PDFIndexText {
             return .failed(PDFIndexReadingError.unreadable)
         }
         guard document.isUnlocked else { return .text("") }
-        return .text(PDFTypedAnnotationText.searchableText(of: document))
+        return .text(PDFTypedAnnotationText.indexedText(of: document))
     }
 
     /// The same, under a file coordination of its own, as a refresh of one file reads it.
@@ -30,5 +43,15 @@ enum PDFIndexText {
         }
         if let coordinationError { return .failed(coordinationError) }
         return reading ?? .failed(PDFIndexReadingError.unavailable)
+    }
+}
+
+extension VaultIndex {
+    /// A PDF's pictures of notes' sections are links of the PDF (`PDFTypedAnnotationText.indexedText`);
+    /// every PDF is read again on the next scan to record them.
+    static func registerPDFSectionLinksMigration(in migrator: inout DatabaseMigrator) {
+        migrator.registerMigration("pdf-section-links-13") { database in
+            try database.execute(sql: "UPDATE files SET size = -1 WHERE path LIKE '%.pdf'")
+        }
     }
 }

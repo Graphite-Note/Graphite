@@ -6,8 +6,8 @@
  *              loading the pages' content.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -42,6 +42,39 @@ public enum PDFTypedAnnotationText {
         }
         return text
     }
+
+    /// What the index reads of a PDF: its typed text, then a line `[[Note#Heading]]` for each
+    /// note's section a picture on its pages links to (`SectionLink`), so the index has those
+    /// links: backlinks show the PDF, and moving the note finds it. Bounded as `searchableText`.
+    public static func indexedText(of document: CGPDFDocument) -> String {
+        let links = sectionLinkTexts(of: document)
+        return searchableText(of: document) + links.map { linkText in "[[" + linkText + "]]\n" }.joined()
+    }
+
+    /// The link text of each section a picture on the document's pages links to, in page order.
+    public static func sectionLinkTexts(of document: CGPDFDocument) -> [String] {
+        let pageCount = min(document.numberOfPages, maximumPageCount)
+        guard pageCount > 0 else { return [] }
+        var linkTexts: [String] = []
+        for pageNumber in 1...pageCount {
+            guard let page = document.page(at: pageNumber), let pageDictionary = page.dictionary else { continue }
+            var annotations: CGPDFArrayRef?
+            guard CGPDFDictionaryGetArray(pageDictionary, "Annots", &annotations), let annotations else { continue }
+            for annotationIndex in 0..<min(CGPDFArrayGetCount(annotations), maximumAnnotationsPerPage) {
+                var annotation: CGPDFDictionaryRef?
+                var address: CGPDFStringRef?
+                guard CGPDFArrayGetDictionary(annotations, annotationIndex, &annotation), let annotation,
+                      CGPDFDictionaryGetString(annotation, sectionLinkKey, &address), let address,
+                      let text = CGPDFStringCopyTextString(address) as String?, let url = URL(string: text),
+                      let link = SectionLink(openingURL: url) else { continue }
+                linkTexts.append(link.linkText)
+            }
+        }
+        return linkTexts
+    }
+
+    /// The key a section's picture keeps its address under (`PDFPageManager.sectionLinkKey`).
+    static let sectionLinkKey = "GraphiteSectionLink"
 
     /// The subtypes whose `/Contents` is text a person typed on the page.
     private static let typedSubtypes: Set<String> = [PDFTextBox.annotationTypeName, PDFNoteAnnotation.typeName]

@@ -7,8 +7,8 @@
  *              reading that address back.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -61,6 +61,20 @@ public struct SectionLink: Equatable, Hashable, Sendable {
     /// The vault an address names, for checking it is the vault that is open.
     public static func vaultName(ofOpeningURL url: URL) -> String? {
         VaultURI(url: url)?.vault
+    }
+
+    // MARK: Following a moved note
+
+    /// A section address rewritten for notes that moved, from their old path to their new one;
+    /// nil when it names none of them, or is no section address. The address keeps its vault,
+    /// its scheme's form and its heading or block.
+    public static func address(_ address: String, following moves: [VaultPath: VaultPath]) -> String? {
+        guard let url = URL(string: address), let link = SectionLink(openingURL: url) else { return nil }
+        let movedNote = moves.first { previousPath, _ in
+            DocumentKind(path: previousPath) == .markdown && (previousPath.rawValue as NSString).deletingPathExtension == link.note
+        }
+        guard let newPath = movedNote?.value, let vaultName = vaultName(ofOpeningURL: url) else { return nil }
+        return SectionLink(notePath: newPath, subpath: link.subpath).openingURL(inVaultNamed: vaultName)?.absoluteString
     }
 
     // MARK: The section's text

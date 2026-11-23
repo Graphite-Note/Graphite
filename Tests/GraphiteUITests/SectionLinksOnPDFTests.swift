@@ -7,8 +7,8 @@
  *              the block a drag names given its identifier, and the link opening the section beside the PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 #if os(macOS)
@@ -29,7 +29,7 @@ final class SectionLinksOnPDFTests: XCTestCase {
 
     /// A vault with the lecture note and a blank one-page PDF beside it.
     private func workspaceWithNoteAndPDF() async throws -> (workspace: WorkspaceModel, vault: URL, session: PDFSession) {
-        let (workspace, vault) = try await testBed.openedWorkspace(files: ["Lecture 1.md": Self.note])
+        let (workspace, vault) = try await testBed.openedWorkspace(files: ["Lecture 1.md": Self.note, "Archive/Contents.md": "# Archive\n"])
         let pageData = NSMutableData()
         var mediaBox = CGRect(x: 0, y: 0, width: 595, height: 842)
         let context = try XCTUnwrap(CGContext(consumer: try XCTUnwrap(CGDataConsumer(data: pageData)), mediaBox: &mediaBox, nil))
@@ -116,6 +116,62 @@ final class SectionLinksOnPDFTests: XCTestCase {
         XCTAssertGreaterThan(after.bounds.height, before.bounds.height, "The taller section's picture is taller.")
         XCTAssertEqual(page.annotations.filter { annotation in annotation.type == "Link" }.map(\.bounds), [after.annotationBounds],
                        "The link follows the picture.")
+    }
+
+    func testRenamingANoteRelinksAClosedPDFThatShowsItsSection() async throws {
+        let (workspace, vault, session) = try await workspaceWithNoteAndPDF()
+        _ = await session.placeDroppedSectionLink(SectionLink(note: "Lecture 1", subpath: "Entropy"), actions: actions(of: workspace),
+                                                  at: try dropLocation(in: session))
+        try await session.save()
+        let pdfPath = try VaultPath("Slides.pdf")
+        let tabID = try XCTUnwrap(workspace.layout.tabID(showing: pdfPath))
+        await workspace.closeTab(tabID)
+        await workspace.refreshIndexAndRecordChange(for: [pdfPath])
+        let index = try XCTUnwrap(workspace.index)
+        let backlinks = try await index.linkingNotes(to: try VaultPath("Lecture 1.md"))
+        XCTAssertEqual(backlinks, [pdfPath], "The index knows the PDF links to the note.")
+
+        workspace.vaultSettings.updatesLinksAutomatically = true
+        await workspace.rename(try VaultPath("Lecture 1.md"), to: "Thermodynamics")
+        XCTAssertNil(workspace.errorMessage)
+        let saved = try XCTUnwrap(PDFDocument(url: vault.appendingPathComponent("Slides.pdf"))?.page(at: 0))
+        let address = try XCTUnwrap(PDFPageManager.pictures(on: saved).first?.sectionLinkAddress)
+        XCTAssertTrue(address.hasSuffix("&file=Thermodynamics%23Entropy"), address)
+        XCTAssertEqual(saved.annotations.filter { annotation in annotation.type == "Link" }.compactMap(\.url?.absoluteString), [address])
+        let link = try XCTUnwrap(URL(string: address).flatMap(SectionLink.init(openingURL:)))
+        let digest = await workspace.currentSectionTextDigest(for: link)
+        XCTAssertNotEqual(digest, nil, "The renamed note is found by the new address.")
+    }
+
+    func testRenamingANoteRelinksAnOpenPDFInPlace() async throws {
+        let (workspace, _, session) = try await workspaceWithNoteAndPDF()
+        _ = await session.placeDroppedSectionLink(SectionLink(note: "Lecture 1", subpath: "Entropy"), actions: actions(of: workspace),
+                                                  at: try dropLocation(in: session))
+        try await session.save()
+        let pdfPath = try VaultPath("Slides.pdf")
+        await workspace.refreshIndexAndRecordChange(for: [pdfPath])
+        workspace.vaultSettings.updatesLinksAutomatically = true
+        await workspace.move(try VaultPath("Lecture 1.md"), into: try VaultPath("Archive"))
+        let page = try XCTUnwrap(session.document.page(at: 0))
+        let address = try XCTUnwrap(session.pictures(on: page).first?.sectionLinkAddress)
+        XCTAssertTrue(address.hasSuffix("&file=Archive%2FLecture%201%23Entropy"), address)
+        XCTAssertTrue(session.hasUnsavedChanges || session.changeVersion > 0, "The open PDF took the change and saves it as an edit.")
+    }
+
+    func testAHeadingDraggedFromTheReadingViewCarriesItsSectionAndALinkAsText() async throws {
+        let notePath = try VaultPath("Physics/Lecture 1.md")
+        let headingOffset = (Self.note as NSString).range(of: "## Second law").location
+        let drags = ReadingSectionDrags(notePath: notePath, noteText: Self.note, vaultRoot: URL(fileURLWithPath: "/Vault"),
+                                        blockOffsets: ["heading-2": headingOffset])
+        XCTAssertNil(drags.itemProvider(forBlock: "embedded-heading"), "A block that is not the note's own is not dragged.")
+        let provider = try XCTUnwrap(drags.itemProvider(forBlock: "heading-2"))
+        let transfer = await SectionLinkTransfer.load(from: provider)
+        XCTAssertEqual(transfer?.link, SectionLink(note: "Physics/Lecture 1", subpath: "Second law"))
+        XCTAssertTrue(transfer?.isInVault(at: URL(fileURLWithPath: "/Vault")) == true)
+        let text: String? = await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: NSString.self) { object, _ in continuation.resume(returning: object as? String) }
+        }
+        XCTAssertEqual(text, "[[Physics/Lecture 1#Second law]]", "Dropped into a note, it is a link to the section.")
     }
 
     func testADraggedBlockGetsItsIdentifierOnlyWhenAPageTakesItAndTheCursorStays() async throws {

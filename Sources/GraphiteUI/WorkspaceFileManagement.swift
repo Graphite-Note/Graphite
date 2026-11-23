@@ -5,8 +5,8 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.26
- * Date: 11/11/2026
+ * Version: 0.27
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -208,6 +208,7 @@ extension WorkspaceModel {
             defer { heldSaves.release() }
             await heldSaves.waitForSavesInFlight()
             let revisionsBeforeMove = await revisionsOfOpenDocuments(inside: path)
+            let sectionLinkPDFs = updatesLinks ? await pdfsLinkingToSections(of: plan.moves) : []
             let report = try await fileOperations.move(path, to: destination, applying: updatesLinks ? plan : nil)
             guard isVaultOpen(fileOperations) else {
                 return finishMoveInClosedVault(vaultIdentifier, report, from: path, to: destination, updatesLinks: updatesLinks)
@@ -233,10 +234,11 @@ extension WorkspaceModel {
             // Without link updates the report lists only the moved item itself; the plan
             // lists every indexed file inside a moved folder.
             let movedFiles = report.moves.merging(plan.moves) { reportedDestination, _ in reportedDestination }
-            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths)
+            let relinked = await relinkSectionPictures(in: sectionLinkPDFs, after: movedFiles)
+            refreshIndexFollowingMove(Array(movedFiles.keys) + Array(movedFiles.values) + report.updatedNotes + keptEditPaths + keptPDFPaths + relinked.written)
             await checkOpenDocuments(changedByMove: Set(report.updatedNotes + keptEditPaths))
             await refreshDirectory()
-            tellAbout(report, problems: editProblems + pdfProblems, movedItemName: destination.name, updatesLinks: updatesLinks)
+            tellAbout(report, problems: editProblems + pdfProblems + relinked.problems, movedItemName: destination.name, updatesLinks: updatesLinks)
             return .moved
         } catch {
             errorMessage.report(error)

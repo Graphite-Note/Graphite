@@ -27,6 +27,13 @@ public struct NoteSemantics: Sendable {
     public static func plainText(_ text: String) -> NoteSemantics {
         NoteSemantics(links: [], headings: [], tags: [], aliases: [], body: text, frontmatter: nil)
     }
+
+    /// A PDF's indexed text (`PDFTypedAnnotationText.indexedText`): searchable, with the
+    /// links written in it, such as the sections its pictures link to, and no headings, tags,
+    /// aliases or properties of its own.
+    public static func pdfText(_ text: String) throws -> NoteSemantics {
+        NoteSemantics(links: try MarkdownSemantics.parse(text).links, headings: [], tags: [], aliases: [], body: text, frontmatter: nil)
+    }
 }
 
 public enum MarkdownSemantics {

@@ -6,8 +6,8 @@
  *              picture and address for a drop, and opening a section from the page.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import Foundation
@@ -21,12 +21,15 @@ enum SectionLinkError: LocalizedError, Equatable {
     case vaultNotNamed
     /// The section could not be drawn as a picture.
     case notDrawn
+    /// A PDF whose links to a moved note cannot be changed: locked, or not a PDF Graphite reads.
+    case pdfNotChangeable
 
     var errorDescription: String? {
         switch self {
         case .noteNotInVault(let note): "“\(note)” is not a note of this vault."
         case .vaultNotNamed: "This vault's sections can't be linked."
         case .notDrawn: "This section could not be drawn."
+        case .pdfNotChangeable: "This PDF can't be changed."
         }
     }
 }

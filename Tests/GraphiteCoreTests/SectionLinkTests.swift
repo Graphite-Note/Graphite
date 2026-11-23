@@ -6,8 +6,8 @@
  *              written for other PDF readers, and that address read back.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import XCTest
@@ -66,6 +66,15 @@ final class SectionLinkTests: XCTestCase {
         XCTAssertEqual(SectionLink.link(startingAt: blankLineAfterSecondLaw, in: note, notePath: try notePath).link.subpath, "Second law")
         XCTAssertNil(SectionLink.link(startingAt: location(of: "not a heading"), in: note, notePath: try notePath).link.subpath,
                      "A YAML comment in the frontmatter is not a heading, and the frontmatter links the whole note.")
+    }
+
+    func testAnAddressFollowsItsNoteToItsNewPlaceAndKeepsItsVaultAndHeading() throws {
+        let address = "obsidian://open?vault=Study&file=Physics%2FLecture%201%23Entropy"
+        let moves = [try VaultPath("Physics/Lecture 1.md"): try VaultPath("Archive/Thermodynamics.md")]
+        XCTAssertEqual(SectionLink.address(address, following: moves), "obsidian://open?vault=Study&file=Archive%2FThermodynamics%23Entropy")
+        XCTAssertNil(SectionLink.address(address, following: [try VaultPath("Physics/Lecture 2.md"): try VaultPath("Lecture 2.md")]),
+                     "A move of another note leaves it as it is.")
+        XCTAssertNil(SectionLink.address("https://example.com", following: moves))
     }
 
     func testTheAddressIsObsidiansAndReadsBack() throws {

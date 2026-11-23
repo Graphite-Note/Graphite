@@ -6,8 +6,8 @@
  *              any reader follows, read back, and kept in step when the picture moves or goes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 23/11/2026
  */
 
 import XCTest
@@ -106,6 +106,30 @@ final class PDFSectionLinkTests: XCTestCase {
         try PDFPageManager.replay([.replacePicture(relinked.reference(onPageAt: 0), with: relinked),
                                    .removeAnnotation(relinked.reference(onPageAt: 0))], on: document)
         XCTAssertTrue(page.annotations.isEmpty, "Removing the picture removes its link: \(page.annotations.map(\.type))")
+    }
+
+    func testTheIndexReadsTheSectionsAPDFLinksTo() throws {
+        let document = try blankDocument()
+        try PDFPageManager.replay([.addPicture(page: 0, picture: try sectionPicture())], on: document)
+        let written = try XCTUnwrap(CGPDFDocument(try XCTUnwrap(CGDataProvider(data: try XCTUnwrap(document.dataRepresentation()) as CFData))))
+        XCTAssertEqual(PDFTypedAnnotationText.sectionLinkTexts(of: written), ["Physics/Lecture 1#Entropy"])
+        XCTAssertEqual(PDFTypedAnnotationText.indexedText(of: written), "[[Physics/Lecture 1#Entropy]]\n")
+        XCTAssertEqual(try NoteSemantics.pdfText(PDFTypedAnnotationText.indexedText(of: written)).links.map(\.target), ["Physics/Lecture 1#Entropy"],
+                       "The index records the PDF as linking to the note.")
+    }
+
+    func testOnlyTheSectionLinksARewriteNamesChange() throws {
+        let document = try blankDocument()
+        let ordinary = PDFPicture(name: "photo-1", imageData: try imageData(), bounds: CGRect(x: 0, y: 0, width: 10, height: 10), quarterTurns: 0)
+        try PDFPageManager.replay([.addPicture(page: 0, picture: try sectionPicture()), .addPicture(page: 0, picture: ordinary)], on: document)
+        let newAddress = "obsidian://open?vault=Study&file=Archive%2FThermodynamics%23Entropy"
+        let edits = PDFPageManager.sectionLinkEdits(in: document) { address in address == Self.address ? newAddress : nil }
+        XCTAssertEqual(edits.count, 1)
+        try PDFPageManager.replay(edits, on: document)
+        let page = try XCTUnwrap(document.page(at: 0))
+        XCTAssertEqual(PDFPageManager.pictures(on: page).compactMap(\.sectionLinkAddress), [newAddress])
+        XCTAssertEqual(page.annotations.filter { annotation in annotation.type == "Link" }.compactMap(\.url?.absoluteString), [newAddress])
+        XCTAssertTrue(PDFPageManager.sectionLinkEdits(in: document) { _ in nil }.isEmpty)
     }
 
     func testAnOrdinaryPictureHasNoLink() throws {
