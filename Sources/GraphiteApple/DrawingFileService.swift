@@ -1,3 +1,14 @@
+/**
+ * File: DrawingFileService.swift
+ * ------------------------------
+ * Layer: Apple
+ * Description: Saves Pencil drawings as PNG, PDF or SVG files with their editing record, reads them back for editing,
+ *              and decodes images, drawings and SVG files for display (ImageFileService).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 23/11/2026
+ */
 import Foundation
 import ImageIO
 import CoreGraphics
@@ -372,6 +383,9 @@ public actor ImageFileService {
         switch location.pathExtension.lowercased() {
         case "svg":
             let fileData = try AtomicFileWriter().read(location, maximumBytes: SVGDrawingFile.maximumFileBytes).data
+            // A drawing Graphite wrote, unchanged since, is drawn from its own shapes; any other
+            // SVG, including a drawing another app changed, as a browser draws it.
+            guard SVGDrawingFile.readMetadata(fileData).payload != nil else { return try SVGImageRenderer.image(fromFileData: fileData, limit: limit) }
             let drawing = try SVGDrawingFile.vectorDrawing(from: fileData)
             return try VectorDrawingRenderer.image(for: drawing, maximumPixelDimension: limit.longestPixelSide(forWidth: drawing.size.width, height: drawing.size.height))
         case "pdf":

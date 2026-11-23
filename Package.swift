@@ -7,7 +7,7 @@
  *              makes a warning in any of its targets fail the build.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.18
+ * Version: 0.19
  * Date: 23/11/2026
  */
 import PackageDescription
@@ -27,6 +27,8 @@ let package = Package(
         // Vendored Textual 0.5.0 with Graphite's patches, each listed in Vendor/textual/GRAPHITE-PATCHES.md.
         .package(path: "Vendor/textual"),
         .package(url: "https://github.com/jpsim/Yams.git", exact: "6.2.2"),
+        // SwiftDraw (zlib license) draws the SVG files Graphite did not write; Apple's frameworks read no SVG.
+        .package(url: "https://github.com/swhitty/SwiftDraw.git", exact: "0.29.0"),
         // The PostgreSQL Mirror core plugin's client: the PostgreSQL wire protocol over SwiftNIO.
         .package(url: "https://github.com/vapor/postgres-nio.git", exact: "1.33.1"),
         // A trimmed copy of mlx-audio-swift (MIT) that runs the downloadable Read Aloud voices;
@@ -43,7 +45,8 @@ let package = Package(
             .product(name: "Yams", package: "Yams")
         ]),
         .target(name: "GraphiteIndex", dependencies: ["GraphiteCore", .product(name: "GRDB", package: "GRDB.swift")]),
-        .target(name: "GraphiteApple", dependencies: ["GraphiteCore", .product(name: "NotebookImport", package: "NotebookImport")], resources: [.copy("Resources/MathSpeech")]),
+        .target(name: "GraphiteApple", dependencies: ["GraphiteCore", .product(name: "NotebookImport", package: "NotebookImport"),
+                                            .product(name: "SwiftDraw", package: "SwiftDraw")], resources: [.copy("Resources/MathSpeech")]),
         // The PostgreSQL Mirror core plugin: a one-way copy of the index into a PostgreSQL database.
         .target(name: "GraphitePostgreSQLMirror", dependencies: ["GraphiteCore", "GraphiteIndex", .product(name: "PostgresNIO", package: "postgres-nio")]),
         // The on-device neural voices: model loading and rendering with MLX.

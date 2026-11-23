@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-23.
 
+## SVG files from other apps are shown: 2026-11-23
+
+`Docs/Bug-hunt-todo.md` HUNT-375. An SVG Graphite did not write (a schematic, an exported diagram, an icon) read "cannot be shown" in every embed and in the image pane; Graphite drew only its own SVG drawings. `ImageFileService` now hands any SVG without Graphite's drawing record, a drawing another app changed included, to `SVGImageRenderer`, which draws it with SwiftDraw 0.29.0 (zlib license, about 1 MB of code) at the pixels the place it is shown needs, on a transparent background.
+
+- **Automated tests:** `SVGImageRendererTests` (4): a copy of the owner's schematic at the width it is shown (wire, white frame, transparent corner, title text), a small icon drawn sharp at 600 pixels, a Graphite drawing changed in another app, and a file that is not SVG still refused. Whole Mac package suite: 5,117 tests, one failure, `UiRootSettingsTests.testSVGChangedInAnotherAppKeepsTheErrorThatExplainsTheEmptyPane`, which held the old blank pane and is now `testSVGChangedInAnotherAppIsShownAndSaysItsStrokesCanNoLongerBeEdited` (passes); Read Aloud, speech, dictation, audio, voice, recording and media left out. Also: check-rules.py (38 gates at their baselines), size-report.py, check-test-registration.py, the iOS app built for a simulator with SwiftDraw resolved.
+- **Checked:** the owner's own SVG drawn by SwiftDraw outside the app, in 26 ms, text included. Not checked in the installed app or on a device.
+
 ## MermaidDiagrams 0.6.1: a pie chart without a legend is drawn: 2026-11-23
 
 `Docs/Native-diagrams-todo.md` (Later, issue #214, the pie chart's options). A pie chart with `legendPosition: none` stopped the app as its note opened (MermaidDiagrams 0.6.0 and earlier counted the pie's fills from its legend). MermaidDiagrams 0.6.1 counts them from the slices and the legend; Graphite pins it.

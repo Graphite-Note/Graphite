@@ -1,3 +1,14 @@
+/**
+ * File: FilePreviewPane.swift
+ * ---------------------------
+ * Layer: UI
+ * Description: Shows an image, a drawing or an SVG file at full width with zoom (ImagePane), images embedded in notes
+ *              (EmbeddedImageView), and other files through Quick Look (FilePreviewPane).
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.8
+ * Date: 23/11/2026
+ */
 import SwiftUI
 import QuickLook
 import GraphiteCore
@@ -130,8 +141,8 @@ struct ImagePaneContent: Sendable {
         // Answered from the chunk headers for an ordinary PNG, so a photo is not read twice.
         let reading = await Task.detached(priority: .userInitiated) { DrawingMetadataReader.readMetadata(at: location) }.value
         content.hasEditableStrokes = reading?.payload != nil
-        // An SVG changed in another app cannot be drawn at all; its own error says so, and
-        // claiming the image is intact over an empty pane would be wrong.
+        // An SVG changed in another app is drawn as any other SVG; one that cannot be drawn
+        // shows its own error, and claiming the image is intact over an empty pane would be wrong.
         if reading?.metadataWasDiscarded == true, content.image != nil {
             content.message = "This drawing was changed in another app. The image is intact, but its Pencil strokes can no longer be edited."
         }

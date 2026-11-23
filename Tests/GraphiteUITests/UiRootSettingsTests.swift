@@ -2,11 +2,11 @@
  * File: UiRootSettingsTests.swift
  * -------------------------------
  * Layer: Tests
- * Description: The image pane: Graphite's SVG drawings, an SVG changed in another app, a missing image, decoding once.
+ * Description: The image pane: Graphite's SVG drawings, an SVG changed in another app (drawn, strokes no longer editable), a missing image, decoding once.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.5
+ * Date: 23/11/2026
  */
 import XCTest
 import SwiftUI
@@ -45,9 +45,10 @@ final class UiRootSettingsTests: XCTestCase {
         XCTAssertNil(content.message)
     }
 
-    /// An SVG recoloured in another app cannot be drawn by Graphite. The pane used to say
-    /// "The image is intact" over an empty area, hiding the error that explains it.
-    func testSVGChangedInAnotherAppKeepsTheErrorThatExplainsTheEmptyPane() async throws {
+    /// An SVG recoloured in another app is drawn as any other SVG (HUNT-375): the pane shows it in
+    /// its new colour and says that its Pencil strokes can no longer be edited. Before 2026-11-23
+    /// Graphite could not draw it and showed only the error.
+    func testSVGChangedInAnotherAppIsShownAndSaysItsStrokesCanNoLongerBeEdited() async throws {
         let location = temporaryDirectory.appendingPathComponent("Drawing.svg")
         let text = try XCTUnwrap(String(data: try graphiteSVGData(), encoding: .utf8))
         let recoloured = text.replacingOccurrences(of: "fill=\"#000000\"", with: "fill=\"#ff0000\"")
@@ -56,11 +57,26 @@ final class UiRootSettingsTests: XCTestCase {
 
         let content = await ImagePaneContent.load(from: location, fileExtension: "svg")
 
-        XCTAssertNil(content.image)
+        let image = try XCTUnwrap(content.image)
+        XCTAssertEqual(image.width * 200, image.height * 400, "The drawing keeps its 400 by 200 shape.")
+        let strokePixel = try pixel(of: image, column: image.width / 4, row: image.height * 60 / 200)
+        XCTAssertGreaterThan(strokePixel[0], 200, "The stroke is drawn in the other app's red.")
+        XCTAssertLessThan(strokePixel[1], 60)
         XCTAssertFalse(content.hasEditableStrokes)
         let message = try XCTUnwrap(content.message)
-        XCTAssertFalse(message.contains("intact"), message)
-        XCTAssertTrue(message.contains("system preview"), message)
+        XCTAssertTrue(message.contains("can no longer be edited"), message)
+    }
+
+    /// The red, green, blue and alpha of one pixel, top row first.
+    private func pixel(of image: CGImage, column: Int, row: Int) throws -> [UInt8] {
+        var pixelBytes = [UInt8](repeating: 0, count: 4)
+        let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
+        try pixelBytes.withUnsafeMutableBytes { buffer in
+            let context = try XCTUnwrap(CGContext(data: buffer.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                                  space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            context.draw(image, in: CGRect(x: -column, y: row - image.height + 1, width: image.width, height: image.height))
+        }
+        return pixelBytes
     }
 
     func testMissingImageReportsAnErrorAndNoPixels() async {
