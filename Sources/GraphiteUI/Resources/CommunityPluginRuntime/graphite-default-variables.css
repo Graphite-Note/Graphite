@@ -8,7 +8,7 @@
  Every rule has no specificity (`:where`), so a theme's `.theme-dark { … }` or `body { … }`
  overrides it, as themes override Obsidian's own layer.
 
- Version: 4. Change the version in ThemeTokenResolver when this file changes, so cached
+ Version: 5. Change the version in ThemeTokenResolver when this file changes, so cached
  values are resolved again.
 */
 
@@ -93,6 +93,7 @@
     --background-secondary: var(--color-base-20);
     --background-secondary-alt: var(--color-base-05);
     --background-modifier-border: var(--color-base-30);
+    --background-modifier-border-hover: var(--color-base-35);
     --text-normal: var(--color-base-100);
     --text-muted: var(--color-base-70);
     --text-faint: var(--color-base-50);
@@ -143,6 +144,53 @@
     --callout-bug: var(--color-red-rgb);
     --callout-example: var(--color-purple-rgb);
     --callout-quote: var(--color-gray-rgb);
+}
+
+/* Mermaid diagrams: Obsidian draws them with Pele in a container of class `mermaid`, and its own
+   stylesheet maps Pele's color variables onto its `--mermaid-*` variables, on the body and again
+   on every container, and those onto its colors. These are those definitions, the colors only,
+   as Obsidian 1.15 writes them: a theme or snippet that sets `--mermaid-*`, or only Obsidian's
+   colors (`--background-primary`, `--interactive-accent`, `--color-blue` …), colors diagrams as
+   in Obsidian, and one that sets `--pele-*` on the container (`.mermaid { … }`) wins over both.
+   As in Obsidian, `--pele-*` set on the body alone does not reach a diagram: the container sets
+   its own. */
+:where(body) {
+    --mermaid-background: var(--background-primary);
+    --mermaid-text-color: var(--text-normal);
+    --mermaid-muted-color: var(--text-muted);
+    --mermaid-line-color: var(--text-normal);
+    --mermaid-surface: var(--background-secondary);
+    --mermaid-surface-alt: var(--background-primary-alt);
+    --mermaid-border-color: var(--background-modifier-border-hover);
+    --mermaid-accent: var(--interactive-accent);
+    --mermaid-critical: var(--color-red);
+    --mermaid-color-1: var(--color-blue);
+    --mermaid-color-2: var(--color-orange);
+    --mermaid-color-3: var(--color-green);
+    --mermaid-color-4: var(--color-red);
+    --mermaid-color-5: var(--color-cyan);
+    --mermaid-color-6: var(--color-yellow);
+    --mermaid-color-7: var(--color-purple);
+    --mermaid-color-8: var(--color-pink);
+}
+:where(body, .mermaid) {
+    --pele-bg: var(--mermaid-background);
+    --pele-fg: var(--mermaid-text-color);
+    --pele-muted: var(--mermaid-muted-color);
+    --pele-line: var(--mermaid-line-color);
+    --pele-surface: var(--mermaid-surface);
+    --pele-surface-alt: var(--mermaid-surface-alt);
+    --pele-border: var(--mermaid-border-color);
+    --pele-accent: var(--mermaid-accent);
+    --pele-critical: var(--mermaid-critical);
+    --pele-series-1: var(--mermaid-color-1);
+    --pele-series-2: var(--mermaid-color-2);
+    --pele-series-3: var(--mermaid-color-3);
+    --pele-series-4: var(--mermaid-color-4);
+    --pele-series-5: var(--mermaid-color-5);
+    --pele-series-6: var(--mermaid-color-6);
+    --pele-series-7: var(--mermaid-color-7);
+    --pele-series-8: var(--mermaid-color-8);
 }
 
 /* The elements the resolver measures, styled from the variables as the documentation

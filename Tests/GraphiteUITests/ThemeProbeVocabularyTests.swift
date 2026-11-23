@@ -113,21 +113,73 @@ final class ThemeProbeVocabularyTests: XCTestCase {
         XCTAssertEqual(sameAsDefaults, onlyUnresolvedLinks)
     }
 
-    /// A snippet that sets Pele's variables gives diagrams its colors, in the appearance it sets them for; an unset
-    /// variable reads as no color.
+    /// The diagram colors a snippet gives, in one appearance, against Graphite's default layer alone.
+    private func diagramColors(of snippet: String, isDark: Bool) async throws -> [String: ThemeColor] {
+        let themed = try await measuredValues(isDark: isDark, themedStyleSheet: snippet)
+        let defaults = try await measuredValues(isDark: isDark)
+        return ThemeProbeReading.tokens(themed: themed, defaults: defaults).diagramColors
+    }
+
+    private static func color(_ red: Double, _ green: Double, _ blue: Double) -> ThemeColor {
+        ThemeColor(red: red / 255, green: green / 255, blue: blue / 255)
+    }
+
+    private static let seriesNames = (1...8).map { series in "series-\(series)" }
+
+    /// A snippet that sets Pele's variables on a diagram's container gives diagrams its colors, in the appearance it sets
+    /// them for; once it sets one series the eight are read together, the others Obsidian's colors (`--color-orange` …)
+    /// as Obsidian draws them. An unset variable reads as no color.
     func testPeleVariablesOfAThemeOrSnippetAreReadForEachAppearance() async throws {
-        let snippet = "body { --pele-bg: #102030; --pele-series-1: rgb(255, 0, 0); } .theme-dark { --pele-accent: #00ff00; }"
-        func diagramColors(isDark: Bool) async throws -> [String: ThemeColor] {
-            let themed = try await measuredValues(isDark: isDark, themedStyleSheet: snippet)
-            let defaults = try await measuredValues(isDark: isDark)
-            return ThemeProbeReading.tokens(themed: themed, defaults: defaults).diagramColors
-        }
-        let light = try await diagramColors(isDark: false), dark = try await diagramColors(isDark: true)
-        XCTAssertEqual(Set(light.keys), ["bg", "series-1"])
-        XCTAssertEqual(light["bg"], ThemeColor(red: 16 / 255, green: 32 / 255, blue: 48 / 255))
-        XCTAssertEqual(light["series-1"], ThemeColor(red: 1, green: 0, blue: 0))
-        XCTAssertEqual(Set(dark.keys), ["bg", "series-1", "accent"])
+        let snippet = ".mermaid { --pele-bg: #102030; --pele-series-1: rgb(255, 0, 0); } .theme-dark .mermaid { --pele-accent: #00ff00; }"
+        let light = try await diagramColors(of: snippet, isDark: false), dark = try await diagramColors(of: snippet, isDark: true)
+        XCTAssertEqual(Set(light.keys), Set(["bg"] + Self.seriesNames))
+        XCTAssertEqual(light["bg"], Self.color(16, 32, 48))
+        XCTAssertEqual(light["series-1"], Self.color(255, 0, 0))
+        XCTAssertEqual(light["series-2"], Self.color(0xec, 0x75, 0), "Obsidian's orange, its --mermaid-color-2")
+        XCTAssertEqual(Set(dark.keys), Set(["bg", "accent"] + Self.seriesNames))
+        XCTAssertEqual(dark["series-2"], Self.color(0xe9, 0x97, 0x3f), "Obsidian's dark orange")
         let unthemed = try await measuredValues(isDark: false)
         XCTAssertTrue(ThemeProbeReading.tokens(themed: unthemed, defaults: unthemed).diagramColors.isEmpty)
+    }
+
+    /// The default layer maps every Pele variable the probe reads onto Obsidian's `--mermaid-*` variables, as Obsidian's
+    /// stylesheet does, so none of them reads only what a theme sets on the container.
+    func testTheDefaultLayerMapsEveryPeleVariableTheProbeReads() throws {
+        let runtimeFolder = try XCTUnwrap(Bundle.module.url(forResource: "CommunityPluginRuntime", withExtension: nil))
+        let defaults = try String(contentsOf: runtimeFolder.appendingPathComponent("graphite-default-variables.css"), encoding: .utf8)
+        for name in ThemeModeTokens.diagramColorVariableNames {
+            XCTAssertTrue(defaults.contains("--pele-\(name): var(--mermaid-"), name)
+        }
+    }
+
+    /// As in Obsidian, whose stylesheet sets `--pele-*` again on every diagram's container from `--mermaid-*`, Pele's
+    /// variables set on the body alone do not reach a diagram.
+    func testPeleVariablesSetOnTheBodyAloneDoNotReachADiagramAsInObsidian() async throws {
+        let colors = try await diagramColors(of: "body { --pele-bg: #102030; --pele-series-1: rgb(255, 0, 0); }", isDark: false)
+        XCTAssertEqual(colors, [:])
+    }
+
+    /// Obsidian's `--mermaid-*` variables color diagrams, and `--pele-*` set on the container wins over them.
+    func testObsidiansMermaidVariablesColorDiagramsAndPelesOwnWin() async throws {
+        let mermaid = try await diagramColors(of: "body { --mermaid-background: #203040; --mermaid-color-3: #00ff00; --mermaid-line-color: #ff8000; }",
+                                              isDark: false)
+        XCTAssertEqual(mermaid["bg"], Self.color(0x20, 0x30, 0x40))
+        XCTAssertEqual(mermaid["line"], Self.color(255, 0x80, 0))
+        XCTAssertEqual(mermaid["series-3"], Self.color(0, 255, 0))
+        XCTAssertEqual(mermaid["series-1"], Self.color(8, 109, 221), "Obsidian's blue, read with the third")
+        let both = try await diagramColors(of: "body { --mermaid-background: #203040; } .mermaid { --pele-bg: #102030; }", isDark: false)
+        XCTAssertEqual(both["bg"], Self.color(16, 32, 48))
+    }
+
+    /// A theme that sets only Obsidian's own colors colors diagrams as Obsidian's stylesheet maps them: the accent from
+    /// `--interactive-accent`, the nodes' fill from `--background-secondary`, the first series from `--color-blue`.
+    func testObsidiansOwnColorsColorDiagramsThroughItsMermaidVariables() async throws {
+        let snippet = "body { --interactive-accent: #ff00ff; --background-secondary: #eeeeff; } .theme-dark { --color-blue: #00ffff; }"
+        let light = try await diagramColors(of: snippet, isDark: false), dark = try await diagramColors(of: snippet, isDark: true)
+        XCTAssertEqual(light["accent"], Self.color(255, 0, 255))
+        XCTAssertEqual(light["surface"], Self.color(0xee, 0xee, 0xff))
+        XCTAssertNil(light["series-1"], "The light series are left alone")
+        XCTAssertEqual(dark["series-1"], Self.color(0, 255, 255))
+        XCTAssertEqual(dark["series-8"], Self.color(0xfa, 0x99, 0xcd), "Obsidian's dark pink, read with the first")
     }
 }

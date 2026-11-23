@@ -195,7 +195,9 @@ public struct ThemeModeTokens: Codable, Hashable, Sendable {
     /// changes any (its palette or its `--code-*` variables), so its colors stay together.
     public var codeTokenColors: [String: ThemeColor]?
     /// The colors a theme or snippet gives Mermaid diagrams with Pele's variables, by the variable's name after
-    /// `--pele-` (`bg`, `accent`, `series-1` …, `diagramColorVariableNames`).
+    /// `--pele-` (`bg`, `accent`, `series-1` …, `diagramColorVariableNames`), read inside a diagram's container as
+    /// Obsidian resolves them: `--pele-*` set there, else Obsidian's `--mermaid-*`, else the Obsidian colors those name
+    /// (`--background-primary`, `--interactive-accent`, `--color-blue` …); all eight series once the theme changes any.
     public var diagramColors: [String: ThemeColor] = [:]
 
     public init() {}
@@ -306,6 +308,14 @@ public enum ThemeProbeReading {
         tokens.textMuted = color("muted.color")
         for name in ThemeModeTokens.diagramColorVariableNames {
             if let diagramColor = color("pele." + name) { tokens.diagramColors[name] = diagramColor }
+        }
+        // The eight series together once the theme changes any, as Obsidian draws them: a theme that sets only
+        // `--color-blue` still draws the second series in Obsidian's orange, not in Pele's own.
+        let seriesNames = ThemeModeTokens.diagramColorVariableNames.filter { name in name.hasPrefix("series-") }
+        if seriesNames.contains(where: { name in tokens.diagramColors[name] != nil }) {
+            for name in seriesNames {
+                if let series = themed["pele." + name].flatMap(ThemeColor.init(computedCSS:)), series.isVisible { tokens.diagramColors[name] = series }
+            }
         }
         tokens.textFaint = color("faint.color")
         tokens.accent = color("accent.color")

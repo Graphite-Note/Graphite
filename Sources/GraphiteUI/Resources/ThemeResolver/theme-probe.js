@@ -41,9 +41,12 @@
         const muted = element('span', null, paragraph, 'muted'); muted.id = 'probe-muted'; muted.style.color = 'var(--text-muted)';
         const faint = element('span', null, paragraph, 'faint'); faint.id = 'probe-faint'; faint.style.color = 'var(--text-faint)';
         const accent = element('span', null, paragraph, 'accent'); accent.id = 'probe-accent'; accent.style.color = 'var(--text-accent)';
-        // A variable a theme leaves unset reads as transparent, which is no color.
+        // Pele's variables as a diagram reads them: inside its container (`.mermaid`), which Obsidian's stylesheet (in the
+        // default layer) gives its own `--pele-*` from `--mermaid-*`. A variable that resolves to nothing reads as
+        // transparent, which is no color.
+        const diagram = element('div', 'mermaid', sizer); diagram.id = 'probe-mermaid';
         for (const name of diagramColorVariables) {
-            const swatch = element('span', null, paragraph, name); swatch.id = 'probe-pele-' + name; swatch.style.color = 'var(--pele-' + name + ', transparent)';
+            const swatch = element('span', null, diagram, name); swatch.id = 'probe-pele-' + name; swatch.style.color = 'var(--pele-' + name + ', transparent)';
         }
         const lineWidth = element('div', null, sizer); lineWidth.id = 'probe-line-width'; lineWidth.style.width = 'var(--file-line-width)';
         const quote = element('blockquote', null, sizer); quote.id = 'probe-blockquote'; element('p', null, quote, 'Quote');
