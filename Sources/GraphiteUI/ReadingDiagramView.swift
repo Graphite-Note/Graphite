@@ -60,13 +60,37 @@ private struct ReadingPreparedDiagramDrawing: View {
     var body: some View {
         let colors = ReadingDiagramColors(theme: theme, colorScheme: colorScheme)
         ReadingScaledDiagram(prepared: prepared, source: source, textSize: textSize) { scene in
-            ReadingDiagramScenePainting(scene: scene, colors: colors)
+            ReadingDiagramScene(scene: scene, colors: colors)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityAddTraits(.isImage)
         .accessibilityLabel(prepared.accessibility.label)
         .accessibilityValue(prepared.accessibility.value)
         .modifier(ReadingDiagramSVGCommands(prepared: prepared, theme: theme, colorScheme: colorScheme, placement: svgCommandsPlacement))
+    }
+}
+
+/// A scene painted where it is shown: in the reading view on the iPad's and the iPhone's screen as a picture painted away
+/// from the main actor (`ReadingDiagramPictures`); on paper, in Live Preview and on the Mac as SwiftUI shapes and text
+/// (`ReadingDiagramScenePainting`), which stay vector in a PDF.
+private struct ReadingDiagramScene: View {
+    let scene: DiagramScene
+    let colors: ReadingDiagramColors
+    @Environment(\.readingIsPrinted) private var isPrinted
+    #if canImport(UIKit)
+    @Environment(\.readingDiagramPictures) private var pictures
+    #endif
+
+    var body: some View {
+        #if canImport(UIKit)
+        if let pictures, !isPrinted {
+            ReadingDiagramScenePicture(scene: scene, colors: colors, pictures: pictures)
+        } else {
+            ReadingDiagramScenePainting(scene: scene, colors: colors)
+        }
+        #else
+        ReadingDiagramScenePainting(scene: scene, colors: colors)
+        #endif
     }
 }
 

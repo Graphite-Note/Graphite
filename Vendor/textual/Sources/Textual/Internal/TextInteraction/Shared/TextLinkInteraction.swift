@@ -11,12 +11,14 @@ import SwiftUI
 
 struct TextLinkInteraction: ViewModifier {
   @Environment(\.openURL) private var openURL
+  /// Graphite patch: whether the text has a link; without one, no geometry is read.
+  let isNeeded: Bool
 
   func body(content: Content) -> some View {
     #if TEXTUAL_ENABLE_LINKS
       content
         .overlayPreferenceValue(Text.LayoutKey.self) { value in
-          if let anchoredLayout = value.first {
+          if isNeeded, let anchoredLayout = value.first {
             GeometryReader { geometry in
               Color.clear
                 .contentShape(.rect)

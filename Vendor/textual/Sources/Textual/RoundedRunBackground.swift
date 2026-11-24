@@ -37,9 +37,12 @@ struct RoundedRunBackgroundText: TextAttribute {
 /// tall as its text, as a Web page draws an inline element's background: a formula taller than
 /// that stands out of it, rather than making the background taller along the whole line.
 struct RoundedRunBackgrounds: ViewModifier {
+  /// Whether the text has a run with a rounded background; without one, no geometry is read.
+  let isNeeded: Bool
+
   func body(content: Content) -> some View {
     content.backgroundPreferenceValue(Text.LayoutKey.self) { layouts in
-      if let anchoredLayout = layouts.first {
+      if isNeeded, let anchoredLayout = layouts.first {
         GeometryReader { geometry in
           let origin = geometry[anchoredLayout.origin]
           let shapes = Self.shapes(in: anchoredLayout.layout, origin: origin)

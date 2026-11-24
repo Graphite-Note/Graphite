@@ -113,6 +113,18 @@ A view update must not change observed state, so carrying a selection over to ne
 
 `Sources/Textual/InlineMathPieces.swift` (new), `Internal/Attachment/InlineMathLineBreaks.swift`: public `InlineMathPieces.pieces(of:)` cuts a formula where patch 21 cuts it, and gives each piece as the range of its characters in the formula with the space TeX puts after the operator that ends it (`spaceAfterOperator`, `\>` or `\;`, empty for the last piece); nil where patch 21 keeps the formula whole. `InlineMathLineBreaks.cuts(of:)` gives the places to cut, which `pieces(of:)` now builds its strings from. Graphite's Live Preview editor draws a long `$…$` of its own text in these pieces, each over its part of the hidden source, so a paragraph's formula wraps after its operators as the reading view's and tables' do; upstream has no inline math outside `StructuredText`, and patch 3 drew such a formula as one image whose room a line could not break. Test: `AppProjectTextualPatchTests.testInlineMathPiecesGiveTheReadingViewsPiecesAsRangesOfTheFormula` (the pieces are the reading view's, cover the formula once, Unicode outside the Basic Multilingual Plane included).
 
+## 27. Selection gestures made on first touch
+
+`Internal/TextInteraction/UIKit/UITextInteractionView.swift`: the selection's `UITextInteraction`, the tap that follows links and the link gestures of patches 12 and 24 are made and added the first time a touch, the pointer or Apple Pencil's hover lands on the view (`hitTest(_:with:)`, which UIKit calls before it gathers the recognizers that may take that touch), not when the view is made. Upstream made a dozen gesture recognizers for every text as it came on screen, about a third of the main thread's work of making a text in Graphite's reading view (`ReadingTextBlockCostHostedTests`: 2.1 to 1.8 ms a heading or paragraph in the iPad simulator), although few texts a scroll brings in are ever touched. Selection begins only by those gestures, so a text that is never touched never needs them. Tests: `ReadingLinkFollowingTests`, `PagePreviewCardHostedTests` and `ReadingTasksAndEquationsTests` tap, hold and select text through synthesized touches.
+
+## 28. A fragment's text is built in the update that shows it, and its overlays read geometry only where needed
+
+`Internal/TextFragment/TextFragment.swift`, `RoundedRunBackground.swift`, `Internal/Attachment/AttachmentOverlay.swift`, `Internal/TextInteraction/Shared/TextLinkInteraction.swift`: `TextFragment` builds its `TextBuilder` in the view update that first shows it, kept in a holder its state does not observe (`TextBuilderHolder`, made again only when the content changes), where upstream built it in `onChange`, so that every fragment was laid out once empty and again with its text. The rounded backgrounds of patch 13, the attachment overlay and the link tap make their geometry readers only for a fragment that has a run with a rounded background, an attachment or a link.
+
+## 29. One block is shown without the block stack
+
+`Internal/StructuredText/BlockContent.swift`: content of one block (a heading, a paragraph) is shown as that block, without `BlockVStack`, whose layout and spacing preferences place a block beside another; the reading view's texts are one block each.
+
 Remove this vendored copy and return to the upstream package once an upstream release contains equivalents of these changes.
 
 ## 12. Links tell a host when the pointer rests on them

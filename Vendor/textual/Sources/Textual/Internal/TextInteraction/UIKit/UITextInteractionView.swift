@@ -23,18 +23,12 @@
     /// Graphite addition: told when the pointer or Apple Pencil comes onto a link and leaves
     /// it, and when a link is held; while nil, the view follows neither.
     var linkHoverAction: TextLinkHoverAction? {
-      didSet {
-        linkHoverGesture.isEnabled = linkHoverAction != nil
-        linkPressGesture.isEnabled = linkHoverAction != nil || linkInteractions != nil
-      }
+      didSet { enableLinkGestures() }
     }
     /// Graphite addition: a host's own menu for some links, shown by a long press or a
     /// secondary click on them, and what a tap with modifier keys on a link does.
     var linkInteractions: TextLinkInteractions? {
-      didSet {
-        linkPressGesture.isEnabled = linkHoverAction != nil || linkInteractions != nil
-        linkSecondaryClickGesture.isEnabled = linkInteractions != nil
-      }
+      didSet { enableLinkGestures() }
     }
 
     weak var inputDelegate: (any UITextInputDelegate)?
@@ -42,7 +36,12 @@
     let logger = Logger(category: .textInteraction)
 
     private(set) lazy var _tokenizer = UITextInputStringTokenizer(textInput: self)
-    private let selectionInteraction: UITextInteraction
+    /// Graphite patch: the selection's interaction and the link gestures are made the first
+    /// time a touch, the pointer or Apple Pencil's hover comes onto the view
+    /// (`installInteractionsIfNeeded`), not when the view is made. A text's dozen gesture
+    /// recognizers took about a third of making it, in every text a scroll brings on screen,
+    /// although few are ever touched.
+    private var selectionInteraction: UITextInteraction?
     private lazy var linkHoverGesture = UIHoverGestureRecognizer(target: self, action: #selector(handleLinkHover(_:)))
     private lazy var linkPressGesture = UILongPressGestureRecognizer(target: self, action: #selector(handleLinkPress(_:)))
     private lazy var linkSecondaryClickGesture: UITapGestureRecognizer = {
@@ -64,16 +63,26 @@
       self.model = model
       self.exclusionRects = exclusionRects
       self.openURL = openURL
-      self.selectionInteraction = UITextInteraction(for: .nonEditable)
 
       super.init(frame: .zero)
       self.backgroundColor = .clear
 
-      setUp()
+      setUpModel()
     }
 
     required init?(coder: NSCoder) {
       fatalError("init(coder:) has not been implemented")
+    }
+
+    /// UIKit finds the view a touch, the pointer or a hover lands on before it gathers the
+    /// gesture recognizers that may take it, so the ones added here take the touch that found
+    /// the view.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+      let view = super.hitTest(point, with: event)
+      if view === self {
+        installInteractionsIfNeeded()
+      }
+      return view
     }
 
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
@@ -112,7 +121,7 @@
       )
     }
 
-    private func setUp() {
+    private func setUpModel() {
       model.selectionWillChange = { [weak self] in
         guard let self else { return }
         self.inputDelegate?.selectionWillChange(self)
@@ -121,6 +130,16 @@
         guard let self else { return }
         self.inputDelegate?.selectionDidChange(self)
       }
+    }
+
+    /// Whether the selection's interaction and the link gestures are on the view.
+    var hasInstalledInteractions: Bool { selectionInteraction != nil }
+
+    /// Adds the selection's interaction and the link gestures, once.
+    func installInteractionsIfNeeded() {
+      guard selectionInteraction == nil else { return }
+      let selectionInteraction = UITextInteraction(for: .nonEditable)
+      self.selectionInteraction = selectionInteraction
 
       let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
       addGestureRecognizer(tapGesture)
@@ -134,19 +153,25 @@
 
       addInteraction(selectionInteraction)
 
-      linkHoverGesture.isEnabled = false
       addGestureRecognizer(linkHoverGesture)
       // A link held shows its preview instead of selecting its word; the selection's gestures
       // wait for this one only while a touch starts on a link (`shouldReceive`).
-      linkPressGesture.isEnabled = false
       linkPressGesture.delegate = self
       for gesture in selectionInteraction.gesturesForFailureRequirements {
         gesture.require(toFail: linkPressGesture)
       }
       addGestureRecognizer(linkPressGesture)
-      linkSecondaryClickGesture.isEnabled = false
       linkSecondaryClickGesture.delegate = self
       addGestureRecognizer(linkSecondaryClickGesture)
+      enableLinkGestures()
+    }
+
+    /// The link gestures serve only a host that follows hovers or has its own link menus.
+    private func enableLinkGestures() {
+      guard hasInstalledInteractions else { return }
+      linkHoverGesture.isEnabled = linkHoverAction != nil
+      linkPressGesture.isEnabled = linkHoverAction != nil || linkInteractions != nil
+      linkSecondaryClickGesture.isEnabled = linkInteractions != nil
     }
 
     /// Reports the link under the pointer when the pointer came onto it, and the link it left;

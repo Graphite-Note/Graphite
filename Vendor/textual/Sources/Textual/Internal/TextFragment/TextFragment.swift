@@ -30,7 +30,10 @@ struct TextFragment<Content: AttributedStringProtocol>: View {
   // Graphite patch: a table cell gives its own width, which its attachments fit instead of
   // the width of the whole text container.
   @Environment(\.attachmentContainerWidth) private var attachmentContainerWidth
-  @State private var textBuilder: TextBuilder?
+  // Graphite patch: the text is built in the update that first shows the fragment, kept in a
+  // holder that is not observed (`TextBuilderHolder`); upstream built it in `onChange`, so a
+  // fragment was first laid out empty and then again with its text.
+  @State private var builderHolder = TextBuilderHolder()
 
   private let content: Content
 
@@ -39,37 +42,58 @@ struct TextFragment<Content: AttributedStringProtocol>: View {
   }
 
   var body: some View {
-    text
+    let textBuilder = builderHolder.builder(
+      for: content,
+      attachmentProposal: attachmentContainerWidth.map { width in
+        ProposedViewSize(width: width, height: nil)
+      } ?? .unspecified,
+      environment: textEnvironment
+    )
+    let attachments = content.attachments()
+    textBuilder.text
       .customAttribute(TextFragmentAttribute())
       .onGeometryChange(for: CGSize?.self, of: \.textContainerSize) { size in
-        guard let size, let textBuilder, attachmentContainerWidth == nil else { return }
-        textBuilder.sizeChanged(size, environment: textEnvironment)
-      }
-      .onChange(of: content, initial: true) { _, newValue in
-        self.textBuilder = TextBuilder(
-          newValue,
-          attachmentProposal: attachmentContainerWidth.map { width in
-            ProposedViewSize(width: width, height: nil)
-          } ?? .unspecified,
-          environment: textEnvironment
-        )
+        guard let size, attachmentContainerWidth == nil else { return }
+        builderHolder.builder?.sizeChanged(size, environment: textEnvironment)
       }
       .onChange(of: attachmentContainerWidth) { _, newWidth in
-        guard let newWidth, let textBuilder else { return }
-        textBuilder.proposalChanged(
+        guard let newWidth else { return }
+        builderHolder.builder?.proposalChanged(
           ProposedViewSize(width: newWidth, height: nil),
           environment: textEnvironment
         )
       }
-      .modifier(RoundedRunBackgrounds())
+      // Graphite patch: each overlay reads the text's layout only where the text has what it
+      // draws or takes, so a plain line of text makes none of their geometry readers.
+      .modifier(RoundedRunBackgrounds(isNeeded: content.runs.contains { run in run[RoundedRunBackgroundAttribute.self] != nil }))
       .modifier(TextSelectionBackground())
       .modifier(ReadingHighlight())
-      .modifier(AttachmentOverlay(attachments: content.attachments()))
-      .modifier(TextLinkInteraction())
+      .modifier(AttachmentOverlay(attachments: attachments))
+      .modifier(TextLinkInteraction(isNeeded: content.runs.contains { run in run.link != nil }))
   }
+}
 
-  private var text: Text {
-    textBuilder?.text ?? Text(verbatim: "")
+extension TextFragment {
+  /// Graphite patch: the fragment's text builder, made again only when the fragment's content
+  /// changes. Not observed: making the builder in a view update changes no state any view reads;
+  /// the builder itself is observed, so a new size of the attachments draws the text again.
+  @MainActor final class TextBuilderHolder {
+    private(set) var builder: TextBuilder?
+    private var builtContent: Content?
+
+    func builder(
+      for content: Content,
+      attachmentProposal: ProposedViewSize,
+      environment: TextEnvironmentValues
+    ) -> TextBuilder {
+      if let builder, let builtContent, builtContent == content {
+        return builder
+      }
+      let builder = TextBuilder(content, attachmentProposal: attachmentProposal, environment: environment)
+      self.builder = builder
+      builtContent = content
+      return builder
+    }
   }
 }
 

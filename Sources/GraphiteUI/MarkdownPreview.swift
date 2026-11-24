@@ -1033,6 +1033,10 @@ struct MarkdownPreview: View {
     @State private var embeddedNoteTaskEditCount = 0
     /// Whether the next build shows a ticked task, which is not delayed as typing is.
     @State private var buildsWithoutDelay = false
+    #if canImport(UIKit)
+    /// The pictures of the note's diagrams, painted off the main actor and kept while the view is open.
+    @State private var diagramPictures = ReadingDiagramPictures()
+    #endif
 
     var body: some View {
         ScrollViewReader { scrollProxy in
@@ -1134,6 +1138,9 @@ struct MarkdownPreview: View {
             .environment(\.embeddedImageColumnWidth, configuration.usesReadableLineLength ? readableColumnWidth : nil)
             // A diagram's SVG without a title is named after the note.
             .environment(\.readingDiagramNoteName, path.stem)
+            #if canImport(UIKit)
+            .environment(\.readingDiagramPictures, diagramPictures)
+            #endif
             // Runs again once blocks exist: a note opened by a link or a search match is
             // asked to scroll before it has built anything to scroll to.
             .task(id: "\(blocks.count)-\(headingScrollRequest?.token.uuidString ?? "")") {
@@ -1320,6 +1327,9 @@ struct MarkdownPreview: View {
         hasMissingEmbeds = build.hasMissingEmbeds
         shownBuildKey = build.key
         mediaPlayers.keepPlaybacks(for: Self.mediaLocations(in: build.blocks))
+        #if canImport(UIKit)
+        diagramPictures.showNote(build.blocks)
+        #endif
     }
 
     /// Ticks a task and has the note drawn again without the delay typing gets.
@@ -2254,6 +2264,8 @@ struct ObsidianMarkdownParser: MarkupParser {
     /// in the text, which takes every tap and follows only links. The Markdown cannot say it:
     /// an image written inside a link (`[![a](b.png)](c)`) loses its image when parsed.
     static func linkImagesToTheirZoom(in text: inout AttributedString, root: URL) {
+        // Resolving the root's links reads the file system: only for a text with a picture of a file.
+        guard text.runs.contains(where: { run in run.link == nil && run.imageURL?.isFileURL == true }) else { return }
         let rootPaths = Set([root.standardizedFileURL.path, root.standardizedFileURL.resolvingSymlinksInPath().path]).map { path in path + "/" }
         var zoomLinks: [(Range<AttributedString.Index>, URL)] = []
         for run in text.runs where run.link == nil {

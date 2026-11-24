@@ -19,7 +19,8 @@ struct AttachmentOverlay: ViewModifier {
   func body(content: Content) -> some View {
     content
       .overlayPreferenceValue(Text.LayoutKey.self) { value in
-        if let anchoredLayout = value.first {
+        // Graphite patch: a text without attachments reads no geometry.
+        if !attachments.isEmpty, let anchoredLayout = value.first {
           GeometryReader { geometry in
             AttachmentView(
               attachments: attachments,

@@ -18,7 +18,7 @@ import MermaidDiagrams
 /// outline, the groups' boxes and their titles where Pele's own colors put them (5.4 %, 52 %, 11.2 % and 64.7 % of the
 /// way from its white page to its #1f1f1f text). They are SwiftUI colors, so a change of appearance or theme paints
 /// again without making anything else.
-struct ReadingDiagramColors {
+struct ReadingDiagramColors: Hashable, Sendable {
     static let surfaceShare = 0.054
     static let borderShare = 0.52
     static let alternateSurfaceShare = 0.112

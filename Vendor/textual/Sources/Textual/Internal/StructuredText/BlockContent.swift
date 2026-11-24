@@ -13,10 +13,17 @@ extension StructuredText {
     var body: some View {
       let runs = content.blockRuns(parent: parent)
 
-      BlockVStack {
-        ForEach(runs.indices, id: \.self) { index in
-          let run = runs[index]
-          Block(intent: run.intent, content: content[run.range])
+      // Graphite patch: one block is shown without the stack, whose layout and spacing
+      // preferences place a block only beside another; a single heading or paragraph, as
+      // most of the reading view's texts are, made them for nothing.
+      if runs.count == 1, let run = runs.first {
+        Block(intent: run.intent, content: content[run.range])
+      } else {
+        BlockVStack {
+          ForEach(runs.indices, id: \.self) { index in
+            let run = runs[index]
+            Block(intent: run.intent, content: content[run.range])
+          }
         }
       }
     }

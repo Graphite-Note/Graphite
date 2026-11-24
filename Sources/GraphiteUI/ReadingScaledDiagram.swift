@@ -92,6 +92,10 @@ struct ReadingScaledDiagram<Painting: View>: View {
             }
         }
         .frame(maxWidth: .infinity)
+        #if canImport(UIKit)
+        .environment(\.readingDiagramPlacement,
+                     ReadingDiagramPlacement(columnWidth: columnWidth, textSize: textSize, diagramSceneItems: prepared.scene.itemStorage))
+        #endif
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in
             if let change = ReadingDiagramRelayoutTrace.columnDidChangeWidth(to: width) { columnWidthChange = change }
             columnWidth = width
