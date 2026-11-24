@@ -7,8 +7,8 @@
  *              small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
- * Date: 23/11/2026
+ * Version: 0.9
+ * Date: 24/11/2026
  */
 
 import SwiftUI
@@ -136,8 +136,7 @@ struct ReadingScaledDiagram<Painting: View>: View {
     /// (`ReadingDiagramNarrowWidth`), is not the standard 280 points; nil otherwise, or without a source.
     static func narrowRequest(of prepared: PreparedMermaidDiagram, source: ReadingDiagramSource?, inColumnWidth columnWidth: CGFloat,
                               scaleAtNaturalWidth: CGFloat) -> ReadingDiagramNarrowRequest? {
-        guard let source, prepared.narrowScene != nil,
-              showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth),
+        guard let source, showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth),
               let layoutWidth = ReadingDiagramNarrowWidth.layoutWidth(columnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth)
         else { return nil }
         return ReadingDiagramNarrowRequest(source: source, columnWidth: layoutWidth)
@@ -150,19 +149,20 @@ struct ReadingScaledDiagram<Painting: View>: View {
     /// better shrunk a little than redrawn for a phone.
     static func shownScene(of prepared: PreparedMermaidDiagram, inColumnWidth columnWidth: CGFloat,
                            scaleAtNaturalWidth: CGFloat) -> DiagramScene {
-        guard let narrowScene = prepared.narrowScene,
-              showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth) else { return prepared.scene }
+        guard showsNarrowScene(of: prepared, inColumnWidth: columnWidth, scaleAtNaturalWidth: scaleAtNaturalWidth),
+              let narrowScene = prepared.narrowScene else { return prepared.scene }
         return narrowScene
     }
 
     /// Whether a column `columnWidth` wide shows the diagram's narrow scene rather than its regular one
-    /// (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`).
+    /// (`shownScene(of:inColumnWidth:scaleAtNaturalWidth:)`). The regular scene's fit is asked first: since MermaidDiagrams
+    /// 0.7.0 the package lays the narrow scene out the first time it is read, here on the main actor, so a diagram whose
+    /// regular scene fits the column readably never lays its narrow one out.
     static func showsNarrowScene(of prepared: PreparedMermaidDiagram, inColumnWidth columnWidth: CGFloat, scaleAtNaturalWidth: CGFloat) -> Bool {
-        guard prepared.showsNarrowScene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth) else { return false }
         let regular = ReadingDiagramPresentation.presentation(naturalWidth: prepared.scene.size.width * scaleAtNaturalWidth,
                                                               scaleAtNaturalWidth: scaleAtNaturalWidth, columnWidth: columnWidth)
         if case .fitted = regular { return false }
-        return true
+        return prepared.showsNarrowScene(inColumnWidth: columnWidth, scale: scaleAtNaturalWidth)
     }
 
     /// As wide as it was laid out, and no wider than the column, scaled to the width it is given.
