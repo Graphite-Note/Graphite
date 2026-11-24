@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-24.
 
+## A file dropped into a note on the Mac keeps the note's place: 2026-11-24
+
+`Docs/Bug-hunt-todo.md` HUNT-376. On the Mac, dropping or pasting a picture or another file into a note sent the editor to the note's top: the embed went in with `insertText(_:replacementRange:)`, and AppKit scrolled to the cursor, which in a note scrolled without a click is at its start. The Mac editor now puts the cursor where the embed goes, so it ends after the embed as on the iPad, and keeps the line at the top of the view at the same height. A paste at a cursor out of sight still scrolls to what it inserted.
+
+- **Automated tests:** `UiEditorMacDroppedAttachmentPlaceTests` (2): an embed dropped below line 250 of a 400-line note keeps the view within a point (before the change it went from 8,091 pt to 0), and a paste at a cursor above the view shows the embed. The 111 Mac editor tests (`UiEditorMac*`, `MacMarkdownEditor*`) and the whole Mac package suite; rules, sizes and test registration.
+- **Checked:** not in the installed app, and not on the iPad, whose editor already kept its place.
+
 ## MermaidDiagrams 0.7.0, and scrolling a note full of diagrams measured: 2026-11-24
 
 `Docs/Native-diagrams-todo.md` (Speed, issue #223, and the paragraph "MermaidDiagrams 0.7.0"). Graphite pins MermaidDiagrams 0.7.0, the package's speed release (no output changed, no API added; `PreparedMermaidDiagram.narrowScene` laid out the first time it is read). `ReadingScaledDiagram` asks whether the regular scene fits the column readably before it reads the narrow one, and `ReadingDiagram` reads the narrow scene while it prepares the diagram, off the main actor, only when its regular scene is wider than 280 / 0.6 points (`narrowSceneMayBeShown`), so no view lays a narrow scene out on the main actor and a diagram no column shows narrow is not laid out narrow.

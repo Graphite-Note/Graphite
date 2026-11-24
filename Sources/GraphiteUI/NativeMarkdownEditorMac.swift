@@ -649,11 +649,17 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 selectionAfter = nil
             }
             let safeLocation = min(insertionRange.location, source.length)
-            textView.insertText(insertionText, replacementRange: NSRange(location: safeLocation, length: min(insertionRange.length, source.length - safeLocation)))
-            // With a replacement range, AppKit need not move the cursor after the new text.
+            let replacedRange = NSRange(location: safeLocation, length: min(insertionRange.length, source.length - safeLocation))
+            // The edit happens where the person is: AppKit scrolls to the cursor, which in a
+            // note scrolled without a click is still at its start, and restyling the whole note
+            // re-estimates TextKit's layout. The line at the top stays there, as on the iPad.
+            let topLineBeforeInsertion = topLine(of: textView)
+            // insertText leaves the cursor after the inserted text, where the iPad leaves it.
+            textView.setSelectedRange(replacedRange)
+            textView.insertText(insertionText, replacementRange: replacedRange)
+            let insertedRange = NSRange(location: safeLocation, length: (insertionText as NSString).length)
             if let pendingRequest {
-                let insertedEnd = safeLocation + (insertionText as NSString).length
-                pendingInsertionRequests.placeRemainingItems(of: pendingRequest, after: insertedEnd, at: textState.history.revision)
+                pendingInsertionRequests.placeRemainingItems(of: pendingRequest, after: NSMaxRange(insertedRange), at: textState.history.revision)
             }
             if let selectionAfter, NSMaxRange(selectionAfter) <= (textView.textStorage?.length ?? 0) {
                 textView.setSelectedRange(selectionAfter)
@@ -661,6 +667,16 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             restyleEverything(in: textView)
             publish(textView)
             session.markInsertionApplied(insertion)
+            if let topLineBeforeInsertion {
+                // A line below the insertion moved by the inserted length; one inside the
+                // replaced text is gone, and the inserted text takes its place at the top.
+                let location = topLineBeforeInsertion.location
+                let movedLocation = location <= safeLocation ? location
+                    : location >= NSMaxRange(replacedRange) ? location + insertedRange.length - replacedRange.length : safeLocation
+                scrollToTop(of: movedLocation, distanceBelowTop: topLineBeforeInsertion.distanceBelowTop, in: textView)
+            }
+            // A paste at a cursor out of sight still shows what it inserted.
+            textView.scrollRangeToVisible(textView.selectedRange())
         }
 
         private func publish(_ textView: NSTextView) {
@@ -1198,7 +1214,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         }
 
         /// Brings a character's line to the top of the view, or as near as the note's end allows.
-        func scrollToTop(of characterLocation: Int, in textView: NSTextView) {
+        /// - Parameter distanceBelowTop: How far below the view's top the line's top goes.
+        func scrollToTop(of characterLocation: Int, distanceBelowTop: CGFloat = 12, in textView: NSTextView) {
             guard let textLayoutManager = textView.textLayoutManager, let contentManager = textLayoutManager.textContentManager,
                   let location = contentManager.location(contentManager.documentRange.location, offsetBy: characterLocation),
                   let precedingRange = NSTextRange(location: contentManager.documentRange.location, end: location) else { return }
@@ -1208,7 +1225,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             textLayoutManager.ensureLayout(for: precedingRange)
             textLayoutManager.textViewportLayoutController.layoutViewport()
             guard let fragment = textLayoutManager.textLayoutFragment(for: location) else { return }
-            textView.scroll(NSPoint(x: 0, y: max(0, fragment.layoutFragmentFrame.minY + textView.textContainerOrigin.y - 12)))
+            textView.scroll(NSPoint(x: 0, y: max(0, fragment.layoutFragmentFrame.minY + textView.textContainerOrigin.y - distanceBelowTop)))
         }
 
         /// Lets the session ask where the editor is, as a tab closes or Graphite leaves the
@@ -1242,6 +1259,13 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// The first character of the line at the top of the view; nil at the note's top,
         /// which needs no return to.
         func topCharacter(of textView: NSTextView) -> Int? {
+            topLine(of: textView)?.location
+        }
+
+        /// The line at the top of the view, and how far below the view's top its own top is
+        /// (negative when it starts above): `scrollToTop` with that distance puts the view back
+        /// exactly where it was.
+        func topLine(of textView: NSTextView) -> (location: Int, distanceBelowTop: CGFloat)? {
             let visibleTop = textView.visibleRect.minY
             guard visibleTop > 1 else { return nil }
             // `scrollToTop` puts a line 12 points below the top, but the clip view then aligns its
@@ -1250,7 +1274,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             let probeY = visibleTop + 12 + Self.scrollAlignmentAllowance - textView.textContainerOrigin.y
             guard let textLayoutManager = textView.textLayoutManager, let contentManager = textLayoutManager.textContentManager,
                   let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 0, y: probeY)) else { return nil }
-            return contentManager.offset(from: contentManager.documentRange.location, to: fragment.rangeInElement.location)
+            let location = contentManager.offset(from: contentManager.documentRange.location, to: fragment.rangeInElement.location)
+            return (location, fragment.layoutFragmentFrame.minY + textView.textContainerOrigin.y - visibleTop)
         }
     }
 }
