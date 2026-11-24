@@ -139,7 +139,7 @@ The owner, 2026-11-19, on what the import still lacked: build all of these later
 
 - Both formats are undocumented and change with app updates. The parsers need version detection and a sample set that grows with each new app version.
 - Some content may not map exactly to PDF annotations (textured brushes, Goodnotes' handwriting-recognition data, Notability's audio-linked replay). The import report must say so instead of dropping it silently.
-- Legal: reverse engineering file formats for interoperability with the user's own files, without using either app's code. The owner should confirm this boundary before Phase 1.
+- Legal: reverse engineering file formats for interoperability with the user's own files, without using either app's code. **Confirmed by the owner 2026-11-24**: the owner has no access to either app's code, and the formats were recovered by reading the owner's own files and comparing them with each app's own PDF export (see the status lines of [Goodnotes-format.md](Goodnotes-format.md) and [Notability-format.md](Notability-format.md)). Work on the import keeps to that boundary: no app code is inspected, decompiled, run under a debugger or copied.
 
 ## Open questions
 
