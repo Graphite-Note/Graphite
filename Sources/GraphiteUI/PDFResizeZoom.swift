@@ -5,8 +5,8 @@
  * Description: The zoom of a PDF when its view's width began to change, and the zoom it takes after.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 24/11/2026
  */
 
 import CoreGraphics
@@ -35,5 +35,16 @@ struct PDFResizeZoom: Equatable {
 
     func scaleAfterResize(fittingScale: CGFloat) -> ScaleAfterResize {
         fittedWidth ? .fitsByPDFKit : .scale(fittingScale * zoomPastFitting)
+    }
+
+    /// The width, in the pages' own points, that the zoom fitting the pages spreads across
+    /// the view: the widest page as shown and the margins PDFKit keeps beside it. The fitting
+    /// zoom is the view's width over it. Worked out from the pages, it follows the view's
+    /// width at every step of a resize, where PDFKit's `scaleFactorForSizeToFit`, read from its
+    /// own views, lags behind: during a window's resize it gave the zoom of other widths, and
+    /// the pages ended zoomed twice past their side (HUNT-378). Nil without a page.
+    static func fittedSpan(pageWidthsAsShown: [CGFloat], horizontalMargins: CGFloat) -> CGFloat? {
+        guard let widestPage = pageWidthsAsShown.max(), widestPage > 0 else { return nil }
+        return widestPage + max(horizontalMargins, 0)
     }
 }

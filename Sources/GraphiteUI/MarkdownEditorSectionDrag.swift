@@ -6,8 +6,8 @@
  *              on links to the section; the block it starts in gets its identifier only once the page reads it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 24/11/2026
  */
 
 import Foundation
@@ -44,6 +44,8 @@ extension NativeMarkdownEditor.Coordinator: UITextDragDelegate {
         let items = dragRequest.suggestedItems
         guard let textView, let firstItem = items.first else { return items }
         let location = textView.offset(from: textView.beginningOfDocument, to: dragRequest.dragRange.start)
+        recordTextDraggedWithinNote(NSRange(location: location, length: textView.offset(from: dragRequest.dragRange.start, to: dragRequest.dragRange.end)),
+                                    in: textView)
         let session = session
         let text = session.text
         let (transfer, identifierEdit) = MarkdownEditorSectionDrag.transfer(startingAt: location, in: session)

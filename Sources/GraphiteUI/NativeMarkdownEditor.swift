@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note editor (UITextView) with its coordinator; the Mac's is NativeMarkdownEditorMac.swift.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.79
- * Date: 21/11/2026
+ * Version: 0.80
+ * Date: 24/11/2026
  */
 
 import SwiftUI
@@ -142,8 +142,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         let cursorLocation = min(session.selection.location, textLength)
         textView.selectedRange = NSRange(location: cursorLocation, length: min(session.selection.length, textLength - cursorLocation))
         textView.delegate = coordinator
-        // A drag of the text also carries the section it starts in, for a PDF page (`MarkdownEditorSectionDrag`).
-        textView.textDragDelegate = coordinator
+        // Drags of the text carry their section (`MarkdownEditorSectionDrag`); dropped back in the note they move it (`MarkdownEditorTextMove`).
+        coordinator.takeDragsAndDrops(of: textView)
         coordinator.observeCharacterEdits(in: textView)
         coordinator.observeMemoryWarnings()
         session.undoAvailability.follow(textView.undoManager)
@@ -344,6 +344,9 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// again: the insertion restyles the whole note and updates the suggestions once, for
         /// the final cursor, instead of for each step.
         private var isApplyingInsertion = false
+        /// The text a drag from this note took, while that drag lasts: dropped back into the
+        /// note, it is moved by the editor as one step of the history (`MarkdownEditorTextMove`).
+        var textDraggedWithinNote: DraggedNoteText?
         /// The text last given to or taken from the session. Comparing the session's text with
         /// it is instant while nothing else changed the session's text, because both share
         /// one storage; comparing with the text view's text reads the whole note each update.
