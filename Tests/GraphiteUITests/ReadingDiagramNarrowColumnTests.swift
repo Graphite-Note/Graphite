@@ -6,8 +6,8 @@
  *              column shows; diagrams with nothing to draw or too large to draw shown as their source with why.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 23/11/2026
+ * Version: 0.4
+ * Date: 24/11/2026
  */
 
 import XCTest
@@ -120,6 +120,23 @@ final class ReadingDiagramNarrowColumnTests: XCTestCase {
         let narrow = try XCTUnwrap(diagram.narrowScene)
         XCTAssertLessThan(narrow.size.width, diagram.scene.size.width)
         XCTAssertTrue(narrow.shapes.contains { shape in shape.part == .cluster }, "The composite is still a box.")
+    }
+
+    /// Since MermaidDiagrams 0.7.0 the narrow scene is laid out the first time it is read. A diagram has it read where it is
+    /// prepared, off the main actor, when a column 280 points wide or wider could show it, and only then: every column that
+    /// shows a diagram's narrow scene is one this rule foresaw, so no view lays it out on the main actor.
+    func testTheNarrowSceneIsReadWhenPreparedOnlyForADiagramThatSomeColumnCouldShowNarrow() throws {
+        XCTAssertFalse(ReadingDiagram.narrowSceneMayBeShown(regularWidth: 466), "280 / 0.6 is 466.7 points.")
+        XCTAssertTrue(ReadingDiagram.narrowSceneMayBeShown(regularWidth: 467))
+        let diagrams = [try drawn(Self.fourteenShapesInARow, as: .flowchart), try drawn("flowchart LR\n  A[Start] --> B[Read] --> C[Done]", as: .flowchart),
+                        try drawn("timeline\n  2020 : One\n  2021 : Two\n  2022 : Three\n  2023 : Four\n  2024 : Five", as: .timeline)]
+        for diagram in diagrams {
+            for columnWidth in stride(from: CGFloat(280), through: 2_400, by: 8)
+            where ReadingScaledDiagram<EmptyView>.showsNarrowScene(of: diagram, inColumnWidth: columnWidth, scaleAtNaturalWidth: 1) {
+                XCTAssertTrue(ReadingDiagram.narrowSceneMayBeShown(regularWidth: diagram.scene.size.width),
+                              "A column \(columnWidth) wide shows the narrow scene of a diagram \(diagram.scene.size.width) wide.")
+            }
+        }
     }
 
     func testADiagramWithNothingToDrawOrTooLargeToDrawShowsItsSourceAndWhy() {

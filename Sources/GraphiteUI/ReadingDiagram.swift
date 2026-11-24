@@ -6,8 +6,8 @@
  *              another column, or its source with why.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.28
- * Date: 23/11/2026
+ * Version: 0.29
+ * Date: 24/11/2026
  */
 
 import SwiftUI
@@ -34,10 +34,24 @@ enum ReadingDiagram: Sendable {
         do {
             let diagramSource = try ReadingDiagramSource(text: source, font: typography.font, now: WallClock.currentDate(),
                                                          timeZone: WallClock.currentTimeZone())
-            self = .drawn(try diagramSource.prepared(in: typography), source: diagramSource)
+            let prepared = try diagramSource.prepared(in: typography)
+            if Self.narrowSceneMayBeShown(regularWidth: prepared.scene.size.width) { _ = prepared.narrowScene }
+            self = .drawn(prepared, source: diagramSource)
         } catch {
             self = .unreadable(source: source, failure: error)
         }
+    }
+
+    /// Whether a column could show the narrow scene of a diagram whose regular scene is `regularWidth` points wide, at the
+    /// text size it was laid out in: a column at least the narrowest (280 points) wide shows it only where the regular
+    /// scene, fitted to the column, would be smaller than the readable scale (`ReadingScaledDiagram.showsNarrowScene`),
+    /// so a diagram no wider than 280 / 0.6 points never shows it. MermaidDiagrams 0.7.0 lays the narrow scene out the
+    /// first time it is read; a diagram that may show it has it read here, off the main actor where diagrams are prepared,
+    /// so the view that shows it does not lay it out on the main actor, and one that never shows it is never laid out
+    /// narrow. (A text size changed since the note was built, or a column narrower than 280 points, can still have a view
+    /// read it first.)
+    static func narrowSceneMayBeShown(regularWidth: CGFloat) -> Bool {
+        regularWidth * ReadingDiagramPresentation.smallestReadableScale > PreparedMermaidDiagram.standardNarrowestColumnWidth
     }
 
     /// How many statements of the diagram are read and not applied (styling a diagram type does not draw yet, `click`);
