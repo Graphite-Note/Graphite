@@ -7,8 +7,8 @@
  *              tasks sent to Reminders and ticked on either side, and reminders brought into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import XCTest
@@ -327,7 +327,9 @@ final class WorkspaceCalendarTests: XCTestCase {
 
         calendarStore.completeInReminders(rentReminder.id)
         try await waitUntil("the task is ticked in its note") { session.text.hasPrefix("- [x] Pay rent ✅ ") }
-        XCTAssertTrue(try text(of: "Week.md", in: vault).hasPrefix("- [x] Pay rent ✅ "), "A note without an editor is saved at once.")
+        // A note without an editor is saved at once, by the update itself (nothing else saves it): its save ends a moment
+        // after the session's text changes, which a shared CI runner showed by reading the file before it.
+        try await waitUntil("the note without an editor is saved") { try text(of: "Week.md", in: vault).hasPrefix("- [x] Pay rent ✅ ") }
 
         let callLine = try XCTUnwrap(MarkdownTaskLine.line(at: (session.text as NSString).range(of: "Call").location, in: session.text))
         session.apply(try XCTUnwrap(TaskReminderEditing.completionEdit(lineRange: callLine.range, in: session.text, isDone: true, on: november12)))
