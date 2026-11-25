@@ -7,8 +7,8 @@
  *              full page.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 25/11/2026
  */
 import XCTest
 import PencilKit
@@ -18,6 +18,7 @@ import UIKit
 import AppKit
 #endif
 @testable import GraphiteApple
+import GraphiteTestSupport
 
 /// The owner's report of 2026-11-04: "eraser needs to go much much smaller, more granularity". PencilKit's
 /// eraser is never narrower than 16.4 points of the screen; Graphite's cuts the width chosen, measured
@@ -297,8 +298,8 @@ final class PixelEraserPassTests: XCTestCase {
                   + "pieces at the lift: lift \(allAtTheLift.liftMilliseconds) ms, slowest move \(allAtTheLift.slowestMoveMilliseconds) ms; "
                   + "pieces during the moves: lift \(duringTheMoves.liftMilliseconds) ms, move median \(duringTheMoves.medianMoveMilliseconds) ms, "
                   + "slowest \(duringTheMoves.slowestMoveMilliseconds) ms")
-            XCTAssertLessThan(duringTheMoves.slowestMoveMilliseconds, 4, "The slowest move, \(name)")
-            XCTAssertLessThan(duringTheMoves.liftMilliseconds, 8, "The lift, \(name)")
+            SharedRunner.assertWithinTimingBudget(duringTheMoves.slowestMoveMilliseconds, isLessThan: 4, "The slowest move, \(name)")
+            SharedRunner.assertWithinTimingBudget(duringTheMoves.liftMilliseconds, isLessThan: 8, "The lift, \(name)")
             XCTAssertGreaterThan(duringTheMoves.cutStrokeCount, acrossTheWholePage ? 100 : 2)
             let expectedStrokes = allAtTheLift.erasedDrawing.strokes, madeStrokes = duringTheMoves.erasedDrawing.strokes
             XCTAssertEqual(madeStrokes.count, expectedStrokes.count, "The same pieces, \(name)")

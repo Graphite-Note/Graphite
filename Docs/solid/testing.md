@@ -228,14 +228,14 @@ Shared logic must not need a platform test: if UIKit is required to test a rule,
 
 | Job | Trigger | Command | Gate |
 | --- | --- | --- | --- |
-| `swift-test-macos` | every push | `swift test --parallel` with a scratch path outside iCloud for local runs | No failure; skip count not above the recorded baseline |
-| `hosted-ipad` | every push | `xcodebuild test -scheme Graphite -destination <iPad simulator>` with `-only-testing:GraphiteIntegrationTests` | No failure; no `Task.sleep` added (grep gate) |
+| `swift-test-macos` | every push | `swift test --parallel` with a scratch path outside iCloud for local runs; on the runner `GRAPHITE_SHARED_RUNNER=1` prints timing budgets instead of checking them and waits longer for windows (`SharedRunner`) | No failure; skip count not above the recorded baseline |
+| `hosted-ipad` | by hand (Run workflow, `hosted_ipad`); before each merge on the owner's Mac | `xcodebuild test -scheme Graphite -destination <iPad simulator>` with `-only-testing:GraphiteIntegrationTests` | No failure; no `Task.sleep` added (grep gate) |
 | `runtime-node` | every push | `npm ci && npm test` in `Tests/CommunityPluginRuntimeTests` | No failure |
 | `size-report` | every push | `python3 scripts/size-report.py` | Exit status 0 |
-| `nightly` | daily | `npm run build-compatibility-plugins && npm test`; `GRAPHITE_BENCHMARKS=1` benchmark runs on Mac and iPad | Real-plugin cases run; benchmark numbers recorded |
+| `nightly` | by hand (`nightly_device`), once the self-hosted runner `graphite-ipad` exists | `npm run build-compatibility-plugins && npm test`; `GRAPHITE_BENCHMARKS=1` benchmark runs on Mac and iPad | Real-plugin cases run; benchmark numbers recorded |
 | `registration-check` | every push | Fails when a `func test` file under `App/Tests` is absent from the hosted target (until the folder is synchronized) | New hosted test files cannot be forgotten |
 
-A red job blocks the commit that the owner pushes; sessions never disable a test to pass.
+A red job blocks the commit that the owner pushes; sessions never disable a test to pass. A job on every push must pass whenever the code is correct: from 2026-11-04 to 2026-11-25 no run was green, because timing budgets chosen on the owner's Mac, fixed waits and a 90-minute iPad job failed on GitHub's shared runners with correct code. A timing budget in a package test goes through `SharedRunner.assertWithinTimingBudget`, and a wait for a window waits for its condition, not a fixed time.
 
 ## 5. Migration backlog
 

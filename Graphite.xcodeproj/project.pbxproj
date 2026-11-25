@@ -137,6 +137,7 @@
 				GraphiteTestSupport/LoopbackWebServer.swift,
 				GraphiteTestSupport/PasteboardDrag.swift,
 				GraphiteTestSupport/PenTestSpeech.swift,
+				GraphiteTestSupport/SharedRunner.swift,
 				GraphiteTestSupport/SimulatorAudio.swift,
 				GraphiteTestSupport/StoredZipArchive.swift,
 				GraphiteTestSupport/TemporaryVault.swift,

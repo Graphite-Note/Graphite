@@ -6,8 +6,8 @@
  *              reading view and tables do, while the cursor, copying and Read Aloud still see one formula (issue #109).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import XCTest
@@ -243,7 +243,7 @@ final class UiLivePreviewInlineMathWrappingTests: XCTestCase {
         let milliseconds = keystrokes.map { duration in Double(duration.components.attoseconds) / 1e15 + Double(duration.components.seconds) * 1_000 }.sorted()
         let median = milliseconds[milliseconds.count / 2]
         print("Typing in 300 paragraphs of long formulas: median \(median) ms, slowest \(milliseconds.last ?? 0) ms; styling the note \(opening)")
-        XCTAssertLessThan(median, 16, "A keystroke restyles its line in \(median) ms.")
+        SharedRunner.assertWithinTimingBudget(median, isLessThan: 16, "A keystroke restyles its line in \(median) ms.")
     }
 
     /// The first paragraph drawn in gray at twice its size, a byte a pixel.

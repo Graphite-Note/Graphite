@@ -3,32 +3,20 @@
  * -------------------------------------
  * Layer: UI
  * Description: A note that moves or is renamed keeps the PDF pages that link to its sections: the PDFs linking to it
- *              are found through the index before it moves, and their section pictures link to its new place after.
+ *              are found through the index before it moves (WorkspaceFileManagement.swift, which imports the index),
+ *              and their section pictures link to its new place after.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import Foundation
 import PDFKit
 import GraphiteCore
 import GraphiteApple
-import GraphiteIndex
 
 extension WorkspaceModel {
-    /// The PDFs whose section pictures link to a note of the move, read from the index before
-    /// anything moves (the index records them, `PDFTypedAnnotationText.indexedText`).
-    func pdfsLinkingToSections(of moves: [VaultPath: VaultPath]) async -> Set<VaultPath> {
-        guard let index else { return [] }
-        var pdfs = Set<VaultPath>()
-        for movedPath in moves.keys where DocumentKind(path: movedPath) == .markdown {
-            let linking = (try? await index.linkingNotes(to: movedPath)) ?? [] // Unanswered: its PDFs stay, as an unfound link does.
-            pdfs.formUnion(linking.filter { source in DocumentKind(path: source) == .pdf })
-        }
-        return pdfs
-    }
-
     /// Gives the section pictures of these PDFs the moved notes' new places: through its
     /// session for a PDF that is open, which saves as an edit does, else in its file, replaced
     /// atomically if no one changed it meanwhile. Not a step of any history.

@@ -6,8 +6,8 @@
  *              notes using it.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.1
- * Date: 10/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import SwiftUI

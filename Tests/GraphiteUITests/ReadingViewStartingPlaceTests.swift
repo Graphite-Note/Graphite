@@ -5,8 +5,8 @@
  * Description: The reading view of a long note starts at the line the editor was at when the note switched to reading.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 10/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 #if os(macOS)
@@ -69,11 +69,19 @@ final class ReadingViewStartingPlaceTests: XCTestCase {
             window.contentView?.layoutSubtreeIfNeeded()
             return startingLocation == nil && position.hasLaidOutBlocks
         }
-        // The view settles: the rows above the place are built and measured, and the scroll follows.
-        let settlingEnd = Date.now.addingTimeInterval(2)
-        try await waitUntil("the reading view settled") {
+        // The view settles: the rows above the place are built and measured, and the scroll follows. It has settled when
+        // the place has not moved for a second; a fixed 2 s was too short on a shared CI runner, which failed every run.
+        var lastPlace: [Double] = []
+        var unchangedSince = ContinuousClock.now
+        try await waitUntil("the reading view settled", timeoutSeconds: 30 * SharedRunner.waitScale) {
             window.contentView?.layoutSubtreeIfNeeded()
-            return Date.now >= settlingEnd
+            let blockTop = position.block(containing: noteLocation).flatMap { block in position.frame(ofBlock: block.identifier)?.minY }
+            let place = [Double(position.visibleTop), Double(blockTop ?? .infinity), Double(position.topLocation() ?? -1)]
+            if place != lastPlace {
+                lastPlace = place
+                unchangedSince = .now
+            }
+            return unchangedSince.duration(to: .now) >= .seconds(1)
         }
         let block = try XCTUnwrap(position.block(containing: noteLocation))
         return SettledPlace(blockFrame: position.frame(ofBlock: block.identifier), visibleTop: position.visibleTop,

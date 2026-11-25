@@ -6,8 +6,8 @@
  *              section 15): where the reading view starts after Live Preview, and an embedded PDF's page in a callout.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 13/11/2026
+ * Version: 0.3
+ * Date: 25/11/2026
  */
 
 #if os(macOS)
@@ -52,7 +52,7 @@ final class ReleaseVaultMacFindingsTests: XCTestCase {
         let scroller = try XCTUnwrap(ReleaseVaultScrolling.pageScroller(in: root))
         ReleaseVaultScrolling.scroll(scroller, to: ReleaseVaultScrolling.topOffset(of: scroller))
         session.viewMode = .reading
-        try await waitUntil("the reading view laid out its blocks") { session.readingPosition.hasLaidOutBlocks }
+        try await waitUntil("the reading view laid out its blocks", timeoutSeconds: 20 * SharedRunner.waitScale) { session.readingPosition.hasLaidOutBlocks }
         try await settle(root, seconds: 2)
         XCTAssertLessThan(session.readingPosition.topLocation() ?? 0, 200, "The reading view starts at the note's top")
         XCTAssertLessThan(session.readingPosition.visibleTop, 50, "The reading view is scrolled to its top")
@@ -87,7 +87,7 @@ final class ReleaseVaultMacFindingsTests: XCTestCase {
                                            file: StaticString = #filePath, line: UInt = #line) async throws {
         let session = try XCTUnwrap(pass.workspace.markdownSession, file: file, line: line)
         if session.viewMode != .reading { session.viewMode = .reading }
-        try await waitUntil("the reading view laid out its blocks \(when)") { session.readingPosition.hasLaidOutBlocks }
+        try await waitUntil("the reading view laid out its blocks \(when)", timeoutSeconds: 20 * SharedRunner.waitScale) { session.readingPosition.hasLaidOutBlocks }
         try await settle(root, seconds: 2)
         XCTAssertLessThan(session.readingPosition.topLocation() ?? 0, 200, "The reading view starts at the note's top \(when)", file: file, line: line)
         XCTAssertLessThan(session.readingPosition.visibleTop, 50, "The reading view is scrolled to its top \(when)", file: file, line: line)
@@ -122,8 +122,9 @@ final class ReleaseVaultMacFindingsTests: XCTestCase {
         XCTAssertTrue(frame.insetBy(dx: -0.5, dy: -0.5).contains(shownArea), "The screenshot draws pages only over the view: \(shownArea) in \(frame)")
     }
 
+    /// Lays the window out for `seconds`, longer on a shared CI runner, where the embeds load several times slower.
     private func settle(_ root: NSView, seconds: Double) async throws {
-        let end = Date.now.addingTimeInterval(seconds)
+        let end = Date.now.addingTimeInterval(seconds * SharedRunner.waitScale)
         try await waitUntil("the window settled") {
             root.layoutSubtreeIfNeeded()
             return Date.now >= end

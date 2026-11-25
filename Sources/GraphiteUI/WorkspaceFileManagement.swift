@@ -5,8 +5,8 @@
  * Description: File explorer actions: new folders, moves with link updates, moves made elsewhere, copies and deletion.
  *
  * Authors: Bahey Shalash
- * Version: 0.27
- * Date: 23/11/2026
+ * Version: 0.28
+ * Date: 25/11/2026
  */
 
 import Foundation
@@ -106,6 +106,18 @@ struct EditDuringMove {
 /// File explorer actions: new folders, renaming and moving with link updates, copies,
 /// and deletion, following the vault's Obsidian settings.
 extension WorkspaceModel {
+    /// The PDFs whose section pictures link to a note of the move, read from the index before
+    /// anything moves (the index records them, `PDFTypedAnnotationText.indexedText`).
+    func pdfsLinkingToSections(of moves: [VaultPath: VaultPath]) async -> Set<VaultPath> {
+        guard let index else { return [] }
+        var pdfs = Set<VaultPath>()
+        for movedPath in moves.keys where DocumentKind(path: movedPath) == .markdown {
+            let linking = (try? await index.linkingNotes(to: movedPath)) ?? [] // Unanswered: its PDFs stay, as an unfound link does.
+            pdfs.formUnion(linking.filter { source in DocumentKind(path: source) == .pdf })
+        }
+        return pdfs
+    }
+
     var fileOperations: VaultFileOperations? {
         guard let store, let index else { return nil }
         return VaultFileOperations(store: store, index: index)

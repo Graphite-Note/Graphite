@@ -7,8 +7,8 @@
  *              Mac's and the iPad's switching tests and benchmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import Foundation
@@ -109,7 +109,9 @@ struct MainThreadQuietWatch {
     /// asked, for the switching benchmarks; the release pass, which measures hundreds of steps, waits less.
     var quietStepsToStop = 100
     private static let step = 0.005
-    private static let busyStep = Duration.milliseconds(12)
+    /// A poll longer than this counts as work. On a shared CI runner a poll of 5 ms often came back after more than 12 ms
+    /// with no work at all, so the watch never saw 100 quiet polls in a row and timed out after 60 s on every run.
+    private static var busyStep: Duration { SharedRunner.isActive ? .milliseconds(50) : .milliseconds(12) }
 
     /// Makes `change`, then waits until `isShown` is true and the main thread has been quiet since.
     func measure(_ change: () -> Void, until isShown: () -> Bool = { true }) async throws -> Measurement {
@@ -124,7 +126,7 @@ struct MainThreadQuietWatch {
         var longestStepProcessor = processorAtStepStart - processorStart
         var quietSteps = 0
         var shownAt: ContinuousClock.Instant?
-        try await waitUntil("the window shows what the switch asked for, then is quiet", timeoutSeconds: 60, pollingIntervalSeconds: Self.step) {
+        try await waitUntil("the window shows what the switch asked for, then is quiet", timeoutSeconds: 60 * SharedRunner.waitScale, pollingIntervalSeconds: Self.step) {
             layOut()
             let stepEnd = ContinuousClock.now
             let stepLength = stepStart.duration(to: stepEnd)

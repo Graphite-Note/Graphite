@@ -6,8 +6,8 @@
  *              view behind the library, and leaves the main thread free.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 #if os(macOS)
@@ -41,7 +41,7 @@ final class ViewSwitchingMacTests: XCTestCase {
         // Measured 2026-11-12 on a Debug build: 100 to 230 ms each way at this size; the 3 s budget leaves room for a loaded
         // machine and still catches a freeze such as the Tags view's 4.5 s.
         for measurement in [firstList, toLibrary, backToList] {
-            XCTAssertLessThan(measurement.busy, .milliseconds(3_000), "A switch kept the main thread busy \(measurement.busy).")
+            SharedRunner.assertWithinTimingBudget(measurement.busy, isLessThan: .milliseconds(3_000), "A switch kept the main thread busy \(measurement.busy).")
         }
     }
 

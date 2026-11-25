@@ -93,7 +93,7 @@ MODULE_ROWS = {
         "folders": ["Sources/GraphiteUI"],
         "modules": {"GraphiteCore", "GraphiteIndex", "GraphiteApple", "GraphiteVoices", "GraphitePostgreSQLMirror"},
         "frameworks": {"SwiftUI", "UIKit", "AppKit", "Textual", "PDFKit", "PencilKit", "WebKit", "MapKit", "AVFoundation", "MediaPlayer",
-                       "VisionKit", "PhotosUI", "UniformTypeIdentifiers"},
+                       "VisionKit", "PhotosUI", "UniformTypeIdentifiers", "IOSurface"},
         "allows_runtime": True,
     },
     "GraphiteBenchmarks": {

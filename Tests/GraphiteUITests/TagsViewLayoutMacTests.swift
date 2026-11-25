@@ -6,8 +6,8 @@
  *              the Mac's main thread.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 10/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 #if os(macOS)
@@ -56,7 +56,7 @@ final class TagsViewLayoutMacTests: XCTestCase {
 
         XCTAssertNotNil(Self.firstOutlineView(in: window.contentView), "The tags are in the sidebar's outline list.")
         // Measured 2026-11-10 on the owner's Mac: 10.5 s with a disclosure group per tag, 0.3 s with flat rows.
-        XCTAssertLessThan(elapsed, .milliseconds(1_500), "Laying out the Tags view took \(elapsed).")
+        SharedRunner.assertWithinTimingBudget(elapsed, isLessThan: .milliseconds(1_500), "Laying out the Tags view took \(elapsed).")
     }
 
     private static func firstOutlineView(in view: NSView?) -> NSOutlineView? {

@@ -6,8 +6,8 @@
  *              matching file is loaded however many there are, and bases over a 32,000-file index stay fast.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 25/11/2026
  */
 
 import XCTest
@@ -217,9 +217,9 @@ final class BaseWholeVaultTimingTests: XCTestCase {
                      Self.fileCount, tagged.elapsedSeconds * 1_000, tagged.run.candidateCount, inFolder.elapsedSeconds * 1_000, inFolder.run.candidateCount,
                      either.elapsedSeconds * 1_000, either.run.candidateCount, everything.elapsedSeconds * 1_000, manyMatches.elapsedSeconds * 1_000,
                      manyMatches.run.matchingCount))
-        XCTAssertLessThan(tagged.elapsedSeconds, 0.1)
-        XCTAssertLessThan(inFolder.elapsedSeconds, 0.1)
-        XCTAssertLessThan(either.elapsedSeconds, 0.1)
-        XCTAssertLessThan(everything.elapsedSeconds, 1.5)
+        SharedRunner.assertWithinTimingBudget(tagged.elapsedSeconds, isLessThan: 0.1)
+        SharedRunner.assertWithinTimingBudget(inFolder.elapsedSeconds, isLessThan: 0.1)
+        SharedRunner.assertWithinTimingBudget(either.elapsedSeconds, isLessThan: 0.1)
+        SharedRunner.assertWithinTimingBudget(everything.elapsedSeconds, isLessThan: 1.5)
     }
 }
