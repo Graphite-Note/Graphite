@@ -98,6 +98,8 @@ public enum BaseViewType: Hashable, Sendable {
     case table, cards, list, map
     /// Obsidian's Kanban layout (1.14): columns from the view's `groupBy`, one card per file.
     case kanban
+    /// The Calendar Bases plugin's layout (`calendar-bases`): notes placed on a month or week by a date property.
+    case calendar
     /// A view type Graphite does not render (for example a community plugin's).
     case unsupported(String)
 
@@ -108,6 +110,7 @@ public enum BaseViewType: Hashable, Sendable {
         case "list": self = .list
         case "map": self = .map
         case "kanban": self = .kanban
+        case "calendar": self = .calendar
         default: self = .unsupported(rawValue)
         }
     }
@@ -119,6 +122,7 @@ public enum BaseViewType: Hashable, Sendable {
         case .list: "list"
         case .map: "map"
         case .kanban: "kanban"
+        case .calendar: "calendar"
         case .unsupported(let name): name
         }
     }
@@ -217,6 +221,7 @@ public struct BaseView: Hashable, Sendable, Identifiable {
     public var cards = BaseCardsOptions()
     public var list = BaseListOptions()
     public var map = BaseMapOptions()
+    public var calendar = BaseCalendarOptions()
     /// The other single-valued keys of a view of a plugin's type, which belong to the plugin.
     public var pluginOptions: [String: BaseViewOptionValue] = [:]
 
@@ -466,6 +471,7 @@ public struct BaseDefinition: Hashable, Sendable {
         view.cards = parseCardsOptions(mapping)
         view.list = parseListOptions(mapping)
         view.map = parseMapOptions(mapping)
+        view.calendar = BaseCalendarOptions(viewMapping: mapping)
         if case .unsupported = view.type { view.pluginOptions = Self.pluginOptions(in: mapping) }
         return view
     }

@@ -7,8 +7,8 @@
  *              end between (a row of cards, a list item, a table row).
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -50,8 +50,8 @@ extension EnvironmentValues {
 }
 
 enum NotePDFBases {
-    /// The views a page can show; a map or kanban prints as the base's name.
-    private static let printedViewTypes: Set<BaseViewType> = [.cards, .list, .table]
+    /// The views a page can show; a map or kanban prints as the base's name, a calendar as a list of its notes.
+    private static let printedViewTypes: Set<BaseViewType> = [.cards, .list, .table, .calendar]
     /// Cover pixels per point of a card's width: sharp on paper without holding full-size pictures.
     private static let coverPixelsPerPoint: CGFloat = 2
 
@@ -196,7 +196,8 @@ struct NotePDFBaseView: View {
             }
             switch result.view.type {
             case .cards: BaseCardsView(result: result, actions: actions)
-            case .list: BaseListView(result: result, actions: actions)
+            // A calendar's grid is drawn for a screen of days; on paper its notes are listed.
+            case .list, .calendar: BaseListView(result: result, actions: actions)
             case .table: BaseTableView(result: result, sortKeys: result.view.sort, actions: actions, sort: { _, _ in })
             case .map, .kanban, .unsupported: EmptyView()
             }

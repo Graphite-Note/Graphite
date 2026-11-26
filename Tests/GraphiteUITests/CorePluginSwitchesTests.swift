@@ -1,3 +1,15 @@
+/**
+ * File: CorePluginSwitchesTests.swift
+ * -----------------------------------
+ * Layer: Tests
+ * Description: Which core plugins are on: each plugin's default, what the person turned off or on, and the one-time Read
+ *              Aloud migration.
+ *
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.3
+ * Date: 26/11/2026
+ */
+
 import XCTest
 @testable import GraphiteUI
 import GraphiteTestSupport
@@ -17,12 +29,13 @@ final class CorePluginSwitchesTests: XCTestCase {
         device = nil
     }
 
-    func testAFreshDeviceHasReadAloudAndThePostgreSQLMirrorOffAndEveryOtherPluginOn() {
+    func testAFreshDeviceHasReadAloudThePostgreSQLMirrorAndCalendarCopyOffAndEveryOtherPluginOn() {
         let preferences = device.makeServices().preferences
 
         XCTAssertFalse(preferences.isEnabled(.readAloud))
         XCTAssertFalse(preferences.isEnabled(.postgreSQLMirror))
-        for plugin in CorePlugin.allCases where plugin != .readAloud && plugin != .postgreSQLMirror {
+        XCTAssertFalse(preferences.isEnabled(.calendarCopy))
+        for plugin in CorePlugin.allCases where ![.readAloud, .postgreSQLMirror, .calendarCopy].contains(plugin) {
             XCTAssertTrue(preferences.isEnabled(plugin), "\(plugin.rawValue) is on until it is turned off.")
         }
     }
@@ -36,10 +49,11 @@ final class CorePluginSwitchesTests: XCTestCase {
         XCTAssertNil(device.defaults.object(forKey: "GraphiteDisabledCorePlugins"), "The migration records nothing as turned off.")
     }
 
-    func testOnlyReadAloudAndThePostgreSQLMirrorAreOffByDefault() {
+    func testOnlyReadAloudThePostgreSQLMirrorAndCalendarCopyAreOffByDefault() {
         let offByDefault = CorePlugin.allCases.filter { plugin in !plugin.isEnabledByDefault }
 
-        XCTAssertEqual(offByDefault, [.readAloud, .postgreSQLMirror], "The mirror sends notes to a server only once the person turns it on.")
+        XCTAssertEqual(offByDefault, [.readAloud, .calendarCopy, .postgreSQLMirror],
+                       "The mirror sends notes to a server, and Calendar Copy writes the person's calendars, only once the person turns them on.")
     }
 
     func testTurningReadAloudOnStoresItInTheEnabledListAndAnotherLaunchReadsItBack() {

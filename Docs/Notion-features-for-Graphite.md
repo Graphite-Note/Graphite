@@ -73,6 +73,8 @@ Effort: S is days, M is one to three weeks, L is more, for one person, before de
 
 **Graphite today.** No calendar view and no EventKit (Docs/Calendar-and-reminders-todo.md, #47, not started). The Calendar community plugin draws its month in the sidebar.
 
+**Built 2026-11-26** (`Docs/Bases-calendar-todo.md`, issues #241 to #245): the `calendar` view of Bases with Calendar Bases' keys, month and week grids for the iPad, the Mac and the iPhone, rescheduling by drag, and Calendar Copy, the one-way copy into a "Graphite" calendar. #47's EventKit reading had been built on 2026-11-12.
+
 **How.**
 - A native `calendar` view for Bases: month and week grids, a note per date property value, drag to change the date through the same checked frontmatter edit as Kanban. The precedent is the Map view, which reads the keys of Obsidian's Maps plugin. Until Obsidian ships its own calendar view, read the keys of the most used community view (Calendar Bases) so the same `.base` draws in Obsidian with that plugin, then follow Obsidian's keys once they are published. Building it under a key Obsidian later uses differently would split the format.
 - An Apple Calendar mirror as a core plugin, off until turned on, like the PostgreSQL Mirror: the notes a chosen base returns are copied one way into a "Graphite" calendar on the device through EventKit, and rebuilt from the vault at any time. Due dates then show in Calendar, on the Lock Screen, in widgets and on a watch, with no server and no account. This is the part Notion Calendar cannot do with iCloud.

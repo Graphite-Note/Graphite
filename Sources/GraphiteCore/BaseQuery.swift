@@ -1,3 +1,15 @@
+/**
+ * File: BaseQuery.swift
+ * ---------------------
+ * Layer: Core
+ * Description: Runs one view of a base over a bounded set of records: filters, sorting, limit, grouping, cells,
+ *              summaries and what each view type needs besides its columns.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 26/11/2026
+ */
+
 import Foundation
 
 /// A computed cell: a value, or the reason the expression failed for this row.
@@ -60,12 +72,15 @@ public enum BaseImageReference: Hashable, Sendable {
     case color(String)
 }
 
-/// Values a view needs besides its columns: card covers and map markers.
+/// Values a view needs besides its columns: card covers, map markers and calendar dates.
 public struct BaseRowPresentation: Hashable, Sendable {
     public var coverImage: BaseImageReference?
     public var coordinate: BaseCoordinate?
     public var markerIcon: String?
     public var markerColor: String?
+    /// A calendar view's `startDate` and `endDate`, when they hold dates.
+    public var calendarStart: BaseDate?
+    public var calendarEnd: BaseDate?
     public init() {}
 }
 
@@ -375,6 +390,14 @@ public struct BaseQueryEngine {
             if let colorProperty = view.map.markerColorProperty, let value = try? evaluator.value(of: colorProperty, for: record), value.isTruthy {
                 presentation.markerColor = value.displayText
             }
+        case .calendar:
+            // Only dates are placed, as Calendar Bases takes only date values.
+            func date(of property: BasePropertyIdentifier?) -> BaseDate? {
+                guard let property, case .date(let date)? = try? evaluator.value(of: property, for: record) else { return nil } // A failure places nothing.
+                return date
+            }
+            presentation.calendarStart = date(of: view.calendar.startDateProperty)
+            presentation.calendarEnd = date(of: view.calendar.endDateProperty)
         default:
             break
         }

@@ -5,8 +5,8 @@
  * Description: What every window of the app shares, built once per process.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.12
- * Date: 13/11/2026
+ * Version: 0.13
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -67,6 +67,8 @@ public final class ProcessServices {
     /// Apple's Calendar and Reminders, for the Calendar core plugin, shared by every window. The live store makes no event
     /// store until a calendar feature is used, and asks for access only at that first use.
     let calendar: CalendarServices
+    /// The Calendar Copy core plugin's calendar, shared by every window; it makes no event store until a copy runs.
+    let calendarCopyStore: any CalendarCopyStore
     /// One community plugin runtime per open vault, shared by its windows.
     let communityPluginHosts: CommunityPluginHosts
     /// Builds a window's Read Aloud controller and its speech: the system voice, the
@@ -78,6 +80,7 @@ public final class ProcessServices {
     /// Services over `defaults` and `applicationFolders`.
     /// - Parameter calendarStore: The live store for the app; tests give one that answers for Calendar and Reminders.
     init(defaults: UserDefaults, applicationFolders: ApplicationFolders, minimumSpacingOfSpacedScans: Duration = .seconds(30), calendarStore: any CalendarStore,
+         calendarCopyStore: any CalendarCopyStore = LiveCalendarCopyStore(),
          makeReadAloudController: @escaping @MainActor (_ startRefusal: @escaping @MainActor () -> OtherWindowActivity?) -> ReadAloudController) {
         self.defaults = defaults
         // Before the preferences read the switches: a device that used Read Aloud keeps it on.
@@ -93,6 +96,7 @@ public final class ProcessServices {
         unsavedDrafts = UnsavedDocumentDraftStore(directory: UnsavedDocumentDraftStore.directory(in: applicationFolders))
         communityPluginHosts = CommunityPluginHosts(defaults: defaults)
         calendar = CalendarServices(store: calendarStore)
+        self.calendarCopyStore = calendarCopyStore
         self.makeReadAloudController = makeReadAloudController
     }
 

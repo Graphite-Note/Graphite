@@ -1,3 +1,15 @@
+/**
+ * File: BaseValueViews.swift
+ * --------------------------
+ * Layer: UI
+ * Description: How a base's values are drawn in its views: text, links, tags, dates, images and checkboxes, the actions
+ *              a view's cells offer, and each view type's symbol.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.6
+ * Date: 26/11/2026
+ */
+
 import SwiftUI
 import ImageIO
 import GraphiteCore
@@ -636,6 +648,7 @@ extension BaseViewType {
         case .list: "list.bullet"
         case .map: "map"
         case .kanban: "rectangle.split.3x1"
+        case .calendar: "calendar"
         case .unsupported: "questionmark.square.dashed"
         }
     }

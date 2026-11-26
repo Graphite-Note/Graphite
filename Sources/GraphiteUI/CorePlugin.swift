@@ -6,7 +6,7 @@
  *              defaults and symbols.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.1
+ * Version: 0.3
  * Date: 26/11/2026
  */
 
@@ -16,8 +16,8 @@ import Foundation
 enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     case backlinks, outgoingLinks, outline, properties, tags, wordCount
     case colors, drawings, audioRecorder, readAloud, bases, slashCommands
-    case templates, dailyNotes, calendar, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview, slides
-    case pageLook
+    case templates, dailyNotes, calendar, calendarCopy, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport
+    case postgreSQLMirror, pagePreview, slides, pageLook
 
     var id: String { rawValue }
 
@@ -38,6 +38,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .slashCommands: "Slash Commands"
         case .dailyNotes: "Daily Notes"
         case .calendar: "Calendar"
+        case .calendarCopy: "Calendar Copy"
         case .footnotes: "Footnotes View"
         case .fileRecovery: "File Recovery"
         case .bookmarks: "Bookmarks"
@@ -77,6 +78,9 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .calendar:
             "A month of daily notes in the left sidebar, with each day's events from Apple's Calendar, notes made from events, "
                 + "and tasks sent to Reminders. Calendar and Reminders are asked for only when you first use them."
+        case .calendarCopy:
+            "Copies the notes of a base's calendar view into a “Graphite” calendar in Apple's Calendar, for the Lock Screen, widgets "
+                + "and a watch. The notes themselves are never changed, and edits made in Calendar are replaced at the next copy."
         case .footnotes: "Lists the current note's footnotes in the right sidebar."
         case .fileRecovery: "Keeps copies of notes as they are edited, outside the vault, to recover earlier versions and deleted notes."
         case .bookmarks: "Keeps notes, headings, folders, and searches at hand in the left sidebar, shared with Obsidian."
@@ -103,7 +107,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     /// only the person can choose to do.
     var isEnabledByDefault: Bool {
         switch self {
-        case .readAloud, .postgreSQLMirror: false
+        case .readAloud, .postgreSQLMirror, .calendarCopy: false
         case .backlinks, .outgoingLinks, .outline, .properties, .tags, .wordCount, .colors, .drawings, .audioRecorder,
              .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview,
              .slides, .slashCommands, .pageLook: true
@@ -127,6 +131,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .slashCommands: "slash.circle"
         case .dailyNotes: "calendar"
         case .calendar: "calendar.day.timeline.left"
+        case .calendarCopy: "calendar.badge.plus"
         case .footnotes: "textformat.superscript"
         case .fileRecovery: "clock.arrow.circlepath"
         case .bookmarks: "bookmark"

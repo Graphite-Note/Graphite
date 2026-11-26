@@ -5,8 +5,8 @@
  * Description: The sheet that edits one view of a base, with the options of a view a plugin draws.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.6
- * Date: 01/11/2026
+ * Version: 0.7
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -33,6 +33,9 @@ struct BaseViewDraft: Equatable, Sendable {
     var markerIconProperty: BasePropertyIdentifier?
     var markerColorProperty: BasePropertyIdentifier?
     var defaultZoom: Double?
+    var calendarStartDateProperty: BasePropertyIdentifier?
+    var calendarEndDateProperty: BasePropertyIdentifier?
+    var calendarWeekStartDay: BaseCalendarWeekday
     /// The options of a plugin's view, as the file writes them.
     var pluginOptions: [String: BaseViewOptionValue]
 
@@ -55,6 +58,9 @@ struct BaseViewDraft: Equatable, Sendable {
         markerIconProperty = view.map.markerIconProperty
         markerColorProperty = view.map.markerColorProperty
         defaultZoom = view.map.defaultZoom.flatMap { zoom in zoom.isFinite ? zoom : nil }
+        calendarStartDateProperty = view.calendar.startDateProperty
+        calendarEndDateProperty = view.calendar.endDateProperty
+        calendarWeekStartDay = view.calendar.weekStartDay
         pluginOptions = view.pluginOptions
     }
 
@@ -79,6 +85,7 @@ struct BaseViewDraft: Equatable, Sendable {
         if markerIconProperty != original.markerIconProperty { try editor.setOption("markerIcon", text: markerIconProperty?.rawValue, forViewAt: viewPosition) }
         if markerColorProperty != original.markerColorProperty { try editor.setOption("markerColor", text: markerColorProperty?.rawValue, forViewAt: viewPosition) }
         if defaultZoom != original.defaultZoom { try editor.setOption("defaultZoom", number: defaultZoom, forViewAt: viewPosition) }
+        try applyCalendarOptions(to: &editor, original: original, viewPosition: viewPosition)
         for key in Set(pluginOptions.keys).union(original.pluginOptions.keys) where pluginOptions[key] != original.pluginOptions[key] {
             try editor.setOption(key, value: pluginOptions[key], forViewAt: viewPosition)
         }
@@ -124,7 +131,7 @@ struct BaseViewDraft: Equatable, Sendable {
 }
 
 struct BaseViewEditorSheet: View {
-    private static let editableTypes: [BaseViewType] = [.table, .cards, .list, .kanban, .map]
+    private static let editableTypes: [BaseViewType] = [.table, .cards, .list, .kanban, .map, .calendar]
     private static let fileProperties: [BasePropertyIdentifier] = ["name", "basename", "path", "folder", "ext", "size", "ctime", "mtime", "tags", "links", "embeds", "backlinks"].map(BasePropertyIdentifier.file)
 
     let definition: BaseDefinition
@@ -232,6 +239,7 @@ struct BaseViewEditorSheet: View {
                 filtersSection
                 if draft.type == .cards { cardsSection }
                 if draft.type == .map { mapSection }
+                if draft.type == .calendar { BaseCalendarOptionsSection(draft: $editing.draft, choices: choices, displayName: displayName) }
                 pluginOptionsSection
             }
             .formStyle(.grouped)

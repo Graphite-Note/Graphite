@@ -634,7 +634,15 @@ final class BaseDocumentModel {
     /// - Returns: Whether the note was saved (or already had this value).
     @discardableResult
     func setProperty(_ property: BasePropertyIdentifier, of path: VaultPath, to value: PropertyValue?) async -> Bool {
-        guard canEdit(property, of: path) else { return false }
+        await setProperties([BasePropertyWrite(property: property, value: value)], of: path)
+    }
+
+    /// Writes several properties into the note's frontmatter in one revision-checked save, as a calendar's move
+    /// writes a start and an end together, so the note never holds one without the other.
+    /// - Returns: Whether the note was saved (or already had these values).
+    @discardableResult
+    func setProperties(_ writes: [BasePropertyWrite], of path: VaultPath) async -> Bool {
+        guard !writes.isEmpty, writes.allSatisfy({ write in canEdit(write.property, of: path) }) else { return false }
         let store = store
         let declaredTypes = declaredTypes
         do {
@@ -642,7 +650,9 @@ final class BaseDocumentModel {
             guard let noteFileText = UTF8FileText(snapshot.data) else { throw GraphiteError.invalidFile("This note is not UTF-8 text.") }
             let noteText = noteFileText.text
             let updatedText = try await Task.detached(priority: .userInitiated) {
-                try BasePropertyEditing.settingProperty(property.name, to: value, in: noteText, declaredTypes: declaredTypes)
+                try writes.reduce(noteText) { text, write in
+                    try BasePropertyEditing.settingProperty(write.property.name, to: write.value, in: text, declaredTypes: declaredTypes)
+                }
             }.value
             guard updatedText != noteText else { return true }
             _ = try await store.save(noteFileText.encoded(updatedText), at: path, expecting: .revision(snapshot.revision))
@@ -729,6 +739,12 @@ final class BaseDocumentModel {
     }
 }
 
+/// A value to write into one property of a note; nil removes the property.
+struct BasePropertyWrite: Sendable {
+    let property: BasePropertyIdentifier
+    let value: PropertyValue?
+}
+
 /// One view of a base as the person saw it: its position in the file's `views` list and
 /// its name. An edit prepared on a view checks both, so it never lands on another view.
 struct BaseViewTarget: Hashable {
@@ -779,6 +795,7 @@ extension BaseViewType {
         case .list: "List"
         case .map: "Map"
         case .kanban: "Kanban"
+        case .calendar: "Calendar"
         case .unsupported(let name): name.capitalized
         }
     }

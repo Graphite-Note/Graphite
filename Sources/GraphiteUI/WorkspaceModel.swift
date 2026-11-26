@@ -197,7 +197,10 @@ final class WorkspaceModel {
     /// Changes after the index takes in new file contents, so open bases run again, and the
     /// PostgreSQL Mirror copies the changes.
     var indexVersion = 0 {
-        didSet { schedulePostgreSQLMirrorCopy() }
+        didSet {
+            schedulePostgreSQLMirrorCopy()
+            scheduleCalendarCopy()
+        }
     }
     /// The vault's property names read for suggestions, kept until the index changes (`PropertySuggestions`).
     @ObservationIgnored var propertySuggestionCache: PropertySuggestionCache?
@@ -280,6 +283,8 @@ final class WorkspaceModel {
     let preferences: GraphitePreferences
     /// The PostgreSQL Mirror core plugin's copies of the open vault.
     let postgreSQLMirror: PostgreSQLMirrorController
+    /// The Calendar Copy core plugin's copies of the open vault into Apple Calendar.
+    let calendarCopy: CalendarCopyController
     let recording = RecordingController()
     /// The window's reading, while the Read Aloud core plugin is on; nil while it is off, so
     /// no speech engine, voice library or renderer exists and no Read Aloud control shows.
@@ -349,6 +354,7 @@ final class WorkspaceModel {
     init(processServices: ProcessServices, clock: any ApplicationClock) {
         self.clock = clock
         postgreSQLMirror = PostgreSQLMirrorController(clock: clock)
+        calendarCopy = CalendarCopyController(clock: clock, store: processServices.calendarCopyStore, defaults: processServices.defaults)
         self.processServices = processServices
         deviceDefaults = processServices.defaults
         applicationFolders = processServices.applicationFolders
@@ -372,6 +378,9 @@ final class WorkspaceModel {
         } else if plugin == .postgreSQLMirror {
             // The mirror copies once turned on (when set up) and stops once turned off.
             if isEnabled { copyToPostgreSQLMirrorNow() } else { postgreSQLMirror.stop() }
+        } else if plugin == .calendarCopy {
+            // Copies once turned on (when a base is chosen, asking for access) and stops once turned off; the calendar stays.
+            if isEnabled { copyToCalendarNow() } else { calendarCopy.stop() }
         }
     }
 
@@ -625,6 +634,7 @@ final class WorkspaceModel {
         graphCache = nil; graphPositions = [:]; placedNotesCache = nil
         // The vault being left is not copied any longer; the next one is, once the index has read it.
         postgreSQLMirror.stop()
+        calendarCopy.stop()
         embeddedBaseModelCache = EmbeddedBaseModelCache()
         // `expandedFolders` is replaced once the new vault is current: clearing it here would
         // save an empty list for the vault being left.
@@ -833,6 +843,8 @@ final class WorkspaceModel {
             isIndexing = true; indexingMessage = "Indexing…"
         case .scanFinished(let report, let isAnotherScanQueued):
             hasCompletedIndexScan = true
+            // A vault opened unchanged since the last copy is still compared with its calendar once.
+            scheduleCalendarCopy()
             pendingContentFileCount = report.pendingContentFiles
             describeIndex(fileCount: report.discoveredFiles)
             // Everything keyed on the index runs again for this, so a scan that found the

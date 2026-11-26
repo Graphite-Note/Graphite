@@ -121,7 +121,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
-	<string>The Calendar panel shows a day's events beside its daily note, puts them into a note when you ask, and makes meeting and lecture notes from them. Your events stay on this device and are never sent anywhere.</string>
+	<string>The Calendar panel shows a day's events beside its daily note, puts them into a note when you ask, and makes meeting and lecture notes from them. When you turn on Calendar Copy, the dated notes of a base you choose are copied into a calendar named Graphite. Your events are never sent anywhere.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Record lectures as ordinary video files in your selected vault, and take photos of the board or a page for your notes, and scan paper documents into PDFs.</string>
 	<key>NSLocalNetworkUsageDescription</key>

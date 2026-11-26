@@ -5,7 +5,7 @@
  * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
  *
  * Authors: Bahey Shalash
- * Version: 0.21
+ * Version: 0.22
  * Date: 26/11/2026
  */
 
@@ -249,8 +249,8 @@ struct BaseContainerView: View {
     /// A base inside a note grows with its rows, except a map, which keeps its height. A
     /// plugin's view is as tall as what it drew (`CommunityPluginBasesEmbedContent`).
     private var growsWithContent: Bool { isEmbedded && model.selectedView?.type != .map }
-    /// A plugin draws every row of its view itself, so no row limit applies to it.
-    private var isDrawnByPlugin: Bool { model.selectedView?.type.isOfAPluginsType ?? false }
+    /// A plugin draws every row of its view itself, and a calendar places every row on its days, so no row limit applies.
+    private var drawsEveryRow: Bool { (model.selectedView?.type.isOfAPluginsType ?? false) || model.selectedView?.type == .calendar }
     /// An embed that names its view (`![[Plan.base#First]]`) shows that view, as Obsidian does:
     /// a note about one view is not switched to another, or the shared file edited, from inside it.
     private var isLockedToNamedView: Bool {
@@ -376,7 +376,7 @@ struct BaseContainerView: View {
             banners
             viewContent
                 .frame(maxWidth: .infinity, maxHeight: growsWithContent ? nil : .infinity)
-            if growsWithContent, !isDrawnByPlugin, let result = model.result, result.displayedCount > embeddedRowLimit {
+            if growsWithContent, !drawsEveryRow, let result = model.result, result.displayedCount > embeddedRowLimit {
                 Divider()
                 rowLimitFooter(displayedCount: result.displayedCount)
             }
@@ -441,7 +441,8 @@ struct BaseContainerView: View {
         } else if let view = model.selectedView, case .unsupported(let typeName) = view.type {
             pluginTypeContent(view: view, typeName: typeName)
         } else if let result = model.result, result.view.id == model.selectedView?.id {
-            if result.rows.isEmpty && result.view.type != .map {
+            // A map and a calendar are drawn without results: the place or the days still show.
+            if result.rows.isEmpty && result.view.type != .map && result.view.type != .calendar {
                 ContentUnavailableView {
                     Label("No Results", systemImage: result.view.type.systemImage)
                 } description: {
@@ -522,6 +523,9 @@ struct BaseContainerView: View {
                 canMove: { path in model.canMoveToGroup(path) },
                 move: { path, groupKey in Task { await model.moveToGroup(path, groupKey: groupKey) } },
                 newNote: canCreate ? { groupKey, title in noteSheet = .newItem(BaseNewItemRequest(groupKey: groupKey, groupTitle: title)) } : nil))
+        case .calendar:
+            model.calendarView(of: result, actions: actions, canEditView: model.canEditDefinition && !isLockedToNamedView,
+                               editView: { beginEditingSelectedView() })
         case .unsupported:
             EmptyView()
         }
@@ -582,7 +586,7 @@ extension BaseViewType {
     var isOfAPluginsType: Bool {
         switch self {
         case .unsupported: true
-        case .table, .cards, .list, .kanban, .map: false
+        case .table, .cards, .list, .kanban, .map, .calendar: false
         }
     }
 }
@@ -591,7 +595,7 @@ extension BaseViewType {
 /// the base has another view and the embed does not name this one.
 enum BaseUnsupportedViewMessage {
     static func text(canChooseAnotherView: Bool) -> String {
-        let shown = "Graphite shows table, cards, list, Kanban and map views, and views drawn by community plugins that are on."
+        let shown = "Graphite shows table, cards, list, Kanban, map and calendar views, and views drawn by community plugins that are on."
         return canChooseAnotherView ? shown + " Choose another view from the menu above." : shown
     }
 }
@@ -693,7 +697,7 @@ struct BaseToolbar: View {
                 Button("Save Sort to View", systemImage: "arrow.up.arrow.down") { Task { await model.saveSortToView() } }
             }
             Menu("New View", systemImage: "plus") {
-                ForEach([BaseViewType.table, .cards, .list, .kanban, .map], id: \.rawValue) { type in
+                ForEach([BaseViewType.table, .cards, .list, .kanban, .map, .calendar], id: \.rawValue) { type in
                     Button(type.defaultViewName, systemImage: type.systemImage) { Task { await model.addView(type: type) } }
                 }
                 ForEach(pluginViewRegistrations, id: \.viewType) { registration in

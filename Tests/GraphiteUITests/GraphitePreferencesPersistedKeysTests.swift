@@ -6,7 +6,7 @@
  *              which settings saved by earlier builds are read back through.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.10
+ * Version: 0.11
  * Date: 26/11/2026
  */
 
@@ -351,7 +351,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
     func testTheCorePluginRawValuesAreThoseOfEarlierBuilds() {
         XCTAssertEqual(CorePlugin.allCases.map(\.rawValue), [
             "backlinks", "outgoingLinks", "outline", "properties", "tags", "wordCount", "colors", "drawings", "audioRecorder", "readAloud",
-            "bases", "slashCommands", "templates", "dailyNotes", "calendar", "footnotes", "fileRecovery", "bookmarks", "graph", "map", "canvas", "notebookImport",
+            "bases", "slashCommands", "templates", "dailyNotes", "calendar", "calendarCopy", "footnotes", "fileRecovery", "bookmarks", "graph", "map", "canvas", "notebookImport",
             "postgreSQLMirror",
             "pagePreview",
             "slides", "pageLook",

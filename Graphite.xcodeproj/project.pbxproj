@@ -129,6 +129,7 @@
 				GraphiteFixtures/FixtureFolders.swift,
 				GraphiteTestSupport/AnsweringDeviceLocation.swift,
 				GraphiteTestSupport/DenseHandwritingNotebook.swift,
+				GraphiteTestSupport/FakeCalendarCopyStore.swift,
 				GraphiteTestSupport/FakeCalendarStore.swift,
 				GraphiteTestSupport/FakeConflictVersionStore.swift,
 				GraphiteTestSupport/GeneratedCourseVault.swift,

@@ -6,8 +6,8 @@
  *              plugins start, an offer to turn plugins on while they are off, or that the type is unsupported.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 05/11/2026
+ * Version: 0.2
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -60,7 +60,7 @@ struct CommunityPluginsOffForBaseView: View {
     let offer: CommunityPluginsTurnOnOffer
 
     static func explanation(viewType: String) -> String {
-        "Graphite draws table, cards, list, Kanban and map views itself. \u{201C}\(viewType)\u{201D} views can come from a community plugin, "
+        "Graphite draws table, cards, list, Kanban, map and calendar views itself. \u{201C}\(viewType)\u{201D} views can come from a community plugin, "
             + "and community plugins are off for this vault on this device."
     }
 

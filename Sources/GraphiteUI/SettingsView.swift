@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.41
- * Date: 18/11/2026
+ * Version: 0.42
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -61,7 +61,7 @@ struct SettingsView: View {
 
     /// Plugins that have options of their own, like Obsidian's plugin tabs.
     private static let configurablePlugins: [CorePlugin] = [.colors, .drawings, .audioRecorder, .readAloud, .templates, .dailyNotes, .calendar,
-                                                            .fileRecovery, .postgreSQLMirror]
+                                                            .calendarCopy, .fileRecovery, .postgreSQLMirror]
 
     /// The plugin pages the sidebar's Core Plugins section lists: those of the plugins that
     /// are on, as in Obsidian.
@@ -225,6 +225,7 @@ struct SettingsView: View {
         case .plugin(.templates): TemplatesSettingsPage(workspace: workspace)
         case .plugin(.dailyNotes): DailyNotesSettingsPage(workspace: workspace)
         case .plugin(.calendar): CalendarSettingsPage(actions: workspace.calendarSettingsActions())
+        case .plugin(.calendarCopy): CalendarCopySettingsPage(controller: workspace.calendarCopy, actions: workspace.calendarCopySettingsActions())
         case .plugin(.fileRecovery): FileRecoverySettingsPage(workspace: workspace, preferences: workspace.preferences) { dismiss() }
         case .plugin(.postgreSQLMirror):
             PostgreSQLMirrorSettingsPage(mirror: workspace.postgreSQLMirror, preferences: workspace.preferences, copyNow: workspace.copyToPostgreSQLMirrorNow)

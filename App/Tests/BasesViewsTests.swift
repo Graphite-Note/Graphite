@@ -5,8 +5,8 @@
  * Description: Bases views hosted in the app.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 04/11/2026
+ * Version: 0.5
+ * Date: 26/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -102,6 +102,42 @@ final class BasesViewsTests: XCTestCase {
         XCTAssertEqual(model.result?.groups.map { group in group.rows.count }, [2, 1, 1])
         try await Task.sleep(for: .milliseconds(300))
         attachScreenshot(of: controller, named: "Board after moving Fix testbench to doing")
+    }
+
+    // MARK: Calendar
+
+    /// A calendar view of this month's deadlines, drawn as the iPad (month of titled bars) or the iPhone (month of marks
+    /// over the chosen day's list) draws it, before and after a note is moved by three days.
+    func testACalendarPlacesThisMonthsNotesAndAMovedNoteChangesDay() async throws {
+        let calendar = BaseCalendarLayout.calendar(weekStartDay: .monday)
+        let today = CalendarDay(.now, in: calendar)
+        let monthStart = CalendarDay(year: today.year, month: today.month, day: 1)
+        func day(_ offset: Int) -> String { monthStart.adding(days: offset, in: calendar).isoText }
+        let (model, controller) = try await hostedBase("Deadlines.base", files: [
+            "Courses/Lab report.md": "---\ndue: \(day(2))\nuntil: \(day(4))\n---\n",
+            "Courses/Midterm.md": "---\ndue: \(day(9))T09:00\n---\n",
+            "Courses/Reading.md": "---\ndue: \(day(9))\n---\n",
+            "Courses/Today's lecture.md": "---\ndue: \(today.isoText)T10:15\n---\n",
+            "Deadlines.base": "filters: file.inFolder(\"Courses\")\nviews:\n  - type: calendar\n    name: Calendar\n    startDate: due\n    endDate: until\n",
+        ])
+        XCTAssertEqual(model.selectedView?.type, .calendar)
+        await settle()
+        attachScreenshot(of: controller, named: "Calendar of this month's deadlines")
+
+        let path = try VaultPath("Courses/Lab report.md")
+        XCTAssertTrue(model.canReschedule(path))
+        let isMoved = await model.reschedule(path, byDays: 3)
+        XCTAssertTrue(isMoved)
+        XCTAssertEqual(try text(at: "Courses/Lab report.md"), "---\ndue: \(day(5))\nuntil: \(day(7))\n---\n")
+        let entry = try XCTUnwrap(BaseCalendarEntry.entries(of: try XCTUnwrap(model.result), calendar: calendar).first { entry in entry.path == path })
+        XCTAssertEqual(entry.firstDay.isoText, day(5))
+        await settle()
+        attachScreenshot(of: controller, named: "Calendar after the lab report moved three days later")
+    }
+
+    /// Lets SwiftUI draw what the model published.
+    private func settle() async {
+        _ = await XCTWaiter.fulfillment(of: [XCTestExpectation(description: "a drawing pass")], timeout: 0.4)
     }
 
     // MARK: Map tiles
