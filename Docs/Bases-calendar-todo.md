@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: built and tested 2026-11-26: the calendar view, rescheduling, the view editor and Calendar Copy, checked in iPad and iPhone simulators, with real EventKit in a simulator, and in a Debug copy of the Mac app by sight. Open: dragging and the context menu on the Mac. Issues: #241 to #245, one per section, linked under each heading.
+Status: built and tested 2026-11-26: the calendar view, rescheduling, the view editor and Calendar Copy, checked in iPad and iPhone simulators, with real EventKit in a simulator, and in a Debug copy of the Mac app by sight. Checked on the Mac by hand on 2026-11-27: dragging and the context menu. Issues: #241 to #245, one per section, linked under each heading.
 
 ## Request
 
@@ -114,8 +114,9 @@ Issue: [#245](https://github.com/Graphite-Note/Graphite/issues/245)
 
 - [x] Checked in a dedicated iPad simulator with a small demo vault: month and week grids, drag to reschedule, the phone layout in an iPhone simulator.
   Done 2026-11-26: an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator of their own (iOS 27.2), with a demo vault of ten made-up course deadlines: `BasesViewsTests` hosted in the app on both, and a throwaway UI test (kept outside the repository) driving the installed app with real touches for the month, the week, drags on both, a tap from the base and from a note.
-- [ ] Checked in a separate Debug copy of the Mac app with the demo vault: the grids, dragging with the mouse, the context menu.
-  Seen 2026-11-26: a Debug build re-signed with a bundle ID of its own, the demo vault in its container: `Deadlines.base` drew the month in the real window (today marked, the lab report across 1 to 3 December, the 14:00 quiz with its time, "+1 more"). Open: dragging with the mouse and the context menu, which need a person's clicks or computer use (posted mouse events hang AppKit's drag loop, as seen in an earlier check).
+- [x] Checked in a separate Debug copy of the Mac app with the demo vault: the grids, dragging with the mouse, the context menu.
+  Seen 2026-11-26: a Debug build re-signed with a bundle ID of its own, the demo vault in its container: `Deadlines.base` drew the month in the real window (today marked, the lab report across 1 to 3 December, the 14:00 quiz with its time, "+1 more").
+  Done 2026-11-27: with the mouse in the same copy, a drag moved "Physics quiz" from 26 November to 2 December (`due: 2026-12-02T14:00`, its time kept), and the context menu showed Open and the four moves, where Move to Next Day moved "Algorithms problem set 9" from 27 to 28 November. Every day reported itself as a drop target on the way, a day of the shown month as well as one of the next. Some synthesized drags stalled when the drag loop stopped receiving the mouse events partway through. These stalls were the test input, not the calendar: steady drags with the same build landed every time.
 - [x] Calendar Copy checked with real EventKit in its own simulator: events made, changed after an edit in the vault, put back after an edit in Calendar, removed.
   Done 2026-11-26: `CalendarCopyLiveStoreHostedTests` in an iPad simulator of its own with calendar access granted: two notes copied (an all-day span of 10 to 12 March 2031 and a 09:00 hour), a title edited in Calendar put back, the exam moved in the vault moved in Calendar, the person's "Dentist" event left alone through Remove Copied Events, no note written.
 - [x] `Docs/Architecture.md`, `Docs/Coverage.md` and `Docs/Notion-features-for-Graphite.md` updated for what is built and checked.
