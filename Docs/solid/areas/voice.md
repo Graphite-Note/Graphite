@@ -682,9 +682,9 @@ Split:
 - **Severity:** Low
 - **Evidence:** 8 comments, found by reading:
   - "measured 2026-10-16" ([ReadAloudSpeech.swift:418-420](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L418-L420))
-  - "Earlier builds stored automatic picks … the owner's iPad kept … Eddy" ([ReadAloudSpeech.swift:448-450](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L448-L450))
+  - "Earlier builds stored automatic picks … the physical iPad kept … Eddy" ([ReadAloudSpeech.swift:448-450](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L448-L450))
   - "seen in the simulator, 2026-10-13" ([PDFReadAloudSource.swift:254-259](../../../Sources/GraphiteUI/PDFReadAloudSource.swift#L254-L259))
-  - "the owner's papers showed no word highlight at all" ([PDFReadAloudSource.swift:76-82](../../../Sources/GraphiteUI/PDFReadAloudSource.swift#L76-L82))
+  - "the supplied papers showed no word highlight at all" ([PDFReadAloudSource.swift:76-82](../../../Sources/GraphiteUI/PDFReadAloudSource.swift#L76-L82))
   - "The places were dropped in alphabetical order" ([ReadAloudNavigator.swift:355-356](../../../Sources/GraphiteUI/ReadAloudNavigator.swift#L355-L356))
   - "PDFs were left out of the history" ([ReadAloudNavigator.swift:320](../../../Sources/GraphiteUI/ReadAloudNavigator.swift#L320))
   - "Before, one apostrophe left a whole paragraph unlit" ([ReadingSourceAlignment.swift:9](../../../Sources/GraphiteUI/ReadingSourceAlignment.swift#L9))

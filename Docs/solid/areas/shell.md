@@ -838,7 +838,7 @@ This set is the natural narrow interface for both file trees.
   - [VaultSidebar.swift:576-581](../../../Sources/GraphiteUI/VaultSidebar.swift#L576-L581) and [589-592](../../../Sources/GraphiteUI/VaultSidebar.swift#L589-L592).
   - [MacFileTree.swift:9-13](../../../Sources/GraphiteUI/MacFileTree.swift#L9-L13).
   - [GraphitePreferences.swift:303-307](../../../Sources/GraphiteUI/GraphitePreferences.swift#L303-L307).
-  - [App/GraphiteApp.swift:26-29](../../../App/GraphiteApp.swift#L26-L29) ("reported by the owner, 2026-10-13").
+  - [App/GraphiteApp.swift:26-29](../../../App/GraphiteApp.swift#L26-L29) (a comment naming who reported the bug on 2026-10-13).
   - [GraphiteRootView.swift:64-66](../../../Sources/GraphiteUI/GraphiteRootView.swift#L64-L66) and [152-153](../../../Sources/GraphiteUI/GraphiteRootView.swift#L152-L153).
   - [GraphiteMacScenes.swift:42-44](../../../Sources/GraphiteUI/GraphiteMacScenes.swift#L42-L44).
 - **Why it matters:**

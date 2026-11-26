@@ -430,7 +430,7 @@ None of the 63 carries a same-line comment saying why the failure is harmless.
 
 #### CC-ARCH-07 Comments in the composition files narrate incidents and dates
 - **Severity:** Low
-- **Evidence:** "reported by the owner, 2026-10-13" ([GraphiteApp.swift:26-29](../../../App/GraphiteApp.swift#L26-L29)); "measured 2026-10-16" ([WorkspaceModel.swift:501-504](../../../Sources/GraphiteUI/WorkspaceModel.swift#L501-L504), [GraphitePreferences.swift:303-307](../../../Sources/GraphiteUI/GraphitePreferences.swift#L303-L307)); "made the iPad's sidebar update again without end" ([GraphiteRootView.swift:64-66](../../../Sources/GraphiteUI/GraphiteRootView.swift#L64-L66)); reconnaissance counts 61 history-narrating comments in production.
+- **Evidence:** a comment naming who reported the bug on 2026-10-13 ([GraphiteApp.swift:26-29](../../../App/GraphiteApp.swift#L26-L29)); "measured 2026-10-16" ([WorkspaceModel.swift:501-504](../../../Sources/GraphiteUI/WorkspaceModel.swift#L501-L504), [GraphitePreferences.swift:303-307](../../../Sources/GraphiteUI/GraphitePreferences.swift#L303-L307)); "made the iPad's sidebar update again without end" ([GraphiteRootView.swift:64-66](../../../Sources/GraphiteUI/GraphiteRootView.swift#L64-L66)); reconnaissance counts 61 history-narrating comments in production.
 - **Why it matters:** the comments are long and age badly; the rule they protect is hidden in the story.
 - **Fix direction:** keep the current rule in one present-tense sentence ("No default size: iPadOS takes it as the minimum and maximum"), move the incident to the commit message and a regression test named after the behaviour.
 
