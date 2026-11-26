@@ -6,8 +6,8 @@
  *              lists them.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 26/11/2026
+ * Version: 0.6
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -381,9 +381,42 @@ extension WorkspaceModel {
     }
 }
 
+/// Where the suggestions go in the pane: below the cursor's line when they fit, else above it,
+/// else on the side with more room, made shorter to fit there (the list scrolls), so the line
+/// being typed always shows. On an iPhone with its keyboard up, neither side holds the whole list.
+struct CompletionPopupPlacement: Equatable {
+    let frame: CGRect
+
+    /// The space kept between the list, the cursor's line and the pane's edges.
+    static let margin: CGFloat = 8
+    static let gapToCaret: CGFloat = 6
+    /// A row's height and the list's padding.
+    static let rowHeight: CGFloat = 48
+    static let padding: CGFloat = 8
+
+    init(caret: CGRect, paneSize: CGSize, itemCount: Int) {
+        let wholeHeight = min(CompletionPopup.maximumHeight, CGFloat(itemCount) * Self.rowHeight + Self.padding)
+        let roomBelow = paneSize.height - Self.margin - (caret.maxY + Self.gapToCaret)
+        let roomAbove = caret.minY - Self.gapToCaret - Self.margin
+        let x = min(max(caret.minX - 12, Self.margin), max(paneSize.width - CompletionPopup.width - Self.margin, Self.margin))
+        let height: CGFloat
+        let y: CGFloat
+        if wholeHeight <= roomBelow || (wholeHeight > roomAbove && roomBelow >= roomAbove) {
+            height = min(wholeHeight, max(roomBelow, Self.rowHeight))
+            y = caret.maxY + Self.gapToCaret
+        } else {
+            height = min(wholeHeight, max(roomAbove, Self.rowHeight))
+            y = caret.minY - Self.gapToCaret - height
+        }
+        frame = CGRect(x: x, y: y, width: CompletionPopup.width, height: height)
+    }
+}
+
 /// The list of suggestions under the cursor.
 struct CompletionPopup: View {
     @Bindable var model: CompletionModel
+    /// The height the pane leaves it (`CompletionPopupPlacement`).
+    var height: CGFloat
     @Environment(\.accent) private var accent
     static let width: CGFloat = 360
     static let maximumHeight: CGFloat = 280
@@ -411,7 +444,7 @@ struct CompletionPopup: View {
                 scrollProxy.scrollTo(model.items[newIndex].id)
             }
         }
-        .frame(width: Self.width, height: min(Self.maximumHeight, CGFloat(model.items.count) * 48 + 8))
+        .frame(width: Self.width, height: height)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
         .shadow(color: .black.opacity(0.2), radius: 16, y: 6)

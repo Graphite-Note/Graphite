@@ -124,6 +124,17 @@ final class BlockHandleEditingTests: XCTestCase {
         XCTAssertEqual(moved.substring(from: edit.selectionAfter.location).prefix(5), "# One", "The cursor goes to the moved block.")
     }
 
+    /// Found with a real drag in an iPad simulator: a note ending in a blank line got two blank lines between
+    /// its last block and the section moved after it.
+    func testAMoveToTheEndKeepsOneBlankLineAndTheNotesEnding() throws {
+        let note = "# A\n\nText a.\n\n## B\n\nText b.\n\n## C\n\nText c.\n\n"
+        let sectionB = try block(at: "## B", in: note)
+        let edit = try XCTUnwrap(BlockHandleEditing.moving(sectionB, to: (note as NSString).length, in: note as NSString))
+        let moved = try applying(edit, to: note)
+        XCTAssertEqual(moved, "# A\n\nText a.\n\n## C\n\nText c.\n\n## B\n\nText b.\n\n")
+        XCTAssertTrue((moved as NSString).substring(from: edit.selectionAfter.location).hasPrefix("## B"), "The cursor goes to the moved section.")
+    }
+
     func testAMoveOntoItselfOrIntoItselfChangesNothing() throws {
         let note = "# One\n\nText one.\n\n# Two"
         let one = try block(at: "# One", in: note)

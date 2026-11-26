@@ -7,8 +7,8 @@
  *              delete or turn one into another kind, as Markdown only.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -94,18 +94,19 @@ public enum BlockHandleEditing {
         let shiftedDestination = destination > unit.range.location ? destination - unit.range.length : destination
         let lineBreak = lineBreak(of: text)
         let movedText: String
-        var blockOffset = 0
         if shiftedDestination >= remaining.length {
-            // At the end: the separation goes before the block, and the note ends as it did.
-            let lead = (remaining.length == 0 || remaining.hasSuffix(lineBreak) ? "" : lineBreak) + unit.separator
-            movedText = lead + unit.blockText + (text.hasSuffix(lineBreak) ? lineBreak : "")
-            blockOffset = lead.utf16.count
+            // At the end: the note's text up to its last block, the separation, the block, then
+            // the line breaks and blank lines the note ended with.
+            let core = trimmed(NSRange(location: 0, length: remaining.length), in: remaining)
+            let lead = core.length == 0 ? "" : lineBreak + unit.separator
+            let ending = text.substring(from: NSMaxRange(trimmed(NSRange(location: 0, length: text.length), in: text)))
+            let result = remaining.substring(to: core.length) + lead + unit.blockText + ending
+            return smallestEdit(from: text, to: result as NSString, selectionAfter: NSRange(location: core.length + lead.utf16.count, length: 0))
         } else {
             movedText = unit.blockText + lineBreak + unit.separator
         }
         let result = remaining.replacingCharacters(in: NSRange(location: min(shiftedDestination, remaining.length), length: 0), with: movedText) as NSString
-        let newBlockStart = min(shiftedDestination, remaining.length) + blockOffset
-        return smallestEdit(from: text, to: result, selectionAfter: NSRange(location: newBlockStart, length: 0))
+        return smallestEdit(from: text, to: result, selectionAfter: NSRange(location: shiftedDestination, length: 0))
     }
 
     /// What a move takes out of the note and puts back: the block's lines and the blank lines

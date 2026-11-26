@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.71
- * Date: 26/11/2026
+ * Version: 0.72
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -993,13 +993,9 @@ private struct CompletionPopupOverlay: View {
     var body: some View {
         if model.isVisible {
             GeometryReader { geometry in
-                let caret = model.caretRect
-                let popupHeight = min(CompletionPopup.maximumHeight, CGFloat(model.items.count) * 48 + 8)
-                let fitsBelow = caret.maxY + 6 + popupHeight <= geometry.size.height
-                let popupOriginX = min(max(caret.minX - 12, 8), max(geometry.size.width - CompletionPopup.width - 8, 8))
-                let popupOriginY = fitsBelow ? caret.maxY + 6 : max(caret.minY - popupHeight - 6, 8)
-                CompletionPopup(model: model)
-                    .offset(x: popupOriginX, y: popupOriginY)
+                let placement = CompletionPopupPlacement(caret: model.caretRect, paneSize: geometry.size, itemCount: model.items.count)
+                CompletionPopup(model: model, height: placement.frame.height)
+                    .offset(x: placement.frame.minX, y: placement.frame.minY)
             }
             .transition(.opacity)
         }

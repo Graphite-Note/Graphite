@@ -10,7 +10,8 @@ Last updated: 2026-11-26.
 
 - **Automated tests, passing:** `BlockHandleEditingTests` (10: the block at each kind of line, moves of paragraphs, list items and sections, onto itself, Windows line breaks, copies, deletions, callouts), `UiEditorMacBlockHandlesTests` (7, mouse events: hover, a section dragged and undone, a cancelled drag, the menu, Source mode watching no pointer, typing), `BlockHandlesHostedTests` (4, synthesized touches on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator: a section dragged from the margin and undone, the menu without editing, a press on the text, Apple Pencil), `UiEditorMacLinkPreviewsTests`.
 - **Measured:** typing in a long note before and after, Debug on the development Mac: no measurable cost (median frame 7.8 and 6.5 ms in a paragraph).
-- **Not established:** the handles used by hand in the Mac app or with a real finger in a simulator, a device, typing on the iPad; Escape during a Mac drag only through what it calls.
+- **Checked with real input (2026-11-27):** a throwaway XCUITest bundle driving the Debug app in iPad and iPhone simulators (a section dragged from its chevron, the menu by a long press, Turn Into › Callout and › Task, a press on the text keeping the cursor) and `MacSlashAndHandlesInAppHostedTests` in the Mac app (the handle on hover, a section dragged and undone). Found and fixed there: two blank lines after a block moved to the end of a note ending in a blank line. Typing on the iPad simulator: no cost beyond the runs' spread (median frame 10.8 and 10.5 ms in a paragraph).
+- **Not established:** a device; Apple Pencil only through touches marked as Pencil's; on the Mac, the tracking area under the real cursor and the click menu's own tracking loop.
 
 ## A calendar view for Bases, and Calendar Copy into Apple Calendar: 2026-11-26
 
@@ -45,7 +46,8 @@ Last updated: 2026-11-26.
 
 - **Automated tests, passing:** `SlashCommandTriggerTests` (8: the rule, where it opens nothing, a key in a query at the end of a 5,000-line note under 1 ms), `SlashCommandListTests` (17: the list, ranking, the edits of a block, a heading, a dialog and a command, opening only on typing), `UiEditorMacSlashCommandsTests` (4, key events in the Mac editor, one Undo), `SlashCommandsHostedTests` (7, on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator, iOS 27.2: `/tab` and Return, the arrow keys, a row chosen, Escape and a space, a cursor placed after a written `/`, turned off, a palette command), `WorkspaceReleaseTests` and `UiEditorReleaseTests` (a closed note is still released: the slash commands are kept by the note's editor, not by the note).
 - **Measured:** typing in a long note before and after, Debug on the development Mac: no measurable cost (median frame 12.8 and 11.1 ms in a paragraph, under a load average of 380 to 650).
-- **Not established:** a real finger tap on a row in a simulator, the Mac app by hand, a device; the Settings switch only through tests.
+- **Checked with real input (2026-11-27):** XCUITest-driven typing, hardware keys and taps in iPad and iPhone simulators (`/tab` and Return, ⌘Z, a tapped row, a space, the Down arrow) and `MacSlashAndHandlesInAppHostedTests` in the Mac app (83 entries after `/`, Return, Undo, a space, Escape). Found and fixed there: on the iPhone with its keyboard up the list covered the line being typed (`CompletionPopupPlacement`).
+- **Not established:** a device; Escape from a hardware keyboard on the iPad simulator (none reaches the app from the tools); ⌘Z through the Mac menu bar; the Settings switch only through tests.
 
 ## Presenting a note as slides: 2026-11-26
 
