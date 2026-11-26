@@ -78,7 +78,7 @@ struct StackedTabsView<Document: View>: View {
         let showsContent = geometry.showsContent(ofPane: index, scrollOffset: Double(scrollOffset))
         let isActive = tab.id == group.activeTabID
         return HStack(spacing: 0) {
-            StackedTabSpine(title: actions.title(tab), isActive: isActive, marksFocus: isActive && isFocused, isPinned: tab.isPinned,
+            StackedTabSpine(title: actions.title(tab), path: tab.path, isActive: isActive, marksFocus: isActive && isFocused, isPinned: tab.isPinned,
                             activate: { actions.activate(tab.id) }, close: { actions.close(tab.id) })
                 .frame(width: StackedPaneMeasures.spineWidthPoints)
                 .contextMenu { spineMenu(for: tab) }
@@ -157,16 +157,22 @@ struct StackedTabActions {
 /// button at the top. The active tab's spine has the faint fill of a tab in use.
 private struct StackedTabSpine: View {
     let title: String
+    /// The tab's file, whose note icon heads the title.
+    let path: VaultPath?
     let isActive: Bool
     let marksFocus: Bool
     let isPinned: Bool
     let activate: () -> Void
     let close: () -> Void
     @Environment(\.accent) private var accent
+    @Environment(\.noteIcons) private var noteIcons
 
     var body: some View {
         VStack(spacing: 4) {
             closeButtonOrPin
+            if let noteIcon = path.flatMap({ path in noteIcons?.icon(of: path) }) {
+                NoteIconImage(icon: noteIcon, pointSize: 12)
+            }
             GeometryReader { proxy in
                 Text(title)
                     .interfaceFont(.subheadline)

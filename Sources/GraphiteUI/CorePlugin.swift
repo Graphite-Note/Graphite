@@ -17,6 +17,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     case backlinks, outgoingLinks, outline, properties, tags, wordCount
     case colors, drawings, audioRecorder, readAloud, bases, slashCommands
     case templates, dailyNotes, calendar, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview, slides
+    case pageLook
 
     var id: String { rawValue }
 
@@ -47,6 +48,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
         case .slides: "Slides"
+        case .pageLook: "Icons, Covers and Columns"
         }
     }
 
@@ -91,6 +93,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .slides:
             "Presents a note as slides, separated by \u{201C}---\u{201D}, full screen or on an external display, "
                 + "with Apple Pencil's laser and ink that fades."
+        case .pageLook: "Shows a note's icon beside its name, its banner as a cover in reading view, and multi-column callouts as columns."
         }
     }
 
@@ -103,7 +106,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .readAloud, .postgreSQLMirror: false
         case .backlinks, .outgoingLinks, .outline, .properties, .tags, .wordCount, .colors, .drawings, .audioRecorder,
              .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview,
-             .slides, .slashCommands: true
+             .slides, .slashCommands, .pageLook: true
         }
     }
 
@@ -134,6 +137,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .postgreSQLMirror: "cylinder.split.1x2"
         case .pagePreview: "doc.text.magnifyingglass"
         case .slides: "play.rectangle"
+        case .pageLook: "face.smiling"
         }
     }
 }

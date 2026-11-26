@@ -49,6 +49,8 @@ struct LivePreviewReadingSection: Sendable {
 struct LivePreviewEnvironment {
     /// Where callouts keep the person's expansion, so Read Aloud skips folded ones.
     var calloutFoldNote: (store: CalloutFoldStore, notePath: String)? = nil
+    /// Whether callouts take Modular CSS Layout's layouts (`CalloutLayout`), while the Icons, Covers and Columns core plugin is on.
+    var drawsCalloutLayouts = false
     let root: URL
     let textSize: Double
     /// The vault's fonts, which rendered blocks draw their text and code in.

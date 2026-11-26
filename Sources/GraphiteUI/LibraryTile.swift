@@ -41,6 +41,7 @@ struct LibraryTile: View {
 
     @ScaledMetric(relativeTo: .subheadline) private var textScale: CGFloat = 1
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.noteIcons) private var noteIcons
 
     /// The picture's height at the default text size; the folder symbol fills most of it.
     static let baseArtworkHeightPoints: CGFloat = 120
@@ -109,6 +110,8 @@ struct LibraryTile: View {
                     ForEach(Array(library.folderLooks.tagColors(of: entry.path).prefix(3).enumerated()), id: \.offset) { _, tagColor in
                         Circle().fill(tagColor.tileColor).frame(width: 9, height: 9).accessibilityHidden(true)
                     }
+                } else if let noteIcon = noteIcons?.icon(of: entry.path) {
+                    NoteIconImage(icon: noteIcon, pointSize: 13)
                 }
                 Text(entries.displayName(entry.path))
                     .font(.subheadline.weight(.medium))

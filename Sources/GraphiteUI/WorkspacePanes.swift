@@ -486,6 +486,7 @@ private struct TabItem: View {
     /// long name ends with an ellipsis and keeps its close button instead of being cut off.
     var maximumWidth: CGFloat = 220
     @Environment(\.accent) private var accent
+    @Environment(\.noteIcons) private var noteIcons
     @State private var isPointerOver = false
 
     private var kindSymbol: String? {
@@ -508,7 +509,9 @@ private struct TabItem: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            if let kindSymbol {
+            if let noteIcon = tab.path.flatMap({ path in noteIcons?.icon(of: path) }) {
+                NoteIconImage(icon: noteIcon, pointSize: 12)
+            } else if let kindSymbol {
                 Image(systemName: kindSymbol)
                     .font(.system(size: 11))
                     .foregroundStyle(.tertiary)

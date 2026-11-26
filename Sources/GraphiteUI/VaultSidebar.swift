@@ -798,6 +798,7 @@ private struct VaultEntryRow: View, Equatable {
     let contents: FileTreeContents
     let requestCreation: (CreationKind, VaultPath) -> Void
     @Environment(\.accent) private var accent
+    @Environment(\.noteIcons) private var noteIcons
 
     /// Rows compare by their entry and depth alone, so an update of the list does not rebuild
     /// every row: `requestCreation` is a new closure each time but always sets the same
@@ -881,8 +882,12 @@ private struct VaultEntryRow: View, Equatable {
 
     private var fileRow: some View {
         FileTreeRowLabel(depth: depth) {
-            // An empty slot where a folder has its chevron, so names line up.
-            Color.clear.frame(height: 1)
+            // The note's icon where a folder has its chevron, else an empty slot, so names line up.
+            if let icon = noteIcons?.icon(of: entry.path) {
+                NoteIconImage(icon: icon, pointSize: FileTreeRowLabel<EmptyView, EmptyView>.markerWidth - 3)
+            } else {
+                Color.clear.frame(height: 1)
+            }
         } title: {
             HStack(spacing: 0) {
                 title(entry.path.stem).lineLimit(1)

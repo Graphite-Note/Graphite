@@ -28,6 +28,7 @@ struct MacFileTree: NSViewRepresentable {
     /// A file to show, with the folders above it expanded; set back to nil once shown.
     @Binding var fileToReveal: VaultPath?
     let requestCreation: (CreationKind, VaultPath) -> Void
+    @Environment(\.noteIcons) private var noteIcons
 
     func makeCoordinator() -> FileTreeController {
         FileTreeController(workspace: workspace)
@@ -50,7 +51,8 @@ struct MacFileTree: NSViewRepresentable {
             sortOrder: workspace.vaultSettings.fileSortOrder,
             conflictedPaths: workspace.conflictedPaths,
             showsFileExtensions: workspace.preferences.showsFileExtensions,
-            typography: typography))
+            typography: typography,
+            noteIcons: noteIcons?.iconsByPath ?? [:]))
         // After the tree's state, so clearing the filter shows the tree as it now is.
         let filter = workspace.fileTreeContents.filter
         controller.filterExpansionChanged = { folder, expands in filter.setExpanded(folder, expands) }
@@ -94,7 +96,11 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         var conflictedPaths: Set<VaultPath> = []
         var showsFileExtensions = false
         var typography = NoteTypography.standard
+        /// The notes' icons (`NoteIconCatalog`), empty in a vault without them.
+        var noteIcons: [VaultPath: NoteIcon] = [:]
     }
+
+    private let noteIconImages = NoteIconImages()
 
     let workspace: WorkspaceModel
     var requestCreation: (CreationKind, VaultPath) -> Void = { _, _ in }
@@ -196,7 +202,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
             }
             expandFolders(newState.expandedFolders)
         } else if newState.conflictedPaths != previousState.conflictedPaths || newState.showsFileExtensions != previousState.showsFileExtensions
-                    || newState.typography != previousState.typography {
+                    || newState.typography != previousState.typography || newState.noteIcons != previousState.noteIcons {
             // Only what the rows draw changed: the rows on screen are drawn again.
             outlineView.reloadData(forRowIndexes: IndexSet(integersIn: 0..<outlineView.numberOfRows), columnIndexes: IndexSet(integer: 0))
         }
@@ -426,6 +432,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         let title = node.entry.isDirectory ? node.path.name : node.path.stem, suffix = extensionSuffix(of: node.entry)
         let highlightedRange = filteredTree?.result.flatMap { result in Self.filterHighlightRange(of: result.text, inTitle: title, extensionSuffix: suffix) }
         cell.configure(title: title, extensionSuffix: suffix, highlightedRange: highlightedRange,
+                       icon: drawnState.noteIcons.isEmpty ? nil : drawnState.noteIcons[node.path].map { icon in (icon, noteIconImages) },
                        hasConflictVersions: drawnState.conflictedPaths.contains(node.path),
                        font: NoteTypography.font(drawnState.typography.interfaceFamily, size: NSFont.systemFontSize, weight: .regular))
         cell.setAccessibilityLabel(workspace.preferences.displayName(for: node.path))

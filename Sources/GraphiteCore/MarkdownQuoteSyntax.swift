@@ -53,19 +53,22 @@ public enum MarkdownQuoteSyntax {
         return (depth, String(remainder))
     }
 
-    /// The callout that `line` opens (`> [!type]` with an optional `-` or `+` and title): its
-    /// type lowercased, its title (the type, capitalized, when none is written) and whether
-    /// it starts folded. As any block, a callout may be indented up to three columns past
-    /// the content of the list item that holds it (`containerColumn`, 0 outside lists).
-    static func calloutHeader(in line: String, containerColumn: Int = 0) -> (type: String, title: String, folding: CalloutFolding)? {
+    /// The callout that `line` opens (`> [!type]` with optional `|metadata`, an optional `-` or
+    /// `+` and a title): its type lowercased, its title (the type, capitalized, when none is
+    /// written), whether it starts folded and its metadata (empty when none is written). As any
+    /// block, a callout may be indented up to three columns past the content of the list item
+    /// that holds it (`containerColumn`, 0 outside lists).
+    static func calloutHeader(in line: String, containerColumn: Int = 0) -> (type: String, title: String, folding: CalloutFolding, metadata: String)? {
         guard ListItemContainers.leadingColumns(of: line) <= containerColumn + 3,
               let match = calloutHeaderPattern.firstMatch(in: line, range: NSRange(location: 0, length: (line as NSString).length)) else { return nil }
         let source = line as NSString
         let type = source.substring(with: match.range(at: 1)).lowercased()
-        let foldMarker = source.substring(with: match.range(at: 2))
-        let writtenTitle = source.substring(with: match.range(at: 3))
+        let metadataRange = match.range(at: 2)
+        let metadata = metadataRange.location == NSNotFound ? "" : source.substring(with: metadataRange).trimmingCharacters(in: .whitespaces)
+        let foldMarker = source.substring(with: match.range(at: 3))
+        let writtenTitle = source.substring(with: match.range(at: 4))
         let title = writtenTitle.isEmpty ? type.prefix(1).uppercased() + type.dropFirst() : writtenTitle
-        return (type, title, foldMarker == "-" ? .collapsed : foldMarker == "+" ? .expanded : .notFoldable)
+        return (type, title, foldMarker == "-" ? .collapsed : foldMarker == "+" ? .expanded : .notFoldable, metadata)
     }
 
     /// Whether `line` opens a callout, without reading its type and title.
@@ -121,5 +124,7 @@ public enum MarkdownQuoteSyntax {
 
 /// The constant patterns of `MarkdownQuoteSyntax`; `StaticPatternTests` compiles every case.
 enum MarkdownQuoteSyntaxPattern: String, StaticPatternSet {
-    case calloutHeader = #"^[ \t]*>[ \t]?\[!([A-Za-z0-9_-]+)\]([+-]?)[ \t]*(.*)$"#
+    /// `> [!type|metadata]+ Title`: Obsidian keeps the text after `|` as the callout's metadata, which themes and
+    /// snippets read (`[!note|wide-2]`).
+    case calloutHeader = #"^[ \t]*>[ \t]?\[!([A-Za-z0-9_-]+)(?:\|([^\]]*))?\]([+-]?)[ \t]*(.*)$"#
 }

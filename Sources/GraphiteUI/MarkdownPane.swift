@@ -39,6 +39,7 @@ struct MarkdownPane: View {
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
     @Environment(\.isActiveInItsSide) private var isActiveInItsSide
     @Environment(\.windowPaletteCommands) private var windowPaletteCommands
+    @Environment(\.noteIcons) private var noteIcons
 
     init(session: MarkdownSession, workspace: WorkspaceModel, document: TabDocument, tabID: UUID, isFocused: Bool, showsLinksInspector: Binding<Bool>) {
         self.session = session
@@ -211,6 +212,7 @@ struct MarkdownPane: View {
         #endif
         .modifier(documentScanPresentation(isPresented: $noteState.showsDocumentScanner))
         .sheet(isPresented: $noteState.showsLinkPicker) { LinkPicker(workspace: workspace, notePath: session.path) { link in session.insert(link) } }
+        .modifier(NoteIconPickerPresentation(request: $noteState.iconPickerRequest, setIcon: session.setIcon) { error in workspace.errorMessage.report(error) })
         .modifier(notebookInsertion)
     }
 
@@ -252,7 +254,14 @@ struct MarkdownPane: View {
                              pluginCodeBlockLanguages: workspace.communityPlugins.codeBlockLanguages,
                              runsPluginPostProcessors: workspace.communityPlugins.runsMarkdownPostProcessors,
                              marksUnresolvedLinks: workspace.noteTheme != nil,
-                             diagramFontPostScriptName: workspace.noteTypography.diagramFontPostScriptName)
+                             diagramFontPostScriptName: workspace.noteTypography.diagramFontPostScriptName,
+                             drawsCover: drawsCovers,
+                             noteIconLinkPrefixes: noteIcons?.linkPrefixes ?? .none)
+    }
+
+    /// Covers are drawn while the core plugin is on, on a phone only when Settings › Appearance › Covers on iPhone is.
+    private var drawsCovers: Bool {
+        preferences.isEnabled(.pageLook) && (SettingsDevice.current != .phone || preferences.showsCoversOnPhone)
     }
 
     /// The note's name above its text, written as the tab and the title bar write it, so the
@@ -430,7 +439,7 @@ struct MarkdownPane: View {
         guard viewMode == .livePreview, let root = workspace.folderAccess?.root else { return nil }
         let notePath = session.path
         return LivePreviewEnvironment(
-            calloutFoldNote: (workspace.calloutFolds, notePath.rawValue),
+            calloutFoldNote: (workspace.calloutFolds, notePath.rawValue), drawsCalloutLayouts: preferences.isEnabled(.pageLook),
             root: root, textSize: noteTextSize, typography: workspace.noteTypography, theme: workspace.noteTheme, codeColorTheme: preferences.codeColorTheme,
             colorsEnabled: preferences.isEnabled(.colors), paletteHexByName: paletteHexByName, drawingVersion: workspace.drawingVersion,
             resolve: { [workspace] target, isWiki in await workspace.resolveLink(target, from: notePath, isWiki: isWiki) },
@@ -680,6 +689,11 @@ struct MarkdownPane: View {
                      showFileRecovery: preferences.isEnabled(.fileRecovery) ? { workspace.fileRecoveryRequest = FileRecoveryRequest(path: session.path) } : nil,
                      rename: isCompactWidth ? renameDocument.map { renameDocument in { renameDocument.rename() } } : nil,
                      move: { workspace.perform(.moveTo, on: session.path) }, delete: { workspace.perform(.delete, on: session.path) })
+        if preferences.isEnabled(.pageLook) {
+            Button("Icon…", menuSymbol: "face.smiling") {
+                noteState.iconPickerRequest = NoteIconPickerRequest(currentIcon: NoteIconEditing.icon(in: session.text))
+            }
+        }
         if preferences.isEnabled(.bookmarks) {
             let isBookmarked = workspace.bookmarks.fileBookmark(for: session.path) != nil
             Button(VaultEntryAction.bookmarkTitle(isBookmarked: isBookmarked), menuSymbol: isBookmarked ? "bookmark.slash" : "bookmark") {

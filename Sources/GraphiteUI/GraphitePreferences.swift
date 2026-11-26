@@ -110,6 +110,7 @@ final class GraphitePreferences {
         static let accentHex = "GraphiteAccentColor"
         static let showsInlineTitle = "GraphiteShowsInlineTitle"
         static let showsFileExtensions = "GraphiteShowsFileExtensions"
+        static let showsCoversOnPhone = "GraphiteShowsCoversOnPhone"
         static let searchSortOrder = "GraphiteSearchSortOrder"
         static let recentCommandIdentifiers = "GraphiteRecentCommands"
         static let snapshotIntervalMinutes = "GraphiteSnapshotIntervalMinutes"
@@ -273,6 +274,9 @@ final class GraphitePreferences {
     var usesVaultTheme: Bool { didSet { defaults.set(usesVaultTheme, forKey: Key.usesVaultTheme) } }
     /// Shows every file with its extension (`Lecture.md`) in lists and the title bar.
     var showsFileExtensions: Bool { didSet { defaults.set(showsFileExtensions, forKey: Key.showsFileExtensions) } }
+    /// Settings › Appearance › Covers on iPhone: a note's `banner` drawn above its title on a phone too. Off by default,
+    /// so the phone's reading view starts with the note.
+    var showsCoversOnPhone: Bool { didSet { defaults.set(showsCoversOnPhone, forKey: Key.showsCoversOnPhone) } }
     /// Commands used lately, listed first in the command palette.
     var recentCommandIdentifiers: [String] { didSet { defaults.set(recentCommandIdentifiers, forKey: Key.recentCommandIdentifiers) } }
     /// The order of search results, as in Obsidian's search.
@@ -376,6 +380,7 @@ final class GraphitePreferences {
         showsInlineTitle = defaults.object(forKey: Key.showsInlineTitle) as? Bool ?? true
         usesVaultTheme = defaults.object(forKey: Key.usesVaultTheme) as? Bool ?? true
         showsFileExtensions = defaults.object(forKey: Key.showsFileExtensions) as? Bool ?? true
+        showsCoversOnPhone = defaults.object(forKey: Key.showsCoversOnPhone) as? Bool ?? false
         searchSortOrder = defaults.string(forKey: Key.searchSortOrder).flatMap(SearchSortOrder.init(rawValue:)) ?? .fileNameAscending
         recentCommandIdentifiers = defaults.stringArray(forKey: Key.recentCommandIdentifiers) ?? []
         // Obsidian's defaults: a snapshot at most every 5 minutes, kept for 7 days.

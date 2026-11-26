@@ -2861,6 +2861,21 @@ Formulas, embeds, bases and the menus (2026-11-12):
 - `GraphiteCommandTests.testExportAsPDFIsShiftCommandEOnBothPlatformsWhichNothingElseTakesAndAVaultCanChange` and `KeyboardShortcutsPageContentTests.testExportToPDFIsListedUnderFileWithShiftCommandEAndCanBeChanged`: File › Export as PDF… is ⇧⌘E on the Mac and the iPad, taken by no other command or the system, listed under File in Settings › Keyboard Shortcuts, and a vault's own shortcut replaces it.
 - Hosted `NotePDFMenuHostedTests` (2, iPad Pro 11-inch simulator, iOS 27.0, demo vault of two shortened course notes of the test vault): More › File › Export to PDF… run from the bar's overflow menu shows the options sheet with its preview, and Export presents the file exporter; More › File › Print… presents the system's print panel with the note's PDF and job name. Screenshots of the sheet (the wide formula on one line in the preview), the exporter and the print panel (the note's page with its callouts open) were looked at. Not driven: choosing a place in the exporter, printing, the iPhone.
 
+## Page icons, covers and columns: 2026-11-26
+
+The core plugin Icons, Covers and Columns (`Docs/Page-icons-covers-columns-todo.md`, architecture under its own heading). Covered by automated tests:
+
+- `NoteIconTests` (6, Core): an emoji as the first emoji of the text (presentation, variation selector, joined sequences, quotes), Iconize's Lucide names drawn as their paired SF Symbol, SF Symbol names, and what names no icon (other Iconize packs, an unpaired Lucide name, digits and `#` without a keycap). A chosen symbol written as its Lucide name. Every pairing reads back.
+- `NoteIconEditingTests` (6, Core): the icon added to a note without frontmatter, written among other properties as they are, replaced and removed, no edit when unchanged, invalid YAML left alone, the selection moved with the text. The icon read from a note's text.
+- `NoteBannerTests` (6, Core): every form Banners and Pixel Banner write (wikilink, embed, unquoted wikilink read by YAML as a list, Markdown link and embed, plain path, web address), the forms not shown (search words, `file://`, a note, empty), `banner_y` and `banner-y`.
+- `CalloutColumnArrangementTests` (6, Core): equal sharing, a heavier block, wrapping at 200 points, a phone's width stacked, a note narrower than a column, the layout from the type.
+- `NoteIconQueriesTests` (3, Index): the icons of notes that have one in one query, none in a vault without them, an unreadable row.
+- `ReadingCoverTests` (8, Mac package tests): the cover found in the vault only while covers are drawn, a banner naming no picture of the vault, an emoji before links to the note only while icons are on, `NoteIconLinkPrefixes` compared by version, the rebuild key changing with both, a multi-column callout's paragraphs as blocks of their own, `[!note|wide-2]` read as a callout, the catalog reading and forgetting icons.
+- `CalloutColumnsLayoutTests` (3, Mac package tests): three blocks in one row of a wide note, stacked at a phone's width, the third wrapping where two fit, measured from the rendered height.
+- `PageLookMacWindowTests` (1, Mac package tests): a window of the app with the release vault's page look notes: the Mac outline shows icons on exactly the three notes that have one and none with the plugin off, and the reading view's top differs with the plugin off (the cover).
+- `GraphitePreferencesPersistedKeysTests`: `pageLook` among the core plugins' stored names, `GraphiteShowsCoversOnPhone` off by default, read and written under its name.
+- Hosted `PageLookHostedTests` (1, on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator, iOS 27.2, a demo vault of made-up course notes): the reading view with a cover, icons on tabs, columns and a blank callout in light and dark, upright and in a sideways window, the file list with emoji, Lucide and SF Symbol icons, a note's links with their emoji, Library mode's tile, and the plugin off. On the iPhone, no cover until Covers on iPhone is on, and the callouts stacked. The pictures were looked at.
+
 ## The test vault
 
 `Tests/test_vault/` (not committed; see `.gitignore`) is a copy of a real course vault plus edge cases for testing by hand. Every edge-case note starts with a "What to check" callout saying what correct behavior looks like, compared with Obsidian.

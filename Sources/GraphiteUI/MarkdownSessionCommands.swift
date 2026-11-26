@@ -27,6 +27,13 @@ extension MarkdownSession {
         text = NoteProperties.replacingFrontmatter(in: text, with: properties, declaredTypes: declaredPropertyTypes)
     }
 
+    /// Writes `icon` into the note's `icon` property, or removes the property, as one edit of the note that can be
+    /// undone. Throws when the frontmatter cannot be rewritten without changing other properties.
+    func setIcon(_ icon: NoteIcon?) throws {
+        guard let edit = try NoteIconEditing.edit(setting: icon, in: text, selection: selection, declaredTypes: declaredPropertyTypes) else { return }
+        apply(edit)
+    }
+
     /// Inserts `content` at `range` of the current text, or at the cursor.
     func insert(_ content: String, at range: NSRange? = nil) {
         let target = insertionTarget(for: range)

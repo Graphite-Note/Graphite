@@ -671,7 +671,7 @@ public enum MarkdownStyleScanner {
 /// The constant patterns of `MarkdownStyleScanner`; `StaticPatternTests` compiles every case.
 enum MarkdownStyleScannerPattern: String, StaticPatternSet {
     case quotePrefix = #"^\s*(?:>\s?)+"#
-    case calloutTitle = #"\[![A-Za-z0-9_-]+\][+-]?"#
+    case calloutTitle = #"\[![A-Za-z0-9_-]+(?:\|[^\]]*)?\][+-]?"#
     case blockIdentifier = #"(?<=[ \t])\^[A-Za-z0-9-]+[ \t]*$|^\^[A-Za-z0-9-]+[ \t]*$"#
     case inlineDisplayMath = #"(?<![\\$])\$\$(?:[^$\n\\]|\\.)+?\$\$"#
     case wikilink = #"(!?)\[\[[^\]\n]+\]\]"#

@@ -53,6 +53,8 @@ With `--graphite-files <build folder>` it then has Graphite's own writers make t
 | `Links/Links and aliases.md` | wikilinks to a note, an alias, a heading, a nested heading, a block, this note's heading, a path, a picture, a PDF page, a base view and a canvas; two unresolved links; Markdown, angle-bracket, reference links and an autolink | Links (Rendered-links-todo.md) |
 | `Links/Embeds.md` | embeds of a whole note, a heading's section, a block, a list item, a picture, a PDF page, a base view; an embed of a heading that does not exist and of a note that does not exist, both on purpose | Embeds, transclusion |
 | `Callouts.md` | every callout type and alias, an unknown type, open and folded callouts, three nested levels, a table, display math and code inside callouts | Callouts |
+| `Page look.md` | an emoji icon, a cover from a vault picture with its vertical position, multi-column callouts of nested callouts and of paragraphs, a blank callout, a link to a note with an icon | Page icons, covers and columns (Page-icons-covers-columns-todo.md) |
+| `Page look linked.md` | an icon written as a Lucide name of Iconize, drawn as its SF Symbol, and a link back | Page icons, covers and columns (Page-icons-covers-columns-todo.md) |
 | `Math.md` | inline math, display math on lines of its own and on one line, `aligned`, a numbered equation (`\tag`), matrices, cases, a long formula, math in a list | Math |
 | `Tables.md` | alignment, a wide table, formulas, links, pictures and escaped pipes in cells, emoji, lines that are not a table | Tables (Table-editing-todo.md) |
 | `Pictures.md` | a picture alone, with a width, with a width and a height, with a caption, side by side, side by side in a list, inside a sentence, in Markdown syntax with a size, a wide picture, names with spaces and accents and a pasted name, an SVG | Pictures (Inline-images-todo.md, Image-zoom-and-new-tab-todo.md) |
@@ -300,6 +302,7 @@ Every feature Graphite has, from `Docs/Architecture.md`, `Docs/Coverage.md`, `Do
 | Settings › General, Editor, Files and Links, Appearance, Core Plugins, Colors, Pencil Drawings, Templates, Daily Notes, Calendar, File Recovery | the vault's settings files above, and the interface |
 | Keyboard Shortcuts and `hotkeys.json`, a plugin's command among them | `.obsidian/hotkeys.json` |
 | The app icon, the welcome tour, the Guide, add-on downloads | the interface (GuideContentTests, AddOnPackStoreTests) |
+| Note icons in the file list, tabs, the quick switcher, links and Library mode, covers in the reading view, multi-column and blank callouts, the Icon… sheet | `Page look.md`, `Page look linked.md` |
 
 ### Core plugins
 

@@ -58,6 +58,10 @@ struct ReadingConfiguration: Equatable, Sendable {
     /// The PostScript name of the note's text font when it is an installed family, which diagrams are measured
     /// and drawn in; nil for the system font (`NoteTypography.diagramFontPostScriptName`).
     var diagramFontPostScriptName: String?
+    /// Whether the note's `banner` property is drawn as a cover above its title (`ReadingCover`).
+    var drawsCover = false
+    /// The emoji put before links to notes that have one as their icon; none while icons are off.
+    var noteIconLinkPrefixes = NoteIconLinkPrefixes.none
 }
 
 /// A reading-view block after links are resolved and files located.
@@ -262,6 +266,8 @@ struct ReadingViewBuild: Sendable {
     var blockLocations: [ReadingBlockLocation] = []
     var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
     var foldKeys = ReadingFoldKeys()
+    /// The note's cover, found from its `banner` property while covers are drawn.
+    var cover: ReadingCover?
 }
 
 /// The keys the reading view folds by, taken from the note as it is written. A heading's
@@ -349,7 +355,7 @@ actor ReadingViewBuilder {
 
     func build(source: String, note: VaultPath, root: URL, index: VaultIndex, configuration: ReadingConfiguration, allowsTransclusion: Bool = true) async throws -> ReadingViewBuild {
         hostNote = note
-        if configuration.marksUnresolvedLinks { await resolveWikilinks(in: source, note: note, root: root, index: index) }
+        if configuration.resolvesEveryWikilink { await resolveWikilinks(in: source, note: note, root: root, index: index) }
         let sourceText = source as NSString
         // Only the frontmatter is parsed here: the body is split into blocks as text, and
         // parsing the whole note with MarkdownSemantics would cost more than the rest of the build.
@@ -360,6 +366,8 @@ actor ReadingViewBuilder {
            let properties = NoteProperties.parse(frontmatter, declaredTypes: configuration.declaredPropertyTypes), !properties.isEmpty {
             rendered.append(.properties(properties))
         }
+        let cover = configuration.drawsCover && frontmatterLength > 0
+            ? await cover(inFrontmatter: sourceText.substring(to: frontmatterLength), note: note, root: root, index: index, configuration: configuration) : nil
         // References become raised numbers that link to the list of footnotes at the end.
         let readableBody = Footnotes.preparedForReadingKeepingOffsets(sourceText.substring(from: frontmatterLength)) { number in
             "[\(number)](\(GraphiteOpenLink.footnoteDestination(number: number)))"
@@ -412,7 +420,7 @@ actor ReadingViewBuilder {
             catch { /* Preview remains available when narration cannot map this note. */ }
         }
         return ReadingViewBuild(blocks: rendered, hasUnresolvedEmbeds: hasUnresolvedEmbeds, blockLocations: blockLocations,
-                                readingSourceTokensByBlock: readingSourceTokensByBlock, foldKeys: foldKeys)
+                                readingSourceTokensByBlock: readingSourceTokensByBlock, foldKeys: foldKeys, cover: cover)
     }
 
     private func sourceTokens(_ tokens: [ReadAloudSourceToken], for locatedBlocks: [NotePreviewDocument.LocatedBlock],
@@ -488,7 +496,9 @@ actor ReadingViewBuilder {
             case .callout(let type, let title, let folding, _):
                 let renderedTitle = try await prepared(title, note: note, root: root, index: index, configuration: configuration)
                 calloutDepth += 1
-                let renderedBody = try await render(locatedBlock.body, note: note, root: root, index: index, configuration: configuration,
+                // Each paragraph, list or quote of a multi-column callout is a column of its own, as in Obsidian.
+                let bodyBlocks = CalloutLayout(type: type) == .columns ? NotePreviewDocument.dividedIntoSections(locatedBlock.body) : locatedBlock.body
+                let renderedBody = try await render(bodyBlocks, note: note, root: root, index: index, configuration: configuration,
                                                     allowsTransclusion: allowsTransclusion, taskSource: taskSource)
                 calloutDepth -= 1
                 let calloutBlock = RenderedBlock.callout(id: identifier(), type: type, title: renderedTitle, folding: folding, body: renderedBody)
@@ -599,7 +609,7 @@ actor ReadingViewBuilder {
         let folder: VaultPath
     }
 
-    private func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: VaultIndex) async -> VaultPath? {
+    func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: VaultIndex) async -> VaultPath? {
         let link = LinkFromFolder(target: target, isWiki: isWiki, folder: note.parent)
         if let knownPath = resolvedLinks[link] { return knownPath }
         var resolvedPath = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root)
@@ -705,7 +715,9 @@ actor ReadingViewBuilder {
                    await resolve(link.target, isWiki: link.isWiki, note: note, root: root, index: index) == nil {
                     destination = GraphiteOpenLink.markingUnresolved(destination)
                 }
-                replacement = "[\(Self.escapedLabel(Self.displayText(target: link.target, alias: link.label)))](\(destination))"
+                let label = await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
+                    + Self.displayText(target: link.target, alias: link.label)
+                replacement = "[\(Self.escapedLabel(label))](\(destination))"
             } else {
                 continue
             }
@@ -1007,6 +1019,7 @@ struct MarkdownPreview: View {
     /// position, so it is never taken for one and restored over a scroll.
     @State private var offsetBeforeRestoring: CGFloat?
     @State private var blocks: [RenderedBlock] = []
+    @State private var cover: ReadingCover?
     @State private var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
     @State private var foldKeys = ReadingFoldKeys()
     /// Where the note's own top-level blocks start in its text, by block, for dragging headings (`ReadingSectionDrags`).
@@ -1042,6 +1055,7 @@ struct MarkdownPreview: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
+                    if let cover { ReadingCoverView(cover: cover, notePath: path) }
                     if let inlineTitle = configuration.inlineTitle {
                         Text(inlineTitle)
                             .font(InlineTitleStyle.swiftUIFont(textSize: configuration.textSize, typography: typography, theme: theme))
@@ -1191,7 +1205,7 @@ struct MarkdownPreview: View {
                 let key = ReadingBuildKey(source: source, path: path, root: root, configuration: configuration, dependsOnIndex: hasMissingEmbeds)
                 let cachedBuild = ReadingBlocksCache.Build(key: key, blocks: build.blocks, hasMissingEmbeds: hasMissingEmbeds,
                                                           blockLocations: build.blockLocations, readingSourceTokensByBlock: build.readingSourceTokensByBlock,
-                                                          foldKeys: build.foldKeys)
+                                                          foldKeys: build.foldKeys, cover: build.cover)
                 show(cachedBuild)
                 blocksCache?.lastBuild = cachedBuild
             } catch is CancellationError {
@@ -1323,6 +1337,7 @@ struct MarkdownPreview: View {
         wordCells.index(build.readingSourceTokensByBlock)
         wordDidMove(to: readingFollow.range)
         blocks = build.blocks; errorMessage = nil
+        if cover != build.cover { cover = build.cover }
         blocksVersion += 1
         hasMissingEmbeds = build.hasMissingEmbeds
         shownBuildKey = build.key
@@ -1575,6 +1590,7 @@ final class ReadingBlocksCache {
         var blockLocations: [ReadingBlockLocation] = []
         var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
         var foldKeys = ReadingFoldKeys()
+        var cover: ReadingCover?
     }
 
     var lastBuild: Build?
@@ -1618,6 +1634,7 @@ extension ReadingConfiguration {
         hasher.combine(runsPluginPostProcessors)
         hasher.combine(dividesMarkdownIntoSections)
         hasher.combine(diagramFontPostScriptName)
+        hasher.combine(drawsCover); hasher.combine(noteIconLinkPrefixes.version)
         return hasher.finalize()
     }
 }
@@ -1653,6 +1670,7 @@ struct ReadingBlocksView: View {
     @Environment(\.readingSectionDrags) private var sectionDrags
     /// Draws plugins' code blocks; nil where plugins do not draw, which shows them as code.
     @Environment(\.communityPluginCodeBlocks) private var pluginCodeBlocks
+    @Environment(\.drawsCalloutLayouts) private var drawsCalloutLayouts
 
     /// Each block with its heading's fold key, and whether a folded heading above hides it.
     private var visibleBlocks: [(block: RenderedBlock, foldKey: String?, hasBody: Bool)] {
@@ -1736,9 +1754,23 @@ struct ReadingBlocksView: View {
                 let draggableHeading = heading.sectionDrag(ofBlock: block.id, from: sectionDrags)
                 if let anchor { draggableHeading.id(anchor) } else { draggableHeading }
             case .callout(_, let type, let title, let folding, let body):
-                ReadingCallout(type: type, title: title, foldKeyTitle: foldKeys.calloutTitlesByBlock[block.id],
-                               foldOccurrence: foldKeys.calloutOccurrencesByBlock[block.id] ?? 0, folding: folding, root: root, textSize: textSize,
-                               navigate: navigate, scrollToHeading: scrollToHeading, sourceTokens: readingSourceTokensByBlock[block.id], blocksInside: body) {
+                switch drawsCalloutLayouts ? CalloutLayout(type: type) : .box {
+                case .box:
+                    ReadingCallout(type: type, title: title, foldKeyTitle: foldKeys.calloutTitlesByBlock[block.id],
+                                   foldOccurrence: foldKeys.calloutOccurrencesByBlock[block.id] ?? 0, folding: folding, root: root, textSize: textSize,
+                                   navigate: navigate, scrollToHeading: scrollToHeading, sourceTokens: readingSourceTokensByBlock[block.id],
+                                   blocksInside: body) {
+                        ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
+                                          openPDF: openPDF, updateProperties: nil)
+                    }
+                case .columns:
+                    CalloutColumnsLayout {
+                        ForEach(body) { column in
+                            ReadingBlocksView(blocks: [column], root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
+                                              openPDF: openPDF, updateProperties: nil)
+                        }
+                    }
+                case .contentOnly:
                     ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading, openPDF: openPDF, updateProperties: nil)
                 }
             case .video(_, let location):

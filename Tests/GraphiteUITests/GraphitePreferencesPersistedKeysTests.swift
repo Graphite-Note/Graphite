@@ -183,6 +183,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
         XCTAssertTrue(preferences.usesVaultTheme)
         XCTAssertTrue(preferences.makesShapesOnHold)
         XCTAssertFalse(preferences.drawingPaperAppearsInNotes)
+        XCTAssertFalse(preferences.showsCoversOnPhone)
     }
 
     func testEachBooleanKeyReadsAStoredValueUnderItsExactName() {
@@ -191,6 +192,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
                     "GraphiteMakesShapesOnHold"]
         for key in keys { defaults.set(false, forKey: key) }
         defaults.set(true, forKey: "GraphiteDrawingPaperAppearsInNotes")
+        defaults.set(true, forKey: "GraphiteShowsCoversOnPhone")
 
         let preferences = makePreferences()
 
@@ -204,6 +206,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
         XCTAssertFalse(preferences.usesVaultTheme)
         XCTAssertFalse(preferences.makesShapesOnHold)
         XCTAssertTrue(preferences.drawingPaperAppearsInNotes)
+        XCTAssertTrue(preferences.showsCoversOnPhone)
     }
 
     func testChangingABooleanSettingStoresTheBooleanUnderTheSameKey() {
@@ -219,11 +222,12 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
         preferences.usesVaultTheme = false
         preferences.makesShapesOnHold = false
         preferences.drawingPaperAppearsInNotes = true
+        preferences.showsCoversOnPhone = true
 
         let keys = ["GraphiteUsesReadableLineLength", "GraphiteUsesSpellChecking", "GraphiteFormatsCodeBlocks", "GraphiteEmbedsRecordingsInNote",
                     "GraphiteShowsInlineTitle", "GraphiteShowsFileExtensions", "GraphiteDrawsOnPencilDoubleTap", "GraphiteUsesVaultTheme",
-                    "GraphiteMakesShapesOnHold", "GraphiteDrawingPaperAppearsInNotes"]
-        XCTAssertEqual(keys.map { key in defaults.object(forKey: key) as? Bool }, [false, false, false, false, false, false, false, false, false, true])
+                    "GraphiteMakesShapesOnHold", "GraphiteDrawingPaperAppearsInNotes", "GraphiteShowsCoversOnPhone"]
+        XCTAssertEqual(keys.map { key in defaults.object(forKey: key) as? Bool }, [false, false, false, false, false, false, false, false, false, true, true])
     }
 
     // MARK: Numeric keys
@@ -350,7 +354,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
             "bases", "slashCommands", "templates", "dailyNotes", "calendar", "footnotes", "fileRecovery", "bookmarks", "graph", "map", "canvas", "notebookImport",
             "postgreSQLMirror",
             "pagePreview",
-            "slides",
+            "slides", "pageLook",
         ])
     }
 

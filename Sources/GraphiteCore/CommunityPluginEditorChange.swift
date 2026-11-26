@@ -108,13 +108,15 @@ public enum CommunityPluginMarkdownRendering {
                 let restRange = NSRange(location: 0, length: (rest as NSString).length)
                 if let match = calloutOpening.firstMatch(in: rest, range: restRange) {
                     let type = (rest as NSString).substring(with: match.range(at: 1)).lowercased()
-                    let folding = (rest as NSString).substring(with: match.range(at: 2))
-                    var title = (rest as NSString).substring(with: match.range(at: 3)).trimmingCharacters(in: .whitespaces)
+                    let metadata = match.range(at: 2).location == NSNotFound ? "" : (rest as NSString).substring(with: match.range(at: 2))
+                    let folding = (rest as NSString).substring(with: match.range(at: 3))
+                    var title = (rest as NSString).substring(with: match.range(at: 4)).trimmingCharacters(in: .whitespaces)
                     if title.isEmpty { title = type.prefix(1).uppercased() + type.dropFirst() }
                     let foldClass = folding.isEmpty ? "" : " is-collapsible" + (folding == "-" ? " is-collapsed" : "")
-                    output += "<div data-callout-metadata=\"\" data-callout-fold=\"\(folding)\" data-callout=\"\(type)\" class=\"callout\(foldClass)\">"
+                    output += "<div data-callout-metadata=\"\(metadata)\" data-callout-fold=\"\(folding)\" "
+                        + "data-callout=\"\(type)\" class=\"callout\(foldClass)\">"
                         + "<div class=\"callout-title\"><div class=\"callout-icon\"></div><div class=\"callout-title-inner\">\(title)</div></div>"
-                        + "<div class=\"callout-content\">" + (match.range(at: 4).location == NSNotFound ? "<p>" : "")
+                        + "<div class=\"callout-content\">" + (match.range(at: 5).location == NSNotFound ? "<p>" : "")
                     remaining = remaining[remaining.index(tagRange.0.lowerBound, offsetBy: (rest as NSString).substring(with: match.range).count)...]
                     calloutStack.append(true)
                     continue
@@ -145,7 +147,7 @@ public enum CommunityPluginMarkdownRendering {
 
 /// The constant patterns of `CommunityPluginMarkdownRendering`; `StaticPatternTests` compiles every case.
 enum CommunityPluginMarkdownRenderingPattern: String, StaticPatternSet {
-    case calloutOpening = #"^<blockquote>\s*<p>\[!([A-Za-z0-9_-]+)\]([+-]?)[ \t]*([^\n<]*)(?:\n|(</p>))"#
+    case calloutOpening = #"^<blockquote>\s*<p>\[!([A-Za-z0-9_-]+)(?:\|([^\]<]*))?\]([+-]?)[ \t]*([^\n<]*)(?:\n|(</p>))"#
 }
 
 /// What one keystroke changed in a note, for the plugins' page, which keeps a copy of the note:

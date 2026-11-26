@@ -22,6 +22,8 @@ struct PaletteItem: Identifiable {
     var titleHighlights: [Range<Int>] = []
     var subtitle: String?
     let systemImage: String
+    /// A note's own icon, drawn in place of `systemImage`.
+    var noteIcon: NoteIcon?
     /// A keyboard shortcut to show, such as "⌘O".
     var shortcut: String?
     /// Return does not choose this item; it must be tapped (or reached with the arrow keys).
@@ -163,7 +165,14 @@ struct QuickPalette: View {
         HStack(spacing: 12) {
             // Label colors, not hierarchical styles: on the translucent panel those were
             // drawn with the material's vibrancy and nearly disappeared.
-            Image(systemName: item.systemImage).foregroundStyle(Self.secondaryColor).frame(width: 22)
+            Group {
+                if let noteIcon = item.noteIcon {
+                    NoteIconImage(icon: noteIcon, pointSize: 16)
+                } else {
+                    Image(systemName: item.systemImage).foregroundStyle(Self.secondaryColor)
+                }
+            }
+            .frame(width: 22)
             VStack(alignment: .leading, spacing: 2) {
                 // Two lines on a phone, where "Quick switcher: Open quick switcher" is cut short on one.
                 Text(highlighted(item)).lineLimit(isCompactWidth ? 2 : 1).foregroundStyle(Color.primary)
@@ -266,6 +275,7 @@ extension EnvironmentValues {
 struct QuickSwitcher: View {
     @Bindable var workspace: WorkspaceModel
     let close: () -> Void
+    @Environment(\.noteIcons) private var noteIcons
     @State private var query = ""
     @State private var matches: [QuickSwitcherMatch] = []
     /// The query `matches` were found for.
@@ -342,6 +352,7 @@ struct QuickSwitcher: View {
                 Task { await workspace.open(path) }
             }
         }
+        if alias == nil { item.noteIcon = noteIcons?.icon(of: path) }
         item.openElsewhere = { [workspace] placement in
             if let target = switcher.linkTarget(to: path) {
                 Task { await workspace.follow(target, from: path, isWiki: true, placement: placement) }

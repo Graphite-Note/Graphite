@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, planned. Nothing is built yet. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section.
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section.
 
 ## Request
 
@@ -23,7 +23,7 @@ Every extra must cost nothing for notes without these properties.
 
 ## Decisions
 
-1. **`icon` is Iconize's frontmatter field.** Iconize reads the `icon` property when its "Use frontmatter" option is on (off by default, `iconInFrontmatterEnabled`, `iconInFrontmatterFieldName: 'icon'` in its `src/settings/data.ts`); Pixel Banner also draws `icon` on its banner (`customBannerIconField: ['icon']` in its `src/settings/settings.js`). Iconize accepts an emoji or an icon pack name with its prefix (`IbBell`, `LiBookOpen`). Graphite reads an emoji (the first one of the text, as Iconize does), a Lucide name of Iconize's built-in pack (`Li` and the Lucide name in upper camel case, drawn from Obsidian's own Lucide set without a download), and an SF Symbol name. Other packs (Font Awesome, Remix and so on) are downloads of Iconize that Graphite does not have: they draw nothing.
+1. **`icon` is Iconize's frontmatter field.** Iconize reads the `icon` property when its "Use frontmatter" option is on (off by default, `iconInFrontmatterEnabled`, `iconInFrontmatterFieldName: 'icon'` in its `src/settings/data.ts`). Pixel Banner also draws `icon` on its banner (`customBannerIconField: ['icon']` in its `src/settings/settings.js`). Iconize accepts an emoji or an icon pack name with its prefix (`IbBell`, `LiBookOpen`). Graphite reads an emoji (the first one of the text, as Iconize does), a Lucide name of Iconize's built-in pack (`Li` and the Lucide name in upper camel case, drawn from Obsidian's own Lucide set without a download), and an SF Symbol name. Other packs (Font Awesome, Remix and so on) are downloads of Iconize that Graphite does not have: they draw nothing.
 2. **A symbol chosen in Graphite is written as its Lucide name.** The picker offers 64 symbols, each an SF Symbol paired with the Lucide icon that shows the same thing (`NoteIconSymbols`), and writes the Lucide name (`LiBookOpen`), so Obsidian with Iconize shows the same icon. All 64 Lucide names were checked against the icon table in Obsidian 1.15.1. An SF Symbol name typed by hand is read too, and Obsidian shows nothing for it.
 3. **`banner` is the field Banners and Pixel Banner share.** Banners (noatpad/obsidian-banners README) writes `banner` with `banner_x` and `banner_y` from 0 to 1. Pixel Banner (jparkerweb/pixel-banner README and settings) writes `banner` with `banner-y` as a percentage, and reads a wikilink, an embed, a Markdown link or embed, a plain path, a web address or search words. Graphite reads every form except Pixel Banner's search words (its online service) and `file://` paths outside the vault, and takes the vertical position from `banner_y` or `banner-y`. The horizontal position, height, fade and the other options of both plugins are not read: Graphite's cover has one short height for every note.
 4. **Columns follow Modular CSS Layout.** The `[!multi-column]` callout is the snippet `MCL Multi Column.css` of efemkay/obsidian-modular-css-layout: the callout's title and box are hidden, each block of its body (a nested callout, a paragraph, a list, a quote) is a column at least 200 px wide that grows to share the width (`flex: 1 1 200px`, gap 1em), and columns wrap onto a new row when the width runs out. Graphite draws the same rule at 200 points (`CalloutColumnArrangement`), so a phone shows one column per row. `[!blank]` and `[!blank-container]` from the same snippet draw their content without title or box.
@@ -36,45 +36,47 @@ Every extra must cost nothing for notes without these properties.
 
 Issue: [#256](https://github.com/Graphite-Note/Graphite/issues/256)
 
-- [ ] `NoteIcon` and `NoteIconSymbols` read an `icon` text as decisions 1 and 2 say and give the text written for a choice.
-- [ ] One query reads every note's `icon` from the index (`VaultIndex.noteIcons`), and one catalog per window keeps them by path, reloaded when the index's properties change and emptied on a vault switch.
-- [ ] The file list shows a note's icon in place of its name's leading space: the iPad and iPhone tree rows and the Mac outline.
-- [ ] Tabs show it before the title: the tab bar, the stacked tabs' spine and the phone's tab overview.
-- [ ] The quick switcher shows it on a note's row.
-- [ ] Links in the reading view to a note with an icon show it before the link's text.
-- [ ] Library mode shows it in a note tile's caption.
-- [ ] The note's More menu has Icon…: a picker with an emoji field, the 64 symbols and Remove Icon, which writes or removes the property through the note's own session (one undo step, saved like any edit).
+- [x] `NoteIcon` and `NoteIconSymbols` read an `icon` text as decisions 1 and 2 say and give the text written for a choice. Done 2026-11-26: `NoteIcon`, `NoteIconSymbols` (64 pairings, each Lucide name found in Obsidian 1.15.1's icon table). `NoteIconTests` (6).
+- [x] One query reads every note's `icon` from the index (`VaultIndex.noteIcons`), and one catalog per window keeps them by path, reloaded when the index's properties change and emptied on a vault switch. Done 2026-11-26: `VaultIndex.noteIcons()` (at most 50,000 rows through `properties_key`), `NoteIconCatalog` and `PageLookLayer` on the window's root view, keyed on the vault and `structureVersion`. `NoteIconQueriesTests` (3), `ReadingCoverTests.testTheCatalogReadsTheIndexsIconsAndForgetsThemWithoutAnIndex`.
+- [x] The file list shows a note's icon in place of its name's leading space: the iPad and iPhone tree rows and the Mac outline. Done 2026-11-26: `VaultEntryRow`'s marker slot, `FileTreeCellView` with `NoteIconImages` (one image per icon, at most 512). `PageLookMacWindowTests` counts the Mac rows that show an icon (3 on, 0 off). Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests` (emoji, Lucide and SF Symbol icons in the iPad's file list).
+- [x] Tabs show it before the title: the tab bar, the stacked tabs' spine and the phone's tab overview. Done 2026-11-26: `TabItem`, `StackedTabSpine`, `TabOverviewCard`. Tab bar checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests`. The stacked spine and the phone's tab overview were not looked at.
+- [x] The quick switcher shows it on a note's row. Done 2026-11-26: `PaletteItem.noteIcon`. `PageLookMacWindowTests.testTheQuickSwitcherListsANotesIconAndThePickerItsSymbols` (a recent note's row with and without icons differ. Picture looked at).
+- [x] Links in the reading view to a note with an icon show it before the link's text. Done 2026-11-26: emoji icons only (an SF Symbol cannot be written into a link's text), `ReadingLinkIcons.swift`. `ReadingCoverTests.testALinkToANoteWithAnEmojiIconShowsItFirstWhileIconsAreOn`. Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests`.
+- [x] Library mode shows it in a note tile's caption. Done 2026-11-26: `LibraryTile.caption`. Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests` (iPad).
+- [x] The note's More menu has Icon…: a picker with an emoji field, the 64 symbols and Remove Icon, which writes or removes the property through the note's own session (saved like any edit). Done 2026-11-26: More › Icon… (`NoteIconPickerPresentation`, `NoteIconPicker`), `MarkdownSession.setIcon` through `NoteIconEditing` and the session's `apply`. `NoteIconEditingTests` (6), `ReadingCoverTests.testTheIconChosenIsWrittenIntoTheNotesFrontmatterAndSaved`, the sheet's picture in `PageLookMacWindowTests`. Choosing from the menu in the running app was not driven.
 
 ## 2. Covers from the `banner` property
 
 Issue: [#257](https://github.com/Graphite-Note/Graphite/issues/257)
 
-- [ ] `NoteBanner` reads the forms of decision 3, with the vertical position.
-- [ ] The reading view draws the cover above the title: 140 points high on the iPad and the Mac, cropped to the note's width around its vertical position, a vault picture or a picture on the web. A cover whose picture is missing or cannot be read is not drawn.
-- [ ] The cover collapses to a thin strip and opens again from a button on it (decision 7), with VoiceOver labels.
-- [ ] The iPhone draws covers only when Settings › Appearance › Covers on iPhone is on (decision 8).
+- [x] `NoteBanner` reads the forms of decision 3, with the vertical position. Done 2026-11-26: `NoteBanner`. `NoteBannerTests` (6), the unquoted `[[x]]` that YAML reads as a list included.
+- [x] The reading view draws the cover above the title: 140 points high on the iPad and the Mac, cropped to the note's width around its vertical position, a vault picture or a picture on the web. A cover whose picture is missing or cannot be read is not drawn. Done 2026-11-26: `ReadingViewBuilder.cover(inFrontmatter:…)`, `ReadingCoverView` (decoded at most 2,400 pixels wide, web pictures through the Bases thumbnail download). `ReadingCoverTests` (found only while drawn, none for a missing picture or a note), `PageLookMacWindowTests` and the iPad hosted test (the window's top differs with the plugin off). Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests` in light and dark, and in a separate Debug copy of the Mac app. A web picture was not loaded in a check.
+- [x] The cover collapses to a thin strip and opens again from a button on it (decision 7), with VoiceOver labels. Done 2026-11-26: the chevron button (Hide Cover, Show Cover), kept in `CalloutFoldStore` under `ReadingCoverView.foldKey`. `ReadingCoverTests.testTheCoverFoldsToAStripForTheNoteAndOpensAgain` (140 then 22 then 140 points). The button was not pressed by hand.
+- [x] The iPhone draws covers only when Settings › Appearance › Covers on iPhone is on (decision 8). Done 2026-11-26: `GraphitePreferences.showsCoversOnPhone`, `CoversOnPhoneSection`. `GraphitePreferencesPersistedKeysTests`, `ReadingCoverTests.testTheBannerIsFoundInTheVaultWhileCoversAreDrawn`, the iPhone hosted test (no cover, then a cover with the setting on).
 
 ## 3. Multi-column callouts
 
 Issue: [#258](https://github.com/Graphite-Note/Graphite/issues/258)
 
-- [ ] Callout headers take `|metadata` (decision 5) everywhere a header is read.
-- [ ] The reading view draws a `[!multi-column]` callout's blocks as columns by `CalloutColumnArrangement`: side by side where the note is wide enough, stacked when narrow, without title or box.
-- [ ] `[!blank]` and `[!blank-container]` draw their content without title or box.
-- [ ] Live Preview draws them the same way.
+- [x] Callout headers take `|metadata` (decision 5) everywhere a header is read. Done 2026-11-26: `MarkdownQuoteSyntax.calloutHeader`, the editor's `calloutTitle` style, `ReadAloudFolding`, the plugin HTML's `data-callout-metadata`. `ReadingCoverTests.testACalloutWithMetadataIsACallout`, `StaticPatternTests`, the callout and Read Aloud suites.
+- [x] The reading view draws a `[!multi-column]` callout's blocks as columns by `CalloutColumnArrangement`: side by side where the note is wide enough, stacked when narrow, without title or box. Done 2026-11-26: `CalloutLayout`, `CalloutColumnArrangement`, `CalloutColumnsLayout`, the body divided into sections. `CalloutColumnArrangementTests` (6), `CalloutColumnsLayoutTests` (3), `ReadingCoverTests.testEachParagraphOfAMultiColumnCalloutIsABlockOfItsOwn`. Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests` (three columns on the iPad and the Mac, stacked on the iPhone).
+- [x] `[!blank]` and `[!blank-container]` draw their content without title or box. Done 2026-11-26: `CalloutLayout.contentOnly`. `CalloutColumnArrangementTests.testTheLayoutComesFromTheTypeAsTheSnippetMatchesIt`. Checked in pictures from `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2) and `PageLookMacWindowTests`.
+- [x] Live Preview draws them the same way. Done 2026-11-26: `LivePreviewCalloutView` with `LivePreviewEnvironment.drawsCalloutLayouts`. The Mac's Live Preview picture of `PageLookMacWindowTests` (columns side by side, no cover) and the iPad's in `PageLookHostedTests`.
 
 ## 4. Switch, cost and checks
 
 Issue: [#259](https://github.com/Graphite-Note/Graphite/issues/259)
 
-- [ ] The core plugin switch of decision 6, in Settings › Core Plugins.
-- [ ] File list scrolling and note opening measured before and after on a generated vault of 3,000 notes without these properties, and with icons on a part of them.
-- [ ] Rendered checks of each surface in light and dark: tabs, file list, quick switcher, a link, Library mode, the cover open and collapsed, columns wide and stacked.
-- [ ] Checked in an iPad simulator in portrait and landscape, an iPhone simulator and a Debug copy of the Mac app, with a small demo vault.
-- [ ] `Docs/Architecture.md`, `Docs/Coverage.md` and the Iconize row of `Docs/Community-plugins.md` describe what is built.
+- [x] The core plugin switch of decision 6, in Settings › Core Plugins. Done 2026-11-26: `CorePlugin.pageLook` (Icons, Covers and Columns, on by default). `GraphitePreferencesPersistedKeysTests`. Off, no catalog, no query, no cover and plain callouts (pictures with the plugin off on the iPad, the iPhone and the Mac).
+- [x] File list scrolling and note opening measured before and after on a generated vault of 3,000 notes without these properties, and with icons on a part of them. Done 2026-11-26: `PerformanceBenchmarkTests.testPageLookCostInAVaultOfThreeThousandNotes` (Mac, debug build, 3,000 notes in 20 expanded folders, 338 scroll steps of 40% of the list, 8 notes opened in the reading view), three runs while other builds kept the load average between 10 and 35. Scroll, median ms per frame (off / on without icons / icons on every third note): 6.1 / 6.3 / 9.1 in the quietest run, before the Mac cell kept one image per icon. 9.1 / 8.8 / 7.6 and 9.2 / 8.0 / 6.6 after. Note opening until shown, median ms: 70 / 65 / 80, then 105 / 127 / 107, then 150 / 127 / 113. Without icons the plugin costs nothing measurable beside the load's noise. "Off" is this build with the switch off, not origin/main itself. The iPad was not measured.
+- [x] Rendered checks of each surface in light and dark: tabs, file list, quick switcher, a link, Library mode, the cover open and collapsed, columns wide and stacked. Done 2026-11-26: pictures of the reading view (cover, columns, blank callout, links), the file list, the tab bar, Library mode, the quick switcher and the Icon… sheet, light and dark on the iPad, light on the iPhone and the Mac window test, dark in the Mac Debug copy. The collapsed cover by its drawn height (`ReadingCoverTests`), not in a picture.
+- [x] Checked in an iPad simulator in portrait and landscape, an iPhone simulator and a Debug copy of the Mac app, with a small demo vault. Done 2026-11-26: `PageLookHostedTests` on own simulators "Graphite Page Look iPad" and "Graphite Page Look iPhone" with a demo vault of made-up notes (portrait, and the iPad's window at its sideways size: a hosted test's window does not turn with the device, so the device itself was not rotated), and a re-signed Debug copy of the Mac app (`com.graphite.study.pagelook`) with the same vault.
+- [x] `Docs/Architecture.md`, `Docs/Coverage.md` and the Iconize row of `Docs/Community-plugins.md` describe what is built. Done 2026-11-26: the Architecture section Page icons, covers and columns, the Coverage section of the same name, the Iconize row of Community-plugins.md, and `Tests/ReleaseVault/Page look.md` with `Page look linked.md`.
 
 ## Later
 
 - Iconize's own store of icons (`.obsidian/plugins/obsidian-icon-folder/data.json`), which keeps the icons set without frontmatter, and its `iconColor` property.
 - Column widths from `wide-2` to `wide-5` and the snippet's other options (`col3`, `fw` and `pw` widths), which need the metadata of each nested callout carried into the reading view's blocks.
-- Icons on links in Live Preview, where they would be drawn over the concealed `[[`.
+- Icons on links in Live Preview, where they would be drawn over the concealed `[[`, and SF Symbol icons before links in the reading view.
+- Export to PDF draws multi-column and blank callouts as ordinary boxes.
+- Turning the iPad simulator itself to landscape, and measuring on the iPad and on a physical device.

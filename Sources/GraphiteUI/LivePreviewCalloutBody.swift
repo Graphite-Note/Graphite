@@ -34,6 +34,28 @@ struct LivePreviewCalloutView: View {
     @Environment(\.readingFollowsSource) private var readingFollowsSource
 
     var body: some View {
+        switch environment.drawsCalloutLayouts ? CalloutLayout(type: type) : .box {
+        case .box: box
+        case .columns: layoutWithoutBox(arrangesColumns: true)
+        case .contentOnly: layoutWithoutBox(arrangesColumns: false)
+        }
+    }
+
+    /// A multi-column or blank callout: its blocks without title or box, side by side for columns, each paragraph,
+    /// list or quote a column of its own as in the reading view. A tap shows the source.
+    private func layoutWithoutBox(arrangesColumns: Bool) -> some View {
+        let sectioned = arrangesColumns ? bodyLocated.map(NotePreviewDocument.dividedIntoSections) : bodyLocated
+        return LivePreviewBlockStack(blocks: sectioned?.map(\.block) ?? bodyBlocks, located: sectioned, noteReading: noteReading, environment: environment,
+                                     allowsNoteEmbeds: true, revealSource: revealSource,
+                                     // Read Aloud's sections follow the callout's own blocks, which sectioning may have divided.
+                                     readingSection: sectioned?.count == bodyLocated?.count ? readingSection : nil, tableEditing: tableEditing,
+                                     arrangesColumns: arrangesColumns)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: revealSource)
+            .environment(\.calloutFoldNote, environment.calloutFoldNote)
+    }
+
+    private var box: some View {
         CalloutView(type: type, title: LivePreviewText.prepared(title, colorsEnabled: environment.colorsEnabled, paletteHexByName: environment.paletteHexByName),
                     folding: folding, root: environment.root, textSize: environment.textSize, navigate: environment.follow,
                     sourceTokens: readingSection?.titleTokens,
@@ -64,12 +86,20 @@ struct LivePreviewBlockStack: View {
     var readingSection: LivePreviewReadingSection? = nil
     /// How the tables of a callout's body are edited in place, for every depth of its callouts.
     var tableEditing: LivePreviewCalloutTableEditing? = nil
+    /// Lays the blocks out side by side (`CalloutColumnsLayout`), for a multi-column callout.
+    var arrangesColumns = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { blockIndex, block in
-                view(for: block, at: blockIndex, readingSection: childReadingSection(at: blockIndex))
-            }
+        if arrangesColumns {
+            CalloutColumnsLayout { blockViews }
+        } else {
+            VStack(alignment: .leading, spacing: 8) { blockViews }
+        }
+    }
+
+    private var blockViews: some View {
+        ForEach(Array(blocks.enumerated()), id: \.offset) { blockIndex, block in
+            view(for: block, at: blockIndex, readingSection: childReadingSection(at: blockIndex))
         }
     }
 

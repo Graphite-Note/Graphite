@@ -1,3 +1,15 @@
+/**
+ * File: MarkdownPaneNoteState.swift
+ * ---------------------------------
+ * Layer: UI
+ * Description: What a note's pane holds for the note it shows: its open pickers and sheets, Read Aloud's start and section, and
+ *              the drawing or image at the cursor.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 26/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -11,6 +23,8 @@ struct MarkdownPaneNoteState {
     var showsCamera = false
     var showsDocumentScanner = false
     var showsLinkPicker = false
+    /// The Icon… sheet, with the note's icon when it opened.
+    var iconPickerRequest: NoteIconPickerRequest?
     var showsReloadConfirmation = false
     var readingStartOffset: Int?
     var showsReadingSections = false

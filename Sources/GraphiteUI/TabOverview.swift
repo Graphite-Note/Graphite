@@ -1,3 +1,14 @@
+/**
+ * File: TabOverview.swift
+ * -----------------------
+ * Layer: UI
+ * Description: Every open tab as a card, as Safari's tab overview, with each tab's thumbnail, name and the note's icon.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.2
+ * Date: 26/11/2026
+ */
+
 import SwiftUI
 import GraphiteCore
 import GraphiteApple
@@ -260,6 +271,7 @@ private struct TabOverviewCard: View {
     let close: () -> Void
     @Environment(\.accent) private var accent
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.noteIcons) private var noteIcons
 
     private static let cornerRadiusPoints: CGFloat = 16
 
@@ -275,9 +287,13 @@ private struct TabOverviewCard: View {
                 VStack(spacing: 8) {
                     preview
                     HStack(spacing: 5) {
-                        Image(systemName: symbol)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        if let noteIcon = tab.path.flatMap({ path in noteIcons?.icon(of: path) }) {
+                            NoteIconImage(icon: noteIcon, pointSize: 12)
+                        } else {
+                            Image(systemName: symbol)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                         Text(title)
                             .interfaceFont(.subheadline)
                             .fontWeight(isActive ? .semibold : .regular)

@@ -325,6 +325,7 @@ struct GraphiteRootView: View {
             if let completedLocation { Task { await workspace.recordingDidFinish(at: completedLocation) } }
         }
         .preferredColorScheme(workspace.preferences.appearanceMode.colorScheme)
+        .modifier(PageLookLayer(isEnabled: workspace.preferences.isEnabled(.pageLook)) { [workspace] in workspace.noteIconSource })
         // Outermost, so the window's sheets (the welcome tour, Settings) read the add-on
         // packs too. Every window shares one library (`ProcessServices`).
         .environment(workspace.processServices.addOns)

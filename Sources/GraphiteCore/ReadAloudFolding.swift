@@ -64,7 +64,7 @@ public enum ReadAloudFolding {
 
     private struct FoundCallout {
         let headerLineStart: Int
-        let header: (type: String, title: String, folding: CalloutFolding)
+        let header: (type: String, title: String, folding: CalloutFolding, metadata: String)
         /// The lines of the body, nil when it has none.
         let bodyRange: NSRange?
     }

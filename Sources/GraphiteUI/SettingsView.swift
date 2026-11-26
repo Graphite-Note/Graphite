@@ -342,6 +342,7 @@ private struct AppearanceSettingsPage: View {
                 Text("Shows the note's file name as a large title above its content, with its extension when Files and Links › Show File Extensions is on. Stored in the vault's .obsidian/app.json, as Obsidian does; before a vault sets it, and while no vault is open, the choice made on this device applies.")
                     .formFooterAlignment()
             }
+            CoversOnPhoneSection(preferences: preferences)
             if workspace.store != nil {
                 FontSettingsSection(workspace: workspace)
                 ThemeSettingsSection(workspace: workspace)
