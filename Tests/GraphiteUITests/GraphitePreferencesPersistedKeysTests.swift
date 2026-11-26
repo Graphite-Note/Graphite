@@ -1,3 +1,15 @@
+/**
+ * File: GraphitePreferencesPersistedKeysTests.swift
+ * -------------------------------------------------
+ * Layer: Tests
+ * Description: The keys and values Graphite's preferences keep on the device, and the core plugins' raw values,
+ *              which settings saved by earlier builds are read back through.
+ *
+ * Authors: Félix Chevalier, Bahey Shalash
+ * Version: 0.9
+ * Date: 26/11/2026
+ */
+
 import XCTest
 import GraphiteCore
 import GraphiteApple
@@ -338,6 +350,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
             "bases", "templates", "dailyNotes", "calendar", "footnotes", "fileRecovery", "bookmarks", "graph", "map", "canvas", "notebookImport",
             "postgreSQLMirror",
             "pagePreview",
+            "slides",
         ])
     }
 

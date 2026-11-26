@@ -2,18 +2,19 @@
  * File: NoteFileMenu.swift
  * ------------------------
  * Layer: UI
- * Description: The File submenu of a note's More menu: where the file is, export, saved versions, rename, move and delete.
+ * Description: The File submenu of a note's More menu: where the file is, export, presenting, saved versions, rename, move
+ *              and delete.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 26/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
 
 /// The note's own file commands in one submenu of its More menu: where it is (a link to it, Show in Files),
-/// exporting it to PDF, its saved versions, moving it and deleting it. The menu ran to 25 entries, cut off at
+/// exporting it to PDF, presenting it, its saved versions, moving it and deleting it. The menu ran to 25 entries, cut off at
 /// about 520 points of a phone's screen, and had neither Move nor Delete (HUNT-277).
 struct NoteFileMenu: View {
     let path: VaultPath
@@ -30,6 +31,7 @@ struct NoteFileMenu: View {
         Menu("File", menuSymbol: "doc") {
             FileLocationMenuItems(path: path, openingLink: openingLink, vaultRoot: vaultRoot)
             NotePDFExportButton()
+            NotePresentationButton()
             if let showFileRecovery {
                 Button("File Recovery…", menuSymbol: "clock.arrow.circlepath", action: showFileRecovery)
             }

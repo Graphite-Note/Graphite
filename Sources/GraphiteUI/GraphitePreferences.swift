@@ -6,8 +6,8 @@
  *              stores it hands out (the library, new notebooks, Export to PDF).
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.30
- * Date: 04/11/2026
+ * Version: 0.31
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -22,7 +22,7 @@ import GraphitePostgreSQLMirror
 enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     case backlinks, outgoingLinks, outline, properties, tags, wordCount
     case colors, drawings, audioRecorder, readAloud, bases
-    case templates, dailyNotes, calendar, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview
+    case templates, dailyNotes, calendar, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport, postgreSQLMirror, pagePreview, slides
 
     var id: String { rawValue }
 
@@ -51,6 +51,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .notebookImport: "Goodnotes and Notability Import"
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
+        case .slides: "Slides"
         }
     }
 
@@ -91,6 +92,9 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
             "Turns Goodnotes and Notability notebooks into PDFs with editable handwriting when they are imported. Off, they are copied as they are."
         case .pagePreview:
             "Shows a note beside a link to it while the pointer or Apple Pencil rests on the link, or when the link is held."
+        case .slides:
+            "Presents a note as slides, separated by \u{201C}---\u{201D}, full screen or on an external display, "
+                + "with Apple Pencil's laser and ink that fades."
         }
     }
 
@@ -102,7 +106,8 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .readAloud, .postgreSQLMirror: false
         case .backlinks, .outgoingLinks, .outline, .properties, .tags, .wordCount, .colors, .drawings, .audioRecorder,
-             .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview: true
+             .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview,
+             .slides: true
         }
     }
 
@@ -131,6 +136,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .notebookImport: "square.and.arrow.down.on.square"
         case .postgreSQLMirror: "cylinder.split.1x2"
         case .pagePreview: "doc.text.magnifyingglass"
+        case .slides: "play.rectangle"
         }
     }
 }

@@ -5,8 +5,8 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.18
- * Date: 21/11/2026
+ * Version: 0.19
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -35,6 +35,8 @@ public struct GraphiteCommands: Commands {
     @FocusedValue(\.workspaceMenuActions) private var actions
     /// Export to PDF and Print for the focused window's note in front (`NotePDFExportPresentation`).
     @FocusedValue(\.notePDFExport) private var notePDFExport
+    /// Start Presentation for the focused window's note in front (`NotePresentationLauncher`).
+    @FocusedValue(\.notePresentation) private var notePresentation
     #if os(macOS)
     /// The markup row of the focused window's PDF in front (`PDFMarkupMenuActions`).
     @FocusedValue(\.pdfMarkupMenuActions) private var pdfMarkupActions
@@ -238,6 +240,12 @@ public struct GraphiteCommands: Commands {
         #if os(macOS)
         PDFMarkupToolbarMenuItem(actions: pdfMarkupActions, shortcut: shortcut(.toggleMarkupToolbar))
         #endif
+        // Absent while the Slides core plugin is off, which leaves no action.
+        if workspace?.preferences.isEnabled(.slides) ?? true {
+            Button("Start Presentation") { notePresentation?.start(nil) }
+                .keyboardShortcut(shortcut(.startPresentation))
+                .disabled(notePresentation == nil || note == nil)
+        }
         Divider()
         // ⌃⌘S is iPadOS's own Show Sidebar; giving it to this item too made the menu bar report a conflict.
         Button("Show or Hide Files") { actions?.window.toggleSidebar() }

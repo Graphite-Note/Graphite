@@ -6,8 +6,8 @@
  *              PDF…, Print… ⌘P on the Mac), the command palette and the file list call, and the sheets they open.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -59,16 +59,18 @@ struct NotePDFFileMenuButton: View {
     }
 }
 
-/// The command palette's Export to PDF and Print, added to its commands while a note is in front.
+/// The command palette's Export to PDF, Print and Start Presentation, added to its commands while a note is in front.
 struct NotePDFPaletteCommands<Content: View>: View {
     let hasNoteInFront: Bool
     /// The vault's shortcuts, shown beside the commands as the palette's own are.
     let shortcuts: VaultKeyboardShortcuts
     @ViewBuilder let content: ([PaletteCommand]) -> Content
     @Environment(\.notePDFExport) private var notePDFExport
+    /// Start Presentation, the note's other way out of the editor, listed beside them (`NotePresentationLauncher`).
+    @Environment(\.notePresentation) private var notePresentation
 
     var body: some View {
-        content(commands)
+        content(commands + NotePresentationPaletteCommand.commands(hasNoteInFront: hasNoteInFront, action: notePresentation, shortcuts: shortcuts))
     }
 
     private var commands: [PaletteCommand] {

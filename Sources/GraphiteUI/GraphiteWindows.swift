@@ -2,11 +2,11 @@
  * File: GraphiteWindows.swift
  * ---------------------------
  * Layer: UI
- * Description: Windows of the app: what each opens on, and dragging items to open a new one.
+ * Description: Windows of the app: what each opens on, dragging items to open a new one, and presenting a note from one.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 17/11/2026
+ * Version: 0.7
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -159,6 +159,8 @@ public struct GraphiteWindowScene: View {
     @State private var workspace: WorkspaceModel?
     @Environment(\.openWindow) private var openWindow
     @Environment(\.supportsMultipleWindows) private var supportsMultipleWindows
+    /// Light or dark as the window shows now, which a presentation's other screens take.
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(processServices: ProcessServices, launchMode: LaunchMode, windowContent: Binding<GraphiteWindowContent?>) {
         self.processServices = processServices
@@ -171,6 +173,14 @@ public struct GraphiteWindowScene: View {
             GraphiteRootView(workspace: workspace, launchMode: launchMode, windowContent: $windowContent)
                 // The maps' location control (`MapUserLocationControl`): the map screen, the sidebar's map and bases.
                 .environment(\.deviceLocation, processServices.deviceLocation)
+                // Start Presentation for the note in front or a note in the file list, while the Slides core plugin is on.
+                .modifier(NotePresentationLauncher(isEnabled: workspace.preferences.isEnabled(.slides), focusedNote: workspace.markdownSession,
+                    vault: ReadingVault(workspace.folderAccess?.root, workspace.index, store: workspace.store),
+                    readingConfiguration: .presentedSlides(usesStrictLineBreaks: workspace.vaultSettings.usesStrictLineBreaks,
+                                                           preferences: workspace.preferences),
+                    appearance: PresentationAppearance(noteTheme: workspace.noteTheme, typography: workspace.noteTypography, preferences: workspace.preferences,
+                                                       colorScheme: colorScheme),
+                    deviceDefaults: workspace.deviceDefaults, clock: workspace.clock))
                 // A file or tab dragged to the edge of the screen opened this window.
                 .onContinueUserActivity(GraphiteWindowContent.activityType) { activity in
                     guard let content = GraphiteWindowContent(activity: activity), let vaultIdentifier = content.vaultIdentifier else { return }

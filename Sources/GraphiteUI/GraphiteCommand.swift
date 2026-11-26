@@ -6,8 +6,8 @@
  *              where its shortcut is listened for.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.11
- * Date: 21/11/2026
+ * Version: 0.12
+ * Date: 26/11/2026
  */
 import Foundation
 import GraphiteCore
@@ -69,6 +69,7 @@ enum GraphiteCommand: String, CaseIterable {
     case increaseFontSize = "graphite:increase-font-size", decreaseFontSize = "graphite:decrease-font-size", resetFontSize = "graphite:reset-font-size"
     case showBookmarks = "bookmarks:open", bookmarkCurrentFile = "bookmarks:bookmark-current-view", bookmarkCurrentSearch = "bookmarks:bookmark-current-search"
     case showCalendar = "graphite:calendar-show"
+    case startPresentation = "slides:start"
     // Go
     case searchAllFiles = "global-search:open", goBack = "app:go-back", goForward = "app:go-forward"
     case nextTab = "workspace:next-tab", previousTab = "workspace:previous-tab"
@@ -249,6 +250,10 @@ extension GraphiteCommand {
                               binding: .menuBar, macMenuTitles: ["Default Text Size"])
         case .showBookmarks: return Descriptor(title: "Bookmarks: Show bookmarks", group: .view, corePlugin: .bookmarks)
         case .showCalendar: return Descriptor(title: "Calendar: Show calendar", group: .view, corePlugin: .calendar)
+        // Obsidian's Slides has no default; ⌥⌘P is Keynote's Play Slideshow, and free on the Mac and the iPad.
+        case .startPresentation:
+            return Descriptor(title: "Slides: Start presentation", group: .view, defaultCombinations: command("P", [.command, .option]),
+                              binding: .menuBar, corePlugin: .slides, macMenuTitles: ["Start Presentation"])
         case .bookmarkCurrentFile: return Descriptor(title: "Bookmarks: Bookmark current file", group: .view, corePlugin: .bookmarks)
         case .bookmarkCurrentSearch: return Descriptor(title: "Bookmarks: Bookmark current search", group: .view, corePlugin: .bookmarks)
         case .searchAllFiles:

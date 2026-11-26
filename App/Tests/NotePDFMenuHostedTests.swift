@@ -2,13 +2,13 @@
  * File: NotePDFMenuHostedTests.swift
  * ----------------------------------
  * Layer: Tests
- * Description: Export to PDF… and Print… taken from a note's More menu in the iPad's window, on a demo vault of two
- *              course notes: the options sheet with its preview, the file exporter it hands the PDF to, and the system's
- *              print panel after the progress sheet.
+ * Description: Export to PDF…, Print… and Start Presentation taken from a note's More menu in the iPad's window, on a
+ *              demo vault of course notes: the options sheet with its preview, the file exporter it hands the PDF to, the
+ *              system's print panel after the progress sheet, and the note's slides full screen.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 26/11/2026
  */
 
 #if os(iOS)
@@ -68,6 +68,9 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
         > $$= x(y + yz + z) + \bar{x}(yz)$$
         """#
 
+    /// Three slides, as Obsidian's Slides splits them.
+    private static let slidesNote = "# Sampling\n\nA signal read every $T$ seconds.\n\n---\n\n## Nyquist\n\n$$\nf_s > 2 f_{max}\n$$\n\n---\n\n> [!note] Aliasing\n> Too slow.\n"
+
     private static let windowSize = CGSize(width: 1180, height: 820)
 
     override func tearDown() async throws {
@@ -80,12 +83,20 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
         let vault = try TemporaryVault.make(prefix: "NotePDFMenuHosted", files: [
             "Digital IC Design/Static logic.md": Self.staticLogicNote,
             "Digital IC Design/Lecture L01 Shannon.md": Self.shannonNote,
+            "Digital IC Design/Sampling slides.md": Self.slidesNote,
         ], for: self).root
         let workspace = device.makeWorkspace()
         try await workspace.openFolderAsVault(vault)
         try await waitUntil("the vault is indexed") { workspace.hasCompletedIndexScan }
         await workspace.open(try VaultPath(note))
-        let controller = try host(GraphiteRootView(workspace: workspace), size: Self.windowSize, horizontalSizeClass: .regular)
+        // Start Presentation as the window's scene adds it (`GraphiteWindowScene`).
+        let launcher = NotePresentationLauncher(isEnabled: true, focusedNote: workspace.markdownSession,
+                                                vault: ReadingVault(workspace.folderAccess?.root, workspace.index, store: workspace.store),
+                                                readingConfiguration: ReadingConfiguration(),
+                                                appearance: PresentationAppearance(noteTheme: nil, typography: .standard, codeColorTheme: .obsidian,
+                                                                                   accent: .blue, colorScheme: .light),
+                                                deviceDefaults: device.defaults, clock: LiveApplicationClock())
+        let controller = try host(GraphiteRootView(workspace: workspace).modifier(launcher), size: Self.windowSize, horizontalSizeClass: .regular)
         try await waitUntil("the note is in front") { workspace.markdownSession?.path.rawValue == note }
         return (workspace, controller)
     }
@@ -234,6 +245,37 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
         try await waitUntil("the panel's preview", timeoutSeconds: 10) { ContinuousClock.now >= settled }
         attachScreenshot(named: "Print panel for the note")
         UIPrintInteractionController.shared.dismiss(animated: false)
+    }
+
+    func testStartPresentationFromTheMoreMenuShowsTheSlidesFullScreenAndLeavesTheNoteAsItWas() async throws {
+        let (workspace, controller) = try await showNote("Digital IC Design/Sampling slides.md")
+        let noteLocation = try XCTUnwrap(workspace.folderAccess?.root).appendingPathComponent("Digital IC Design/Sampling slides.md")
+        try await choose("Start Presentation", inSubmenu: "File", of: controller)
+        var surface: PresentationTouchSurfaceView?
+        try await waitUntil("the slides full screen", timeoutSeconds: 15) {
+            surface = self.presentedControllers(over: controller).lazy.compactMap { shown in Self.touchSurface(in: shown.view) }.first
+            return surface != nil
+        }
+        let shownSurface = try XCTUnwrap(surface)
+        let window = try XCTUnwrap(self.window)
+        let frame = shownSurface.convert(shownSurface.bounds, to: window)
+        XCTAssertGreaterThan(frame.width, Self.windowSize.width - 1, "The slide covers the window: \(frame)")
+        attachScreenshot(named: "First slide from More › File › Start Presentation")
+
+        await SynthesizedTouches(window: window).drag(from: CGPoint(x: frame.maxX - 200, y: frame.midY),
+                                                      to: CGPoint(x: frame.minX + 200, y: frame.midY), steps: 6, stepSeconds: 0.012, holdSeconds: 0)
+        _ = try await element(in: controller, "the second slide's number") { object in object.accessibilityLabel == "2 of 3" }
+        attachScreenshot(named: "Second slide after a swipe")
+
+        let end = try await element(in: controller, "End Presentation") { object in object.accessibilityLabel == "End Presentation" }
+        XCTAssertTrue(end.accessibilityActivate())
+        try await waitUntil("the presentation ends", timeoutSeconds: 10) { self.presentedControllers(over: controller).isEmpty }
+        XCTAssertEqual(try String(contentsOf: noteLocation, encoding: .utf8), Self.slidesNote, "Presenting writes nothing.")
+        XCTAssertEqual(workspace.markdownSession?.text, Self.slidesNote)
+    }
+
+    private static func touchSurface(in view: UIView) -> PresentationTouchSurfaceView? {
+        (view as? PresentationTouchSurfaceView) ?? view.subviews.lazy.compactMap(touchSurface(in:)).first
     }
 }
 #endif

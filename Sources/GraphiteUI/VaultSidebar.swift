@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.52
- * Date: 17/11/2026
+ * Version: 0.53
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -940,7 +940,10 @@ struct VaultEntryMenu: View {
         Button("Copy Vault Path", systemImage: "doc.on.doc") { Pasteboard.copy(entry.path.rawValue) }
         RevealInFinderButton(path: entry.path, vaultRoot: workspace.folderAccess?.root)
         Button("Copy Graphite URL", systemImage: "link") { Pasteboard.copy(workspace.openingLink(to: entry.path)) }
-        if DocumentKind(path: entry.path) == .markdown { NotePDFFileMenuButton(path: entry.path) }
+        if DocumentKind(path: entry.path) == .markdown {
+            NotePDFFileMenuButton(path: entry.path)
+            NotePresentationButton(path: entry.path)
+        }
         bookmarkButton
         CommunityPluginFileActionsButton(host: workspace.communityPlugins, path: entry.path)
         Divider()
