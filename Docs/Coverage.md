@@ -2,7 +2,7 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-26.
+Last updated: 2026-11-27.
 
 ## Block handles drag and turn blocks in Live Preview: 2026-11-26
 
@@ -28,7 +28,8 @@ Last updated: 2026-11-26.
 
 - **Automated tests, passing:** Node: `tests/meta-bind.test.js` (7), `tests/meta-bind-runtime-gaps.test.js` (3), the whole runtime suite with every pinned plugin (203). Swift: `CommunityPluginCopyParagraphsInWebKitTests` (1, WebKit on the Mac). Hosted: `CommunityPluginHostTests` Meta Bind tests (3: the course page's buttons and field, the progress bar in Live Preview, a button in a note open in Live Preview) in a dedicated iPad simulator (iOS 27.2) and the Mac app.
 - **Measured:** the plugins' page with Templater and Meta Bind on the course page, 94 to 100 MB in the iPad simulator (80 MB with Templater alone) and 92 MB on the Mac (47 MB), each copy of a block 57 MB in the simulator and 14 MB on the Mac.
-- **Not verified:** taps by finger and clicks by hand, the physical iPad, JavaScript actions with the JS Engine plugin. Open: once in five Mac runs, the course page's line of fields, drawn again after the page was opened again, came out as Graphite's own rendering.
+- **Checked 2026-11-27:** the buttons and status field tapped by finger in an iPad simulator through a throwaway XCUITest bundle, and clicked with mouse events given to the web view on the Mac (`testMetaBindsCoursePageButtonsAnswerMouseClicksOnTheMac`). Fixed then: a block drawn again could keep its earlier drawing's late failure, which showed a line of fields as Graphite's own text (issue #235, `CommunityPluginRedrawnSectionTests`), and a note opened again took the text of an older session of it that had missed another app's write (`MarkdownSessionOutdatedSiblingTests`).
+- **Not verified:** a click by a person's mouse in the Mac app, the physical iPad, JavaScript actions with the JS Engine plugin.
 
 ## Relations, rollups, new notes from a view and course dashboards in Bases: 2026-11-26
 

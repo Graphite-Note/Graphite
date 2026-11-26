@@ -6,8 +6,8 @@
  *              shows, in WebKit inside the app, on the iPad and the Mac.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 import XCTest
 import SwiftUI
@@ -41,6 +41,10 @@ extension CommunityPluginHostTests {
         try await waitUntil("the status field writes the property", timeoutSeconds: 10) {
             (try? String(contentsOf: coursePage, encoding: .utf8))?.contains("status: Done\n") == true
         }
+        // For about a second after its own write Meta Bind ignores the note's changes, by its design
+        // (five cycles of 200 ms), and later writes back what it holds: Templater's count of lectures, made
+        // within that second, would be lost, in Obsidian too. A person is slower than this test.
+        try await waitUntilMetaBindTakesChanges(of: Self.coursePagePath, host: host)
 
         try await press(button: "New assignment", host: host)
         let assignment = vault.appendingPathComponent("Signals and Systems/Assignments/New assignment.md")
@@ -60,10 +64,20 @@ extension CommunityPluginHostTests {
         try await waitUntil("Graphite opens the lecture") { workspace.layout.activeTab.path?.rawValue == "Signals and Systems/Lectures/Lecture 2.md" }
         try await waitUntil("the course page counts the lecture") { (try? String(contentsOf: coursePage, encoding: .utf8))?.contains("lectures_held: 2\n") == true }
 
+
+        // The line of fields again, on the page opened again: drawn again while the reading view lays
+        // the page out, it stays Meta Bind's (once in five runs on the Mac it came out as Graphite's
+        // own text, issue #235: `CommunityPluginRedrawnSectionTests`).
+        try await openInReadingView(Self.coursePagePath, in: workspace)
+        try await choose("Not started", inSelectOf: "mb-input-type-inlineSelect", host: host)
+        try await waitUntil("the status field writes the property again", timeoutSeconds: 10) {
+            (try? String(contentsOf: coursePage, encoding: .utf8))?.contains("status: Not started\n") == true
+        }
+
         let courseText = try String(contentsOf: coursePage, encoding: .utf8)
         let original = try String(contentsOf: Self.courseVault.appendingPathComponent(Self.coursePagePath), encoding: .utf8)
         XCTAssertEqual(courseText, original.replacingOccurrences(of: "lectures_held: 1", with: "lectures_held: 2")
-            .replacingOccurrences(of: "status: In progress", with: "status: Done"), "the course page changed in its two properties alone")
+            .replacingOccurrences(of: "status: In progress", with: "status: Not started"), "the course page changed in its two properties alone")
         XCTAssertNil(host.runtimeProblems[Self.metaBindIdentifier], "Meta Bind failed nowhere")
     }
 
@@ -124,6 +138,75 @@ extension CommunityPluginHostTests {
         }
         try await waitUntil("the open note takes the change in", timeoutSeconds: 10) { session.text == changed }
     }
+
+    /// Until Meta Bind's cache of the note takes another app's changes again (its write lock is over).
+    private func waitUntilMetaBindTakesChanges(of path: String, host: CommunityPluginHost) async throws {
+        let script = """
+        const source = window.GraphitePluginRuntime.app.plugins.plugins['obsidian-meta-bind-plugin'].mb.metadataManager.sources.get('frontmatter');
+        const item = source.cache.get(path);
+        return !item || item.externalWriteLock === 0;
+        """
+        try await waitUntil("Meta Bind takes the note's changes again", timeoutSeconds: 10) {
+            (try? await host.webView?.callAsyncJavaScript(script, arguments: ["path": path], in: nil, contentWorld: .page)) as? Bool == true
+        }
+    }
+
+    #if os(macOS)
+    /// The course page's buttons clicked with the mouse: a mouse-down and mouse-up at each button's place in
+    /// the window, given to the web view under it, which WebKit makes a click in the copy as a person's.
+    func testMetaBindsCoursePageButtonsAnswerMouseClicksOnTheMac() async throws {
+        let (workspace, vault) = try await workspaceAndVaultWithBuiltPlugins([Self.templaterIdentifier, Self.metaBindIdentifier], notes: try courseVaultNotes())
+        let host = workspace.communityPlugins
+        try await waitUntil("Meta Bind draws its blocks", timeoutSeconds: 15) { host.codeBlockLanguages.contains("meta-bind-button") }
+        try await openInReadingView(Self.coursePagePath, in: workspace)
+
+        try await click(button: "New assignment", host: host)
+        let assignment = vault.appendingPathComponent("Signals and Systems/Assignments/New assignment.md")
+        try await waitUntil("a click on New assignment makes its note", timeoutSeconds: 15) { FileManager.default.fileExists(atPath: assignment.path) }
+        try await waitUntil("Graphite opens the new assignment") { workspace.layout.activeTab.path?.rawValue == "Signals and Systems/Assignments/New assignment.md" }
+
+        try await openInReadingView(Self.coursePagePath, in: workspace)
+        try await click(button: "Start lecture", host: host)
+        let lecture = vault.appendingPathComponent("Signals and Systems/Lectures/Lecture 2.md")
+        try await waitUntil("a click on Start lecture makes the second lecture", timeoutSeconds: 15) { FileManager.default.fileExists(atPath: lecture.path) }
+        try await waitUntil("Graphite opens the lecture") { workspace.layout.activeTab.path?.rawValue == "Signals and Systems/Lectures/Lecture 2.md" }
+    }
+
+    /// Posts a click at the middle of the button labelled `label` in whichever copy shows it.
+    private func click(button label: String, host: CommunityPluginHost) async throws {
+        let frameScript = """
+        const button = Array.from(document.querySelectorAll('button.mb-button-inner')).find((candidate) => candidate.textContent.trim() === label);
+        if (!button) return null;
+        const bounds = button.getBoundingClientRect();
+        return [bounds.left + bounds.width / 2, bounds.top + bounds.height / 2];
+        """
+        var target: (webView: WKWebView, point: CGPoint)?
+        // Found once the copy shows it and the window's views under that point are the copy's: the
+        // reading view settles its layout as the note opens.
+        try await waitUntil("a copy shows \(label) under the pointer", timeoutSeconds: 15) {
+            for webView in self.copyWebViews(host: host) {
+                guard let middle = try? await webView.callAsyncJavaScript(frameScript, arguments: ["label": label], in: nil, contentWorld: .defaultClient) as? [Double],
+                      middle.count == 2, let window = webView.window else { continue }
+                let point = CGPoint(x: middle[0], y: middle[1])
+                guard window.contentView?.hitTest(webView.convert(point, to: nil))?.isDescendant(of: webView) == true else { continue }
+                target = (webView, point)
+                return true
+            }
+            return false
+        }
+        guard let target, let window = target.webView.window else { return XCTFail("No copy shows \(label) in a window") }
+        let location = target.webView.convert(target.point, to: nil)
+        // The app is not active in a test run (macOS refuses a test's activation), and a web view in a
+        // window that is not key takes a first click only to activate it: the mouse events are handed to
+        // the web view, as AppKit hands them to the view under the pointer, and WebKit makes them a click.
+        let down = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseDown, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                    windowNumber: window.windowNumber, context: nil, eventNumber: 1, clickCount: 1, pressure: 1))
+        target.webView.mouseDown(with: down)
+        let up = try XCTUnwrap(NSEvent.mouseEvent(with: .leftMouseUp, location: location, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                  windowNumber: window.windowNumber, context: nil, eventNumber: 2, clickCount: 1, pressure: 0))
+        target.webView.mouseUp(with: up)
+    }
+    #endif
 
     // MARK: The demo vault
 

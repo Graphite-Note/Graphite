@@ -4,9 +4,9 @@
  * Layer: UI
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
- * Authors: Bahey Shalash, felixchvl
- * Version: 0.19
- * Date: 11/11/2026
+ * Authors: Bahey Shalash, Félix Chevalier
+ * Version: 0.28
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -179,10 +179,13 @@ final class MarkdownSession {
         self.openNotes = openNotes
         fileKey = OpenNoteFiles.key(for: try path.url(in: store.root))
         // Open in another window already: this one shows its text, edits not saved yet included.
-        if let openSession = openNotes?.register(self, file: fileKey) {
+        // A session that holds no edit and read an older version of the file (a closed tab's session,
+        // released a few seconds later, while another app wrote the note) takes this fresh read
+        // instead: its text would bring the old version back, and a save would write it over the file.
+        if let openSession = openNotes?.register(self, file: fileKey), openSession.hasUnsavedChanges || openSession.revision == revision {
             takeSharedText(openSession.text)
             takeSavedState(of: openSession)
-        }
+        } else { shareText(); shareSavedState() }
     }
 
     // MARK: One note in several windows

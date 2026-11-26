@@ -6,8 +6,8 @@
  *              and taps sent back.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.13
- * Date: 26/11/2026
+ * Version: 0.14
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -84,6 +84,10 @@ final class CommunityPluginShownCodeBlock {
     var height: CGFloat = 0
     @ObservationIgnored private weak var host: CommunityPluginHost?
     @ObservationIgnored private var request: CommunityPluginReadingBlockRequest?
+    /// Counts the drawings asked for, so only the newest one's answer is taken. A block is drawn again
+    /// under the same identifier when its width changes, and the plugins' page then drops the earlier
+    /// drawing, whose answer ("closed while it was drawn") can arrive after the newer one's.
+    @ObservationIgnored private var drawingNumber = 0
     /// Ticks the note's task on a line of a section, counted from the section's first line.
     @ObservationIgnored var tickTask: ((Int) -> Void)?
 
@@ -100,6 +104,8 @@ final class CommunityPluginShownCodeBlock {
         // Drawing again under the same identifier replaces the plugin's earlier block there;
         // a separate release could arrive after this drawing and remove it.
         self.request = request
+        drawingNumber += 1
+        let thisDrawing = drawingNumber
         host.shownCodeBlocks[blockIdentifier] = self
         if let lastCopy = host.lastCodeBlockCopies[request] {
             appearance = .drawn(html: lastCopy.html)
@@ -119,7 +125,7 @@ final class CommunityPluginShownCodeBlock {
         message.merge(host.sectionInformation(for: request)) { _, new in new }
         do {
             let answer = try await host.send(message, timeout: Self.drawingTimeout)
-            guard self.request == request else { return }
+            guard self.request == request, drawingNumber == thisDrawing else { return }
             if let styles = answer["styles"] as? String { host.updatePluginStyleSheets(styles) }
             if answer["isDrawn"] as? Bool == true, answer["isChanged"] as? Bool == false {
                 appearance = .unchanged
@@ -131,7 +137,7 @@ final class CommunityPluginShownCodeBlock {
                 appearance = .failed(answer["message"] as? String ?? "The plugin did not draw this block.")
             }
         } catch {
-            guard self.request == request else { return }
+            guard self.request == request, drawingNumber == thisDrawing else { return }
             appearance = .failed(error.localizedDescription)
         }
     }
