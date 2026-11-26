@@ -477,7 +477,7 @@ final class EditingContinuityTests: XCTestCase {
         XCTAssertEqual(editor.selectedRange, cursor, "Restyling keeps the cursor where it was.")
         XCTAssertTrue(editor.isFirstResponder)
         // The restyled text places its blocks in a layout pass of its own. Looked for at once, the block was not found on
-        // the owner's iPad (2026-11-04), whose software keyboard comes up as the editor begins editing: it is looked for
+        // the physical iPad (2026-11-04), whose software keyboard comes up as the editor begins editing: it is looked for
         // once a block is placed again, and must still be the same view.
         try await waitUntil("the math block is placed again") { self.renderedBlockViews(in: editor).count == 1 }
         XCTAssertTrue(renderedBlockViews(in: editor).contains { view in view === blockViewBefore }, "The rendered math block is kept, not built again.")
@@ -511,7 +511,7 @@ final class EditingContinuityTests: XCTestCase {
         }
         // Georgia's figures are old style and narrow. Words in letters set as wide in Georgia as in the system font when
         // the device has Bold Text on, which makes the system font semibold: "Illustrated quietly" differed by 1.14 points
-        // on the owner's iPad (2026-11-04), as Georgia and the semibold system font do on a Mac.
+        // on the physical iPad (2026-11-04), as Georgia and the semibold system font do on a Mac.
         let words = "pages 1234567890 1234567890"
         let georgiaWidth = (words as NSString).size(withAttributes: [.font: typography.textFont(ofSize: size)]).width
         let systemWidth = (words as NSString).size(withAttributes: [.font: UIFont.systemFont(ofSize: size)]).width

@@ -2,7 +2,7 @@
  * File: CanvasRecognizersResetHostedTests.swift
  * ---------------------------------------------
  * Layer: Tests
- * Description: Hosted tests of the freeze of 2026-11-18 on the owner's simulator: the recognizers that follow a
+ * Description: Hosted tests of the freeze of 2026-11-18 on a simulator: the recognizers that follow a
  *              canvas's stroke fail once every touch has lifted, so UIKit resets the canvas's recognizers, and a canvas
  *              whose drawing recognizer is left finished with no touch down has its recognizers reset within seconds.
  *
@@ -20,7 +20,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner drew with the highlighter and the page stopped taking ink, while the toolbar still worked; switching tabs
+/// Drawn with the highlighter, the page stopped taking ink, while the toolbar still worked; switching tabs
 /// put it right (2026-11-18, "Graphite Highlighter Checks iPad"). Read live: PencilKit's drawing recognizer was left
 /// ended and never reset, its canvas still drawing the stroke of a touch that had ended and left the window, and
 /// Graphite's `StrokeHoldRecognizer` and `DrawnStrokeFollower` on the canvas sat in possible, never failed, holding no
@@ -125,7 +125,7 @@ final class CanvasRecognizersResetHostedTests: XCTestCase {
         let canvas = try XCTUnwrap(coordinator.canvasesByPage[ObjectIdentifier(page)])
 
         canvas.drawingGestureRecognizer.state = .ended
-        XCTAssertEqual(canvas.drawingGestureRecognizer.state, .ended, "Left ended, as the owner's simulator showed it.")
+        XCTAssertEqual(canvas.drawingGestureRecognizer.state, .ended, "Left ended, as the simulator showed it.")
         let stuck = PDFPaneHealthMonitor.stuckGestureSeconds
         func repaired(touchIsDown: Bool, at now: TimeInterval) -> Bool {
             coordinator.repairCanvases(touchIsDown: touchIsDown, now: now).contains { repair in repair.contains("left drawing") }

@@ -15,11 +15,11 @@ import GraphiteCore
 @testable import GraphiteUI
 
 /// The window's root view on the iPad simulator over a small `OwnerShapedVault`, as `ViewSwitchingMacTests` opens it on
-/// the Mac; `PerformanceBenchmarkTests.testSwitchingViewsInAVaultOfTheOwnersSize` times the switches at the owner's size.
+/// the Mac; `PerformanceBenchmarkTests.testSwitchingViewsInAVaultOfTheOwnersSize` times the switches at the reported size.
 /// Numbers are in `Docs/View-switching-speed-todo.md` section 3.
 @MainActor
 final class ViewSwitchingHostedTests: XCTestCase {
-    /// The budget catches a freeze such as the 4.5 s the Mac's hidden Tags view took in the owner's vault.
+    /// The budget catches a freeze such as the 4.5 s the Mac's hidden Tags view took in the real vault.
     func testSwitchingBetweenLibraryAndListLeavesTheMainThreadFree() async throws {
         try TimingBudgets.requireTheOwnersDevice()
         let (workspace, window) = try await ViewSwitchingWindow.open(.small, for: self)

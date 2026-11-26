@@ -21,7 +21,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: the tools were "squished to the right" of the tab bar with their sizes and
+/// The report of 2026-11-04: the tools were "squished to the right" of the tab bar with their sizes and
 /// colors behind one control, and the bar looked different upright and sideways. These tests put a PDF that is
 /// written on in a real window at both sizes of the 11-inch iPad and read where the bar's row stands and which form
 /// it took. Nothing here plays sound.
@@ -120,7 +120,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
         let savedPresetIndex = toolbox.toolInUse == .ink ? toolbox.presetInUseIndex : nil
         defer { if let savedPresetIndex { toolbox.usePreset(at: savedPresetIndex) } }
         toolbox.usePreset(at: 0)
-        // The bar shows the device's own presets: on the owner's iPad (2026-11-04) the upright bar folded to its compact form.
+        // The bar shows the device's own presets: on the physical iPad (2026-11-04) the upright bar folded to its compact form.
         let savedToolbarStyle = HostedDevicePreferences.value(forKey: PencilToolbarStyle.preferenceKey)
         print("PENCIL-BAR placement: presets \(toolbox.presets.map(\.ink.rawValue)), toolbar style \(String(describing: savedToolbarStyle))")
         var formsByOrientation: [String: PencilToolRowForm] = [:]
@@ -136,7 +136,7 @@ final class PencilBarPlacementHostedTests: XCTestCase {
             attachScreenshot(of: window, named: "Fixed Pencil bar over a PDF, 11-inch iPad \(name)")
             let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
             let pdfFrame = pdfView.convert(pdfView.bounds, to: window)
-            // On the owner's iPad (2026-11-05) the upright PDF was 514 points wide, from 320 to 834: the sidebar stood
+            // On the physical iPad (2026-11-05) the upright PDF was 514 points wide, from 320 to 834: the sidebar stood
             // beside it, left automatic, and the bar folded to scrolling colors. The window's first shape now hides it upright.
             print("PENCIL-BAR placement \(name): window \(window.bounds.size), PDF \(pdfFrame), row \(shownRow.frameInWindow), \(shownRow.arrangement), "
                   + layoutDescription(in: window))
@@ -244,14 +244,14 @@ final class PencilBarPlacementHostedTests: XCTestCase {
 
     // MARK: HUNT-317: every favorite color and the ruler on the bar
 
-    /// The owner's report of 2026-11-04: "what happened to the row of colors we used to see", and the ruler and the other
+    /// The report of 2026-11-04: "what happened to the row of colors we used to see", and the ruler and the other
     /// tools only behind the bar's "…". The row alone, with the pen in use and the default favorite colors, at 514 points
     /// (upright beside the sidebar), 834 (upright) and 1,194 (sideways): black and every favorite color are whole on
     /// screen, each its own button, and the ruler is a button on the bar. The form shown is the one `PencilToolRowLayout`
     /// chooses for the width, and the row is as wide as it says.
     func testEveryFavoriteColorAndTheRulerAreButtonsOnTheBarAtEveryWidthOfTheElevenInchIPad() async throws {
         // Settings of their own, which hold no colors and no toolbox: the row shows the default favorite colors and the
-        // default presets, with the pen in use, whatever this device holds (the owner's iPad has no pen preset).
+        // default presets, with the pen in use, whatever this device holds (the physical iPad has no pen preset).
         let suiteName = "PencilBarColors-\(UUID().uuidString)"
         let isolatedDefaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         let toolbox = PencilToolbox(defaults: isolatedDefaults)

@@ -220,7 +220,7 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
         try await waitUntil { !self.descendants(of: controller.view, matching: MarkdownTextView.self).isEmpty }
 
         /// The navigation bar over the note: a sidebar beside it, as an iPad's window this wide shows it on the
-        /// owner's iPad, keeps its own bar, which is not over the note.
+        /// physical iPad, keeps its own bar, which is not over the note.
         func visibleNavigationBarHeight() -> CGFloat {
             let noteFrames = descendants(of: window, matching: MarkdownTextView.self).filter { editor in editor.window === window }
                 .map { editor in editor.convert(editor.bounds, to: window) }
@@ -243,7 +243,7 @@ final class LayoutNarrowWindowsHostedTests: XCTestCase {
 
         // A device has a software keyboard, which a simulator with a hardware keyboard never shows: one still leaving
         // the text view of an earlier test sends its hide after the show posted here, and the bar comes back as it
-        // should. The owner's iPad timed out here on 2026-11-04 and 2026-11-05. The show is posted once the keyboard is
+        // should. The physical iPad timed out here on 2026-11-04 and 2026-11-05. The show is posted once the keyboard is
         // quiet, and again whenever the device's keyboard answered after it.
         let keyboardNotifications = KeyboardNotificationCounter()
         defer { keyboardNotifications.stop() }

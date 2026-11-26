@@ -841,7 +841,7 @@ final class PicturesAndPaperTests: XCTestCase {
         try await waitUntil { controller.presentedViewController == nil }
     }
 
-    /// The owner's choice of 2026-11-04 (HUNT-312): the fixed bar is a row of its own, centered over the PDF, in every
+    /// The choice of 2026-11-04 (HUNT-312): the fixed bar is a row of its own, centered over the PDF, in every
     /// width. At the end of the tab bar, where it went while the tab bar had room, its tools were squeezed to the right
     /// edge with their sizes and colors behind one control.
     func testTheToolsAreARowOfTheirOwnCenteredOverThePageWithOrWithoutASplit() async throws {

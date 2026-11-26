@@ -22,14 +22,14 @@ import GraphiteCore
 @testable import GraphiteUI
 
 /// Docs/PDF-annotation-todo.md, section 2: "On the Mac, the same with overlapping pictures, a text box and a shape". The
-/// owner declined computer use and a Mac UI test needs Automation Mode, so this runs inside the app as a hosted test, as
+/// computer use is not available and a Mac UI test needs Automation Mode, so this runs inside the app as a hosted test, as
 /// MacPDFMarkupInAppHostedTests does, but in the app's own window, which SwiftUI's scene made: clicks and keys put in the
 /// app's event queue, right-click menus asked of the view under the pointer and their items chosen as a click chooses
 /// them. Tools › Arrange's items are checked through the actions they call and the dimming they read
 /// (`PDFArrangeMenuActions`, made from the markup row as the row makes it for the menu bar), and the menu bar is read for
 /// their titles. A click in the menu bar itself is not made: SwiftUI enables those items only while the app is in front,
 /// and macOS 27 refuses to bring a test host there (`NSApp.activate()`, `activateIgnoringOtherApps:` and Launch Services
-/// opening the app's own bundle, 2026-11-17), so the owner checks that click by hand (Docs/PDF-annotation-todo.md,
+/// opening the app's own bundle, 2026-11-17), so that click is checked by hand (Docs/PDF-annotation-todo.md,
 /// section 2). Runs only with `TEST_RUNNER_GRAPHITE_MAC_ARRANGE` given to xcodebuild as a folder, where it writes a picture of each step and a
 /// line of notes for each; a person looks at them.
 @MainActor
@@ -120,7 +120,7 @@ final class MacPDFArrangeMenusInAppHostedTests: XCTestCase {
     private func arrangeThroughBothRoutes() async throws {
         try note("started")
         // Twice on 2026-11-17 the app started hidden, its windows ordered out, and no click reached them. Shown again
-        // without coming to the front, so the owner's app in front keeps the keyboard.
+        // without coming to the front, so the installed app in front keeps the keyboard.
         if NSApp.isHidden {
             NSApp.unhideWithoutActivation()
             try note("the app started hidden and was shown without activation")

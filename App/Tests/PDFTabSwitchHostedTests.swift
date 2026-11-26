@@ -19,7 +19,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's recording of 2026-11-04: back on a PDF, its page showed at another zoom, then blank for about three
+/// The recording of 2026-11-04: back on a PDF, its page showed at another zoom, then blank for about three
 /// seconds, then zoomed in, then jumped to a fitted zoom. Each showing built a new view: the document laid out again,
 /// each page's ink decoded again into a new canvas, the zoom fitted before the place was restored; opening the PDF
 /// again in the same tab read the file again too. Counted here on one switch: the view and canvases made, the ink

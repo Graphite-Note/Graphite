@@ -172,7 +172,7 @@ final class MapUserLocationHostedTests: XCTestCase {
 
     // MARK: The vault map
 
-    /// The owner's "ça se focalise pas" may also have meant the notes: the vault map frames every one.
+    /// The report "ça se focalise pas" may also have meant the notes: the vault map frames every one.
     func testTheVaultMapFramesEveryPlacedNoteWhenItOpens() async throws {
         let workspace = try await makeWorkspace()
         let mapView = try await mapView(in: host(VaultMapScreen(workspace: workspace)))

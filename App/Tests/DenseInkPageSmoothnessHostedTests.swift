@@ -18,7 +18,7 @@ import GraphiteCore
 @testable import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-12, after importing a Goodnotes formula sheet (5,159 and 6,145 strokes on two A3
+/// The report of 2026-11-12, after importing a Goodnotes formula sheet (5,159 and 6,145 strokes on two A3
 /// landscape pages): "moving etc etc is supppperrrr slow and not smooth". PDFKit on the iPad keeps a layer for every
 /// annotation of a page, also while the page's canvas hides the ink, so such a page has 6,000 of them. Graphite looked
 /// at every one at each frame of a scroll and drew each again at the screen's resolution at each zoom, and it showed a

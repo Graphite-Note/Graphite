@@ -2,7 +2,7 @@
  * File: PencilBarOwnersToolboxHostedTests.swift
  * ---------------------------------------------
  * Layer: Tests
- * Description: The fixed Pencil bar with the owner's own toolbox (a monoline, a pencil and a highlighter, no pen) on the
+ * Description: The fixed Pencil bar with the reported toolbox (a monoline, a pencil and a highlighter, no pen) on the
  *              11-inch iPad, sideways, beside the sidebar, upright, and upright beside Undo, Redo and Write: the buttons
  *              wholly on screen, printed, with every favorite color, the ruler, the writing tools and Add Image among
  *              them (HUNT-317).
@@ -17,15 +17,15 @@ import XCTest
 import SwiftUI
 @testable import GraphiteUI
 
-/// A hosted run on the owner's iPad found his saved toolbox has no pen preset, and his upright bar folded with the
-/// colors' Other Color, Shapes and Add Image behind the More control. This test sets his toolbox up through the
+/// A hosted run on the physical iPad found the saved toolbox has no pen preset, and the upright bar folded with the
+/// colors' Other Color, Shapes and Add Image behind the More control. This test sets the toolbox up through the
 /// toolbox's own store, in settings of its own (the device's are neither read nor changed), and reads the buttons of
-/// the bar the app builds, with each of his inks, the eraser and the lasso in use. `PencilBarOwnersToolboxTests` (Mac)
+/// the bar the app builds, with each of its inks, the eraser and the lasso in use. `PencilBarOwnersToolboxTests` (Mac)
 /// checks the layout's decision for every toolbox shape. Nothing here plays sound.
 @MainActor
 final class PencilBarOwnersToolboxHostedTests: XCTestCase {
-    /// The owner's toolbox as the store keeps it (`GraphitePencilToolbox.v2`): only the tool kinds, colors, widths and
-    /// counts of his iPad's settings of 2026-11-04. The same record as `PencilBarOwnersToolboxTests.ownersToolboxRecord`.
+    /// The reported toolbox as the store keeps it (`GraphitePencilToolbox.v2`): only the tool kinds, colors, widths and
+    /// counts of the device's settings of 2026-11-04. The same record as `PencilBarOwnersToolboxTests.ownersToolboxRecord`.
     private static let ownersToolboxRecord = """
     {"toolInUse":"ink","presetInUseIndex":0,"erasesWholeStrokes":false,"eraserWidth":4,"eraserWidthChoices":[4,36,64],"presets":[
     {"id":"7D0E3C1A-0000-4000-8000-000000000001","ink":"monoline","colorHex":"#086ddd","width":1.6,"widthChoices":[0.5,1.6,3],"opacity":1},
@@ -58,7 +58,7 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
             try? PencilBarPlacementHostedTests.setAccessibilityRuntimeEnabled(false) // Left on, it slows later tests.
             isolatedDefaults.removePersistentDomain(forName: suiteName)
         }
-        XCTAssertEqual(toolbox.presets.map(\.ink), [.monoline, .pencil, .highlighter], "The store reads his toolbox, not the default presets.")
+        XCTAssertEqual(toolbox.presets.map(\.ink), [.monoline, .pencil, .highlighter], "The store reads the reported toolbox, not the default presets.")
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
         weak var previousController: UIViewController?
         for place in Self.places {
@@ -80,11 +80,11 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
                 let visibleLabels = try await labelsWhollyOnScreen(in: controller.view, window: window, waitingFor: label)
                 let shownRow = try XCTUnwrap(PencilToolRowForm.lastShown)
                 let pickerWidths = Self.segmentedControls(in: controller.view).map { picker in picker.bounds.width }
-                print("Owner's toolbox, \(label): \(shownRow.arrangement); the tool's choices \(pickerWidths) points wide; on the bar: \(visibleLabels.joined(separator: ", "))")
+                print("Reported toolbox, \(label): \(shownRow.arrangement); the tool's choices \(pickerWidths) points wide; on the bar: \(visibleLabels.joined(separator: ", "))")
                 let screenshot = XCTAttachment(image: UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                     window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                 })
-                screenshot.name = "Owner's Pencil bar, \(label): \(shownRow.arrangement)"
+                screenshot.name = "Reported Pencil bar, \(label): \(shownRow.arrangement)"
                 screenshot.lifetime = .keepAlways
                 add(screenshot)
                 XCTAssertNotEqual(shownRow.form, .condensed, "\(label): the colors are on the bar.")
@@ -95,7 +95,7 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
         }
     }
 
-    /// Takes up his inks in turn, then the eraser and the lasso; returns the tool's name.
+    /// Takes up its inks in turn, then the eraser and the lasso; returns the tool's name.
     private func takeUpTool(at toolIndex: Int, of toolbox: PencilToolbox) -> String {
         if toolbox.presets.indices.contains(toolIndex) {
             toolbox.usePreset(at: toolIndex)
@@ -133,7 +133,7 @@ final class PencilBarOwnersToolboxHostedTests: XCTestCase {
         }
     }
 
-    /// What must be on the bar: each of his inks, the eraser, the lasso, the ruler, Add Image, black and every favorite
+    /// What must be on the bar: each of its inks, the eraser, the lasso, the ruler, Add Image, black and every favorite
     /// color (the highlighter's colors while it is in use), and Undo and Redo where the bar shares their row.
     private func expectedLabels(toolbox: PencilToolbox, sharesRowWithUndoRedoAndWrite: Bool) -> [String] {
         let colors = PencilToolRowLayout.editsHighlighterColors(toolbox) ? PaletteColor.defaultHighlighterPalette.map(\.name)

@@ -19,7 +19,7 @@ import SwiftUI
 import GraphiteCore
 @testable import GraphiteUI
 
-/// The owner's request of 2026-11-13 ("not the hold and move left situation we have"); since 2026-11-14 a color lifts
+/// The request of 2026-11-13 ("not the hold and move left situation we have"); since 2026-11-14 a color lifts
 /// after a short hold, as a quick drag scrolls the strip (`PencilColorRowScrollingHostedTests`). The bar's colors are shown on
 /// their own in a window, at a known place, and touched through UIKit's event path as the screen touches them; their
 /// lists are kept in settings of the test's own. Nothing here plays sound.
@@ -166,7 +166,7 @@ final class PencilColorDragHostedTests: XCTestCase {
         XCTAssertEqual(toolbox.presetInUse.colorHex, TextColorMarkup.canonicalHex(green.hex), "A drag chooses no color.")
     }
 
-    /// The owner's report of 2026-11-17: a lifted color that rose with the finger read as the row moving up and down,
+    /// The report of 2026-11-17: a lifted color that rose with the finger read as the row moving up and down,
     /// and two colors dragged down came off the row. A lifted color now follows the finger along the row only: a drag
     /// up or down, held or not, removes nothing, and its sideways part still arranges.
     func testALiftedColorStaysOnTheRowAndADragUpOrDownRemovesNothing() async throws {

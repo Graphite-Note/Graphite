@@ -9,7 +9,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The scenes the owner's iPad froze in, kept responsive: a long note read aloud in the
+/// The scenes the physical iPad froze in, kept responsive: a long note read aloud in the
 /// reading view, and a PDF written on in a narrow window while it is read aloud. Each one
 /// watches the main thread from another thread, counts how often the main run loop wakes
 /// once nothing changes, and listens for SwiftUI's own warnings of update loops.
@@ -22,7 +22,7 @@ final class MainThreadResponsivenessTests: XCTestCase {
 
     /// Nothing here may be heard: the long note's test gives the reading view each word itself and makes no speech, and the
     /// tests that read aloud do it in this process, whose speech renders and is discarded (`AudioOutputRoute`). On
-    /// 2026-11-12 a full run's audio watch stopped at the long note's test; the speaker was held for the owner's browser
+    /// 2026-11-12 a full run's audio watch stopped at the long note's test; the speaker was held for a browser
     /// (Brave's audio helper, PID 25619, which another run's watch also caught, during `PDFGestureWinsTests`), not by this.
     override func setUp() async throws {
         XCTAssertEqual(AudioOutputRoute.thisProcess, .silent, "The hosted app renders sound and discards it.")
@@ -88,7 +88,7 @@ final class MainThreadResponsivenessTests: XCTestCase {
 
     /// A long note in the reading view, read aloud: each word read updates the view, and an
     /// update of a 0.8 MB note takes no longer than the budget. The view hashed the whole
-    /// note at every update; the owner's iPad was found doing that when the system ended a
+    /// note at every update; the physical iPad was found doing that when the system ended a
     /// frozen Graphite (2026-10-12).
     func testALongNoteInTheReadingViewUpdatesQuicklyAsEachWordIsRead() async throws {
         let folder = try makeDirectory()
@@ -199,7 +199,7 @@ final class MainThreadResponsivenessTests: XCTestCase {
     }
 
     /// A PDF written on in a window beside another app while it is read aloud, with the
-    /// floating player, as on the owner's iPad: SwiftUI reports no update cycle, and the
+    /// floating player, as on the physical iPad: SwiftUI reports no update cycle, and the
     /// main thread never stops answering for long.
     func testAPDFReadAloudWhileWrittenOnInANarrowWindowMakesNoUpdateCycle() async throws {
         let folder = try makeDirectory()

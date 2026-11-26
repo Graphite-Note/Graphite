@@ -73,7 +73,7 @@ final class InkSelectionTests: XCTestCase {
         XCTAssertEqual(descendants(of: canvas, matching: SelectionFrameView.self).count, 1)
 
         // A loop reaching 10 points into both takes neither; one over their left third takes both
-        // (owner 2026-11-17: a loop around part of a stroke takes it), as does one around everything.
+        // (requested 2026-11-17: a loop around part of a stroke takes it), as does one around everything.
         selection.selectContents(enclosedBy: loop(around: CGRect(x: 80, y: 80, width: 30, height: 140)))
         XCTAssertTrue(selection.selectedStrokeIndices.isEmpty)
         XCTAssertTrue(descendants(of: canvas, matching: SelectionFrameView.self).isEmpty)
@@ -164,7 +164,7 @@ final class InkSelectionTests: XCTestCase {
     /// exactly, with no "changed in a way this step does not know", through the real canvas and UIKit's touches.
     func testUndoAndRedoWorkStepByStepAfterTheLassoAndTheHighlighter() async throws {
         XCTAssertNil(SynthesizedTouches.unavailableReason)
-        // The highlighter as Apple Notes' draws it, the default, whatever the device has saved: the owner's iPad has the
+        // The highlighter as Apple Notes' draws it, the default, whatever the device has saved: the physical iPad has the
         // even one, and this test ran with it on 2026-11-04. Its saved value is put back.
         let restoreEvenHighlighter = HostedDevicePreferences.set(false, forKey: EvenHighlighterPreference.key)
         defer { restoreEvenHighlighter() }
@@ -1192,7 +1192,7 @@ extension InkSelectionTests {
             }
         }
 
-        // The comparison sheet for the owner: three candidates among the bar's own tool
+        // The comparison sheet: three candidates among the bar's own tool
         // glyphs, in light and dark, not in use and in use.
         let toolbox = PencilToolbox(defaults: UserDefaults(suiteName: "LaserGlyphSheet-\(UUID().uuidString)")!)
         func row(candidate: String?, isDark: Bool) -> some View {

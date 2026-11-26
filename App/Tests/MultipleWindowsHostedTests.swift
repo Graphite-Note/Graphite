@@ -5,7 +5,7 @@ import SwiftUI
 import GraphiteCore
 @testable import GraphiteUI
 
-/// The iPad runs several Graphite windows and the iPhone one (owner, 2026-10-21): the scene
+/// The iPad runs several Graphite windows and the iPhone one (decided 2026-10-21): the scene
 /// manifest says so, and a window asked for with a dragged file's activity connects a scene
 /// of its own beside the app's window.
 @MainActor

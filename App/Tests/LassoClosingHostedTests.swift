@@ -19,7 +19,7 @@ import GraphiteCore
 @testable import GraphiteUI
 
 /// HUNT-318: the lasso closes the loop by itself when the hand lifts, and takes what it circles
-/// only partly (owner, 2026-11-04). The ink is drawn by PencilKit from stand-in touches
+/// only partly (reported 2026-11-04). The ink is drawn by PencilKit from stand-in touches
 /// (`SynthesizedStrokes`); the loop is a finger through UIKit's own event path
 /// (`SynthesizedTouches`), so it goes through the lasso's recognizer, `handleLoop`, as a hand's.
 @MainActor

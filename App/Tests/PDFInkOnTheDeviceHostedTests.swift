@@ -2,7 +2,7 @@
  * File: PDFInkOnTheDeviceHostedTests.swift
  * ----------------------------------------
  * Layer: Tests
- * Description: On the owner's iPad, a densely written notebook zoomed in gives its memory back at a memory warning,
+ * Description: On the physical iPad, a densely written notebook zoomed in gives its memory back at a memory warning,
  *              scrolling through it in Read mode freezes no frame as each page's ink is read, and pausing while writing
  *              on a full page, or writing on one as it comes on screen, freezes no frame at the autosave that follows
  *              (HUNT-014, HUNT-015, HUNT-017, HUNT-313).
@@ -152,7 +152,7 @@ final class PDFInkOnTheDeviceHostedTests: XCTestCase {
         }
         print("PDFInkOnTheDeviceHostedTests autosave on a full page: " + reports.joined(separator: "; "))
         // Judged by the main thread's own processor time in a frame, which a busy machine does not stretch: on
-        // 2026-11-17 a release check under load had a 118 ms frame, and a run here beside another session's tests had
+        // 2026-11-17 a release check under load had a 118 ms frame, and a run here beside other tests had
         // 80 ms frames at every autosave, where the same run alone had 36 ms. A sample showed the autosave's main-thread
         // work as applying the record archived in the background to the page (`PDFPageManager.apply`), about 20 ms.
         XCTAssertEqual(autosavesThatFroze, 0, "The main thread works under 50 ms in every frame of an autosave: \(reports.joined(separator: "; ")).")

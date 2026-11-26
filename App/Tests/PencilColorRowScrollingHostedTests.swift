@@ -2,7 +2,7 @@
  * File: PencilColorRowScrollingHostedTests.swift
  * ----------------------------------------------
  * Layer: Tests
- * Description: Hosted tests of the fixed Pencil bar's row of colors as the owner's iPad shows it: the row scrolls sideways
+ * Description: Hosted tests of the fixed Pencil bar's row of colors as the physical iPad shows it: the row scrolls sideways
  *              only, a swipe on it moves no color, a vertical drag neither scrolls nor moves it, more colors scroll inside
  *              a row that keeps its size, black stays in view before it, a shorter strip leaves no gap, and "+" saves a
  *              color as a swatch, a picked one at once, scrolling the strip to it (Docs/PDF-annotation-todo.md section 3).
@@ -18,17 +18,17 @@ import SwiftUI
 import GraphiteCore
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-14: the palette "can be dragged or moved in multiple directions (up, down, left, and
-/// right)". The whole fixed bar is shown in a window as wide as the owner's 11-inch iPad, sideways and upright, with the
-/// owner's eight favorite colors, and touched through UIKit's event path as the screen touches it. The lists are kept in
+/// The report of 2026-11-14: the palette "can be dragged or moved in multiple directions (up, down, left, and
+/// right)". The whole fixed bar is shown in a window as wide as an 11-inch iPad, sideways and upright, with the
+/// the reported eight favorite colors, and touched through UIKit's event path as the screen touches it. The lists are kept in
 /// settings of the test's own. Nothing here plays sound.
 @MainActor
 final class PencilColorRowScrollingHostedTests: XCTestCase {
-    /// The owner's favorite colors on 2026-11-14, read from the iPad's settings.
+    /// The reported favorite colors on 2026-11-14, read from the iPad's settings.
     private let ownersFavorites = [("yellow", "#e0ac00"), ("red", "#e93147"), ("orange", "#ec7500"), ("green", "#08b94e"),
                                    ("blue", "#086ddd"), ("purple", "#7852ee"), ("cyan", "#00bfbc"), ("pink", "#d53984")]
         .map { name, hex in PaletteColor(name: name, hex: hex) }
-    /// Four colors saved past the owner's, so the strip holds more than it shows.
+    /// Four colors saved past the reported ones, so the strip holds more than it shows.
     private var moreThanTheStripShows: [PaletteColor] {
         ownersFavorites + [("teal", "#2a9d8f"), ("brown", "#8d5524"), ("gray", "#7a7a7a"), ("navy", "#1d3557")]
             .map { name, hex in PaletteColor(name: name, hex: hex) }
@@ -246,7 +246,7 @@ final class PencilColorRowScrollingHostedTests: XCTestCase {
 
     // MARK: Black and the strip's ends
 
-    /// The owner's recording of 2026-11-17 on b04ceef0: with ten colors the strip scrolled black out of view, read as
+    /// The recording of 2026-11-17 on b04ceef0: with ten colors the strip scrolled black out of view, read as
     /// black "not saved", and a removal while scrolled to the end left a gap after the last color. Black stands before
     /// the strip, and a strip that gets shorter scrolls back to its new end.
     func testBlackStaysInViewWhenTheStripScrollsAndAShorterStripLeavesNoGap() async throws {
@@ -339,7 +339,7 @@ final class PencilColorRowScrollingHostedTests: XCTestCase {
         XCTAssertEqual(picker.title, "New Color")
         attachScreenshot(of: window, named: "The plus's color picker")
         XCTAssertEqual(storedNames(in: defaults), ownersFavorites.map(\.name), "Nothing is saved before a color is picked.")
-        // A color picked in the picker goes on the strip at once (the owner's request of 2026-11-17), while the picker
+        // A color picked in the picker goes on the strip at once (requested 2026-11-17), while the picker
         // is still open; a second pick changes that swatch, and closing the picker keeps it.
         let pickedColor = UIColor(red: 0x8d / 255, green: 0x55 / 255, blue: 0x24 / 255, alpha: 1)
         picker.selectedColor = pickedColor

@@ -19,7 +19,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: "when I start writing, it freezes quite frequently". Counted here: how often the
+/// The report of 2026-11-04: "when I start writing, it freezes quite frequently". Counted here: how often the
 /// PDF's view is built again, how many pages' ink is decoded, and whether the first stroke is recorded, when PDFKit
 /// shows a page again with the overlay it kept after Graphite let go of the page's canvas (more than six other pages
 /// shown, or a memory warning). Until 2026-11-04 the health check found that canvas "not its own" within a second and
@@ -127,7 +127,7 @@ final class PDFCanvasShownAgainTests: XCTestCase {
         XCTAssertEqual(session.viewGeneration, viewGeneration, "The PDF's view is the same one")
 
         // Letting a canvas go records its ink and compares its strokes, by design (`release`), and how many canvases a
-        // screen shows and lets go depends on its size: on the owner's iPad (2026-11-04) the count from the view's
+        // screen shows and lets go depends on its size: on the physical iPad (2026-11-04) the count from the view's
         // start was 2. What is measured is the first stroke's own: it compares none.
         let comparisonsBeforeTheStroke = coordinator.everyStrokeComparisonCount
         let annotationsBefore = inkAnnotationCount(on: page)

@@ -153,7 +153,7 @@ final class BasesViewsTests: XCTestCase {
 
     /// MapKit draws the tiles as they arrive, over its own grid of empty squares; once they are all drawn the stubbed tiles,
     /// and nothing of Apple's map, fill the view. MapKit composes only after its own map service has answered or failed, and
-    /// a runner without a dependable connection to Apple's servers leaves it unfinished, so this runs on the owner's iPad.
+    /// a runner without a dependable connection to Apple's servers leaves it unfinished, so this runs on the physical iPad.
     func testTheMapDrawsTheFetchedTilesOverItsOwnGrid() async throws {
         try MapServices.requireAppleMapService()
         let template = try XCTUnwrap(BaseMapTileTemplate("https://tiles.graphite.test/{z}/{x}/{y}.png"))

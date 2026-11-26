@@ -20,7 +20,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: "why is it that I cannot access a bunch of features when I use one of the two
+/// The report of 2026-11-04: "why is it that I cannot access a bunch of features when I use one of the two
 /// modes to handwrite?" Each mode is read here as the person meets it: the palette's own tools and the menu of
 /// Graphite's button at its end, and the fixed bar's tools. Nothing here plays sound.
 @MainActor
@@ -105,7 +105,7 @@ final class PencilModesHostedTests: XCTestCase {
 
     // MARK: The floating palette's companions in the toolbar
 
-    /// The owner's report of 2026-11-04: "When I'm using the floating Apple Pencil utilities, I cannot add an image." A
+    /// The report of 2026-11-04: "When I'm using the floating Apple Pencil utilities, I cannot add an image." A
     /// PDF written on with the Floating Palette, in a window of the 11-inch iPad held sideways: Add Image, the text tool,
     /// Graphite's lasso and the laser pointer are buttons of the PDF's toolbar, each one tap away, as on the Fixed Bar.
     func testWithTheFloatingPaletteAddImageAndGraphitesToolsAreButtonsOfTheToolbar() async throws {
@@ -169,7 +169,7 @@ final class PencilModesHostedTests: XCTestCase {
     }
 
     /// Activates a toolbar button as VoiceOver does: its own activation, else the control under its activation point,
-    /// as VoiceOver's double tap reaches it. On the owner's iPad (2026-11-05) the toolbar's button answered false to its
+    /// as VoiceOver's double tap reaches it. On the physical iPad (2026-11-05) the toolbar's button answered false to its
     /// activation, which VoiceOver then follows with a tap. Returns how it was activated.
     private func activate(_ element: NSObject, in window: UIWindow) -> String {
         if element.accessibilityActivate() { return "its accessibility activation" }

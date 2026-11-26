@@ -15,8 +15,8 @@ import Foundation
 import XCTest
 
 /// The app's standard preferences, which its views read and a hosted test cannot give an isolated suite. The first
-/// run on the owner's iPad (2026-11-04) met his own settings (the even highlighter, his toolbar style), and tests
-/// that removed a preference after changing it left his settings without it.
+/// run on the physical iPad (2026-11-04) met the device's own settings (the even highlighter, the toolbar style), and tests
+/// that removed a preference after changing it left those settings without it.
 enum HostedDevicePreferences {
     private static var deviceDefaults: UserDefaults { .standard }
 
@@ -66,7 +66,7 @@ enum HostedDevicePreferences {
 
 /// The hosted test bundle's principal class (`NSPrincipalClass` of GraphiteIntegrationTests): it watches every test
 /// suite and puts the app's preferences back as they were when the suite began. The device run of 2026-11-05 left ten
-/// of the owner's keys changed (the toolbox, the toolbar style, the lasso's shape, UIKit's split view state among
+/// of the device's keys changed (the toolbox, the toolbar style, the lasso's shape, UIKit's split view state among
 /// them), set by tests and by the views they hosted; no test can leave them changed now, whatever it touches.
 @MainActor
 final class HostedPreferencesGuard: NSObject, @preconcurrency XCTestObservation {

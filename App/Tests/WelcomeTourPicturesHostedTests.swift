@@ -17,7 +17,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner, 2026-11-12: a first launch showed the tour's first page with "Downloading the pictures…". The iPad and
+/// Reported 2026-11-12: a first launch showed the tour's first page with "Downloading the pictures…". The iPad and
 /// iPhone pictures are now the tag `WelcomeTourPictures` of the app target, an initial install tag, read through
 /// `NSBundleResourceRequest` (`BundleResourceRequestAccess`); these tests use the app's own tag in the simulator, with a
 /// download session that refuses every request, so Graphite's own download from GitHub cannot stand in for it.

@@ -19,7 +19,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: "eraser needs to go much much smaller, more granularity". PencilKit's
+/// The report of 2026-11-04: "eraser needs to go much much smaller, more granularity". PencilKit's
 /// eraser is never narrower than 16.4 points of the screen, about 12 points of a page at the fitted zoom;
 /// Graphite's cuts the chosen width. Each test prints its measures with `FINE-ERASER`.
 @MainActor

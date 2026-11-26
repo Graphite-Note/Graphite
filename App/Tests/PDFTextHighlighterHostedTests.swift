@@ -92,7 +92,7 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         XCTAssertNil(fixture.session.errorMessage)
     }
 
-    /// With finger drawing off, as on the owner's iPad, Apple Pencil dragged over the line with the text highlighter
+    /// With finger drawing off, as on the physical iPad, Apple Pencil dragged over the line with the text highlighter
     /// chosen marks it once when it lifts, with no ink. The touches report the Pencil's type, so every recognizer that
     /// filters by type (the page's scrolling, PDFKit's, PencilKit's, the tool's own) treats them as the screen's Pencil
     /// touches: a finger's drag would scroll here instead.
@@ -115,7 +115,7 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
     }
 
     /// While the Pencil drags, the text it has covered shows in the style's colour, before it lifts: PDFKit drew nothing
-    /// for a selection set during the drag, so the owner saw the mark only after lifting (2026-11-17). It is Graphite's
+    /// for a selection set during the drag, so the mark showed only after lifting (2026-11-17). It is Graphite's
     /// own layer, not PDFKit's highlighted selections, which left a frame without fill at each move and are read aloud's.
     func testThePencilsDragShowsTheTextCoveredInTheStylesColourBeforeItLifts() async throws {
         guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }
@@ -177,7 +177,7 @@ final class PDFTextHighlighterHostedTests: XCTestCase {
         return layer?.path == nil ? nil : layer
     }
 
-    /// The eraser, dragged by the Pencil over a highlight, removes it, and one Undo puts it back: the owner found no way
+    /// The eraser, dragged by the Pencil over a highlight, removes it, and one Undo puts it back: no way was found
     /// to erase a mark (2026-11-17).
     func testThePencilsEraserRemovesAHighlightItPassesOverAsOneStep() async throws {
         guard SynthesizedTouches.canMakePencilTouches else { throw TouchesUnavailable(reason: "UIKit's setter of a touch's type was not found") }

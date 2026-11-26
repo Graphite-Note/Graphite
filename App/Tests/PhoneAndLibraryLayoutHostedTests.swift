@@ -170,7 +170,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
         let window = try XCTUnwrap(window)
         // The window's top row is the tab strip; the library's own row, its title with Back, Forward and the rest, is
         // the next one. HUNT-211 was a band of 70 points above the tab strip, holding only those buttons. A navigation
-        // bar may hold the tab strip itself (the owner's iPad, 2026-11-05, kept one there): only a bar above the strip
+        // bar may hold the tab strip itself (the physical iPad, 2026-11-05, kept one there): only a bar above the strip
         // is a band.
         let tabStripButton = try await element(in: controller, "the tab strip's Show All Tabs") { object in
             object.accessibilityLabel == "Show All Tabs" && object.accessibilityTraits.contains(.button)
@@ -209,7 +209,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
     func testAFolderOpenedInTheLibraryStartsAtItsTopWhateverTheVaultsScroll() async throws {
         let workspace = try await libraryWorkspace()
         // The library itself, with a model the test holds: the window's own is private to its root view. A tile's
-        // accessibility activation, and on GitHub's simulator and the owner's iPad a synthesized touch too, did not reach
+        // accessibility activation, and on GitHub's simulator and the physical iPad a synthesized touch too, did not reach
         // the SwiftUI button, so the folder never opened and the scroll this test is about was never measured.
         let library = LibraryModel()
         let libraryView = LibraryView(library: library, vault: workspace.libraryVault,
@@ -297,7 +297,7 @@ final class PhoneAndLibraryLayoutHostedTests: SettingsHostedTestCase {
 
     /// The black swatch's ring reads on the dark bar at every density the bar takes, the 16-point dots of the closest
     /// one too, and each color and size is as wide as the density's pitch: 36 points for a size on the regular bar, a
-    /// color 32 (HUNT-284, HUNT-282). The owner's iPad (2026-11-05) measured 2.65 to 1 with the ring at 40 %, sampled
+    /// color 32 (HUNT-284, HUNT-282). The physical iPad (2026-11-05) measured 2.65 to 1 with the ring at 40 %, sampled
     /// inside a 22-point dot by radii set for 20, and a color 32 points wide where the test still asked for 36.
     func testTheBlackSwatchShowsOnTheDarkBar() async throws {
         let toolbox = PencilToolbox(defaults: try XCTUnwrap(UserDefaults(suiteName: "DarkSwatch-\(UUID().uuidString)")))

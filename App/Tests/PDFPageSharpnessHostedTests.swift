@@ -22,7 +22,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// HUNT-320. The owner saw PDFs pixelated on the iPad that Preview shows sharp. What is measured
+/// HUNT-320. PDFs looked pixelated on the iPad where Preview shows them sharp. What is measured
 /// is what the screen shows (the window drawn with `drawHierarchy` at the screen's scale): how
 /// many screen pixels a hard edge is spread over along one row, against PDFKit's `PDFPage.draw`
 /// of the same row of the page at the same pixels per point, which is what Preview shows. Each
@@ -101,7 +101,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
     }
 
     /// Prints what Core Animation is given to show for the picture, and the edge in the layer's own pixels and on
-    /// screen, below the window's bars. On the owner's iPad (2026-11-05) the layer held 2,848 by 2,144 sharp pixels at
+    /// screen, below the window's bars. On the physical iPad (2026-11-05) the layer held 2,848 by 2,144 sharp pixels at
     /// 7.91 px/pt at twice fit (edge 0.82 in its own pixels) while the screen measured 16.07: the row measured lay at
     /// 109 points, under the 130-point glass of the navigation and tab bars, which blurs what is under it; hiding any
     /// layer under the row, drawing it again, at a whole scale or with other filters changed nothing (HUNT-320).
@@ -162,7 +162,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
 
     /// Prints how long Core Graphics takes to draw the picture's layers, and what the screen shows
     /// when Core Animation renders their recorded drawing instead, as PDFKit sets them up, which
-    /// left the picture soft at twice fit on the owner's iPad; then draws them as Graphite does.
+    /// left the picture soft at twice fit on the physical iPad; then draws them as Graphite does.
     private func reportTheRecordedDrawing(of pictureLayers: [CALayer], along row: CGRect, of page: PDFPage, in pdfView: PDFView, window: UIWindow, zoom: CGFloat) async throws {
         // Core Graphics's drawing of each layer, timed into a bitmap of the layer's own pixels.
         var drawingTime = Duration.zero
@@ -360,7 +360,7 @@ final class PDFPageSharpnessHostedTests: XCTestCase {
         return output as Data
     }
 
-    /// The PDF in the PDF pane, in a window filling the screen, as the owner reads it.
+    /// The PDF in the PDF pane, in a window filling the screen, as it is read.
     private func show(_ location: URL) async throws -> (GraphitePDFDisplayView, UIWindow) {
         let session = try await PDFSession.open(location)
         shownSession = session

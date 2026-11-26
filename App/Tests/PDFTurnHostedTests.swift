@@ -20,7 +20,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: "when I'm in vertical or horizontal, it's not the same view". Measured here in a
+/// The report of 2026-11-04: "when I'm in vertical or horizontal, it's not the same view". Measured here in a
 /// real window turned from 1,194 by 834 points to 834 by 1,194. Nothing here plays sound.
 @MainActor
 final class PDFTurnHostedTests: XCTestCase {
@@ -94,7 +94,7 @@ final class PDFTurnHostedTests: XCTestCase {
         let split = try XCTUnwrap(controllers(in: controller).lazy.compactMap { $0 as? UISplitViewController }.first)
         print("PDF-TURN sideways PDF \(sidewaysFrame), upright PDF \(uprightFrame), split behavior \(split.splitBehavior.rawValue) "
               + "(preferred \(split.preferredSplitBehavior.rawValue)), display mode \(split.displayMode.rawValue), row \(String(describing: PencilToolRowForm.lastShown))")
-        // On the owner's iPad (2026-11-05) the sidebar beside the documents sideways stayed beside them upright, the page
+        // On the physical iPad (2026-11-05) the sidebar beside the documents sideways stayed beside them upright, the page
         // 514 of 834 points wide and the bar folded. Upright it is put away, as Notes and Files put theirs away.
         XCTAssertEqual(uprightFrame.width, window.bounds.width, accuracy: 1, "Upright the page keeps the window's width (sideways the sidebar was beside it: \(isSidebarBesideSideways))")
         XCTAssertEqual(pdfView.scaleFactor, pdfView.scaleFactorForSizeToFit, accuracy: 0.01, "The page still fits its width")

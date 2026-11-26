@@ -65,7 +65,7 @@ final class LassoSelectionToolbarHostedTests: XCTestCase {
         let selection = canvas.inkSelection
         let frameView = try XCTUnwrap(canvas.subviews.compactMap { $0 as? SelectionFrameView }.first)
         XCTAssertFalse(frameView.interactions.contains { interaction in interaction is UIEditMenuInteraction },
-                       "No edit menu on the selection: iOS adds Ask Siri to one (owner, 2026-11-17).")
+                       "No edit menu on the selection: iOS adds Ask Siri to one (2026-11-17).")
         let bar = try XCTUnwrap(selection.selectionToolbar.toolbar)
         XCTAssertTrue(bar.isShown)
         XCTAssertTrue(bar.superview === canvas.superview, "A drawing's bar stands beside its canvas, not in the zoomed drawing.")

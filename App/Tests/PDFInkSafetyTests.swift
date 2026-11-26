@@ -38,7 +38,7 @@ final class PDFInkSafetyTests: XCTestCase {
 
     /// A page scrolled away and back, while its canvas is still kept: the page's canvas
     /// shows every stroke, and the next stroke keeps them all, in the file too. The page
-    /// already had saved ink, as the owner's paper did; strokes added since then were lost
+    /// already had saved ink, as the reported paper did; strokes added since then were lost
     /// when the page came back (2026-10-13).
     func testStrokesSurviveTheirPageScrollingAwayAndBack() async throws {
         let session = try await openNotebook(pageCount: 6)

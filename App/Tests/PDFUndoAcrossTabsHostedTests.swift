@@ -21,7 +21,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04, on the iPad with a Release build of `fb9d88b7`: Q7.pdf, opened in a tab after
+/// The report of 2026-11-04, on the iPad with a Release build of `fb9d88b7`: Q7.pdf, opened in a tab after
 /// Q6.pdf, written on with the pen in two colors, and Undo said "The ink on this page changed in a way this step does
 /// not know, so it was not undone." Undo is followed here through what that page met that day: ink decoded while it
 /// was written on (HUNT-307), the PDF's view kept while another PDF's tab was in front and shown again (HUNT-308),

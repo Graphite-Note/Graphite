@@ -18,8 +18,8 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// The owner, 2026-11-14: the highlighter's stroke looked one way while drawn and another once
-/// it settled. With the even highlighter on, as on the owner's iPad, the canvas showed a band of
+/// Reported 2026-11-14: the highlighter's stroke looked one way while drawn and another once
+/// it settled. With the even highlighter on, as on the physical iPad, the canvas showed a band of
 /// one flat color with square ends and hard edges while the stroke was drawn, and PencilKit's
 /// softer, rounded even stroke replaced it at the lift.
 @MainActor

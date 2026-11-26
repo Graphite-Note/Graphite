@@ -22,7 +22,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's recording of 2026-11-05 (IMG_7059, the iPad Pro 11-inch, iPadOS 27): on page 5 of 16_Interconnects.pdf,
+/// The recording of 2026-11-05 (IMG_7059, the iPad Pro 11-inch, iPadOS 27): on page 5 of 16_Interconnects.pdf,
 /// with the bar's pixel eraser, a tick under "Interconnection network" stayed after every pass of the Pencil over it,
 /// and the eraser's circle stayed still on the line below it, until the tab of 16_Interconnects.pptx and back, after
 /// which the eraser followed the Pencil and erased. Followed here: two pen strokes on a page, saved, one cut and then
@@ -45,7 +45,7 @@ final class ErasedInkStaysErasedHostedTests: XCTestCase {
         PencilToolSelection(kind: .eraser, preset: InkPreset(ink: .monoline), erasesWholeStrokes: false, eraserWidth: width, isRulerActive: false)
     }
 
-    /// A vault with the lecture's PDF and its slides, open in two tabs as the owner had them, the PDF in front and written on.
+    /// A vault with the lecture's PDF and its slides, open in two tabs as they were in the recording, the PDF in front and written on.
     private func workspace(named name: String) async throws -> (WorkspaceModel, PDFSession) {
         let directory = try TemporaryVault.make(prefix: name, for: self).root
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .blank), pageCount: 4)
@@ -328,7 +328,7 @@ final class ErasedInkStaysErasedHostedTests: XCTestCase {
         try assertPage(reopenedPage, canvas: reopenedCanvas, session: reopenedSession, matches: expected, "Opened again")
     }
 
-    /// Lets only the Pencil draw on a PDF page, as the owner's iPad does, until `restore` is called.
+    /// Lets only the Pencil draw on a PDF page, as the physical iPad does, until `restore` is called.
     private func letOnlyThePencilDraw() -> () -> Void {
         let restore = HostedDevicePreferences.saving([PDFAnnotationPreferenceKey.drawsWithFinger])
         let preference = AppStorage(wrappedValue: false, PDFAnnotationPreferenceKey.drawsWithFinger)

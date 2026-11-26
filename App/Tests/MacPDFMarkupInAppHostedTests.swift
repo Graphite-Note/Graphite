@@ -19,7 +19,7 @@ import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
 
-/// Docs/Mac-PDF-markup-todo.md: the checks "in the running app". The owner declined computer use and a Mac UI test needs
+/// Docs/Mac-PDF-markup-todo.md: the checks "in the running app". Computer use was declined and a Mac UI test needs
 /// Automation Mode, so this runs inside the app as a hosted test: Graphite's root view in a window of the app, its
 /// controls found through the accessibility the app vends and pressed with mouse events sent through the window, as a
 /// click arrives. Runs only with `TEST_RUNNER_GRAPHITE_MAC_MARKUP` given to xcodebuild as a folder, where it writes a

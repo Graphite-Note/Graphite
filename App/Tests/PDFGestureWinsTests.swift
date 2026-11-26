@@ -23,10 +23,10 @@ import GraphiteIndex
 /// are real finger touches delivered through UIKit (`SynthesizedTouches`), so PDFKit's and
 /// PencilKit's own recognizers take them as they take a finger's.
 ///
-/// The owner filmed a PDF at about 250% whose page moved a little under the finger and then
+/// A filmed PDF at about 250% whose page moved a little under the finger and then
 /// sprang back, after every drag and pinch (2026-10-13). With Read Aloud following the word
 /// read, following scrolled the page back at every view update; these tests fail with that
-/// code. In the build the owner filmed, the window tiled beside another app was laid out
+/// code. In the filmed build, the window tiled beside another app was laid out
 /// wider than its tile, and the page's right side could not be scrolled into view.
 @MainActor
 final class PDFGestureWinsTests: XCTestCase {
@@ -36,7 +36,7 @@ final class PDFGestureWinsTests: XCTestCase {
     private var savedReadingSpeed: Double?
     private var workspace: WorkspaceModel?
 
-    /// The zoom the owner wrote at: 250%.
+    /// The zoom written at: 250%.
     private static let writingZoom: CGFloat = 2.5
 
     override func setUp() async throws {
@@ -388,7 +388,7 @@ final class PDFGestureWinsTests: XCTestCase {
     // MARK: Setup
 
     /// A six-page paper in two columns, with ink on page 2, in a vault with a note, opened in
-    /// a new tab and written on, as the owner's paper was.
+    /// a new tab and written on, as the reported paper was.
     private func openPaper() async throws -> (WorkspaceModel, PDFSession) {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("GestureWins-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

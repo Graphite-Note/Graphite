@@ -123,7 +123,7 @@ final class MacEditingInAppHostedTests: XCTestCase {
     // MARK: Bug hunt, section 15
 
     /// HUNT-364 and HUNT-365: keys typed at the end of a heading under two pictures, in a note that opens with a PDF, as
-    /// the owner's exercise note: the note stays where it is and every picture and PDF in sight keeps its view.
+    /// the exercise note: the note stays where it is and every picture and PDF in sight keeps its view.
     func testTypingAtTheEndOfAHeadingUnderPicturesKeepsTheNoteStillAndItsPicturesDrawn() async throws {
         guard try start() else { return }
         let pass = try await ReleaseVaultPass.open(for: self, vault: releaseVaultSource)

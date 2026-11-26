@@ -323,7 +323,7 @@ final class InkWidthAtZoomTests: XCTestCase {
         return (canvas, pdfView, window)
     }
 
-    /// The owner's complaint (HUNT-004): ink written while zoomed in is thicker on the page.
+    /// The complaint (HUNT-004): ink written while zoomed in is thicker on the page.
     /// The same pen and monoline line, drawn through the real canvas at zoom 1, 2 and 3, is as
     /// wide on the page once it has settled, measured in the screen's own pixels: as wide as
     /// at zoom 1, as wide as its stored stroke draws, and as wide again at zoom 1 afterwards.

@@ -21,7 +21,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's note `4_Amdahl's Law in the Multicore Era` shows a grapher in a frame in Obsidian and its tag as text in
+/// The reported note `4_Amdahl's Law in the Multicore Era` shows a grapher in a frame in Obsidian and its tag as text in
 /// Graphite (2026-11-12). The pages here are served by the test on the loopback address and hold only text and colour:
 /// no test loads a page from the internet, and nothing plays.
 @MainActor

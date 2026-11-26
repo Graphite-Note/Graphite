@@ -3,7 +3,7 @@
  * ---------------------------------------------
  * Layer: Tests
  * Description: Hosted tests of a note whose Photos section writes several image embeds on a line, as the
- *              owner's "Butter-basted steak.md" does: once the index has read the vault, the reading view and
+ *              the reported "Butter-basted steak.md" does: once the index has read the vault, the reading view and
  *              Live Preview draw every picture, in paragraph lines, a list item, a table and a callout, and
  *              none is left as a link; the cursor on one embed of a line shows that embed's source only, the
  *              line's other pictures staying drawn (issue #102).
@@ -21,7 +21,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner, 2026-10-24: "![] are not showing properly". A line such as `![[IMG_6652.JPG|250]] ![[IMG_6653.JPG|250]]`
+/// Requested 2026-10-24: "![] are not showing properly". A line such as `![[IMG_6652.JPG|250]] ![[IMG_6653.JPG|250]]`
 /// showed as link-colored text, `IMG_6652.JPG|250`. The pictures here are small generated files in an
 /// `Attachments` folder, which only the index finds, as Obsidian's attachment folder is found. Pictures are
 /// found as VoiceOver finds them: a picture inside text (the reading view's, a table's, a callout's) is an
@@ -32,7 +32,7 @@ final class InlineImagesSideBySideHostedTests: XCTestCase {
     private var window: UIWindow?
 
     private static let notePath = "Recipes/Butter-basted steak.md"
-    /// The owner's two lines of photos, with made-up names and the owner's widths and extension cases.
+    /// The reported two lines of photos, with made-up names and the reported widths and extension cases.
     private static let photoNames = ["IMG_3599.jpg", "IMG_3598.PNG"] + (6652...6661).map { number in "IMG_\(number).JPG" }
     private static let listPictureNames = ["Step_1.jpg", "Step_2.jpg"]
     private static let tablePictureNames = ["Raw.png", "Seared.png", "Done.png"]

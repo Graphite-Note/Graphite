@@ -42,7 +42,7 @@ struct GraphiteApp: App {
             // No default size here, unlike the Mac: iPadOS 27 took it as the window's
             // smallest and largest size alike (1,200 by 852 points), so a window tiled beside
             // another app was laid out 1,065 points wide and cut off at its right edge
-            // (reported by the owner, 2026-10-13). iPadOS sizes the window itself.
+            // (reported 2026-10-13). iPadOS sizes the window itself.
             .commands {
                 GraphiteCommands()
                 WindowCommands()

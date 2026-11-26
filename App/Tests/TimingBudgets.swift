@@ -1,7 +1,7 @@
 import Foundation
 import XCTest
 
-/// What a shared GitHub runner cannot do the way the owner's iPad does. The hosted job of the CI workflow sets the variable
+/// What a shared GitHub runner cannot do the way the physical iPad does. The hosted job of the CI workflow sets the variable
 /// of each limit it has (as `TEST_RUNNER_<name>`, which `xcodebuild` hands to the tests); the nightly device job sets none,
 /// and runs everything. Each limit is a named capability, and every test that needs it says so by calling its function.
 enum RunnerLimits {
@@ -12,14 +12,14 @@ enum RunnerLimits {
 }
 
 /// The timing budgets of the hosted suite (a number of seconds, a share of the main thread or a longest frame gap) mean
-/// something only on the owner's iPad: GitHub's shared virtual Macs run the simulator several times slower and unevenly.
+/// something only on the physical iPad: GitHub's shared virtual Macs run the simulator several times slower and unevenly.
 enum TimingBudgets {
     static let skipVariableName = "GRAPHITE_SKIP_TIMING_BUDGETS"
 
     /// Skips the test where a timing budget cannot be measured, saying why.
     static func requireTheOwnersDevice() throws {
         try RunnerLimits.skip(whenSet: skipVariableName,
-                              because: "Timing budgets are measured on the owner's iPad (nightly), not on GitHub's shared runners.")
+                              because: "Timing budgets are measured on the physical iPad (nightly), not on GitHub's shared runners.")
     }
 }
 
@@ -32,6 +32,6 @@ enum MapServices {
     /// Skips the test where MapKit's picture of a map cannot be waited for, saying why.
     static func requireAppleMapService() throws {
         try RunnerLimits.skip(whenSet: skipVariableName,
-                              because: "MapKit draws a map only once Apple's map service answers, which GitHub's runners cannot do dependably; the owner's iPad (nightly) can.")
+                              because: "MapKit draws a map only once Apple's map service answers, which GitHub's runners cannot do dependably; the physical iPad (nightly) can.")
     }
 }

@@ -3,7 +3,7 @@
  * ------------------------------------------
  * Layer: Tests
  * Description: Hosted tests of the Pencil bar's colour row inside the whole app, a PDF open and written on, in the
- *              window sizes of the owner's 11-inch iPad at full screen and side by side with another app: the fixed bar
+ *              window sizes of the physical 11-inch iPad at full screen and side by side with another app: the fixed bar
  *              shows in each, a sideways swipe scrolls the colours that run past the strip's edge and moves none, and a
  *              colour held then dragged by a finger or Apple Pencil moves along the bar.
  *
@@ -21,9 +21,9 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-16 on main 44d09330: side by side, the colours "won't scroll". A window beside another
+/// The report of 2026-11-16 on main 44d09330: side by side, the colours "won't scroll". A window beside another
 /// app is a compact width, which showed Apple's palette instead of the fixed bar, so the bar's strip was not there. The
-/// bar is shown by the app itself (GraphiteRootView with a PDF written on), with the owner's eight favourites and the
+/// bar is shown by the app itself (GraphiteRootView with a PDF written on), with the reported eight favourites and the
 /// fixed bar chosen, in windows as wide as the 11-inch iPad's Split View gives. Nothing here plays sound.
 @MainActor
 final class PencilColorRowInAppHostedTests: XCTestCase {
@@ -63,7 +63,7 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
         let directory = try TemporaryVault.make(prefix: name, for: self).root
         try PDFTemplateGenerator.documentData(paper: PaperSpecification(template: .ruled), pageCount: 4)
             .write(to: directory.appendingPathComponent("Paper.pdf"))
-        // A preferences suite of its own, holding the owner's favourites and the fixed bar the owner's iPad uses.
+        // A preferences suite of its own, holding the reported favourites and the fixed bar the physical iPad uses.
         let workspace = WorkspaceModel(processServices: .make(for: .hostedTests), clock: LiveApplicationClock())
         let defaults = workspace.deviceDefaults
         defaults.set(try JSONEncoder().encode(ownersFavorites), forKey: GraphitePreferences.colorPaletteKey)
@@ -150,7 +150,7 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
         ("one third upright", CGSize(width: 320, height: 1_194), .compact),
     ]
 
-    /// The owner's report of 2026-11-17 on the iPad, running main b2eab0cd at full screen sideways on a PDF with the pen
+    /// The report of 2026-11-17 on the iPad, running main b2eab0cd at full screen sideways on a PDF with the pen
     /// chosen: "I can't seem to switch colors around, they seem to be fixed." A color held a moment then dragged two
     /// places along the bar moves there, whether the PDF is written on or read.
     func testAColorHeldThenDraggedInTheAppMovesAlongTheBar() async throws {
@@ -204,7 +204,7 @@ final class PencilColorRowInAppHostedTests: XCTestCase {
             let workspace = try await pdfWorkspace(named: "ColorRowInApp")
             PencilToolRowForm.lastShown = nil
             let window = try host(workspace, size: shown.size, horizontalSizeClass: shown.sizeClass)
-            // The iPad keeps the fixed bar in every width, beside another app too (owner, 2026-11-16).
+            // The iPad keeps the fixed bar in every width, beside another app too (reported 2026-11-16).
             try await waitUntil("the fixed bar shows, \(shown.name)") { PencilToolRowForm.lastShown != nil }
             // The bar settles on its form: a regular width's sidebar slides in, and the bar beside it is condensed
             // until the slide ends. The form must stay the same for 600 ms.

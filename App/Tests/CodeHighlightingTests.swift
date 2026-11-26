@@ -121,7 +121,7 @@ final class CodeHighlightingTests: XCTestCase {
         XCTAssertTrue(editor.text.contains("int main(){\nreturn 0;\nint y=1,z=2;\n\n\n}"), "Undo takes back the formatting.")
     }
 
-    /// The owner's example, in Live Preview and reading view, in Obsidian's colors and in
+    /// The reported example, in Live Preview and reading view, in Obsidian's colors and in
     /// One Monokai, light and dark, for review.
     func testCodeBlockBoxesInEachViewAndTheme() async throws {
         let note = """

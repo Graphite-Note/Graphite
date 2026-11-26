@@ -26,7 +26,7 @@ final class PencilToolsTests: XCTestCase {
     private var windows: [UIWindow] = []
     private var temporaryLocations: [URL] = []
     /// The preferences these tests change, saved before each test and put back after it, also when it stops early:
-    /// on a person's iPad the hosted tests run in their own app. The first run on the owner's iPad (2026-11-04) left
+    /// on a person's iPad the hosted tests run in their own app. The first run on the physical iPad (2026-11-04) left
     /// the even highlighter and holding for a shape removed from its settings.
     private static let changedPreferenceKeys = [PDFAnnotationPreferenceKey.drawsShapes, EvenHighlighterPreference.key, StrokeHoldPreference.key,
                                                 PencilToolbarStyle.preferenceKey, "GraphiteDrawsOnPencilDoubleTap"]
@@ -430,7 +430,7 @@ final class PencilToolsTests: XCTestCase {
         let controller = try host(AnyView(PencilToolRow(toolbox: toolbox, drawsShapes: .constant(false))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)))
         // The dot is counted as dark pixels on a light bar. In dark appearance the bar is dark and the dot light, and
-        // both waits below timed out on the owner's iPad on 2026-11-04, whatever the dot did.
+        // both waits below timed out on the physical iPad on 2026-11-04, whatever the dot did.
         try XCTUnwrap(controller.view.window).overrideUserInterfaceStyle = .light
         func darkPixelCount() throws -> Int { try countOfPixels(in: controller) { red, green, blue in red < 80 && green < 80 && blue < 80 } }
         try await waitUntil { (try? darkPixelCount()) ?? 0 > 0 }
@@ -480,7 +480,7 @@ final class PencilToolsTests: XCTestCase {
         }
         UserDefaults.standard.removeObject(forKey: paletteKey)
         UserDefaults.standard.set(PencilToolbarStyle.fixed.rawValue, forKey: PencilToolbarStyle.preferenceKey)
-        // The device's own presets: the owner's iPad had no pen among them on 2026-11-04. Any ink but the
+        // The device's own presets: the physical iPad had no pen among them on 2026-11-04. Any ink but the
         // highlighter, whose bar shows the highlighter colors instead, shows the favorite colors.
         let inkIndex = try XCTUnwrap(toolbox.presets.firstIndex { preset in preset.ink != .highlighter }, "An ink that shows the favorite colors")
         toolbox.usePreset(at: inkIndex)

@@ -19,7 +19,7 @@ import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
 
-/// The owner, 2026-10-22: a picture in a table should be easy to see larger, by zooming in over the note
+/// Requested 2026-10-22: a picture in a table should be easy to see larger, by zooming in over the note
 /// or by opening it in a new tab. The commands are reached here as VoiceOver reaches them, through each
 /// picture's accessibility actions, which are made from the same `PictureCommand`s as its menu and its
 /// buttons; synthesized touches do not reach SwiftUI's gestures in a hosted test.

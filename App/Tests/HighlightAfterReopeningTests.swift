@@ -131,7 +131,7 @@ final class HighlightAfterReopeningTests: XCTestCase {
         try await checkHighlightOverText(evenHighlighter: false)
     }
 
-    /// The even highlighter, which the owner's iPad uses: on 2026-11-04 it drew its band at nine tenths of the
+    /// The even highlighter, which the physical iPad uses: on 2026-11-04 it drew its band at nine tenths of the
     /// color, and on the iPad's screen the black bar under it showed 0.87 as light as the band beside it.
     func testAnEvenHighlightOverTextLeavesItReadableOnTheScreenAndInThePageAfterThePDFIsOpenedAgain() async throws {
         try await checkHighlightOverText(evenHighlighter: true)

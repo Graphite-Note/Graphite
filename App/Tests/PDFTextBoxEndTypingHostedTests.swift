@@ -19,12 +19,12 @@ import GraphiteCore
 
 /// Typing ended in a SwiftUI update of the pane had the text view give up first responder
 /// there, which recursed in UIKit without end and froze the app (HUNT-367). Each test ends
-/// typing as the owner did and waits on the main thread, which a freeze never gives back.
+/// typing as a person does and waits on the main thread, which a freeze never gives back.
 @MainActor
 final class PDFTextBoxEndTypingHostedTests: XCTestCase {
     private var windows: [UIWindow] = []
     private var restoreToolbox: (() -> Void)?
-    /// The pane's preferences, a suite of its own holding the fixed bar the owner's iPad uses.
+    /// The pane's preferences, a suite of its own holding the fixed bar the physical iPad uses.
     private let preferencesSuiteName = "PDFTextBoxEndTypingHostedTests.\(UUID().uuidString)"
 
     override func tearDown() async throws {

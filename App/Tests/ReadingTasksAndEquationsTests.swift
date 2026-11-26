@@ -191,7 +191,7 @@ final class ReadingTasksAndEquationsTests: XCTestCase {
                     .frame(maxWidth: .infinity, alignment: .leading)
             ))
             // Ink is found as dark pixels on a light note (`InkImage`). In dark appearance the whole note counted as ink:
-            // on the owner's iPad (2026-11-04) every block was one run of ink reaching past its own frame.
+            // on the physical iPad (2026-11-04) every block was one run of ink reaching past its own frame.
             try XCTUnwrap(controller.view.window).overrideUserInterfaceStyle = .light
             let paragraph = try await element(in: controller) { element in element.accessibilityLabel == "An equation with a number." }
             // The column is centered in the note, so its right edge mirrors the left one.
