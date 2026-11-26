@@ -52,6 +52,6 @@ Only reachable when the user names the app, so it is the fallback if Siri ignore
 
 ## Open questions
 
-- Does Siri AI reach third-party note bodies in practice, and in which countries and languages on the owner's devices?
+- Does Siri AI reach third-party note bodies in practice, and in which countries and languages on the physical devices?
 - Index whole notes, sections, or both?
 - Should PDFs (with the existing Vision text recognition) and drawings' recognized text be indexed too?

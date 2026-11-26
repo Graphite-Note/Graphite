@@ -1,6 +1,6 @@
 # Premium experience implementation plan
 
-This plan follows `OBJECTIVE.md`. It tracks the work toward a polished daily study application, not a claim that Graphite has reached Goodnotes or Obsidian parity. Community plugin installation and the runtime began on 2026-10-10, at the owner's request; see `Community-plugins.md`.
+This plan follows `OBJECTIVE.md`. It tracks the work toward a polished daily study application, not a claim that Graphite has reached Goodnotes or Obsidian parity. Community plugin installation and the runtime began on 2026-10-10, as requested; see `Community-plugins.md`.
 
 ## Immediate priorities: images, paper, and Pencil interaction
 
@@ -110,7 +110,7 @@ Not done then: the navigation bar itself was unchanged; the shape does not repla
 
 ## Seventh increment: the backlog build-out
 
-Started on 2026-09-30 at the owner's request to implement everything still listed as missing before reporting back; `Coverage.md` has a section of the same name with what was verified for each item. Items land here as they are finished.
+Started on 2026-09-30 on request to implement everything still listed as missing before reporting back; `Coverage.md` has a section of the same name with what was verified for each item. Items land here as they are finished.
 
 - Shapes: arcs, straight and curved arrows; after a hold, moving the Pencil on stretches the shape until the lift. The discarded stroke stays visible under the shape until the lift, which PencilKit gives no way around.
 - A lasso of Graphite's own that moves, resizes in proportion, recolors, duplicates, cuts, copies, pastes and deletes ink, in the fixed bar and from the floating palette's menu. PencilKit's lasso stays in the palette for what it does (Insert Space, Writing Tools).
@@ -127,7 +127,7 @@ Started on 2026-09-30 at the owner's request to implement everything still liste
 
 ## Eighth increment: a quieter interface and a phone layout
 
-Started on 2026-10-06 at the owner's request, with Obsidian's Minimal theme as the reference: the interface and the Pencil bar felt cluttered and unclean, and the iPhone layout looked like an afterthought. `Coverage.md` has a section of the same date. It was written without a compiler, then built, tested and looked at in the iPad and iPhone simulators the same day, and corrected and extended there (below).
+Started on 2026-10-06 on request, with Obsidian's Minimal theme as the reference: the interface and the Pencil bar felt cluttered and unclean, and the iPhone layout looked like an afterthought. `Coverage.md` has a section of the same date. It was written without a compiler, then built, tested and looked at in the iPad and iPhone simulators the same day, and corrected and extended there (below).
 
 - One Write toggle instead of the segmented Read/Write control, everywhere it appeared; Show Pencil Tools moved into the PDF's More menu.
 - Quiet chrome: bars in the page's color with a hairline, muted tabs with a faint fill for the one in use and its close button only there and under the pointer, no icon on note tabs, an empty tab that is a short column of links, muted folder and keyboard-toolbar icons, denser sidebar rows.
@@ -135,7 +135,7 @@ Started on 2026-10-06 at the owner's request, with Obsidian's Minimal theme as t
 - A phone layout after Obsidian mobile: document first, no tab bar, a bottom bar (back, forward, find, new note, tabs, commands), a tab switcher sheet, and a navigation bar with only the document's controls.
 - The fixed bar and the squeeze palette draw their tools upright with ink-colored tips, the tool in use raised, as Apple's palette does.
 
-Added after running it in the simulators, on 2026-10-06 and 2026-10-07, at the owner's request that the app feel premium on both and that the iPhone be "Obsidian in Swift", fast, with drawing secondary there:
+Added after running it in the simulators, on 2026-10-06 and 2026-10-07, on the request that the app feel premium on both and that the iPhone be "Obsidian in Swift", fast, with drawing secondary there:
 
 - PDF ink drawn at the zoom it is seen at, where it had been drawn at the page's size and magnified (soft even at a page fitted to an iPad's width, with PencilKit's tile edges showing when zoomed in); a stroke stays as wide on the page at any zoom.
 - The file list drawn as Obsidian's file explorer, and on a phone a plain list whose title switches vaults.
@@ -182,7 +182,7 @@ Completion evidence: visual review of the three workspaces at representative wid
 
 ## Next: Pencil quality on hardware
 
-The owner finds writing in Goodnotes smoother than in Graphite (2026-10-19). [Goodnotes-writing-feel.md](Goodnotes-writing-feel.md) records what Goodnotes' files show about its ink (every sample kept, a quadratic B-spline through their midpoints, a ball pen of one width whatever the pressure, pressure-only width for its fountain and brush pens) and experiments to run here first. It also lists the owner's requests of that day: the same pen width on the page at any zoom (for cheat sheets), resizing that scales ink without distorting it, the same writing with the fixed bar as with the floating palette, and no more lag than Goodnotes, which has almost none, as a measured budget (`FR-101`).
+Writing in Goodnotes is found smoother than in Graphite (2026-10-19). [Goodnotes-writing-feel.md](Goodnotes-writing-feel.md) records what Goodnotes' files show about its ink (every sample kept, a quadratic B-spline through their midpoints, a ball pen of one width whatever the pressure, pressure-only width for its fountain and brush pens) and experiments to run here first. It also lists the requests of that day: the same pen width on the page at any zoom (for cheat sheets), resizing that scales ink without distorting it, the same writing with the fixed bar as with the floating palette, and no more lag than Goodnotes, which has almost none, as a measured budget (`FR-101`).
 
 Compare the same handwriting exercises in Graphite, Apple Notes, Goodnotes, and Notability on the same physical iPad. Check small letters, curves, dots, stroke endings, pressure and tilt, palm rejection, finger scrolling, pinch zoom, page edges, and the supported double-tap, squeeze, hover, and barrel-roll interactions.
 
@@ -196,7 +196,7 @@ The full tool set, favorite colors, the shape tool, the lasso and drawing on ima
 
 Recognition, handwriting-to-text, math conversion, synchronized audio replay, tape, and reusable elements remain candidates for discussion. Generative AI features are not part of this plan.
 
-Importing Goodnotes and Notability notebooks, element by element so they open as if written in Graphite, was requested on 2026-10-18. The formats are decoded from the owner's samples, checked against each app's PDF export, and written down ([Goodnotes-format.md](Goodnotes-format.md), [Notability-format.md](Notability-format.md)); no importer exists yet. [The checklist](Goodnotes-Notability-import-todo.md) holds the request, the Graphite features it needs first (text boxes, pictures above the ink, editable shapes, and others), and the phases.
+Importing Goodnotes and Notability notebooks, element by element so they open as if written in Graphite, was requested on 2026-10-18. The formats are decoded from the supplied samples, checked against each app's PDF export, and written down ([Goodnotes-format.md](Goodnotes-format.md), [Notability-format.md](Notability-format.md)); no importer exists yet. [The checklist](Goodnotes-Notability-import-todo.md) holds the request, the Graphite features it needs first (text boxes, pictures above the ink, editable shapes, and others), and the phases.
 
 Completion evidence: agreed feature scope, device interaction checks, undo behavior, save/reopen checks, and portable output checks for every implemented tool. The fourth increment has the undo, save/reopen and output checks in the simulator; its device interaction checks are outstanding.
 
@@ -206,4 +206,4 @@ Use `Obsidian-mobile-gaps.md` and a real course vault to prioritize remaining ed
 
 ## Started: existing Obsidian plugin execution
 
-Begun on 2026-10-10, at the owner's request, ahead of the order above. `Community-plugins.md` describes the runtime (a web view running Graphite's `obsidian` module), installation from Obsidian's directory and GitHub, what six real plugins do in it, what is reported as unsupported, and the order of the remaining work: running it on a device first, then plugins' code blocks in the reading view, context menus, typing suggestions, and plugin views as tabs and panels. Universal compatibility is not yet validated.
+Begun on 2026-10-10, on request, ahead of the order above. `Community-plugins.md` describes the runtime (a web view running Graphite's `obsidian` module), installation from Obsidian's directory and GitHub, what six real plugins do in it, what is reported as unsupported, and the order of the remaining work: running it on a device first, then plugins' code blocks in the reading view, context menus, typing suggestions, and plugin views as tabs and panels. Universal compatibility is not yet validated.

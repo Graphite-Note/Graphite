@@ -1,6 +1,6 @@
 # Read Aloud as a core plugin, off by default
 
-Owner decision, 2026-10-19: Read Aloud is a core plugin, like Obsidian's core plugins (built in, listed in Settings › Core Plugins with a switch), and it is off by default.
+Decided 2026-10-19: Read Aloud is a core plugin, like Obsidian's core plugins (built in, listed in Settings › Core Plugins with a switch), and it is off by default.
 
 ## What exists today
 
@@ -9,7 +9,7 @@ Graphite already has core plugins. `CorePlugin` (`GraphitePreferences.swift`) li
 What is missing for Read Aloud:
 
 1. Plugins can't be off by default: the store records only "turned off".
-2. Read Aloud's settings page is listed under Options, not in the sidebar's Core Plugins section with Colors, Templates and the others (owner's screenshot, 2026-10-19).
+2. Read Aloud's settings page is listed under Options, not in the sidebar's Core Plugins section with Colors, Templates and the others (screenshot of 2026-10-19).
 3. The speech stack is built at every launch whatever the switch says. `WorkspaceModel` stores `let readAloud = ReadAloudVoices.makeController()`. That builds the neural voice library (manifest, voices folder, background download session, cache size task), the MLX passage renderer and its preparation queue (with two app-lifecycle observers), an `AVSpeechSynthesizer`, the Now Playing entry and the controller.
 4. Five entry points are not gated:
    - The note editor's "Read from Here" edit-menu item and tap to read: `MarkdownPane.readAloudHooks` is passed unconditionally, so it starts reading with the plugin off.
@@ -62,11 +62,11 @@ Reading the key set never writes: `ReadAloudSession` only removes the abandoned 
 
 Turning Read Aloud off deletes nothing: downloaded voices, the prepared audio in `Caches/ReadAloudAudio`, the vault's `.graphite/pronunciations.json`, remembered places and every preference stay as they are. Turning it on again finds them.
 
-Today, turning it off also asks "Delete Downloaded Voices?", with Keep Them as the default. That dialog is kept: it deletes only after the person confirms. **Owner decision (2026-10-19):** keep the offer when Read Aloud is turned off; it deletes only after confirmation.
+Today, turning it off also asks "Delete Downloaded Voices?", with Keep Them as the default. That dialog is kept: it deletes only after the person confirms. **Decision (2026-10-19):** keep the offer when Read Aloud is turned off; it deletes only after confirmation.
 
 ## Per device or per vault
 
-**Owner decision (2026-10-19): per device**, as implemented. The comparison that led to it:
+**Decision (2026-10-19): per device**, as implemented. The comparison that led to it:
 
 | | Per device (today's store) | Per vault (Obsidian's way) |
 | --- | --- | --- |

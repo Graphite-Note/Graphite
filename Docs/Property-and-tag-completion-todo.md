@@ -2,11 +2,11 @@
 
 Created: 2026-11-12.
 
-Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; open: the keys driven by a hardware keyboard, the timing in the owner's vault and the checks with it. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
+Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; open: the keys driven by a hardware keyboard, the timing in the real vault and the checks with it. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
 
 ## Request
 
-The owner, 2026-11-12: "auto complete for properties tags etc in notes". While a property's name, a property's value or a tag is being typed in a note, Graphite suggests the ones the vault already uses, as Obsidian does in its Properties view and in the frontmatter, so a note gets `course: VLSI 3` and `tags: [eth/vlsi]` spelled exactly as in the other notes instead of a near-duplicate.
+Requested 2026-11-12: "auto complete for properties tags etc in notes". While a property's name, a property's value or a tag is being typed in a note, Graphite suggests the ones the vault already uses, as Obsidian does in its Properties view and in the frontmatter, so a note gets `course: VLSI 3` and `tags: [eth/vlsi]` spelled exactly as in the other notes instead of a near-duplicate.
 
 ## What exists today (2026-11-12)
 
@@ -37,10 +37,10 @@ Issue: [#167](https://github.com/Graphite-Note/Graphite/issues/167)
   Built 2026-11-17 (`propertySuggestionKeys`): ↓ and ↑ move the highlight, Tab and Return choose it, Escape closes the list and keeps the field; a tap chooses (tested above). The keys were not pressed in a test or by hand.
   Checked on the Mac 2026-11-19: in a re-signed copy of a Debug build of main (its own bundle identifier) with the release test vault, the Properties panel of a made-up note, keys sent to the Add Property field by computer use: ↓ ↓ moved the highlight from `tags` to `studied` and ↑ back to `mood`, Return added `mood:` to the frontmatter, `stat` and Tab added `status:`, `co` and Escape closed the list and left the field open with `co` in it. Source mode's keys in the frontmatter were checked inside the running Mac app by `MacEditingInAppHostedTests.testFrontmatterSuggestionsAnswerTheKeysInSourceMode` (Return, Tab, ↓ and Return, Escape) on 2026-11-18.
   Checked on the iPad 2026-11-19: an iPad Pro 11-inch (M5) simulator, iOS 27.2, a Debug build of main ebad37cf with the release test vault, a temporary XCUITest runner driving the installed app (outside the repository): a tap on Add Property, then ↓ ↓ moved the highlight from `tags` to `studied` and ↑ back to `mood` (screenshots), Return (a typed newline) added `mood:`, `stat` and Tab added `status:` (the note's file read after). The runner's own Return and Escape keys reach no text field there (Return did not submit a field with nothing suggested, which a typed newline did; Escape did not close the editor's `[[` list either, which UIKit's key command handles), so Escape was not pressed on the iPad; it is handled by the same `onKeyPress` as ↓, ↑ and Tab, which answered, and closed the list on the Mac. A tap on a suggestion is covered by `PropertySuggestionsHostedTests`.
-- [ ] Answers within one frame of a keystroke in the owner's 32,843-file vault on the iPad (a timing budget in `App/Tests/TimingBudgets.swift`).
+- [ ] Answers within one frame of a keystroke in the real 32,843-file vault on the iPad (a timing budget in `App/Tests/TimingBudgets.swift`).
 - [x] Tests: index tests of the value query (counts, limit, list and text values, accents); UI or hosted tests that a new property's name is suggested with its type, that a `tags` item suggests a vault tag and skips one the note has, and that accepting writes the frontmatter once.
   Done 2026-11-17: `PropertyValueQueriesTests` (counts, the limit, list and text values, capitals and accents) and `PropertySuggestionsHostedTests` (a name suggested with its type, a `tags` item from the vault's tags without the note's own, the frontmatter written once on a choice).
-- [ ] Checked on the Mac and the iPad with the owner's vault.
+- [ ] Checked on the Mac and the iPad with the real vault.
 
 ## 2. Property names, values and tags in the frontmatter as text
 
@@ -54,7 +54,7 @@ Issue: [#168](https://github.com/Graphite-Note/Graphite/issues/168)
   Done 2026-11-17: `CompletionContext.propertyName` and `.propertyValue`; `LinkCompletion.context` looks for them only inside the frontmatter, after a `[[` link, and never for a `#` tag there, where `#` starts a YAML comment. The body's suggestions are unchanged (`LinkCompletionTests`).
 - [x] Tests: Core tests of the context (name at line start, value after `name: `, list items, inline lists, quoted values, the cursor just after the closing `---`, which is body); a hosted test that typing under `tags:` shows a vault tag and accepting writes it.
   Done 2026-11-17: `FrontmatterCompletionTests` (6: a name at a line's start, a value after `name: `, quoted values, list items, inline lists, links and comments, the body just after the closing `---`, an unclosed block) and the hosted `LivePreviewRevealTests.testTypingATagUnderTagsInTheFrontmatterSuggestsAVaultTagAndAcceptingWritesIt` (Source mode on the iPad simulator, screenshot looked at: `eth/vlsi` suggested under `  - eth`, written by the choice).
-- [ ] Checked on the Mac and the iPad with the owner's vault, in Source mode and Live Preview.
+- [ ] Checked on the Mac and the iPad with the real vault, in Source mode and Live Preview.
 
 ## 3. Other places that take a property or a tag
 
