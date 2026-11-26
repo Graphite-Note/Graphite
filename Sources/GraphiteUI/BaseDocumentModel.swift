@@ -6,8 +6,8 @@
  *              editing it.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 05/11/2026
+ * Version: 0.6
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -44,8 +44,9 @@ final class BaseDocumentModel {
     let source: BaseSource
     /// The file `this` refers to: the base itself, or the note embedding it.
     let contextPath: VaultPath
-    private let store: VaultStore
-    private let index: VaultIndex
+    /// Internal for the model's own extensions (relations, rollups, new notes), which read and save through them.
+    let store: VaultStore
+    let index: VaultIndex
     /// Tells the app which vault file the base just saved.
     private let didSaveFile: (VaultPath) -> Void
 
@@ -162,6 +163,8 @@ final class BaseDocumentModel {
             paths.count <= Self.maximumCheckedChangedFiles else { return false }
         if case .file(let basePath) = source, paths.contains(basePath) { return false }
         if ["file.size", "file.mtime", "file.ctime"].contains(where: parsedSourceText.contains) { return false }
+        // A formula that reads other notes (a rollup through backlinks or links) changes with notes no row is.
+        if Self.otherNotesReadingFunctions.contains(where: parsedSourceText.contains) { return false }
         let environment = BaseEvaluationEnvironment(now: .now, calendar: BaseDateFormatting.displayCalendar, declaredTypes: declaredTypes)
         for path in paths {
             guard let record = try? await index.baseRecord(at: path) else { return false } // Not known: the base runs.
@@ -182,6 +185,9 @@ final class BaseDocumentModel {
         }
         return true
     }
+
+    /// What a formula writes to read notes other than its row: backlinks, a link's file, a link's links.
+    private static let otherNotesReadingFunctions = ["backlinks", "asFile(", "linksTo("]
 
     /// More files saved at once than this runs the base, rather than looking at each.
     private static let maximumCheckedChangedFiles = 16

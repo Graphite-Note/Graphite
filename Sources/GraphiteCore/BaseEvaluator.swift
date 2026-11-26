@@ -5,8 +5,8 @@
  * Description: Evaluates a base's formulas and filters over file records.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -878,7 +878,9 @@ public final class BaseEvaluator {
         case .number(let number): return try numberMethod(name, number: number, arguments: arguments)
         case .list(let elements): return try listMethod(name, elements: elements, arguments: arguments)
         case .date(let date): return try dateMethod(name, date: date, arguments: arguments)
-        case .file(let path): return try fileMethod(name, path: path, arguments: arguments)
+        // Obsidian's `file.backlinks` holds links where Graphite's holds files, so `asFile()` on a backlink answers in
+        // both: a file is its own file.
+        case .file(let path): return name == "asFile" ? .file(path) : try fileMethod(name, path: path, arguments: arguments)
         case .link(let link): return try linkMethod(name, link: link, arguments: arguments)
         case .object(let object):
             switch name {
@@ -1220,7 +1222,7 @@ public final class BaseEvaluator {
     /// A folder path as Obsidian's `normalizePath` leaves it: one slash between names (a
     /// backslash counts as one), none at either end, and no-break spaces as ordinary ones.
     /// The vault root is empty.
-    static func normalizedFolderPath(_ folder: String) -> String {
+    public static func normalizedFolderPath(_ folder: String) -> String {
         folder.replacingOccurrences(of: "\u{A0}", with: " ").replacingOccurrences(of: "\u{202F}", with: " ")
             .split(whereSeparator: { character in character == "/" || character == "\\" }).joined(separator: "/")
     }

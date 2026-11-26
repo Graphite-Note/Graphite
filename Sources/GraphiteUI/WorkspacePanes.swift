@@ -6,8 +6,8 @@
  *              that can be dragged or held on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.52
- * Date: 21/11/2026
+ * Version: 0.53
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -749,7 +749,7 @@ struct TabDocumentView: View {
                                      viewRequestApplied: { document.baseViewRequest = nil })
                     .environment(\.communityPluginCodeBlocks, workspace.communityPlugins.hostWhilePluginsAreOn)
                     .environment(\.communityPluginsTurnOnOffer, workspace.communityPlugins.turnOnOfferWhilePluginsAreOff)
-                    .environment(\.propertySuggestionLookup, workspace.propertySuggestionLookup)
+                    .environment(\.propertySuggestionLookup, workspace.propertySuggestionLookup).environment(\.baseNoteServices, workspace.baseNoteServices)
                 }
             case .media:
                 // One player per file: its playback, size and duration are not carried over

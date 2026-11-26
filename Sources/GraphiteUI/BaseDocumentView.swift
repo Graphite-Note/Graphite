@@ -5,8 +5,8 @@
  * Description: A base in its tab or inside a note: the toolbar, the banners and the selected view.
  *
  * Authors: Bahey Shalash
- * Version: 0.20
- * Date: 05/11/2026
+ * Version: 0.21
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -213,6 +213,9 @@ struct BaseContainerView: View {
     @State private var editedWrittenNode: BaseFrontmatterNode?
     @State private var editedView: EditedView?
     @State private var viewPendingDeletion: BaseViewTarget?
+    /// Links notes and makes new ones; nil offers neither (`Docs/Bases-relations-todo.md`).
+    @Environment(\.baseNoteServices) private var noteServices
+    @State private var noteSheet: BaseNoteSheet?
     /// Rows a base inside a note shows; "Show More" raises it.
     @State private var embeddedRowLimit = Self.embeddedRowLimitStep
 
@@ -290,7 +293,8 @@ struct BaseContainerView: View {
         }
         // Both sheets wait for the save and stay open with the edit when it fails.
         .sheet(item: $editRequest) { request in
-            BasePropertyEditorSheet(request: request, writtenNode: editedWrittenNode) { newValue in
+            BasePropertyEditorSheet(request: request, writtenNode: editedWrittenNode,
+                                    relation: model.relationEditing(for: request, writtenNode: editedWrittenNode, services: noteServices)) { newValue in
                 guard await model.setProperty(request.property, of: request.path, to: newValue) else {
                     return takeActionErrorMessage(otherwise: "The note was not saved.")
                 }
@@ -358,15 +362,16 @@ struct BaseContainerView: View {
     /// The model's message for a failed save, moved into the open sheet so it is not also
     /// shown behind it.
     private func takeActionErrorMessage(otherwise fallbackMessage: String) -> String {
-        let message = model.actionErrorMessage ?? fallbackMessage
-        model.actionErrorMessage = nil
-        return message
+        model.takeActionErrorMessage(otherwise: fallbackMessage)
     }
+
+    /// New, Add Rollup and New Note Settings, while the vault can link and make notes here.
+    private var noteActions: BaseToolbarNoteActions? { BaseToolbarNoteActions(model: model, services: noteServices, sheet: $noteSheet) }
 
     @ViewBuilder private var content: some View {
         VStack(spacing: 0) {
-            BaseToolbar(model: model, isEmbedded: isEmbedded, isLockedToNamedView: isLockedToNamedView, openBase: openBase, editView: beginEditingSelectedView,
-                        deleteView: { viewPendingDeletion = model.selectedView.map(BaseViewTarget.init) })
+            BaseToolbar(model: model, isEmbedded: isEmbedded, isLockedToNamedView: isLockedToNamedView, noteActions: noteActions, openBase: openBase,
+                        editView: beginEditingSelectedView, deleteView: { viewPendingDeletion = model.selectedView.map(BaseViewTarget.init) })
             Divider()
             banners
             viewContent
@@ -377,6 +382,7 @@ struct BaseContainerView: View {
             }
         }
         .background(.background)
+        .modifier(BaseNoteSheets(model: model, services: noteServices, sheet: $noteSheet))
     }
 
     @ViewBuilder private var banners: some View {
@@ -511,9 +517,11 @@ struct BaseContainerView: View {
             BaseMapView(result: result, actions: actions, vaultPlaces: { [model] in await model.vaultPlaceCoordinates() })
         case .kanban:
             let model = model
+            let canCreate = model.canCreateNewItem(services: noteServices)
             BaseKanbanView(result: result, actions: actions, moves: BaseKanbanMoves(
                 canMove: { path in model.canMoveToGroup(path) },
-                move: { path, groupKey in Task { await model.moveToGroup(path, groupKey: groupKey) } }))
+                move: { path, groupKey in Task { await model.moveToGroup(path, groupKey: groupKey) } },
+                newNote: canCreate ? { groupKey, title in noteSheet = .newItem(BaseNewItemRequest(groupKey: groupKey, groupTitle: title)) } : nil))
         case .unsupported:
             EmptyView()
         }
@@ -609,6 +617,8 @@ struct BaseToolbar: View {
     let isEmbedded: Bool
     /// The embed names its view: no menu to leave it, and nothing to edit the base from here.
     var isLockedToNamedView = false
+    /// New, and the view menu's rollup and New Note entries; nil where the base cannot make notes.
+    var noteActions: BaseToolbarNoteActions? = nil
     @Environment(\.communityPluginCodeBlocks) private var pluginHost
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let openBase: (VaultPath, String?) -> Void
@@ -644,6 +654,7 @@ struct BaseToolbar: View {
             if model.sortOverride != nil {
                 resetSortButton
             }
+            if let noteActions { BaseNewItemButton(actions: noteActions) }
             if model.canEditDefinition && !isLockedToNamedView { viewOptions }
             if isEmbedded, case .file(let basePath) = model.source {
                 Button("Open Base", systemImage: "arrow.up.forward.square") { openBase(basePath, model.selectedView?.name) }
@@ -677,6 +688,7 @@ struct BaseToolbar: View {
     private var viewOptions: some View {
         Menu {
             Button("Edit View…", systemImage: "slider.horizontal.3", action: editView)
+            BaseNoteMenuEntries(model: model, actions: noteActions)
             if model.sortOverride != nil {
                 Button("Save Sort to View", systemImage: "arrow.up.arrow.down") { Task { await model.saveSortToView() } }
             }

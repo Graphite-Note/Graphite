@@ -28,6 +28,8 @@ struct CreationRequest: Identifiable {
 
 enum CreationKind: String, Identifiable {
     case note, notebook, base, canvas
+    /// A course page made from Graphite's course starter (`Docs/Bases-relations-todo.md`, section 4).
+    case course
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -35,6 +37,7 @@ enum CreationKind: String, Identifiable {
         case .notebook: "New Notebook"
         case .base: "New Base"
         case .canvas: "New Canvas"
+        case .course: "New Course"
         }
     }
     /// What the new file is called when no name is typed; the file name is then made different
@@ -42,6 +45,7 @@ enum CreationKind: String, Identifiable {
     var untitledName: String {
         switch self {
         case .notebook: "Untitled Notebook"
+        case .course: "Untitled Course"
         case .note, .base, .canvas: "Untitled"
         }
     }
@@ -389,7 +393,10 @@ struct VaultSidebar: View {
     @ViewBuilder private var newDocumentMenuItems: some View {
         Button("New Note", systemImage: "doc.text") { creation = CreationRequest(kind: .note) }
         Button("New Notebook", systemImage: "book.closed") { creation = CreationRequest(kind: .notebook) }
-        if workspace.preferences.isEnabled(.bases) { Button("New Base", systemImage: "tablecells") { creation = CreationRequest(kind: .base) } }
+        if workspace.preferences.isEnabled(.bases) {
+            Button("New Base", systemImage: "tablecells") { creation = CreationRequest(kind: .base) }
+            Button("New Course", systemImage: "graduationcap") { creation = CreationRequest(kind: .course) }
+        }
         if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { creation = CreationRequest(kind: .canvas) } }
         if workspace.preferences.isEnabled(.dailyNotes) {
             Button("Today's Daily Note", systemImage: "calendar") { Task { await workspace.openDailyNote() } }
@@ -953,7 +960,10 @@ struct VaultEntryMenu: View {
     @ViewBuilder private var folderMenu: some View {
         Button("New Note", systemImage: "doc.text") { requestCreation(.note, entry.path) }
         Button("New Notebook", systemImage: "book.closed") { requestCreation(.notebook, entry.path) }
-        if workspace.preferences.isEnabled(.bases) { Button("New Base", systemImage: "tablecells") { requestCreation(.base, entry.path) } }
+        if workspace.preferences.isEnabled(.bases) {
+            Button("New Base", systemImage: "tablecells") { requestCreation(.base, entry.path) }
+            Button("New Course", systemImage: "graduationcap") { requestCreation(.course, entry.path) }
+        }
         if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { requestCreation(.canvas, entry.path) } }
         Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: entry.path) }
         Divider()

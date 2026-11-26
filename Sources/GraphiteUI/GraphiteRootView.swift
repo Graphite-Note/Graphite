@@ -655,7 +655,7 @@ struct GraphiteRootView: View {
                 Task { await workspace.createNotebook(named: name, options: options, in: request.directory) }
             }
             .environment(myTemplates)
-        case .note, .base, .canvas:
+        case .note, .base, .canvas, .course:
             CreateDocumentSheet(kind: request.kind, folderDescription: folderDescription) { name in
                 if request.opensInNewTab { openTabForLibraryCreation() }
                 Task {
@@ -663,6 +663,7 @@ struct GraphiteRootView: View {
                     case .note: await workspace.createNote(named: name, in: request.directory)
                     case .base: await workspace.createBase(named: name, in: request.directory)
                     case .canvas: await workspace.createCanvas(named: name, in: request.directory)
+                    case .course: await workspace.createCourse(named: name, in: request.directory)
                     case .notebook: break
                     }
                 }

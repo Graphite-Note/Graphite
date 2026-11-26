@@ -1,0 +1,36 @@
+# Assignments of every course, made by Graphite's New Course. "This course", embedded in a course
+# note, shows the assignments whose "course" links to that note; New there links a new one to it.
+filters:
+  and:
+    - file.inFolder("@COURSE_FOLDER@/Assignments")
+views:
+  - type: table
+    name: This course
+    filters:
+      and:
+        - list(course).contains(this)
+    order:
+      - file.name
+      - due
+      - weight
+      - done
+    sort:
+      - property: due
+        direction: ASC
+    summaries:
+      done: Checked
+      weight: Sum
+  - type: table
+    name: All
+    order:
+      - file.name
+      - course
+      - due
+      - weight
+      - done
+    groupBy:
+      property: course
+      direction: ASC
+    sort:
+      - property: due
+        direction: ASC

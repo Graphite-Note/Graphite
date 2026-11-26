@@ -1,0 +1,28 @@
+# Lectures of every course, made by Graphite's New Course. "This course", embedded in a course note,
+# shows the lectures whose "course" links to that note; New there links a new one to it.
+filters:
+  and:
+    - file.inFolder("@COURSE_FOLDER@/Lectures")
+views:
+  - type: table
+    name: This course
+    filters:
+      and:
+        - list(course).contains(this)
+    order:
+      - file.name
+      - date
+      - studied
+    sort:
+      - property: date
+        direction: ASC
+  - type: table
+    name: All
+    order:
+      - file.name
+      - course
+      - date
+      - studied
+    groupBy:
+      property: course
+      direction: ASC

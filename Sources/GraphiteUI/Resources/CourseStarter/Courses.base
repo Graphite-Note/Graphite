@@ -1,0 +1,47 @@
+# Courses, made by Graphite's New Course. Each course note sits in this folder; its assignments and
+# lectures link to it through their "course" property, and the formulas below read them back.
+filters:
+  and:
+    - file.inFolder("@COURSE_FOLDER@")
+    - type == "course"
+newItemFolder: "@COURSE_FOLDER@"
+newItemTemplate: "@COURSE_TEMPLATE@"
+formulas:
+  assignments: file.backlinks.map(value.asFile()).filter(value).filter(value.inFolder("@COURSE_FOLDER@/Assignments")).filter(list(value.properties.course).contains(file))
+  lectures: file.backlinks.map(value.asFile()).filter(value).filter(value.inFolder("@COURSE_FOLDER@/Lectures")).filter(list(value.properties.course).contains(file))
+  done: formula.assignments.filter(value.properties.done == true).length
+  progress: if(formula.assignments.length == 0, 0, (formula.done / formula.assignments.length * 100).round())
+properties:
+  formula.assignments:
+    displayName: Assignments
+  formula.lectures:
+    displayName: Lectures
+  formula.done:
+    displayName: Done
+  formula.progress:
+    displayName: Percent done
+views:
+  - type: table
+    name: Courses
+    order:
+      - file.name
+      - semester
+      - credits
+      - formula.assignments
+      - formula.done
+      - formula.progress
+    sort:
+      - property: file.name
+        direction: ASC
+    summaries:
+      credits: Sum
+  - type: table
+    name: Progress
+    filters:
+      and:
+        - file.path == this.file.path
+    order:
+      - formula.done
+      - formula.progress
+      - formula.lectures
+      - credits

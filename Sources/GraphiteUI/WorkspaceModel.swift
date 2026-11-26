@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.89
- * Date: 16/11/2026
+ * Version: 0.90
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -1196,7 +1196,7 @@ final class WorkspaceModel {
                                 open: { [weak self] path in Task { await self?.open(path) } },
                                 filesChanged: { [weak self] paths in self?.filesSavedOutsideEditors(paths) },
                                 openBase: { [weak self] basePath, viewName in Task { await self?.openBase(basePath, viewName: viewName) } },
-                                modelCache: embeddedBaseModelCache)
+                                modelCache: embeddedBaseModelCache, noteServices: baseNoteServices)
     }
 
     /// Opens a `.base` file at the named view, as `[[Books.base#Gallery]]` and an embedded

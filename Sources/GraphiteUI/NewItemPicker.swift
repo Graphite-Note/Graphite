@@ -6,8 +6,8 @@
  *              New button that opens it and carries out the choice once the menu has closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 16/11/2026
+ * Version: 0.8
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -20,7 +20,7 @@ extension CreationKind {
     /// make them (a new one would open as a page or a board nothing can be added to). Notes and bases are edited everywhere.
     var canBeEditedOnThisDevice: Bool {
         switch self {
-        case .note, .base: true
+        case .note, .base, .course: true
         case .notebook, .canvas:
             #if os(macOS)
             false
@@ -49,6 +49,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .document(.note): "Note"
         case .document(.canvas): "Canvas"
         case .document(.base): "Base"
+        case .document(.course): "Course"
         case .dailyNote: "Today's Daily Note"
         case .scanDocuments: "Scan Documents"
         case .pictureFromPhotos: "Image from Photos"
@@ -65,6 +66,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .document(.note): "Markdown text"
         case .document(.canvas): "Cards on a board"
         case .document(.base): "A table of notes"
+        case .document(.course): "A course page with its assignments and lectures"
         case .dailyNote: "Opens or creates it"
         case .scanDocuments: "Paper pages into a PDF notebook"
         case .pictureFromPhotos: "A picture from your photo library, as a file here"
@@ -80,6 +82,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .document(.note): "doc.text"
         case .document(.canvas): "rectangle.3.group"
         case .document(.base): "tablecells"
+        case .document(.course): "graduationcap"
         case .dailyNote: "calendar"
         case .scanDocuments: "doc.viewfinder"
         case .pictureFromPhotos: "photo"
@@ -93,7 +96,7 @@ enum CreatableItem: Hashable, Identifiable {
     var requiredPlugin: CorePlugin? {
         switch self {
         case .document(.canvas): .canvas
-        case .document(.base): .bases
+        case .document(.base), .document(.course): .bases
         case .dailyNote: .dailyNotes
         case .document(.notebook), .document(.note), .scanDocuments, .pictureFromPhotos, .takePhoto, .importFiles, .folder: nil
         }
@@ -105,7 +108,8 @@ enum CreatableItem: Hashable, Identifiable {
     static func offered(firstKind: CreationKind, isEnabled: (CorePlugin) -> Bool, canScanDocuments: Bool, canTakePhoto: Bool,
                         isEditable: (CreationKind) -> Bool = { kind in kind.canBeEditedOnThisDevice }) -> (large: [CreatableItem], others: [CreatableItem]) {
         let largeKinds: [CreatableItem] = firstKind == .note ? [.document(.note), .document(.notebook)] : [.document(.notebook), .document(.note)]
-        let others: [CreatableItem] = [.document(.canvas), .document(.base), .dailyNote, .scanDocuments, .pictureFromPhotos, .takePhoto, .importFiles, .folder]
+        let others: [CreatableItem] = [.document(.canvas), .document(.base), .document(.course), .dailyNote, .scanDocuments, .pictureFromPhotos,
+                                       .takePhoto, .importFiles, .folder]
         func isOffered(_ item: CreatableItem) -> Bool {
             switch item {
             case .scanDocuments: canScanDocuments

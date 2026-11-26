@@ -5,8 +5,8 @@
  * Description: Reads a .base file: its filters, formulas, properties, summaries and views.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -282,6 +282,10 @@ public struct BaseDefinition: Hashable, Sendable {
     public var views: [BaseView]
     /// Problems that did not stop the base from opening, shown to the user.
     public var issues: [String]
+    /// Obsidian's `newItemFolder`: where New in a view makes its note.
+    public var newItemFolder: String?
+    /// Obsidian's `newItemTemplate`: the vault path of the note New in a view starts from.
+    public var newItemTemplate: String?
 
     public init(filters: BaseFilter? = nil, formulas: [BaseFormula] = [], displayNames: [BasePropertyIdentifier: String] = [:], summaryFormulas: [String: String] = [:], views: [BaseView] = [], issues: [String] = []) {
         self.filters = filters
@@ -403,6 +407,8 @@ public struct BaseDefinition: Hashable, Sendable {
                 summaryFormulas[name] = sourceText
             }
         }
+        newItemFolder = Self.nonEmptyText(mapping["newItemFolder"])
+        newItemTemplate = Self.nonEmptyText(mapping["newItemTemplate"])
         if let viewsNode = mapping["views"] {
             if let viewNodes = viewsNode.sequence {
                 for (position, viewNode) in viewNodes.enumerated() {
@@ -416,6 +422,12 @@ public struct BaseDefinition: Hashable, Sendable {
                 issues.append("“views” must be a list.")
             }
         }
+    }
+
+    /// A key Obsidian reads only when it is non-empty text, as `newItemFolder` is.
+    private static func nonEmptyText(_ node: Node?) -> String? {
+        guard let text = node?.scalar?.string, !text.isEmpty, let node, !isNullValue(node) else { return nil }
+        return text
     }
 
     private mutating func parseView(_ mapping: Node.Mapping, position: Int) -> BaseView {

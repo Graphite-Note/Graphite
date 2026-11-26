@@ -5,8 +5,8 @@
  * Description: What a base inside a note needs from the app, and the code block and embed views that show it.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -32,11 +32,13 @@ public struct BaseEmbedContext {
     public let openBase: ((VaultPath, String?) -> Void)?
     /// Keeps the results of bases scrolled out of sight; see `EmbeddedBaseModelCache`.
     public let modelCache: EmbeddedBaseModelCache?
+    /// Links notes in a relation and makes new notes from a view; nil offers neither.
+    public let noteServices: BaseNoteServices?
 
     public init(store: VaultStore, index: VaultIndex, embeddingNote: VaultPath, contentVersion: Int, contentChange: BaseContentChange? = nil,
         isIndexComplete: Bool,
                 open: @escaping (VaultPath) -> Void, filesChanged: @escaping ([VaultPath]) -> Void = { _ in },
-                openBase: ((VaultPath, String?) -> Void)? = nil, modelCache: EmbeddedBaseModelCache? = nil) {
+                openBase: ((VaultPath, String?) -> Void)? = nil, modelCache: EmbeddedBaseModelCache? = nil, noteServices: BaseNoteServices? = nil) {
         self.store = store
         self.index = index
         self.embeddingNote = embeddingNote
@@ -47,6 +49,7 @@ public struct BaseEmbedContext {
         self.filesChanged = filesChanged
         self.openBase = openBase
         self.modelCache = modelCache
+        self.noteServices = noteServices
     }
 }
 
@@ -61,6 +64,9 @@ extension EnvironmentValues {
         get { self[BaseEmbedContextKey.self] }
         set { self[BaseEmbedContextKey.self] = newValue }
     }
+
+    /// What a base shown here uses to link notes and make new ones; nil offers neither.
+    @Entry var baseNoteServices: BaseNoteServices? = nil
 }
 
 /// A ```` ```base ```` code block in a note: the live base when a context is available
@@ -86,6 +92,7 @@ public struct BaseCodeBlockView: View {
                              contentVersion: activeContext.contentVersion, contentChange: activeContext.contentChange,
                                  isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, filesChanged: activeContext.filesChanged, modelCache: activeContext.modelCache)
+                .environment(\.baseNoteServices, activeContext.noteServices)
         } else {
             Text(yaml)
                 .font(.callout.monospaced())
@@ -124,6 +131,7 @@ public struct BaseFileEmbedView: View {
                                  isIndexComplete: activeContext.isIndexComplete,
                              open: activeContext.open, openBase: activeContext.openBase, filesChanged: activeContext.filesChanged,
                              modelCache: activeContext.modelCache)
+                .environment(\.baseNoteServices, activeContext.noteServices)
         } else if let openWithoutContext {
             Button { openWithoutContext(path) } label: {
                 Label(path.name + (viewName.map { name in " › " + name } ?? ""), systemImage: "tablecells")

@@ -5,8 +5,8 @@
  * Description: The Kanban view of a base.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -19,6 +19,8 @@ struct BaseKanbanMoves {
     let canMove: (VaultPath) -> Bool
     /// Writes the column's value into the note's grouped property.
     let move: (VaultPath, BaseCellValue) -> Void
+    /// Makes a note in the column with its value and title, as Obsidian's New in a column; nil where New cannot.
+    var newNote: ((BaseCellValue, String) -> Void)? = nil
 }
 
 /// How a board fits its width. On a phone, or in a note there, a column takes the width
@@ -137,6 +139,13 @@ struct BaseKanbanView: View {
             }
             Text(group.rows.count.formatted()).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             Spacer(minLength: 0)
+            if let newNote = moves.newNote {
+                let title = Self.title(of: group)
+                Button("New Note in \(title)", systemImage: "plus") { newNote(group.key ?? .value(.null), title) }
+                    .labelStyle(.iconOnly)
+                    .buttonStyle(.borderless)
+                    .help("New note in \(title)")
+            }
         }
         .padding(.horizontal, 4)
     }

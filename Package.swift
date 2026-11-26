@@ -7,8 +7,8 @@
  *              makes a warning in any of its targets fail the build.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
- * Date: 23/11/2026
+ * Version: 0.20
+ * Date: 26/11/2026
  */
 import PackageDescription
 
@@ -58,7 +58,8 @@ let package = Package(
                 // The Obsidian plugin runtime's page, scripts and vendored libraries, copied as
                 // one folder so the page's relative script paths keep working.
                 // The theme resolver's default variables and probe script (`ThemeTokenResolver`).
-                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver")]),
+                // The course starter's bases and template (`CourseStarter`).
+                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver"), .copy("Resources/CourseStarter")]),
         .executableTarget(name: "GraphiteBenchmarks", dependencies: ["GraphiteCore", "GraphiteIndex"]),
         // Fakes and helpers the test targets share (temporary vaults, isolated preferences, the one polling
         // wait, the conflict-version fake). It imports XCTest, so only test targets depend on it.

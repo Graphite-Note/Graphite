@@ -62,6 +62,7 @@ enum WorkspaceCommandList {
         if !CreationKind.notebook.canBeEditedOnThisDevice { commands.removeAll { command in command.id == "new-notebook" } }
         if workspace.preferences.isEnabled(.bases) {
             commands.append(PaletteCommand(id: "new-base", command: .newBase, systemImage: "tablecells") { window.create(.base) })
+            commands.append(PaletteCommand(id: "new-course", command: .newCourse, systemImage: "graduationcap") { window.create(.course) })
         }
         if workspace.preferences.isEnabled(.canvas), CreationKind.canvas.canBeEditedOnThisDevice {
             commands.append(PaletteCommand(id: "new-canvas", command: .newCanvas, systemImage: "rectangle.3.group") { window.create(.canvas) })

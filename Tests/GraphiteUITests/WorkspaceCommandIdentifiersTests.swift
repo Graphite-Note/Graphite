@@ -5,8 +5,8 @@
  * Description: The command palette's commands and the sidebar panels some of them show.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.7
- * Date: 21/11/2026
+ * Version: 0.8
+ * Date: 26/11/2026
  */
 
 import XCTest
@@ -130,14 +130,14 @@ final class WorkspaceCommandIdentifiersTests: XCTestCase {
     /// The identifiers as the palette lists them with the default core plugins and no vault open.
     static let identifiersWithNoVaultOpen = withoutWhatThisDeviceCannotEdit([
         "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
-        "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "split-down", "file-recovery-all", "workspace-focus",
+        "new-base", "new-course", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "split-down", "file-recovery-all", "workspace-focus",
         "graph-open", "map-open", "bookmarks-show", "daily-today", "daily-previous", "daily-next", "calendar-show", "record", "record-video",
     ])
 
     /// The same with `Folder/Note.md` open in the only tab: the file, tab, note and editing commands join the list.
     static let identifiersWithANoteOpen = withoutWhatThisDeviceCannotEdit([
         "switcher", "search", "new-note", "new-notebook", "new-folder", "toggle-left-sidebar", "settings", "vaults", "collapse-folders", "filter-files",
-        "new-base", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "split-down", "move-tab", "file-recovery-all", "file-recovery-note",
+        "new-base", "new-course", "new-canvas", "new-tab", "close-tab", "pin-tab", "show-tab-overview", "toggle-stacked-tabs", "split-right", "split-down", "move-tab", "file-recovery-all", "file-recovery-note",
         "copy-url", "workspace-focus", "graph-open", "graph-local", "map-open", "map-local", "bookmarks-show", "bookmarks-file",
         "daily-today", "daily-previous", "daily-next", "calendar-show", "calendar-event-note", "rename", "move", "copy", "delete", "reveal",
         "toggle-reading", "toggle-source", "toggle-right-sidebar", "find-in-note", "replace-in-note", "toggle-fold", "fold-all", "unfold-all",

@@ -50,7 +50,7 @@ enum ShortcutBinding {
 enum GraphiteCommand: String, CaseIterable {
     // File
     case newNote = "file-explorer:new-file", newNotebook = "graphite:new-notebook", newBase = "bases:new-file", newCanvas = "canvas:new-file"
-    case newFolder = "graphite:new-folder", newTab = "workspace:new-tab", quickSwitcher = "switcher:open"
+    case newFolder = "graphite:new-folder", newTab = "workspace:new-tab", quickSwitcher = "switcher:open", newCourse = "graphite:new-course"
     case closeTab = "workspace:close", reopenClosedTab = "workspace:undo-close-pane", save = "editor:save-file"
     case renameFile = "workspace:edit-file-title", moveFile = "file-explorer:move-file", duplicateFile = "file-explorer:duplicate-file"
     case deleteFile = "app:delete-file", revealFile = "file-explorer:reveal-active-file", collapseFolders = "graphite:collapse-all-folders"
@@ -177,6 +177,7 @@ extension GraphiteCommand {
             return Descriptor(title: "Create new note", group: .file, defaultCombinations: command("N"), binding: .menuBar, macMenuTitles: ["New Note"])
         case .newNotebook: return Descriptor(title: "Create new notebook", group: .file, binding: .menuBar, macMenuTitles: ["New Notebook"])
         case .newBase: return Descriptor(title: "Bases: Create new base", group: .file, binding: .menuBar, corePlugin: .bases, macMenuTitles: ["New Base"])
+        case .newCourse: return Descriptor(title: "Bases: Create new course", group: .file, corePlugin: .bases)
         case .newCanvas:
             return Descriptor(title: "Canvas: Create new canvas", group: .file, binding: .menuBar, corePlugin: .canvas, macMenuTitles: ["New Canvas"])
         case .newFolder: return Descriptor(title: "Files: Create new folder", group: .file)

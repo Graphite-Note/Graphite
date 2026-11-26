@@ -5,8 +5,8 @@
  * Description: Edits one note property from a base, with the vault's values suggested while a text or list is typed.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -18,6 +18,11 @@ struct BasePropertyEditorSheet: View {
     /// Saves the value and returns nil, or returns why the note was not saved. The sheet
     /// stays open with the typed value until the save succeeds.
     let saveEdit: (PropertyValue?) async -> String?
+    /// The relation picker's reads and writes; nil offers no picker (`Docs/Bases-relations-todo.md`, section 1).
+    let relation: BaseRelationEditing?
+    @State private var relationState = BaseRelationPickerState()
+    /// Whether the sheet shows the relation picker rather than the value's field.
+    @State private var isPickingNotes = false
     @Environment(\.dismiss) private var dismiss
     @State private var draft: BasePropertyDraft
     /// Kept in state: the view is created again whenever its parent updates, and a draft
@@ -31,9 +36,11 @@ struct BasePropertyEditorSheet: View {
 
     /// - Parameter writtenNode: The property as written in the note's frontmatter. With
     ///   it, links, embeds and dates are shown and kept exactly as written.
-    init(request: BaseEditRequest, writtenNode: BaseFrontmatterNode? = nil, saveEdit: @escaping (PropertyValue?) async -> String?) {
+    init(request: BaseEditRequest, writtenNode: BaseFrontmatterNode? = nil, relation: BaseRelationEditing? = nil,
+         saveEdit: @escaping (PropertyValue?) async -> String?) {
         self.request = request
         self.saveEdit = saveEdit
+        self.relation = relation
         let initialDraft = BasePropertyDraft(kind: request.kind, currentValue: request.currentValue, writtenNode: writtenNode)
         _loadedDraft = State(initialValue: initialDraft)
         _draft = State(initialValue: initialDraft)
@@ -42,12 +49,22 @@ struct BasePropertyEditorSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    editor
-                } header: {
-                    Text(request.path.stem)
-                } footer: {
-                    Text(footerText)
+                if isPickingNotes, let relation {
+                    BaseRelationPicker(editing: relation, state: relationState)
+                } else {
+                    Section {
+                        editor
+                    } header: {
+                        Text(request.path.stem)
+                    } footer: {
+                        Text(footerText)
+                    }
+                }
+                if canLinkNotes {
+                    Section {
+                        Button(isPickingNotes ? "Edit as Text" : "Link Notes…", systemImage: isPickingNotes ? "character.cursor.ibeam" : "link",
+                               action: switchRelationMode)
+                    }
                 }
                 if let failureMessage {
                     Section { Label(failureMessage, systemImage: "exclamationmark.triangle").foregroundStyle(.red) }
@@ -69,6 +86,42 @@ struct BasePropertyEditorSheet: View {
         .frame(minWidth: 360, minHeight: 300)
         #endif
         .interactiveDismissDisabled(isSaving)
+        .task { await openOnThePickerForARelation() }
+    }
+
+    // MARK: Relations (Docs/Bases-relations-todo.md, section 1)
+
+    /// A text or list property that can be edited here can link notes.
+    private var canLinkNotes: Bool {
+        relation != nil && draft.readOnlyReason == nil && (request.kind == .text || request.kind == .list)
+    }
+
+    private func openOnThePickerForARelation() async {
+        guard canLinkNotes, let relation, await relation.isRelation() else { return }
+        isPickingNotes = true
+    }
+
+    /// Between the picker and the field: the picker's notes become the field's text, one per line in a list.
+    private func switchRelationMode() {
+        if isPickingNotes, relationState.hasChanges {
+            draft.text = request.kind == .list ? relationState.writtenItems.joined(separator: "\n") : (relationState.writtenItems.first ?? "")
+        }
+        isPickingNotes.toggle()
+    }
+
+    private func saveChosenNotes(_ relation: BaseRelationEditing) {
+        guard relationState.hasChanges else { dismiss(); return }
+        failureMessage = nil
+        isSaving = true
+        let value = BaseRelation.propertyValue(chosen: relationState.writtenItems, shape: relation.shape)
+        Task {
+            if let message = await saveEdit(value) {
+                failureMessage = message
+                isSaving = false
+            } else {
+                dismiss()
+            }
+        }
     }
 
     @ViewBuilder private var editor: some View {
@@ -157,6 +210,7 @@ struct BasePropertyEditorSheet: View {
     }
 
     private func saveDraft() {
+        if isPickingNotes, let relation { return saveChosenNotes(relation) }
         guard draft.needsSaving(comparedTo: loadedDraft) else { dismiss(); return }
         guard let value = draft.editedValue(kind: request.kind) else { numberIsInvalid = true; return }
         numberIsInvalid = false

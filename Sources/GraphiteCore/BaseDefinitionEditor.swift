@@ -5,8 +5,8 @@
  * Description: Edits a .base file's views, leaving the rest of the file as written.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -25,7 +25,9 @@ import Yams
 ///
 /// Not `Sendable` (Yams nodes hold anchors); create and use it inside one task.
 public struct BaseDefinitionEditor {
-    private var rootMapping: Node.Mapping
+    /// The file's top-level mapping as edited. Internal so the edits of formulas and of top-level keys
+    /// (`BaseDefinitionEditorFormulas.swift`) keep to the same tree.
+    var rootMapping: Node.Mapping
     private let originalText: String
     /// The file's tree before any edit, with where each node starts in `originalText`.
     private let originalTree: WrittenYAMLNode?
