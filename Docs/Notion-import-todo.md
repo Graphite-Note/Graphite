@@ -1,51 +1,54 @@
-# Importing from Notion with a downloadable plugin: TODO
+# Importing from Notion with the Swift Importer: TODO
 
-Created: 2026-11-13.
+Created: 2026-11-13. Rewritten 2026-11-26 around the Swift Importer.
 
-Status: 2026-11-17, upstream's Importer 3.2.0 runs unmodified in Graphite on made-up Notion exports and API answers, six runtime gaps fixed; the fork, the test account and the manual checks are still to come. Issues: [#172](https://github.com/Graphite-Note/Graphite/issues/172) to [#177](https://github.com/Graphite-Note/Graphite/issues/177), one per section.
+Status: 2026-11-26, the Swift package [Graphite-Note/Importer](https://github.com/Graphite-Note/Importer) exists with the ground every format shares and imports nothing yet. Obsidian's own Importer 3.2.0 runs unmodified in Graphite's plugin runtime on made-up Notion exports and API answers (section 3), and stays the reference the Swift importer is compared with. Issues: one per section, linked under each heading.
 
 ## Request
 
 Request of 2026-11-13: "add as a todo, to create a plugin (that can be downloaded) to import from notion and it needs to be actually thought out properly", then: "https://github.com/obsidianmd/obsidian-importer already exists we can fork it and adapt it."
 
-A student moving from Notion should get their workspace into a Graphite vault as ordinary files: pages as Markdown notes, databases as Obsidian Bases, attachments as files. Afterwards it should work in Graphite as if it had been written there, and in Obsidian too. The importer is a download, never part of the app (`lean-core-app`: the app stays small; JavaScript community plugins are the only code iOS lets Graphite download, App Store guideline 2.5.2).
+Request of 2026-11-26: "https://github.com/obsidianmd/obsidian-importer for of this but improved and in swift specially the notion one is currently mid.... we need to turn that into a repo of its own and later be a graphite downloadable plugin. in swift of course."
 
-## What exists today (2026-11-13)
+A student moving from Notion should get their workspace into a Graphite vault as ordinary files: pages as Markdown notes, databases as Obsidian Bases, attachments as files. Afterwards it should work in Graphite as if it had been written there, and in Obsidian too, so that the move is seamless.
+
+## What exists today (2026-11-26)
 
 - **Obsidian's Importer** (`obsidianmd/obsidian-importer`, MIT, by Obsidian, release 3.2.0 of 2026-11-12, `isDesktopOnly: false`, `minAppVersion` 1.13.0, `main.js` 5.1 MB) imports from Notion in two ways (its own help page, `obsidian.md/help/import/notion`, and `src/formats/notion.ts`, `src/formats/notion-api.ts`):
-  - **Notion's HTML export** (`.zip`, `NotionImporter`): no token or network needed. Pages become notes and nested pages become folders ("Save parent pages in subfolders"). Databases are *not* kept as databases. Very large exports come as a zip of `Export-<id>-Part-N.zip` files. A Markdown export is refused because it leaves out data. Zips are read with `@zip.js/zip.js` from the picked `File` in 64 KB slices (`file.slice`, `READ_CHUNK`), so a picked export is not read into memory all at once.
-  - **Notion's API** (`NotionAPIImporter`, the `@notionhq/client` library, Notion API version `2025-09-03`, which has data sources): needs an integration token (`ntn_…`), kept with `getSecret()` in Obsidian's secret storage, and the pages and databases shared with that integration. Each database becomes a folder with a `.base` file: a table view of all properties, plus a Kanban view per Notion board on API 1.14 and later. Notion formulas are converted to Bases formulas (`formula-converter.ts`); `name()`, `email()`, `style()` and `unstyle()` are not. Relations become links. Attachments are downloaded with `requestUrl`. Requests keep to Notion's rate of 3 a second after a burst of 100 (`NotionRequestScheduler`), backing off on 429 and on stalls. Not imported: views other than boards, boards' filters, sorts and sub-groups, linked data sources.
-  - Both write a `notion-id` property (`NOTION_ID_PROPERTY`) and show a preview of the converted notes before importing. Importing again defaults to updating the notes an earlier import made and keeping those edited since (`DuplicateHandling.Update`, compared by modification time; also skip and copy).
-- **In Graphite**, Importer 3.1.14 installs and loads (sweep of 2026-10-12, `Docs/Community-plugins.md`): "partly": its formats and steps draw in Settings and the system file picker opens, but *no import was ever run*. The runtime already gives what both Notion paths lean on: `requestUrl` made natively (https, **64 MB and 60 seconds at most per request**), `app.secretStorage` in the keychain, Node and Electron modules as stand-ins that fail only when used, `Platform` as on Obsidian mobile, API version 1.14.4, coordinated vault writes. Graphite's Bases draw table, cards, list, map and Kanban views (`BaseViewType`).
-- **Installing:** Settings › Community plugins installs from Obsidian's directory or from any GitHub repository (`owner/name`) into `.obsidian/plugins/<id>/`. Graphite keeps its own list of plugins it runs (`.graphite/community-plugins.json`), apart from Obsidian's.
+  - **Notion's HTML export** (`.zip`, `NotionImporter`): no token or network needed. Pages become notes and nested pages become folders ("Save parent pages in subfolders"). Databases are *not* kept as databases. Very large exports come as a zip of `Export-<id>-Part-N.zip` files. A Markdown export is refused because it leaves out data. Zips are read with `@zip.js/zip.js` from the picked `File` in 64 KB slices, so a picked export is not read into memory all at once.
+  - **Notion's API** (`NotionAPIImporter`, the `@notionhq/client` library, Notion API version `2025-09-03`, which has data sources): needs an integration token (`ntn_…`) and the pages and databases shared with that integration. Each database becomes a folder with a `.base` file: a table view of all properties, plus a Kanban view per Notion board. Notion formulas are converted to Bases formulas (`formula-converter.ts`), except `name()`, `email()`, `style()` and `unstyle()`. Relations become links. Requests keep to Notion's rate of 3 a second after a burst of 100 (`NotionRequestScheduler`), backing off on 429 and on stalls. Not imported: views other than boards, boards' filters, sorts and sub-groups, linked data sources.
+  - Both write a `notion-id` property and show a preview before importing. Importing again defaults to updating the notes an earlier import made and keeping those edited since (`DuplicateHandling.Update`, compared by modification time).
+  - Its own faults, found running it in Graphite (section 3, the same in Obsidian): a title shortened to 200 characters leaves its link unresolved. Importing the HTML export again rewrites links into a new folder with " 1", copies attachments again, and writes over a page edited since when the export gives it no times. A 429 or 5xx while the API's page list loads ends the import with "n.shouldStop is not a function". The Markdown export refusal is let go as an unhandled error.
+- **In Graphite**, upstream's Importer 3.2.0 runs unmodified in the community-plugin runtime (a WKWebView) on made-up material, with six runtime gaps fixed for every plugin (section 3, `Docs/Community-plugins.md`).
+- **The Swift Importer**, [Graphite-Note/Importer](https://github.com/Graphite-Note/Importer) (MIT, created 2026-11-26): targets `ImporterCore` and `NotionImport`, Foundation only. It has vault file names made from titles, the names taken in a folder, vault paths that cannot leave the vault, the destination an import writes to (which never replaces a file), and the reading of Notion's export names. Its design is `docs/Design.md` there. No format imports yet.
+- **Goodnotes and Notability** import natively from `Packages/NotebookImport` (`Docs/Goodnotes-Notability-import-todo.md`), apart from this plan.
 
-## Decisions (2026-11-13, a fork chosen; the rest proposed, to be confirmed)
+## Decisions
 
-1. **Fork Importer instead of writing an importer from nothing.** Notion's two formats, its block types, formula language, rate limits and export quirks are already handled and maintained by Obsidian, under MIT. A new importer would repeat that and fall behind.
-2. **Fix the runtime before the fork.** Graphite's plugin goal (`OBJECTIVE.md`) is to run plugins unmodified. Anything upstream Importer needs from the `obsidian` API is fixed in Graphite's runtime, so that Obsidian's own Importer also works in Graphite. The fork changes only what is Graphite's to change (decision 4), and each change that would also help Obsidian on mobile is offered upstream as a pull request.
-3. **The fork is its own plugin:** `Graphite-Note/graphite-importer`, id `graphite-importer`, name "Importer for Graphite". It must not keep the id `obsidian-importer`: Graphite installs into `.obsidian/plugins/<id>/`, so the same id would overwrite the copy of Importer that Obsidian runs, and Obsidian's updates would overwrite the fork. The name and description must not suggest that Obsidian publishes it. `LICENSE` keeps Obsidian's MIT notice and adds the fork's; the README says where it comes from and what it changes.
-4. **What the fork may change:** its id, name and README; which formats it offers (decision 5); Notion views that upstream leaves out and Graphite's Bases can draw (section 4); limits that come from Graphite rather than from Notion (the 64 MB per request of `requestUrl`, say). Nothing that would make it run only in Graphite: the same build must still run in Obsidian.
-5. **Formats offered: Notion only, at first** (both the HTML export and the API). Upstream also offers 14 other formats; none has been run in Graphite, and showing them untested would present features as working that are not (`OBJECTIVE.md`, "No fake features"). They stay in the source, so merging upstream stays easy, and are switched off in the fork's format list until each is checked in Graphite. *Open question:* show all of them, marked "not checked in Graphite", instead?
-6. **Keeping up with upstream:** the fork tracks `obsidianmd/obsidian-importer`'s `master` and merges each upstream release within a week, its own changes kept as a few commits on top. Its version is upstream's with a suffix (`3.2.0-graphite.1`), so it is clear which upstream release it carries.
-7. **Test material is made for the purpose, never a real personal workspace** (`no-personal-notes-in-demos`): a Notion workspace on a test account, filled by a script through Notion's API from a few course notes, with every block type, property type, database view, nesting depth and attachment kind listed in section 2. Its HTML export and its API answers, recorded and scrubbed of the token and of user names, become test fixtures; the token itself is never written to the repository or to a log.
+1. **Decided 2026-11-26: the importer is written in Swift in its own repository, `Graphite-Note/Importer`, instead of a fork of Obsidian's JavaScript Importer** (the fork chosen on 2026-11-13 is dropped, with its sections, issues #172 and #175). Obsidian's Importer stays the reference: its conversion rules are ported under its MIT license (kept in `OBSIDIAN-IMPORTER-LICENSE`), its output on the same material is what the Swift import is compared with, and its faults listed above are not repeated.
+2. **Decided 2026-11-26: linked now, a downloadable plugin later.** Graphite depends on the package with an exact version, as on MermaidDiagrams, and creates nothing of it until an import starts (`lean-core-app`). The core uses only the Foundation that exists on Linux and WebAssembly as well. iOS refuses downloaded native code (App Store guideline 2.5.2), but code run by WebKit is allowed and the plugin runtime is a WKWebView, so the package compiled to WebAssembly becomes the downloadable plugin (section 7). Once that works on the iPad and the Mac, the linked copy leaves the app.
+3. **The runtime fixes made for upstream's Importer stay.** Obsidian's own Importer keeps working in Graphite as a community plugin, for the formats the Swift importer does not have yet.
+4. **Decided 2026-11-26: Notion first.** The other formats of Obsidian's Importer come later (section 9). Goodnotes and Notability stay in `Packages/NotebookImport` for now.
+5. **The host does all reading, writing and networking.** The importer is given the export to read (random access, never loaded whole), the destination to write (Graphite's coordinated vault writes) and, for the API, the way to send requests (`URLSession` with the token from the Keychain when linked, the runtime's `requestUrl` in the WebAssembly build). This keeps one code base for both deliveries.
+6. **Never overwrite, never lose in silence.** A destination refuses to replace a file. Importing again updates only notes the importer wrote and nobody edited since. Every page and database ends in an import report kept as a note.
+7. **Test material is never a real personal workspace** (`no-personal-notes-in-demos`). Exports published online with a license that allows it, and a Notion test workspace filled by a script for what they lack (section 2). Downloaded material is untrusted data: it is never run or opened in a browser, archives are listed and checked (no absolute paths, no `..`, no links, no executables) before anything is extracted, and each download goes in its own empty folder. The token is never written to a repository or a log.
 
-## 1. The fork
+## 1. The Importer repository
 
-Issue: [#172](https://github.com/Graphite-Note/Graphite/issues/172)
+Issue: [#228](https://github.com/Graphite-Note/Graphite/issues/228)
 
-- [ ] Fork `obsidianmd/obsidian-importer` into the organisation as `Graphite-Note/graphite-importer`; set its `manifest.json` id to `graphite-importer`, name to "Importer for Graphite", description, author and author URL; README with its origin, its changes against upstream, and how to install it in Graphite. `LICENSE` keeps Obsidian's copyright line.
-  Open 2026-11-17, needs a manual step: making `Graphite-Note/graphite-importer` is a new repository on GitHub, an outward action not yet taken. Everything below that needs the fork waits for it. Upstream's Importer 3.2.0 meanwhile runs unmodified in Graphite (section 3), so the fork's changes are only section 4's.
-- [ ] A release workflow building `main.js`, `manifest.json` and `styles.css` as release assets, as Obsidian's directory expects, with `versions.json` kept so Graphite's installer picks the newest release whose `minAppVersion` fits.
-  Open 2026-11-17: waits for the fork (item above).
-- [ ] Switch off every format but Notion (HTML) and Notion (API) in the fork's list of formats, as one small commit (decision 5), until each is checked.
-  Open 2026-11-17: waits for the fork, and decision 5's open question.
-- [ ] Write down how upstream is merged (decision 6) in the fork's README, with the list of the fork's own commits.
-  Open 2026-11-17: waits for the fork.
+- [x] `Graphite-Note/Importer` created, public, MIT, with Obsidian Importer's notice, the README, `docs/Design.md` and the shared ground: `VaultFileName`, `VaultFolderNames`, `VaultPath`, `ImportDestination`, `FolderImportDestination`, `NotionExportEntryName`. Done 2026-11-26: commit aa853a9 of the Importer, 16 tests (`VaultFileNameTests`, `VaultPathAndDestinationTests`, `NotionExportEntryNameTests`) passed with `swift test` on the development Mac (Swift 6.4.2). Not built for Linux or WebAssembly yet.
+- [ ] A GitHub workflow running `swift test` on macOS and Linux for every push and pull request.
+- [ ] The core and Notion targets built with the Swift SDK for WebAssembly in that workflow, so that nothing Apple-only enters them.
+- [ ] Version tags from the first import that works (section 4), each release pinned with `exact:` in Graphite's `Package.swift` and both `Package.resolved` files.
 
 ## 2. Test material
 
 Issue: [#173](https://github.com/Graphite-Note/Graphite/issues/173)
 
+Since 2026-11-26 the material serves the Swift importer, and its fixtures go into the Importer's `Tests/Fixtures/Notion/` (those with a license that allows committing them), next to the made-up ones of the runtime's tests.
+
+- [ ] Exports published online, gathered first so that most of the HTML export is covered without a Notion account: workspaces and templates exported to HTML or Markdown with CSV, as heavy users have them (nested course pages, databases with every property type, boards, calendars, toggles, callouts, equations, attachments). Each with its source, size, license and what it covers. Handled as untrusted data (decision 7). Only material whose license allows it is committed.
 - [ ] A Notion test account and workspace, set up by hand (Graphite cannot create accounts), with an internal integration whose token goes into the Mac's keychain, never into a file.
   Open 2026-11-17, needs a manual step: an account and an integration token that only a person can make. Meanwhile the tests use made-up material: a Notion HTML export made by `Tests/CommunityPluginRuntimeTests/support/notion-export-fixture.js` and a made-up workspace answered as Notion's API answers (`support/notion-api-fixture.js`).
 - [ ] A script (`scripts/notion-test-workspace.py`) that fills the workspace through Notion's API from a few course notes, so the workspace can be made again: every block type (headings, lists, to-dos, toggles and toggle headings, quotes, callouts with icons, code with languages, equations inline and as blocks, dividers, tables, columns, synced blocks, link previews, bookmarks, embeds, page and database mentions, date and user mentions, child pages and child databases, breadcrumbs, table of contents); every property type (text, number with formats, select, multi-select, status, date and date ranges, person, files, checkbox, URL, email, phone, formula, relation one-way and two-way, rollup, created and edited time and by, unique ID); views of each kind (table, board, gallery, list, calendar, timeline, chart) with filters, sorts and groups; pages nested five deep; images, PDFs, audio and video uploaded to Notion and linked from outside; page icons (emoji and custom) and covers; titles with characters files cannot have (`/`, `:`, emoji, 200 characters); two pages with the same title in one folder; a linked database view of another page's database.
@@ -59,7 +62,7 @@ Issue: [#173](https://github.com/Graphite-Note/Graphite/issues/173)
 
 Issue: [#174](https://github.com/Graphite-Note/Graphite/issues/174)
 
-Before changing the fork: Obsidian's own Importer, 3.2.0, unmodified, on the test material, so every gap found is the runtime's or the plugin's, and the runtime's are fixed for every plugin.
+Obsidian's own Importer, 3.2.0, unmodified, on the test material, so every gap found is the runtime's or the plugin's, and the runtime's are fixed for every plugin. Since 2026-11-26 this run is also the reference the Swift importer is compared with (section 8).
 
 - [ ] Import the small HTML export in the iPad simulator and in the Mac app, and list each failure, unsupported feature reported, and wrong result (compare every note with the same import in Obsidian on the Mac, file by file, with `diff -r`).
   Done in part 2026-11-17, with made-up material (section 2 has no workspace yet): upstream's Importer 3.2.0, unmodified, imported the made-up two-part export in the runtime's Node tests (`tests/notion-import.test.js`), in the app in an iPad simulator ("Graphite Notion Import iPad", iOS 27.2) and in the Mac app (the hosted tests' Debug build of this checkout, unsigned, as they run on the Mac) (`App/Tests/CommunityPluginNotionImportHostedTests.swift`, WebKit and Graphite's native vault writes): 17 notes and 2 attachments, byte for byte as `fixtures/notion-html-import-expected.json`. Failures found, all fixed in the runtime or sorted (next items and `Docs/Community-plugins.md`, Importer and Notion's HTML export and API). Obsidian's own test export (`tests/notion/notion-testspace.zip` of its repository) was imported too and compared with the notes Obsidian's repository expects, which it checks against Obsidian byte for byte: the same, but for the trailing line break of a note written to the vault and a table of contents nested by its levels, which upstream's test DOM leaves flat. Still open: the comparison with Obsidian itself importing the same export on the Mac, file by file (`diff -r`), which needs Obsidian on the Mac to run Importer in a test vault; not done.
@@ -72,66 +75,83 @@ Before changing the fork: Obsidian's own Importer, 3.2.0, unmodified, on the tes
 - [x] Every runtime fix has a runtime test and a line in `Docs/Community-plugins.md`; `Docs/Community-plugin-API-coverage.md` updated for any API added.
   Done 2026-11-17: each of the six fixes has its test (`tests/importer-runtime-gaps.test.js`, `CommunityPluginVaultBridgeFileTimesTests`) and its line in `Docs/Community-plugins.md` (What works, What does not work yet, and the section Importer and Notion's HTML export and API). No API was added (`htmlToMarkdown`, `SecretComponent`, file times existed), so `Docs/Community-plugin-API-coverage.md` is unchanged; `npm run api-coverage -- --markdown` gives it again byte for byte.
 
-## 4. What the fork adds for Notion
+## 4. Notion's HTML export in Swift
 
-Issue: [#175](https://github.com/Graphite-Note/Graphite/issues/175)
+Issue: [#229](https://github.com/Graphite-Note/Graphite/issues/229)
 
-Each item is built in the fork, runs in Obsidian as well, and is offered upstream when it would help Obsidian too.
+- [ ] Zip reading in `ImporterCore` from a random-access source: the central directory first, each entry inflated as it is converted, `Part-N` zips inside the export read the same way, zip64 for exports over 4 GB. Inflating works on Apple platforms, Linux and WebAssembly (a decoder in Swift, or the host's).
+- [ ] A Notion page read from its HTML into the importer's model: every block type of section 2's list, inline styles, colors kept as Obsidian highlights where they have a meaning, page icon and cover as properties.
+- [ ] Markdown written from the model: callouts with their icons as Obsidian callouts, toggles and toggle headings as folded callouts, math as `$…$` and `$$…$$`, code blocks with their language, tables, columns flattened in order (reported), synced blocks copied (reported), embeds and bookmarks as links.
+- [ ] Links and mentions between pages resolved by page identifier to wiki links, whatever the shortened titles in file names (upstream leaves a 200-character title's link unresolved).
+- [ ] Attachments copied next to their notes in pieces, never whole in memory, with names claimed through `VaultFolderNames`.
+- [ ] Databases rebuilt as bases: a row per note with its properties typed (`types.json`), and a `.base` with a table view, from the database page's HTML table and the `_all.csv`.
+- [ ] The import report written as a note in the import's folder.
+- [ ] A Markdown export refused with a clear message, as upstream refuses it, but handled.
 
-- [ ] Notion's table, gallery and list views as Bases table, cards and list views, with their filters, sorts and visible properties where Bases can express them, beside upstream's Kanban views of boards; calendar, timeline and chart views reported, not dropped silently. (Graphite draws all four kinds of view; Obsidian 1.14 does too.)
-  Open 2026-11-17: waits for the fork. Upstream writes a table view of all properties for each database (checked through the API, made-up workspace).
-- [ ] Boards' filters, sorts and groups kept where Bases can express them.
-  Open 2026-11-17: waits for the fork.
-- [ ] Linked database views, which upstream skips: a view of another database becomes a view in that database's `.base`, or a base embedded in the page, filtered as in Notion.
-  Open 2026-11-17: waits for the fork.
-- [ ] An import report written as a note in the import's folder: per page and per database, what was converted, simplified (a column layout flattened, a synced block copied, a formula function Bases lacks) or left out, with a link to each note. Upstream shows its log only in the modal, which is gone once closed.
-  Open 2026-11-17: waits for the fork.
-- [ ] Attachments bigger than one `requestUrl` can carry (64 MB in Graphite) downloaded in ranges or reported, never cut short. Notion's file links expire after about an hour, so attachments are downloaded while their page is converted, not at the end.
-  Open 2026-11-17: waits for the fork and for real attachments to measure.
-- [ ] Importing again into the same folder: upstream's Update mode (matched by `notion-id`, a note edited since the last import kept) checked in Graphite, where Graphite's own saves, iCloud and the file's modification time meet; an edited note is never overwritten. Changed in the fork only if the check finds a case that loses an edit.
-  Checked 2026-11-17 in the Node tests (`tests/notion-import.test.js`), with the runtime's file times fixed: a database row edited since the import is kept and reported "edited since", an untouched row is left with its date. Found cases that lose an edit, Importer's own: a page without times in the export (Notion gives ordinary pages none) is compared by text and written over; a page with subpages gets links to a new folder with " 1". So the fork must change it; open until then.
-- [ ] Notion math (`$…$`, `$$…$$` blocks) written as Obsidian math, which Graphite renders; Notion callouts with their icons as Obsidian callouts; toggles as foldable callouts; code blocks with their language.
-  Checked 2026-11-17: upstream already writes math as Obsidian math and code with its language on both paths; through the API a callout keeps its emoji in the title (`> [!tip] 💡`) and a toggle becomes a foldable callout (`> [!note]+`). From the HTML export a callout loses its icon (`> [!important]`) and a toggle becomes a list item, a toggle heading a plain heading: that part waits for the fork.
+## 5. Notion's API in Swift
 
-## 5. Installing it from Graphite
+Issue: [#230](https://github.com/Graphite-Note/Graphite/issues/230)
+
+- [ ] The transport protocol the host fills, with Notion's limits kept: 3 requests a second after a burst, back-off on 429 and 5xx, a lost network resumed, never "n.shouldStop is not a function".
+- [ ] Pages and blocks read with pagination into the same model as section 4, so the Markdown written is the same.
+- [ ] Data sources as bases with Notion's views: table, gallery, list and board as Bases table, cards, list and Kanban views, with filters, sorts, groups and visible properties where Bases can express them. Calendar, timeline and chart views reported, not dropped in silence.
+- [ ] Notion formulas converted to Bases formulas, ported from upstream's `formula-converter.ts`, with what Bases lacks reported per formula. Relations as links, rollups as formulas where possible.
+- [ ] Linked database views (skipped upstream): a view of another database becomes a view in that database's base, embedded where the page had it.
+- [ ] Attachments downloaded while their page is converted (Notion's file links expire after about an hour), in ranges for large files.
+- [ ] Importing again: matched by `notion-id`, a note edited since the last import never overwritten, no duplicate folders or attachments (upstream's faults listed above).
+
+## 6. In Graphite
 
 Issue: [#176](https://github.com/Graphite-Note/Graphite/issues/176)
 
-- [ ] Settings › Community plugins › Browse lists Graphite's own plugins (the fork first) above Obsidian's directory, from a list in this repository (`Plugins/graphite-plugins.json`, id, name, repository, description), so the fork is found without typing its repository.
-  Open 2026-11-17: waits for the fork, the plugin it would list first.
-- [ ] *Decision needed:* Import in the New menu (file list and library) offers "From Notion…": when the plugin is installed and on, it opens the plugin's Notion import; when not, it says what will be downloaded (name, size, from where) and installs it on the person's yes. Off and costing nothing until used (`lean-core-app`).
-  Open 2026-11-17: the decision is pending.
-- [ ] The import runs on the plugin panel and leaves the rest of Graphite usable; leaving the vault while it runs is refused or pauses the import (the Goodnotes import refuses it).
-  Done in part 2026-11-17: the import runs on the plugin panel, and Graphite stayed usable while 10,000 notes arrived (section 3). Closing the panel during an import does not stop it (Node tests). Open: leaving the vault while it runs is neither refused nor paused yet, so the plugins unload and the import stops part-way.
+- [ ] The package pinned with `exact:` in Graphite, nothing of it created until an import starts. Launch time and memory at rest measured with and without it, the app's size difference recorded.
+- [ ] Import › From Notion… in the New menu (file list and library) opens a native sheet: an HTML export picked from Files, or an API import with the token kept in the Keychain. Decided 2026-11-26 with the choice of a linked package.
+- [ ] The import runs off the main actor and writes through Graphite's coordinated vault writes, the index refreshing in batches. The rest of Graphite stays usable. Leaving the vault while it runs is refused or pauses the import (the Goodnotes import refuses it). Pause and Cancel leave a usable partial import and its report.
 
-## 6. Verification
+## 7. A downloadable plugin compiled to WebAssembly
+
+Issue: [#231](https://github.com/Graphite-Note/Graphite/issues/231)
+
+- [ ] The package built with the Swift SDK for WebAssembly, the module's size measured with Foundation, and reduced where it matters.
+- [ ] A small JavaScript plugin around the module: the picked file as the source, the vault API as the destination, `requestUrl` as the transport, the plugin's own settings tab and progress.
+- [ ] Settings › Community plugins › Browse lists Graphite's own plugins above Obsidian's directory, from a list in this repository (`Plugins/graphite-plugins.json`: id, name, repository, description), so the importer is found without typing its repository.
+- [ ] The web view's memory measured on the large export on the iPad and the Mac. Once the plugin imports as the linked package does, the linked copy leaves the app and Import › From Notion… offers to download the plugin (name, size, source) on the person's yes.
+
+## 8. Verification
 
 Issue: [#177](https://github.com/Graphite-Note/Graphite/issues/177)
 
-- [ ] The fork pinned in `Tests/CommunityPluginRuntimeTests/compatibility-plugins.json`, built from source by `npm run build-compatibility-plugins`, and checked in `real-plugins.test.js` against the recorded fixtures: the HTML export and the API answers each imported into a test vault, and the result compared file by file with an expected vault committed beside the fixtures (notes, `.base` files, attachments, property types in `types.json`).
-  Done for upstream 2026-11-17, open for the fork: upstream's Importer 3.2.0 is pinned (`compatibility-plugins.json`, commit `fa9444a1`), and the HTML export and the made-up API answers are each imported into a test vault and compared file by file with the expected vault committed beside them (`fixtures/notion-html-import-expected.json`, `notion-api-import-expected.json`: notes, the `.base`, attachments as digests, `types.json`) in `tests/notion-import.test.js` and `tests/notion-api-import.test.js`, not `real-plugins.test.js`. Locally it ran from Importer's release assets, since its build dependencies were not installed; `npm run build-compatibility-plugins` builds it from source.
-- [ ] Every note of the import opens in Graphite in reading view, Live Preview and source mode with no error; each base draws each of its views; every link and embed resolves (Graphite's unresolved-links list empty for the import's folder).
-  Done in part 2026-11-17: every link and embed of the HTML import resolves in Graphite's own index but Importer's shortened title (hosted test, iPad simulator and Mac; and in the runtime). Open: each note opened in reading view, Live Preview and source mode, and the API import's base drawn in Graphite.
+- [ ] In the Importer's tests, section 2's HTML exports and recorded API answers each imported into a test vault and compared file by file with an expected vault committed beside the fixtures (notes, `.base` files, attachments, `types.json`), and with upstream Importer's output on the same material, every difference explained.
+- [ ] Every note of the import opens in Graphite in reading view, Live Preview and source mode with no error. Each base draws each of its views. Every link and embed resolves (Graphite's unresolved-links list empty for the import's folder).
 - [ ] The same vault opened in Obsidian on the Mac: notes, bases and links identical in use.
-  Open 2026-11-17: needs Obsidian on the Mac with a test vault (see section 3's first item).
-- [ ] Malformed input: a Markdown export, a truncated zip, a `Part-N` zip alone, a revoked token, a page shared then unshared mid-import, Notion answering 429 and 5xx, the network lost and back. Each ends in a clear message and a usable partial import, never a crash or a hang.
-  Done in part 2026-11-17, in the Node tests with made-up material (`tests/notion-import.test.js`, `tests/notion-api-import.test.js`): a Markdown export (Importer's reason, when chosen and when imported, nothing written), a truncated zip (named as failed), a `Part-N` zip alone (its pages imported), a revoked token and no network ("Failed to load pages: …", nothing imported), a page unshared mid-import (named, the rest imported), 429 and passing 5xx during the import (waited out, completed), 5xx that go on ("gave up after 3 retries"), the network lost mid-import and back (named; importing again brings the rest). None crashed or hung. Open: a 429 or 5xx while the API's page list loads ends in Importer's own "n.shouldStop is not a function", not a clear message (for the fork or upstream).
-- [ ] Measured on the large workspace, on the Mac and on the physical iPad: time, the plugin web view's memory at its peak, and the app's responsiveness meanwhile (typing and Pencil latency), with the numbers recorded here.
-  Done in part 2026-11-17 on the made-up 10,000-page export: iPad simulator 152 to 173 s, 108 to 117 index refreshes, main thread held at most 22 to 114 ms; Mac app 376 s, 305 refreshes, at most 19 ms, the plugins' web content process at 1.25 GB at its peak (160 MB before). Open: the section 2 workspace, and the physical iPad (in use for other work during this run).
-- [ ] Checked by hand on the physical iPad and on the Mac: installing from Browse, an HTML import picked from Files, an API import with the token in the keychain, Pause and Cancel, importing again.
-  Open 2026-11-17: needs the physical iPad and the fork (Browse), and a token for the API import.
-- [ ] `Docs/Community-plugins.md` (the sweep's Importer row and a section for the fork), `Docs/Architecture.md` (if section 5 adds the New menu entry), `Docs/Coverage.md` updated with what is tested and what is not.
-  Done in part 2026-11-17: `Docs/Community-plugins.md` has the sweep's Importer row updated, Importer in the real plugins' table and the section Importer and Notion's HTML export and API; `Docs/Coverage.md` has what is tested and what is not. Open: the fork's own section, once it exists. `Docs/Architecture.md` lists Turndown among the runtime's libraries; section 5 added no New menu entry.
+- [ ] Malformed input: a Markdown export, a truncated zip, a `Part-N` zip alone, a crafted export naming paths outside the vault, a revoked token, a page shared then unshared mid-import, Notion answering 429 and 5xx, the network lost and back. Each ends in a clear message and a usable partial import, never a crash or a hang.
+- [ ] Measured on the large workspace, on the Mac and on the physical iPad: time, peak memory, and the app's responsiveness meanwhile (typing and Pencil latency), against upstream's Importer in the runtime (section 3's numbers), recorded here.
+- [ ] Checked by hand on the physical iPad and on the Mac: an HTML import picked from Files, an API import with the token in the Keychain, Pause and Cancel, importing again.
+- [ ] `Docs/Community-plugins.md`, `Docs/Architecture.md` (the New menu entry and the package), `Docs/Coverage.md` updated with what is tested and what is not.
+
+## 9. Later: the other formats
+
+Issue: [#232](https://github.com/Graphite-Note/Graphite/issues/232)
+
+Each format of Obsidian's Importer 3.2.0, ported to the Importer once Notion's HTML export imports, each with its own test material and comparison with upstream. Until then upstream's Importer runs them in the plugin runtime, unchecked there.
+
+- [ ] Evernote (`.enex`).
+- [ ] Apple Notes (the Mac's notes database).
+- [ ] Bear (`.bear2bk`), Textbundle.
+- [ ] Microsoft OneNote (files, and through Microsoft Graph).
+- [ ] Logseq, Roam Research (JSON).
+- [ ] Google Keep (Takeout JSON), Samsung Notes, Tomboy, Apple Journal.
+- [ ] Airtable (API), CSV, HTML and Markdown files.
+- [ ] Goodnotes and Notability: whether `Packages/NotebookImport` moves into the Importer, to be decided once the Importer's layout has settled.
 
 ## Risks
 
-- **Upstream moves fast** (3.1.14 to 3.2.0 in a month). Every merge can bring API calls the runtime lacks; the Node tests on recorded fixtures catch them before a release of the fork.
-- **Notion changes its export and API.** The API's version is pinned by the client (`2025-09-03`); the HTML export is not versioned. Re-record the fixtures when an import of the test workspace stops matching.
-- **Memory in the plugin's web view:** a large export and its attachments pass through WebKit's content process. A limit found in section 3 that the runtime cannot lift is stated in the plugin's description and report.
-- **Notion's terms:** importing the person's own content with their own token is what Notion's API is for; the token never leaves the device's keychain and Notion's servers.
+- **Notion changes its export and API.** The API is pinned by version (`2025-09-03`). The HTML export is not versioned: fixtures are recorded again when an import of the test material stops matching.
+- **The size of the WebAssembly module.** Swift with Foundation compiled to WebAssembly may be several MB. If it is too large for a download, the core drops to the Foundation subset the module needs.
+- **Memory in the plugin's web view** for large exports in the WebAssembly build. A limit the runtime cannot lift is stated in the plugin's description and report.
+- **Porting falls behind upstream.** Upstream moves fast (3.1.14 to 3.2.0 in a month). Its releases are read for Notion fixes and the test material is run through both.
+- **Notion's terms:** importing the person's own content with their own token is what Notion's API is for. The token never leaves the device's Keychain and Notion's servers.
 
 ## Open questions
 
-- Decision 5: only Notion at first, or every format, marked unchecked?
-- Section 5: an "From Notion…" entry in Graphite's Import menu, or only through Settings › Community plugins?
-- Should the fork be listed in Obsidian's community directory too? It would be a near copy of Obsidian's own plugin, which the directory is unlikely to accept; installing from its GitHub repository works either way.
+- Should the Importer also offer a command-line tool, so that people using Obsidian alone can run it on the Mac?
