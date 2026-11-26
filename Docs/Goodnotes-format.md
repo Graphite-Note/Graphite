@@ -1,6 +1,6 @@
 # The Goodnotes file format (`.goodnotes`)
 
-Status: Phase 1 of [the import checklist](Goodnotes-Notability-import-todo.md). Recovered from the owner's notebooks, on 2026-10-18 and 2026-10-19, by reading the files only; no part of Goodnotes was run, decompiled or copied. Phase 2 added a Swift reader in GraphiteCore (`GoodnotesNotebookReader`, see Swift reader below); nothing converts a notebook into Graphite's files yet (Phase 3).
+Status: Phase 1 of [the import checklist](Goodnotes-Notability-import-todo.md). Recovered from real notebooks, on 2026-10-18 and 2026-10-19, by reading the files only; no part of Goodnotes was run, decompiled or copied. Phase 2 added a Swift reader in GraphiteCore (`GoodnotesNotebookReader`, see Swift reader below); nothing converts a notebook into Graphite's files yet (Phase 3).
 
 What was checked:
 
@@ -14,10 +14,10 @@ What was checked:
 | First samples (2026-10-18) | 4 | Goodnotes on the iPad, version not recorded | 24 | Pen, highlighter, lines, ellipses, fills, dashes, pictures, stickers, erasing, lasso moves, copied pages, template paper, imported PDFs |
 | Made for the purpose (2026-10-19) | 6 | Goodnotes 7.1.28 for Mac, with a mouse | 24, 25, 35 | Text boxes in two fonts; fountain pen, brush pen, pencil, ball pen and highlighter over writing; a turned and a cropped picture; tape, a sticky note, a link and a bookmark; a deleted page; a recording with writing; a cover page |
 | Pencil test (2026-10-19) | 1 | Goodnotes on the iPad with an Apple Pencil, iPadOS 27.0.1 | 27 | Ball pen at 0.3, 0.55 and 0.9 mm, fountain pen, brush pen, pencil shading with tilt, highlighter presets, rectangles, ellipses, an arc, fills, two animated GIFs, two stickers, two saved drawings; with Goodnotes' PDF export. How the writing feels is in [Goodnotes-writing-feel.md](Goodnotes-writing-feel.md) |
-| Library selection (2026-10-19) | 35 | Goodnotes on the iPad, versions not recorded | 24, 25, 26 | Chosen from the owner's 691-notebook semester library to cover every schema and every unknown the first reader reported there: older text boxes, older varying-width ink, outline entries, page moves, recordings and their deletion |
+| Library selection (2026-10-19) | 35 | Goodnotes on the iPad, versions not recorded | 24, 25, 26 | Chosen from the 691-notebook semester library to cover every schema and every unknown the first reader reported there: older text boxes, older varying-width ink, outline entries, page moves, recordings and their deletion |
 | Text-box sample (2026-10-20) | 1 | Goodnotes, version not recorded | 35 | Typed text boxes at several scales and four angles (0, 90 degrees, about ±45 degrees), a drawing in ball pen, dotted A3 landscape paper; with its PDF export |
 
-The made-for-purpose samples and the library selection are kept on the owner's Mac only, in the local `samples/import-formats` branch under `ImportSamples/Goodnotes/`, each with a README saying what was done; the text-box sample (2026-10-20) is on the owner's Mac, not on that branch. They hold personal notebooks, so they are not on GitHub. **Still not in any sample:** a link to a page; and the meaning of several fields marked unknown below.
+The made-for-purpose samples and the library selection are kept on the development Mac only, in the local `samples/import-formats` branch under `ImportSamples/Goodnotes/`, each with a README saying what was done; the text-box sample (2026-10-20) is on the development Mac, not on that branch. They hold personal notebooks, so they are not on GitHub. **Still not in any sample:** a link to a page; and the meaning of several fields marked unknown below.
 
 ## Container
 
