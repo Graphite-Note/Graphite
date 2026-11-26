@@ -387,7 +387,7 @@ This set is the natural narrow interface for both file trees.
 
 #### OCP-SHELL-01 A new document kind touches 13 UI files, and three `default:` branches hide it from the compiler
 - **Severity:** High
-- **Evidence:** I traced the most recent kind, canvas (grep `\.canvas\b|canvasSession|createCanvas|CanvasSession`, excluding the canvas feature's own files and unrelated `canvas` properties). It is wired into 13 UI files besides `DocumentKind` in Core:
+- **Evidence:** The most recent kind, canvas, was traced (grep `\.canvas\b|canvasSession|createCanvas|CanvasSession`, excluding the canvas feature's own files and unrelated `canvas` properties). It is wired into 13 UI files besides `DocumentKind` in Core:
 
   | File | Sites |
   | --- | --- |
@@ -418,7 +418,7 @@ This set is the natural narrow interface for both file trees.
 #### OCP-SHELL-02 27 commands are declared twice, in the palette and in the menu bar, and shortcut labels are typed in three places
 - **Severity:** Medium
 - **Evidence:**
-  - I compared [GraphiteCommands.swift:61-177](../../../Sources/GraphiteUI/GraphiteCommands.swift#L61-L177) with [WorkspaceCommands.swift:24-252](../../../Sources/GraphiteUI/WorkspaceCommands.swift#L24-L252). The duplicated commands:
+  - [GraphiteCommands.swift:61-177](../../../Sources/GraphiteUI/GraphiteCommands.swift#L61-L177) and [WorkspaceCommands.swift:24-252](../../../Sources/GraphiteUI/WorkspaceCommands.swift#L24-L252) were compared. The duplicated commands:
     - New Note, New Notebook, New Base, New Canvas, New Tab;
     - Quick Switcher, Search, Settings, Insert Template;
     - Close Tab, Reopen Closed Tab, Back, Forward, Next Tab, Previous Tab;
@@ -705,7 +705,7 @@ This set is the natural narrow interface for both file trees.
 
 #### CC-SHELL-01 29 functions exceed 40 code lines; the root view's `body` is 172
 - **Severity:** Medium
-- **Evidence:** The reconnaissance list is in section 8; I confirmed the largest by reading.
+- **Evidence:** The reconnaissance list is in section 8; the largest were confirmed by reading.
   - [GraphiteRootView.swift:62-252](../../../Sources/GraphiteUI/GraphiteRootView.swift#L62-L252): 172 lines.
   - `WorkspaceCommandList.commands` [WorkspaceCommands.swift:24-143](../../../Sources/GraphiteUI/WorkspaceCommands.swift#L24-L143): 120 lines.
   - `DrawingsSettingsPage.body` [SettingsView.swift:474-575](../../../Sources/GraphiteUI/SettingsView.swift#L474-L575): 102 lines.
@@ -1431,7 +1431,7 @@ Delta audit of 2026-10-20 at `5aae924` (main): the library's fixes (`bf86b5d`, `
 - **Severity:** Medium
 - **Rule:** `FR-56`, `FR-32`, `FR-47`, `FR-54` ("fakes, not flags")
 - **Evidence:** `AudioOutputRoute.thisProcess` parses `LaunchMode` again from `ProcessInfo` and checks `NSClassFromString("XCTestCase")` inside GraphiteCore ([LaunchMode.swift:50-56](../../../Sources/GraphiteCore/LaunchMode.swift#L50-L56)), although the app parses the launch mode once ([GraphiteApp.swift:17](../../../App/GraphiteApp.swift#L17)); `AppleReadAloudSpeech`, `NeuralReadAloudSpeech` and `RenderedPassagePlayer` default their `output:` to it ([ReadAloudSpeech.swift:184](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L184), which also defaults `clock = LiveApplicationClock()`; [NeuralReadAloudSpeech.swift:38](../../../Sources/GraphiteVoices/NeuralReadAloudSpeech.swift#L38); [RenderedPassagePlayer.swift:28](../../../Sources/GraphiteVoices/RenderedPassagePlayer.swift#L28)); embedded media reads the static directly ([MarkdownPreview.swift:2742](../../../Sources/GraphiteUI/MarkdownPreview.swift#L2742)); the composition seam exists (`makeReadAloudController`), but the live and hosted-tests branches pass the same factory ([WorkspaceDeviceServices.swift:45](../../../Sources/GraphiteUI/WorkspaceDeviceServices.swift#L45), [:64](../../../Sources/GraphiteUI/WorkspaceDeviceServices.swift#L64)). Introduced in `32787b2`, extended in `96cfabb`.
-- **Why it matters:** the owner's rule that tests never play sound holds today, but through four production types in three modules asking "am I under test"; a new audio type or caller gets the check only if it remembers the default. It is the general form of the `CC-SHELL-14` break that was just removed.
+- **Why it matters:** the rule that tests never play sound holds today, but through four production types in three modules asking "am I under test"; a new audio type or caller gets the check only if it remembers the default. It is the general form of the `CC-SHELL-14` break that was just removed.
 - **Fix direction:** `WorkspaceDeviceServices` maps `LaunchMode` to a route once (`AudioOutputRoute(launchMode:)` exists) and passes it to the speech factory and, through an environment value, to embedded media; package tests pass `.silent` explicitly; delete `thisProcess` and the `= .thisProcess` and `= LiveApplicationClock()` defaults. Keep the no-sound guarantee as a test: a hosted launch's composition has no speaker route.
 
 #### LSP-SHELL-07 `checkOpenDocumentsForExternalChanges` gains a parameter that only a test passes

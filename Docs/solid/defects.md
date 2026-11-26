@@ -119,7 +119,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Add a `static func forgetFolds(ofVault:)` in `WorkspaceFolds.swift`, call it from `removeFromVaultList`, and add the folds prefix to the removal test.
 - **Rule that prevents the class:** one owner per persisted key
 - **Aliases:** BUG-ARCH-06
-- **Verifier notes:** The test pins only three key families ([UiWorkspaceModelFixTests.swift:158](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L158)), although its doc comment says folds ([UiWorkspaceModelFixTests.swift:151](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L151)). Read Aloud places (`GraphiteReadAloudPositions`, a global dictionary keyed by vault-relative path, [ReadAloudNavigator.swift:53](../../Sources/GraphiteUI/ReadAloudNavigator.swift#L53)) are not removed either; see BUG-ARCH-07. The data stays on the user's own device, so I rate this Low.
+- **Verifier notes:** The test pins only three key families ([UiWorkspaceModelFixTests.swift:158](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L158)), although its doc comment says folds ([UiWorkspaceModelFixTests.swift:151](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L151)). Read Aloud places (`GraphiteReadAloudPositions`, a global dictionary keyed by vault-relative path, [ReadAloudNavigator.swift:53](../../Sources/GraphiteUI/ReadAloudNavigator.swift#L53)) are not removed either; see BUG-ARCH-07. The data stays on the user's own device, so this is rated Low.
 
 #### BUG-SHELL-03 Quitting on the Mac discards unsaved edits of a note that cannot be saved, without asking
 - **Verdict:** Confirmed
@@ -165,7 +165,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Load into a three-state value (`loading`, `loaded([…])`, `failed(message)`) and show the error with a Retry button instead of the empty state or the spinner.
 - **Rule that prevents the class:** failed reads are never empty results
 - **Aliases:** none
-- **Verifier notes:** I read the Core throwers that the report left unread. Pruning ([FileRecovery.swift:97-110](../../Sources/GraphiteCore/FileRecovery.swift#L97-L110)) and per-note rotation can remove a listed snapshot before its preview loads, so the spinner state can be reached without any disk fault.
+- **Verifier notes:** The Core throwers that the report left unread were read. Pruning ([FileRecovery.swift:97-110](../../Sources/GraphiteCore/FileRecovery.swift#L97-L110)) and per-note rotation can remove a listed snapshot before its preview loads, so the spinner state can be reached without any disk fault.
 
 #### BUG-SHELL-06 The phone's tab switcher lists a tab showing a community plugin view as "New Tab"
 - **Verdict:** Confirmed
@@ -203,7 +203,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Read `session.findRequest` in the Mac `update`, set `textView.usesFindBar = true` when the view is made, and call `performTextFinderAction` with `.showFindInterface` or `.showReplaceInterface`, then clear the request.
 - **Rule that prevents the class:** contract test suites shared by every implementation
 - **Aliases:** none
-- **Verifier notes:** I read the palette's presentation that the report left open: `paletteOverlay` has no platform condition. From reading view the command only switches to editing. The shortcut labels "⌘F"/"⌥⌘F" shown in the palette have no Mac menu item behind them either (grep for a Find menu command in `GraphiteCommands.swift` finds none), so the label promises a shortcut that does nothing.
+- **Verifier notes:** The palette's presentation that the report left open was read: `paletteOverlay` has no platform condition. From reading view the command only switches to editing. The shortcut labels "⌘F"/"⌥⌘F" shown in the palette have no Mac menu item behind them either (grep for a Find menu command in `GraphiteCommands.swift` finds none), so the label promises a shortcut that does nothing.
 
 #### BUG-EDITOR-03 On the Mac, a note created with New Note is not ready to type, and its "start editing" flag stays set
 - **Verdict:** Confirmed
@@ -214,7 +214,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** In the Mac `update`, when `session.startsEditingWhenShown` is true and the view has a window, clear the flag and call `makeFirstResponder(textView)` on the next main-queue turn.
 - **Rule that prevents the class:** contract test suites shared by every implementation
 - **Aliases:** none
-- **Verifier notes:** A single click recovers it, so I rate it Low rather than the Medium the effect suggests. The flag left `true` has no other reader, so it causes no later surprise.
+- **Verifier notes:** A single click recovers it, so it is rated Low rather than the Medium the effect suggests. The flag left `true` has no other reader, so it causes no later surprise.
 
 #### BUG-EDITOR-04 On the Mac, switching from reading view back to editing shows the place the editor had before, not the passage that was being read
 - **Verdict:** Confirmed
@@ -226,7 +226,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Rule that prevents the class:** contract test suites shared by every implementation
 - **Aliases:** none
 - **Verifier notes:** The Mac tests pin jumps only for headings ([UiEditorMacEditorTests.swift:375-389](../../Tests/GraphiteUITests/UiEditorMacEditorTests.swift#L375-L389)); none pins the reading-to-editing return. When the editor was not kept (budget exceeded, first switch after a memory purge), `makeScrollView` runs and the jump lands, so the defect shows on the common path and not on the rare one.
-- **Regression, 2026-10-24:** `eee3ec7` took the place in `update`, which runs before a kept editor's container is in the window, so `goToReadingPlaceIfSwitched` returned and the place waited for the next update: the click back to reading, which then recorded the reading place as the editor's own. Seen on the owner's Mac in a 290,000-character note (editor at line 861 while reading showed line 454). The Mac editor now takes the place when it becomes measurable (`didBecomeMeasurable`), as the iPad does in `didMoveIntoWindow`; `MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` fails without that.
+- **Regression, 2026-10-24:** `eee3ec7` took the place in `update`, which runs before a kept editor's container is in the window, so `goToReadingPlaceIfSwitched` returned and the place waited for the next update: the click back to reading, which then recorded the reading place as the editor's own. Seen on the development Mac in a 290,000-character note (editor at line 861 while reading showed line 454). The Mac editor now takes the place when it becomes measurable (`didBecomeMeasurable`), as the iPad does in `didMoveIntoWindow`; `MacMarkdownEditorReadingReturnTests.testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt` fails without that.
 
 ### READING
 
@@ -261,7 +261,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** In `ReadingViewBuilder.resolve`, accept a direct candidate only when it exists and is not a directory, as `WorkspaceModel.resolveLink` does; better, have the builder call one shared resolver.
 - **Rule that prevents the class:** one owner per business rule
 - **Aliases:** none
-- **Verifier notes:** The report covers only the "no `Projects.md`" case. I add the folder-note layout: with `Projects/Projects.md` and a root folder `Projects`, the direct candidate `Projects` (the folder) is found before the index lookup that would return `Projects/Projects.md`, so reading view shows a link to the folder instead of embedding the existing note, while Live Preview embeds the note. That makes the defect visible in common vaults, hence Medium. Tapping the folder link reaches `follow`, whose resolver refuses folders ([WorkspaceModel.swift:676](../../Sources/GraphiteUI/WorkspaceModel.swift#L676)), and the index lookup or note creation follows.
+- **Verifier notes:** The report covers only the "no `Projects.md`" case. The folder-note layout is added: with `Projects/Projects.md` and a root folder `Projects`, the direct candidate `Projects` (the folder) is found before the index lookup that would return `Projects/Projects.md`, so reading view shows a link to the folder instead of embedding the existing note, while Live Preview embeds the note. That makes the defect visible in common vaults, hence Medium. Tapping the folder link reaches `follow`, whose resolver refuses folders ([WorkspaceModel.swift:676](../../Sources/GraphiteUI/WorkspaceModel.swift#L676)), and the index lookup or note creation follows.
 
 #### BUG-READING-04 "Link" on an unlinked mention removes the line from the list even when the link was not written
 - **Verdict:** Confirmed
@@ -296,7 +296,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** In `sections(of:)`, return `[located]` when `MarkdownNesting.exceedsSafeDepth(markdown)` is true, before `Document(parsing:)`.
 - **Rule that prevents the class:** bounded parsing of untrusted input
 - **Aliases:** none
-- **Verifier notes:** grep `MarkdownNesting` shows the guard at every other parse site (`MarkdownSemantics.swift:66`, `ReadAloudSection.swift:15`, `ReadAloudDocument.swift:303`, `MarkdownPreview.swift:1830`) and not here. The only tests of `dividedIntoSections` use shallow notes ([NotePreviewDocumentTests.swift:62-72](../../Tests/GraphiteCoreTests/NotePreviewDocumentTests.swift#L62-L72)); `CrashLoopRegressionTests` does not cover it. I add the embed path and the actor-thread fact, which makes the project's 512 KB measurement the relevant one. High rather than Critical: no data is lost, and the input is rare.
+- **Verifier notes:** grep `MarkdownNesting` shows the guard at every other parse site (`MarkdownSemantics.swift:66`, `ReadAloudSection.swift:15`, `ReadAloudDocument.swift:303`, `MarkdownPreview.swift:1830`) and not here. The only tests of `dividedIntoSections` use shallow notes ([NotePreviewDocumentTests.swift:62-72](../../Tests/GraphiteCoreTests/NotePreviewDocumentTests.swift#L62-L72)); `CrashLoopRegressionTests` does not cover it. The embed path and the actor-thread fact are added, and they make the project's 512 KB measurement the relevant one. High rather than Critical: no data is lost, and the input is rare.
 
 #### BUG-MDCORE-02 Return inside a fenced code block written in a quote or callout adds list markup to the code, or deletes the line's `>` and ends the callout
 - **Verdict:** Confirmed
@@ -340,7 +340,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Add a `depth` parameter to `rewritingAlignments` and stop rewriting below a named maximum (16, like callouts at [NotePreviewDocument.swift:40](../../Sources/GraphiteCore/NotePreviewDocument.swift#L40)).
 - **Rule that prevents the class:** bounded parsing of untrusted input
 - **Aliases:** none
-- **Verifier notes:** What settles the crash: a test in the style of `CrashLoopRegressionTests` that calls `LaTeXCompatibility.normalized` on 5,000 nested `aligned` environments on a 512 KB thread. The slowdown alone is certain: each level copies the body (`substring`) and runs a regex search and an `environmentEnd` scan over the rest. I rate it Medium rather than Low because a crash would repeat whenever the note is shown, as in BUG-MDCORE-01.
+- **Verifier notes:** What settles the crash: a test in the style of `CrashLoopRegressionTests` that calls `LaTeXCompatibility.normalized` on 5,000 nested `aligned` environments on a 512 KB thread. The slowdown alone is certain: each level copies the body (`substring`) and runs a regex search and an `environmentEnd` scan over the rest. It is rated Medium rather than Low because a crash would repeat whenever the note is shown, as in BUG-MDCORE-01.
 
 #### BUG-MDCORE-06 A private-use character in a note (U+E000–E006, E00A–E00B) shows as "�" in Live Preview's rendered tables and callouts, and as itself in reading view
 - **Verdict:** Confirmed
@@ -351,7 +351,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Wrap the input of `LivePreviewText.prepared` in `ReadingMarkerEscaping.escaping`, as `readingText` does; `ObsidianMarkdownText` already restores the stand-ins.
 - **Rule that prevents the class:** one owner per business rule
 - **Aliases:** none
-- **Verifier notes:** I read the restore call site the report left open (`restoreEscapedCharacters`, lines 1970-1991); it handles only escape-lead pairs, so the U+FFFD written on the Live Preview path stays. Cosmetic.
+- **Verifier notes:** The restore call site the report left open was read (`restoreEscapedCharacters`, lines 1970-1991); it handles only escape-lead pairs, so the U+FFFD written on the Live Preview path stays. Cosmetic.
 
 ### VAULT
 
@@ -386,7 +386,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Add `AND files.path NOT LIKE '%.canvas'` (or a `hasSearchableText` column) to the regex content condition, or store canvases with a content state other than `indexed`.
 - **Rule that prevents the class:** contract test suites shared by every implementation
 - **Aliases:** none
-- **Verifier notes:** The test that pins "patterns matching empty text skip attachments and unread notes" has no canvas in its fixture ([IndexSearchFixTests.swift:206-221](../../Tests/GraphiteIndexTests/IndexSearchFixTests.swift#L206-L221)). I add that the plain `/^$/` query (target `.note`) uses the same `contentCondition` ([VaultSearch.swift:349](../../Sources/GraphiteIndex/VaultSearch.swift#L349)) and lists canvases too.
+- **Verifier notes:** The test that pins "patterns matching empty text skip attachments and unread notes" has no canvas in its fixture ([IndexSearchFixTests.swift:206-221](../../Tests/GraphiteIndexTests/IndexSearchFixTests.swift#L206-L221)). In addition, the plain `/^$/` query (target `.note`) uses the same `contentCondition` ([VaultSearch.swift:349](../../Sources/GraphiteIndex/VaultSearch.swift#L349)) and lists canvases too.
 
 ### BASES
 
@@ -410,7 +410,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** keep the link kind in the evaluator's link targets and pass it to `resolveLinkTarget(_:from:isWiki:)`. Property links stay Wikilink-resolved, as the backlink query already does ([VaultIndex.swift:465-467](../../Sources/GraphiteIndex/VaultIndex.swift#L465-L467)).
 - **Rule that prevents the class:** one owner per business rule (link resolution, including the kind of link)
 - **Aliases:** none
-- **Verifier notes:** the same mismatch reaches `file.links` → `asFile()`, because `BaseLink` carries no kind ([BaseEvaluator.swift:429](../../Sources/GraphiteCore/BaseEvaluator.swift#L429), [BaseEvaluator.swift:1185-1186](../../Sources/GraphiteCore/BaseEvaluator.swift#L1185-L1186)). A Markdown link with an extension (`Bob.md`) does not match an alias. I rate it lower than the report implies because the link must already be broken by Obsidian's rules.
+- **Verifier notes:** the same mismatch reaches `file.links` → `asFile()`, because `BaseLink` carries no kind ([BaseEvaluator.swift:429](../../Sources/GraphiteCore/BaseEvaluator.swift#L429), [BaseEvaluator.swift:1185-1186](../../Sources/GraphiteCore/BaseEvaluator.swift#L1185-L1186)). A Markdown link with an extension (`Bob.md`) does not match an alias. It is rated lower than the report implies because the link must already be broken by Obsidian's rules.
 
 #### BUG-BASES-03 `file.hasLink(file("Name"))` leaves out matching notes when a note of that name sits at the vault root
 - **Verdict:** Confirmed
@@ -478,7 +478,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Collect canvas sessions with `hasUnsavedChanges` inside the moved path in `unsavedEdits(inside:movedTo:)`, as is done for notes. Write their `file.data` to the new path, or to a " Graphite edits" copy when the revision differs, before `followMoveInNavigation`.
 - **Rule that prevents the class:** contract test suites shared by every implementation (the "edits during move are kept" contract is implemented and tested only for the note session)
 - **Aliases:** none
-- **Verifier notes:** The pre-move save does include canvases ([WorkspaceFileManagement.swift:105-107](../../Sources/GraphiteUI/WorkspaceFileManagement.swift#L105-L107)), so only edits made during the await are lost. I rate this Medium rather than High: the loss is silent, but it needs editing at the same moment as a move.
+- **Verifier notes:** The pre-move save does include canvases ([WorkspaceFileManagement.swift:105-107](../../Sources/GraphiteUI/WorkspaceFileManagement.swift#L105-L107)), so only edits made during the await are lost. This is rated Medium rather than High: the loss is silent, but it needs editing at the same moment as a move.
 
 #### BUG-CANVAS-03 On the Mac, the content of a text, note or base card longer than its card cannot be scrolled
 - **Verdict:** Confirmed
@@ -493,7 +493,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** On macOS, add `.onTapGesture { location in session.tap(atViewPoint: location) }` beside the double tap. Alternatively, enable card scrolling on the Mac, which has no Write mode and so no conflict with moving cards.
 - **Rule that prevents the class:** contract test suites shared by every implementation (the two `CanvasBoardHost` implementations do not share an interaction contract)
 - **Aliases:** none
-- **Verifier notes:** `isWriting` stays false on the Mac, because it is set only under `canImport(UIKit)` ([WorkspaceCanvas.swift:14-17](../../Sources/GraphiteUI/WorkspaceCanvas.swift#L14-L17), [33-35](../../Sources/GraphiteUI/WorkspaceCanvas.swift#L33-L35)). Note cards can be opened from their title. A text card's overflow has no other view on the Mac, which is why I rate this Medium.
+- **Verifier notes:** `isWriting` stays false on the Mac, because it is set only under `canImport(UIKit)` ([WorkspaceCanvas.swift:14-17](../../Sources/GraphiteUI/WorkspaceCanvas.swift#L14-L17), [33-35](../../Sources/GraphiteUI/WorkspaceCanvas.swift#L33-L35)). Note cards can be opened from their title. A text card's overflow has no other view on the Mac, which is why this is rated Medium.
 
 #### BUG-CANVAS-04 A card resized or grouped beyond 1,000,000 pixels disappears from the board after the edit
 - **Verdict:** Confirmed
@@ -522,7 +522,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Have `CanvasLinks.semantics` report "unreadable" rather than "no links", and store a flag in the index. The move plan then lists every unreadable canvas that mentions the old path as text (a cheap substring check) in `notesNotUpdated`.
 - **Rule that prevents the class:** failed reads are never empty results
 - **Aliases:** none
-- **Verifier notes:** I closed the gap the report left open: `linkingNotes` reads the same backlink rows that `semantics.links` fills, so the trace is complete.
+- **Verifier notes:** The gap the report left open is closed: `linkingNotes` reads the same backlink rows that `semantics.links` fills, so the trace is complete.
 
 #### BUG-CANVAS-06 A graph or map from the previous vault can be shown after a vault switch
 - **Verdict:** Confirmed
@@ -537,7 +537,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** After the await, store the result only if `self.index === index` (as `refreshIndex` does at [WorkspaceModel.swift:586](../../Sources/GraphiteUI/WorkspaceModel.swift#L586)). Also key the cache by the index's identity, not only the version.
 - **Rule that prevents the class:** every task has an owner that cancels it, latest-answer-wins through one primitive
 - **Aliases:** none
-- **Verifier notes:** I settled the open point: `linkGraph` does not observe cancellation. A related fault: `refreshIndex` increments `indexVersion` even when its `index` is no longer current ([WorkspaceModel.swift:583-586](../../Sources/GraphiteUI/WorkspaceModel.swift#L583-L586)). That can make the cache miss, which is harmless, but it is another unguarded write from an old vault.
+- **Verifier notes:** The open point is settled: `linkGraph` does not observe cancellation. A related fault: `refreshIndex` increments `indexVersion` even when its `index` is no longer current ([WorkspaceModel.swift:583-586](../../Sources/GraphiteUI/WorkspaceModel.swift#L583-L586)). That can make the cache miss, which is harmless, but it is another unguarded write from an old vault.
 
 ### INK
 
@@ -586,7 +586,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Give the controller one picture operation at a time: a busy flag that disables the buttons, with a stored task that closing cancels. Apply the result to the current picture by identifier, or chain operations so each starts from the previous result.
 - **Rule that prevents the class:** every task has an owner that cancels it, latest-answer-wins through one primitive
 - **Aliases:** none
-- **Verifier notes:** `cropSelectedPicture` has the same shape (read, await, replace; [DrawingEditor.swift:630-645](../../Sources/GraphiteUI/DrawingEditor.swift#L630-L645)). So a crop applied while a rotation is still running throws away the rotation, or the other way round. The PDF arrangement bar runs its actions through the same unowned-`Task` helper ([PDFPictureControls.swift:105](../../Sources/GraphiteUI/PDFPictureControls.swift#L105), [PDFPictureControls.swift:133-137](../../Sources/GraphiteUI/PDFPictureControls.swift#L133-L137)). I did not trace `PDFSession.rotatePictureRight`, so I make no claim about the PDF side.
+- **Verifier notes:** `cropSelectedPicture` has the same shape (read, await, replace; [DrawingEditor.swift:630-645](../../Sources/GraphiteUI/DrawingEditor.swift#L630-L645)). So a crop applied while a rotation is still running throws away the rotation, or the other way round. The PDF arrangement bar runs its actions through the same unowned-`Task` helper ([PDFPictureControls.swift:105](../../Sources/GraphiteUI/PDFPictureControls.swift#L105), [PDFPictureControls.swift:133-137](../../Sources/GraphiteUI/PDFPictureControls.swift#L133-L137)). `PDFSession.rotatePictureRight` was not traced, so no claim is made about the PDF side.
 
 #### BUG-INK-04 Drawing on a note's image says the note "no longer embeds" the image when the note only changed meanwhile
 - **Verdict:** Confirmed
@@ -634,7 +634,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** In the embed banner, branch as the pane does: show the password text only when `isPasswordProtected`, and the signature text otherwise. Share one banner model between the pane and the embed.
 - **Rule that prevents the class:** flows as enums, not booleans (`isProtected` merges two reasons that need different wording and different remedies)
 - **Aliases:** none
-- **Verifier notes:** I confirmed that no embedded path sets `acceptsSignatureInvalidation` (it has a single writer). The user can recover by opening the full PDF view, which explains the signature.
+- **Verifier notes:** Confirmed: no embedded path sets `acceptsSignatureInvalidation` (it has a single writer). The user can recover by opening the full PDF view, which explains the signature.
 
 #### BUG-LECTURE-03 The embedded viewer's page field rejects page numbers typed in non-ASCII digits
 - **Verdict:** Confirmed
@@ -680,7 +680,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Have `stopAndRewind` call `reader.stop()`, which also cancels preparation and the continuation, before rewinding. Otherwise route every Stop through one controller method.
 - **Rule that prevents the class:** every task has an owner that cancels it, latest-answer-wins through one primitive
 - **Aliases:** none (shares a root cause with BUG-VOICE-02: Stop in the player bypasses the controller that owns the tasks)
-- **Verifier notes:** I disagree with the report's scanned-page remark. For a page that needs text recognition, line 719 does not play (`snapshot.recognition == nil` is false), and `finishPreparing` withholds play for review ([ReadAloudController.swift:727](../../Sources/GraphiteUI/ReadAloudController.swift#L727)). So a scanned next page does not start after Stop: it loads silently. The defect is limited to pages with a text layer. No test covers `stopAndRewind` (grep found none).
+- **Verifier notes:** The report's scanned-page remark is disputed. For a page that needs text recognition, line 719 does not play (`snapshot.recognition == nil` is false), and `finishPreparing` withholds play for review ([ReadAloudController.swift:727](../../Sources/GraphiteUI/ReadAloudController.swift#L727)). So a scanned next page does not start after Stop: it loads silently. The defect is limited to pages with a text layer. No test covers `stopAndRewind` (grep found none).
 
 #### BUG-VOICE-V01 A pronunciation file that fails to read or parse is replaced by the one entry added in Settings
 - **Verdict:** Confirmed
@@ -694,7 +694,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Make `load` tell "no file" apart from "file present but unreadable or invalid". In the second case, show the error and disable editing (or move the old file aside to `pronunciations.json.bak` before writing).
 - **Rule that prevents the class:** failed reads are never empty results
 - **Aliases:** none (related to BUG-VOICE-10: same editor, same read-modify-write, but a different trigger and the whole file lost)
-- **Verifier notes:** The reports missed this. The editor's own comment says "a failure keeps the old file" ([ReadAloudPronunciationEditor.swift:100](../../Sources/GraphiteUI/ReadAloudPronunciationEditor.swift#L100)), but that covers only a failed write; a failed read leads to the overwrite. Reading uses an uncoordinated `Data(contentsOf:)` rather than the vault store. I rate it High rather than Critical because it needs a malformed or unreadable file first. Under that condition the user's file is destroyed by an ordinary Add.
+- **Verifier notes:** The reports missed this. The editor's own comment says "a failure keeps the old file" ([ReadAloudPronunciationEditor.swift:100](../../Sources/GraphiteUI/ReadAloudPronunciationEditor.swift#L100)), but that covers only a failed write; a failed read leads to the overwrite. Reading uses an uncoordinated `Data(contentsOf:)` rather than the vault store. It is rated High rather than Critical because it needs a malformed or unreadable file first. Under that condition the user's file is destroyed by an ordinary Add.
 
 #### BUG-VOICE-L01 Saving the pronunciation list drops every term past the first 2,000 read from the file
 - **Verdict:** Confirmed
@@ -794,7 +794,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** In `cancel()`, and in `suspend()` (iOS refuses GPU work in the background anyway), call `renderer.releaseResources()` once the cancelled worker has ended. Alternatively, put the release in a `defer` inside `renderQueue`, so it runs on every exit.
 - **Rule that prevents the class:** cleanup runs on every exit path, cancellation included (a `defer` next to the acquisition). New rule: none of the listed rules covers it.
 - **Aliases:** none
-- **Verifier notes:** I disagree with the report on Stop. The floating player's Stop (`stopAndRewind`) and `ReadAloudController.stop()` do not cancel preparation ([ReadAloudNavigator.swift:174-178](../../Sources/GraphiteUI/ReadAloudNavigator.swift#L174-L178), [ReadAloudController.swift:414-422](../../Sources/GraphiteUI/ReadAloudController.swift#L414-L422)). After Stop, rendering runs to the end and then releases the model normally. So Stop is not a trigger; Close is. After `suspend`, the model is released once the app returns and the resumed queue completes ([ReadAloudPassagePreparation.swift:150-154](../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L150-L154)). The memory is held exactly while the app is in the background, which is when iOS ends memory-heavy apps first. The figure of 0.25–3 GB is the code's own comment ([ReadAloudPassagePreparation.swift:218-219](../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L218-L219)).
+- **Verifier notes:** The report is disputed on Stop. The floating player's Stop (`stopAndRewind`) and `ReadAloudController.stop()` do not cancel preparation ([ReadAloudNavigator.swift:174-178](../../Sources/GraphiteUI/ReadAloudNavigator.swift#L174-L178), [ReadAloudController.swift:414-422](../../Sources/GraphiteUI/ReadAloudController.swift#L414-L422)). After Stop, rendering runs to the end and then releases the model normally. So Stop is not a trigger; Close is. After `suspend`, the model is released once the app returns and the resumed queue completes ([ReadAloudPassagePreparation.swift:150-154](../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L150-L154)). The memory is held exactly while the app is in the background, which is when iOS ends memory-heavy apps first. The figure of 0.25–3 GB is the code's own comment ([ReadAloudPassagePreparation.swift:218-219](../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L218-L219)).
 
 #### BUG-VOICE-08 Unplugging headphones during High Quality reading does not pause it
 - **Verdict:** Confirmed (no pause reaches the session); Plausible (what the user hears)
@@ -916,7 +916,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** give each `command.run` (and each newly focused note) its own `SnapshotEditor` object instead of re-pointing the shared one. An editor keeps its note's path and identifier for life, so a late edit is checked against A and refused or applied there.
 - **Rule that prevents the class:** identity equals equality (an editor object stands for one note snapshot)
 - **Aliases:** none
-- **Verifier notes:** the host's guard does not help, because `adoptSnapshot` also replaces the snapshot identifier that the guard checks. `replaceRange` with a range deletes text in B. The edit is one undoable change, which is why I rate it High rather than Critical. The Node tests switch notes only between commands ([editor-commands.test.js:135-155](../../Tests/CommunityPluginRuntimeTests/tests/editor-commands.test.js#L135-L155)) and do not pin the opposite behaviour.
+- **Verifier notes:** the host's guard does not help, because `adoptSnapshot` also replaces the snapshot identifier that the guard checks. `replaceRange` with a range deletes text in B. The edit is one undoable change, which is why it is rated High rather than Critical. The Node tests switch notes only between commands ([editor-commands.test.js:135-155](../../Tests/CommunityPluginRuntimeTests/tests/editor-commands.test.js#L135-L155)) and do not pin the opposite behaviour.
 
 #### BUG-RUNTIME-02 Keyboard shortcuts plugins register with `Mod` never fire
 - **Verdict:** Confirmed
@@ -1009,7 +1009,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Make `DocumentKind` the single owner of media extensions (add `flac, ogg, 3gp, webm, m4v` to `.media`), and derive `MediaFileKind.audioExtensions`/`videoExtensions` ([MarkdownPreview.swift:233-234](../../Sources/GraphiteUI/MarkdownPreview.swift#L233-L234)) from it.
 - **Rule that prevents the class:** one owner per business rule
 - **Aliases:** none
-- **Verifier notes:** The guard is pinned for `.png` only ([UiWorkspaceModelFixTests.swift:187-198](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L187-L198)). Nothing tests media extensions; `flac`, `ogg` and `webm` do not occur in any test. The stray note is recoverable by deleting it, so I rate this Low.
+- **Verifier notes:** The guard is pinned for `.png` only ([UiWorkspaceModelFixTests.swift:187-198](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L187-L198)). Nothing tests media extensions; `flac`, `ogg` and `webm` do not occur in any test. The stray note is recoverable by deleting it, so this is rated Low.
 
 #### BUG-ARCH-02 Quitting the Mac app discards unsaved edits when a save fails or takes longer than 5 seconds
 - **Verdict:** Confirmed (duplicate)
@@ -1064,7 +1064,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Use one resolver for both. Move the "regular files only" check into a Core function (`VaultStore.regularFileExists` already exists, [VaultStore.swift:110-113](../../Sources/GraphiteCore/VaultStore.swift#L110-L113)) and call it from `MarkdownPreview.resolve` and `WorkspaceModel.resolveLink`.
 - **Rule that prevents the class:** one owner per business rule
 - **Aliases:** none
-- **Verifier notes:** I closed the embed half the report left partly traced: a folder embed is drawn as a plain link to the folder. The workspace side is pinned by [UiWorkspaceModelFixTests.swift:200-214](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L200-L214); nothing pins the reading view.
+- **Verifier notes:** The embed half the report left partly traced is closed: a folder embed is drawn as a plain link to the folder. The workspace side is pinned by [UiWorkspaceModelFixTests.swift:200-214](../../Tests/GraphiteUITests/UiWorkspaceModelFixTests.swift#L200-L214); nothing pins the reading view.
 
 #### BUG-ARCH-06 Removing a vault leaves its folds in the device's preferences
 - **Verdict:** Confirmed (duplicate)
@@ -1090,7 +1090,7 @@ Each entry is the verifier's own trace. "Reported" in the severity line is the a
 - **Minimal fix:** Key positions by vault identifier plus path (`"<uuid>|<path>"`), or move them into a per-vault key removed by `removeFromVaultList`.
 - **Rule that prevents the class:** one owner per persisted key
 - **Aliases:** none
-- **Verifier notes:** I read the `sourceIdentifier` assignment the report did not read. The report missed the main trigger, `MarkdownPane.startReading`; that is why I rate this Medium rather than Low. The player offers Start Over, so the person can recover.
+- **Verifier notes:** The `sourceIdentifier` assignment that the report did not read was read. The report missed the main trigger, `MarkdownPane.startReading`; that is why this is rated Medium rather than Low. The player offers Start Over, so the person can recover.
 
 #### BUG-ARCH-V01 The listening queue and its history carry into the next vault and read old-vault paths there
 - **Verdict:** Confirmed

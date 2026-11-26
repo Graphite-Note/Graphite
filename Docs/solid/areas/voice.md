@@ -555,7 +555,7 @@ Split:
 
 #### CC-VOICE-01 Nineteen functions exceed 40 code lines; two exceed 140
 - **Severity:** Medium
-- **Evidence:** the reconnaissance lists 19 (section 8). I checked the spans of the largest by reading:
+- **Evidence:** the reconnaissance lists 19 (section 8). Checked by reading the spans of the largest:
   - `ReadAloudDocument.markdown`, 273 code lines ([ReadAloudDocument.swift:296-589](../../../Sources/GraphiteCore/ReadAloudDocument.swift#L296-L589))
   - `ReadAloudDocument.pageText`, 149 ([ReadAloudDocument.swift:79-237](../../../Sources/GraphiteCore/ReadAloudDocument.swift#L79-L237))
   - `ReadAloudScanReview.body`, 75 ([ReadAloudReader.swift:177-251](../../../Sources/GraphiteUI/ReadAloudReader.swift#L177-L251))
@@ -904,7 +904,7 @@ Split:
 | 13 | Real seams for rendering and alignment | [ReadAloudPassagePreparation.swift:8-13](../../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L8-L13), [ReadAloudSpeechAlignment.swift:8-11](../../../Sources/GraphiteVoices/ReadAloudSpeechAlignment.swift#L8-L11), [ReadAloudPassagePreparation.swift:85-89](../../../Sources/GraphiteVoices/ReadAloudPassagePreparation.swift#L85-L89) | Each protocol exists for a stated reason (no multi-hundred-megabyte model in tests) and has one production implementation. This is the RULES.md pattern. |
 | 14 | MLX failure containment | [NeuralSpeechEngine.swift:44-55](../../../Sources/GraphiteVoices/NeuralSpeechEngine.swift#L44-L55), [NeuralSpeechEngine.swift:131-138](../../../Sources/GraphiteVoices/NeuralSpeechEngine.swift#L131-L138), [NeuralSpeechEngine.swift:215-251](../../../Sources/GraphiteVoices/NeuralSpeechEngine.swift#L215-L251) | MLX errors become thrown errors before samples are read, so a refused graphics command cannot crash the app. The model box documents why `@unchecked Sendable` is safe. |
 | 15 | The audio session is released only when it is still Read Aloud's | [ReadAloudSpeech.swift:296-305](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L296-L305), [NeuralReadAloudSpeech.swift:249-253](../../../Sources/GraphiteVoices/NeuralReadAloudSpeech.swift#L249-L253) | A lecture recording's session is never deactivated by Read Aloud. Keep this rule when merging the two owners (CC-VOICE-07). |
-| 16 | Personal Voice is asked for only from an explicit tap; robotic voices are never chosen automatically | [ReadAloudSpeech.swift:65-77](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L65-L77), [ReadAloudSpeech.swift:676-686](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L676-L686), [ReadAloudVoiceSettings.swift:66-73](../../../Sources/GraphiteUI/ReadAloudVoiceSettings.swift#L66-L73) | Respects the permission model and the owner's voice decisions. A missing chosen voice is never silently replaced ([ReadAloudSpeech.swift:713-715](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L713-L715)). |
+| 16 | Personal Voice is asked for only from an explicit tap; robotic voices are never chosen automatically | [ReadAloudSpeech.swift:65-77](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L65-L77), [ReadAloudSpeech.swift:676-686](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L676-L686), [ReadAloudVoiceSettings.swift:66-73](../../../Sources/GraphiteUI/ReadAloudVoiceSettings.swift#L66-L73) | Respects the permission model and the voice decisions already taken. A missing chosen voice is never silently replaced ([ReadAloudSpeech.swift:713-715](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L713-L715)). |
 | 17 | Rendered audio stays outside the vault | [ReadAloudAudioCache.swift:35-38](../../../Sources/GraphiteVoices/ReadAloudAudioCache.swift#L35-L38), [NeuralVoiceCatalog.swift:26-35](../../../Sources/GraphiteVoices/NeuralVoiceCatalog.swift#L26-L35) | Audio goes to Caches and voices to Application Support, excluded from backup. Nothing is written into the vault except the user-edited pronunciation file. This is the OBJECTIVE's "no sidecars". |
 
 ## 7. Blueprint for this area
@@ -1014,9 +1014,9 @@ Split:
 
 ## 8. Appendix: raw metrics
 
-### Reconnaissance numbers (kept, with my checks)
+### Reconnaissance numbers (kept, with checks)
 
-**Functions over 40 code lines (19, reconnaissance).** I checked the spans of the first five and of `preparePDFSnapshot` and `receive` by reading.
+**Functions over 40 code lines (19, reconnaissance).** The spans of the first five and of `preparePDFSnapshot` and `receive` were checked by reading.
 
 | Function | Code lines | Location |
 | --- | ---: | --- |
@@ -1046,7 +1046,7 @@ Split:
 
 **Pattern counts (reconnaissance, comment- and string-stripped).**
 
-| Pattern | Reconnaissance count | My check |
+| Pattern | Reconnaissance count | Check |
 | --- | ---: | --- |
 | `try?` | 74 | not recounted |
 | `Task.sleep` / `sleep` | 9 | 9 (grep `Task\.sleep` over the area: ReadAloudSpeech.swift:818, ReadAloudController.swift:362 and :542, ReadAloudNavigator.swift:159, ReadAloudFloatingPlayer.swift:60 and :354, ReadAloudControls.swift:203, NeuralReadAloudSpeech.swift:165, ReadAloudPassagePreparation.swift:270) |
@@ -1067,7 +1067,7 @@ Split:
 
 **Commits touching each file (reconnaissance):** `ReadAloudController.swift` 15, `ReadAloudSpeech.swift` 14, `ReadAloudDocument.swift` 9, `ReadAloudVoiceSettings.swift` 8, `ReadAloudReader.swift` 7, `PDFReadAloudSource.swift` 7, `ReadAloudControls.swift` 5, `ReadingSourceAlignment.swift` 4, `ReadAloudNavigator.swift` 4, `NeuralVoiceLibrary.swift` 3, `ReadAloudFloatingPlayer.swift` 3, `NeuralVoiceSettings.swift` 3, `ReadAloudMarkdownPreparation.swift` 3, `RenderedPassagePlayer.swift` 2, `ReadAloudSpeechAlignment.swift` 2.
 
-### Counts I made
+### Counts made in the audit
 
 **Stored properties, counted by reading.**
 
@@ -1128,9 +1128,9 @@ Bugs: 10 (BUG-VOICE-01 to -10); 9 traced, 1 partly traced (BUG-VOICE-08). Invari
 
 ISP-VOICE-02 cites the Transcript rows as starting playback without the `isPreparing` guard. The rows have no guard of their own ([ReadAloudReader.swift:87-90](../../../Sources/GraphiteUI/ReadAloudReader.swift#L87-L90)), but the sheet shows a progress view instead of the rows while preparing ([ReadAloudReader.swift:19-20](../../../Sources/GraphiteUI/ReadAloudReader.swift#L19-L20)). The unguarded case that is reachable is the floating player's sentence buttons. They stay enabled while `isPreparing` ([ReadAloudFloatingPlayer.swift:213-232](../../../Sources/GraphiteUI/ReadAloudFloatingPlayer.swift#L213-L232)), whereas its Play button is disabled ([ReadAloudFloatingPlayer.swift:243](../../../Sources/GraphiteUI/ReadAloudFloatingPlayer.swift#L243)) and the popover disables the whole transport ([ReadAloudControls.swift:161](../../../Sources/GraphiteUI/ReadAloudControls.swift#L161)).
 
-### What I could not read completely
+### What could not be read completely
 
-`Sources/GraphiteApple/Resources/MathSpeech/math-speech.js` is a generated, minified bundle: 58 physical lines, each tens of thousands of characters long. `read_files` truncated it after line 43. I read its source of truth, [Vendor/math-speech/entry.js](../../../Vendor/math-speech/entry.js) (77 lines), and [Vendor/math-speech/README.md](../../../Vendor/math-speech/README.md) completely. I located the exported `GraphiteMathSpeech` object with grep. Every other file in scope was read in full.
+`Sources/GraphiteApple/Resources/MathSpeech/math-speech.js` is a generated, minified bundle: 58 physical lines, each tens of thousands of characters long. `read_files` truncated it after line 43. Its source of truth, [Vendor/math-speech/entry.js](../../../Vendor/math-speech/entry.js) (77 lines), and [Vendor/math-speech/README.md](../../../Vendor/math-speech/README.md) were read completely. The exported `GraphiteMathSpeech` object was located with grep. Every other file in scope was read in full.
 
 ### Tally correction
 

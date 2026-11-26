@@ -184,7 +184,7 @@ No rule is Supported at the snapshot: for every rule at least one checked site b
 
 ## I Performance and reliability
 
-Added with the owner's decisions of 2026-10-18 ([rewrite-foundations.md](rewrite-foundations.md), group I); assessed against the snapshot.
+Added with the decisions of 2026-10-18 ([rewrite-foundations.md](rewrite-foundations.md), group I); assessed against the snapshot.
 
 | Rule | Status | Evidence | Remaining requirement |
 | --- | --- | --- | --- |
@@ -199,7 +199,7 @@ Added with the owner's decisions of 2026-10-18 ([rewrite-foundations.md](rewrite
 
 ## J Features and packages
 
-Added with the owner's direction of 2026-10-20 ([rewrite-foundations.md](rewrite-foundations.md), group J); assessed on `fad4496` (main, 2026-10-20), not on the snapshot.
+Added with the direction of 2026-10-20 ([rewrite-foundations.md](rewrite-foundations.md), group J); assessed on `fad4496` (main, 2026-10-20), not on the snapshot.
 
 | Rule | Status | Evidence | Remaining requirement |
 | --- | --- | --- | --- |

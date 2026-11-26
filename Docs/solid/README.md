@@ -6,11 +6,11 @@ This folder is Graphite's standard for structure and code quality: what is wrong
 
 ## Goal and decisions
 
-**The goal (owner, 2026-10-18): the fastest and most resource-efficient app Graphite can be: robust, free of defects, fast, fluid and reliable. The stricter the standard, the better.** Every rule here serves that goal. Group I of the rules (`FR-101` to `FR-108`) makes it checkable: one table of performance and memory budgets enforced in CI and on a device, every change measured before and after, a main actor that only presents, work proportional to the change, bounded memory, and every crash, hang or loss of work turned into a defect with a regression test.
+**The goal (stated 2026-10-18): the fastest and most resource-efficient app Graphite can be: robust, free of defects, fast, fluid and reliable. The stricter the standard, the better.** Every rule here serves that goal. Group I of the rules (`FR-101` to `FR-108`) makes it checkable: one table of performance and memory budgets enforced in CI and on a device, every change measured before and after, a main actor that only presents, work proportional to the change, bounded memory, and every crash, hang or loss of work turned into a defect with a regression test.
 
-The owner answered the audit's thirteen questions the same day ([rewrite-foundations.md](rewrite-foundations.md), "Decisions"): feature modules become SwiftPM targets; the Mac and iPhone reach parity with the iPad except for Apple Pencil features; the deployment floors become iOS, iPadOS and macOS 27; the plugin runtime becomes TypeScript modules bundled into one file, with one message schema shared with Swift; `size-report` gates every item from Phase 1; the 38 user-facing defects ship before any refactor; tests run in the simulator on every push and on an iPad every night, through GitHub Actions; Graphite will support several windows per process. The cleanup starts when the owner says go.
+The audit's thirteen questions were answered the same day ([rewrite-foundations.md](rewrite-foundations.md), "Decisions"): feature modules become SwiftPM targets; the Mac and iPhone reach parity with the iPad except for Apple Pencil features; the deployment floors become iOS, iPadOS and macOS 27; the plugin runtime becomes TypeScript modules bundled into one file, with one message schema shared with Swift; `size-report` gates every item from Phase 1; the 38 user-facing defects ship before any refactor; tests run in the simulator on every push and on an iPad every night, through GitHub Actions; Graphite will support several windows per process. The cleanup starts at the go-ahead.
 
-On 2026-10-20 the owner added two directions ([rewrite-foundations.md](rewrite-foundations.md), decisions 14 to 16): code that knows nothing of Graphite becomes a standalone package that could be its own repository, the Goodnotes and Notability readers first (section 3.5, `FR-110`); and the app stays light through its structure, then measured algorithm work (Phase 15), and features that do not run at all while they are off, core plugins included (section 9.4, `FR-109`). The kernel that cannot be switched off is vault access and storage, the index, the file list, the Markdown note editor and reading view, tabs and windows, and Settings; everything else becomes switchable (decision 16).
+On 2026-10-20 two directions were added ([rewrite-foundations.md](rewrite-foundations.md), decisions 14 to 16): code that knows nothing of Graphite becomes a standalone package that could be its own repository, the Goodnotes and Notability readers first (section 3.5, `FR-110`); and the app stays light through its structure, then measured algorithm work (Phase 15), and features that do not run at all while they are off, core plugins included (section 9.4, `FR-109`). The kernel that cannot be switched off is vault access and storage, the index, the file list, the Markdown note editor and reading view, tabs and windows, and Settings; everything else becomes switchable (decision 16).
 
 ## Current adherence
 
@@ -50,12 +50,12 @@ Each area auditor rated each principle (Strong / Mostly strong / Mixed / Weak). 
 | Findings by principle | SRP 75, OCP 52, LSP 58, ISP 40, DIP 52, CC 151 |
 | Defects | 76 distinct: 0 Critical, 5 High, 35 Medium, 36 Low; 70 Confirmed, 0 Latent, 5 Plausible, 1 Refuted |
 | Invariants | 413 rows in 23 subject prefixes ([invariants.md](invariants.md)) |
-| Rules for new code | 110 (`FR-01`…`FR-110`) in [rewrite-foundations.md](rewrite-foundations.md): 100 merged from 121 principle rules and 23 testing rules, 8 performance and reliability rules from the owner's goal, and 2 on features and packages from the owner's direction of 2026-10-20 |
+| Rules for new code | 110 (`FR-01`…`FR-110`) in [rewrite-foundations.md](rewrite-foundations.md): 100 merged from 121 principle rules and 23 testing rules, 8 performance and reliability rules from the stated goal, and 2 on features and packages from the direction of 2026-10-20 |
 | Size items over a threshold | 284, all reviewed in [size-review.md](size-review.md) (124 one concept, 160 split planned) |
 
 ## Where to start
 
-- **Planning the cleanup:** [rewrite-foundations.md](rewrite-foundations.md): what must be fixed, what must be kept, the target module layout, the FR rules, the review checklist, the phased migration plan and the questions only the owner can answer.
+- **Planning the cleanup:** [rewrite-foundations.md](rewrite-foundations.md): what must be fixed, what must be kept, the target module layout, the FR rules, the review checklist, the phased migration plan and the questions that needed a decision.
 - **Fixing something now:** [defects.md](defects.md), section "Fix before the cleanup starts", then [invariants.md](invariants.md) for the behaviour the fix must keep, and [testing.md](testing.md) for the regression test it needs.
 - **Checking adherence:** [rule-status.md](rule-status.md) (rules against the current code), [status.md](status.md) (every finding's state), [progress.md](progress.md) (what landed), `python3 scripts/size-report.py`.
 - **One principle:** the six documents in [principles/](principles/), each with systemic patterns, largest offenders, what to keep, the full finding index and its rules.
@@ -123,7 +123,7 @@ The earlier tracker `Docs/SOLID.md` (read it with `git show b13dec3:Docs/SOLID.m
 
 - **Findings:** `<P>-<AREA>-<NN>`, with `P` ∈ {`SRP`, `OCP`, `LSP`, `ISP`, `DIP`, `CC`, `BUG`} and `AREA` one of the IDs above (for example `SRP-SHELL-01`, `BUG-CANVAS-01`). Defects found by the verifiers are `BUG-<AREA>-V<NN>`, by the lead `BUG-<AREA>-L<NN>`. IDs are never reused; a new finding takes the next free number.
 - **Area invariants:** `<AREA>-INV-NN` in the area blueprints, merged into **[invariants.md](invariants.md) rows** with subject prefixes `B`, `C`, `D`, `ED`, `EX`, `G`, `INK`, `IX`, `LK`, `M`, `MD`, `N`, `NM`, `OB`, `P`, `PDF`, `PL`, `RA`, `REC`, `SEC`, `ST`, `TH`, `U` (for example `D-01`). Invariant IDs are permanent: never renumbered; a retired row is struck through.
-- **Rules:** `FR-NN` in [rewrite-foundations.md](rewrite-foundations.md) section 11 (groups A–I); their sources are the owner's goal and the principle rules (`SRP n`, `OCP n`, `LSP n`, `ISP n`, `DIP n`, `CC n`) and testing rules (`TR n`).
+- **Rules:** `FR-NN` in [rewrite-foundations.md](rewrite-foundations.md) section 11 (groups A–I); their sources are the stated goal and the principle rules (`SRP n`, `OCP n`, `LSP n`, `ISP n`, `DIP n`, `CC n`) and testing rules (`TR n`).
 
 ## Severity
 
@@ -145,4 +145,4 @@ The earlier tracker `Docs/SOLID.md` (read it with `git show b13dec3:Docs/SOLID.m
 - **Counts depend on method.** Code lines exclude comments, blank lines and string contents; pattern counts are regex occurrences in code with comments and strings removed. Area documents measured with an earlier counter differ from [metrics.md](metrics.md) by a few lines per module.
 - **Line numbers are frozen to b13dec3.** Read any cited line with `git show b13dec3:<path>` (for example `git show b13dec3:Sources/GraphiteUI/WorkspaceModel.swift | sed -n 300,340p`); links into the working tree drift as the code changes.
 - **Vendored code is out of scope:** `Vendor/textual`, `Vendor/swiftui-math`, `Vendor/mlx-audio-swift` and the minified bundles under `Resources/CommunityPluginRuntime/Vendor/`.
-- **The design contract is binding** since the owner answered its questions on 2026-10-18 (section 13 of [rewrite-foundations.md](rewrite-foundations.md)); no cleanup wave starts before the owner says go.
+- **The design contract is binding** since its questions were answered on 2026-10-18 (section 13 of [rewrite-foundations.md](rewrite-foundations.md)); no cleanup wave starts before the go-ahead.

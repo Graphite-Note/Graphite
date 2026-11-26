@@ -2,7 +2,7 @@
 
 Snapshot: b13dec3 (main, 2026-10-18).
 
-Every finding and defect heading in the area documents, extracted by script (`#### <P>-<AREA>-<NN> title` and its **Severity** line). Defect severities here are the auditors' own; the verified verdicts and calibrated severities are in [defects.md](defects.md).
+Every finding and defect heading in the area documents, extracted by script (`#### <P>-<AREA>-<NN> title` and its **Severity** line). Defect severities here are the audit's first-pass ratings; the verified verdicts and calibrated severities are in [defects.md](defects.md).
 
 Section 9 of each area document adds the 72 findings of the delta audit of 2026-10-19 (code changed between `b13dec3` and `9040705`) and 13 of the delta audit of 2026-10-20 (`9040705` to `5aae924`); [areas/import.md](areas/import.md) holds the 19 findings of the Goodnotes and Notability readers, an area added after the snapshot. The index is rebuilt with `python3 scripts/findings-index.py`; `--check` says whether it is current.
 
@@ -393,7 +393,7 @@ Section 9 of each area document adds the 72 findings of the delta audit of 2026-
 | [CC-IMPORT-09](areas/import.md#cc-import-09-a-goodnotes-picture-paper-or-recording-whose-attachment-is-missing-reads-as-nil-with-no-issue) | IMPORT | Low | A Goodnotes picture, paper or recording whose attachment is missing reads as nil with no issue |
 | [CC-IMPORT-10](areas/import.md#cc-import-10-untrusted-relative-paths-leave-the-readers-as-plain-strings-with-a-folder-path-when-the-name-is-absent) | IMPORT | Medium | Untrusted relative paths leave the readers as plain strings, with a folder path when the name is absent |
 | [CC-IMPORT-11](areas/import.md#cc-import-11-the-issue-list-and-the-error-wrapping-helpers-exist-twice-and-the-helpers-sit-in-files-named-for-other-concepts) | IMPORT | Low | The issue list and the error-wrapping helpers exist twice, and the helpers sit in files named for other concepts |
-| [CC-IMPORT-12](areas/import.md#cc-import-12-real-notebook-tests-are-skipped-on-every-machine-except-the-owners-mac) | IMPORT | Medium | Real-notebook tests are skipped on every machine except the owner's Mac |
+| [CC-IMPORT-12](areas/import.md#cc-import-12-real-notebook-tests-are-skipped-on-every-machine-except-the-development-mac) | IMPORT | Medium | Real-notebook tests are skipped on every machine except the development Mac |
 | [CC-IMPORT-13](areas/import.md#cc-import-13-attachment-bytes-are-returned-as-whole-arrays-of-up-to-512-mib) | IMPORT | Low | Attachment bytes are returned as whole arrays of up to 512 MiB |
 | [CC-IMPORT-14](areas/import.md#cc-import-14-centre-differs-from-the-codebases-center-and-an-issue-comment-miscounts-its-cases) | IMPORT | Low | `centre` differs from the codebase's `center`, and an issue comment miscounts its cases |
 | [CC-IMPORT-15](areas/import.md#cc-import-15-a-deflated-attachment-is-held-twice-while-it-is-read) | IMPORT | Low | A deflated attachment is held twice while it is read |

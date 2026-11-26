@@ -211,7 +211,7 @@ The two documentation files change in 112 and 97 of 242 commits because every fe
 Method: a comment-only line is a non-blank line that is blank after removing comments (strings kept).
 
 - Production Swift: 14,959 comment-only lines against 80,841 code lines (0.185 per code line). Largest: NativeMarkdownEditor.swift 630, MarkdownPreview.swift 500, WorkspaceModel.swift 324, GraphitePDFView.swift 317, BaseDefinitionEditor.swift 205.
-- History narration: 35 comment lines carry a calendar date (`grep -rnE '//.*20[0-9]{2}-[0-9]{2}-[0-9]{2}' Sources App/GraphiteApp.swift`); 16 of them record an incident or measurement (`measured|reported|seen|crashed|found|recorded` before the date), the rest are format examples such as `2026-02-30`. 14 lines name the owner or the owner's iPad (`grep -rnE "//.*\b(owner's iPad|reported by the owner|the owner)" Sources`). 5 lines say "used to". The area documents classify the remaining comments.
+- History narration: 35 comment lines carry a calendar date (`grep -rnE '//.*20[0-9]{2}-[0-9]{2}-[0-9]{2}' Sources App/GraphiteApp.swift`); 16 of them record an incident or measurement (`measured|reported|seen|crashed|found|recorded` before the date), the rest are format examples such as `2026-02-30`. 14 lines name a person or a personal device (`grep -rnE "//.*\b(owner's iPad|reported by the owner|the owner)" Sources`). 5 lines say "used to". The area documents classify the remaining comments.
 
 ## Dependency graph
 

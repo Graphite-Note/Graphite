@@ -51,7 +51,7 @@ Shape: Core holds pure, synchronous logic (13 files, 4,629 code lines by the rec
 
 ## 2. File inventory
 
-Physical and code lines are the reconnaissance figures; I checked the physical counts against `read_files` (each file's last line number matches).
+Physical and code lines are the reconnaissance figures; the physical counts were checked against `read_files` (each file's last line number matches).
 
 | File | Physical | Code | Responsible for |
 | --- | ---: | ---: | --- |

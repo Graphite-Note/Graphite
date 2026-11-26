@@ -13,7 +13,7 @@ The layer is careful with hostile input: every length, count, offset and index i
 | Files | 49 (17 container and format, 32 reader) |
 | Findings | 19: 2 defects (1 Medium, 1 Low) and 17 structural (7 Medium, 10 Low) |
 | Wired into the app | No |
-| Tests | Malformed-input and fuzz tests for every format; real-notebook tests run only on the owner's Mac (`CC-IMPORT-12`) |
+| Tests | Malformed-input and fuzz tests for every format; real-notebook tests run only on the development Mac (`CC-IMPORT-12`) |
 
 ## 2. Findings: container and format layer
 
@@ -110,10 +110,10 @@ Audited at `5aae924`; links are relative to this document.
 - **Evidence:** `GoodnotesIssueList` ([GoodnotesReadingIssue.swift:62-69](../../../Packages/NotebookImport/Sources/NotebookImport/GoodnotesReadingIssue.swift#L62-L69)) and `NotabilityReadingIssues` ([NotabilityReadingIssue.swift:55-66](../../../Packages/NotebookImport/Sources/NotebookImport/NotabilityReadingIssue.swift#L55-L66)) have the same body; `NotabilityReadingError.readingSession` is declared in `NotabilityInk.swift`, `NotabilitySessionReading.readingElement` in `NotabilityPictureReading.swift` but also used by shapes.
 - **Fix direction:** one `NotebookImportIssueList<Issue: Hashable>` in its own file; each wrapper in the file of the type it extends.
 
-#### CC-IMPORT-12 Real-notebook tests are skipped on every machine except the owner's Mac
+#### CC-IMPORT-12 Real-notebook tests are skipped on every machine except the development Mac
 - **Severity:** Medium
 - **Rule:** `FR-93`, `FR-95`
-- **Evidence:** both sample suites skip unless two environment variables point at the owner's personal samples ([NotebookImportSamples.swift:3-25](../../../Packages/NotebookImport/Tests/NotebookImportTests/Fixtures/NotebookImportSamples.swift#L3-L25)); no `.goodnotes` or `.note` file is in `Tests/`, so CI reads only notebooks the test builders synthesize from the same understanding of the format the readers encode.
+- **Evidence:** both sample suites skip unless two environment variables point at the personal samples ([NotebookImportSamples.swift:3-25](../../../Packages/NotebookImport/Tests/NotebookImportTests/Fixtures/NotebookImportSamples.swift#L3-L25)); no `.goodnotes` or `.note` file is in `Tests/`, so CI reads only notebooks the test builders synthesize from the same understanding of the format the readers encode.
 - **Why it matters:** a misunderstanding shared by builder and reader passes CI, and the sample comparison in `Coverage.md` cannot be repeated by anyone else.
 - **Fix direction:** check in a few small, non-personal notebooks made for the purpose in Goodnotes and Notability, each with its reference counts as a golden file; the personal-sample suite stays opt-in.
 
@@ -184,7 +184,7 @@ The import session fixed most findings in `471de62`, `6e21dd0` and `c632468`. Ea
 | `CC-IMPORT-09` | Fixed | missing attachments report `attachmentNotInLog` and a missing paper `paperNotInLog` ([GoodnotesEventLog.swift:197-211](../../../Packages/NotebookImport/Sources/NotebookImport/GoodnotesEventLog.swift#L197-L211)) | `GoodnotesNotebookReaderTests.testAttachmentsAndPapersMissingFromTheLogAreReported` |
 | `CC-IMPORT-10` | Fixed | `NotebookArchivePath` refuses empty, absolute, `.`, `..`, backslash and control characters ([NotebookArchivePath.swift:11-27](../../../Packages/NotebookImport/Sources/NotebookImport/NotebookArchivePath.swift#L11-L27)) and is used for every archive path (the raw Goodnotes identifier stays public: `CC-IMPORT-16`) | `NotebookArchivePathTests`; the climbing-path cases in both reader suites |
 | `CC-IMPORT-11` | Fixed | one generic `NotebookImportIssueList`; the wrappers live with their types | none (structural) |
-| `CC-IMPORT-12` | Open | the sample suites still skip without the owner's variables, and two more such suites were added (`GoodnotesPagePlannerSampleTests`, `NotabilityPagePlannerSampleTests`, in the skip baseline since `d7fab78`); checking in non-personal notebooks waits for the owner's OK | none |
+| `CC-IMPORT-12` | Open | the sample suites still skip without the sample variables, and two more such suites were added (`GoodnotesPagePlannerSampleTests`, `NotabilityPagePlannerSampleTests`, in the skip baseline since `d7fab78`); checking in non-personal notebooks waits for approval | none |
 | `CC-IMPORT-13` | Fixed | a stored entry is a slice of the archive and any entry can be copied in pieces ([ZipArchive.swift:111-148](../../../Packages/NotebookImport/Sources/NotebookImport/ZipArchive.swift#L111-L148), `ZipEntryPieces.swift`); a deflated entry's `data(of:)` still holds two copies (`CC-IMPORT-15`) | `ZipArchiveEntryCopyTests` |
 | `CC-IMPORT-14` | Partly fixed | the identifiers are `center` and the miscounting comment is rewritten; `6e21dd0` wrote "centre" again in four doc comments ([GoodnotesNestedFields.swift:49-63](../../../Packages/NotebookImport/Sources/NotebookImport/GoodnotesNestedFields.swift#L49-L63), [GoodnotesElementFields.swift:73](../../../Packages/NotebookImport/Sources/NotebookImport/GoodnotesElementFields.swift#L73)) | none |
 | `OCP-IMPORT-01` | Fixed | unknown kinds and path layouts are kept (`.unknown(kind:fieldNumbers:)`, `.unknownLayout`) with the element identifier in the issue ([GoodnotesLayerReader.swift:78-91](../../../Packages/NotebookImport/Sources/NotebookImport/GoodnotesLayerReader.swift#L78-L91)); an unknown element sorts last rather than in drawing order | `GoodnotesNotebookReaderTests.testUnknownKindsFieldsAndPathFormatsAreReportedNotGuessed` |

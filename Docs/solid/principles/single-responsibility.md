@@ -171,7 +171,7 @@ The `openVault` list runs into the new vault's own assignments in the same funct
 
 ### 3.1 The ten worst types
 
-Counts are the area auditors' counts by reading, which I re-checked at the snapshot for the High findings (the stored-property ranges, the reset lists, the 28 handlers, the five link implementations). A type with a number above 15 needs a recorded reason under `SRP 1`.
+Counts are the area auditors' counts by reading, which were re-checked at the snapshot for the High findings (the stored-property ranges, the reset lists, the 28 handlers, the five link implementations). A type with a number above 15 needs a recorded reason under `SRP 1`.
 
 | # | Type (file) | Stored properties | Responsibilities | Size and spread | Findings |
 | ---: | --- | ---: | --- | --- | --- |
