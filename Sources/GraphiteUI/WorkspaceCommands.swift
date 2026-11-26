@@ -5,8 +5,8 @@
  * Description: The command palette's workspace commands: files, tabs, splits, notes and plugins.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.21
- * Date: 21/11/2026
+ * Version: 0.22
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -264,6 +264,11 @@ enum WorkspaceCommandList {
         case (false, false): "rectangle.tophalf.inset.filled"
         }
     }
+
+    /// The note commands below that do what an entry of the note's Paragraph or Insert menu does;
+    /// the slash commands list the menu's entry alone (`SlashCommandList`).
+    static let commandsTheInsertMenuAlsoOffers: Set<String> = Set((1...6).map { level in "heading-\(level)" })
+        .union(["task", "table", "math", "callout", "insert-template", "new-notebook-in-note", "draw"])
 
     private static func noteCommands(session: MarkdownSession, workspace: WorkspaceModel, window: WindowActions) -> [PaletteCommand] {
         let editingMode = workspace.defaultEditingMode

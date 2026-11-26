@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's note editor (UITextView) with its coordinator; the Mac's is NativeMarkdownEditorMac.swift.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.80
- * Date: 24/11/2026
+ * Version: 0.81
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -123,8 +123,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             UTType.item.identifier, UTType.content.identifier, UTType.data.identifier,
         ])
         session.completion.performEdits = { [weak coordinator, weak textView] edits in
-            guard let coordinator, let textView else { return }
-            coordinator.performCompletionEdits(edits, in: textView)
+            guard let coordinator, let textView else { return false }
+            return coordinator.performCompletionEdits(edits, in: textView)
         }
         textView.usesReadableLineLength = configuration.usesReadableLineLength
         // The theme's line width, plus the text container's padding on each side.
@@ -329,7 +329,10 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         private var isViewportRelayoutPending = false
         /// Set when a layout pass found the viewport short while the relayout above waited, so it looks again after.
         private var hasShortfallWhileRelayoutPending = false
-        var actions = EditorActions()
+        var actions = EditorActions() {
+            // The editor owns the pane's slash commands; the note's suggestions only point at them.
+            didSet { session.completion.slashCommands = actions.slashCommands }
+        }
         /// The quick font size pinch on the text view, which follows `actions.quickFontSize`.
         var quickFontSizePinch: QuickFontSizePinchRecognizer?
         var suspendReadingFollow: (() -> Void)?
@@ -496,8 +499,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             observeCharacterEdits(in: textView)
             observeMemoryWarnings()
             session.completion.performEdits = { [weak self, weak textView] edits in
-                guard let self, let textView else { return }
-                self.performCompletionEdits(edits, in: textView)
+                guard let self, let textView else { return false }
+                return self.performCompletionEdits(edits, in: textView)
             }
             session.isEditorAttached = true
             session.undoAvailability.follow(textView.undoManager)
@@ -935,13 +938,15 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// were found in, so they move past what was typed meanwhile. When that typing
         /// changed the text they replace, none are made: a link without its `^id`, or a
         /// query replaced in the middle of new text, would corrupt the note.
-        func performCompletionEdits(_ edits: [MarkdownTextEdit], in textView: UITextView) {
+        @discardableResult
+        func performCompletionEdits(_ edits: [MarkdownTextEdit], in textView: UITextView) -> Bool {
             completionTracking.recordAcceptedSuggestion(isListOpen: session.completion.context != nil)
             guard let movedEdits = completionTracking.editsMovedPastTyping(edits, history: textState.history) else {
                 session.errorMessage = EditorCompletionTracking.noteChangedMessage
-                return
+                return false
             }
             perform(movedEdits, in: textView)
+            return true
         }
 
         /// Closes the suggestions on Escape. They were not accepted, so no edits follow.
@@ -951,15 +956,21 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         }
 
         /// Shows or hides suggestions for what is typed at the cursor.
-        func updateCompletion(in textView: UITextView) {
+        func updateCompletion(in textView: UITextView, followsTyping: Bool = false) {
             completionTracking.recordAcceptedSuggestion(isListOpen: session.completion.context != nil)
             defer { completionTracking.listDidUpdate(isOpen: session.completion.context != nil, at: textRevision) }
             guard textView.isFirstResponder, textView.markedTextRange == nil, textView.selectedRange.length == 0 else {
                 session.completion.update(context: nil, caretRect: .zero)
                 return
             }
-            let context = completionTracking.context(in: currentSource(of: textView), cursor: textView.selectedRange.location,
-                                                     textRevision: textRevision, pluginEditorDidChange: actions.pluginEditorDidChange)
+            let source = currentSource(of: textView)
+            let context = completionTracking.context(in: source, cursor: textView.selectedRange.location,
+                                                     textRevision: textRevision,
+                                                     offersSlashCommands: session.completion.offersSlashCommands, followsTyping: followsTyping,
+                                                     blockContext: { [styling] lineStart in
+                                                         styling.blockContext(atLineStart: lineStart, in: textView, source: source)
+                                                     },
+                                                     pluginEditorDidChange: actions.pluginEditorDidChange)
             var caretRect = CGRect.zero
             if context != nil, let end = textView.selectedTextRange?.end {
                 caretRect = textView.caretRect(for: end).offsetBy(dx: -textView.contentOffset.x, dy: -textView.contentOffset.y)
@@ -1073,7 +1084,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             publish(textView)
             // Typing can carry the cursor into code, as a fence's closing line does.
             updateKeyboardForCode(in: textView)
-            updateCompletion(in: textView)
+            updateCompletion(in: textView, followsTyping: true)
         }
 
         func textViewDidBeginEditing(_ textView: UITextView) {

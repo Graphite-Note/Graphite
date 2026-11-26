@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.69
- * Date: 11/11/2026
+ * Version: 0.70
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -590,6 +590,8 @@ struct GraphiteRootView: View {
                            create: { request in creation = request },
                            showQuickSwitcher: { activePalette = .quickSwitcher },
                            acceptsFocusTouches: activePalette == nil, showsTabBar: !focusMode.isActive && !isCompactWidth && !hidesChromeWhileTyping)
+            .modifier(WindowPaletteCommandsOffer(offersSplit: !isCompactWidth) { [workspace, windowActions] offersSplit in
+                WorkspaceCommandList.commands(for: workspace, window: windowActions, offersSplit: offersSplit) })
         }
     }
 

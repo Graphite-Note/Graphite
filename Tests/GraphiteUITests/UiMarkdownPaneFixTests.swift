@@ -5,8 +5,8 @@
  * Description: Fixes in the Markdown pane: saving, suggestions and changes made in other apps.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 26/11/2026
  */
 
 import XCTest
@@ -249,7 +249,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
             }]
         }
         var performedEdits: [MarkdownTextEdit] = []
-        model.performEdits = { edits in performedEdits = edits }
+        model.performEdits = { edits in performedEdits = edits; return true }
         let firstText = "Note #pro"
         model.update(context: LinkCompletion.context(in: firstText as NSString, cursor: 9), caretRect: .zero)
         try await waitUntil { model.isVisible }
@@ -267,7 +267,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         let workspace = WorkspaceModel()
         session.completion.suggest(from: workspace, for: session)
         var performedEdits: [MarkdownTextEdit] = []
-        session.completion.performEdits = { edits in performedEdits = edits }
+        session.completion.performEdits = { edits in performedEdits = edits; return true }
         session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: (session.text as NSString).length), caretRect: .zero)
         try await waitUntil { session.completion.isVisible }
         session.text += "ro"
@@ -282,7 +282,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         let workspace = WorkspaceModel()
         session.completion.suggest(from: workspace, for: session)
         var performedEdits: [[MarkdownTextEdit]] = []
-        session.completion.performEdits = { edits in performedEdits.append(edits) }
+        session.completion.performEdits = { edits in performedEdits.append(edits); return true }
         session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: (session.text as NSString).length), caretRect: .zero)
         try await waitUntil { session.completion.isVisible }
         // The heading query became a block query.
@@ -323,7 +323,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         XCTAssertFalse(workspace.hasCompletedIndexScan)
         session.completion.suggest(from: workspace, for: session)
         var performedEdits: [MarkdownTextEdit] = []
-        session.completion.performEdits = { edits in performedEdits = edits }
+        session.completion.performEdits = { edits in performedEdits = edits; return true }
         session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: 2), caretRect: .zero)
         try await waitUntil { session.completion.isVisible }
         session.completion.accept()
@@ -344,7 +344,7 @@ final class UiMarkdownPaneFixTests: XCTestCase {
         workspace.recentFiles = RecentFiles(paths: [try VaultPath("Folder/Notes.md")])
         session.completion.suggest(from: workspace, for: session)
         var performedEdits: [MarkdownTextEdit] = []
-        session.completion.performEdits = { edits in performedEdits = edits }
+        session.completion.performEdits = { edits in performedEdits = edits; return true }
         session.completion.update(context: LinkCompletion.context(in: session.text as NSString, cursor: 2), caretRect: .zero)
         try await waitUntil { session.completion.isVisible }
         session.completion.accept()

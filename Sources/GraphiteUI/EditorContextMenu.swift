@@ -2,11 +2,12 @@
  * File: EditorContextMenu.swift
  * -----------------------------
  * Layer: UI
- * Description: The editor's context menu, and the Format and Insert menus of the toolbar and the Mac menu bar, drawn from the same entries.
+ * Description: The editor's context menu, the Format and Insert menus of the toolbar and the Mac menu bar, and the
+ *              entries the slash commands list, drawn from the same entries.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 16/11/2026
+ * Version: 0.6
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -86,7 +87,11 @@ enum EditorContextMenuContent {
     static let mathBlock = "$$\n\n$$"
     static let calloutBlock = "> [!note]\n> "
     static let codeBlock = "```\n\n```"
+    static let mermaidBlock = "```mermaid\n\n```"
     static let horizontalRule = "---"
+    /// An embed on a line of its own, its target to type between the brackets, where the
+    /// link suggestions list the vault's files.
+    static let embedBlock = "![[]]"
 
     /// Where the cursor goes in a block just inserted, as a range of `block`: the part to
     /// fill in. Nil for a block with nothing to fill in, such as a rule.
@@ -94,8 +99,9 @@ enum EditorContextMenuContent {
         let text = block as NSString
         switch block {
         case tableBlock: return text.range(of: "Column")
-        case mathBlock, codeBlock: return NSRange(location: text.range(of: "\n").location + 1, length: 0)
+        case mathBlock, codeBlock, mermaidBlock: return NSRange(location: text.range(of: "\n").location + 1, length: 0)
         case calloutBlock: return NSRange(location: text.length, length: 0)
+        case embedBlock: return NSRange(location: text.range(of: "]]").location, length: 0)
         default: return nil
         }
     }
@@ -152,6 +158,13 @@ enum EditorContextMenuContent {
         insertEntries(actions: actions, editorActions: editorActions)
     }
 
+    /// What a `/` lists from the note's menus (`SlashCommandList`): the Paragraph entries, then
+    /// Insert's, then Format's, so the blocks come first as in Notion. Like the menus, they are
+    /// built when the list opens, never while typing.
+    static func slashMenuEntries(actions: EditorContextMenuActions, editorActions: EditorActions) -> [EditorContextMenuEntry] {
+        [paragraphMenu(actions: actions)] + insertEntries(actions: actions, editorActions: editorActions) + formatEntries(actions: actions)
+    }
+
     /// - Parameter checksColorRemoval: Whether Remove is dimmed when the selection has no color, which reads the note.
     private static func colorMenu(colors: [PaletteColor], actions: EditorContextMenuActions, checksColorRemoval: Bool) -> EditorContextMenuEntry {
         let paletteHexByName = Dictionary(colors.map { color in (color.name, color.hex) }, uniquingKeysWith: { firstHex, _ in firstHex })
@@ -205,11 +218,13 @@ enum EditorContextMenuContent {
             .action("Callout", "text.bubble") { actions.insertBlock(calloutBlock) },
             .action("Code Block", "curlybraces") { actions.insertBlock(codeBlock) },
             .action("Math Block", "function") { actions.insertBlock(mathBlock) },
+            .action("Mermaid Diagram", "flowchart") { actions.insertBlock(mermaidBlock) },
             .action("Horizontal Rule", "minus") { actions.insertBlock(horizontalRule) },
             .action("Tag", "number") { actions.run(.insertTag) },
         ]
         var attachmentEntries: [EditorContextMenuEntry] = [
             .action("Link to Note…", "link") { actions.linkToNote() },
+            .action("Embed", "rectangle.on.rectangle") { actions.insertBlock(embedBlock) },
         ]
         if let choosePhoto = editorActions.choosePhoto { attachmentEntries.append(.action("Photo Library…", "photo.on.rectangle") { choosePhoto() }) }
         if let takePhoto = editorActions.takePhoto { attachmentEntries.append(.action("Take Photo…", "camera") { takePhoto() }) }

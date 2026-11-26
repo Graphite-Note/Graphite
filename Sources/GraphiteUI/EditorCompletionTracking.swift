@@ -1,3 +1,14 @@
+/**
+ * File: EditorCompletionTracking.swift
+ * ------------------------------------
+ * Layer: UI
+ * Description: What a note editor remembers about the suggestions at its cursor, on the iPad and the Mac alike.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.2
+ * Date: 26/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 
@@ -18,6 +29,8 @@ struct EditorCompletionTracking {
     /// The revision plugins answered with suggestions for.
     private var pluginSuggestionRevision: Int?
     private var acceptedSuggestionRevisions: [Int] = []
+    /// Where the `/` of the slash commands now open is.
+    private var openSlashLocation: Int?
     /// Only a few are kept: the edits use the latest.
     private static let maximumAcceptedSuggestionRevisions = 8
 
@@ -30,11 +43,24 @@ struct EditorCompletionTracking {
         self.openSuggestionsRevision = nil
     }
 
-    /// What to suggest at `cursor`: a link or tag Graphite completes, else what community
-    /// plugins suggest. Plugins hear each change and cursor move once; asking again for the
-    /// same, as scrolling does, keeps their last answer.
-    mutating func context(in source: NSString, cursor: Int, textRevision: Int, pluginEditorDidChange: (() -> Int?)?) -> CompletionContext? {
-        if let context = LinkCompletion.context(in: source, cursor: cursor) { return context }
+    /// What to suggest at `cursor`: a link or tag Graphite completes, then the slash commands
+    /// when they are offered, else what community plugins suggest. Plugins hear each change
+    /// and cursor move once; asking again for the same, as scrolling does, keeps their last answer.
+    /// - Parameters:
+    ///   - followsTyping: Whether the question follows a change the person typed, which alone
+    ///     opens the slash commands.
+    ///   - blockContext: The block a line starting at the given location is in, from the
+    ///     editor's styling checkpoints; read from the top of the note when nil.
+    mutating func context(in source: NSString, cursor: Int, textRevision: Int, offersSlashCommands: Bool = false, followsTyping: Bool = false,
+                          blockContext: ((Int) -> MarkdownBlockContext)? = nil, pluginEditorDidChange: (() -> Int?)?) -> CompletionContext? {
+        if let context = LinkCompletion.context(in: source, cursor: cursor) {
+            openSlashLocation = nil
+            return context
+        }
+        if offersSlashCommands,
+           let slashContext = slashCommandContext(in: source, cursor: cursor, followsTyping: followsTyping, blockContext: blockContext) {
+            return slashContext
+        }
         guard let pluginEditorDidChange else { return nil }
         let state = PluginEditorState(textRevision: textRevision, cursor: cursor)
         if state != lastPluginEditorState {
@@ -42,6 +68,22 @@ struct EditorCompletionTracking {
             pluginSuggestionRevision = pluginEditorDidChange()
         }
         return pluginSuggestionRevision.map { revision in CompletionContext.pluginSuggestion(revision: revision) }
+    }
+
+    /// The slash commands for a `/` being typed. As in Obsidian, they open only on typing, so
+    /// placing the cursor after a `/` already written opens nothing, and stay open while the
+    /// cursor moves within the same query.
+    private mutating func slashCommandContext(in source: NSString, cursor: Int, followsTyping: Bool,
+                                              blockContext: ((Int) -> MarkdownBlockContext)?) -> CompletionContext? {
+        let query = blockContext.map { blockContext in SlashCommandTrigger.query(in: source, cursor: cursor, blockContext: blockContext) }
+            ?? SlashCommandTrigger.query(in: source, cursor: cursor)
+        guard let query,
+              followsTyping || openSlashLocation == query.replacementRange.location else {
+            openSlashLocation = nil
+            return nil
+        }
+        openSlashLocation = query.replacementRange.location
+        return .slashCommand(query)
     }
 
     /// Records the revision the suggestions now open were found at, or that none are open.
@@ -52,6 +94,7 @@ struct EditorCompletionTracking {
     /// Forgets the open suggestions without accepting them, as Escape closes them.
     mutating func forgetOpenSuggestions() {
         openSuggestionsRevision = nil
+        openSlashLocation = nil
     }
 
     /// An accepted suggestion's edits, moved past what was typed since its suggestions were

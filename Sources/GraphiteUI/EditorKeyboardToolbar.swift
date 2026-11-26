@@ -6,8 +6,8 @@
  *              the camera used to photograph a page or the board into a note.
  *
  * Authors: Bahey Shalash
- * Version: 0.17
- * Date: 04/11/2026
+ * Version: 0.18
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -75,6 +75,10 @@ struct EditorActions {
     var pluginPaste: ((_ text: String?, _ html: String?) async -> Bool)?
     /// Offers a drop (the files' names and types, or text) to plugins that listen.
     var pluginDrop: ((_ files: [(name: String, type: String)], _ text: String?) async -> Bool)?
+    /// The entries a `/` lists in the note; nil while Slash Commands is off. The editor keeps
+    /// it with the other actions, and the note's suggestions hold it weakly: its entries act
+    /// through the pane, which holds the note.
+    var slashCommands: SlashCommandSource?
     #if canImport(UIKit)
     /// Community plugins' items for the editor's menu at the cursor; nil while no plugin adds any.
     var pluginEditMenuElement: (() -> UIMenuElement)?

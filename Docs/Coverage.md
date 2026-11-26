@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-26.
 
+## Typing `/` lists the blocks and commands, as Obsidian's Slash commands do: 2026-11-26
+
+`Docs/Slash-menu-and-block-handles-todo.md`, section 1 (issue #238). `/` at the start of a line or after a space, typed in a note being edited, opens the completion popup with the note menus' Paragraph, Insert and Format entries, then the command palette's commands, filtered as typed with the palette's fuzzy match and each command's shortcut on the right. Return, Tab, a click or a tap chooses; the arrow keys move; Escape, a space or a second `/` closes. Choosing takes out the `/query` and makes the entry's own edit with it, as one edit one Undo takes back. Core plugin Slash Commands, on by default; nothing opens in code, math or the frontmatter. The Insert menu gains Mermaid Diagram and Embed.
+
+- **Automated tests, passing:** `SlashCommandTriggerTests` (8: the rule, where it opens nothing, a key in a query at the end of a 5,000-line note under 1 ms), `SlashCommandListTests` (17: the list, ranking, the edits of a block, a heading, a dialog and a command, opening only on typing), `UiEditorMacSlashCommandsTests` (4, key events in the Mac editor, one Undo), `SlashCommandsHostedTests` (7, on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator, iOS 27.2: `/tab` and Return, the arrow keys, a row chosen, Escape and a space, a cursor placed after a written `/`, turned off, a palette command), `WorkspaceReleaseTests` and `UiEditorReleaseTests` (a closed note is still released: the slash commands are kept by the note's editor, not by the note).
+- **Measured:** typing in a long note before and after, Debug on the development Mac: no measurable cost (median frame 12.8 and 11.1 ms in a paragraph, under a load average of 380 to 650).
+- **Not established:** a real finger tap on a row in a simulator, the Mac app by hand, a device; the Settings switch only through tests.
+
 ## Presenting a note as slides: 2026-11-26
 
 `Docs/Present-a-note-todo.md` (issues #246 to #251), feature 6 of `Docs/Notion-features-for-Graphite.md`. Start Presentation (Obsidian's `slides:start`, the new Slides core plugin, on by default) splits the note at its top-level thematic breaks by the rule read in Obsidian 1.15.1's Slides plugin (`NoteSlides`), draws each slide with the reading view's blocks on a 16 by 9 canvas scaled to the screen (`NoteSlideView`), moves with Obsidian's keys, finger swipes and taps, and a click on the Mac, shows the presenter's view (this slide, the next, the number, the time) while another display shows the slide, and lets Apple Pencil draw the laser or fading ink, which reach every screen and go with the slide. Presenting writes nothing.

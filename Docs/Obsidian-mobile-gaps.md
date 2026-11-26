@@ -71,7 +71,7 @@ Status: **Missing**, **Partial**, or **Done**. "Desktop only" items are left out
 | Quick switcher | Done | |
 | Random note | Missing | |
 | Search | Partial | Operators, sort orders, several matches per file and property values done; no `query` embeds, "Explain search term", or "Copy results" |
-| Slash commands | Missing | |
+| Slash commands | Done | `/` at the start of a line or after a space lists the Paragraph, Insert and Format entries, then every command palette command, filtered as typed; Obsidian's trigger rule; on by default (Obsidian ships it off); not in code, math or the frontmatter (Docs/Slash-menu-and-block-handles-todo.md) |
 | Slides | Missing | |
 | Tags view | Done | Every tag with its count in the left sidebar, nested or flat, sorted by name or frequency; tap to search. No tag renaming (Obsidian has none either) |
 | Templates | Done | `{{title}}`, `{{date}}`, `{{time}}` with formats; properties merged; no Templater syntax |

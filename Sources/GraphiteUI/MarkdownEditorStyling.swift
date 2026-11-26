@@ -5,8 +5,8 @@
  * Description: The styling of a note as it is edited, shared by the iPad's and the Mac's editors.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.13
- * Date: 16/11/2026
+ * Version: 0.14
+ * Date: 26/11/2026
  */
 
 #if canImport(UIKit)
@@ -388,6 +388,17 @@ final class MarkdownEditorStyling {
         // above it is about to move it.
         if edit == nil, !editingEnded { visitedCodeBlock = codeBlock(at: selection.location, in: textView, source: source) }
         return edit
+    }
+
+    /// The block the line starting at `lineStart` is in (prose, code, math or the frontmatter),
+    /// from the checkpoints kept for styling, so asking at every key of a slash command reads
+    /// only from the nearest checkpoint. Read from the top while the storage lags the text.
+    func blockContext(atLineStart lineStart: Int, in textView: any MarkdownStyledTextView, source: NSString) -> MarkdownBlockContext {
+        let textStorage = textView.styledTextStorage
+        guard lineStart <= source.length, textStorage.length == source.length else {
+            return MarkdownStyleScanner.blockCheckpoint(atLineStart: min(lineStart, source.length), in: source, resumingFrom: nil).context
+        }
+        return blockContextCheckpoints.blockContext(atLineStart: lineStart, in: textStorage, source: source)
     }
 
     /// The formattable block whose code holds `location`, with its code now.

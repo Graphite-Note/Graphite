@@ -2,11 +2,12 @@
  * File: EditorCompletion.swift
  * ----------------------------
  * Layer: UI
- * Description: Suggestions while typing a link, a tag or a property in the frontmatter, and the popup that lists them.
+ * Description: Suggestions while typing a link, a tag, a property in the frontmatter or a slash command, and the popup that
+ *              lists them.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 16/11/2026
+ * Version: 0.5
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -27,6 +28,10 @@ struct CompletionItem: Identifiable {
     /// on while suggestions load. Empty when the item no longer fits what is typed, or when
     /// the note changed while the edits were prepared.
     let makeEdits: @MainActor (CompletionContext) async throws -> [MarkdownTextEdit]
+    /// The keyboard shortcut of a command, shown on the right as Obsidian's slash commands show it.
+    var shortcut: String?
+    /// Runs once the edits are made, as a slash command runs once its `/query` is taken out.
+    var runAfterEdits: (@MainActor () -> Void)?
 }
 
 /// The suggestions shown at the cursor, as Obsidian shows them while typing `[[` or `#`.
@@ -39,14 +44,20 @@ final class CompletionModel {
     /// list stays on screen rather than flickering away at every letter typed.
     private(set) var items: [CompletionItem] = []
     var selectedIndex = 0
-    /// Set by the editor: applies edits to the text view so they can be undone.
-    @ObservationIgnored var performEdits: (([MarkdownTextEdit]) -> Void)?
+    /// Set by the editor: applies edits to the text view so they can be undone, and tells
+    /// whether they were made.
+    @ObservationIgnored var performEdits: (([MarkdownTextEdit]) -> Bool)?
     /// Set by the pane: finds the suggestions for a context.
     @ObservationIgnored var provider: ((CompletionContext) async -> [CompletionItem])?
     /// Set by the pane: tells the person why a chosen suggestion could not be inserted.
     @ObservationIgnored var reportError: ((Error) -> Void)?
     /// Set by the pane: tells community plugins their suggestions were closed unchosen.
     @ObservationIgnored var dismissPluginSuggestions: (() -> Void)?
+    /// Set by the pane while Slash Commands is on: the entries a `/` lists (`SlashCommandSource`).
+    /// Nil while it is off, so the editors look for no `/` at all. Held weakly: the pane owns
+    /// it, and its entries act through the pane, which holds this note's session.
+    @ObservationIgnored weak var slashCommands: SlashCommandSource?
+    var offersSlashCommands: Bool { slashCommands != nil }
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     /// A context the person closed with Escape; it stays closed until the text changes.
     @ObservationIgnored private var dismissedContext: CompletionContext?
@@ -58,17 +69,27 @@ final class CompletionModel {
         guard newContext != context else { return }
         context = newContext == dismissedContext ? nil : newContext
         if newContext != dismissedContext { dismissedContext = nil }
+        // A later `/` lists the menus and commands as they are then.
+        if case .slashCommand = context {} else { slashCommands?.forgetOpenList() }
         selectedIndex = 0
         fetchTask?.cancel()
-        guard let currentContext = context, let provider else { items = []; return }
+        guard let currentContext = context, let findItems = itemFinder(for: currentContext) else { items = []; return }
         fetchTask = Task { [weak self] in
             // A short pause, so fast typing does not query the index for every letter.
             do { try await Task.sleep(for: .milliseconds(40)) } catch { return }
-            let foundItems = await provider(currentContext)
+            let foundItems = await findItems(currentContext)
             guard !Task.isCancelled, let self, self.context == currentContext else { return }
             self.items = foundItems
             self.selectedIndex = min(self.selectedIndex, max(foundItems.count - 1, 0))
         }
+    }
+
+    /// What finds the suggestions for `context`: the pane's slash commands for a `/`, the
+    /// provider for everything else.
+    private func itemFinder(for context: CompletionContext) -> ((CompletionContext) async -> [CompletionItem])? {
+        guard case .slashCommand(let query) = context else { return provider }
+        guard let slashCommands else { return nil }
+        return { _ in slashCommands.items(for: query) }
     }
 
     func moveSelection(by offset: Int) {
@@ -97,8 +118,8 @@ final class CompletionModel {
         Task { [weak self] in
             do {
                 let edits = try await item.makeEdits(currentContext)
-                guard !edits.isEmpty else { return }
-                self?.performEdits?(edits)
+                guard !edits.isEmpty, self?.performEdits?(edits) == true else { return }
+                item.runAfterEdits?()
             } catch {
                 self?.reportError?(error)
             }
@@ -141,6 +162,9 @@ struct CompletionProvider {
             return await propertyValueItems(name: name, query: query, writtenValues: writtenValues)
         case .pluginSuggestion(let revision):
             return await workspace.communityPlugins.suggestionItems(forRevision: revision)
+        case .slashCommand:
+            // The pane's entries answer these (`CompletionModel.slashCommands`), not the vault.
+            return []
         }
     }
 
@@ -377,6 +401,7 @@ struct CompletionPopup: View {
                         row(item, isSelected: itemIndex == model.selectedIndex)
                             .id(item.id)
                             .onTapGesture { model.accept(itemIndex) }
+                            .accessibilityAction { model.accept(itemIndex) }
                     }
                 }
                 .padding(4)
@@ -402,6 +427,9 @@ struct CompletionPopup: View {
                 }
             }
             Spacer(minLength: 0)
+            if let shortcut = item.shortcut {
+                Text(shortcut).font(.callout.monospaced()).foregroundStyle(Self.secondaryColor).lineLimit(1).fixedSize()
+            }
         }
         .padding(.horizontal, 10).padding(.vertical, 6)
         .frame(maxWidth: .infinity, minHeight: 46, alignment: .leading)

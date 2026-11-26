@@ -5,8 +5,8 @@
  * Description: Suggestions for what is being typed as a link or tag, and finding the link around a character.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.8
- * Date: 16/11/2026
+ * Version: 0.9
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -26,6 +26,8 @@ public enum CompletionContext: Equatable, Sendable {
     /// Elsewhere, while community plugins suggest as the person types (`EditorSuggest`):
     /// `revision` names the change the plugins were asked about, a new one at each change.
     case pluginSuggestion(revision: Int)
+    /// A `/` typed to open the slash commands, and the letters after it (`SlashCommandTrigger`).
+    case slashCommand(SlashCommandQuery)
 }
 
 /// The typed part of a link, split the way Obsidian's suggestions read it.

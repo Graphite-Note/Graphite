@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.70
- * Date: 16/11/2026
+ * Version: 0.71
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -38,6 +38,7 @@ struct MarkdownPane: View {
     @Environment(\.usesDocumentControlRow) private var usesDocumentControlRowSetting
     @Environment(\.showsDocumentControlsInTabBar) private var showsDocumentControlsInTabBar
     @Environment(\.isActiveInItsSide) private var isActiveInItsSide
+    @Environment(\.windowPaletteCommands) private var windowPaletteCommands
 
     init(session: MarkdownSession, workspace: WorkspaceModel, document: TabDocument, tabID: UUID, isFocused: Bool, showsLinksInspector: Binding<Bool>) {
         self.session = session
@@ -99,7 +100,7 @@ struct MarkdownPane: View {
                 .id(ObjectIdentifier(session))
             } else {
                 NativeMarkdownEditor(session: session, configuration: editorConfiguration, environment: livePreviewEnvironment,
-                                     headingScrollRequest: document.headingScrollRequest, actions: editorActions,
+                                     headingScrollRequest: document.headingScrollRequest, actions: editorActionsWithSlashCommands,
                                      retention: workspace.markdownEditorRetention, retentionOwner: document,
                                      readAloudRange: workspace.readAloud?.highlight(in: session.path),
                                      followsReading: workspace.readAloud?.shouldFollow(session.path) ?? false,
@@ -327,6 +328,14 @@ struct MarkdownPane: View {
         return actions
     }
 
+    /// The editor's actions with the note's slash commands, for the editor alone: the menus
+    /// made from `editorActions` need no entries of their own.
+    private var editorActionsWithSlashCommands: EditorActions {
+        var actions = editorActions
+        actions.slashCommands = makeSlashCommands(editorActions: actions)
+        return actions
+    }
+
     /// Follows a link from this note. Its tab is focused first, so the link opens on this
     /// side of the split even when the other side was focused.
     private func follow(_ target: String, isWiki: Bool) {
@@ -377,6 +386,22 @@ struct MarkdownPane: View {
         }
     }
     #endif
+
+    /// The entries a `/` lists in the note, made from this pane as it is now; nil while Slash
+    /// Commands is off. The editor keeps them (`EditorActions.slashCommands`).
+    private func makeSlashCommands(editorActions paneActions: EditorActions) -> SlashCommandSource? {
+        guard preferences.isEnabled(.slashCommands) else { return nil }
+        let windowCommands = windowPaletteCommands
+        let menus = SlashCommandSource.NoteMenus(
+            actions: editorContextMenuActions,
+            entries: { actions in EditorContextMenuContent.slashMenuEntries(actions: actions, editorActions: paneActions) },
+            commandEdit: { [workspace] command, text, selection in
+                MarkdownEditing.edit(for: command, in: text, selection: selection,
+                                     indentUnit: workspace.vaultSettings.indentUnit, tabSize: workspace.vaultSettings.tabSize)
+            },
+            noteText: { [session] in session.text as NSString })
+        return SlashCommandSource(menus: menus, paletteCommands: { windowCommands?.commands() ?? [] })
+    }
 
     /// What the editor's context menu (right-click on the Mac, the edit menu on the iPad)
     /// does through this pane: the toolbar's own paths, so undo and the selection afterwards

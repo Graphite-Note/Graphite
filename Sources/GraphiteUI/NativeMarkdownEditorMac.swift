@@ -5,8 +5,8 @@
  * Description: The Mac's note editor: the NSViewRepresentable and its coordinator.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
- * Date: 21/11/2026
+ * Version: 0.3
+ * Date: 26/11/2026
  */
 
 #if os(macOS)
@@ -239,7 +239,10 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// The note's own history. AppKit text views otherwise record in the window's,
         /// which every note in the window shares.
         let noteUndoManager = UndoManager()
-        var actions = EditorActions()
+        var actions = EditorActions() {
+            // The editor owns the pane's slash commands; the note's suggestions only point at them.
+            didSet { session.completion.slashCommands = actions.slashCommands }
+        }
         var follow: (String, Bool) -> Void = { _, _ in }
         var appliedInsertionIdentifier: UUID?
         let topLineHold = MarkdownMacEditorTopLineHold(clock: LiveApplicationClock())
@@ -365,8 +368,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 observeCharacterEdits(in: textView)
                 reportPlace(of: textView)
                 session.completion.performEdits = { [weak self, weak textView] edits in
-                    guard let self, let textView else { return }
-                    self.performCompletionEdits(edits, in: textView)
+                    guard let self, let textView else { return false }
+                    return self.performCompletionEdits(edits, in: textView)
                 }
             }
             session.isEditorAttached = true
@@ -434,8 +437,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 if self.session.completion.context != nil { self.updateCompletion(in: textView) }
             }
             session.completion.performEdits = { [weak self, weak textView] edits in
-                guard let self, let textView else { return }
-                self.performCompletionEdits(edits, in: textView)
+                guard let self, let textView else { return false }
+                return self.performCompletionEdits(edits, in: textView)
             }
             textView.didBecomeMeasurable = { [weak self] measurableView in
                 // Not from inside the window change or layout itself.
@@ -519,7 +522,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             placementRetries.reset()
             settleTextChange(in: textView)
             publish(textView)
-            updateCompletion(in: textView)
+            updateCompletion(in: textView, followsTyping: true)
         }
 
         /// Shows the markup at the cursor once the note has keyboard focus, and hides it, the
@@ -995,7 +998,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// Shows or hides suggestions for what is typed at the cursor, as the iPad's editor
         /// does: links after `[[`, tags after `#`, else what community plugins suggest.
         /// Plugins hear each change and cursor move from here (`editor-change`).
-        func updateCompletion(in textView: NSTextView) {
+        func updateCompletion(in textView: NSTextView, followsTyping: Bool = false) {
             completionTracking.recordAcceptedSuggestion(isListOpen: session.completion.context != nil)
             defer { completionTracking.listDidUpdate(isOpen: session.completion.context != nil, at: textState.history.revision) }
             let selection = textView.selectedRange()
@@ -1003,8 +1006,14 @@ struct NativeMarkdownEditor: NSViewRepresentable {
                 session.completion.update(context: nil, caretRect: .zero)
                 return
             }
-            let context = completionTracking.context(in: currentSource(of: textView), cursor: selection.location,
-                                                     textRevision: textState.history.revision, pluginEditorDidChange: actions.pluginEditorDidChange)
+            let source = currentSource(of: textView)
+            let context = completionTracking.context(in: source, cursor: selection.location,
+                                                     textRevision: textState.history.revision,
+                                                     offersSlashCommands: session.completion.offersSlashCommands, followsTyping: followsTyping,
+                                                     blockContext: { [styling] lineStart in
+                                                         styling.blockContext(atLineStart: lineStart, in: textView, source: source)
+                                                     },
+                                                     pluginEditorDidChange: actions.pluginEditorDidChange)
             session.completion.update(context: context, caretRect: context == nil ? .zero : caretRect(in: textView))
         }
 
@@ -1044,13 +1053,14 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// An accepted suggestion's edits, moved past what was typed since its suggestions
         /// were found (`EditorCompletionTracking`), made through the text view so Undo takes
         /// them back. Each is written against the original text; the last one's selection is kept.
-        func performCompletionEdits(_ edits: [MarkdownTextEdit], in textView: NSTextView) {
+        @discardableResult
+        func performCompletionEdits(_ edits: [MarkdownTextEdit], in textView: NSTextView) -> Bool {
             completionTracking.recordAcceptedSuggestion(isListOpen: session.completion.context != nil)
             guard let movedEdits = completionTracking.editsMovedPastTyping(edits, history: textState.history) else {
                 session.errorMessage = EditorCompletionTracking.noteChangedMessage
-                return
+                return false
             }
-            guard let primary = movedEdits.last, let textStorage = textView.textStorage else { return }
+            guard let primary = movedEdits.last, let textStorage = textView.textStorage else { return false }
             textView.breakUndoCoalescing()
             isMakingCommandEdit = true
             defer { isMakingCommandEdit = false }
@@ -1064,6 +1074,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             }
             let selection = NSRange(location: primary.selectionAfter.location + selectionShift, length: primary.selectionAfter.length)
             if NSMaxRange(selection) <= textStorage.length { textView.setSelectedRange(selection) }
+            return true
         }
 
         // MARK: Links
