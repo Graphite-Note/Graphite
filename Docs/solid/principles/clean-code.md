@@ -232,14 +232,14 @@ The longest: `ReadAloudDocument.markdown` 273 and `pageText` 149, `Converter.han
 
 **Fix direction.** Rule CC 23: resource files with their own tests.
 
-### 2.13 Comments narrate incidents, dates and the owner
+### 2.13 Comments narrate incidents, dates and the requester
 
 **What it is.** A comment records when a defect was seen, on whose device, or what the code "used to" do, instead of stating the rule the code keeps; some comments are stale or sit on the wrong declaration.
 
 **Where.** `CC-EDITOR-06`, `CC-BASES-08`, `CC-INK-11`, `CC-LECTURE-01`, `CC-MDCORE-04`, `CC-MDCORE-05`, `CC-PLUGIN-10`, `CC-READING-07`, `CC-RUNTIME-07`, `CC-SHELL-08`, `CC-VAULT-09`, `CC-VOICE-09`, `CC-ARCH-07`.
 
 **Evidence.**
-- Counts ([metrics.md](../metrics.md)): 35 comment lines carry a calendar date, 16 of them record an incident or measurement; 14 lines name the owner or the owner's iPad; 5 say "used to".
+- Counts ([metrics.md](../metrics.md)): 35 comment lines carry a calendar date, 16 of them record an incident or measurement; 14 lines name a person or a personal device; 5 say "used to".
 - Examples: "(an iPad, 2026-10-10)" ([NativeMarkdownEditor.swift:949-952](../../../Sources/GraphiteUI/NativeMarkdownEditor.swift#L949-L952)); "reported by the owner, 2026-10-13" ([GraphitePDFView.swift:352-356](../../../Sources/GraphiteUI/GraphitePDFView.swift#L352-L356)); "made the iPad's sidebar update again without end" ([GraphiteRootView.swift:64-66](../../../Sources/GraphiteUI/GraphiteRootView.swift#L64-L66)); "measured 2026-10-16" ([ReadAloudSpeech.swift:419-420](../../../Sources/GraphiteApple/ReadAloudSpeech.swift#L419-L420)).
 - Stale or false: [BasePropertyEditing.swift:18](../../../Sources/GraphiteCore/BasePropertyEditing.swift#L18) says comment-only YAML reads as invalid, the code returns `[]` (`CC-BASES-08`); `CanvasCardRenderCache` documents least-recently-used eviction and evicts by insertion order (`CC-CANVAS-08`); a runtime CSS header contradicts its file (`CC-RUNTIME-09`); doc comments are fused onto the wrong declaration (`CC-MDCORE-05`, `CC-READING-07`).
 
@@ -568,7 +568,7 @@ Each rule has a number that later documents cite, one or two sentences with "mus
 *Check:* `grep -rnE '"""' Sources` hits followed by `<html`, `function` or `(function` are flagged; every resource script has a test in `Tests/CommunityPluginRuntimeTests`.
 *Answers:* `CC-PLUGIN-04`, `CC-SHELL-10`.
 
-**CC 24. Comments state the current rule.** A comment must state the rule the code keeps, in the present tense. It must not carry a date, a device, the owner, "used to", "an earlier version" or an incident story; the incident goes in the commit message and in the name of the regression test. A doc comment sits directly on its declaration, and a comment that contradicts the code is a defect.
+**CC 24. Comments state the current rule.** A comment must state the rule the code keeps, in the present tense. It must not carry a date, a device, a requester, "used to", "an earlier version" or an incident story; the incident goes in the commit message and in the name of the regression test. A doc comment sits directly on its declaration, and a comment that contradicts the code is a defect.
 *Check:* `grep -rnE '//.*(20[0-9]{2}-[0-9]{2}-[0-9]{2}|owner|used to|earlier version|reported)' Sources` returns no incident line (today 35 dated, 14 naming the owner, 5 "used to").
 *Answers:* `CC-EDITOR-06`, `CC-BASES-08`, `CC-INK-11`, `CC-LECTURE-01`, `CC-MDCORE-04`, `CC-MDCORE-05`, `CC-PLUGIN-10`, `CC-READING-07`, `CC-RUNTIME-07`, `CC-SHELL-08`, `CC-VAULT-09`, `CC-VOICE-09`, `CC-ARCH-07`.
 
