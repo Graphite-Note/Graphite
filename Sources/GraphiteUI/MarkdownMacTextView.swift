@@ -5,8 +5,8 @@
  * Description: The Mac's note text view: paste and drop, focus, the readable column and link cards.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.2
- * Date: 21/11/2026
+ * Version: 0.3
+ * Date: 26/11/2026
  */
 
 #if os(macOS)
@@ -100,16 +100,18 @@ final class MarkdownMacTextView: NSTextView {
     weak var keyCommandOwner: NativeMarkdownEditor.Coordinator?
     /// The preview cards of the links the pointer rests on, which the coordinator owns.
     weak var linkPreviews: EditorLinkPreviews?
+    /// The handle beside the block under the pointer, which the coordinator owns.
+    weak var blockHandles: MacBlockHandles?
     private var linkTrackingArea: NSTrackingArea?
 
-    /// The pointer is watched for links only while Page Preview is on.
+    /// The pointer is watched for links while Page Preview is on, and for block handles.
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         if let linkTrackingArea {
             removeTrackingArea(linkTrackingArea)
             self.linkTrackingArea = nil
         }
-        guard linkPreviews?.isWatchingPointer == true else { return }
+        guard linkPreviews?.isWatchingPointer == true || blockHandles?.watchesPointer == true else { return }
         let options: NSTrackingArea.Options = [.mouseMoved, .mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect]
         let trackingArea = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
         addTrackingArea(trackingArea)
@@ -119,11 +121,13 @@ final class MarkdownMacTextView: NSTextView {
     override func mouseMoved(with event: NSEvent) {
         super.mouseMoved(with: event)
         linkPreviews?.pointerMoved(to: event.locationInWindow, over: self)
+        blockHandles?.pointerMoved(to: event.locationInWindow)
     }
 
     override func mouseExited(with event: NSEvent) {
         super.mouseExited(with: event)
         linkPreviews?.pointerLeft()
+        blockHandles?.pointerLeft()
     }
 
     /// Escape closes a link's card before anything else.

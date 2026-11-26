@@ -2,11 +2,12 @@
  * File: NativeMarkdownEditorMacFolding.swift
  * ------------------------------------------
  * Layer: UI
- * Description: The Mac's note editor doing what the iPad's does: typing helpers, folds, find opening what hides a match, and clicks.
+ * Description: The Mac's note editor doing what the iPad's does: typing helpers, folds, find opening what hides a match,
+ *              clicks, and block handles.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 26/11/2026
  */
 
 #if os(macOS)
@@ -37,6 +38,24 @@ extension NativeMarkdownEditor.Coordinator {
             if self.session.foldedKeys.contains(key) { self.session.foldedKeys.remove(key) } else { self.session.foldedKeys.insert(key) }
             self.applyFolds(in: textView)
         }
+        connectBlockHandles(of: textView)
+    }
+
+    /// The handle beside the block under the pointer, in Live Preview only; its moves and
+    /// menu items are edits Undo takes back.
+    private func connectBlockHandles(of textView: MarkdownMacTextView) {
+        blockHandles.attach(to: textView)
+        blockHandles.noteState = { [weak self, weak textView] in
+            guard let self, let textView, self.configuration.mode == .livePreview, !self.textState.cachesDescribeOldText else { return nil }
+            return (self.currentSource(of: textView), self.textState.history.revision)
+        }
+        blockHandles.perform = { [weak self, weak textView] edit in
+            guard let self, let textView else { return }
+            self.perform(edit, in: textView)
+        }
+        blockHandles.isInLivePreview = { [weak self] in self?.configuration.mode == .livePreview }
+        textView.blockHandles = blockHandles
+        textView.updateTrackingAreas()
     }
 
     /// Takes in the text: its rendered blocks, and what folds in it. An edit that makes the

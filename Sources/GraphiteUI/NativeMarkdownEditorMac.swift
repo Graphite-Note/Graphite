@@ -5,7 +5,7 @@
  * Description: The Mac's note editor: the NSViewRepresentable and its coordinator.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
+ * Version: 0.4
  * Date: 26/11/2026
  */
 
@@ -284,6 +284,8 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         /// What folds in the note, as on the iPad, and its chevrons.
         let foldTracking = EditorFoldTracking()
         let foldButtons = MacEditorFoldButtons()
+        /// The handle beside the block under the pointer (`MacBlockHandles`).
+        let blockHandles = MacBlockHandles()
         var postponedFoldScan: Task<Void, Never>?
         var foldScanClock: any ApplicationClock = LiveApplicationClock()
         /// Where the cursor was, to tell which way it moved into a folded section.
@@ -520,6 +522,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             linkPreviews.closeCard()
             // An edit moves the text again, so the blocks get a fresh set of placement passes.
             placementRetries.reset()
+            blockHandles.hide()
             settleTextChange(in: textView)
             publish(textView)
             updateCompletion(in: textView, followsTyping: true)

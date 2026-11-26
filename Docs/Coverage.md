@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-26.
 
+## Block handles drag and turn blocks in Live Preview: 2026-11-26
+
+`Docs/Slash-menu-and-block-handles-todo.md`, sections 2 and 3 (issues #239 and #240). On the Mac, six dots show left of the block under the pointer: dragging them moves the block (a heading with its section, a list item with its nested items) to the drop line, and a click opens Turn Into (heading, body, quote, callout, task), Duplicate and Delete. On the iPad and the iPhone, a finger's long press in the left margin, a heading's fold chevron included, lifts the block to drag it, or opens the same menu when lifted without moving; Apple Pencil never starts it and a press on the text still selects text. Only Markdown lines move or change, each as one undo step.
+
+- **Automated tests, passing:** `BlockHandleEditingTests` (10: the block at each kind of line, moves of paragraphs, list items and sections, onto itself, Windows line breaks, copies, deletions, callouts), `UiEditorMacBlockHandlesTests` (7, mouse events: hover, a section dragged and undone, a cancelled drag, the menu, Source mode watching no pointer, typing), `BlockHandlesHostedTests` (4, synthesized touches on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator: a section dragged from the margin and undone, the menu without editing, a press on the text, Apple Pencil), `UiEditorMacLinkPreviewsTests`.
+- **Measured:** typing in a long note before and after, Debug on the development Mac: no measurable cost (median frame 7.8 and 6.5 ms in a paragraph).
+- **Not established:** the handles used by hand in the Mac app or with a real finger in a simulator, a device, typing on the iPad; Escape during a Mac drag only through what it calls.
+
 ## A calendar view for Bases, and Calendar Copy into Apple Calendar: 2026-11-26
 
 `Docs/Bases-calendar-todo.md` (issues #241 to #245), feature 3 of `Docs/Notion-features-for-Graphite.md`. A base's `calendar` view places each note from its start date to its end date on a month of titled bars or a week of day columns (on a phone, a month of marks over the chosen day's list and a week as a list), with the keys of the Calendar Bases plugin (`startDate`, `endDate`, `weekStartDay`), since Obsidian 1.15 has none of its own. Dragging a note to another day, or its menu's moves, shifts both dates in one checked save, a date kept a date and a time kept its time of day. Calendar Copy, a core plugin off until turned on, copies one calendar view's notes one way into a "Graphite" calendar through EventKit, changes only its own events of that vault, and never writes a note.

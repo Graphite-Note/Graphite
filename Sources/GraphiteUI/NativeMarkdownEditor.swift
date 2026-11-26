@@ -5,7 +5,7 @@
  * Description: The iPad's and iPhone's note editor (UITextView) with its coordinator; the Mac's is NativeMarkdownEditorMac.swift.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.81
+ * Version: 0.82
  * Date: 26/11/2026
  */
 
@@ -176,7 +176,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         if let savedScrollLocation = session.savedScrollLocation { coordinator.pendingJump = .topOfCharacter(savedScrollLocation) }
         session.isEditorAttached = true
         coordinator.reportPlace(of: textView)
-        coordinator.installLinkTapRecognizer(on: textView)
+        coordinator.installTouchRecognizers(on: textView)
         coordinator.installQuickFontSizePinch(on: textView)
         coordinator.rebuildBlocks(in: textView)
         coordinator.restyleEverything(in: textView)
@@ -292,6 +292,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         let linkPreviews = EditorLinkPreviews()
         private var linkHoverRecognizer: UIHoverGestureRecognizer?
         private var linkPressRecognizer: UILongPressGestureRecognizer?
+        /// The handle a finger's long press in the margin lifts (`TouchBlockHandles`).
+        let blockHandles = TouchBlockHandles()
         var configuration: EditorConfiguration {
             get { styling.configuration }
             set { styling.configuration = newValue }
@@ -584,6 +586,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         /// register a code block language later have their blocks found again.
         var renderedBlockPolicy: [String] { styling.renderedBlockPolicy }
         var textRevision: Int { textState.history.revision }
+        /// Whether the text state describes the text on screen, not the text before an edit in progress.
+        var hasSettledText: Bool { !textState.cachesDescribeOldText }
 
         // MARK: Character edits
 
@@ -1078,6 +1082,7 @@ struct NativeMarkdownEditor: UIViewRepresentable {
 
         func textViewDidChange(_ textView: UITextView) {
             linkPreviews.closeCard()
+            blockHandles.hide()
             // The insertion settles its own change once it is complete.
             guard !isApplyingInsertion else { return }
             settleTextChange(in: textView)
@@ -1718,6 +1723,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             ellipsis.accessibilityLabel = "Unfold"
             textView.addSubview(chevron)
             textView.addSubview(ellipsis)
+            // A heading's margin is mostly its chevron: a long press there lifts the heading.
+            blockHandles.watchPresses(on: chevron)
             return (chevron, ellipsis)
         }
 
@@ -1757,10 +1764,13 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             quickFontSizePinch = recognizer
         }
 
-        func installLinkTapRecognizer(on textView: UITextView) {
+        /// The note's own touches: a tap on a link or a checkbox, and the block handles' long
+        /// press in the margin (`TouchBlockHandles`).
+        func installTouchRecognizers(on textView: UITextView) {
             let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
             recognizer.delegate = self
             textView.addGestureRecognizer(recognizer)
+            connectBlockHandles(of: textView)
         }
 
         /// While Page Preview is on, the pointer of a trackpad or mouse, or Apple Pencil

@@ -13,7 +13,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, section 1 (the slash menu) built and tested on the Mac, an iPad simulator and an iPhone simulator, except real taps and the Mac app by hand; sections 2 and 3 not started. Issues: [#238](https://github.com/Graphite-Note/Graphite/issues/238) to [#240](https://github.com/Graphite-Note/Graphite/issues/240), one per section.
+Status: 2026-11-26, the slash menu (section 1, 16eaf73f) and block handles (sections 2 and 3) built and tested on the Mac, an iPad simulator and an iPhone simulator; open in each section: use by hand in the Mac app and with a real finger in a simulator. Issues: [#238](https://github.com/Graphite-Note/Graphite/issues/238) to [#240](https://github.com/Graphite-Note/Graphite/issues/240), one per section.
 
 ## Request
 
@@ -37,6 +37,8 @@ Feature 4 of [Notion-features-for-Graphite.md](Notion-features-for-Graphite.md#4
 4. **Where the entry lands.** The entry runs at the cursor as it does from its menu, on the note as it is once the `/query` is taken out: a block (table, callout, code, math, Mermaid, rule) on lines of its own, a heading, list, task or quote mark on the cursor's line. The removal and the entry's edit are made as one edit, so one Undo gives the `/query` back (as two edits, Undo took back the block and left the note without the typed `/query`). An entry that opens a dialog (a link, a template, a photo) opens it, and a palette command runs once the `/query` is out.
 5. **Mermaid and Embed join the Insert menu.** The Notion research names Mermaid diagrams and embeds of a base. Both become Insert entries, so the menu bar, the toolbar and the slash menu list them alike: Mermaid Diagram writes a ```` ```mermaid ```` block, and Embed writes `![[]]` with the cursor inside, where the link completion lists the vault's files, bases included.
 6. **Handles act on Markdown blocks as folding knows them.** A block is a paragraph, a list item with its nested items, a heading with its section (`NoteFolding`'s heading region), a quote or callout, a table, a code or math block, a rule or an embed. One pure function finds the block at a line, tested with plain text, shared by the Mac and the iPad (FR-05, FR-06).
+7. **Every block's menu has Duplicate and Delete.** A rule, a table or a callout turns into nothing else, so a menu of Turn Into alone would be empty there; Duplicate and Delete, Notion's own items, are plain Markdown edits on every block.
+8. **On the iPad the press starts in the margin, a heading's chevron included.** A long press on the text stays the text view's, for the cursor and selection. A heading's margin is mostly its fold chevron, a button that keeps its touches from the text view, so the chevron takes the same press, a tap still folding; while a block is lifted the handle takes the chevron's place.
 
 ## 1. The slash menu
 
@@ -67,18 +69,28 @@ Issue: [#238](https://github.com/Graphite-Note/Graphite/issues/238)
 
 Issue: [#239](https://github.com/Graphite-Note/Graphite/issues/239)
 
-- [ ] The block under the pointer in Live Preview shows a handle (`⋮⋮`) in the left margin, beside the fold chevron, while the pointer is over the block or the handle; it goes when the pointer leaves. Nothing shows in Source mode or in the reading view.
-- [ ] Dragging the handle moves the block, a heading with its section, to the place shown by an insertion line between blocks; dropping it moves the lines as one undo step. Escape cancels a drag.
-- [ ] Clicking the handle opens a menu: Turn into Heading 1, 2, 3, Quote, Callout and Task (on a paragraph or a list item), and the heading's level or Body on a heading.
-- [ ] Unit tests: the block at each kind of line, the move edit (up, down, into another section, past the end, onto itself), the turn-into edits.
-- [ ] Package tests driving mouse events on the Mac editor: the handle appears on hover and goes, a drag moves a section, the menu turns a paragraph into a callout.
+- [x] The block under the pointer in Live Preview shows a handle (`⋮⋮`) in the left margin, beside the fold chevron, while the pointer is over the block or the handle; it goes when the pointer leaves. Nothing shows in Source mode or in the reading view.
+  Done 2026-11-26: `MacBlockHandles`, fed by the text view's tracking area as the link previews are, six dots drawn left of the chevron at the block's first line; hidden by typing. Tests: `UiEditorMacBlockHandlesTests` (hover over a paragraph and a heading, the pointer leaving, Source mode watching no pointer, typing). A rendering of the editor with the handle and a drag looked at.
+- [x] Dragging the handle moves the block, a heading with its section, to the place shown by an insertion line between blocks; dropping it moves the lines as one undo step. Escape cancels a drag.
+  Done 2026-11-26: `BlockHandleEditing.moving`, `BlockHandleDrop`; an accent line shows the drop place; one edit through the coordinator's `perform`. Tests: `BlockHandleEditingTests` (paragraphs, list items with their nested items, a heading's section, onto itself, Windows line breaks), `UiEditorMacBlockHandlesTests.testDraggingAHeadingsHandleMovesItsSectionAndOneUndoPutsItBack` (mouse events). Escape cancels through a key monitor that runs only in a real event loop: `testCancellingADragMovesNothing` covers what it does, the key itself is not tested.
+- [x] Clicking the handle opens a menu: Turn into Heading 1, 2, 3, Quote, Callout and Task (on a paragraph or a list item), and the heading's level or Body on a heading.
+  Done 2026-11-26: `BlockHandleAction` (decision 7): Turn Into Heading 1 to 3, Quote, Callout and Task on a paragraph, Task, Quote and Callout on a list item, the other levels and Body on a heading, then Duplicate and Delete on every block. Tests: `UiEditorMacBlockHandlesTests.testTheMenuTurnsAParagraphIntoACallout` and `testAHeadingsMenuOffersItsOtherLevelsAndBody`.
+- [x] Unit tests: the block at each kind of line, the move edit (up, down, into another section, past the end, onto itself), the turn-into edits.
+  Done 2026-11-26: `BlockHandleEditingTests` (10).
+- [x] Package tests driving mouse events on the Mac editor: the handle appears on hover and goes, a drag moves a section, the menu turns a paragraph into a callout.
+  Done 2026-11-26: `UiEditorMacBlockHandlesTests` (7).
 - [ ] Checked in a Debug copy of the Mac app; typing latency measured before and after.
+  2026-11-26: typing measured with `PerformanceBenchmarkTests.testOpeningScrollingAndTypingInALongNote`, Debug on the development Mac, main without the slash commands or the handles (ec2001a6) against both, run in turn twice, three runs each, with a load average of 14 to 36. Median frame of a keystroke before and after: 7.8 and 6.5 ms in a paragraph, 9.1 and 8.6 ms in a list item, 9.3 and 9.1 ms in a callout; the main thread's time a key 9.4 and 8.2, 11.7 and 11.0, 10.3 and 9.9 ms: no cost measurable. The handles find the note's blocks only while the pointer moves over the note, once per text revision. Not done: the handle used by hand in the Mac app.
 
 ## 3. Block handles on the iPad and iPhone
 
 Issue: [#240](https://github.com/Graphite-Note/Graphite/issues/240)
 
-- [ ] A finger's long press in the left margin beside a block in Live Preview shows the block's handle and lifts the block; moving drags it to the insertion line, lifting drops it; lifting without moving opens the same menu as on the Mac. Apple Pencil never starts it, and a long press on the text still selects text as before.
-- [ ] Hosted iPad tests with synthesized touches: a long press in the margin then a move drags a heading's section; a long press on text still starts a selection; a Pencil touch in the margin does not lift the block.
+- [x] A finger's long press in the left margin beside a block in Live Preview shows the block's handle and lifts the block; moving drags it to the insertion line, lifting drops it; lifting without moving opens the same menu as on the Mac. Apple Pencil never starts it, and a long press on the text still selects text as before.
+  Done 2026-11-26: `TouchBlockHandles`: a long press of 0.35 s that only a finger in the left margin beside a block in Live Preview starts (`allowedTouchTypes` leaves Apple Pencil out); a heading's fold chevron takes the same press (decision 8); once a block lifts, the text view's own long presses are cancelled so the cursor stays; the menu is an edit menu (`UIEditMenuInteraction`).
+- [x] Hosted iPad tests with synthesized touches: a long press in the margin then a move drags a heading's section; a long press on text still starts a selection; a Pencil touch in the margin does not lift the block.
+  Done 2026-11-26: `BlockHandlesHostedTests` (4: a heading's section lifted from the margin, dragged below the last block and undone; a press without moving opens the menu and leaves editing off; a press on the text lifts nothing; Apple Pencil in the margin lifts nothing), passing on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator, screenshots looked at. Seen and fixed there: the handle's press began only when the finger moved, because making the text view's long presses wait for it made it wait for them in turn.
 - [ ] Checked in a dedicated iPad simulator and an iPhone simulator; typing latency measured before and after.
-- [ ] `Docs/Architecture.md` and `Docs/Coverage.md` updated.
+  2026-11-26: the hosted tests ran in the app on both simulators, with their screenshots looked at (the handle in the chevron's place, the drop line under the last block, the menu). Typing: the iPad's text view gains one long press recognizer, which reads nothing while typing; the Mac's measurement above covers the shared code. Not done: a real finger on the simulator (access to the simulators was not granted), a device, and a typing measurement on the iPad.
+- [x] `Docs/Architecture.md` and `Docs/Coverage.md` updated.
+  Done 2026-11-26.
