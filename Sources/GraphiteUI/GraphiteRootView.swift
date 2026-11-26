@@ -708,7 +708,7 @@ struct GraphiteRootView: View {
 
     /// The sidebar as the window showed it before the iPad turned. The system's automatic choice shows it beside the
     /// documents sideways and hides it upright, so turning the iPad changed the whole view, the page's width and zoom
-    /// with it (the owner, 2026-11-04). What the window showed is kept as an explicit choice instead; a choice the
+    /// with it (reported 2026-11-04). What the window showed is kept as an explicit choice instead; a choice the
     /// person made stays as it is, and the sidebar button still shows or hides it.
     static func sidebarVisibility(keptAcrossTurnOf visibility: NavigationSplitViewVisibility, wasTallerThanWide: Bool) -> NavigationSplitViewVisibility {
         guard visibility == .automatic else { return visibility }
@@ -753,7 +753,7 @@ struct GraphiteRootView: View {
     #if os(macOS)
     /// Whether the window is taller than wide; nil for a layout pass before the window has its size, which measures
     /// nothing: taken as a shape, an empty size read as wider than tall and showed an upright window's sidebar beside
-    /// its documents, the PDF 514 of 834 points wide on the owner's iPad (HUNT-317; the iPad reads `WindowShapeReader`).
+    /// its documents, the PDF 514 of 834 points wide on the physical iPad (HUNT-317; the iPad reads `WindowShapeReader`).
     nonisolated private static func windowShape(of geometry: GeometryProxy) -> Bool? {
         geometry.size.width > 0 && geometry.size.height > 0 ? geometry.size.height > geometry.size.width : nil
     }

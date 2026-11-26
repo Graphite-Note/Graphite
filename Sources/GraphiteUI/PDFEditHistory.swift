@@ -29,7 +29,7 @@ import PencilKit
 /// record ink their canvases show that the history does not know yet as a step of its own (`PDFSession.recordUnrecordedInk`):
 /// Undo then takes back the stroke the person sees last, and each step meets the drawing it recorded. Without it a
 /// step met a canvas holding a stroke it had not been told of, and Undo said "The ink on this page changed in a way
-/// this step does not know" (HUNT-005, seen by the owner on 2026-11-04).
+/// this step does not know" (HUNT-005, seen on 2026-11-04).
 final class PDFUndoManager: UndoManager {
     var beforeHistoryStep: (() -> Void)?
 

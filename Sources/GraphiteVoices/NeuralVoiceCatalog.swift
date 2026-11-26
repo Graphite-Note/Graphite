@@ -12,7 +12,7 @@ public enum NeuralVoiceCatalog {
         return try NeuralVoiceManifest.decode(Data(contentsOf: address))
     }
 
-    /// Dia's fixed voice: the codec codes of a clip Dia itself generated in the owner's blind
+    /// Dia's fixed voice: the codec codes of a clip Dia itself generated in a blind
     /// test (voice E, the expressive passage), never a recording of a real person.
     public static func diaVoicePrompt() -> DiaVoicePrompt? {
         guard let address = Bundle.module.url(forResource: "DiaVoicePrompt", withExtension: "json"),

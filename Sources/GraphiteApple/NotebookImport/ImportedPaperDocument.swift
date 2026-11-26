@@ -20,7 +20,7 @@ import NotebookImport
 /// `PDFDocument` is, by making each annotation's dictionary again, and each one asks whether it crosses the page's
 /// redaction path, which PDFKit builds again from every annotation of the page: writing such a page costs the square
 /// of its strokes (BUG-IMPORT-03). Two pages of 2,000 strokes took 6.2 s on the Mac, two of 6,000 took 42 s, and the
-/// owner's formula sheet (5,159 and 6,145 strokes) "took forever" on the iPad. A page of the document's own is written
+/// reported formula sheet (5,159 and 6,145 strokes) "took forever" on the iPad. A page of the document's own is written
 /// in linear time: so the papers are gathered into a document of their own, which is written to bytes and read back,
 /// and the strokes, pictures and text go onto the pages read back. PDFKit writes an outline added to a document read
 /// from bytes only with a rewritten page tree (`PDFPageManager.replay`), so the outline and the bookmarks are made here,

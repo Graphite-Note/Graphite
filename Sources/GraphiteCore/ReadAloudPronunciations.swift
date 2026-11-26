@@ -4,7 +4,7 @@ import Foundation
 /// symbols and subscripts: it may spell RAM as "R A M", say CMOS as one odd syllable, or read
 /// "10 nm" as "ten N M". Graphite replaces each with plain words the voice reads correctly:
 /// "see moss", "ten nanometers", "V D D". Plain words work with every voice, including the
-/// owner's Enhanced voice, where an IPA transcription was ignored or mangled; IPA is only handed
+/// installed Enhanced voice, where an IPA transcription was ignored or mangled; IPA is only handed
 /// to a voice when `usesPhoneticNotation` is turned on for one verified to honor it. The
 /// highlight always stays on the written word.
 public struct ReadAloudPronunciations: Equatable, Sendable {

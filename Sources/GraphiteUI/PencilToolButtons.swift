@@ -110,7 +110,7 @@ struct PencilToolButtons {
             .fill(Color(graphiteHex: hex) ?? .black)
             // A ring in the text color, so a black ink shows on the dark bar of dark mode: at 60 % it reads at more
             // than 3 to 1 on the bar's darkest gray (WCAG 1.4.11) at every density, the 16-point dots too; at 40 %
-            // the owner's iPad measured 2.65 to 1.
+            // the physical iPad measured 2.65 to 1.
             .overlay { Circle().strokeBorder(Color.primary.opacity(0.6), lineWidth: 1) }
             .frame(width: density.swatchDiameter, height: density.swatchDiameter)
             // A ring, so the color in use is marked by shape as well.

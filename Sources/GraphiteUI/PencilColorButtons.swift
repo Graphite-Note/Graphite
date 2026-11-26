@@ -34,13 +34,13 @@ enum PencilColorControls {
 ///
 /// The colors sit in a strip that scrolls sideways only (`PencilColorStrip`), as wide as at most
 /// `PencilToolRowLayout.maximumVisibleSwatchCount` of them, so saving more colors never widens the bar or moves its other
-/// controls (the owner's report of 2026-11-14 that the palette moved "up, down, left, and right"). A swipe scrolls; a
+/// controls (the report of 2026-11-14 that the palette moved "up, down, left, and right"). A swipe scrolls; a
 /// favorite color held a moment lifts and is dragged to its place along the strip, as in Apple's markup palette, or off
 /// its menu removes it (with Undo, which stands where the plus does for a few seconds); a second tap on the color in
 /// use opens its color picker. Black stands before the strip and never scrolls. The plus after the strip saves the color
 /// in use as a swatch, or, when the strip has it already, opens the color picker for a new one, saved at its first pick
 /// (`FavoriteColorEditing.additionStep`): the bar is
-/// where the colors are used, so it is where they are kept (HUNT-312, the owner's requests of 2026-11-13 and 2026-11-14).
+/// where the colors are used, so it is where they are kept (HUNT-312, the requests of 2026-11-13 and 2026-11-14).
 struct PencilColorButtons: View {
     @Bindable var toolbox: PencilToolbox
     let rowHeight: CGFloat
@@ -53,7 +53,7 @@ struct PencilColorButtons: View {
     /// The color picker the plus opens for a new color, pointing at the plus.
     @State private var additionPicker = PencilColorPickerPresenter()
     /// How many colors the plus has saved while this bar is shown: each one scrolls the strip to its end, where the
-    /// new color stands, so a color saved past the strip's edge comes into view (the owner's request of 2026-11-17 that
+    /// new color stands, so a color saved past the strip's edge comes into view (the request of 2026-11-17 that
     /// a color picked from the plus be added "immediately").
     @State private var savedAdditionCount = 0
     @AppStorage(GraphitePreferences.highlighterPaletteKey) private var storedHighlighterPalette: Data?
@@ -77,7 +77,7 @@ struct PencilColorButtons: View {
             let colors = palette(editedPalette)
             let leadingCount = fixedLeadingColor == nil ? 0 : 1
             let shownCount = visibleSwatchCount ?? min(colors.count + leadingCount, PencilToolRowLayout.maximumVisibleSwatchCount)
-            // Black stands before the strip, so scrolling the colors never takes it out of view (the owner's report of
+            // Black stands before the strip, so scrolling the colors never takes it out of view (the report of
             // 2026-11-17 that black was "not saved": ten colors scrolled it off the strip's start).
             if let fixedLeadingColor { PencilFixedColorSwatch(toolbox: toolbox, color: fixedLeadingColor, rowHeight: rowHeight, density: density) }
             PencilColorStrip(rowHeight: rowHeight, density: density, visibleSwatchCount: max(0, shownCount - leadingCount),
@@ -184,7 +184,7 @@ struct PencilColorButtons: View {
             savedAdditionCount += 1
         case .chooseNewColor:
             // The first color picked is saved at once as a new swatch, which later picks change, so the strip shows
-            // the new color while the picker is still open (the owner's request of 2026-11-17).
+            // the new color while the picker is still open (the request of 2026-11-17).
             var addedColorIdentifier: PaletteColor.ID?
             let plusFrame = CGRect(x: 0, y: 0, width: density.swatchPitch, height: rowHeight)
             additionPicker.present(hex: toolbox.presetInUse.colorHex, title: "New Color", sourceRect: plusFrame) { [toolbox] pickedHex, phase in
@@ -257,7 +257,7 @@ struct PencilColorStrip<Swatches: View>: View {
             scrollOffset = offsetAndLargest.width
             largestScrollOffset = offsetAndLargest.height
             // A removal shortens the strip under it: it then scrolls back to its new end, leaving no gap after the last
-            // color (the owner's recording of 2026-11-17).
+            // color (the recording of 2026-11-17).
             if scrollOffset > largestScrollOffset + 0.5 { settle() }
         }
         .onChange(of: revealedAdditionCount) { _, _ in

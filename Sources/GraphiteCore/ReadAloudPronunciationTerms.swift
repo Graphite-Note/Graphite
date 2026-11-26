@@ -1,6 +1,6 @@
 import Foundation
 
-/// The built-in terms, chosen from the most frequent technical words in the owner's notes
+/// The built-in terms, chosen from the most frequent technical words in the real notes
 /// (VLSI, computer architecture, digital and analog circuits at ETH and EPFL; mined on
 /// 2026-10-12 from 1,242 notes, read only) and said the way an engineer says them. A word
 /// without a vowel that is not listed ("PLL", "FSM", "JSSC") is spelled by rule.

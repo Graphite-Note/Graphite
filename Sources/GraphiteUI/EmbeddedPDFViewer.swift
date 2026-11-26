@@ -661,7 +661,7 @@ extension EnvironmentValues {
 /// copies, and it keeps a session whose closing save failed, with its unsaved edits, until
 /// an embed of that PDF shows it again. Another window has a registry of its own: a PDF
 /// annotated there reaches this window as a change on disk, reloaded when it has no edits
-/// here (owner, 2026-10-21).
+/// here (decided 2026-10-21).
 @MainActor @Observable
 final class EmbeddedPDFSessions {
     private struct ShownSession {

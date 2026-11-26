@@ -484,7 +484,7 @@ enum PencilToolRowForm: Equatable {
 
 /// Tells tests which form of the row is on screen and where (`PencilToolRowForm.lastShown`): a reader behind the row
 /// reports its frame when the row appears and whenever the frame changes, and takes it back when the row goes. A change
-/// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another, and on the owner's
+/// of the row's geometry alone missed the row that `ViewThatFits` put on screen in place of another, and on the physical
 /// iPad (2026-11-05) a folded row that had left the screen stayed in `lastShown` while the screen showed the whole row
 /// (HUNT-317). A row that goes withdraws only its own report, and the latest report of a row still shown takes its
 /// place: SwiftUI shows a new row before the one it replaces disappears, and a window of 507 points (2026-11-11) showed

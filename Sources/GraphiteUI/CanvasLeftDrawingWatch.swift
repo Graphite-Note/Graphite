@@ -15,7 +15,7 @@ import PencilKit
 
 /// Watches the page canvases' drawing recognizers for one left finished (HUNT-369).
 ///
-/// UIKit resets a finished recognizer once the touches it took part in have all lifted. On the owner's simulator on
+/// UIKit resets a finished recognizer once the touches it took part in have all lifted. On a dedicated simulator on
 /// 2026-11-18, PencilKit's drawing recognizer of a page was left ended and never reset, its canvas still drawing the
 /// stroke of a touch long gone, and the page took no new stroke until the tab was switched. A canvas whose drawing
 /// recognizer stays finished, no touch down anywhere in the window and the Pencil off the screen, for `seconds` has

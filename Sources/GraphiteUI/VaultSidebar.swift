@@ -1096,7 +1096,7 @@ extension SearchMatch {
 
 /// Focuses the sidebar's search field when a search is asked for. On a phone showing the document, the field is focused
 /// once the list is in front: focused while the list was out of the window, the field's presentation failed ("not in
-/// the window hierarchy" on the owner's iPad, 2026-11-05) and the stack went back to the note (HUNT-183).
+/// the window hierarchy" on the physical iPad, 2026-11-05) and the stack went back to the note (HUNT-183).
 private struct SearchFocusOnceTheListIsInFront: ViewModifier {
     let searchFocusRequest: Int
     let isWindowCompact: Bool

@@ -744,7 +744,7 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             // kept. The canvas goes into a new overlay with its drawing, history and pending
             // record. A new canvas restored the page's ink from its last saved record and lost
             // every stroke drawn since, on screen and, at the next stroke, in the file
-            // (seen on the owner's iPad, 2026-10-13).
+            // (seen on the physical iPad, 2026-10-13).
             let overlayView = PDFPageOverlayView(canvas: existing)
             overlayView.visibleAreaView = view
             overlayView.canvasPixelBudget = canvasPixelBudget

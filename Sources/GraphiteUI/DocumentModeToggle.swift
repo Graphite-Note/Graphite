@@ -117,7 +117,7 @@ enum DocumentToolbarLayout {
     /// Narrower than this, a document's secondary toolbar actions (a PDF's pages, find and
     /// adding pages) go to its More menu, as in a compact width: a window this narrow beside
     /// another app also shows the window's own controls in its toolbar, and the actions
-    /// pushed the title and More out of it (reported by the owner, 2026-10-13).
+    /// pushed the title and More out of it (reported 2026-10-13).
     static let minimumDetailWidthForSecondaryActions: CGFloat = 760
 
     static func foldsSecondaryActions(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?) -> Bool {

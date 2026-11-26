@@ -1529,7 +1529,7 @@ private struct ReadingNoteBlocks: View, Equatable {
 /// view, as each word read aloud makes. The note's text is compared, not hashed: comparing a
 /// text with itself, the same storage, takes no time, where hashing read the whole note at
 /// every update. A long note read aloud kept the main thread hashing until the system ended
-/// Graphite (`Character.hashValue` under `MarkdownPreview.body`, the owner's iPad, 2026-10-12).
+/// Graphite (`Character.hashValue` under `MarkdownPreview.body`, the physical iPad, 2026-10-12).
 private struct ReadingBuildRequest: Equatable {
     let source: String
     let drawingVersion: Int

@@ -12,7 +12,7 @@
 import CoreGraphics
 
 /// A PDF embed written without `#height` shows the page it opens at whole, fitted to the
-/// column's width at that page's aspect ratio, as the owner asked on 2026-11-13 (HUNT-354);
+/// column's width at that page's aspect ratio, as requested on 2026-11-13 (HUNT-354);
 /// `#height=N` keeps its height.
 public enum PDFEmbedFitting {
     /// The space PDFKit leaves around each page of an embed, on every side: the page break

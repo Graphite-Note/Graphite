@@ -28,7 +28,7 @@ public enum ReadAloudRenderCheck {
 
     /// The share of the text's letters that must be heard, in order. Recognition writes
     /// acronyms and splits names its own way ("C Moss" for CMOS), so the comparison is letter
-    /// by letter; clean renderings of the owner's term list scored above 0.9, babbling below 0.6.
+    /// by letter; clean renderings of the supplied term list scored above 0.9, babbling below 0.6.
     public static let minimumCoverage = 0.8
     /// How much longer than expected audio may run before it counts as running on.
     public static let maximumDurationRatio = 1.8

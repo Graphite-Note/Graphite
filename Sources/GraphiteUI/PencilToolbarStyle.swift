@@ -40,7 +40,7 @@ enum PencilToolbarStyle: String, CaseIterable, Identifiable {
 
     /// The style shown at a width. A phone's compact width always uses the system's palette, which docks at the
     /// bottom of its screen. An iPad keeps the style in effect in a compact window, beside another app: the fixed bar
-    /// takes its narrow forms there, and its colors scroll sideways in their strip (owner, 2026-11-16); before, the
+    /// takes its narrow forms there, and its colors scroll sideways in their strip (requested 2026-11-16); before, the
     /// window showed Apple's palette, whose colors are not the bar's.
     /// - Parameters:
     ///   - horizontalSizeClass: The width class of the view showing the tools.

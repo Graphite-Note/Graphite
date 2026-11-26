@@ -59,7 +59,7 @@ public struct GraphLayout: Sendable {
     /// A note without links pushes the others with this share of the repel force. The notes
     /// with links hold together and push the unlinked ones out to a ring around them; pushing
     /// each other as hard as linked notes do, the unlinked notes of a vault of thousands spread
-    /// that ring over the outer quarter or third of the view (the owner's photo of 2026-10-21).
+    /// that ring over the outer quarter or third of the view (the photo of 2026-10-21).
     /// At a quarter they stand closer, and the ring is a thin band (`GraphLayoutShapeTests`).
     static let unlinkedRepelRatio = 0.25
     /// Below this the simulation only adjusts: nodes move little from one step to the next.

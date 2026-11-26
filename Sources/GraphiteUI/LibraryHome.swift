@@ -64,7 +64,7 @@ struct LibraryModeSidebarVisibility: ViewModifier {
     }
 
     /// Where the sidebar's files are, counting the update in which the switch to Library is made and the column is about to
-    /// fold: the sidebar then builds no list it would drop again at once (the Tags view of 3,000 tags in the owner's vault).
+    /// fold: the sidebar then builds no list it would drop again at once (the Tags view of 3,000 tags in the real vault).
     private var sidebarFilesPlace: SidebarFilesPlace {
         guard presentation == .library, !isCompactWidth else { return .fileTree }
         return answeredPresentation != .library || columnVisibility == .detailOnly ? .foldedByLibrary : .besideLibrary

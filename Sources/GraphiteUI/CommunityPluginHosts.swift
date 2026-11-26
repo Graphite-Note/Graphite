@@ -1,7 +1,7 @@
 import Foundation
 
 /// One community plugin runtime per open vault, shared by the vault's windows and acting on
-/// the window in front, so a plugin never runs twice on the same files (owner, 2026-10-21).
+/// the window in front, so a plugin never runs twice on the same files (decided 2026-10-21).
 /// The first window on a vault loads its plugins; the last to leave unloads them.
 @MainActor
 final class CommunityPluginHosts {

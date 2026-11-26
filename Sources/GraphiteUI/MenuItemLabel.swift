@@ -20,7 +20,7 @@ import AppKit
 /// On the Mac the symbol is handed over as an image made when the label is drawn. Given a name,
 /// SwiftUI looks the symbol up in the system's asset catalog again each time AppKit asks a
 /// toolbar item for its contents, about 20 times when a note's toolbar comes back, and for every
-/// entry of its menus: in the owner's Library → List switch half of the toolbar's 1 s went to those
+/// entry of its menus: in the reported Library → List switch half of the toolbar's 1 s went to those
 /// lookups (sampled 2026-11-10). With made images five toolbar menus of 18 entries appear in
 /// about 55 ms instead of 155 ms more than plain buttons (`MenuItemLabelTests`).
 struct MenuItemLabel: View {

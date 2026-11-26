@@ -127,7 +127,7 @@ struct OpenInNewWindowButton: View {
 }
 
 /// File › New Window (⌥⌘N): another window on the vault of the window in front, with an empty
-/// tab, as Mail keeps ⌘N for a new message and opens a new viewer window with ⌥⌘N (owner,
+/// tab, as Mail keeps ⌘N for a new message and opens a new viewer window with ⌥⌘N (requested
 /// 2026-10-21). Shown only where the app runs several windows, so never on an iPhone.
 public struct WindowCommands: Commands {
     @FocusedValue(\.workspaceMenuActions) private var actions

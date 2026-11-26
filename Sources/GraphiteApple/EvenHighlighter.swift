@@ -52,7 +52,7 @@ public enum EvenHighlighter {
     static let textureSeed: UInt32 = 0
     /// How much of the highlighter color's alpha the even stroke's ink keeps. PencilKit draws a
     /// canvas's ink over a PDF's page in the normal blend, so the even stroke at the color's full
-    /// alpha drew its band at nine tenths of the color and hid the text under it: on the owner's
+    /// alpha drew its band at nine tenths of the color and hid the text under it: on the physical
     /// iPad on 2026-11-04 a black bar under the band showed 0.87 as light as the band beside it
     /// (HUNT-002). At this fraction the band is about half the color, as PencilKit's own
     /// highlighter drew the same stroke on the simulator, and the text stays dark under it. The

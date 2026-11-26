@@ -46,13 +46,13 @@ import AppKit
 /// looks go on until every layer is done. A page of handwriting holds hundreds of strokes, each a
 /// layer of its own on the Mac: drawn all at once, the strokes of the pages PDFKit had made views
 /// for held the main thread for a fifth of a second and more whenever a handwritten PDF came into
-/// view in a note, and the note stopped scrolling (the owner's recording of 2026-11-15, a homework
+/// view in a note, and the note stopped scrolling (the recording of 2026-11-15, a homework
 /// note of seven PDFs with about 2,600 strokes each). The ink now sharpens over a few frames, as
 /// PDFKit's own tiles do, and the scrolling goes on.
 ///
 /// On the iPad PDFKit makes these layers draw asynchronously: Core Animation records the drawing
 /// and renders it itself. A placed picture is drawn by Core Graphics instead, as `PDFPage.draw`
-/// draws it: on the owner's iPad the recorded drawing showed a 4,000-pixel picture at twice fit
+/// draws it: on the physical iPad the recorded drawing showed a 4,000-pixel picture at twice fit
 /// (7.91 pixels per point) softer than PDFKit's own one pixel per point, edges 18.9 pixels
 /// against 1.3 for `PDFPage.draw`, while the same layer at 10 pixels per point was sharp; the
 /// simulator showed every zoom sharp both ways. `PDFPageSharpnessHostedTests` measures both.

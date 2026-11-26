@@ -87,7 +87,7 @@ struct UnansweredGestureCount {
         // With finger drawing one finger draws, and may rightly change nothing (an eraser
         // over blank paper); only two fingers, which scroll and zoom, count then.
         // A drag of a selection frame and a swipe from the screen's edge are answered by
-        // something other than the pages; on the owner's iPad they made up most of the times
+        // something other than the pages; on the physical iPad they made up most of the times
         // the PDF was taken to have stopped (records of 2026-10-25 to 2026-11-08).
         guard !gesture.beganOnSelectionFrame, !gesture.beganAtSystemGestureEdge else { return false }
         guard !(gesture.drawsWithFinger && gesture.fingerCount < 2),
@@ -105,7 +105,7 @@ struct UnansweredGestureCount {
 }
 
 /// Tells when a page's scrolling was left finished after its gesture. UIKit puts a recognizer
-/// back to "possible" once its gesture is over; on the owner's iPad on 2026-11-10 it did not,
+/// back to "possible" once its gesture is over; on the physical iPad on 2026-11-10 it did not,
 /// after a gesture that began while something was presented over the window: the scroll
 /// view's pan stayed "ended" and its pinch "failed" with no touch for minutes, so neither
 /// could begin again, and the monitor's own recognizer on the window stayed "failed", so
@@ -153,7 +153,7 @@ import GraphiteApple
 
 /// Keeps a PDF that is shown taking touches, and leaves evidence when it stops.
 ///
-/// On the owner's iPad (2026-10-13) a PDF being written on stopped taking any touch: no
+/// On the physical iPad (2026-10-13) a PDF being written on stopped taking any touch: no
 /// scrolling, no zooming, while the rest of Graphite worked; showing another tab and coming
 /// back, which builds the PDF's view again, revived it. The cause was not seen on a
 /// simulator, which cannot send Apple Pencil touches. This watches for it from outside the
@@ -166,7 +166,7 @@ import GraphiteApple
 ///   built again, as switching tabs does, after every canvas's ink is recorded. A gesture
 ///   that moved the pages counts as not answered too when something put them back where
 ///   it found them within a second (a page that springs back after every drag or pinch,
-///   reported by the owner, 2026-10-13), unless it was pulled past an edge or a zoom limit,
+///   reported 2026-10-13), unless it was pulled past an edge or a zoom limit,
 ///   where the scroll view rightly springs back. When they
 ///   reached another view over the PDF, only a record is written: that view may be a
 ///   control the person meant to use.

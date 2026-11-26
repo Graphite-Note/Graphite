@@ -17,7 +17,7 @@ import UIKit
 
 /// Shows the window's sidebar over the documents while the window is taller than wide, and leaves the split view's own
 /// choice, beside them, while it is wider than tall. Upright the documents keep the window's whole width whether the
-/// sidebar is shown or not: on the owner's 11-inch iPad (2026-11-05) the sidebar stood beside an upright PDF, which was
+/// sidebar is shown or not: on the physical 11-inch iPad (2026-11-05) the sidebar stood beside an upright PDF, which was
 /// left 514 of the window's 834 points, and the Pencil bar folded its colors into a scrolling strip (HUNT-317).
 ///
 /// SwiftUI has no style that is one thing upright and another sideways, and switching between two styles would build

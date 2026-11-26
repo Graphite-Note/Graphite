@@ -86,7 +86,7 @@ extension UIGestureRecognizer {
     /// stroke while a hand rests on the page; when a touch's end reached them while they followed none, they stayed
     /// possible after the last touch lifted, and UIKit never reset the canvas's recognizers, PencilKit's drawing
     /// recognizer among them. That one was left ended with its canvas still drawing the stroke of a touch long gone, and
-    /// the page took no more ink until the tab was switched, which takes the canvas out of the window (the owner's
+    /// the page took no more ink until the tab was switched, which takes the canvas out of the window (the
     /// simulator, 2026-11-18). A failed recognizer is reset with the others and hears the next touch.
     func failOnceEveryTouchHasLifted(_ event: UIEvent) {
         // An event without touches says nothing of the touches down; UIKit's own always carry the one that ended.

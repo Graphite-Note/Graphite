@@ -49,7 +49,7 @@ enum PDFMarkupRowFolding: Int, CaseIterable, Comparable {
 }
 
 /// The markup row under the toolbar. Its tools and their choices are buttons laid out in
-/// the row, as the owner asked (2026-11-13): Text Selection; the highlight colours,
+/// the row, as requested (2026-11-13): Text Selection; the highlight colours,
 /// Underline and Strikethrough; Draw and Eraser; Text Box, Shapes, the Sign menu and Images;
 /// then the chosen tool's choices.
 /// Where the pane is too narrow for all of them, the choices fold into menus first, then

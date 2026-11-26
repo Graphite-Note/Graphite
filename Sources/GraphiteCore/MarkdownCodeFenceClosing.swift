@@ -19,7 +19,7 @@ extension MarkdownEditing {
     /// indentation.
     ///
     /// Obsidian, with "Auto pair Markdown syntax" on, puts the closing fence on the same line
-    /// (```` ```|``` ````); the owner asked for it below, where it is already where it belongs.
+    /// (```` ```|``` ````); it was requested below, where it is already where it belongs.
     /// Nil, so the backtick is typed alone, when the fence would close an open block or when
     /// a fence further down has no partner (its opening fence was just deleted), when
     /// text follows the cursor, inside the note's properties, and for `~~~`, which Obsidian

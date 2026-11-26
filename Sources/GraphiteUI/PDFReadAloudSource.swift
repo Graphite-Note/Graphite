@@ -83,7 +83,7 @@ struct PDFReadAloudSource: Sendable {
     /// A page whose text was extracted from an exported copy. PDFKit often extracts a page's
     /// text a little differently once it is saved again (a figure's labels in another order,
     /// a space more or less), and an exact comparison then disabled every highlight on the
-    /// page: the owner's papers showed no word highlight at all. The exported text is aligned
+    /// page: the supplied papers showed no word highlight at all. The exported text is aligned
     /// to the live page's text instead; every word whose characters are unchanged keeps its
     /// exact place, and only the changed stretches lose their highlight. Nil when too little
     /// of the page matches to trust it.

@@ -15,7 +15,7 @@ import Foundation
 /// The arithmetic of arranging a row of equally spaced colors by dragging one, as Apple's markup palette does: the
 /// dragged color follows the finger along the row, the colors between its place and where it would land slide one place
 /// aside, and letting go puts it there. A drag moves a color along the row only: it never leaves the row's line, so the
-/// row does not seem to move up or down (the owner's report of 2026-11-17), and removing a color is its menu's.
+/// row does not seem to move up or down (the report of 2026-11-17), and removing a color is its menu's.
 struct PencilColorArrangement: Equatable {
     /// How many colors the row arranges (black, which always comes first, is not one of them).
     let colorCount: Int

@@ -547,7 +547,7 @@ public final class ReadAloudSession {
     public static let speedRange: ClosedRange<Double> = 0.5...3
     private static let highlightModeKey = "GraphiteReadAloudHighlightMode"
     /// Earlier builds stored automatic picks under these keys as if the person had chosen them
-    /// (the owner's iPad kept the robotic Eloquence "Eddy" that way). They are never read and
+    /// (the physical iPad kept the robotic Eloquence "Eddy" that way). They are never read and
     /// are removed, so everyone starts on the system's voice.
     private static let abandonedVoiceKeys = ["GraphiteReadAloudVoice", "GraphiteReadAloudChosenVoice"]
     private static let speedPreferenceKey = "GraphiteReadAloudSpeed"

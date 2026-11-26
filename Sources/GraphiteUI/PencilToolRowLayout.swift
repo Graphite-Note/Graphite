@@ -182,7 +182,7 @@ enum PencilToolRowLayout {
 
     /// The fewest colors a scrolling strip shows; narrower than that the colors go behind the condensed form's control.
     static let minimumVisibleSwatchCount = 3
-    /// The most colors the strip shows at once: black and the eight default favorite colors, the owner's set on
+    /// The most colors the strip shows at once: black and the eight default favorite colors, the reported set on
     /// 2026-11-14. A color saved past them scrolls inside the strip, so the bar stays as wide as it was (section 3 of
     /// Docs/PDF-annotation-todo.md).
     static let maximumVisibleSwatchCount = 9

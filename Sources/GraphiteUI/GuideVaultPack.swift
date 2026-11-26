@@ -14,7 +14,7 @@ import GraphiteCore
 
 /// The Graphite Guide vault (`Guide/Graphite Guide` in the repository, Docs/Guide-vault-todo.md): notes that show each
 /// feature beside the syntax that makes it, with its pictures. It is downloaded the first time the Guide opens it, as
-/// the owner's rule for extras asks (a small core, extras fetched on first use), and Settings › General › Add-ons lists
+/// the rule for extras asks (a small core, extras fetched on first use), and Settings › General › Add-ons lists
 /// it. Each file is named by its path inside the vault, settings folder included. `scripts/make-guide-vault.py
 /// --pack-revision <commit>` writes this list from the vault at that commit; `scripts/check-add-on-packs.py` checks it
 /// against the commit and `GuideVaultContentsTests` against the vault in the checkout, so a change to the vault is

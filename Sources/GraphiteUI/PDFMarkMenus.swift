@@ -69,7 +69,7 @@ enum PDFMarkMenus {
 /// The "+" beside the text highlighter instead takes each colour as it is picked
 /// (`pickedColorDidChange`), into the saved colours and the style at once. One picker is made
 /// ahead (`prepare`) and kept, and shown without the popover's animation: the popover took 1 to
-/// 1.5 s to show after the "+" on the owner's iPad (2026-11-17).
+/// 1.5 s to show after the "+" on the physical iPad (2026-11-17).
 @MainActor
 final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, UIAdaptivePresentationControllerDelegate {
     private let preferences: UserDefaults
@@ -120,7 +120,7 @@ final class PDFMarkColorPicker: NSObject, UIColorPickerViewControllerDelegate, U
         pickedColor = nil
         colorAddedWhilePicking = nil
         // Shown without the popover's animation: with it the picker was fully shown 0.62 to 0.69 s after the tap in an
-        // iPad simulator (1 to 1.5 s on the owner's iPad), without it 0.09 to 0.13 s.
+        // iPad simulator (1 to 1.5 s on the physical iPad), without it 0.09 to 0.13 s.
         presenter.present(picker, animated: false)
     }
 

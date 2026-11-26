@@ -14,7 +14,7 @@
 #if canImport(UIKit)
 import UIKit
 
-/// A drag of the text highlighter, in the window's points: the owner selects the PDF text from where it began to where
+/// A drag of the text highlighter, in the window's points: the person selects the PDF text from where it began to where
 /// it is, and marks the selection when it lifts (`PDFTextHighlighterInteraction`).
 enum TextHighlighterDrag: Equatable {
     case began(startPoint: CGPoint, currentPoint: CGPoint)

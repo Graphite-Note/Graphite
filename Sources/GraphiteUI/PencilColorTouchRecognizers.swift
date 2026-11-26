@@ -34,7 +34,7 @@ struct PencilColorRowTouches {
     /// Whether a place can be dragged (a color, not the empty end of the row).
     let canArrange: (Int) -> Bool
     /// How long a color is held before it lifts: a finger that moves sooner swipes the strip, which scrolls sideways
-    /// only, so a quick drag in any direction never moves or removes a color (the owner's report of 2026-11-14).
+    /// only, so a quick drag in any direction never moves or removes a color (the report of 2026-11-14).
     static let holdSeconds = 0.25
     /// How far a lifted color may go and still count as held still, so letting go opens its menu, in points.
     static let stillHoldTravel = 6.0
@@ -66,7 +66,7 @@ struct PencilColorRowTouchSurface: UIViewRepresentable {
 /// it lifted, its menu opens. The menu is an edit menu opened on that release, not a context menu interaction, whose
 /// own recognizers made every long press on the view wait for them, so the hold never lifted a color. The hold is a
 /// recognizer of the row's own (`PencilColorHoldRecognizer`), not UIKit's long press, and once a color is lifted no
-/// other recognizer begins from its touch (the owner's report of 2026-11-17 on the iPad: the colors "seem to be fixed").
+/// other recognizer begins from its touch (the report of 2026-11-17 on the iPad: the colors "seem to be fixed").
 final class PencilColorRowTouchView: UIView, @preconcurrency UIEditMenuInteractionDelegate {
     /// The row's latest answers; replaced on every update of the row.
     var touches: PencilColorRowTouches?

@@ -18,7 +18,7 @@ import UIKit
 /// The PDF views a window keeps while their tabs are hidden: at most one, the PDF most recently left, as the window
 /// keeps at most one hidden PDF session open (PDF-13). Showing a tab again built a new view: the document laid out
 /// again, every page shown drawn again, each page's ink decoded again into a new canvas, and the zoom fitted again
-/// before the place was restored, which the owner recorded on 2026-11-04 as a blank page for seconds and the wrong zoom
+/// before the place was restored, which was recorded on 2026-11-04 as a blank page for seconds and the wrong zoom
 /// first (HUNT-308). A view kept here comes back as it was left.
 ///
 /// A kept view goes when its session is no longer any tab's (`keepOnly`), when another view is kept, at a memory

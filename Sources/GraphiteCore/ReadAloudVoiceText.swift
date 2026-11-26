@@ -5,7 +5,7 @@ import Foundation
 /// Graphite's pronunciation layer spells acronyms out letter by letter ("V H D L") because
 /// the system voice reads a written acronym as a word. Autoregressive codec models (Qwen3-TTS,
 /// Chatterbox, Dia) do the opposite: a run of single letters makes them loop, mumble or invent
-/// speech (Qwen3-TTS 0.6B looped "R-D-F-R-D-F" for 30 seconds on the owner's term list), while
+/// speech (Qwen3-TTS 0.6B looped "R-D-F-R-D-F" for 30 seconds on a reported term list), while
 /// they say "VHDL" or "FPGA" well as written. For those voices every letter-by-letter
 /// respelling is put back to the written acronym; respellings that are words ("see moss" for
 /// CMOS) are kept. Ranges the voice reports come back to the passage through `passageRange`.

@@ -77,7 +77,7 @@ final class GraphitePDFDisplayView: PDFView {
     /// how far past that they were zoomed. PDFKit fits the pages to a new width only while
     /// it scales them itself, which a pinch, even one back to the fitting size, turns off:
     /// a page zoomed in a wide window then kept its size in a narrower one, running off one
-    /// edge with empty space at the other (reported by the owner, 2026-10-13).
+    /// edge with empty space at the other (reported 2026-10-13).
     private var zoomBeforeResize: PDFResizeZoom?
     /// The span the fitting zoom spreads across the view during the resize under way
     /// (`PDFResizeZoom.fittedSpan`), worked out once as it begins.
