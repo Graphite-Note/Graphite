@@ -1,7 +1,7 @@
 #!/bin/bash
 # Runs the hosted iPad suite on a simulator and stops it at once if the simulator's audio output opens.
 #
-# The owner's rule is that a test run plays no sound, and that the audio output does not even open: a running audio engine, an
+# The rule is that a test run plays no sound, and that the audio output does not even open: a running audio engine, an
 # active audio session or a playing AVPlayer makes coreaudiod hold an "iOSSimulatorAudioDevice ... audio-out" assertion, which
 # `pmset -g assertions` lists. This script samples that list every half second while xcodebuild runs, stops the run and fails
 # when it sees the assertion, and names the test that was running.
@@ -19,7 +19,7 @@ xcodebuild test -project Graphite.xcodeproj -scheme Graphite -destination "id=$u
   -skipPackagePluginValidation -skipMacroValidation "$@" > "$log" 2>&1 &
 run=$!
 
-# Only this run is stopped (never every xcodebuild on the machine, which other sessions may be running). The assertion
+# Only this run is stopped (never every xcodebuild on the machine, which other builds may be running). The assertion
 # belongs to this run only when nothing else is testing on a simulator: run it when the machine is otherwise quiet.
 (
   while kill -0 "$run" 2>/dev/null; do

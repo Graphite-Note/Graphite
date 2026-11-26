@@ -2,7 +2,7 @@
 """Print the identifier (UDID) of an available iPad simulator, for the `hosted-ipad` job of .github/workflows/ci.yml.
 
 Reads `xcrun simctl list devices available --json`, prefers the newest iOS runtime and, inside it, the model the hosted
-suite is written for, an 11-inch iPad Pro (the owner's iPad), then another iPad Pro, an 11-inch iPad Air, any other iPad
+suite is written for, an 11-inch iPad Pro (the physical iPad's model), then another iPad Pro, an 11-inch iPad Air, any other iPad
 and the iPad mini last. The tests measure a regular-width window that has room for the tab bar's tools; the mini's 744-point
 window has not, so choosing it (as "iPad mini (A17 Pro)" contains "Pro") fails them. Exits with status 1 and a message when no iPad simulator exists, so the job
 fails with a clear reason rather than with an xcodebuild destination error.

@@ -6,10 +6,10 @@
 #
 #   swift-test-macos   `swift test --parallel` over the four package test targets; the skipped-test count may not rise.
 #                      GRAPHITE_SHARED_RUNNER=1 prints the timing budgets instead of checking them and gives window waits
-#                      longer (Tests/GraphiteTestSupport/SharedRunner.swift); the owner's Mac checks every budget
+#                      longer (Tests/GraphiteTestSupport/SharedRunner.swift); the development Mac checks every budget
 #   hosted-ipad        by hand only: the hosted suite (target GraphiteIntegrationTests) on an iPad simulator, via
 #                      xcodebuild. It ran past its 90 minutes on the runners, and its pictures and gestures differ in their
-#                      virtual GPU; the owner runs it on the Mac (scripts/run-hosted-suite-silently.sh) before merging
+#                      virtual GPU; it is run on the Mac (scripts/run-hosted-suite-silently.sh) before merging
 #   runtime-node       the plugin runtime suite in jsdom (npm ci && npm test)
 #   size-report        scripts/size-report.py (a function, type or file over its threshold needs a review row)
 #   registration-check the rule ratchet (check-rules, check-imports, check-test-registration), the defect-test, invariant-pin
@@ -17,10 +17,10 @@
 #   nightly            by hand only, once the self-hosted runner exists: real community plugins, the hosted suite on the
 #                      iPad, the benchmarks. Its schedule is off: with no runner it waited a day and was cancelled every night
 #
-# Settings the owner provides in the repository (Settings > Secrets and variables > Actions):
+# Settings provided in the repository (Settings > Secrets and variables > Actions):
 #   vars.GRAPHITE_MACOS_RUNNER    runner label (default `xcode-27`: GitHub's macOS 27 image with Xcode 27.0, 27.1 and
 #                                 27.2 and the iOS 27 simulators; there is no `macos-27` label)
-#   vars.GRAPHITE_XCODE_VERSION   Xcode to select (default `27.1`, the build the owner develops with, 27A9275)
+#   vars.GRAPHITE_XCODE_VERSION   Xcode to select (default `27.1`, the build used for development, 27A9275)
 #   secrets.DEVELOPMENT_TEAM or vars.DEVELOPMENT_TEAM    the Apple team identifier passed to xcodebuild
 #   vars.GRAPHITE_IPAD_UDID       the connected iPad's identifier, for the nightly job
 #
@@ -161,7 +161,7 @@ jobs:
       - name: xcodebuild test (hosted suite, iPad simulator)
         env:
           DEVELOPMENT_TEAM: ${{ secrets.DEVELOPMENT_TEAM || vars.DEVELOPMENT_TEAM }}
-          # Timing budgets (App/Tests/TimingBudgets.swift) are measured on the owner's iPad by the nightly job, not here.
+          # Timing budgets (App/Tests/TimingBudgets.swift) are measured on the physical iPad by the nightly job, not here.
           TEST_RUNNER_GRAPHITE_SKIP_TIMING_BUDGETS: "1"
           # MapKit's own composing of a map needs Apple's map service (App/Tests/TimingBudgets.swift, MapServices).
           TEST_RUNNER_GRAPHITE_SKIP_MAPKIT_COMPOSITING: "1"
@@ -314,7 +314,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  # The device job: a self-hosted runner on the owner's Mac with the iPad connected (label graphite-ipad). Configure the
+  # The device job: a self-hosted runner on the development Mac with the iPad connected (label graphite-ipad). Configure the
   # runner's work folder outside the iCloud-synced Desktop, where code signing fails (a clean clone has no such problem).
   nightly:
     if: github.event_name == 'workflow_dispatch' && inputs.nightly_device

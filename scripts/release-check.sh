@@ -8,8 +8,8 @@
 # opens (an "audio-out" assertion in `pmset -g assertions`). Assertions already open when a run starts, by another app,
 # are printed at its start and left alone. One made during the run stops it, unless another app made it: an app in
 # /Applications or /System/Applications other than Xcode, Simulator and Graphite, or a system sound such an app or a
-# system service asked for (the browser, the Claude app, Messages, AirDrop's tone); that one is printed and left alone.
-# So is one another session's Mac tests asked for. A sound with no known source, any simulator's audio and any sound
+# system service asked for (the browser, a chat app, Messages, AirDrop's tone); that one is printed and left alone.
+# So is one that another Mac test run asked for. A sound with no known source, any simulator's audio and any sound
 # asked for by the run's own xctest, by Graphite or by a simulator stops the run.
 #
 # The build folder must be outside iCloud (codesign fails in iCloud's Desktop) and is created if needed; logs, result
@@ -100,7 +100,7 @@ descends_from() {
 }
 
 # A short sound can be over before it is looked at, so the listing that showed the assertion is passed in. A Mac test
-# process (xctest) that is not the run's own is another session's suite, and its sound is not the run's.
+# process (xctest) that is not the run's own is another run's suite, and its sound is not the run's.
 foreign_audio_source() {
   local assertion=$1 listing=$2 run=$3 creator creator_path clients client others=""
   creator=$(echo "$listing" | grep -A3 -F "$assertion" | grep -oE "Created for PID: [0-9]+" | grep -oE "[0-9]+$" | head -1)
@@ -115,7 +115,7 @@ foreign_audio_source() {
       [ -n "$clients" ] || return 1
       for client in $(echo "$clients" | grep -oE "[0-9]+\([^)]*\)"); do
         case "$client" in
-          *"(xctest)"|*"(swift-test)") descends_from "${client%%(*}" "$run" && return 1; others="$others another session's $client" ;;
+          *"(xctest)"|*"(swift-test)") descends_from "${client%%(*}" "$run" && return 1; others="$others another run's $client" ;;
           *"(Graphite"*|*"(launchd_sim)"|*"(Simulator"*) return 1 ;;
           *) others="$others $client" ;;
         esac
@@ -160,7 +160,7 @@ run_watched() {
   wait "$run"
 }
 
-# Builds only: other sessions run tests one after another all day, and waiting for a moment with none never ended
+# Builds only: other test runs go on one after another all day, and waiting for a moment with none never ended
 # (2026-11-19). An xcodebuild that only runs tests (test-without-building) is not a build.
 other_build_running() {
   ps -axo args | grep -E "^/Applications/Xcode[^ ]*\.app/.*/(swift-build|xcodebuild)( |$)" | grep -v "test-without-building" | grep -q .

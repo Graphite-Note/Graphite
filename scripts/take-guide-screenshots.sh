@@ -10,7 +10,7 @@
 # split (the shot's file left or above), `snippet=<name>` turns on the vault's theme with that CSS snippet, and
 # `crop=<from>:<to>` keeps only that part of the picture's height, as fractions from the top.
 #
-# The simulator must be one of your own (never another session's), with Graphite built for it. Nothing in the guide
+# The simulator must be a dedicated simulator (never one in use elsewhere), with Graphite built for it. Nothing in the guide
 # plays a sound, keyboard clicks are turned off, and the simulator is shut down at the end.
 #
 # Usage:
@@ -40,7 +40,7 @@ container="$(xcrun simctl get_app_container "$device" "$bundle" data)"
 rm -rf "$container/Documents/$vault_name"
 cp -R "$vault_source" "$container/Documents/$vault_name"
 rm -rf "$container/Documents/$vault_name/Attachments/Screenshots"
-# A checkout below .claude on the iCloud Desktop marks every file hidden, which Graphite would leave out.
+# A checkout below a hidden folder on the iCloud Desktop marks every file hidden, which Graphite would leave out.
 chflags -R nohidden "$container/Documents/$vault_name"
 preferences="$container/Library/Preferences/$bundle"
 

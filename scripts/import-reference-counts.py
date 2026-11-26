@@ -3,7 +3,7 @@
 
 The Swift readers' sample tests (GoodnotesNotebookReaderSampleTests, NotabilityNoteReaderSampleTests in
 Tests/GraphiteCoreTests) compare their own counts with these, file by file. The samples are personal notebooks and are
-never in the repository: the owner extracts them from the local `samples/import-formats` branch (see
+never in the repository: they are extracted from the local `samples/import-formats` branch (see
 Packages/NotebookImport/Tests/NotebookImportTests/Fixtures/NotebookImportSamples.swift). The output holds numbers and the names of
 unknown-field categories only, keyed by each sample's path relative to the folder.
 
