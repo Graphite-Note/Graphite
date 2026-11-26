@@ -1,3 +1,15 @@
+/**
+ * File: community-plugin-runtime-foundation.js
+ * --------------------------------------------
+ * Layer: UI
+ * Description: The base of the plugin runtime: the channel to Graphite, Obsidian's Events and Component,
+ *              and the utility functions and library loaders the obsidian module exports.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.9
+ * Date: 26/11/2026
+ */
+
 // The base of Graphite's runtime for Obsidian community plugins: the channel to the
 // native app, Obsidian's `Events` and `Component`, and the utility functions the
 // `obsidian` module exports. Later files add the vault, workspace, interface and plugins.
@@ -619,10 +631,15 @@
     }
 
     /// Libraries Obsidian ships for plugins to load on demand. Graphite renders math,
-    /// diagrams and PDFs natively and does not bundle these copies.
-    function bundledLibraryLoader(libraryName) {
+    /// diagrams and PDFs natively and does not bundle these copies. The loader reports the
+    /// library and resolves, as Obsidian's resolves once the library is on the page, to the
+    /// page's copy, which Graphite's page does not have: a plugin that only waits for it before
+    /// drawing (Meta Bind awaits `loadPrism` before every block it draws) draws, and one that
+    /// uses the library fails in its own code, with the library named in its settings.
+    function bundledLibraryLoader(libraryName, globalName) {
         return async function loadBundledLibrary() {
-            runtime.unsupported(libraryName, 'Graphite does not provide Obsidian\'s copy of it to plugins.');
+            runtime.reportUnsupportedFeature(libraryName);
+            return globalScope[globalName];
         };
     }
 
@@ -690,10 +707,10 @@
         getLanguage,
         Tasks,
         SecretStorage,
-        loadMathJax: bundledLibraryLoader('loadMathJax'),
-        loadMermaid: bundledLibraryLoader('loadMermaid'),
-        loadPdfJs: bundledLibraryLoader('loadPdfJs'),
-        loadPrism: bundledLibraryLoader('loadPrism'),
+        loadMathJax: bundledLibraryLoader('loadMathJax', 'MathJax'),
+        loadMermaid: bundledLibraryLoader('loadMermaid', 'mermaid'),
+        loadPdfJs: bundledLibraryLoader('loadPdfJs', 'pdfjsLib'),
+        loadPrism: bundledLibraryLoader('loadPrism', 'Prism'),
         renderMath,
         finishRenderMath: async () => {},
     });

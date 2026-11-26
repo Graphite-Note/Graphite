@@ -1,0 +1,80 @@
+# Meta Bind buttons: TODO
+
+Created: 2026-11-26.
+
+Status: 2026-11-26, built and checked in the Node tests, a dedicated iPad simulator and the Mac app. Taps by finger and clicks by hand were not made (no access to the simulator or the app was granted during the check). Four runtime gaps were fixed. One item stays open in section 3: a line of fields once drawn as code after the page was opened again on the Mac. Issues: [#233](https://github.com/Graphite-Note/Graphite/issues/233) to [#237](https://github.com/Graphite-Note/Graphite/issues/237), one per section.
+
+## Request
+
+Feature 12 of `Docs/Notion-features-for-Graphite.md`: Notion's button blocks ("New assignment", "Start lecture" on a course page) through the Meta Bind community plugin (`obsidian-meta-bind-plugin`, by Moritz Jung, GPL-3.0), run unmodified in the plugin runtime. Its buttons are `meta-bind-button` code blocks and inline `` `BUTTON[id]` `` code, its input fields are inline `` `INPUT[…]` `` code, and its actions run commands, create notes from templates and set properties. Every gap that is the runtime's is fixed with a runtime test. What is Meta Bind's own is reported here.
+
+## Decisions
+
+1. **The release, not a build from source.** Meta Bind builds with Bun and Vite in a monorepo, unlike the npm plugins of `compatibility-plugins.json`. Its entry there pins release 1.5.1 (commit `8784bf7b`, 2026-06-16) and the SHA-256 of each release file (`main.js`, `manifest.json`, `styles.css`), the files Graphite's installer downloads from the same release. `npm run build-compatibility-plugins` downloads them and refuses a file whose checksum differs. Nothing of Meta Bind is committed.
+2. **No native button syntax.** A Graphite syntax would be read by nothing else (`Docs/Notion-features-for-Graphite.md`, section 12). Meta Bind's code blocks are ordinary fenced code in the note, which Obsidian with Meta Bind draws the same way, and which any Markdown reader shows as code.
+3. **Off costs nothing.** Meta Bind is a download: nothing of it is in the app, and with community plugins off its blocks stay code blocks.
+4. **The demo vault is made up.** A small course, written for the demo, in `Tests/CommunityPluginRuntimeTests/fixtures/meta-bind-course-vault/`. No real notes.
+5. **The demo's buttons are button templates.** Decided 2026-11-26: "New assignment" and "Start lecture" are Meta Bind's button templates, in its settings (`data.json`), not hidden `meta-bind-button` blocks of the course page. Meta Bind finds a hidden block's button only once the reading view has drawn the block, and a reading view draws only what is near the screen, in Obsidian too: in the Mac app, with the hidden blocks at the end of the page, the inline buttons said "Button ID not Found" when the page was drawn again. Templates are found at once, on any page.
+
+## 1. Meta Bind pinned and loading
+
+Issue: [#233](https://github.com/Graphite-Note/Graphite/issues/233)
+
+- [x] `compatibility-plugins.json` pins Meta Bind 1.5.1 by release and checksum. The build script downloads release files and checks them.
+  Done 2026-11-26: the entry names `release` 1.5.1, `commit` `8784bf7b52353b867de99840b751d9b5f5a40d78` (the commit the tag points at) and the SHA-256 of `main.js`, `manifest.json` and `styles.css`, the digests GitHub reports for the release's files. `build-compatibility-plugins.js` downloads a pinned release's files into `compatibility/built/<id>/` and writes nothing when a digest differs (checked by hand with one digest changed: refused, naming the file and both digests), and `--only=owner/name,…` builds the plugins of those repositories alone. Every one of the 26 pinned plugins built or downloaded on 2026-11-26, and the whole Node suite passed with all of them (202 tests, none skipped).
+- [x] Meta Bind loads in the Node test host with nothing failing. What it reports unsupported is listed here and in its sweep row.
+  Done 2026-11-26: `tests/meta-bind.test.js` ("loads with its blocks and post-processor"): its 12 block languages, its post-processor and its 5 commands registered, no page error. Reported unsupported: "CodeMirror editor extensions" (its fields and buttons in Live Preview are CodeMirror widgets), "Syntax highlighting modes (CodeMirror 5)" (highlighting of its own syntax in source mode), and `loadPrism` (Obsidian's copy of Prism, which Graphite does not ship and Meta Bind only waits for).
+- [x] Each runtime gap found at load and while drawing is fixed with a runtime test.
+  Done 2026-11-26, two gaps, `tests/meta-bind-runtime-gaps.test.js` (2), each failing with the runtime of origin/main and passing with the fix, and every Meta Bind test failing without them:
+  1. Obsidian's library loaders (`loadPrism`, `loadMathJax`, `loadMermaid`, `loadPdfJs`) threw, so every Meta Bind block, which awaits `loadPrism` before drawing, showed "loadPrism is not supported in Graphite yet" instead of its button or field. They now report the library and resolve to the page's copy, as Obsidian's resolve once the library is loaded. Graphite's page has none, so a plugin that uses the library still fails in its own code, with the library named in its settings (`community-plugin-runtime-foundation.js`).
+  2. A paragraph holding a block reached the copy split: Meta Bind draws an inline field as a `div` inside the paragraph's inline code, which the DOM allows and the HTML parser does not, so the copy (rebuilt from HTML) ended the paragraph at the `div`, the field showed on a line of its own, and the element paths of taps and typing pointed at other elements than the plugin's. The plugins' page now sends such a paragraph as `graphite-p`, which the parser keeps whole, and the copy's script makes it a `p` again with the DOM (`keepParagraphsWhole` in `community-plugin-runtime-reading.js` and `CommunityPluginReadingBlocks.swift`).
+  Also, in the test host only: jsdom has no `structuredClone`, which WebKit has and Meta Bind copies its values with, so `support/runtime-harness.js` gives the page Node's, rebuilt with the page's objects.
+
+## 2. Buttons
+
+Issue: [#234](https://github.com/Graphite-Note/Graphite/issues/234)
+
+- [x] A `meta-bind-button` block draws in the reading view and in Live Preview, and a tap runs its actions.
+  Done 2026-11-26: in the reading view, each button of `tests/meta-bind.test.js` drawn and pressed through the copy's element path. In the app (`App/Tests/CommunityPluginMetaBindHostedTests.swift`, in a dedicated iPad simulator and the Mac app): the course page's buttons pressed in the reading view's copies, and a `meta-bind-button` block drawn in Live Preview and pressed there (`testMetaBindsButtonInLivePreviewChangesTheOpenNote`).
+- [x] Inline `` `BUTTON[id]` `` buttons draw from a block's `id` (with `hidden: true`) in the same note and from the button templates in Meta Bind's settings.
+  Done 2026-11-26: from a hidden button of the note and from a button template of the settings, both pressed (`tests/meta-bind.test.js`, "inline buttons come from a hidden button of the note and from its button templates"). In the app, the course page's inline buttons from the templates (`CommunityPluginHostTests.testMetaBindsCoursePageButtons…`), and, in a first version of the demo, from hidden blocks in the iPad simulator. A hidden block drawn after the inline buttons is waited for: the copy is sent again once Meta Bind finds it.
+- [x] Actions checked: `command` (a command of another plugin and one of Meta Bind), `open` (a note and a web address), `createNote` (folder, name, opening it), `templaterCreateNote` (Templater's template), `updateMetadata` (a value and an evaluated expression), `insertIntoNote`, `replaceInNote`, `replaceSelf`, `regexpReplaceInNote`, `input` and `sleep`. Actions that need another plugin (`js`, `inlineJS` need JS Engine) say so.
+  Done 2026-11-26: in `tests/meta-bind.test.js`, each pressed through the copy's element path: `command` (the sample plugin's Open modal opens its window), `open` (a note through Graphite's `openLinkText`, a web address through Graphite's browser link), `createNote` (an empty note in its folder, opened), `templaterCreateNote` (Templater's template filled in, a second press making the next name, opened), `updateMetadata` with a value, `sleep` then `updateMetadata` in one button, `insertIntoNote`, `replaceInNote`, `regexpReplaceInNote` and `replaceSelf`, the note keeping every change. `inlineJS` and `js`, and `updateMetadata` with `evaluate: true`, need Meta Bind's "Enable JavaScript" setting and the JS Engine plugin, as in Obsidian: off by default, Meta Bind says so in a notice and changes nothing (tested), and with JS Engine they were not tried. Not built: Meta Bind's own command as a `command` action (any command runs the same way), and `input`, which types into the field focused in the plugins' page and so does nothing from a copy, whose own field has the focus (recorded under What does not work yet in `Docs/Community-plugins.md`).
+- [x] Buttons in a note open for editing change the note through Graphite's editor or the vault, and an Undo or an external edit leaves the note consistent.
+  Done 2026-11-26: a button's change is a write through the vault (`vault.process`, `processFrontMatter`), which the note open in Live Preview takes in as another app's change: `testMetaBindsButtonInLivePreviewChangesTheOpenNote` waits for the open note's text to be the file's, on the iPad simulator and the Mac. As another app's change, it is not a step of the editor's Undo.
+
+## 3. Input fields and views
+
+Issue: [#235](https://github.com/Graphite-Note/Graphite/issues/235)
+
+- [x] Inline fields draw in the reading view: `toggle`, `text`, `number`, `date`, `select`, `inlineSelect`, `slider`, `progressBar`, `suggester`, `list`. Changing one writes the note's frontmatter.
+  Done 2026-11-26: `toggle`, `text`, `number`, `date`, `inlineSelect`, `slider` and `suggester` (its list window, a choice) changed through the copy, writing the properties, and the block fields `progressBar` and `list` drawn (`tests/meta-bind.test.js`, input fields test). In the app, the course page's status field changed in its copy, the course page then differing in that property alone. Not checked: `select` (a block field) and changing `list`.
+- [x] A property changed elsewhere (Graphite's properties, another app) shows in the field.
+  Done 2026-11-26: another app's edit of the note (a write and Graphite's change report) shows in the number field, the inline select and a view (`tests/meta-bind.test.js`). Meta Bind ignores the note's changes for a second after its own write, by design. Not checked in the app: an edit in Graphite's Properties view, which writes the note the same way.
+- [x] `VIEW[…]` fields show a property and a computed value, and follow changes.
+  Done 2026-11-26: a `math` view of a property (`{credits} * 2`) and a `text` view, following the field and another app's change (`tests/meta-bind.test.js`).
+- [x] What does not work in Live Preview (inline fields are CodeMirror extensions there) is said, here and in the sweep row.
+  Done 2026-11-26: in Live Preview the inline fields and buttons stay code and the blocks are drawn, seen in the iPad simulator, and recorded in `Docs/Community-plugins.md` (What does not work yet, and Meta Bind's row).
+- [ ] Found 2026-11-26: once in five runs of the course page's hosted test on the Mac, the status line drawn again after the page was left and opened again came out as Graphite's own rendering, its fields as code, while its neighbours were Meta Bind's. Meta Bind reported no failure. Not reproduced in the Node tests or the iPad simulator, and the test then also scrolled the reading view while it was drawing. Find whether a section released while it is drawn is drawn again.
+
+## 4. The Course page demo
+
+Issue: [#236](https://github.com/Graphite-Note/Graphite/issues/236)
+
+- [x] A small made-up vault with a course page: "New assignment" creates a note in the course's `Assignments` folder from a template with its properties. "Start lecture" creates the lecture's note from a template and opens it. A status field and a progress view show the course's state.
+  Done 2026-11-26: `Tests/CommunityPluginRuntimeTests/fixtures/meta-bind-course-vault` (a course, its templates, a problem set, a lecture, a base of the course work, Templater's and Meta Bind's settings, no plugin code). The lecture template counts the lecture on the course page and names the note `Lecture N`.
+- [x] A Node test walks the demo as a person does: tap each button, check the files and properties.
+  Done 2026-11-26: `tests/meta-bind.test.js` ("the course page demo"): "New assignment" makes `Assignments/New assignment.md` due in a week and opens it, "Start lecture" makes `Lectures/Lecture 2.md`, sets `lectures_held` to 2 and opens it, the progress bar follows, and the course page differs in that property alone. Another test pins the demo's files.
+
+## 5. In the app, measured and recorded
+
+Issue: [#237](https://github.com/Graphite-Note/Graphite/issues/237)
+
+- [x] In a dedicated iPad simulator: Meta Bind installed in the demo vault, the course page's buttons tapped in the reading view and Live Preview, fields changed, the files checked.
+  Done 2026-11-26: "Graphite Meta Bind iPad" (iPad Pro 11-inch (M5), iOS 27.2). The hosted tests above pass there, pressing the buttons and the status field in the copies the reading view and Live Preview show, the files checked byte for byte. The demo vault with both plugins installed was opened in the app and looked at in the reading view and Live Preview (the course page, its buttons, its fields within their line and its card within the column). Taps by finger were not made: access to the simulator was not granted during the check, so the presses go through the copies' own click handling inside the app, not UIKit's touch.
+- [x] In a Debug copy of the Mac app (its own bundle identifier): the same.
+  Done 2026-11-26: the same hosted tests pass in the Mac app (its Debug build, unsigned, run by xcodebuild), pressing in WebKit copies inside the app's window. A re-signed Debug copy with its own bundle identifier (`com.graphite.study.metabind`) and the demo vault in its container ran both plugins for the memory below. Clicks by hand were not made: access to the app was not granted, and a capture of its window came back blank.
+- [x] The plugin web view's memory with Meta Bind on, measured in the simulator and on the Mac.
+  Done 2026-11-26: footprint after the course page settled. iPad simulator: the plugins' page 80 MB with Templater alone, 94 to 100 MB with Meta Bind, each of the page's three copies 57 MB, the app 72 MB. Mac, in a re-signed Debug copy with its own bundle identifier and container: 47 MB and 92 MB, copies 14 MB each, the app 114 MB. With the hidden button blocks of the first demo, the simulator had two more copies of 57 MB each that showed nothing.
+- [x] Meta Bind's row in the sweep (`Docs/Community-plugins.md`) says what works, with the tests, and `Docs/Community-plugin-API-coverage.md` and `Docs/Coverage.md` updated.
+  Done 2026-11-26: Meta Bind's row in What works, the runtime fixes and checks in How it was verified ("Meta Bind's buttons, fields and the course page demo"), its limits in What does not work yet, and `--only=` in Running the checks. `Docs/Community-plugin-API-coverage.md` was generated again and is unchanged: no method was added, the loaders were already present. `Docs/Coverage.md` has a section for this change.

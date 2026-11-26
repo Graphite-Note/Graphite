@@ -5,8 +5,8 @@
  * Description: Loads the plugin runtime into jsdom, connected to a test vault host.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 26/11/2026
  */
 
 // Loads Graphite's plugin runtime into jsdom, in the order `index.html` lists its scripts,
@@ -35,6 +35,19 @@ function makeTemporaryVault(files) {
         fileSystem.writeFileSync(location, files[vaultPath]);
     }
     return vaultFolder;
+}
+
+/// A value Node made, rebuilt with the page's own objects, so `instanceof` in the page holds.
+function copyIntoPageRealm(value, window) {
+    if (value === null || typeof value !== 'object') return value;
+    if (value instanceof Map) return new window.Map(Array.from(value, ([key, entry]) => [copyIntoPageRealm(key, window), copyIntoPageRealm(entry, window)]));
+    if (value instanceof Set) return new window.Set(Array.from(value, (entry) => copyIntoPageRealm(entry, window)));
+    if (value instanceof Date) return new window.Date(value.getTime());
+    if (Array.isArray(value)) return window.Array.from(value, (entry) => copyIntoPageRealm(entry, window));
+    if (ArrayBuffer.isView(value) || value instanceof ArrayBuffer || value instanceof RegExp) return value;
+    const copy = new window.Object();
+    for (const key of Object.keys(value)) copy[key] = copyIntoPageRealm(value[key], window);
+    return copy;
 }
 
 /// A page with the runtime loaded and connected to a vault folder holding `files`.
@@ -77,6 +90,11 @@ async function startRuntime(options) {
             configurable: true,
         });
     }
+    // WebKit has the browser's `structuredClone`, which Meta Bind copies its declarations and
+    // values with; jsdom has none. Node's own copies the value, and the copy is then rebuilt
+    // with the page's `Object`, `Array`, `Map`, `Set` and `Date`, as a browser's clone is made
+    // in the page's realm.
+    if (!window.structuredClone) window.structuredClone = (value) => copyIntoPageRealm(structuredClone(value), window);
     // WebKit scrolls an element into view; jsdom has no layout and no such method.
     if (!window.Element.prototype.scrollIntoView) window.Element.prototype.scrollIntoView = () => {};
     // WebKit gives an element's rendered text as `innerText`; jsdom, without layout, has

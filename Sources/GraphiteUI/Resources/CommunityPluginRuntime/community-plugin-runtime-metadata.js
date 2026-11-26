@@ -6,8 +6,8 @@
  *              plugin that needs it.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 07/11/2026
+ * Version: 0.9
+ * Date: 26/11/2026
  */
 
 // Obsidian's `MetadataCache` for plugins: the headings, links, embeds, tags, sections,
@@ -679,7 +679,14 @@
         readOnDemand(file) {
             if (!file || file.extension !== 'md' || !this.isFollowingNotes || this.readAttemptedPaths.has(file.path)) return false;
             const newestRead = this.newestReadByFile.get(file);
-            if (newestRead && !newestRead.isBackground) return false;
+            if (newestRead && !newestRead.isBackground) {
+                // A read for someone waiting (a block about to draw) is under way: the plugin that
+                // found no metadata meanwhile hears `changed` when it ends, as Obsidian, which has
+                // every note's metadata before plugins draw, never leaves one without it (Meta Bind
+                // reads a note's frontmatter once, then follows `changed`).
+                newestRead.isChange = true;
+                return false;
+            }
             this.enqueueRead(file, true);
             return true;
         }

@@ -6,8 +6,8 @@
  *              and taps sent back.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.10
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -530,6 +530,17 @@ enum CommunityPluginCodeBlockPage {
             });
             for (const extraChild of currentChildren.slice(wantedChildren.length)) extraChild.remove();
         }
+        /// The plugins' page sends a paragraph that holds a block (a div, a list) as
+        /// `graphite-p`, which the HTML parser keeps whole; it becomes a `p` again here with the
+        /// DOM, so the copy has the plugin's elements where the plugin has them.
+        function keepParagraphsWhole(fragment) {
+            for (const kept of Array.from(fragment.querySelectorAll('graphite-p'))) {
+                const paragraph = document.createElement('p');
+                for (const attribute of Array.from(kept.attributes)) paragraph.setAttribute(attribute.name, attribute.value);
+                while (kept.firstChild) paragraph.appendChild(kept.firstChild);
+                kept.replaceWith(paragraph);
+            }
+        }
         let lastHeight = -1;
         function reportHeight() {
             const element = root();
@@ -576,6 +587,7 @@ enum CommunityPluginCodeBlockPage {
                 if (element.innerHTML !== html) {
                     const template = document.createElement('template');
                     template.innerHTML = html;
+                    keepParagraphsWhole(template.content);
                     morph(element, template.content);
                 }
                 reportHeight();

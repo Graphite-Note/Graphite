@@ -1,3 +1,14 @@
+/**
+ * File: community-plugin-runtime.css
+ * ----------------------------------
+ * Layer: UI
+ * Description: The plugins' page and its copies in Obsidian's CSS variables and class names, in
+ *              Graphite's colors and Apple's system font.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.13
+ * Date: 26/11/2026
+ */
 /* The plugin panel's look. Obsidian plugins style themselves with Obsidian's CSS variables
    and class names, so those are defined here, in Graphite's colors and Apple's system font.
    The variables are set with no specificity (`:where`), as Obsidian's own layer is overridden
@@ -7,6 +18,12 @@
     color-scheme: light dark;
     -webkit-text-size-adjust: 100%;
 }
+
+/* Obsidian's own style sheet sizes every element by its border box (`*{box-sizing:border-box}`),
+   and plugins lay themselves out for it: a box Meta Bind gives `width: 100%` with padding and a
+   border fits the column there and spilled past it here. The universal selector has no
+   specificity, so a plugin's or theme's own `box-sizing` still wins. */
+* { box-sizing: border-box; }
 
 :where(body) {
     /* --font-text, --font-interface and --font-monospace come from the default layer, which

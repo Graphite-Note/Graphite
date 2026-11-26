@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-26.
 
+## Meta Bind's buttons in Graphite: 2026-11-26
+
+[Meta-Bind-buttons-todo.md](Meta-Bind-buttons-todo.md) (issues #233 to #237). Feature 12 of `Docs/Notion-features-for-Graphite.md`: Notion's button blocks through the Meta Bind community plugin 1.5.1, unmodified, pinned by its release files' SHA-256 (`compatibility-plugins.json`, `build-compatibility-plugins.js --only=`). Its buttons run commands, open notes and pages, create notes, from Templater's templates too, set properties and edit their note. Its fields write properties. Four runtime gaps it found are fixed for every plugin: Obsidian's library loaders resolve instead of throwing. A paragraph holding a plugin's block reaches the copy whole (`graphite-p`). Elements are sized by their border box as in Obsidian. A plugin that asked for a note's metadata while it was being read hears `changed`. A made-up course page demo with "New assignment" and "Start lecture" is in `Tests/CommunityPluginRuntimeTests/fixtures/meta-bind-course-vault`.
+
+- **Automated tests, passing:** Node: `tests/meta-bind.test.js` (7), `tests/meta-bind-runtime-gaps.test.js` (3), the whole runtime suite with every pinned plugin (203). Swift: `CommunityPluginCopyParagraphsInWebKitTests` (1, WebKit on the Mac). Hosted: `CommunityPluginHostTests` Meta Bind tests (3: the course page's buttons and field, the progress bar in Live Preview, a button in a note open in Live Preview) in a dedicated iPad simulator (iOS 27.2) and the Mac app.
+- **Measured:** the plugins' page with Templater and Meta Bind on the course page, 94 to 100 MB in the iPad simulator (80 MB with Templater alone) and 92 MB on the Mac (47 MB), each copy of a block 57 MB in the simulator and 14 MB on the Mac.
+- **Not verified:** taps by finger and clicks by hand, the physical iPad, JavaScript actions with the JS Engine plugin. Open: once in five Mac runs, the course page's line of fields, drawn again after the page was opened again, came out as Graphite's own rendering.
+
 ## Relations, rollups, new notes from a view and course dashboards in Bases: 2026-11-26
 
 `Docs/Bases-relations-todo.md` (issues #252 to #255), features 1 and 2 of `Docs/Notion-features-for-Graphite.md`. A relation is a frontmatter list of `[[links]]` chosen with a picker in a base's property sheet (`BaseRelationPicker`), the reverse side and rollups are formulas of the `.base` file written by Add Rollup… (`BaseRollupFormula`), New in a view and in a Kanban column makes a note with the values the view's filters imply as Obsidian 1.15 reads them (`BaseNewItemPlanner`, `newItemFolder`, `newItemTemplate`). New Course makes a course starter of ordinary files whose course page embeds views filtered by `this`. A base whose formulas read other notes now runs again when one of those notes is saved.

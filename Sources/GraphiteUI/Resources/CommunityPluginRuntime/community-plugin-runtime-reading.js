@@ -5,8 +5,8 @@
  * Description: Plugins' code blocks, sections and views drawn in the page and copied to Graphite, and live views.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.11
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 26/11/2026
  */
 
 // Plugins' code blocks in Graphite's native reading view, and the links plugins draw.
@@ -298,10 +298,36 @@
         return entry.element;
     }
 
+    /// The elements whose start tag ends an open paragraph in the HTML parser.
+    const paragraphEndingElements = 'address, article, aside, blockquote, details, dialog, div, dl, fieldset, figcaption, figure, footer, form, '
+        + 'h1, h2, h3, h4, h5, h6, header, hgroup, hr, main, menu, nav, ol, p, pre, search, section, table, ul';
+
+    /// A plugin can put a block inside a paragraph with the DOM, which allows it, while the copy
+    /// is rebuilt from HTML, which does not: the parser ends the paragraph at the block, so
+    /// `<p>Status <code><div>…</div></code></p>` (a Meta Bind field in a line of text) comes out
+    /// of the copy as two paragraphs around the block, and the element paths the copy sends no
+    /// longer find the plugin's elements. Such a paragraph is sent as `graphite-p`, an element
+    /// the parser keeps whole, and the copy turns it back into a `p` with the DOM.
+    function keepParagraphsWhole(copiedRoot) {
+        const isBroken = (paragraph) => paragraph.querySelector(paragraphEndingElements) !== null;
+        const paragraphs = Array.from(copiedRoot.querySelectorAll('p')).filter(isBroken);
+        if (copiedRoot.tagName === 'P' && isBroken(copiedRoot)) paragraphs.unshift(copiedRoot);
+        let root = copiedRoot;
+        for (const paragraph of paragraphs) {
+            const kept = globalScope.document.createElement('graphite-p');
+            for (const attribute of Array.from(paragraph.attributes)) kept.setAttribute(attribute.name, attribute.value);
+            while (paragraph.firstChild) kept.appendChild(paragraph.firstChild);
+            if (paragraph === root) root = kept;
+            else paragraph.replaceWith(kept);
+        }
+        return root;
+    }
+
     function copyOf(entry) {
         followReplacement(entry);
-        const copiedRoot = entry.element.cloneNode(true);
-        copyLiveState(entry.element, copiedRoot);
+        const clonedRoot = entry.element.cloneNode(true);
+        copyLiveState(entry.element, clonedRoot);
+        const copiedRoot = keepParagraphsWhole(clonedRoot);
         const html = copiedRoot.outerHTML;
         if (html.length > maximumSnapshotCharacters) {
             return '<div class="graphite-plugin-error">This block is too large for Graphite to show (' + Math.round(html.length / 1048576) + ' MB).</div>';

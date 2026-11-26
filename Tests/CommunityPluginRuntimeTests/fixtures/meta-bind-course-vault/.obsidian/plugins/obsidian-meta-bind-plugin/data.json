@@ -1,0 +1,29 @@
+{
+  "buttonTemplates": [
+    {
+      "label": "New assignment",
+      "id": "new-assignment",
+      "icon": "file-plus",
+      "style": "primary",
+      "action": {
+        "type": "templaterCreateNote",
+        "templateFile": "Templates/Assignment.md",
+        "folderPath": "Signals and Systems/Assignments",
+        "fileName": "New assignment",
+        "openNote": true
+      }
+    },
+    {
+      "label": "Start lecture",
+      "id": "start-lecture",
+      "icon": "presentation",
+      "style": "default",
+      "action": {
+        "type": "templaterCreateNote",
+        "templateFile": "Templates/Lecture.md",
+        "folderPath": "Signals and Systems/Lectures",
+        "openNote": true
+      }
+    }
+  ]
+}

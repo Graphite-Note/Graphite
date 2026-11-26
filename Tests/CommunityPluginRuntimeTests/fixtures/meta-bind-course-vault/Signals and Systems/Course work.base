@@ -1,0 +1,15 @@
+filters:
+  and:
+    - file.inFolder("Signals and Systems")
+    - 'type == "assignment" || type == "lecture"'
+views:
+  - type: table
+    name: Course work
+    order:
+      - file.name
+      - type
+      - due
+      - status
+    sort:
+      - property: file.name
+        direction: ASC
