@@ -3,7 +3,7 @@ import Foundation
 import XCTest
 @testable import NotebookImport
 
-/// Plans every page of the owner's Goodnotes samples. The notebooks are personal and never in the repository, so
+/// Plans every page of the supplied Goodnotes samples. The notebooks are personal and never in the repository, so
 /// this test is skipped unless `GRAPHITE_IMPORT_SAMPLES` and `GRAPHITE_IMPORT_REFERENCE_COUNTS` are set (see
 /// `NotebookImportSamples`).
 final class GoodnotesPagePlannerSampleTests: XCTestCase {

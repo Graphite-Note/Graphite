@@ -39,7 +39,7 @@ public struct ImportedRecordingsPlan: Sendable, Equatable {
     }
 
     /// The report's entries for `missingFileCount` recordings without a file and `timedElementCount` elements timed
-    /// against a recording (the owner's decision of 2026-10-20 leaves that timing out for now).
+    /// against a recording (the decision of 2026-10-20 leaves that timing out for now).
     static func report(missingFileCount: Int, timedElementCount: Int) -> [ImportReportEntry] {
         var report: [ImportReportEntry] = []
         if missingFileCount > 0 { report.append(.recordingFilesMissing(count: missingFileCount)) }

@@ -18,7 +18,7 @@ import GraphiteIndex
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// What a change costs, in listings done and versions moved. The owner's vault has 24,712 files
+/// What a change costs, in listings done and versions moved. The real vault has 24,712 files
 /// at its root, where one listing is one metadata read each and about 360,000 comparisons.
 @MainActor
 final class WorkspaceListingWorkTests: XCTestCase {

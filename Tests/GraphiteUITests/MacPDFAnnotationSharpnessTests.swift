@@ -44,7 +44,7 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
 
     // MARK: The picture
 
-    /// The owner's case: a large picture placed the way the iPad places it now, at 60% of the
+    /// The reported case: a large picture placed the way the iPad places it now, at 60% of the
     /// page width, saved, opened on the Mac at fit width and at twice fit width.
     func testAPlacedPictureIsDrawnAtTheScreensResolutionAtFitAndZoomedIn() async throws {
         let location = try await makeSavedPDF(withPicture: true, withInk: false)
@@ -228,7 +228,7 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
         return location
     }
 
-    /// The PDF in the Mac's PDF view, in a window that is never shown, as wide as the owner's.
+    /// The PDF in the Mac's PDF view, in a window that is never shown, as wide as the reported one.
     private func show(_ location: URL) async throws -> (NSWindow, PDFView) {
         let session = try await PDFSession.open(location)
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 1_000, height: 900), styleMask: [.titled], backing: .buffered, defer: false)

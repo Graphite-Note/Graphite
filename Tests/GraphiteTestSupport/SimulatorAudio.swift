@@ -4,7 +4,7 @@ import XCTest
 /// and the simulator opens the Mac's speaker device ("iOSSimulatorAudioDevice ... audio-out BuiltInSpeakerDevice" held by
 /// coreaudiod) when an app in it writes, joins and exports a video's sound, as the recording tests do (measured by running one test alone
 /// and with a watch on the assertion: it opens a moment after the test ends). The Mac suite runs such a test (macOS does not open the
-/// output), and the nightly job runs it on the owner's iPad.
+/// output), and the nightly job runs it on the physical iPad.
 public enum SimulatorAudio {
     /// Skips the test in the iOS Simulator, saying what would open the output.
     public static func requireNoAudioOutput(whichIs cause: String) throws {

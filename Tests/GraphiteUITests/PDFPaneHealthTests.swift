@@ -9,7 +9,7 @@ final class PDFPaneHealthTests: XCTestCase {
                                        drawsWithFinger: drawsWithFinger, secondsSincePencil: secondsSincePencil)
     }
 
-    /// On the owner's iPad, six of ten times the PDF was taken to have stopped a picture's or a
+    /// On the physical iPad, six of ten times the PDF was taken to have stopped a picture's or a
     /// selection's frame was being dragged: the frame changes the page only once the finger has
     /// lifted, after the gesture is judged, so three moves in a row built the PDF's view again.
     func testDragsOfASelectionFrameNeverCount() {
@@ -55,7 +55,7 @@ final class PDFPaneHealthTests: XCTestCase {
         XCTAssertTrue(log.entries.last?.hasSuffix("gesture 20") == true)
     }
 
-    /// The page's scrolling left "ended" with no touch, as on the owner's iPad on 2026-11-10:
+    /// The page's scrolling left "ended" with no touch, as on the physical iPad on 2026-11-10:
     /// reset at the second check in a row, and the view built again when that did not help.
     func testScrollingLeftFinishedIsResetAndThenTheViewIsBuiltAgain() {
         var watch = FinishedGestureWatch()

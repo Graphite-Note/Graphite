@@ -183,7 +183,7 @@ final class ReadAloudDocumentTests: XCTestCase {
         XCTAssertEqual(try speech("See Fig. on the left, and No. one."), "See Fig. on the left, and No. one.")
     }
 
-    /// Words broken across lines on the owner's papers: "tran-|sistor" is one word, "low-|power"
+    /// Words broken across lines on the supplied papers: "tran-|sistor" is one word, "low-|power"
     /// a compound. 320 such breaks in two of their papers: before, every hyphen was kept
     /// ("transis-tor"); now 302 are read right, and the other 18 are cases where the PDF's
     /// next line belongs to another column or a figure.

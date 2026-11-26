@@ -2,7 +2,7 @@
  * File: ViewSwitchingBenchmarks.swift
  * -----------------------------------
  * Layer: Tests
- * Description: The switches of views the owner found slow, timed in a vault of the owner's size on the Mac and the iPad:
+ * Description: The switches of views found slow, timed in a vault of the reported size on the Mac and the iPad:
  *              Library and List, the note's three views, another tab, and the sidebar's panels.
  *
  * Authors: Bahey Shalash
@@ -22,7 +22,7 @@ import UIKit
 import AppKit
 #endif
 
-/// The switches of `Docs/View-switching-speed-todo.md` section 1 in an `OwnerShapedVault` of the owner's size, each made
+/// The switches of `Docs/View-switching-speed-todo.md` section 1 in an `OwnerShapedVault` of the reported size, each made
 /// six times, timed by `MainThreadQuietWatch`, with one `GRAPHITE-SWITCH` line per kind of switch. They are benchmarks of
 /// `PerformanceBenchmarkTests` and run only when asked for, as those do:
 /// `GRAPHITE_BENCHMARKS=1 swift test -c release -Xswiftc -enable-testing --filter PerformanceBenchmarkTests/testSwitchingViews`

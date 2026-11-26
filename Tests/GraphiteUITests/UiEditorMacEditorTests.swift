@@ -107,7 +107,7 @@ final class UiEditorMacEditorTests: XCTestCase {
 
     /// A quote's bar runs unbroken down a quoted line that wraps and on into the next quoted
     /// line, as in Obsidian: it was drawn line by line, with a gap at every wrap and between
-    /// quoted lines (the owner's lecture citation).
+    /// quoted lines (a lecture citation).
     func testAQuotesBarHasNoGapsWhereItsLinesWrapOrFollowEachOther() async throws {
         let text = "> **Lecture 4, Memory-Centric Computing II** - Dr. Geraldo F. Oliveira · SAFARI Research Group, ETH Zürich, and Huawei Zürich · 2 October 2026\n> A second quoted line\nlast"
         let (_, textView, _) = try await makeEditor(text: text)

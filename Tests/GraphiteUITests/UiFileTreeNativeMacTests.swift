@@ -36,7 +36,7 @@ final class UiFileTreeNativeMacTests: XCTestCase {
     }
 
     /// The outline view asks for the rows it shows, not for every row: SwiftUI's list made a
-    /// view for each of the 24,712 files at the owner's vault's root, and the main thread
+    /// view for each of the 24,712 files at the real vault's root, and the main thread
     /// stayed busy 7 to 10 s after the vault opened.
     func testTwentyFiveThousandRootFilesShowAtOnce() async throws {
         let workspace = try makeWorkspace(files: [])
@@ -99,7 +99,7 @@ final class UiFileTreeNativeMacTests: XCTestCase {
 
         await workspace.refreshDirectory()
         await ManualClock.letResumedTasksRun()
-        XCTAssertEqual(fileTree.fullReloadCount, reloadsBefore, "Every refresh used to reload all rows, 24,712 at the owner's root.")
+        XCTAssertEqual(fileTree.fullReloadCount, reloadsBefore, "Every refresh used to reload all rows, 24,712 at the real vault's root.")
 
         // Listed anew by name: a change in Course lists Course and nothing else.
         let vault = try XCTUnwrap(workspace.folderAccess?.root)

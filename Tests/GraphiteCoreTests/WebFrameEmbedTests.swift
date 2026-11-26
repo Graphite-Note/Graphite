@@ -2,7 +2,7 @@
  * File: WebFrameEmbedTests.swift
  * ------------------------------
  * Layer: Tests
- * Description: Web frames found in note source: the owner's `<iframe>` line, attributes in every spelling, sizes and
+ * Description: Web frames found in note source: the reported `<iframe>` line, attributes in every spelling, sizes and
  *              looks, addresses that stay text, frames in callouts, list items, code and comments, the reading view's
  *              and Live Preview's blocks agreeing, which frames hold a live page, and `#ccc` in HTML left untagged.
  *
@@ -15,7 +15,7 @@ import XCTest
 @testable import GraphiteCore
 
 final class WebFrameEmbedTests: XCTestCase {
-    /// The line of the owner's note `4_Amdahl's Law in the Multicore Era` (2026-11-12).
+    /// The line of the reported note `4_Amdahl's Law in the Multicore Era` (2026-11-12).
     static let ownersLine = #"<iframe src="https://research.cs.wisc.edu/multifacet/amdahl/" width="100%" height="900" style="border:1px solid #ccc; border-radius:6px"></iframe>"#
 
     private func frame(_ text: String) -> WebFrameEmbed? {
@@ -223,7 +223,7 @@ final class WebFrameEmbedTests: XCTestCase {
 
     // MARK: Tags inside HTML (section 1)
 
-    /// The owner's line coloured `#ccc` as a tag. The index already leaves HTML out of a note's tags; the editor's
+    /// The reported line coloured `#ccc` as a tag. The index already leaves HTML out of a note's tags; the editor's
     /// highlighting now does too, and a tag beside the HTML is still one.
     func testAHashInsideAnHTMLTagIsNotATagInTheIndexOrTheEditor() throws {
         XCTAssertEqual(try MarkdownSemantics.parse(Self.ownersLine + "\n\nFiled under #real").tags, ["real"])

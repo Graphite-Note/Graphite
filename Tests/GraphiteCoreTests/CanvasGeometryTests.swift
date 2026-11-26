@@ -223,7 +223,7 @@ final class CanvasGeometryTests: XCTestCase {
     }
 
     /// Finding the cards in view scans the cards, so a board four times as large takes four times as long and no more. That
-    /// the scan fits in a frame at 120 Hz is a claim about the owner's iPad, checked by its nightly benchmark
+    /// the scan fits in a frame at 120 Hz is a claim about the physical iPad, checked by its nightly benchmark
     /// (`PerformanceBenchmarkTests.testFindingTheVisibleCardsOfAVeryLargeBoardFitsInAFrame`), not by a runner's clock.
     func testFindingWhatIsVisibleOnAVeryLargeBoardIsQuick() throws {
         let file = try CanvasFixtures.file(CanvasFixtures.largeBoard(cardCount: 20_000))

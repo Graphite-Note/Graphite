@@ -49,7 +49,7 @@ final class ShownFolderLookTests: XCTestCase {
         XCTAssertEqual(resolve(stored, iPadFolder, canWritePictures: false), .drawnByGraphite(stored))
     }
 
-    /// The owner's bug of 2026-11-19: iCloud Drive left the red tag's number at 1, so the
+    /// The bug of 2026-11-19: iCloud Drive left the red tag's number at 1, so the
     /// system's icon was gray while Finder showed red. Graphite draws the look itself.
     func testATagWhoseNumberICloudRewroteIsDrawnByGraphiteInItsNamedColor() {
         let stored = FolderStyle(color: .red, mark: .symbol("frying.pan.fill"))
@@ -65,7 +65,7 @@ final class FolderLookReconciliationTests: XCTestCase {
         FolderLookReconciliation.action(stored: stored, finder: finder, canWritePictures: canWritePictures)
     }
 
-    /// The owner's bug of 2026-10-21: looks chosen before Graphite wrote folder attributes stayed in its file only.
+    /// The bug of 2026-10-21: looks chosen before Graphite wrote folder attributes stayed in its file only.
     func testAStyleOnlyInGraphitesFileIsWrittenToThePlainFolder() {
         let style = FolderStyle(color: .red, mark: .emoji("⚡️"))
         XCTAssertEqual(action(style, .plain), .writeAttributes(style))

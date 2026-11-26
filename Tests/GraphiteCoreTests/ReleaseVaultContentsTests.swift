@@ -19,8 +19,8 @@ import GraphiteFixtures
 /// https page of a few known sites, every file listed in its README, settings included, and its drawings carrying their
 /// strokes.
 ///
-/// The web rule was "every address on the loopback placeholder" until 2026-11-12, when the owner asked for frames of real
-/// pages for a person browsing the vault. Nothing in a test reaches those sites: the pass points every frame of its copy
+/// The web rule was "every address on the loopback placeholder" until 2026-11-12, when frames of real
+/// pages for a person browsing the vault were requested. Nothing in a test reaches those sites: the pass points every frame of its copy
 /// at its own loopback server, whatever the address (`ReleaseVaultPassTests.testEveryWebFrameOfTheVaultIsPointedAtThePassServer`
 /// checks it on every run), and links are not followed. What stays checked here is that the vault names only pages
 /// that play nothing by themselves, over https.

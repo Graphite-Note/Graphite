@@ -54,7 +54,7 @@ final class MacMarkdownEditorReadingReturnTests: XCTestCase {
     /// The pane updates a kept editor before its container is in the window. The editor
     /// then takes the reading place as it enters the window. It used to wait in the session
     /// until the next update, the click that switched back to reading, so the editor showed
-    /// where it was itself (owner's Mac, 2026-10-24).
+    /// where it was itself (development Mac, 2026-10-24).
     func testEditorUpdatedBeforeItIsInTheWindowGoesToTheReadingPlaceAsItEntersIt() async throws {
         let fixture = try await MacMarkdownEditorFixture(text: Self.text)
         self.fixture = fixture

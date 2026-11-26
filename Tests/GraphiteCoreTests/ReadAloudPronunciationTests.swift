@@ -1,7 +1,7 @@
 import XCTest
 @testable import GraphiteCore
 
-/// The owner's field's words are said the way engineers say them, with plain respellings every
+/// The field's words are said the way engineers say them, with plain respellings every
 /// voice reads, and the highlight stays on the word as written.
 final class ReadAloudPronunciationTests: XCTestCase {
     private let pronunciations = ReadAloudPronunciations.standard
@@ -55,7 +55,7 @@ final class ReadAloudPronunciationTests: XCTestCase {
     }
 
     /// Plain respelling is the default; IPA is handed over only when turned on for a voice
-    /// verified to honor it (none yet: the owner's Enhanced voice mangled it).
+    /// verified to honor it (none yet: an Enhanced voice mangled it).
     func testRespellingIsTheDefaultAndIPAIsOptIn() throws {
         let passage = try XCTUnwrap(ReadAloudDocument.markdown("The SIMD unit.").passages.first)
         XCTAssertEqual(passage.text, "The sim dee unit.")

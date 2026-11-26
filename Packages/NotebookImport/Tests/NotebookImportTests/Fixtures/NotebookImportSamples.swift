@@ -1,8 +1,8 @@
 import Foundation
 import XCTest
 
-/// The owner's real Goodnotes and Notability samples, which are personal notebooks and are never in the repository.
-/// They live only in the owner's local `samples/import-formats` branch, under `ImportSamples/`. To run the sample tests,
+/// The real Goodnotes and Notability samples, which are personal notebooks and are never in the repository.
+/// They live only in the local `samples/import-formats` branch, under `ImportSamples/`. To run the sample tests,
 /// copy that folder out (`git archive samples/import-formats ImportSamples | tar -x -C <folder>`), write the reference
 /// readers' counts with `python3 scripts/import-reference-counts.py <folder>/ImportSamples > <counts>.json`, and set
 /// `GRAPHITE_IMPORT_SAMPLES=<folder>/ImportSamples` and `GRAPHITE_IMPORT_REFERENCE_COUNTS=<counts>.json`. Without them
@@ -10,7 +10,7 @@ import XCTest
 enum NotebookImportSamples {
     static let samplesFolderVariable = "GRAPHITE_IMPORT_SAMPLES"
     static let referenceCountsVariable = "GRAPHITE_IMPORT_REFERENCE_COUNTS"
-    static let skipReason = "Set GRAPHITE_IMPORT_SAMPLES and GRAPHITE_IMPORT_REFERENCE_COUNTS to compare with the owner's samples."
+    static let skipReason = "Set GRAPHITE_IMPORT_SAMPLES and GRAPHITE_IMPORT_REFERENCE_COUNTS to compare with the supplied samples."
 
     struct Configuration {
         let samplesFolder: URL

@@ -14,7 +14,7 @@ import XCTest
 import SwiftUI
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: upright and sideways "it's not the same view". The system's automatic sidebar is
+/// The report of 2026-11-04: upright and sideways "it's not the same view". The system's automatic sidebar is
 /// beside the documents sideways and hidden upright; a turn now keeps what the window showed. Nothing here draws.
 @MainActor
 final class SidebarAcrossTurnTests: XCTestCase {

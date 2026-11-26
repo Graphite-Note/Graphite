@@ -91,7 +91,7 @@ final class GoodnotesTextPlannerTests: XCTestCase {
         XCTAssertEqual(planned.padding, 10 * Self.pointsPerUnit, accuracy: Self.accuracy)
     }
 
-    /// A frame that no longer surrounds its text area, as in one of the owner's library notebooks: the text stays where
+    /// A frame that no longer surrounds its text area, as in one of the real library notebooks: the text stays where
     /// its text area is, as wide as it.
     func testAnOlderTextBoxWhoseFrameMovedAwayKeepsItsTextWhereItsTextAreaIs() {
         let textBox = GoodnotesRTFTextBox(frame: CGRect(x: 652, y: 999.27, width: 240, height: 42),

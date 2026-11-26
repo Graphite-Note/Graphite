@@ -18,7 +18,7 @@ import PencilKit
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner's report of 2026-11-04: "eraser needs to go much much smaller, more granularity". Values only:
+/// The report of 2026-11-04: "eraser needs to go much much smaller, more granularity". Values only:
 /// the cut itself is `PixelEraserPassTests` and, on a real canvas, the hosted `FinePixelEraserTests`.
 @MainActor
 final class PencilEraserWidthsTests: XCTestCase {

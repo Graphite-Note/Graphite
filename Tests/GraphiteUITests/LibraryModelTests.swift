@@ -145,7 +145,7 @@ final class LibraryModelTests: XCTestCase {
         try await waitUntil("the tile has its picture", timeoutSeconds: 5) { library.folderLooks.tileImages[courses.path] != nil }
     }
 
-    /// The owner's bug of 2026-10-21: looks chosen before Graphite wrote folder attributes
+    /// The reported bug of 2026-10-21: looks chosen before Graphite wrote folder attributes
     /// showed in Graphite and not in Files. Listing the folder now writes them.
     func testALookOnlyInGraphitesFileIsWrittenToTheFolderWhenListed() async throws {
         let styleFile = vault.appendingPathComponent(FolderStyleList.configurationPath)
@@ -197,7 +197,7 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertEqual(library.folderLooks.shownLook(of: try VaultPath("Courses")), .drawnByFinder(FolderStyle(mark: .symbol("star.fill"))))
     }
 
-    /// HUNT-373, the owner's folder of 2026-11-19: iCloud Drive left its red tag as
+    /// HUNT-373, the reported folder of 2026-11-19: iCloud Drive left its red tag as
     /// `"Red\n1"`, Finder showed it red, and Graphite had saved it gray. Listing it gives the
     /// style its red back, and Graphite draws the tile, as the system's icon would be gray.
     func testAFolderWhoseTagNumberICloudRewroteShowsItsNamedColor() async throws {

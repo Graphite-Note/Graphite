@@ -18,7 +18,7 @@ import GraphiteFixtures
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner, 2026-11-12: "import goodnotes ziped folders or files, same with notability". Import, a drop on the library
+/// Requested 2026-11-12: "import goodnotes ziped folders or files, same with notability". Import, a drop on the library
 /// or the file list, and a file opened from another app all reach `importFiles(from:into:)`, whose importers by file type
 /// send a `.zip` to its unpacking (`archiveFileImporter`). The archives are made with `StoredZipArchive` from the
 /// synthetic notebooks of `Tests/SyntheticNotebooks`.

@@ -16,7 +16,7 @@ import XCTest
 @testable import GraphiteUI
 import GraphiteCore
 
-/// The owner's request of 2026-11-13: arrange the bar's colors by dragging, as in Apple's markup palette. Values only.
+/// The request of 2026-11-13: arrange the bar's colors by dragging, as in Apple's markup palette. Values only.
 final class PencilColorArrangementTests: XCTestCase {
     private let red = PaletteColor(name: "red", hex: "#e93147")
     private let orange = PaletteColor(name: "orange", hex: "#ec7500")
@@ -99,7 +99,7 @@ final class PencilColorArrangementTests: XCTestCase {
         XCTAssertEqual(saved.last?.hex, TextColorMarkup.canonicalHex("#2a9d8f"), "The swatch is saved at the end of the strip.")
     }
 
-    /// The owner's request of 2026-11-17: a color chosen in the plus's picker goes on the strip at once. The first pick
+    /// The request of 2026-11-17: a color chosen in the plus's picker goes on the strip at once. The first pick
     /// adds one swatch, later picks change it, and a pick of a color the strip has adds nothing.
     func testThePlusPickerSavesItsFirstPickAndLaterPicksChangeThatSwatch() {
         let first = FavoriteColorEditing.savingPickedColor(hex: "#2A9D8F", addedColorIdentifier: nil, in: palette)

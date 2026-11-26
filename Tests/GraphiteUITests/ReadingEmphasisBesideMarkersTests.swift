@@ -20,7 +20,7 @@ import GraphiteCore
 final class ReadingEmphasisBesideMarkersTests: XCTestCase {
     private static let frame = Character(ReadingMarkerPunctuation.frame)
 
-    /// The owner's line (2026-11-20) and the same shape beside each marker the reading view
+    /// The reported line (2026-11-20) and the same shape beside each marker the reading view
     /// writes: each read as a `**` or `*` that stayed in the text before.
     func testBoldAndItalicBesideAFormulaInsideMarkersReadWithoutAsterisks() throws {
         let lines: [(markdown: String, emphasized: InlinePresentationIntent, isColored: Bool)] = [

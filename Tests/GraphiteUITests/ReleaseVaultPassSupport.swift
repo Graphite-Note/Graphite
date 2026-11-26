@@ -224,7 +224,7 @@ enum ReleaseVaultPassWebPages {
         for item in try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
             try fileManager.copyItem(at: item, to: destination.appendingPathComponent(item.lastPathComponent))
         }
-        // A checkout below `.claude` on the iCloud Desktop gives every file the hidden flag, which the copy would keep
+        // A checkout below a hidden folder on the iCloud Desktop gives every file the hidden flag, which the copy would keep
         // and Graphite would then leave out of the vault; names starting with a dot stay hidden by their name.
         let enumerator = fileManager.enumerator(at: destination, includingPropertiesForKeys: [.isHiddenKey])
         while var location = enumerator?.nextObject() as? URL {
@@ -250,7 +250,7 @@ enum ReleaseVaultPassWebPages {
     }
 
     /// The vault's notes outside its hidden folders. Hidden is judged inside the vault: `.skipsHiddenFiles` also skipped
-    /// every note of a checkout below a hidden folder, such as a worktree in `.claude/worktrees`.
+    /// every note of a checkout below a hidden folder, such as a worktree in a folder whose name starts with a dot.
     private static func notes(in vaultRoot: URL) throws -> [URL] {
         let root = vaultRoot.standardizedFileURL.path
         let enumerator = FileManager.default.enumerator(at: vaultRoot, includingPropertiesForKeys: nil)
@@ -264,7 +264,7 @@ enum ReleaseVaultPassWebPages {
 }
 
 /// How busy the Mac is, which a simulator shares: the one-minute load average against the processor count. Other
-/// sessions' builds load the owner's Mac to 30 or more on its 18 processors, and a main thread starved of processor time
+/// concurrent builds load the development Mac to 30 or more on its 18 processors, and a main thread starved of processor time
 /// then looks frozen to the pass (Docs/Release-test-vault-todo.md, section 2).
 struct ReleaseVaultMachineLoad {
     let oneMinuteAverage: Double

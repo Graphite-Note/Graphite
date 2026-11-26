@@ -17,7 +17,7 @@ import XCTest
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner's Library → List switch spent about 1 s laying out the window's toolbar again, half of
+/// The Library → List switch spent about 1 s laying out the window's toolbar again, half of
 /// it SwiftUI looking up the named symbols of the toolbar menus' entries at each of about 20 reads
 /// of the toolbar items (sampled 2026-11-10). `MenuItemLabel` hands the Mac made images instead.
 @MainActor
@@ -86,7 +86,7 @@ final class MenuItemLabelTests: XCTestCase {
     func testToolbarMenusWithMadeSymbolImagesAppearFasterThanWithNamedSymbols() throws {
         let namedSymbols = try shortestTimeForItemsToAppear(usesMadeImages: false)
         let madeImages = try shortestTimeForItemsToAppear(usesMadeImages: true)
-        // Measured 2026-11-10 on the owner's Mac: about 255 ms named, 155 ms made, 100 ms for plain buttons (50 ms of it the waits above).
+        // Measured 2026-11-10 on the development Mac: about 255 ms named, 155 ms made, 100 ms for plain buttons (50 ms of it the waits above).
         XCTAssertLessThan(madeImages, namedSymbols * 0.85, "Made images \(madeImages), named symbols \(namedSymbols).")
     }
 

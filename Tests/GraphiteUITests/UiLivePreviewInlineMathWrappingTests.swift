@@ -21,7 +21,7 @@ import GraphiteTestSupport
 /// column's edge, where Obsidian breaks it after `+` or `=`.
 @MainActor
 final class UiLivePreviewInlineMathWrappingTests: XCTestCase {
-    /// The owner's table cell's formula, longer, as a paragraph might hold it.
+    /// The reported table cell's formula, longer, as a paragraph might hold it.
     private static let longLatex = #"(C_{jb} \cdot L_A + C_{jsw})W + C_j \cdot W \cdot L/2 + C_{ox} \cdot W \cdot L = C_{total}"#
     private static let paragraph = "The capacitance is $\(longLatex)$ in this region.\n"
 

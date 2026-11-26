@@ -28,7 +28,7 @@ final class PlacedNotePropertyNamesTests: XCTestCase {
     }
 
     func testThePropertiesThePluginsAreSetToUseComeFirst() throws {
-        // As in the owner's vault: Geocoding Properties writes coordinates into `Coordonnées`.
+        // As in the real vault: Geocoding Properties writes coordinates into `Coordonnées`.
         try writeSettings(#"{"properties":{"address":{"frontmatterKey":"Adresse","enabled":true},"location":{"frontmatterKey":"Coordonnées","enabled":true}}}"#,
                           forPlugin: "geocoding-properties")
         try writeSettings(#"{"frontMatterKey":"geo"}"#, forPlugin: "obsidian-map-view")

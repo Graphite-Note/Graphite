@@ -2,7 +2,7 @@
  * File: GraphLayoutShapeTests.swift
  * ---------------------------------
  * Layer: Tests
- * Description: The shape of a settled layout on a made-up vault of the owner's size: the notes without links keep to a
+ * Description: The shape of a settled layout on a made-up vault of the real vault's size: the notes without links keep to a
  *              thin ring, the pass of repulsion gives the same pushes shared between cores as on one, and a step
  *              with pushes worked out apart is the same step.
  *
@@ -15,7 +15,7 @@ import XCTest
 @testable import GraphiteCore
 import GraphiteTestSupport
 
-/// The layout's shape on a vault of the owner's size (`GeneratedCourseVault`, 4,700 notes),
+/// The layout's shape on a vault of the real vault's size (`GeneratedCourseVault`, 4,700 notes),
 /// tags hidden, where the notes without links are most: 2,070 of them.
 final class GraphLayoutShapeTests: XCTestCase {
     func testTheNotesWithoutLinksKeepToAThinRingAroundTheLinkedOnes() async throws {

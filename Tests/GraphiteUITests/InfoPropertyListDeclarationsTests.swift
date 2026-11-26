@@ -53,7 +53,7 @@ final class InfoPropertyListDeclarationsTests: XCTestCase {
 
     func testThePlatformDeclarationsAreTheseValues() throws {
         let propertyList = try infoPropertyList()
-        // Several windows on the iPad, one on the iPhone (owner, 2026-10-21).
+        // Several windows on the iPad, one on the iPhone (requested 2026-10-21).
         let sceneManifest = try XCTUnwrap(propertyList["UIApplicationSceneManifest"] as? [String: Any])
         XCTAssertEqual(sceneManifest["UIApplicationSupportsMultipleScenes"] as? Bool, false)
         let iPadSceneManifest = try XCTUnwrap(propertyList["UIApplicationSceneManifest~ipad"] as? [String: Any])

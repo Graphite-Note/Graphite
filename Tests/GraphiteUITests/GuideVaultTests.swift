@@ -106,7 +106,7 @@ final class GuideVaultTests: XCTestCase {
         differences += Set(listed.keys).subtracting(try vaultFiles().map(\.relativePath)).sorted()
         XCTAssertEqual(differences, [], "Commit the vault, then run scripts/make-guide-vault.py --pack-revision <that commit>.")
         XCTAssertNotNil(GuideVaultPack.pack)
-        XCTAssertEqual(GuideVaultPack.pack?.delivery, .downloadOnly, "A download, not part of the app (the owner's lean-core rule).")
+        XCTAssertEqual(GuideVaultPack.pack?.delivery, .downloadOnly, "A download, not part of the app (the lean-core rule).")
     }
 
     /// Fenced and inline code are syntax shown, not links.

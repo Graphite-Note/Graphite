@@ -25,7 +25,7 @@ final class FinderFolderLookTests: XCTestCase {
         XCTAssertFalse(look.systemIconMatchesFinder)
     }
 
-    /// The owner's shared folder on 2026-11-19: Finder showed it red, Graphite gray.
+    /// A shared folder on 2026-11-19: Finder showed it red, Graphite gray.
     func testAColorTagShowsTheColorItIsNamedAfterWhateverItsNumber() {
         XCTAssertEqual(FinderTag(storedText: "Red\n1", colorTagNames: [:]).color, .red)
         XCTAssertEqual(FinderTag(storedText: "Rot\n1", colorTagNames: [.red: "Rot"]).color, .red)

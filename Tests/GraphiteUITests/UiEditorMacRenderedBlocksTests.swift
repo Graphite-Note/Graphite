@@ -195,7 +195,7 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
 
     /// A restyle gives a block's lines new fragments, which TextKit has not laid out when the
     /// views are placed. The Mac waited for TextKit's next layout of the viewport, which could
-    /// come only with the next scroll: the owner's pictures stayed blank over their space until
+    /// come only with the next scroll: the reported pictures stayed blank over their space until
     /// then (HUNT-364). No layout or drawing of the window runs between the placement and
     /// the check here, so the view is back only if the editor lays out the viewport itself.
     func testABlockWhoseLinesAreNotLaidOutGetsItsViewWithoutWaitingForAScroll() async throws {
@@ -308,7 +308,7 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
     /// touches, and TextKit takes a restyled line's height for an estimate until it lays it
     /// out again, which leaves out a hidden line's reserved space. AppKit scrolls the cursor
     /// into view inside the keystroke, so the note jumped up to where the estimates put the
-    /// heading, and settled somewhere else: the owner's note under two screenshots jumped at
+    /// heading, and settled somewhere else: the reported note under two screenshots jumped at
     /// each space typed.
     func testTypingAtTheEndOfAHeadingUnderAPictureLeavesTheNoteWhereItIs() async throws {
         let text = "## Gate\n\n![[first.png|399]]\n\n![[second.png]]\n\n## Flip-flop\n\n![[third.png]]\n![[fourth.png]]"

@@ -2,7 +2,7 @@
  * File: ViewSwitchingBenchmarkSupport.swift
  * -----------------------------------------
  * Layer: Tests
- * Description: A made-up vault shaped as the owner's (about 33,000 files and 3,000 nested tags), the window's root view
+ * Description: A made-up vault shaped as the real vault (about 33,000 files and 3,000 nested tags), the window's root view
  *              opened over it, and a watch that times how long a switch of views keeps the main thread busy, for the
  *              Mac's and the iPad's switching tests and benchmarks.
  *
@@ -25,7 +25,7 @@ import UIKit
 import AppKit
 #endif
 
-/// A made-up vault with the owner's proportions (2026-11-10: 32,843 files, 1,372 notes, about 3,000 distinct tags):
+/// A made-up vault with the real vault's proportions (2026-11-10: 32,843 files, 1,372 notes, about 3,000 distinct tags):
 /// course folders of lecture notes, each note carrying its course's tags and two tags nested in one of many subjects, a
 /// long lecture full of tables, code and formulas, and a folder of pictures in batches of a thousand. Nothing in it comes
 /// from a real note.
@@ -40,7 +40,7 @@ struct OwnerShapedVault {
     /// Small enough to write and index in a few seconds, for the tests that always run.
     static let small = OwnerShapedVault(noteCount: 300, pictureCount: 2_000, subjectCount: 200)
 
-    /// The folders a window shows expanded in its file tree, 1,183 rows under them at the owner's size.
+    /// The folders a window shows expanded in its file tree, 1,183 rows under them at the real vault's size.
     static let expandedFolders = ["Course 0", "Attachments", "Attachments/Batch 0"]
     static let longLecturePath = "Course 0/Long lecture.md"
 

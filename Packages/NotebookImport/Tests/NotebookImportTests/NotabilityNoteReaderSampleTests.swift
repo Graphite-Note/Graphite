@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import NotebookImport
 
-/// Compares the reader with `scripts/notability-reader.py` on the owner's sample notes, which are never in the
+/// Compares the reader with `scripts/notability-reader.py` on the supplied sample notes, which are never in the
 /// repository (see `NotebookImportSamples`). Each sample's counts are printed as one `NOTABILITY-COUNTS` line.
 final class NotabilityNoteReaderSampleTests: XCTestCase {
     private static let countKeys = ["curves", "points", "highlighter_curves", "shapes", "pictures", "text_runs", "text_utf16_units",

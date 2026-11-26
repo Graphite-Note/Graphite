@@ -215,7 +215,7 @@ final class ReadAloudSessionTests: XCTestCase {
         XCTAssertEqual(speech.usedSystemSettings.last, false)
     }
 
-    /// Earlier builds saved their automatic pick as if the person had chosen it; the owner's iPad
+    /// Earlier builds saved their automatic pick as if the person had chosen it; the physical iPad
     /// kept reading with Eloquence "Eddy". Those keys are dropped, and only a choice recorded with
     /// how it was made is read back.
     func testOldStoredAutomaticPicksAreDroppedAndOnlyRecordedChoicesCount() throws {

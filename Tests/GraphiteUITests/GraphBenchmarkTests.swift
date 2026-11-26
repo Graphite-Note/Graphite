@@ -24,7 +24,7 @@ import UIKit
 import AppKit
 #endif
 
-/// The whole-vault graph on made-up vaults the size of the owner's (4,700 notes) and of a very
+/// The whole-vault graph on made-up vaults the size of the real one (4,700 notes) and of a very
 /// large one (100,000), with tags on and off, as `Docs/Graph-view-todo.md` section 4 asks:
 /// the time from asking for the graph to its first drawing, the time from there to a settled
 /// layout, and the cost of each frame meanwhile and while pinching, panning and dragging a
@@ -42,7 +42,7 @@ extension PerformanceBenchmarkTests {
     private static let graphSettlingLimit = Duration.seconds(120)
     private static let graphGestureFrameCount = 60
 
-    // MARK: The owner's size
+    // MARK: The real vault's size
 
     func testTheGraphOfAVaultOfTheOwnersSizeWithTags() async throws {
         try await measureGraph(of: indexedVault(noteCount: 4_700), showsTags: true, runCount: 3)

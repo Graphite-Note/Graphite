@@ -18,7 +18,7 @@ import XCTest
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// Switching the Mac to Library mode shows the Tags view in the sidebar. With the owner's 3,000
+/// Switching the Mac to Library mode shows the Tags view in the sidebar. With the real vault's 3,000
 /// tags, SwiftUI's outline list took about 4 s of the main thread to lay out the disclosure group
 /// of each tag with nested tags (sampled 2026-11-10), and both the library and the tags showed
 /// spinners meanwhile. The view now lists one flat row per tag shown.
@@ -55,7 +55,7 @@ final class TagsViewLayoutMacTests: XCTestCase {
         let elapsed = ContinuousClock.now - start
 
         XCTAssertNotNil(Self.firstOutlineView(in: window.contentView), "The tags are in the sidebar's outline list.")
-        // Measured 2026-11-10 on the owner's Mac: 10.5 s with a disclosure group per tag, 0.3 s with flat rows.
+        // Measured 2026-11-10 on the development Mac: 10.5 s with a disclosure group per tag, 0.3 s with flat rows.
         SharedRunner.assertWithinTimingBudget(elapsed, isLessThan: .milliseconds(1_500), "Laying out the Tags view took \(elapsed).")
     }
 

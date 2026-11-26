@@ -552,7 +552,7 @@ final class PencilToolboxTests: XCTestCase {
     /// changes its dot, every ink's three sizes are told apart, and every dot stays visible
     /// and inside its button.
     func testTheSizeDotsFollowTheirWidthsWithinAVisibleRange() {
-        // The owner's case: monoline from 1.4 mm down to 0.2 mm and back.
+        // The reported case: monoline from 1.4 mm down to 0.2 mm and back.
         let monolineBroad = PencilSizeDot.diameter(forWidth: 1.4 / PencilWidthText.millimetersPerPoint)
         let monolineFine = PencilSizeDot.diameter(forWidth: 0.2 / PencilWidthText.millimetersPerPoint)
         XCTAssertGreaterThan(monolineBroad - monolineFine, 6)

@@ -61,7 +61,7 @@ final class ReadAloudReadingViewTests: XCTestCase {
         XCTAssertEqual((source as NSString).substring(with: equation.sourceRange), "$x^2$")
     }
 
-    /// The owner saw no highlight at all in the reading view: one apostrophe, quote or dash
+    /// No highlight was seen at all in the reading view: one apostrophe, quote or dash
     /// in a paragraph made its words differ from the voice's ("gate’s"), which switched the
     /// whole paragraph's highlight off. Acronyms said differently must not do that either.
     func testTypographicMarksAndRespelledTermsKeepTheirParagraphMapped() async throws {
@@ -180,7 +180,7 @@ final class ReadAloudReadingViewTests: XCTestCase {
     func testLivePreviewTableMathAndOpenCalloutHighlightActualRenderedContent() async throws {
         let path = try VaultPath("Note.md")
         let samples = ["Before.\n\n| Name | Value |\n| --- | --- |\n| repeat | clear |\n", "Before.\n\n$$x^2$$\n", "> [!note]+ Title\n> Read repeat now.\n"]
-        // A folded callout's body is no longer read (the owner's rule) nor expanded for
+        // A folded callout's body is no longer read (as decided) nor expanded for
         // reading; an open callout highlights its body.
         for source in samples {
             let speech = ReadingProbeSpeech()

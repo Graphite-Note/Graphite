@@ -163,7 +163,7 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
 
     /// HUNT-146: a portrait iPad with the sidebar open leaves the documents about 430 points. Pages and find stay there,
     /// with the title shortened for them; adding pages goes to More first; narrower, they fold too, so the title and More
-    /// stay (the owner's report of 2026-10-13). The sidebar holds the window's controls, so without it the bar has less room.
+    /// stay (the report of 2026-10-13). The sidebar holds the window's controls, so without it the bar has less room.
     func testPagesAndFindStayBesideTheTitleBeforeAddingPagesAndFoldOnlyWhenTheyDoNotFit() {
         func foldsFindAndPages(_ width: CGFloat?, sidebarIsBeside: Bool, sizeClass: UserInterfaceSizeClass? = .regular) -> Bool {
             DocumentToolbarLayout.foldsFindAndPages(detailWidth: width, horizontalSizeClass: sizeClass, sidebarIsBeside: sidebarIsBeside)

@@ -17,7 +17,7 @@ import NotebookImport
 import GraphiteTestSupport
 @testable import GraphiteApple
 
-/// BUG-IMPORT-03 and the room a stroke takes. The owner's import of a Goodnotes formula sheet (5,159 and 6,145 strokes
+/// BUG-IMPORT-03 and the room a stroke takes. The import of a Goodnotes formula sheet (5,159 and 6,145 strokes
 /// on two pages) "took forever" on the iPad on 2026-11-12: PDFKit wrote a page it did not read from the document being
 /// written in time that grows with the square of its strokes. Measured on the Mac (debug build) before the fix: two
 /// pages of 2,000 strokes 6.2 s, two of 6,000 42.3 s; after it, 3.1 s and 9.0 s.

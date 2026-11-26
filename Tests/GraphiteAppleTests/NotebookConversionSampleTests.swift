@@ -7,7 +7,7 @@ import NotebookImport
 import GraphiteTestSupport
 @testable import GraphiteApple
 
-/// Converts the owner's real Goodnotes and Notability samples end to end and reads every written PDF back: each page's
+/// Converts the real Goodnotes and Notability samples end to end and reads every written PDF back: each page's
 /// size, its strokes as `/Ink` annotations, its pictures as Graphite pictures with their files' own bytes, its typed text
 /// as Graphite text boxes, its paper as page content rather than ink, and, where the sample folder holds the app's own
 /// export (`export.pdf`), how much of the drawn page differs from it and where the export prints the typed text. The
@@ -17,7 +17,7 @@ final class NotebookConversionSampleTests: XCTestCase {
     private static let samplesFolderVariable = "GRAPHITE_IMPORT_SAMPLES"
     /// When set, the pages written and the export's are drawn there as PNG files, to compare by eye (never in the repository).
     private static let rendersFolderVariable = "GRAPHITE_IMPORT_RENDERS"
-    private static let skipReason = "The owner's import samples are not on this machine: set GRAPHITE_IMPORT_SAMPLES to their folder."
+    private static let skipReason = "The supplied import samples are not on this machine: set GRAPHITE_IMPORT_SAMPLES to their folder."
     /// Rendering resolution of the visual comparison: 100 pixels per inch, as the format documents compared.
     private static let comparisonPixelsPerPoint = 100.0 / 72.0
     /// A pixel is content when it differs from white by at least this much (0 to 255) in either picture, and differs

@@ -21,7 +21,7 @@ import GraphiteCore
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner's "Butter-basted steak.md" shows ten camera photos at `|250` on one line. Each picture is to be
+/// The reported "Butter-basted steak.md" shows ten camera photos at `|250` on one line. Each picture is to be
 /// decoded off the main actor, through `ReadingImageCache`, at 250 points times the screen's scale: decoded
 /// at the inline limit, ten 4:3 photos held about 97 MB; at 250 points on a Retina screen, about 5 MB.
 @MainActor
@@ -43,7 +43,7 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
         window = nil
     }
 
-    /// Ten JPEG photos of one color, named as the owner's are, with names no other test uses.
+    /// Ten JPEG photos of one color, named as the real ones are, with names no other test uses.
     private func writePhotos(prefix: String, count: Int = 10) throws -> [URL] {
         let colorSpace = try XCTUnwrap(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try XCTUnwrap(CGContext(data: nil, width: Self.photoPixelWidth, height: Self.photoPixelHeight, bitsPerComponent: 8, bytesPerRow: 0,

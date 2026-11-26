@@ -17,7 +17,7 @@ import GraphiteCore
 import GraphiteTestSupport
 
 /// What a scan and a lookup cost, counted in rows written, reads made and questions asked: the
-/// owner's vault has 31,748 files, and each of these runs at every launch or on every tap.
+/// real vault has 31,748 files, and each of these runs at every launch or on every tap.
 final class VaultIndexWorkCountTests: XCTestCase {
     private var vault: URL!
     private var databaseURL: URL!

@@ -18,7 +18,7 @@ import GraphiteApple
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner, 2026-11-12: the welcome tour's pictures are there when Graphite is first installed, and can be deleted
+/// Requested 2026-11-12: the welcome tour's pictures are there when Graphite is first installed, and can be deleted
 /// later (`Docs/App-size-todo.md`, section 2). On iOS they are an On-Demand Resources tag installed with the app; the
 /// Mac package has no On-Demand Resources, so these tests give the library a tag over a folder of their own
 /// (`FolderTagAccess`), whose begins and ends they count, and a "server" folder for Graphite's own download.
@@ -159,7 +159,7 @@ final class AddOnIncludedCopiesTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: try storeFolder(of: pack).path), "Remove takes the downloaded copy too.")
     }
 
-    /// The owner, 2026-11-17: on the Mac too, the pictures are there at first and can be deleted. The Mac downloads
+    /// Requested 2026-11-17: on the Mac too, the pictures are there at first and can be deleted. The Mac downloads
     /// them (macOS has no On-Demand Resources, and the signed bundle cannot lose files); Remove deletes them, a later
     /// launch keeps them removed, and asking for them again downloads them.
     func testADownloadedPackCanBeRemovedAndStaysRemovedUntilAskedForAgain() async throws {

@@ -46,7 +46,7 @@ final class PlacedPictureSharpnessTests: XCTestCase {
         return output as Data
     }
 
-    /// The owner's case: a 4032 by 3024 photo became 715 by 536.
+    /// The reported case: a 4032 by 3024 photo became 715 by 536.
     func testATwelveMegapixelPhotoKeepsEveryPixelAndItsOwnFile() throws {
         let photo = try Self.encoded(try Self.bitmap(width: 4_032, height: 3_024), as: .jpeg, quality: 0.8)
         let prepared = try DrawingPictures.pagePicture(from: photo)

@@ -210,7 +210,7 @@ final class LinkGraphTests: XCTestCase {
     func testCalmingIsBoundedSoAVeryLargeGraphIsShownPartlyCalm() {
         let stepsToCalm = Int((log(GraphLayout.calmAlpha) / log(1 - GraphLayout.alphaDecay)).rounded(.up))
         XCTAssertEqual(stepsToCalm, 100, "From nothing, a graph is calm after a third of its 300 steps.")
-        XCTAssertGreaterThanOrEqual(GraphLayout.calmingStepLimit(nodeCount: 4_700), stepsToCalm, "A vault of the owner's size is shown calm.")
+        XCTAssertGreaterThanOrEqual(GraphLayout.calmingStepLimit(nodeCount: 4_700), stepsToCalm, "A vault of the real vault's size is shown calm.")
         XCTAssertGreaterThanOrEqual(GraphLayout.calmingStepLimit(nodeCount: 19_000), stepsToCalm)
         XCTAssertEqual(GraphLayout.calmingStepLimit(nodeCount: 100_000), 20, "A vault of 100,000 notes is shown after 20 steps.")
         XCTAssertEqual(GraphLayout.calmingStepLimit(nodeCount: 0), GraphLayout.calmingNodeStepBudget)

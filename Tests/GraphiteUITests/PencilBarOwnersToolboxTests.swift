@@ -2,7 +2,7 @@
  * File: PencilBarOwnersToolboxTests.swift
  * ---------------------------------------
  * Layer: Tests
- * Description: The Pencil bar with the owner's own toolbox (a monoline, a pencil and a highlighter, no pen) and with the
+ * Description: The Pencil bar with the reported toolbox (a monoline, a pencil and a highlighter, no pen) and with the
  *              other toolboxes a person could set up: every favorite color, the ruler, the writing tools and Add Image
  *              stay buttons on the 11-inch iPad's bar upright and sideways, and only the least used controls fold
  *              (HUNT-317); past nine colors the strip scrolls (Docs/PDF-annotation-todo.md 3).
@@ -18,9 +18,9 @@ import Foundation
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// A hosted run on the owner's iPad found his toolbox has no pen preset, and before HUNT-317 his upright bar folded to
+/// A hosted run on the physical iPad found the toolbox has no pen preset, and before HUNT-317 its upright bar folded to
 /// the compact row, with the laser, text and Read Aloud tools, Shapes, Other Color and Add Image behind its More
-/// control. These tests set his toolbox up through the toolbox's own store, as the app reads it at launch, and ask the
+/// control. These tests set that toolbox up through the toolbox's own store, as the app reads it at launch, and ask the
 /// layout which form each width of the 11-inch iPad shows and what is on the bar in it. The hosted
 /// `PencilBarPlacementHostedTests.testTheOwnersToolboxKeepsEveryColorTheRulerAndTheWritingToolsOnTheBar` measures the
 /// bar itself with the same toolbox. Nothing here draws.
@@ -28,8 +28,8 @@ import GraphiteTestSupport
 final class PencilBarOwnersToolboxTests: XCTestCase {
     private typealias Layout = PencilToolRowLayout
 
-    /// The owner's toolbox as the store keeps it (`GraphitePencilToolbox.v2`): the tool kinds, colors, widths and
-    /// counts of his iPad's settings of 2026-11-04, nothing else of them. The hosted test holds the same record.
+    /// The reported toolbox as the store keeps it (`GraphitePencilToolbox.v2`): the tool kinds, colors, widths and
+    /// counts of the iPad's settings of 2026-11-04, nothing else of them. The hosted test holds the same record.
     static let ownersToolboxRecord = """
     {"toolInUse":"ink","presetInUseIndex":0,"erasesWholeStrokes":false,"eraserWidth":4,"eraserWidthChoices":[4,36,64],"presets":[
     {"id":"7D0E3C1A-0000-4000-8000-000000000001","ink":"monoline","colorHex":"#086ddd","width":1.6,"widthChoices":[0.5,1.6,3],"opacity":1},
@@ -38,7 +38,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
     """
 
     /// The widths of the system's segmented pickers beside the eraser (Strokes, Pixels) and the lasso (Freehand,
-    /// Rectangle) on the whole bar, measured from their labels as Bold Text draws them (the owner's iPad has it on):
+    /// Rectangle) on the whole bar, measured from their labels as Bold Text draws them (the physical iPad has it on):
     /// before, 150 and 180 points were assumed. The hosted test prints the pickers' widths on the device.
     nonisolated static let eraserChoicesWidth = segmentedPickerWidth(titles: ["Strokes", "Pixels"])
     nonisolated static let lassoChoicesWidth = segmentedPickerWidth(titles: LassoShape.allCases.map(\.title))
@@ -75,7 +75,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         return PencilToolbox(defaults: defaults)
     }
 
-    /// What a PDF's bar holds with `toolbox` and the default colors: the text tool and, as on his iPad, the Read Aloud pen.
+    /// What a PDF's bar holds with `toolbox` and the default colors: the text tool and, as on that iPad, the Read Aloud pen.
     private func barContents(of toolbox: PencilToolbox) -> Layout.Contents {
         var contents = Layout.contents(of: toolbox, favorites: PaletteColor.defaultPalette, highlighterColors: PaletteColor.defaultHighlighterPalette,
                                        offersTextMarking: true, offersTextBoxes: true, offersReadAloudPen: true, offersImages: true)
@@ -87,7 +87,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         return contents
     }
 
-    /// The tools each form switches between while writing, for the owner's three presets: each ink, the eraser and the lasso.
+    /// The tools each form switches between while writing, for the reported toolbox's three presets: each ink, the eraser and the lasso.
     private func takeUpEachWritingTool(of toolbox: PencilToolbox, _ check: (String) throws -> Void) rethrows {
         for presetIndex in toolbox.presets.indices {
             toolbox.usePreset(at: presetIndex)
@@ -99,7 +99,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
         }
     }
 
-    // MARK: The owner's toolbox
+    // MARK: The reported toolbox
 
     func testTheStoreReadsTheOwnersToolboxWithoutAPen() throws {
         let toolbox = try ownersToolbox()
@@ -116,7 +116,7 @@ final class PencilBarOwnersToolboxTests: XCTestCase {
                 let contents = barContents(of: toolbox)
                 let arrangement = Layout.arrangement(forWidth: width, holding: contents)
                 let placement = try XCTUnwrap(Layout.placement(of: arrangement, holding: contents), "\(toolName) at \(width): not condensed.")
-                print("Owner's toolbox, \(toolName) in use, \(Int(width)) points: \(arrangement), folded \(placement.foldedTools)")
+                print("Reported toolbox, \(toolName) in use, \(Int(width)) points: \(arrangement), folded \(placement.foldedTools)")
                 assertTheWritingControlsAreOnTheBar(placement, holding: contents, "\(toolName) at \(Int(width)) points")
             }
         }

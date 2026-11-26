@@ -2,7 +2,7 @@
  * File: GeneratedCourseVault.swift
  * --------------------------------
  * Layer: Tests
- * Description: A made-up vault of course notes of any size, shaped as the owner's vault of 4,700 notes is (few
+ * Description: A made-up vault of course notes of any size, shaped as the real vault of 4,700 notes is (few
  *              links, many tags, many notes with neither), for the graph's benchmarks and its look.
  *
  * Authors: Bahey Shalash
@@ -13,7 +13,7 @@
 import Foundation
 import GraphiteCore
 
-/// A made-up vault of lecture notes in course folders, with the proportions of the owner's
+/// A made-up vault of lecture notes in course folders, with the proportions of the real
 /// vault of about 4,700 notes (2026-10-21: "4,700 notes · 699 tags · 1,690 links"): about one
 /// link for every three notes, mostly to a lecture of the same course, one tag for every seven
 /// notes, mostly a course's own, and many notes with neither. Nothing in it comes from a real
@@ -30,7 +30,7 @@ public struct GeneratedCourseVault: Sendable {
 
     public let notes: [Note]
 
-    /// Lectures per course folder: the owner's courses have a few dozen to a few hundred notes.
+    /// Lectures per course folder: real courses have a few dozen to a few hundred notes.
     static let notesPerCourse = 150
     /// Topic tags per course, beside the course's own tag.
     static let topicTagsPerCourse = 21

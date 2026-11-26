@@ -18,7 +18,7 @@ import GraphiteTestSupport
 final class SVGImageRendererTests: XCTestCase {
     private let standardColorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
-    /// Shaped like the schematic the owner embedded on 2026-11-23: a white frame, wires as
+    /// Shaped like the schematic embedded on 2026-11-23: a white frame, wires as
     /// polylines, an inverter's triangle and bubble, labels in a serif font with empty `style`
     /// attributes, and a content-credentials manifest in its metadata.
     private let schematic = """

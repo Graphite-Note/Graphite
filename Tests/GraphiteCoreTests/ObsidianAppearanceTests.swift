@@ -3,7 +3,7 @@ import XCTest
 import GraphiteTestSupport
 
 final class ObsidianAppearanceTests: XCTestCase {
-    /// The owner's own `Vault/.obsidian/appearance.json`, as Obsidian 1.x wrote it.
+    /// A real `Vault/.obsidian/appearance.json`, as Obsidian 1.x wrote it.
     private let ownersVaultAppearance = """
     {
       "accentColor": "#3068e8",

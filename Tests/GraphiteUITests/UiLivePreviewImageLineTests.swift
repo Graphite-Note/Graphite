@@ -21,7 +21,7 @@ import GraphiteCore
 @testable import GraphiteUI
 import GraphiteTestSupport
 
-/// The owner's photo row showed in Live Preview as blue link text, `IMG_6482.JPG|200 …`, while
+/// A photo row showed in Live Preview as blue link text, `IMG_6482.JPG|200 …`, while
 /// reading view showed the pictures: Live Preview drew an embed only when it was alone on its line.
 @MainActor
 final class UiLivePreviewImageLineTests: XCTestCase {
@@ -42,7 +42,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
         try await super.tearDown()
     }
 
-    /// The owner's line, with made-up file names: nine photos 200 points wide, uppercase `.JPG`.
+    /// The reported line, with made-up file names: nine photos 200 points wide, uppercase `.JPG`.
     private static let photoRow = (1...9).map { number in "![[Photo_\(number).JPG|200]]" }.joined(separator: " ")
 
     /// A red picture of `width` by `height` pixels, written as JPEG or PNG by its extension.
@@ -135,7 +135,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
         return Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: 17)).total.rounded(.up))
     }
 
-    // MARK: The owner's line
+    // MARK: The reported line
 
     func testTheOwnersLineOfNinePhotosIsOneBlockOfNinePicturesTwoHundredPointsWide() throws {
         let embeds = images(in: try imageLinePieces(Self.photoRow))
@@ -189,7 +189,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
     private static let threePictures = "![[Left.png|300]] ![[Middle.png|200]] ![[Right.png|100]]"
     private static let threePicturesNote = "Intro\n\n" + threePictures + "\n\nAfter the pictures\n"
 
-    /// The owner's screenshot showed the cursor on one photo of a row turning the whole row into its text. As in
+    /// A reported screenshot showed the cursor on one photo of a row turning the whole row into its text. As in
     /// Obsidian, only the embed the cursor is in shows its source; the line's other pictures stay drawn, at their
     /// sizes and in their places among its text.
     func testTheCursorInTheSecondEmbedShowsItsSourceAndTheOtherEmbedsStayPictures() async throws {
@@ -479,7 +479,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
 
     // MARK: List items
 
-    /// The owner's photos in a bulleted list, as Obsidian draws them: the bullet, then the pictures beside it.
+    /// The reported photos in a bulleted list, as Obsidian draws them: the bullet, then the pictures beside it.
     func testABulletItemDrawsItsBulletOnTheRowsBottomAndItsPicturesBesideIt() async throws {
         try writeRedImage(named: "First.png")
         try writeRedImage(named: "Second.png")

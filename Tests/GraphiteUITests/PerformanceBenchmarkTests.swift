@@ -222,7 +222,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     // MARK: A note of handwritten PDFs
 
     /// Scrolling down a homework note that embeds seven PDFs of five pages, each page written with 520 strokes, at about the
-    /// speed the owner scrolled such a note on the Mac on 2026-11-15 (a step of 20 points every 16 ms), then back up. On the
+    /// speed of scrolling such a note on the Mac on 2026-11-15 (a step of 20 points every 16 ms), then back up. On the
     /// Mac every stroke is an annotation PDFKit draws in a layer of its own, so a PDF coming into view brings thousands of them.
     /// Every frame counts the main thread's work, including what the embeds set off after they appear.
     func testScrollingANoteOfHandwrittenPDFs() async throws {
@@ -436,7 +436,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
 
     // MARK: A very large canvas board
 
-    /// Finding the cards in view among 20,000 fits in a frame at 120 Hz. This is a claim about the owner's iPad, so it is
+    /// Finding the cards in view among 20,000 fits in a frame at 120 Hz. This is a claim about the physical iPad, so it is
     /// checked here, by the nightly device job; the package suite checks only that the scan grows in proportion to the cards
     /// (`CanvasGeometryTests`), which holds on a runner too.
     func testFindingTheVisibleCardsOfAVeryLargeBoardFitsInAFrame() throws {

@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import NotebookImport
 
-/// The Swift reader against the reference reader on the owner's real Goodnotes notebooks. The notebooks are personal
+/// The Swift reader against the reference reader on the real Goodnotes notebooks. The notebooks are personal
 /// and never in the repository, so this test is skipped unless `GRAPHITE_IMPORT_SAMPLES` and
 /// `GRAPHITE_IMPORT_REFERENCE_COUNTS` point at them and at `scripts/import-reference-counts.py`'s output (see
 /// `NotebookImportSamples`).

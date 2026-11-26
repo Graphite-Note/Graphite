@@ -236,7 +236,7 @@ final class AppProjectTextualPatchTests: XCTestCase {
     }
 
     /// KaTeX's arrows are typeset. The typesetter knew only the plain ones, so a caption with
-    /// `$R_G \rightsquigarrow R_G/4$` showed its source in the reading view (owner's Mac, 2026-10-24).
+    /// `$R_G \rightsquigarrow R_G/4$` showed its source in the reading view (development Mac, 2026-10-24).
     func testKaTeXArrowsAreTypesetAsOneRelation() throws {
         let fontSize: CGFloat = 22
         let arrows = ["rightsquigarrow", "leadsto", "leftrightsquigarrow", "hookrightarrow", "hookleftarrow", "twoheadrightarrow", "twoheadleftarrow",
@@ -258,7 +258,7 @@ final class AppProjectTextualPatchTests: XCTestCase {
 
     /// A row break inside braces in a cell ends only the braces' list, so one cell could bring
     /// two row breaks at once, and building the table read past its last row: Graphite crashed
-    /// on a note whose `aligned` rows each sat in their own `\textcolor{…}{…}` (owner's vault,
+    /// on a note whose `aligned` rows each sat in their own `\textcolor{…}{…}` (real vault,
     /// 2026-10-24). Such a formula now shows as its source, as any the typesetter cannot read.
     func testRowBreaksInsideColorGroupsOfAnAlignedFormulaDoNotCrash() throws {
         let colorGroupedRows = #"\begin{aligned} \textcolor{red}{a \textcolor{black}{ &= 1 \\ \textcolor{red}{b \textcolor{black}{ &= 2 \\ &= 3 \end{aligned}}}}}"#
@@ -433,7 +433,7 @@ final class AppProjectTextualPatchTests: XCTestCase {
         XCTAssertEqual(try mathMetrics(#"a \not\leq b"#).width, try mathMetrics(#"a \leq b"#).width, accuracy: 2)
     }
 
-    /// Patch 12. The owner's vault had 2,341 formulas with `\boxed`, drawn as their source.
+    /// Patch 12. The real vault had 2,341 formulas with `\boxed`, drawn as their source.
     func testFramesAndCirclesStandAroundWhatTheyHold() throws {
         let fontSize = Self.mathFontSize
         let letter = try mathMetrics("x")
@@ -948,7 +948,7 @@ final class AppProjectTextualPatchTests: XCTestCase {
         func pieces(_ latex: String) -> [String]? { InlineMathLineBreaks.pieces(of: latex) }
         XCTAssertEqual(pieces("(C_{jb} \\cdot L_A + C_{jsw})W + C_j \\cdot W \\cdot L/2"),
                        ["(C_{jb} \\cdot\\>", " L_A +\\>", " C_{jsw})W +\\>", " C_j \\cdot\\>", " W \\cdot\\>", " L/2"],
-                       "the owner's table cell: after each operator, inside plain brackets too")
+                       "the reported table cell: after each operator, inside plain brackets too")
         XCTAssertEqual(pieces("C_{ox} \\cdot W \\cdot L \\parallel C_d"),
                        ["C_{ox} \\cdot\\>", " W \\cdot\\>", " L \\parallel\\;", " C_d"], "a relation ends with a thick space")
         XCTAssertEqual(pieces("E = mc^2"), ["E =\\;", " mc^2"])
@@ -1000,7 +1000,7 @@ final class AppProjectTextualPatchTests: XCTestCase {
         }
     }
 
-    /// The owner's "Capacitances by region": in Obsidian its formulas wrap and the table
+    /// The reported "Capacitances by region": in Obsidian its formulas wrap and the table
     /// fits the note; drawn whole, each kept its column as wide as itself and the table scrolled.
     func testTableColumnOfLongFormulasShrinksToItsWidestPiece() async throws {
         let formula = "$(C_{jb} \\cdot L_A + C_{jsw})W + C_j \\cdot W \\cdot L/2$"

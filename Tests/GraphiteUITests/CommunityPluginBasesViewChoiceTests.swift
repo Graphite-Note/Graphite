@@ -19,7 +19,7 @@ import GraphiteTestSupport
 
 /// HUNT-322: a note embedding bases of a timetable plugin's view type showed "Views Aren't
 /// Supported". The fixture plugin is made here, with made-up courses, in the shape of the
-/// owner's: it extends `BasesView`, reads `ListValue`s, groups, `config.get` and `config.name`,
+/// the reported plugin: it extends `BasesView`, reads `ListValue`s, groups, `config.get` and `config.name`,
 /// draws icons with `setIcon`, follows clicks with `registerDomEvent` and `Keymap`, and
 /// registers a hover link source.
 @MainActor
@@ -155,7 +155,7 @@ final class CommunityPluginBasesViewChoiceTests: XCTestCase {
     }
 
     func testAVaultWhoseConfigurationFolderMacOSMarksHiddenRunsItsPluginsView() async throws {
-        // HUNT-322, the owner's vault in iCloud Drive: everything inside `.obsidian` carries
+        // HUNT-322, the real vault in iCloud Drive: everything inside `.obsidian` carries
         // macOS's hidden mark. Graphite listed no plugin there, so none ran and the base said
         // the type is unsupported, with plugins turned on.
         let vault = try testBed.makeVault(plugins: [("timetable", Self.timetablePlugin)], files: Self.files)

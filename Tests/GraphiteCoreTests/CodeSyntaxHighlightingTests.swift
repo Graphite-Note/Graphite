@@ -391,7 +391,7 @@ final class CodeSyntaxHighlightingTests: XCTestCase {
         try assertKind(.function, of: ["var"], in: code, "css")
     }
 
-    /// The owner's example of how a block should look, after Obsidian.
+    /// The reported example of how a block should look, after Obsidian.
     func testTheHLSExampleIsColoredAsInObsidian() throws {
         let code = """
             // length → scalar → s_axilite

@@ -55,7 +55,7 @@ final class UiCodeBraceLineFormattingMacTests: XCTestCase {
         }
     }
 
-    /// Typed key by key, Return after each line, as the owner wrote `int main()` then `{`.
+    /// Typed key by key, Return after each line, as `int main()` then `{` were written.
     private func typeLines(_ lines: [String], in textView: MarkdownMacTextView, coordinator: NativeMarkdownEditor.Coordinator) async {
         for (lineIndex, line) in lines.enumerated() {
             if lineIndex > 0 {
@@ -85,7 +85,7 @@ final class UiCodeBraceLineFormattingMacTests: XCTestCase {
         }
     }
 
-    /// The paths the owner's block may have taken, tried on 2026-11-13: typed key by key then
+    /// The paths the reported block may have taken, tried on 2026-11-13: typed key by key then
     /// left, pasted then left, undone and done again, in Live Preview and Source mode. At every step `{` stays right under `int main()`, with no blank line between.
     func testABlockTypedOrPastedThenLeftUndoneAndRedoneKeepsItsBraceUnderItsLine() async throws {
         let note = "Intro\n\n```c\nx\n```\n\nAfter the block.\n"

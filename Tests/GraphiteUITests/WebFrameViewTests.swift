@@ -2,7 +2,7 @@
  * File: WebFrameViewTests.swift
  * -----------------------------
  * Layer: Tests
- * Description: Web frames on the Mac: the reading view's block for the owner's note, tags inside HTML left as text, the
+ * Description: Web frames on the Mac: the reading view's block for the reported note, tags inside HTML left as text, the
  *              frame's web view at the tag's size with a page served by the test, the web view's limits, a failed load,
  *              placeholders where a live page does not fit, the page given up when its view leaves the window, and the
  *              note scrolling on past a page's end.
@@ -41,7 +41,7 @@ final class WebFrameViewTests: XCTestCase {
 
     // MARK: Tags inside HTML (section 1)
 
-    /// The owner's line coloured `#ccc` as a tag. HTML runs, a block of it or a tag in a sentence, are now passed over;
+    /// The reported line coloured `#ccc` as a tag. HTML runs, a block of it or a tag in a sentence, are now passed over;
     /// a tag beside the HTML still is one, in the reading view and in Live Preview's rendered blocks alike.
     func testAHashInsideHTMLIsNotATagAndATagBesideItStillIs() throws {
         let parser = ObsidianMarkdownParser(baseURL: vault, textSize: 17, linksTags: true)

@@ -197,7 +197,7 @@ final class ReadAloudQualityModeTests: XCTestCase {
 }
 
 /// The checks that keep babbling from being heard, on a real Qwen3-TTS 0.6B rendering of the
-/// owner's term list: after "C-A-D." the model made 45 seconds of noise for "P C B, M L, V C O,
+/// supplied term list: after "C-A-D." the model made 45 seconds of noise for "P C B, M L, V C O,
 /// R S." (`QwenBabbling.m4a`, cut from the full 165-second rendering).
 final class ReadAloudRenderCheckTests: XCTestCase {
     private func babblingSamples() throws -> (samples: [Float], sampleRate: Int) {

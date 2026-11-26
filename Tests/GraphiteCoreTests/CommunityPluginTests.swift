@@ -181,7 +181,7 @@ final class CommunityPluginTests: XCTestCase {
     }
 
     func testPluginFoldersMacOSMarksHiddenAreListedAsObsidianListsThem() async throws {
-        // HUNT-322: in the owner's iCloud vault everything inside `.obsidian` has the hidden
+        // HUNT-322: in the real iCloud vault everything inside `.obsidian` has the hidden
         // mark (`UF_HIDDEN`), and Graphite listed no plugin at all.
         try write(sampleManifest, to: ".obsidian/plugins/sample/manifest.json")
         try write("module.exports = {};", to: ".obsidian/plugins/sample/main.js")

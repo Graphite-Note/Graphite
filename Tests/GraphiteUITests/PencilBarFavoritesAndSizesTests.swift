@@ -15,7 +15,7 @@ import XCTest
 import GraphiteCore
 import GraphiteTestSupport
 
-/// What the bar offers again after the owner's report of 2026-11-04 ("move around colors, add more colors to the presets,
+/// What the bar offers again after the report of 2026-11-04 ("move around colors, add more colors to the presets,
 /// change the thickness presets"), as values: nothing here draws.
 @MainActor
 final class PencilBarFavoritesAndSizesTests: XCTestCase {

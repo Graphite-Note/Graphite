@@ -18,7 +18,7 @@ import GraphiteCore
 import GraphiteTestSupport
 
 /// Library mode folds the sidebar out of the window. It used to swap the file tree for the Tags view there, out of sight:
-/// List → Library laid out every tag of the vault (in the owner's 3,000-tag vault the main thread froze for 4.5 s, before
+/// List → Library laid out every tag of the vault (in the real 3,000-tag vault the main thread froze for 4.5 s, before
 /// the Tags view's rows were made flat), and Library → List built the tree again, whose open folders then listed their
 /// files again from the disk. `Docs/View-switching-speed-todo.md` section 3 has the times before and after.
 @MainActor

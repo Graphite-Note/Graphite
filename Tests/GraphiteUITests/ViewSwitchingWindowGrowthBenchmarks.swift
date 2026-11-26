@@ -2,7 +2,7 @@
  * File: ViewSwitchingWindowGrowthBenchmarks.swift
  * -----------------------------------------------
  * Layer: Tests
- * Description: Library ↔ List timed as the window grows towards what the owner's window holds: more tabs, a split,
+ * Description: Library ↔ List timed as the window grows towards what the reported window holds: more tabs, a split,
  *              every core plugin on, then the community plugins of a folder given by the person running it.
  *
  * Authors: Bahey Shalash
@@ -17,7 +17,7 @@ import GraphiteCore
 import GraphiteTestSupport
 #endif
 
-/// The owner measured Library → List at 1.2 to 3.7 s; `testSwitchingViewsInAVaultOfTheOwnersSize` reaches about 0.2 s.
+/// Library → List was measured at 1.2 to 3.7 s; `testSwitchingViewsInAVaultOfTheOwnersSize` reaches about 0.2 s.
 /// This benchmark grows the same window one step at a time and times Library → List after each, with one
 /// `GRAPHITE-SWITCH` line per step. `GRAPHITE_COMMUNITY_PLUGINS_FOLDER` names a folder of plugin folders (each with its
 /// `manifest.json` and `main.js`) the vault enables in the last step; without it that step is left out.

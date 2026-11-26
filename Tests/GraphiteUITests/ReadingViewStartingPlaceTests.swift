@@ -19,7 +19,7 @@ import GraphiteIndex
 import GraphiteTestSupport
 
 /// Switching a long note from writing to reading left the reading view somewhere else than
-/// the editor was (the owner, 2026-11-10: "switching between views teleports us"): the lazy
+/// the editor was (reported 2026-11-10: "switching between views teleports us"): the lazy
 /// stack puts a row it has not built by its estimate of the rows before it, and revises the
 /// estimate as they are built, so one scroll to the row does not end at the row.
 @MainActor

@@ -36,7 +36,7 @@ final class InlineMathRuleTests: XCTestCase {
     }
 
     /// The reading view finds `$$…$$` and `$…$` in one pass for speed; its inline half is
-    /// the owner's rule, written out.
+    /// the requested rule, written out.
     func testReadingViewMathPatternEndsWithTheInlineMathRule() {
         XCTAssertTrue(ReadingMathPreparationPattern.mathSpanPattern.rawValue.hasSuffix("|" + MarkdownInlineMathPattern.formula.rawValue))
     }

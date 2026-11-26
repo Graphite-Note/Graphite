@@ -52,7 +52,7 @@ enum GoodnotesTextPlanner {
     }
 
     /// An older text box: its text area (`textFrame`) and the 10 units Goodnotes keeps around it, and its RTF, which the
-    /// writer reads. The text area places the text: in one of the owner's library notebooks a box's frame sits 36 units
+    /// writer reads. The text area places the text: in one of the supplied library notebooks a box's frame sits 36 units
     /// left of and 4 above its text area, where the frame's 10-unit inset would put the text over the drawing beside it
     /// and break its one line in two; the text area is the text's own width, as a newer box's size is.
     static func textBox(for textBox: GoodnotesRTFTextBox) -> ImportedTextBox {

@@ -6,7 +6,7 @@ import GraphiteTestSupport
 #endif
 
 /// One plugin runtime per open vault, shared by the vault's windows and acting on the one in
-/// front, so a plugin never runs twice on the same files (owner, 2026-10-21).
+/// front, so a plugin never runs twice on the same files (decided 2026-10-21).
 @MainActor
 final class CommunityPluginHostsTests: XCTestCase {
     private var processServices: ProcessServices!

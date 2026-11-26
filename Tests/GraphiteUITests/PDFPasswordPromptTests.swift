@@ -2,7 +2,7 @@
  * File: PDFPasswordPromptTests.swift
  * ----------------------------------
  * Layer: Tests
- * Description: The protected PDF's password prompt laid out in a Mac window as wide as the owner's: the field at a Mac
+ * Description: The protected PDF's password prompt laid out in a Mac window as wide as the reported one: the field at a Mac
  *              password prompt's width, the Unlock button with its whole title, and no Passwords suggestions asked for.
  *
  * Authors: Bahey Shalash

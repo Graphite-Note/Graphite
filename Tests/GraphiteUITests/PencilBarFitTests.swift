@@ -14,7 +14,7 @@
 import XCTest
 @testable import GraphiteUI
 
-/// The owner's report of 2026-11-04: the colors used to be a row on the bar, and now needed a tap before choosing one;
+/// The report of 2026-11-04: the colors used to be a row on the bar, and now needed a tap before choosing one;
 /// the ruler and the other tools were behind the bar's "…". These tests take the bar's widths from
 /// `PencilToolRowLayout`, the same numbers the bar is built with, at the widths of the 11-inch iPad: 1,194 points
 /// sideways, about 874 sideways beside the sidebar, 834 upright and about 514 upright beside the sidebar. The hosted

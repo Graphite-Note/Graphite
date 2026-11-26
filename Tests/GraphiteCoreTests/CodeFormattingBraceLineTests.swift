@@ -19,7 +19,7 @@ final class CodeFormattingBraceLineTests: XCTestCase {
         return try XCTUnwrap(CodeFormatter.formatted(code, language: language), "\(languageName) is formatted", file: file, line: line)
     }
 
-    /// The owner's block of 2026-11-13: `int main()`, then `{` on a line of its own.
+    /// The reported block of 2026-11-13: `int main()`, then `{` on a line of its own.
     func testABraceOnItsOwnLineStaysUnderItsLineWithNoBlankLineBetween() throws {
         let code = "int main()\n{\n    return 0;\n}\n"
         XCTAssertEqual(try formatted(code, "c"), code)
@@ -51,7 +51,7 @@ final class CodeFormattingBraceLineTests: XCTestCase {
         }
     }
 
-    /// The owner's note of 2026-11-13 as saved: a blank line between `int main()` and its `{`. Format
+    /// The reported note of 2026-11-13 as saved: a blank line between `int main()` and its `{`. Format
     /// Code Blocks kept it as written, so the block never lost it; the head and its brace now meet,
     /// with either line ending, tabs or spaces, also for `else` and a class in Allman style.
     func testABlankLineBetweenAHeadAndItsBraceIsDropped() throws {
