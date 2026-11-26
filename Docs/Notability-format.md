@@ -1,6 +1,6 @@
 # The Notability file format (`.note`)
 
-Status: Phase 1 of [the import checklist](Goodnotes-Notability-import-todo.md). Recovered on 2026-10-18 and 2026-10-19 from ten of the owner's notes and Notability's own PDF export of each, by reading the files only; Notability's code was not inspected, decompiled or copied. Phase 2 added a Swift reader in GraphiteCore (`NotabilityNoteReader`, see Swift reader below); nothing converts a note into Graphite's files yet (Phase 3).
+Status: Phase 1 of [the import checklist](Goodnotes-Notability-import-todo.md). Recovered on 2026-10-18 and 2026-10-19 from ten real notes and Notability's own PDF export of each, by reading the files only; Notability's code was not inspected, decompiled or copied. Phase 2 added a Swift reader in GraphiteCore (`NotabilityNoteReader`, see Swift reader below); nothing converts a note into Graphite's files yet (Phase 3).
 
 What was checked: a reference reader written for this (`scripts/notability-reader.py`) reads all ten notes with nothing unknown, and accounts for every point, per-knot value, shape, picture, text run, PDF page and timed curve. Pages drawn from what it read were compared with each note's PDF export, rendered at 100 pixels per inch (see "Comparison with Notability's PDF export" below). They line up with no offset; the differences are the antialiased edges of strokes and, for typed text, the substitute font.
 

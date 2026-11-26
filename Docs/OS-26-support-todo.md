@@ -6,7 +6,7 @@ Status: built on the branch `macos-26-support` 2026-11-18, not merged into `main
 
 ## Request
 
-The owner, 2026-11-18: "i think we should also support macos26 as a lot of people are still on it", then iPadOS 26 as well, kept off `main` on a branch of its own ("do not push on main as that is a side quest").
+Requested 2026-11-18: "i think we should also support macos26 as a lot of people are still on it", then iPadOS 26 as well, kept off `main` on a branch of its own ("do not push on main as that is a side quest").
 
 ## What the result must be
 
@@ -31,7 +31,7 @@ Issue: [#213](https://github.com/Graphite-Note/Graphite/issues/213)
 
 - [x] Done 2026-11-18: deployment targets lowered to 26.0 and the fallbacks above added. Checked: the Graphite scheme builds for macOS and for iOS (generic device) with the 26.0 targets; the Mac package suite passes compiled for macOS 26 (run on macOS 27, so the fallbacks themselves do not run; Read Aloud, speech, dictation, audio, voice and recording classes left out under the no-sound rule); rules, test registration and sizes.
 - [ ] Hosted unit test for `AudioSessionInterruption(interruptionNotification:)` (iOS only, so not in the Mac package suite): began, ended with and without should-resume, another notification.
-- [ ] Run the Mac app on macOS 26: open a vault, a note, a PDF with markup, the Library; the camera preview of a video recording; a neural voice reading (silently routed, with the owner's OK).
+- [ ] Run the Mac app on macOS 26: open a vault, a note, a PDF with markup, the Library; the camera preview of a video recording; a neural voice reading (silently routed).
 - [ ] Run the iPad app on an iPadOS 26 simulator or device: the bar's More menu in a note, a PDF, a canvas and an empty tab; Library drag of one tile; a recording interrupted by another app's audio.
 - [ ] Hosted iPad suite on an iPadOS 26 simulator.
 - [ ] TestFlight: the build's minimum OS shows 26.0 once the branch is merged and uploaded.

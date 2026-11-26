@@ -26,7 +26,7 @@ Issue: [#55](https://github.com/Graphite-Note/Graphite/issues/55)
   Built: `SystemSettingsAppShortcuts` reads `NSUserKeyEquivalents` (Graphite's and all apps') and the page shows it on the row whose Mac menu title it names (`UserKeyEquivalents`, Core, parses it; tested). Graphite is sandboxed and cannot read the system's own shortcut changes (`com.apple.symbolichotkeys`), so the page says the table covers the system's defaults. Not yet checked in the running app with a shortcut set in System Settings.
 - [ ] Keyboard layouts: shortcuts are stored by the key's character as Obsidian does; check them on the Swiss French layout on both devices, where `/`, `[`, `]` and `` ` `` need ⌥ or ⇧ (on the Mac, `allowsAutomaticKeyEquivalentLocalization`).
   Not checked. Shortcuts are recorded and stored by the key typed without modifiers (`UIKey.charactersIgnoringModifiers`, `NSEvent.characters(byApplyingModifiers: [])`), so on Swiss French ⌘/ records as ⇧⌘7; menus keep SwiftUI's automatic key localization.
-- [x] Storage, per vault (owner, 2026-10-21): changes only (not the defaults) in the vault's `.obsidian/hotkeys.json`, Obsidian's format (`{"editor:toggle-bold": [{"modifiers": ["Mod"], "key": "B"}]}`, `Mod` being ⌘), so a vault keeps the same shortcuts in Obsidian and in Graphite. Entries for commands Graphite does not have are kept untouched when the file is written. A damaged file is reported and the defaults apply; it is never overwritten.
+- [x] Storage, per vault (decided 2026-10-21): changes only (not the defaults) in the vault's `.obsidian/hotkeys.json`, Obsidian's format (`{"editor:toggle-bold": [{"modifiers": ["Mod"], "key": "B"}]}`, `Mod` being ⌘), so a vault keeps the same shortcuts in Obsidian and in Graphite. Entries for commands Graphite does not have are kept untouched when the file is written. A damaged file is reported and the defaults apply; it is never overwritten.
 - [x] Community plugins: commands added with `addCommand` appear in their plugin's group, with their declared `hotkeys` as defaults, and can be changed like the others. They leave the list when the plugin is turned off.
 - [x] Costs nothing while unused: the list is built when the page opens; key handling looks shortcuts up in a table built once per change.
 - [x] Tests: every menu, editor and palette shortcut comes from the list; a change in `hotkeys.json` reaches the menu and the editor; a clash between two commands is found; each kind of system clash is found from the table; an unknown command's entry survives a write; a damaged file leaves the defaults and the file as they were.
@@ -37,5 +37,5 @@ Issue: [#55](https://github.com/Graphite-Note/Graphite/issues/55)
 
 ## Decisions
 
-- Shortcuts belong to the vault, in `.obsidian/hotkeys.json`, shared with Obsidian and the same on every device that opens the vault (owner, 2026-10-21).
-- Mac and iPad only; the iPhone gets no shortcuts page, even with a hardware keyboard (owner, 2026-10-21).
+- Shortcuts belong to the vault, in `.obsidian/hotkeys.json`, shared with Obsidian and the same on every device that opens the vault (decided 2026-10-21).
+- Mac and iPad only; the iPhone gets no shortcuts page, even with a hardware keyboard (decided 2026-10-21).

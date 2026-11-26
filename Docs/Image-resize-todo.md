@@ -6,7 +6,7 @@ Status: sections 1 and 2 built and checked on 2026-11-16 (see their items). Issu
 
 ## Request
 
-The owner, 2026-11-16, with a screenshot of a picture in a note whose bottom-right corner carries a resize handle: "cant seem to have the resize option on graphite", then "NOT THE WINDOW!!! THE IMAGES", on the Mac and the iPad. Obsidian draws such a handle on a picture in Live Preview; dragging it resizes the picture and writes its width into the embed, `![[picture.png|300]]`.
+Requested 2026-11-16, with a screenshot of a picture in a note whose bottom-right corner carries a resize handle: "cant seem to have the resize option on graphite", then "NOT THE WINDOW!!! THE IMAGES", on the Mac and the iPad. Obsidian draws such a handle on a picture in Live Preview; dragging it resizes the picture and writes its width into the embed, `![[picture.png|300]]`.
 
 ## What existed (2026-11-16)
 
@@ -28,7 +28,7 @@ Not covered by this section: pictures inside a sentence's text drawn inline whil
 
 Issue: [#195](https://github.com/Graphite-Note/Graphite/issues/195)
 
-The owner, 2026-11-16, after section 1: "make it work for images side by side too".
+Requested 2026-11-16, after section 1: "make it work for images side by side too".
 
 - [x] Each picture of a line that shows several (`![[a.png|200]] ![[b.png|200]]`, with text between them or as a list item's) has its own corner handle, as a picture on its own line. Done 2026-11-16: `LivePreviewImageLineView` gives each picture's `LivePreviewEmbedView` a resize of its own, and `LivePreviewRenderedBlocks` gives an image line's block source editing.
 - [x] The row is laid out again as a picture is dragged, the pictures beside it moving and wrapping as they would at that width; letting go writes the width into that picture's embed only. Done 2026-11-16: the dragged width goes up as a preference (`DraggedPictureWidthKey`) and the line offers the picture that width (`ImageLinePieceSizing.picture`); `EmbedWidthEditing.settingWidth(_:ofEmbedOf:at:in:)` writes the embed that starts where the picture's embed starts in the line, and nothing when another picture is there now. Tests: `EmbedWidthEditingTests` (3 more: one picture of three, a list item's picture after text, a picture no longer where it was).
