@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## A heading dragged from the reading view onto a PDF no longer freezes the Mac app: 2026-11-27
+
+[Split-down-and-section-links-todo.md](Split-down-and-section-links-todo.md) section 3 (issue #227), found dragging a heading with the mouse in the Mac app: the app froze once the drag reached the PDF. The PDF view reads the dragged section on the main thread to decide whether it takes the drag, and SwiftUI's pasteboard waited there for the reading view's item, which handed the section over only after a hop to the main actor. `SectionLinkTransfer.register` hands it over at once when there is nothing to prepare.
+
+- **Automated test:** `SectionLinksOnPDFTests.testAHeadingDraggedFromTheReadingViewGivesItsSectionWhileTheMainThreadWaits` asks the item for its section while the main thread waits, as the Mac's pasteboard does; it fails without the change. The rest of `SectionLinksOnPDFTests` passes.
+- **Checked by hand:** in a separate Debug copy of the Mac app on a demo vault, the heading Entropy dragged with the mouse from the reading view onto a PDF page landed as its picture, and the saved file links to it; Obsidian 1.15.1, given that file's address, opened the note at Entropy.
+- **Not established:** the click on the picture in Preview (Preview followed no link clicked by an automation tool).
+
 ## Several files dropped at once into a note are embedded whole, in the order dropped: 2026-11-27
 
 `Docs/Drag-and-drop-todo.md` section 1 (issue #144), found dragging three made-up files from the Finder onto a note in the Mac app: they came out as `![[Made-up handout 1.pdf]]`, `!![[Made-up picture 1.png]]` and `[[Made-up schedule 1.csv]]`. Each file was saved in a task of its own, so the embeds followed the order the saves ended; and a file saved while an earlier embed still waited for the editor was placed past that embed, where the editor's tracker of the drop took it for another file's request, so one embed went one character into another, after its `!`. Now the files of a paste or drop save one after another (`WorkspaceModel.saveAttachmentInOrder`, `MarkdownSession.lastAttachmentSave`), and while the editor follows the drop each embed asks for the drop point itself (`MarkdownSession.insertBlock(_:at:separatedByBlankLines:placedByTheEditor:)`), which the editor pairs with its requests in order and puts after the files already in.

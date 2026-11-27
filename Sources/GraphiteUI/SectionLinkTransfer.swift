@@ -6,8 +6,8 @@
  *              carried beside the dragged text, and the block identifier it gives a block only once it is dropped.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 21/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -39,9 +39,17 @@ struct SectionLinkTransfer: Codable, Equatable {
     /// Adds the transfer to a drag item's provider. `prepare`, run on the main actor when the
     /// item is first read, gives a block its identifier, so a drag that lands elsewhere, or
     /// nowhere, leaves the note as it was.
-    static func register(_ transfer: SectionLinkTransfer, on provider: NSItemProvider, prepare: @escaping @MainActor @Sendable () -> Void) {
+    ///
+    /// Without `prepare` the transfer is handed over at once, on whatever thread asks: on the Mac
+    /// a SwiftUI drag's pasteboard reads it while the main thread waits, so a hop to the main
+    /// actor would never run and the app would freeze (a reading view's heading over a PDF page).
+    static func register(_ transfer: SectionLinkTransfer, on provider: NSItemProvider, prepare: (@MainActor @Sendable () -> Void)? = nil) {
         guard let encoded = try? JSONEncoder().encode(transfer) else { return } // Two strings and an address always encode.
         provider.registerDataRepresentation(forTypeIdentifier: UTType.graphiteSectionLink.identifier, visibility: .ownProcess) { completion in
+            guard let prepare else {
+                completion(encoded, nil)
+                return nil
+            }
             Task { @MainActor in
                 prepare()
                 completion(encoded, nil)

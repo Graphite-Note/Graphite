@@ -4,16 +4,18 @@
  * Layer: Tests
  * Description: Sections of notes placed on PDF pages through the workspace: the picture drawn from the note, a section
  *              dropped where it landed with the link the file keeps, the picture drawn again when the note changes,
- *              the block a drag names given its identifier, and the link opening the section beside the PDF.
+ *              the block a drag names given its identifier, a reading view's heading handed over while the main thread
+ *              waits, and the link opening the section beside the PDF.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 23/11/2026
+ * Version: 0.3
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
 import XCTest
 import PDFKit
+import UniformTypeIdentifiers
 import GraphiteCore
 import GraphiteApple
 @testable import GraphiteUI
@@ -174,6 +176,24 @@ final class SectionLinksOnPDFTests: XCTestCase {
         XCTAssertEqual(text, "[[Physics/Lecture 1#Second law]]", "Dropped into a note, it is a link to the section.")
     }
 
+    /// On the Mac, SwiftUI's pasteboard reads a dragged heading's section while the main thread
+    /// waits for it, as a PDF page does to decide whether it takes the drag: the section must
+    /// come without the main thread, or the app freezes with the drag over the page.
+    func testAHeadingDraggedFromTheReadingViewGivesItsSectionWhileTheMainThreadWaits() throws {
+        let notePath = try VaultPath("Physics/Lecture 1.md")
+        let headingOffset = (Self.note as NSString).range(of: "## Entropy").location
+        let drags = ReadingSectionDrags(notePath: notePath, noteText: Self.note, vaultRoot: URL(fileURLWithPath: "/Vault"),
+                                        blockOffsets: ["heading-1": headingOffset])
+        let provider = try XCTUnwrap(drags.itemProvider(forBlock: "heading-1"))
+        let received = ReceivedSectionData()
+        _ = provider.loadDataRepresentation(forTypeIdentifier: UTType.graphiteSectionLink.identifier) { encoded, _ in
+            received.store(encoded)
+        }
+        XCTAssertEqual(received.arrived.wait(timeout: .now() + 5), .success, "The section came while the main thread waited.")
+        let transfer = try JSONDecoder().decode(SectionLinkTransfer.self, from: try XCTUnwrap(received.encoded))
+        XCTAssertEqual(transfer.link, SectionLink(note: "Physics/Lecture 1", subpath: "Entropy"))
+    }
+
     func testADraggedBlockGetsItsIdentifierOnlyWhenAPageTakesItAndTheCursorStays() async throws {
         let (workspace, _) = try await testBed.openedWorkspace(files: ["Lecture 1.md": Self.note])
         let tabID = try await testBed.open("Lecture 1.md", in: workspace)
@@ -201,6 +221,19 @@ final class SectionLinksOnPDFTests: XCTestCase {
                                                     openAddress: { url in SectionLink(openingURL: url).map { link in opened.append(link) } })
         clicks.pdfViewWillClick(onLink: PDFView(), with: try XCTUnwrap(URL(string: "obsidian://open?vault=Study&file=Lecture%201%23Entropy")))
         XCTAssertEqual(opened, [SectionLink(note: "Lecture 1", subpath: "Entropy")])
+    }
+}
+/// The section a provider handed over, kept for the waiting main thread.
+private final class ReceivedSectionData: @unchecked Sendable {
+    let arrived = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var storedData: Data?
+
+    var encoded: Data? { lock.withLock { storedData } }
+
+    func store(_ data: Data?) {
+        lock.withLock { storedData = data }
+        arrived.signal()
     }
 }
 #endif
