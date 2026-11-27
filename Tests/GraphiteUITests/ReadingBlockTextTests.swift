@@ -6,8 +6,8 @@
  *              tasks, callout fold keys, raw HTML, tags, reference links and nested heading links.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 04/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -226,6 +226,53 @@ final class ReadingBlockTextTests: XCTestCase {
         let source = String(note.dropFirst(secondStart))
         let reading = RenderedBlockNoteReading(noteText: note, sourceMarkdown: source, sourceRange: NSRange(location: secondStart, length: (source as NSString).length))
         XCTAssertEqual(reading.calloutOccurrence(atSourceOffset: 0), 1)
+    }
+
+    // MARK: A new block's view starts with the pane's last reading
+
+    func testTheLastReadingIsFoundByTheBlocksLinesWhereTheBlockIsNow() throws {
+        let note = "Text\n\n> [!tip] Rule\n> Body[^1]\n\n[^1]: A note.\n"
+        let snapshots = NoteReadingSnapshots()
+        let callout = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: note as NSString).first { block in block.kind == .callout })
+        XCTAssertNil(snapshots.latestSnapshot(holding: callout.sourceLines, at: callout.range), "Nothing read yet.")
+        _ = snapshots.snapshot(for: note)
+        XCTAssertGreaterThan(callout.range.length, (callout.sourceLines as NSString).length, "The block's range takes its line break.")
+        XCTAssertNotNil(snapshots.latestSnapshot(holding: callout.sourceLines, at: callout.range))
+        XCTAssertNil(snapshots.latestSnapshot(holding: callout.sourceLines, at: NSRange(location: callout.range.location + 1, length: callout.range.length)),
+                     "Other lines are there.")
+        _ = snapshots.snapshot(for: note.replacingOccurrences(of: "Body", with: "Bodies"))
+        XCTAssertNil(snapshots.latestSnapshot(holding: callout.sourceLines, at: callout.range),
+                     "The text read last holds other lines; the earlier text kept beside it is not asked.")
+    }
+
+    func testANewCalloutOrTableViewStartsWithTheReadingItsTaskMakes() throws {
+        let note = "Intro[^1]\n\n> [!tip] Rule\n> A fact[^2]\n\n| a | b |\n| --- | --- |\n| 1 | 2[^1] |\n\n$$\nx^2\n$$\n\n[^1]: One.\n[^2]: Two.\n"
+        var environment = LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: false, paletteHexByName: [:], drawingVersion: 0,
+                                                 resolve: { _, _ in nil }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
+        environment.noteText = { note }
+        let snapshots = NoteReadingSnapshots()
+        environment.noteSnapshots = snapshots
+        let blocks = LivePreviewBlockScanner.blocks(in: note as NSString)
+        let callout = try XCTUnwrap(blocks.first { block in block.kind == .callout })
+        let table = try XCTUnwrap(blocks.first { block in block.kind == .table })
+        let formula = try XCTUnwrap(blocks.first { block in block.kind == .mathBlock })
+        XCTAssertNil(LivePreviewNoteReadingModifier.readingAtHand(of: callout, environment: environment, currentLocation: nil),
+                     "Before the note was read once, a new view waits for its reading, as before.")
+        let snapshot = snapshots.snapshot(for: note)
+        for block in [callout, table] {
+            // What the view's task reads from the note as it is now, which then draws nothing again.
+            let reading = RenderedBlockNoteReading(snapshot: snapshot, sourceMarkdown: block.markdown, sourceLines: block.sourceLines, sourceRange: block.range)
+            XCTAssertEqual(LivePreviewNoteReadingModifier.readingAtHand(of: block, environment: environment, currentLocation: nil), reading)
+        }
+        XCTAssertNil(LivePreviewNoteReadingModifier.readingAtHand(of: formula, environment: environment, currentLocation: nil), "A formula reads nothing from the note.")
+
+        let moved = "A new first line\n" + note
+        _ = snapshots.snapshot(for: moved)
+        let distance = ("A new first line\n" as NSString).length
+        XCTAssertNotNil(LivePreviewNoteReadingModifier.readingAtHand(of: callout, environment: environment, currentLocation: { callout.range.location + distance }),
+                        "A block that moved is found where it is now.")
+        XCTAssertNil(LivePreviewNoteReadingModifier.readingAtHand(of: callout, environment: environment, currentLocation: nil),
+                     "Where it was found, the note now holds other lines.")
     }
 
     // MARK: Raw HTML (HUNT-122)

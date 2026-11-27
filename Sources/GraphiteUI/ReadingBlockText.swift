@@ -7,8 +7,8 @@
  *              breaks, links to notes, footnote numbers, reference links, tasks and callout fold keys.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 02/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -247,6 +247,18 @@ final class NoteReadingSnapshots {
         recent.insert((noteText, snapshot), at: 0)
         if recent.count > 2 { recent.removeLast() }
         return snapshot
+    }
+
+    /// The reading of the text read last, when its `range` still starts with `lines` (a block's
+    /// range takes its last line break, its lines do not), for a caller that must not read the
+    /// note's text; nil when nothing was read yet or that text holds other lines there.
+    func latestSnapshot(holding lines: String, at range: NSRange) -> NoteReadingSnapshot? {
+        guard let latest = recent.first else { return nil }
+        let text = latest.text as NSString
+        let linesRange = NSRange(location: range.location, length: (lines as NSString).length)
+        guard range.location >= 0, linesRange.length <= range.length, NSMaxRange(linesRange) <= text.length,
+              text.substring(with: linesRange) == lines else { return nil }
+        return latest.snapshot
     }
 }
 

@@ -5,8 +5,8 @@
  * Description: The Mac note editor does what the iPad's does: lists, Tab, pairs, code fences, folds, the note's name, and clicks that act on release.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
- * Date: 17/11/2026
+ * Version: 0.8
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -241,6 +241,18 @@ final class MacEditorParityTests: XCTestCase {
         editor.coordinator.positionFoldButtons(in: editor.textView)
         XCTAssertEqual(editor.coordinator.foldButtons.shownCount, 2)
         XCTAssertEqual(editor.textView.subviews.filter { subview in subview is NSButton }.count, 4, "A chevron and an ellipsis for each.")
+    }
+
+    /// The text view overrides `scrollWheel(with:)`, which turns AppKit's responsive
+    /// scrolling off unless the view declares itself compatible: a scroll then waited for
+    /// the main thread at every event. A synthetic gesture cannot show it, as responsive
+    /// scrolling then waits for the trackpad's own events.
+    func testTheNoteKeepsResponsiveScrollingWithItsWheelOverride() {
+        XCTAssertTrue(MarkdownMacTextView.isCompatibleWithResponsiveScrolling)
+        let scrollView = MarkdownMacTextView.makeScrollableTextView()
+        XCTAssertTrue(scrollView.documentView is MarkdownMacTextView)
+        XCTAssertTrue(type(of: scrollView).isCompatibleWithResponsiveScrolling)
+        XCTAssertTrue(type(of: scrollView.contentView).isCompatibleWithResponsiveScrolling)
     }
 
     /// Scrolling places the chevrons at every step; a new image each time redrew every one of them.

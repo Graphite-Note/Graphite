@@ -36,8 +36,10 @@ extension StructuredText {
         indentationLevel: indentationLevel
       )
       let resolvedStyle = tableStyle.resolve(configuration: configuration)
-        .onPreferenceChange(TableCell.SpacingKey.self) { @MainActor in
-          spacing = $0
+        // Graphite patch: set only when it changes; the same spacing set again laid the
+        // table out again.
+        .onPreferenceChange(TableCell.SpacingKey.self) { @MainActor newSpacing in
+          if spacing != newSpacing { spacing = newSpacing }
         }
 
       AnyView(resolvedStyle)

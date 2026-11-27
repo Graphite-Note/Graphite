@@ -5,8 +5,8 @@
  * Description: The Mac's note text view: paste and drop, focus, the readable column and link cards.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
- * Date: 26/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -169,6 +169,15 @@ final class MarkdownMacTextView: NSTextView {
               let editorCommand = keyCommandTable.command(matching: combination)?.editorCommand else { return false }
         return keyCommandOwner.runKeyCommand(editorCommand, in: self)
     }
+
+    /// AppKit turns responsive scrolling off for a document view that overrides
+    /// `scrollWheel(with:)` unless the view says it is compatible. Off, every event of a
+    /// trackpad gesture and its momentum waited for the main thread and nothing was drawn
+    /// ahead of the visible text, so scrolling a note never felt like the rest of the Mac.
+    /// The override only needs the first event of a gesture: what it does (release the held
+    /// line, close a link's card, stop following Read Aloud) happens once per gesture, and a
+    /// Control-scroll is not passed to the scroll view, so its later events come here too.
+    override class var isCompatibleWithResponsiveScrolling: Bool { true }
 
     override func scrollWheel(with event: NSEvent) {
         // Control-scrolling changes the font size and does not scroll, so reading keeps following.

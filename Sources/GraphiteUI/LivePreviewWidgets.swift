@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.50
- * Date: 19/11/2026
+ * Version: 0.51
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -137,6 +137,24 @@ struct LivePreviewWidgetView: View {
     /// What a callout or table reads from the rest of its note; nil until the note is read.
     @State private var noteReading: RenderedBlockNoteReading?
     @Environment(\.renderedBlockMenuContext) private var menuContext
+
+    init(block: LivePreviewBlock, environment: LivePreviewEnvironment, revealSource: @escaping () -> Void,
+         reportHeight: @escaping (CGFloat) -> Void, sourceEditing: RenderedBlockSourceEditing? = nil,
+         currentLocation: (@MainActor () -> Int?)? = nil) {
+        self.block = block
+        self.environment = environment
+        self.revealSource = revealSource
+        self.reportHeight = reportHeight
+        self.sourceEditing = sourceEditing
+        self.currentLocation = currentLocation
+        // A new view starts with what the pane's last reading of the note says about its block,
+        // so it is laid out once: without it a callout was laid out a second time in the frame it
+        // scrolled in, when the reading came. The reading of the note as it is now still follows
+        // once the view is on screen, and the same reading draws nothing again. A view that
+        // already exists keeps its own.
+        _noteReading = State(initialValue: LivePreviewNoteReadingModifier.readingAtHand(of: block, environment: environment,
+                                                                                         currentLocation: currentLocation))
+    }
 
     private var tablePlace: RenderedBlockPlace? {
         noteReading.map { reading in RenderedBlockPlace(reading: reading, lineOffsets: RenderedBlockPlace.lineOffsets(of: block.markdown)) }
@@ -314,36 +332,6 @@ struct LivePreviewWidgetView: View {
         case .callout:
             calloutContent
         }
-    }
-}
-
-/// What a callout or table reads from the rest of its note: the note's text is read once the block
-/// is on screen and again when the block changes or moves, never in a body, so typing does not draw it again.
-private struct LivePreviewNoteReadingModifier: ViewModifier {
-    let block: LivePreviewBlock
-    let environment: LivePreviewEnvironment
-    let currentLocation: (@MainActor () -> Int?)?
-    @Binding var noteReading: RenderedBlockNoteReading?
-
-    /// Changes when the block, or where it is in the note, does; nil for blocks that read nothing from the note.
-    private var key: String? {
-        guard environment.noteText != nil, block.kind == .table || block.kind == .callout else { return nil }
-        return "\(block.range.location)|\(block.sourceLines)"
-    }
-
-    func body(content: Content) -> some View {
-        let block = block
-        let blockStart: @MainActor () -> Int? = currentLocation ?? { block.range.location }
-        return content
-            .environment(\.readingTaskContext, ReadingTaskContext.ofRenderedBlock(environment: environment, blockStart: blockStart))
-            .environment(\.readingTagSearch, environment.tagSearch)
-            .task(id: key) {
-                guard key != nil, let noteText = environment.noteText?() else { noteReading = nil; return }
-                let snapshot = environment.noteSnapshots?.snapshot(for: noteText) ?? NoteReadingSnapshot(noteText: noteText)
-                // The note's text is as it is now, so the block is looked for where it is now.
-                noteReading = RenderedBlockNoteReading(snapshot: snapshot, sourceMarkdown: block.markdown, sourceLines: block.sourceLines,
-                                                       sourceRange: NSRange(location: blockStart() ?? block.range.location, length: block.range.length))
-            }
     }
 }
 

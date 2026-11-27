@@ -102,7 +102,11 @@ import SwiftUI
 /// When you need to parse something other than Markdown, use ``init(_:parser:)`` with a custom
 /// ``MarkupParser`` implementation.
 public struct StructuredText: View {
-  @State private var attributedString = AttributedString()
+  // Graphite patch: the markup is parsed in the update that first shows the view, kept in a
+  // holder no view observes (`ParsedMarkup`, parsed again only when the markup changes).
+  // Upstream parsed it in `onChange`, so every structured text was first laid out empty and
+  // then again with its blocks.
+  @State private var parsedMarkup = ParsedMarkup()
 
   private let markup: String
   private let parser: any MarkupParser
@@ -116,21 +120,31 @@ public struct StructuredText: View {
   }
 
   public var body: some View {
-    WithAttachments(attributedString) {
+    WithAttachments(parsedMarkup.attributedString(for: markup, parser: parser)) {
       BlockContent(content: $0)
         .modifier(TextSelectionInteraction())
         .modifier(TextSelectionCoordination())
     }
     .coordinateSpace(.textContainer)
-    .onChange(of: markup, initial: true) {
-      markupDidChange(markup)
-    }
     // Disable line limit to avoid per-fragment truncation
     .lineLimit(nil)
   }
+}
 
-  private func markupDidChange(_ markup: String) {
-    self.attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+extension StructuredText {
+  /// Graphite patch: the parse of the markup last shown. Not observed: parsing in a view update
+  /// changes no state any view reads, and new markup comes with a new body anyway. As upstream,
+  /// a new parser alone does not parse again; Graphite gives the view a new identity for that.
+  @MainActor final class ParsedMarkup {
+    private var markup: String?
+    private var attributedString = AttributedString()
+
+    func attributedString(for markup: String, parser: any MarkupParser) -> AttributedString {
+      if let parsed = self.markup, parsed == markup { return attributedString }
+      attributedString = (try? parser.attributedString(for: markup)) ?? .init()
+      self.markup = markup
+      return attributedString
+    }
   }
 }
 

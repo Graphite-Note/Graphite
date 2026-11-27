@@ -125,6 +125,20 @@ A view update must not change observed state, so carrying a selection over to ne
 
 `Internal/StructuredText/BlockContent.swift`: content of one block (a heading, a paragraph) is shown as that block, without `BlockVStack`, whose layout and spacing preferences place a block beside another; the reading view's texts are one block each.
 
+## 30. Structured text is parsed in the update that shows it
+
+`StructuredText/StructuredText.swift`: `StructuredText` parses its markup in the view update that first shows it, kept in a holder its state does not observe (`ParsedMarkup`, parsed again only when the markup changes). Upstream parsed it in `onChange(of:initial:)`, which runs after that update, so every structured text was first laid out empty (a table or a formula at 0 points) and then again with its blocks. As upstream, a new parser alone does not parse again.
+
+## 31. A fragment's text is styled in the update that shows it
+
+`Internal/InlineText/WithInlineStyle.swift`: the inline style (code, emphasis, strong, strikethrough, links) is applied in the update that first shows the text, kept in a holder its state does not observe (`StyledText`, made again only when the input, the style or the text environment changes). Upstream applied it in `onChange`, so every `TextFragment` was first laid out with no text at all, and the block around it a second time.
+
+## 32. Text and measurements that did not change change no view state
+
+`Internal/TextFragment/TextBuilder.swift`: `proposalChanged` keeps the text when the attachment sizes are the ones it was built with; the container's size reported again set the observed `text` to the same text and drew it again. `StructuredText/Style/Overflow.swift`: the widths that decide whether the content needs the scroll view (`OverflowWidths`) are kept where no view observes them; as state, the first measurements of a table that fits laid it out a second time. `Internal/StructuredText/Table.swift`: the cell spacing preference is set as state only when it differs.
+
+Measured on the iPad simulator (iOS 27.2, Release, `PerformanceBenchmarkTests.testOpeningScrollingAndTypingInALongNote`): with patches 30 to 32 and Graphite's own reading at hand (`LivePreviewNoteReadingModifier.readingAtHand`), a table, a callout or a display formula scrolling in is laid out once in its first frame, where it was laid out four times. Found on the way, and left as it was: `ObsidianTableStyle`'s `tableCellSpacing(horizontal: 1, vertical: 1)` never reaches the table (the preference arrives empty), so tables are spaced by `TableColumnsLayout.defaultCellSpacing` (8 points); making it arrive would change how every table looks.
+
 Remove this vendored copy and return to the upstream package once an upstream release contains equivalents of these changes.
 
 ## 12. Links tell a host when the pointer rests on them

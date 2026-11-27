@@ -23,6 +23,9 @@ extension TextFragment {
 
     @ObservationIgnored private let content: Content
     @ObservationIgnored private let cache: NSCache<KeyBox<[AttachmentKey: CGSize]>, Box<Text>>
+    // Graphite patch: the attachment sizes `text` was built with. The container's size reported
+    // with sizes the text already has set `text` again, which, observed, drew it again.
+    @ObservationIgnored private var attachmentSizes: [AttachmentKey: CGSize]
 
     // Graphite patch: `attachmentProposal` sizes the attachments from the start, so a
     // fragment built again inside a table cell keeps the sizes its column gives them.
@@ -39,6 +42,7 @@ extension TextFragment {
         in: environment
       )
       self.content = content
+      self.attachmentSizes = attachmentSizes
       self.cache = NSCache()
       self.cache.countLimit = 10
 
@@ -51,6 +55,8 @@ extension TextFragment {
 
     func proposalChanged(_ proposal: ProposedViewSize, environment: TextEnvironmentValues) {
       let attachmentSizes = content.attachmentSizes(for: proposal, in: environment)
+      guard attachmentSizes != self.attachmentSizes else { return }
+      self.attachmentSizes = attachmentSizes
       let cacheKey = KeyBox(attachmentSizes)
 
       if let text = cache.object(forKey: cacheKey) {

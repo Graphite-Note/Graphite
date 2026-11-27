@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## Rendered blocks laid out once as a note scrolls, and the Mac's responsive scrolling: 2026-11-27
+
+[Editor-scrolling-todo.md](Editor-scrolling-todo.md), the lag item (issue #57): a table, a callout or a display formula scrolling into a Live Preview note was laid out four times in the frame it appeared in, and is now laid out once (Textual patches 30 to 32, the reading at hand; [Architecture](Architecture.md), "Rendered blocks", invariant P-21). The Mac's note keeps AppKit's responsive scrolling.
+
+- **Automated tests, passing on macOS:** `TextualFirstLayoutTests` (a paragraph, a table and a display formula laid out at their final height the first time, where upstream Textual laid them out empty first); `ReadingBlockTextTests` (2 new: the last reading is found by the block's lines where the block is now, not in an earlier text kept beside it; a new callout's or table's view starts with the reading its task makes, a formula with none, a moved block found where it is); `MacEditorParityTests.testTheNoteKeepsResponsiveScrollingWithItsWheelOverride`.
+- **Measured on the iPad simulator** (iPad Pro 11-inch (M5), iOS 27.2, Release with testability, `PerformanceBenchmarkTests.testOpeningScrollingAndTypingInALongNote`; one build switching between the old and the new behaviour run after run, three rounds, runs 2 and 3 of each): scrolling down, steps over 16 ms 29–36 → 8–18 of about 100, 95th percentile 22.7–26.5 → 16.9–19.0 ms, main thread 1,694–1,848 → 1,459–1,572 ms; scrolling up, 5–9 → 1–5 steps over 16 ms; typing unchanged. Layout passes counted inside the block views: 4 → 1 for each table, callout and formula built while scrolling down.
+- **Checked in the app on the iPad simulator:** pictures of a callout, a table and the block under them, taken in the hosted app with the old and the new behaviour, are the same pixels.
+- **Left open:** text of several blocks, such as a list inside a callout, is still laid out twice: Textual's block stack learns the spacing between its blocks from a preference.
+- **Not checked:** a physical iPad or iPhone, the iPhone simulator, the Mac's benchmark (it scrolls by setting the position, which responsive scrolling does not touch), and scrolling by hand with a trackpad on the Mac, with Control-scroll for the font size.
 ## Notion import verified on real exports and a large one: 2026-11-27
 
 [Notion-import-todo.md](Notion-import-todo.md) section 8 (issue #177), with Graphite on Importer 0.1.0.

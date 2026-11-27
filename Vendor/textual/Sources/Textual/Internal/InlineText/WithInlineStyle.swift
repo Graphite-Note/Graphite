@@ -13,13 +13,18 @@ import SwiftUI
 // The view reads `InlineStyle` and `TextEnvironmentValues` from the environment, then produces a
 // styled copy of the attributed string by merging attributes into each matching span.
 //
-// Styling is recomputed whenever the input, style, or environment snapshot changes.
+// Styling is recomputed whenever the input, style, or environment snapshot changes, in the
+// update that shows it (Graphite patch 31).
 
 struct WithInlineStyle<Content: View>: View {
   @Environment(\.inlineStyle) private var style
   @Environment(\.textEnvironment) private var environment
 
-  @State private var output: AttributedString?
+  // Graphite patch: the styled text is made in the update that first shows the view, kept in a
+  // holder no view observes (`StyledText`, made again only when the input, the style or the
+  // environment changes). Upstream made it in `onChange`, so every text fragment was first laid
+  // out empty and then again with its text, and the view around it twice over.
+  @State private var styledText = StyledText()
 
   private let input: AttributedString
   private let content: (AttributedString) -> Content
@@ -33,21 +38,27 @@ struct WithInlineStyle<Content: View>: View {
   }
 
   var body: some View {
-    content(output ?? AttributedString())
-      .onChange(of: Tuple(input, style, environment), initial: true) { _, newValue in
-        resolve(
-          attributedString: newValue.values.0,
-          style: newValue.values.1,
-          in: newValue.values.2
-        )
-      }
+    content(styledText.output(for: Tuple(input, style, environment)))
   }
 
-  private func resolve(
-    attributedString: AttributedString,
+  /// Graphite patch: the styled text last made, and what it was made from.
+  @MainActor final class StyledText {
+    private var source: Tuple<AttributedString, InlineStyle, TextEnvironmentValues>?
+    private var output = AttributedString()
+
+    func output(for source: Tuple<AttributedString, InlineStyle, TextEnvironmentValues>) -> AttributedString {
+      if let madeFrom = self.source, madeFrom == source { return output }
+      output = WithInlineStyle.styled(source.values.0, style: source.values.1, in: source.values.2)
+      self.source = source
+      return output
+    }
+  }
+
+  fileprivate static func styled(
+    _ attributedString: AttributedString,
     style: InlineStyle,
     in environment: TextEnvironmentValues
-  ) {
+  ) -> AttributedString {
     var output = attributedString
 
     for run in attributedString.runs {
@@ -78,6 +89,6 @@ struct WithInlineStyle<Content: View>: View {
       output[run.range].mergeAttributes(attributes, mergePolicy: .keepNew)
     }
 
-    self.output = output
+    return output
   }
 }

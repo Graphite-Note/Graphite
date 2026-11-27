@@ -41,12 +41,10 @@ public struct Overflow<Content: View>: View {
   /// Graphite: with `scrollsOnlyWhenWider`, whether the content was last measured wider
   /// than the space it is shown in, so it needs the scroll view.
   @State private var isWiderThanContainer = false
-  @State private var measuredContentWidth: CGFloat?
-  @State private var availableWidth: CGFloat?
-  /// The width the content was found wider than. It leaves the scroll view only once the
-  /// space grows past it: measured in the scroll view, the content passes through other
-  /// widths as it is laid out again, and comparing those switched it in and out for good.
-  @State private var widthWhenFoundWider: CGFloat?
+  /// Graphite patch: the widths `isWiderThanContainer` is decided from, kept where no view
+  /// observes them. As state, the first measurements of a table that fits laid it out again,
+  /// though nothing it shows depends on them.
+  @State private var widths = OverflowWidths()
 
   private let content: (OverflowState) -> Content
   private let scrollsOnlyWhenWider: Bool
@@ -74,15 +72,16 @@ public struct Overflow<Content: View>: View {
 
   private func updateWhetherWider() {
     if isWiderThanContainer {
-      guard let containerWidth, let widthWhenFoundWider, containerWidth > widthWhenFoundWider + Self.widthTolerance else { return }
-      measuredContentWidth = nil
-      availableWidth = nil
+      guard let containerWidth, let widthWhenFoundWider = widths.widthWhenFoundWider,
+            containerWidth > widthWhenFoundWider + Self.widthTolerance else { return }
+      widths.measuredContentWidth = nil
+      widths.availableWidth = nil
       isWiderThanContainer = false
       return
     }
-    guard let measuredContentWidth, let availableWidth, availableWidth > 0,
+    guard let measuredContentWidth = widths.measuredContentWidth, let availableWidth = widths.availableWidth, availableWidth > 0,
           measuredContentWidth > availableWidth + Self.widthTolerance else { return }
-    widthWhenFoundWider = availableWidth
+    widths.widthWhenFoundWider = availableWidth
     isWiderThanContainer = true
   }
 
@@ -100,12 +99,12 @@ public struct Overflow<Content: View>: View {
       OfferedWidthFrame {
         content(.wrap)
           .onGeometryChange(for: CGFloat.self, of: \.size.width) { width in
-            measuredContentWidth = width
+            widths.measuredContentWidth = width
             updateWhetherWider()
           }
       }
       .onGeometryChange(for: CGFloat.self, of: \.size.width) { width in
-        availableWidth = width
+        widths.availableWidth = width
         updateWhetherWider()
       }
 
@@ -153,6 +152,16 @@ public struct Overflow<Content: View>: View {
 extension EnvironmentValues {
   @usableFromInline
   @Entry var overflowMode = OverflowMode.scroll
+}
+
+/// Graphite patch: what `Overflow` measured to decide whether its content needs the scroll view.
+@MainActor final class OverflowWidths {
+  var measuredContentWidth: CGFloat?
+  var availableWidth: CGFloat?
+  /// The width the content was found wider than. It leaves the scroll view only once the
+  /// space grows past it: measured in the scroll view, the content passes through other
+  /// widths as it is laid out again, and comparing those switched it in and out for good.
+  var widthWhenFoundWider: CGFloat?
 }
 
 /// Graphite: takes the width it is offered whatever its content's width, with the content at
