@@ -45,6 +45,9 @@ final class ReleaseVaultPass {
     static let switchVariable = "GRAPHITE_RELEASE_PASS"
     static let skipReason = "Not run: the release pass over Tests/ReleaseVault runs before a release, with GRAPHITE_RELEASE_PASS=1."
     static let screenshotFolderVariable = "GRAPHITE_RELEASE_PASS_SCREENSHOTS"
+    /// `dark` runs the pass in Graphite's dark appearance (the Base Color Scheme and, on the Mac, the window's); anything else,
+    /// or nothing, in light. On a simulator the system's appearance is the simulator's (`xcrun simctl ui <udid> appearance`).
+    static let appearanceVariable = "GRAPHITE_RELEASE_PASS_APPEARANCE"
     static let maximumPagesPerView = 60
     /// The vault's own community plugin (`.obsidian/plugins/release-vault-test`), made by `scripts/make-release-vault.py`.
     static let testPluginIdentifier = "release-vault-test"
@@ -101,9 +104,15 @@ final class ReleaseVaultPass {
         try ReleaseVaultPassWebPages.copyVault(source, to: vaultRoot, pointingFramesAt: webServer.address("/").absoluteString)
         let device = try IsolatedWorkspaceDevice.make(for: testCase)
         let workspace = device.makeWorkspace()
+        let isDark = ProcessInfo.processInfo.environment[appearanceVariable] == "dark"
+        if isDark { workspace.preferences.appearanceMode = .dark }
         try await workspace.openFolderAsVault(vaultRoot)
         try await waitUntil("the release vault is indexed", timeoutSeconds: 120) { workspace.hasCompletedIndexScan && !workspace.isIndexing }
         let window = try ReleaseVaultWindow.show(GraphiteRootView(workspace: workspace), for: testCase)
+        #if os(macOS)
+        // The pass's window is light whatever Graphite's scheme; a scene's window follows `preferredColorScheme`.
+        if isDark { window.appearance = NSAppearance(named: .darkAqua) }
+        #endif
         return ReleaseVaultPass(testCase: testCase, workspace: workspace, window: window, vaultRoot: vaultRoot, webServer: webServer)
     }
 

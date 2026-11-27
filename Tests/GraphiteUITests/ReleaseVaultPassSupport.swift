@@ -81,7 +81,11 @@ enum ReleaseVaultWindow {
                                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         representation.size = contentView.bounds.size
-        contentView.cacheDisplay(in: contentView.bounds, to: representation)
+        // Outside a drawing pass the current appearance is the app's, light here, so colours that follow the appearance
+        // (the reading view's page) came out light under the dark window's light text (HUNT-363).
+        window.effectiveAppearance.performAsCurrentDrawingAppearance {
+            contentView.cacheDisplay(in: contentView.bounds, to: representation)
+        }
         if let context = NSGraphicsContext(bitmapImageRep: representation) { drawPDFPages(in: contentView, into: context.cgContext) }
         return representation.representation(using: .png, properties: [:])
     }

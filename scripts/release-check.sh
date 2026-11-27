@@ -55,6 +55,10 @@ KNOWN_FAILURES=(
 )
 
 steps=(rules mac-suite mac-pass ios-build hosted-suite ipad-pass iphone-pass sizes)
+# The pass's parts, one test each, in ReleaseVaultPassTests (Mac) and ReleaseVaultPassHostedTests (iPad and iPhone).
+pass_parts=(testTheTextNotesOpenInEachOfTheirViewsWithoutAFinding testTheDiagramsDailyNotesAndLongLectureOpenInEachOfTheirViewsWithoutAFinding
+  testThePicturesCanvasesAndBasesOpenWithoutAFinding testThePDFsNotebooksImportsAndDrawingsOpenWithoutAFinding
+  testTheNotesEmbeddingPicturesPDFsAndDrawingsInEveryFormOpenWithoutAFinding)
 results=()
 known_seen=()
 started=no
@@ -208,11 +212,20 @@ step_mac_pass() {
     wait_for_other_builds
     swift build --build-tests --scratch-path "$build_folder/swiftpm" > "$build_folder/mac-pass-build.log" 2>&1 || { report "  the build failed: $build_folder/mac-pass-build.log"; return 1; }
   fi
-  run_watched "$build_folder/mac-pass.log" env GRAPHITE_RELEASE_PASS=1 GRAPHITE_RELEASE_PASS_SCREENSHOTS="$build_folder/release-pass-mac" \
-    swift test --skip-build --scratch-path "$build_folder/swiftpm" --filter ReleaseVaultPassTests
-  local status=$?
-  grep -hE "GRAPHITE-RELEASE-(PASS|FINDING|KNOWN)" "$build_folder/mac-pass.log" | sed 's/^/  Mac: /' | tee -a "$summary"
-  [ $status -eq 0 ] && grep -q "GRAPHITE-RELEASE-PASS" "$build_folder/mac-pass.log"
+  # One part at a time, each after other sessions' builds end: a build that started during the pass stopped the main
+  # thread for seconds on the first note of a part (Docs/Release-test-vault-todo.md section 2, 2026-11-17).
+  local part status=0
+  : > "$build_folder/mac-pass.log"
+  for part in "${pass_parts[@]}" testEveryWebFrameOfTheVaultIsPointedAtThePassServer; do
+    wait_for_other_builds
+    run_watched "$build_folder/mac-pass-$part.log" env GRAPHITE_RELEASE_PASS=1 GRAPHITE_RELEASE_PASS_SCREENSHOTS="$build_folder/release-pass-mac" \
+      swift test --skip-build --scratch-path "$build_folder/swiftpm" --filter "ReleaseVaultPassTests/$part"
+    status=$?
+    cat "$build_folder/mac-pass-$part.log" >> "$build_folder/mac-pass.log"
+    grep -hE "GRAPHITE-RELEASE-(PASS|FINDING|KNOWN)" "$build_folder/mac-pass-$part.log" | sed 's/^/  Mac: /' | tee -a "$summary"
+    [ $status -eq 0 ] || return 1
+  done
+  [ "$(grep -c "GRAPHITE-RELEASE-PASS" "$build_folder/mac-pass.log")" -ge "${#pass_parts[@]}" ]
 }
 
 step_ios_build() {
@@ -237,14 +250,20 @@ step_hosted_suite() {
 
 # The pass's screenshots are the result bundle's attachments; they are exported next to it.
 pass_on_simulator() {
-  local name=$1 udid=$2
-  TEST_RUNNER_GRAPHITE_RELEASE_PASS=1 hosted_run "$build_folder/$name.log" "$udid" "$build_folder/$name.xcresult" 1200 \
-    -only-testing:GraphiteIntegrationTests/ReleaseVaultPassHostedTests
-  local status=$?
-  grep -hE "GRAPHITE-RELEASE-(PASS|FINDING|KNOWN)" "$build_folder/$name.log" | sed "s/^/  $name: /" | tee -a "$summary"
+  local name=$1 udid=$2 part status=0
   rm -rf "$build_folder/$name-screenshots"
-  xcrun xcresulttool export attachments --path "$build_folder/$name.xcresult" --output-path "$build_folder/$name-screenshots" > /dev/null 2>&1
-  [ $status -eq 0 ] && grep -q "GRAPHITE-RELEASE-PASS" "$build_folder/$name.log"
+  : > "$build_folder/$name.log"
+  for part in "${pass_parts[@]}"; do
+    wait_for_other_builds
+    TEST_RUNNER_GRAPHITE_RELEASE_PASS=1 hosted_run "$build_folder/$name-$part.log" "$udid" "$build_folder/$name-$part.xcresult" 1200 \
+      -only-testing:"GraphiteIntegrationTests/ReleaseVaultPassHostedTests/$part"
+    status=$?
+    cat "$build_folder/$name-$part.log" >> "$build_folder/$name.log"
+    grep -hE "GRAPHITE-RELEASE-(PASS|FINDING|KNOWN)" "$build_folder/$name-$part.log" | sed "s/^/  $name: /" | tee -a "$summary"
+    xcrun xcresulttool export attachments --path "$build_folder/$name-$part.xcresult" --output-path "$build_folder/$name-screenshots/$part" > /dev/null 2>&1
+    [ $status -eq 0 ] || return 1
+  done
+  [ "$(grep -c "GRAPHITE-RELEASE-PASS" "$build_folder/$name.log")" -ge "${#pass_parts[@]}" ]
 }
 
 step_ipad_pass() {
