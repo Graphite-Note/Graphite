@@ -6,7 +6,7 @@
  *
  * Authors: Bahey Shalash, Félix Chevalier
  * Version: 0.91
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -1894,3 +1894,14 @@ enum VaultSwitchRefusal: LocalizedError, Equatable {
         }
     }
 }
+
+extension WorkspaceModel {
+    /// The open vault's files and index for a base run away from its pane, or nil while no vault is open.
+    var baseVaultAccess: BaseVaultAccess? {
+        guard let store, let index else { return nil }
+        return BaseVaultAccess(store: store, index: index)
+    }
+}
+
+/// The index answers the Icons, Covers and Columns core plugin's catalog.
+extension VaultIndex: NoteIconLookup {}

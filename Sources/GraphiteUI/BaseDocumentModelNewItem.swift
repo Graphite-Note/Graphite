@@ -7,12 +7,11 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 extension BaseDocumentModel {
     /// Templates are small notes; a larger file is not read as one.
@@ -91,25 +90,19 @@ extension BaseDocumentModel {
         let listNames = Set(vaultTypes.merging(declaredTypes) { _, declared in declared }.filter { entry in BaseNoteServices.isList(entry.value) }
             .map { entry in entry.key.lowercased() })
         let contextPath = contextPath
-        let index = index
-        let provider = index.baseRecordProvider
         let viewIndex = selectedViewIndex
         let environment = BaseEvaluationEnvironment(now: .now, calendar: BaseDateFormatting.displayCalendar, declaredTypes: declaredTypes)
         let provisionalFolder = BaseNewItemNote.folder(newItemFolder: definition.newItemFolder, filterFolder: nil, templatePath: nil,
                                                        newNoteLocation: services.newNoteLocation, currentFile: contextPath)
-        // Detached: the evaluator's lookups read the index's database synchronously.
-        let plan = try await Task.detached(priority: .userInitiated) { () throws -> BaseNewItemPlan in
-            let thisRecord = try await index.baseRecord(at: contextPath) ?? BaseFileRecord(path: contextPath, size: 0, createdDate: environment.now,
-                                                                                            modifiedDate: environment.now)
+        let plan = try await evaluatingWithIndexRecords { indexedRecord, provider in
+            let thisRecord = indexedRecord ?? BaseFileRecord(path: contextPath, size: 0, createdDate: environment.now, modifiedDate: environment.now)
             let newNote = BaseFileRecord(path: try provisionalFolder.appending(BaseNewItemNote.untitledName + ".md"), size: 0,
                                          createdDate: environment.now, modifiedDate: environment.now)
             let evaluator = BaseEvaluator(formulas: definition.formulas, environment: environment, thisRecord: thisRecord, knownRecords: [newNote],
                                           provider: provider)
-            let plan = BaseNewItemPlanner.plan(definition: definition, viewIndex: viewIndex, evaluator: evaluator, newNote: newNote,
-                                               isListProperty: { name in listNames.contains(name.lowercased()) })
-            try provider.throwIfLookupFailed()
-            return plan
-        }.value
+            return BaseNewItemPlanner.plan(definition: definition, viewIndex: viewIndex, evaluator: evaluator, newNote: newNote,
+                                           isListProperty: { name in listNames.contains(name.lowercased()) })
+        }
         let folder = BaseNewItemNote.folder(newItemFolder: definition.newItemFolder, filterFolder: plan.filterFolder, templatePath: templatePath,
                                             newNoteLocation: services.newNoteLocation, currentFile: contextPath)
         let column = Self.column(groupKey, groupedBy: view.groupBy)

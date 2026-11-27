@@ -8,12 +8,11 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
-import GraphiteIndex
 
 /// The picture of a note's cover, found, and which part of it shows.
 struct ReadingCover: Equatable, Sendable {
@@ -30,7 +29,7 @@ struct ReadingCover: Equatable, Sendable {
 extension ReadingViewBuilder {
     /// The cover the note's frontmatter names, or nil without a `banner` property, or when its picture is not a
     /// picture of the vault. The frontmatter is parsed only when it holds the word `banner`.
-    func cover(inFrontmatter frontmatterText: String, note: VaultPath, root: URL, index: VaultIndex,
+    func cover(inFrontmatter frontmatterText: String, note: VaultPath, root: URL, index: some ReadingFileLookup,
                configuration: ReadingConfiguration) async -> ReadingCover? {
         guard frontmatterText.range(of: NoteBanner.propertyKey, options: .caseInsensitive) != nil,
               let yaml = try? MarkdownSemantics.parse(frontmatterText).frontmatter, // Frontmatter that does not parse has no banner.

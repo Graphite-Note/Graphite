@@ -7,7 +7,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.6
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -47,6 +47,8 @@ final class BaseDocumentModel {
     /// Internal for the model's own extensions (relations, rollups, new notes), which read and save through them.
     let store: VaultStore
     let index: VaultIndex
+    /// The relation picker's read port into the index (BaseDocumentModelRelations.swift).
+    var relationLookup: any BaseRelationLookup { index }
     /// Tells the app which vault file the base just saved.
     private let didSaveFile: (VaultPath) -> Void
 
@@ -784,6 +786,24 @@ struct UTF8FileText {
 
 enum BasePropertyEditorKind {
     case text, number, checkbox, date, dateTime, list
+}
+
+extension BaseDocumentModel {
+    /// Runs `evaluate` off the main actor with the context note's record and the index's record provider, then throws
+    /// the first lookup the index could not answer, so work outside a query run (New) evaluates the base's formulas
+    /// as a run does. Detached: the provider's lookups read the index's database synchronously.
+    func evaluatingWithIndexRecords<Answer: Sendable>(
+        _ evaluate: @escaping @Sendable (_ thisRecord: BaseFileRecord?, _ provider: any BaseRecordProvider) throws -> Answer
+    ) async throws -> Answer {
+        let index = index
+        let provider = index.baseRecordProvider
+        let contextPath = contextPath
+        return try await Task.detached(priority: .userInitiated) { () throws -> Answer in
+            let answer = try evaluate(try await index.baseRecord(at: contextPath), provider)
+            try provider.throwIfLookupFailed()
+            return answer
+        }.value
+    }
 }
 
 extension BaseViewType {

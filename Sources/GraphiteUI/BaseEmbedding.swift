@@ -6,12 +6,31 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.4
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
 import GraphiteIndex
+
+extension VaultIndex: BaseRelationLookup {
+    nonisolated func relationValues(of key: String, limit: Int) async throws -> [String] {
+        try await propertyValues(of: key, matching: "", limit: limit).map(\.value)
+    }
+}
+
+/// The vault's files and index as a base reads them, for work that runs a base away from its pane (Calendar Copy, the
+/// course starter): it builds the base's model, so its holder need not know the index (Docs/solid/rewrite-foundations.md
+/// section 3.3 rule 3).
+struct BaseVaultAccess: Sendable {
+    let store: VaultStore
+    let index: VaultIndex
+
+    @MainActor
+    func model(of basePath: VaultPath, preferredViewName: String? = nil) -> BaseDocumentModel {
+        BaseDocumentModel(source: .file(basePath), contextPath: basePath, store: store, index: index, preferredViewName: preferredViewName)
+    }
+}
 
 /// What a base inside a note needs from the app. Build one per open note and pass it
 /// to `BaseCodeBlockView` / `BaseFileEmbedView`, directly or through the environment.

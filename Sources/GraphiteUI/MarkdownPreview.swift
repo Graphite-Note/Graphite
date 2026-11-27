@@ -6,7 +6,7 @@
  *
  * Authors: Félix Chevalier, Bahey Shalash
  * Version: 0.73
- * Date: 23/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -294,6 +294,9 @@ struct ReadingBlockLocation: Equatable, Sendable {
     let noteOffset: Int
     let lineNoteOffsets: [Int]
 }
+
+/// The index answers the reading view's link lookups.
+extension VaultIndex: ReadingFileLookup {}
 
 /// An open vault as the reading view builds from it: its folder and its index. Views that
 /// build a note away from the reading view (a note's PDF) take it whole, so they need not
@@ -609,7 +612,7 @@ actor ReadingViewBuilder {
         let folder: VaultPath
     }
 
-    func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: VaultIndex) async -> VaultPath? {
+    func resolve(_ target: String, isWiki: Bool, note: VaultPath, root: URL, index: some ReadingFileLookup) async -> VaultPath? {
         let link = LinkFromFolder(target: target, isWiki: isWiki, folder: note.parent)
         if let knownPath = resolvedLinks[link] { return knownPath }
         var resolvedPath = WikiLinkResolver.existingDirectFile(target: target, source: note, isWiki: isWiki, in: root)
