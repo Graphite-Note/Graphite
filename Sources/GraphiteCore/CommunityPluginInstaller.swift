@@ -42,6 +42,9 @@ public struct CommunityPluginInstaller: Sendable {
     private let session: URLSession
 
     public static let directoryAddress = "https://raw.githubusercontent.com/obsidianmd/obsidian-releases/HEAD/community-plugins.json"
+    /// Graphite's own plugins (`Plugins/graphite-plugins.json` in Graphite's repository), in the same form as
+    /// Obsidian's directory, read from the repository so that a plugin joins the list without a new release of the app.
+    public static let graphitePluginsAddress = "https://raw.githubusercontent.com/Graphite-Note/Graphite/HEAD/Plugins/graphite-plugins.json"
     static let maximumDirectoryBytes = 16 * 1_048_576
     static let maximumSmallFileBytes = 1_048_576
 
@@ -54,9 +57,28 @@ public struct CommunityPluginInstaller: Sendable {
 
     public func directory() async throws -> [CommunityPluginDirectoryEntry] {
         let data = try await download(Self.directoryAddress, maximumBytes: Self.maximumDirectoryBytes, isOptional: false) ?? Data()
-        guard let entries = try? JSONDecoder().decode([CommunityPluginDirectoryEntry].self, from: data) else {
+        guard let entries = Self.usableEntries(in: data) else {
             throw GraphiteError.invalidFile("Obsidian's list of community plugins could not be read.")
         }
+        return entries
+    }
+
+    /// Graphite's own plugins, listed above Obsidian's directory. Empty when the list is missing, cannot be reached or
+    /// cannot be read: it only brings a few plugins forward, and Obsidian's directory and installing by repository
+    /// still list and install them.
+    public func graphitePlugins() async -> [CommunityPluginDirectoryEntry] {
+        do {
+            let data = try await download(Self.graphitePluginsAddress, maximumBytes: Self.maximumSmallFileBytes, isOptional: true)
+            return data.flatMap(Self.usableEntries(in:)) ?? []
+        } catch {
+            return []
+        }
+    }
+
+    /// The entries of a list in the form of Obsidian's directory whose repository and identifier are usable, `nil`
+    /// when the bytes are not such a list.
+    static func usableEntries(in data: Data) -> [CommunityPluginDirectoryEntry]? {
+        guard let entries = try? JSONDecoder().decode([CommunityPluginDirectoryEntry].self, from: data) else { return nil }
         return entries.filter { entry in Self.isUsableRepository(entry.repo) && CommunityPluginManifest.isUsableIdentifier(entry.id) }
     }
 

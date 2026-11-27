@@ -1,0 +1,9 @@
+[
+  {
+    "id": "graphite-notion-importer",
+    "name": "Notion Importer",
+    "author": "Bahey Shalash",
+    "description": "Imports Notion's HTML export: pages as notes, databases as bases with typed properties, attachments as files, and a report note of what was converted. The Swift importer Graphite links, compiled to WebAssembly.",
+    "repo": "Graphite-Note/Importer"
+  }
+]

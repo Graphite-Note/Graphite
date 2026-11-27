@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fileSystem = require('node:fs');
+const path = require('node:path');
 const { startRuntime, settle, plain } = require('../support/runtime-harness');
 
 test('the vault lists files and folders but not hidden ones', async () => {
@@ -163,6 +165,31 @@ test('the adapter reaches hidden files and binary data', async () => {
         assert.ok(harness.app.vault.getFileByPath('Images/raw.bin'), 'a visible file written through the adapter joins the tree');
         const stat = await adapter.stat('Images');
         assert.equal(stat.type, 'folder');
+    } finally {
+        harness.close();
+    }
+});
+
+test('appendBinary sends only the bytes added, so a file larger than one write is written in pieces', async () => {
+    const harness = await startRuntime({ files: { 'Media/clip.bin': Buffer.from([1, 2]) } });
+    try {
+        const operations = [];
+        const handle = harness.host.handle.bind(harness.host);
+        harness.host.handle = (message) => { operations.push(message.operation); return handle(message); };
+        const adapter = harness.app.vault.adapter;
+        await adapter.readBinary('Media/clip.bin');
+        await adapter.appendBinary('Media/clip.bin', new Uint8Array([3, 4]).buffer);
+        await adapter.appendBinary('Media/new.bin', new Uint8Array([9]).buffer);
+        const file = harness.app.vault.getFileByPath('Media/clip.bin');
+        await harness.app.vault.appendBinary(file, new Uint8Array([5]).buffer);
+        assert.deepEqual(Array.from(fileSystem.readFileSync(path.join(harness.vaultFolder, 'Media/clip.bin'))), [1, 2, 3, 4, 5]);
+        assert.deepEqual(Array.from(fileSystem.readFileSync(path.join(harness.vaultFolder, 'Media/new.bin'))), [9], 'a missing file is made');
+        assert.ok(harness.app.vault.getFileByPath('Media/new.bin'), 'and joins the tree');
+        assert.deepEqual(operations.filter((operation) => operation !== 'vault.stat'), ['vault.read', 'vault.append', 'vault.append', 'vault.append'],
+            'nothing read back');
+        // The revision read before the appends is forgotten: a later write replaces the grown file.
+        await adapter.writeBinary('Media/clip.bin', new Uint8Array([7]).buffer);
+        assert.deepEqual(Array.from(fileSystem.readFileSync(path.join(harness.vaultFolder, 'Media/clip.bin'))), [7]);
     } finally {
         harness.close();
     }

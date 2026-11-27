@@ -5,8 +5,8 @@
  * Description: Answers the runtime's messages from a folder on disk, as Graphite does.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.5
- * Date: 17/11/2026
+ * Version: 0.6
+ * Date: 27/11/2026
  */
 
 // Answers the plugin runtime's messages from a vault folder on disk, as Graphite's native
@@ -94,6 +94,14 @@ class TestVaultHost {
         }
         case 'vault.read': return this.read(message);
         case 'vault.write': return this.write(message);
+        case 'vault.append': {
+            // As Graphite appends: in place, the file made empty first when missing, no revision given back.
+            const location = this.location(message.path);
+            if (fileSystem.existsSync(location) && fileSystem.statSync(location).isDirectory()) throw new HostFailure('isFolder', '“' + message.path + '” is a folder.');
+            fileSystem.mkdirSync(path.dirname(location), { recursive: true });
+            fileSystem.appendFileSync(location, Buffer.from(message.base64, 'base64'));
+            return { stat: this.stat(location) };
+        }
         case 'vault.createFolder': {
             const location = this.location(message.path);
             fileSystem.mkdirSync(location, { recursive: true });

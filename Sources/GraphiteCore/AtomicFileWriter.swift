@@ -2,12 +2,12 @@
  * File: AtomicFileWriter.swift
  * ----------------------------
  * Layer: Core
- * Description: File revisions, and coordinated reads and whole-or-nothing writes of the person's files, each write
- *              recorded on Graphite's own presenter so macOS's report of it is not taken for another app's change.
+ * Description: File revisions, and coordinated reads, whole-or-nothing writes and appends of the person's files, each
+ *              write recorded on Graphite's own presenter so macOS's report of it is not taken for another app's change.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 18/11/2026
+ * Version: 0.6
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -69,6 +69,9 @@ public protocol OwnWriteRecording: AnyObject, Sendable {
 /// All synchronous work belongs on a worker actor, never the main actor.
 /// Revision comparison and replacement share one coordinated write accessor.
 public struct AtomicFileWriter: Sendable {
+    /// What a coordinated write throws when the file provider never runs it.
+    private static let writeAccessRefused = GraphiteError.unavailable("The file provider did not grant write access.")
+
     /// Graphite's own vault presenter. Coordinating with it keeps Graphite's writes
     /// from being reported back to Graphite as external changes.
     private let filePresenter: (any NSFilePresenter & Sendable)?
@@ -130,6 +133,30 @@ public struct AtomicFileWriter: Sendable {
         return try readResult.get()
     }
 
+    /// Adds `data` at the end of the file at `url`, made empty first when nothing is there, under a coordinated
+    /// write. Unlike `write`, the file is changed in place, so a file larger than memory can be written piece by
+    /// piece: a reader may see it partly written, as with Obsidian's `appendBinary`.
+    public func append(_ data: Data, to url: URL) throws {
+        var coordinationError: NSError?
+        var appendResult: Result<Void, Error>?
+        makeCoordinator().coordinate(writingItemAt: url, options: [], error: &coordinationError) { destination in
+            appendResult = Result {
+                if !FileManager.default.fileExists(atPath: destination.path) {
+                    try Data().write(to: destination, options: .withoutOverwriting)
+                }
+                let handle = try FileHandle(forWritingTo: destination)
+                defer { try? handle.close() } // Closed below after a write; a failed write is already reported.
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+                try handle.close()
+                recordOwnWrite(at: destination)
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        guard let appendResult else { throw Self.writeAccessRefused }
+        try appendResult.get()
+    }
+
     @discardableResult
     public func write(_ data: Data, to url: URL, expecting: WriteExpectation) throws -> FileRevision {
         try replace(url, expecting: expecting) { staging in try data.write(to: staging) }
@@ -163,7 +190,7 @@ public struct AtomicFileWriter: Sendable {
             }
         }
         if let coordinationError { throw coordinationError }
-        guard let replacementResult else { throw GraphiteError.unavailable("The file provider did not grant write access.") }
+        guard let replacementResult else { throw Self.writeAccessRefused }
         try replacementResult.get()
         return revision
     }

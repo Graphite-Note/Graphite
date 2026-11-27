@@ -5,8 +5,8 @@
  * Description: Obsidian's Vault, DataAdapter and FileManager for plugins, over Graphite's vault bridge.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 17/11/2026
+ * Version: 0.11
+ * Date: 27/11/2026
  */
 
 // Obsidian's vault for plugins: the file tree (`TFile`, `TFolder`), `Vault`, the low-level
@@ -276,15 +276,18 @@
         async append(path, data, options) {
             await this.process(path, (existingText) => existingText + textFromData(data), options);
         }
+        /// Sends only the bytes added, which Graphite appends to the file in place (made empty
+        /// first when missing), so a file larger than one write is written in pieces without
+        /// being read back. The revision kept for the file is forgotten, since Graphite does not
+        /// read the grown file to give one: the next write replaces whatever is there.
         async appendBinary(path, data, options) {
             const normalizedPath = normalizePath(path);
-            const existing = (await this.exists(normalizedPath)) ? new Uint8Array(await this.readBinary(normalizedPath)) : new Uint8Array(0);
-            const addition = new Uint8Array(data);
-            const combined = new Uint8Array(existing.length + addition.length);
-            combined.set(existing, 0);
-            combined.set(addition, existing.length);
-            const payload = Object.assign({ base64: arrayBufferToBase64(combined.buffer) }, writtenTimes(options));
-            await this.writeData(normalizedPath, payload, this.writeExpectation(normalizedPath));
+            const payload = Object.assign({ path: normalizedPath, base64: arrayBufferToBase64(data) }, writtenTimes(options));
+            await this.writeInTurn(normalizedPath, async () => {
+                const response = await hostBridge.send('vault.append', payload);
+                this.revisionsByPath.delete(normalizedPath);
+                this.vault.reconcileWrittenPath(normalizedPath, response.stat);
+            });
         }
         /// A file's full path, as Obsidian mobile's adapter gives it. Plugins use it to keep
         /// names within the system's path length (ReadItLater); Graphite gives the path under the
@@ -628,15 +631,7 @@
         }
         async modifyBinary(file, data, options) { await this.adapter.writeBinary(file.path, data, options); }
         async append(file, data, options) { await this.adapter.append(file.path, data, options); }
-        async appendBinary(file, data, options) {
-            const existing = new Uint8Array(await this.readBinary(file));
-            const addition = new Uint8Array(data);
-            const combined = new Uint8Array(existing.length + addition.length);
-            combined.set(existing, 0);
-            combined.set(addition, existing.length);
-            const payload = Object.assign({ base64: arrayBufferToBase64(combined.buffer) }, writtenTimes(options));
-            await this.adapter.writeData(file.path, payload, this.adapter.writeExpectation(file.path));
-        }
+        async appendBinary(file, data, options) { await this.adapter.appendBinary(file.path, data, options); }
         async process(file, transform, options) { return this.adapter.process(file.path, transform, options); }
         async delete(file) {
             await hostBridge.send('vault.remove', { path: file.path, method: 'permanent', isRecursive: true, isFolderExpected: file instanceof TFolder });

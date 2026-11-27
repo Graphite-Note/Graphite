@@ -5,8 +5,8 @@
  * Description: The message names between Graphite and the runtime.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.4
- * Date: 17/11/2026
+ * Version: 0.5
+ * Date: 27/11/2026
  */
 
 // The messages the plugin runtime and Graphite's Swift host exchange, as the two sides spell
@@ -44,8 +44,8 @@ const operationsToGraphite = [
     'codeBlocks.changed', 'commands.changed', 'editor.apply', 'editor.listenersChanged', 'fileViews.changed', 'hoverLink.end', 'hoverLink.show', 'markdown.render',
     'menu.show', 'menus.changed', 'network.request', 'notice.hide', 'notice.show', 'notice.update', 'plugin.failure',
     'plugin.settingTabChanged', 'plugin.unsupportedFeature', 'plugin.writeConflict', 'plugins.setEnabled', 'postProcessors.changed',
-    'ribbon.changed', 'secrets.set', 'settings.open', 'styles.changed', 'surface.dismiss', 'surface.present', 'vault.copy',
-    'vault.createFolder', 'vault.list', 'vault.listFolder', 'vault.read', 'vault.remove', 'vault.rename', 'vault.stat',
+    'ribbon.changed', 'secrets.set', 'settings.open', 'styles.changed', 'surface.dismiss', 'surface.present', 'vault.append',
+    'vault.copy', 'vault.createFolder', 'vault.list', 'vault.listFolder', 'vault.read', 'vault.remove', 'vault.rename', 'vault.stat',
     'vault.write', 'view.reveal', 'views.changed', 'workspace.openExternalLink', 'workspace.openFile', 'workspace.openLinkText',
     'workspace.renameFile',
 ];
@@ -60,7 +60,7 @@ test('the operations Graphite can send to the runtime are exactly the 41 the run
     }
 });
 
-test('the operations the runtime sends to Graphite are exactly the 47 written out here, each named by a literal', () => {
+test('the operations the runtime sends to Graphite are exactly the 48 written out here, each named by a literal', () => {
     const sendNames = new Set();
     let callCount = 0;
     let literalCallCount = 0;
@@ -74,8 +74,8 @@ test('the operations the runtime sends to Graphite are exactly the 47 written ou
     }
     assert.equal(literalCallCount, callCount, 'every call names its operation with a string literal, so this list is complete');
     assert.deepEqual(Array.from(sendNames).sort(), operationsToGraphite.slice().sort());
-    assert.equal(operationsToGraphite.length, 47);
-    assert.equal(operationsFromGraphite.length + operationsToGraphite.length, 88);
+    assert.equal(operationsToGraphite.length, 48);
+    assert.equal(operationsFromGraphite.length + operationsToGraphite.length, 89);
 });
 
 test('an operation the runtime does not know is answered as unknownOperation, and an error in a handler as runtime', async () => {
