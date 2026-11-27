@@ -2,11 +2,12 @@
  * File: WorkspaceNotionImport.swift
  * ---------------------------------
  * Layer: UI
- * Description: Opens Import from Notion's sheet and hands the chosen export to a Notion import session.
+ * Description: Opens Import from Notion's sheet and hands the chosen export to a Notion import session, and makes the
+ *              sheet's offer of the Notion Importer plugin.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -53,6 +54,23 @@ extension WorkspaceModel {
         }, importDate: WallClock.currentDate(), calendar: BaseDateFormatting.displayCalendar)
         notionImport = NotionImportSession(sources: sources, directory: directory, run: run)
         return true
+    }
+
+    /// The offer of the Notion Importer plugin for Import from Notion's sheet, installing into this vault's plugins;
+    /// nil without a vault.
+    func makeNotionImporterPluginOffer() -> NotionImporterPluginOffer? {
+        guard let store else { return nil }
+        let host = communityPlugins
+        let identifier = NotionImporterPluginOffer.identifier
+        return NotionImporterPluginOffer(installer: CommunityPluginInstaller(store: store), installedVersion: {
+            await host.reloadInventory()
+            return host.inventory.plugins.first { plugin in plugin.id == identifier }?.manifest.version
+        }, pluginsDidChange: { installation in
+            await host.reloadInventory()
+            let compatibility = host.inventory.plugins.first { plugin in plugin.id == identifier }?.compatibility
+            return CommunityPluginTurningOn.installationOutcome("Installed \(installation.manifest.name) \(installation.manifest.version).",
+                compatibility: compatibility, isTurnedOn: host.enabledList.isEnabled(identifier), isRunning: host.loadStates[identifier] == .loaded)
+        })
     }
 
     /// Lets the import go once its summary is closed, so nothing of it stays.

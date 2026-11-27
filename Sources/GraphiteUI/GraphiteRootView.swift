@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.71
- * Date: 26/11/2026
+ * Version: 0.72
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -367,6 +367,7 @@ struct GraphiteRootView: View {
             .modifier(NotebookImportPresentation(session: workspace.notebookImport, openNotebook: { path in Task { _ = await workspace.open(path) } },
                                                  close: workspace.endNotebookImport))
             .modifier(NotionImportPresentation(choice: $workspace.notionImportChoice, session: workspace.notionImport,
+                                               makePluginOffer: workspace.makeNotionImporterPluginOffer,
                                                start: { sources, directory in workspace.importNotionExport(sources, into: directory) },
                                                openReport: { path in Task { _ = await workspace.open(path) } }, close: workspace.endNotionImport))
             .onChange(of: workspace.selection) { workspace.notice = nil }

@@ -2,12 +2,12 @@
  * File: NotionImportSheet.swift
  * -----------------------------
  * Layer: UI
- * Description: Import from Notion's sheets: how to export from Notion and the choice of the export, the progress card
- *              while it is imported, and the summary when it ends.
+ * Description: Import from Notion's sheets: how to export from Notion and the choice of the export, the offer of the
+ *              same importer as a plugin, the progress card while it is imported, and the summary when it ends.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -16,11 +16,15 @@ import GraphiteCore
 
 /// The sheet Import from Notion opens: how to get the HTML export from Notion, the folder it goes into, and Choose
 /// Export, whose file chooser takes Notion's zip, the `Part-N` zips of a large export, or the folder a zip unzips to.
+/// Below, the offer of the Notion Importer plugin (`NotionImporterPluginOffer`).
 struct NotionImportSheet: View {
     let choice: NotionImportChoice
+    /// The offer of the Notion Importer plugin, made once for the sheet; nil without a vault.
+    let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var showsChooser = false
+    @State private var pluginOffer: NotionImporterPluginOffer?
 
     var body: some View {
         NavigationStack {
@@ -39,7 +43,9 @@ struct NotionImportSheet: View {
                     Button("Choose Export…", systemImage: "doc.zipper") { showsChooser = true }
                         .frame(minHeight: 44)
                 }
+                if let pluginOffer { NotionImporterPluginOfferSection(offer: pluginOffer) }
             }
+            .onAppear { if pluginOffer == nil { pluginOffer = makePluginOffer() } }
             .formStyle(.grouped)
             .navigationTitle("Import from Notion")
             #if canImport(UIKit)
@@ -148,6 +154,7 @@ struct NotionImportPresentation: ViewModifier {
     /// The sheet's folder while the sheet is on screen (`WorkspaceModel.notionImportChoice`).
     @Binding var choice: NotionImportChoice?
     let session: NotionImportSession?
+    let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
     let openReport: @MainActor (VaultPath) -> Void
     /// Closes the summary; the workspace then lets the session go.
@@ -161,7 +168,7 @@ struct NotionImportPresentation: ViewModifier {
                     NotionImportProgressCard(progress: progress, isPaused: isPaused, isCancelling: isCancelling, session: session)
                 }
             }
-            .sheet(item: $choice) { choice in NotionImportSheet(choice: choice, start: start) }
+            .sheet(item: $choice) { choice in NotionImportSheet(choice: choice, makePluginOffer: makePluginOffer, start: start) }
             .sheet(isPresented: Binding(get: { finishedSummary != nil }, set: { isPresented in if !isPresented { close() } })) {
                 if let finishedSummary {
                     NotionImportSummarySheet(summary: finishedSummary, openReport: { path in

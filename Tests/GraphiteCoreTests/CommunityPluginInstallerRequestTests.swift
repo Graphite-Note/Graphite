@@ -63,6 +63,53 @@ final class CommunityPluginInstallerRequestTests: XCTestCase {
         XCTAssertEqual(try installedText(".obsidian/plugins/sample/manifest.json"), pluginManifest(version: "1.2.0"), "the release's manifest is written byte for byte")
     }
 
+    func testAReleaseIsNamedWithItsSizeWithoutWritingAndThenInstalledAsNamed() async throws {
+        ScriptedGitHubProtocol.script.answer("https://raw.githubusercontent.com/owner/sample-repo/HEAD/manifest.json", pluginManifest(version: "1.2.0"))
+        ScriptedGitHubProtocol.script.answer("https://api.github.com/repos/owner/sample-repo/releases/tags/1.2.0",
+            #"{"tag_name": "1.2.0", "assets": [{"name": "main.js", "size": 1252087}, {"name": "manifest.json", "size": 485}, {"name": "styles.css", "size": 673}, {"name": "notes.txt", "size": 9}]}"#)
+        let installer = CommunityPluginInstaller(store: store, session: scriptedSession())
+
+        let release = try await installer.release(repository: "owner/sample-repo", expectedIdentifier: "sample")
+        let size = await installer.downloadSize(of: release)
+
+        XCTAssertEqual(release.version, "1.2.0")
+        XCTAssertEqual(release.currentManifest.name, "Sample")
+        XCTAssertEqual(size, 1_253_245, "main.js, manifest.json and styles.css, and no other asset")
+        XCTAssertFalse(installedFileExists(".obsidian/plugins/sample"), "naming a release writes nothing")
+
+        // The repository moves on after the question: the release asked about is still the one installed.
+        ScriptedGitHubProtocol.script.answer("https://raw.githubusercontent.com/owner/sample-repo/HEAD/manifest.json", pluginManifest(version: "1.3.0"))
+        ScriptedGitHubProtocol.script.answer("https://github.com/owner/sample-repo/releases/download/1.2.0/main.js", "module.exports = 1;")
+        ScriptedGitHubProtocol.script.answer("https://github.com/owner/sample-repo/releases/download/1.2.0/manifest.json", pluginManifest(version: "1.2.0"))
+        let installation = try await installer.install(release)
+
+        XCTAssertEqual(installation.manifest.version, "1.2.0")
+        XCTAssertEqual(ScriptedGitHubProtocol.script.requestedAddresses, [
+            "https://raw.githubusercontent.com/owner/sample-repo/HEAD/manifest.json",
+            "https://api.github.com/repos/owner/sample-repo/releases/tags/1.2.0",
+            "https://github.com/owner/sample-repo/releases/download/1.2.0/main.js",
+            "https://github.com/owner/sample-repo/releases/download/1.2.0/manifest.json",
+            "https://github.com/owner/sample-repo/releases/download/1.2.0/styles.css",
+        ])
+        XCTAssertEqual(try installedText(".obsidian/plugins/sample/main.js"), "module.exports = 1;")
+    }
+
+    func testAReleaseWhoseSizeGitHubDoesNotGiveHasNoSize() async throws {
+        ScriptedGitHubProtocol.script.answer("https://raw.githubusercontent.com/owner/sample-repo/HEAD/manifest.json", pluginManifest(version: "1.2.0"))
+        let installer = CommunityPluginInstaller(store: store, session: scriptedSession())
+        let release = try await installer.release(repository: "owner/sample-repo", expectedIdentifier: "sample")
+
+        let unanswered = await installer.downloadSize(of: release)
+        ScriptedGitHubProtocol.script.answer("https://api.github.com/repos/owner/sample-repo/releases/tags/1.2.0", #"{"assets": [{"name": "styles.css", "size": 673}]}"#)
+        let withoutMainScript = await installer.downloadSize(of: release)
+        ScriptedGitHubProtocol.script.answer("https://api.github.com/repos/owner/sample-repo/releases/tags/1.2.0", "not JSON")
+        let unreadable = await installer.downloadSize(of: release)
+
+        XCTAssertNil(unanswered, "GitHub answering 404")
+        XCTAssertNil(withoutMainScript, "a release without main.js cannot be installed, so it has no size to give")
+        XCTAssertNil(unreadable)
+    }
+
     func testAMinimumVersionAboveTheProvidedApiInstallsTheNewestCompatibleReleaseFromVersionsJson() async throws {
         ScriptedGitHubProtocol.script.answer("https://raw.githubusercontent.com/owner/sample-repo/HEAD/manifest.json", pluginManifest(version: "3.0.0", minimumApplicationVersion: "1.14.5"))
         ScriptedGitHubProtocol.script.answer("https://raw.githubusercontent.com/owner/sample-repo/HEAD/versions.json", "{\"3.0.0\": \"1.14.5\", \"2.1.0\": \"1.14.4\", \"2.0.0\": \"0.15.0\", \"2.2.0-beta.1\": \"1.14.5\"}")
