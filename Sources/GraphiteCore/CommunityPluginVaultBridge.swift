@@ -3,10 +3,10 @@
  * --------------------------------------
  * Layer: Core
  * Description: The vault as plugins reach it: file operations answered from the open vault, large listings page by
- *              page.
+ *              page. The values and failures the answers carry are in CommunityPluginVaultBridgeAnswers.swift.
  *
  * Authors: Bahey Shalash
- * Version: 0.7
+ * Version: 0.8
  * Date: 27/11/2026
  */
 
@@ -361,50 +361,9 @@ public struct CommunityPluginVaultBridge: Sendable {
         return statDictionary(isFolder: values.isDirectory == true, size: values.fileSize ?? 0, modified: modified, created: values.creationDate ?? modified)
     }
 
-    static func statDictionary(isFolder: Bool, size: Int, modified: Date, created: Date) -> [String: Any] {
-        [
-            "isFolder": isFolder,
-            "size": isFolder ? 0 : size,
-            "modified": (modified.timeIntervalSince1970 * 1000).rounded(),
-            "created": (created.timeIntervalSince1970 * 1000).rounded(),
-        ]
-    }
-
-    static func revisionDictionary(_ revision: FileRevision) -> [String: Any] {
-        ["digest": revision.digest, "size": revision.size]
-    }
-
     private static func isNotDownloaded(_ location: URL) -> Bool {
         guard let values = try? location.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey]),
               values.isUbiquitousItem == true else { return false }
         return values.ubiquitousItemDownloadingStatus != .current
-    }
-
-    // MARK: Failures
-
-    /// A failure with a kind the runtime understands (`conflict`, `missing`, `exists`…).
-    public struct BridgeFailure: Error, LocalizedError {
-        public let kind: String
-        public let message: String
-        public init(kind: String, message: String) { self.kind = kind; self.message = message }
-        public var errorDescription: String? { message }
-    }
-
-    public static func failureData(for error: Error) -> Data {
-        let kind: String
-        switch error {
-        case let failure as BridgeFailure: kind = failure.kind
-        case GraphiteError.conflict: kind = "conflict"
-        case GraphiteError.outsideVault: kind = "outsideVault"
-        case GraphiteError.invalidPath: kind = "invalidPath"
-        case GraphiteError.oversized: kind = "tooLarge"
-        case GraphiteError.unavailable(let reason) where reason.hasSuffix("already exists."): kind = "exists"
-        case GraphiteError.unavailable(let reason) where reason.hasSuffix("is no longer in the vault."): kind = "missing"
-        case is DecodingError: kind = "invalidData"
-        default: kind = "failed"
-        }
-        let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-        let answer: [String: Any] = ["failure": ["kind": kind, "message": message]]
-        return (try? JSONSerialization.data(withJSONObject: answer)) ?? Data(#"{"failure":{"kind":"failed","message":"Graphite could not answer."}}"#.utf8)
     }
 }
