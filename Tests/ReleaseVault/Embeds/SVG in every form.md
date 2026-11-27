@@ -1,6 +1,6 @@
 # SVG in every form
 
-`Every tool.svg` is a drawing Graphite saved as SVG: the outlines of its strokes, with the strokes kept for editing. `Logo.svg` is an SVG another app made, which Graphite does not draw in a note (Docs/Coverage.md, "Not done"); it opens with the system's preview.
+`Every tool.svg` is a drawing Graphite saved as SVG: the outlines of its strokes, with the strokes kept for editing. `Logo.svg` is an SVG another app made, which Graphite draws in a note as a picture (SwiftDraw), its strokes not editable.
 
 ## Alone
 

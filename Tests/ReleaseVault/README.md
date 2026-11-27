@@ -183,7 +183,7 @@ Every feature Graphite has, from `Docs/Architecture.md`, `Docs/Coverage.md`, `Do
 | A picture alone, with a width, a width and a height, a caption, in Markdown syntax | `Pictures.md`, `Embeds/Pictures in every form.md` |
 | Pictures side by side, in a sentence, in lists, tables, callouts and quotes | `Embeds/Pictures in every form.md`, `Pictures.md` |
 | PNG, JPEG, GIF (animated), TIFF, HEIC, WebP and SVG pictures, in notes and in their own tab | `Embeds/Every picture format.md`, `Attachments/` |
-| Graphite's SVG drawings drawn in notes; another app's SVG opening with the system's preview | `Embeds/SVG in every form.md`, `Attachments/Logo.svg` |
+| Graphite's SVG drawings drawn in notes; another app's SVG drawn in a note as a picture | `Embeds/SVG in every form.md`, `Attachments/Logo.svg` |
 | Zoom a picture, Open in New Tab, on the other side | any picture, such as in `Pictures.md` |
 | Names with spaces, accents and a pasted name | `Pictures.md` |
 | Pictures in bases' cards | `Gallery.base`, `Books.base` |
