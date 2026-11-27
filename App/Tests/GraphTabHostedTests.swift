@@ -149,8 +149,6 @@ final class GraphTabHostedTests: SettingsHostedTestCase {
                 object.accessibilityLabel == "Graph View" && object.accessibilityTraits.contains(.button)
             }
             attachScreenshot(named: "Sidebar, \(name)")
-            try SynthesizedInputCapability.requireItReachesSystemControls(
-                "A real tap on Graph View opens the graph (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
             await follow(graphButton)
             try await waitUntil("the graph's tab in front") { workspace.layout.activeTab.coreView == .graph }
             await workspace.open(try VaultPath("Signals/Sampling.md"))

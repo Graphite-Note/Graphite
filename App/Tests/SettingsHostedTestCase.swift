@@ -70,24 +70,9 @@ class SettingsHostedTestCase: XCTestCase {
         return controller
     }
 
-    /// Shows the window's sidebar as its Show Sidebar button does. iOS 26 draws that system button only in a scene's own
-    /// window, not in the window a hosted test makes (iOS 27 draws it in both); there the split view the button would
-    /// ask is asked directly.
+    /// Shows the window's sidebar through its Show Sidebar button.
     func showSidebar(in controller: UIViewController) async throws {
-        if #available(iOS 27, *) {
-            await follow(try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" })
-            return
-        }
-        var splitViewController: UISplitViewController?
-        try await waitUntil("the window's split view") {
-            splitViewController = self.splitViewControllers(in: controller).first
-            return splitViewController != nil
-        }
-        try XCTUnwrap(splitViewController).show(.primary)
-    }
-
-    private func splitViewControllers(in controller: UIViewController) -> [UISplitViewController] {
-        ((controller as? UISplitViewController).map { split in [split] } ?? []) + controller.children.flatMap(splitViewControllers)
+        await follow(try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" })
     }
 
     func textFields(in view: UIView) -> [UITextField] {

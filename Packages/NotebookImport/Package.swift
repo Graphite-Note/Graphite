@@ -17,7 +17,7 @@ import PackageDescription
 // Foundation, CoreGraphics and zlib only: it knows no app and writes no file.
 let package = Package(
     name: "NotebookImport",
-    platforms: [.iOS("26.0"), .macOS("26.0")],
+    platforms: [.iOS("27.0"), .macOS("26.0")],
     products: [
         .library(name: "NotebookImport", targets: ["NotebookImport"])
     ],

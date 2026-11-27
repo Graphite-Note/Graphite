@@ -59,10 +59,8 @@ final class NotePresentationExternalDisplayHostedTests: XCTestCase {
     func testTheExternalDisplayShowsTheSlideOnlyWhilePresentingAndTheDeviceThePresentersView() async throws {
         guard let outputPath = ProcessInfo.processInfo.environment[Self.switchVariable] else { return }
         let folder = URL(fileURLWithPath: outputPath)
-        if #available(iOS 27.0, *) {
-            // From iOS 27 the display's scene comes from the presentation's scene accessory, so none exists before.
-            XCTAssertTrue(externalDisplayScenes().isEmpty, "No scene on the display before presenting.")
-        }
+        // The display's scene comes from the presentation's scene accessory, so none exists before.
+        XCTAssertTrue(externalDisplayScenes().isEmpty, "No scene on the display before presenting.")
 
         let vault = try TemporaryVault.make(prefix: "NotePresentationExternalDisplay", for: self)
         _ = try vault.writeFile("Sampling.md", text: Self.lecture)
@@ -119,9 +117,7 @@ final class NotePresentationExternalDisplayHostedTests: XCTestCase {
         deviceWindow.rootViewController = nil
         XCTAssertFalse(presentation.hasAudienceDisplay)
         XCTAssertFalse(displayScene.windows.contains { shown in !shown.isHidden }, "The display is given back when the presentation ends.")
-        if #available(iOS 27.0, *) {
-            try await waitUntil("the display's scene goes with the presentation", timeoutSeconds: 10) { externalDisplayScenes().isEmpty }
-        }
+        try await waitUntil("the display's scene goes with the presentation", timeoutSeconds: 10) { externalDisplayScenes().isEmpty }
         presentation.end()
     }
 

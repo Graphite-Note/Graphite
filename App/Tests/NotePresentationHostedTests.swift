@@ -161,9 +161,7 @@ final class NotePresentationHostedTests: XCTestCase {
         let rootController = try XCTUnwrap(window.rootViewController)
         try await waitUntil("the accessory's controller appears") { accessoryController(in: rootController) != nil }
         let accessory = try XCTUnwrap(accessoryController(in: rootController))
-        if #available(iOS 27.0, *) {
-            try await waitUntil("the external display's accessory is registered") { accessory.isRegistered }
-        }
+        try await waitUntil("the external display's accessory is registered") { accessory.isRegistered }
         window.isHidden = true
         window.rootViewController = nil
         try await waitUntil("the accessory goes with the presentation's screen") { !accessory.isRegistered }

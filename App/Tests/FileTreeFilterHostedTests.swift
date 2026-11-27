@@ -84,8 +84,6 @@ final class FileTreeFilterHostedTests: SettingsHostedTestCase {
         attachScreenshot(named: "Filtered by bati")
 
         // Choosing the matching folder opens it with all it holds, and keeps it open once the filter is cleared.
-        try SynthesizedInputCapability.requireItReachesSystemControls(
-            "A real tap on a folder while filtering opens it (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
         await follow(batikha)
         try await waitUntil("the chosen folder shows all it holds") { self.shownRows(of: workspace).prefix(2) == ["Batikha-hour", "Batikha-hour/Steak.md"] }
         XCTAssertEqual(workspace.expandedFolders, [try VaultPath("Courses")], "The tree's own expanded folders wait as they were")

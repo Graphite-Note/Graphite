@@ -158,13 +158,6 @@ final class BugHuntLooksHostedTests: SettingsHostedTestCase {
         let settledUntil = ContinuousClock.now + .seconds(1)
         try await waitUntil("the menu has opened") { ContinuousClock.now >= settledUntil }
         try await requestLook(named: "Phone note's More menu")
-        guard #available(iOS 27, *) else {
-            // iOS 26's menu opens no submenu for a synthesized tap or activation; its File menu, whose Move, Delete and Rename
-            // follow a divider in a section of their own, is read from the menu.
-            let fileEntries = MoreMenuReader().entries(in: controller).filter { entry in entry.path.contains("File") }.map(\.action.title)
-            for title in ["Move to…", "Delete", "Rename…"] { XCTAssertTrue(fileEntries.contains(title), "File has \(title): \(fileEntries)") }
-            return
-        }
         if !file.element.accessibilityActivate() { await tapAsAFinger(on: file.element, in: file.window) }
         _ = try await elementInAnyWindow("Move to… in the File menu") { object in object.accessibilityLabel == "Move to…" }
         _ = try await elementInAnyWindow("Delete in the File menu") { object in object.accessibilityLabel == "Delete" }
@@ -185,14 +178,7 @@ final class BugHuntLooksHostedTests: SettingsHostedTestCase {
         try await openMoreMenu(in: controller)
         let showPages = try await elementInAnyWindow("Show Pages in the More menu") { object in object.accessibilityLabel == "Show Pages" }
         try await requestLook(named: "Phone PDF More menu")
-        if #available(iOS 27, *) {
-            await tapAsAFinger(on: showPages.element, in: showPages.window)
-        } else {
-            // iOS 26's menu runs no entry for a synthesized tap; Show Pages is run from the menu, as the tap runs it.
-            let entry = try XCTUnwrap(MoreMenuReader().entries(in: controller).first { entry in entry.action.title == "Show Pages" })
-            controller.presentedViewController?.dismiss(animated: false)
-            entry.action.performWithSender(nil, target: nil)
-        }
+        await tapAsAFinger(on: showPages.element, in: showPages.window)
         try await waitUntil("the pages show in a sheet", timeoutSeconds: 10) { controller.presentedViewController != nil }
         _ = try await element(in: controller, "page 3 in the sheet") { object in object.accessibilityLabel == "Page 3" }
         try await requestLook(named: "Phone Show Pages sheet")
@@ -285,7 +271,6 @@ final class BugHuntLooksHostedTests: SettingsHostedTestCase {
         }
         XCTAssertTrue(secondSpinner.accessibilityActivate())
         let stop = try await element(in: controller, "Stop and Discard the Scan") { object in object.accessibilityLabel == "Stop and Discard the Scan" }
-        try SynthesizedInputCapability.requireItReachesSystemControls("Stopping a scan from the question was not checked by hand on iOS 26.")
         if !stop.accessibilityActivate() { await tap(stop) }
         try await waitUntil("stopping ends the preparing", timeoutSeconds: 10) { !processing.isProcessing }
         _ = try await element(in: controller, "the New button again") { object in object.accessibilityLabel == "New" }

@@ -223,8 +223,6 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
         XCTAssertGreaterThan(frame.width, Self.windowSize.width - 1, "The slide covers the window: \(frame)")
         attachScreenshot(named: "First slide from More › File › Start Presentation")
 
-        try SynthesizedInputCapability.requireItReachesSystemControls(
-            "A real swipe and tap move to the next slides (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
         await SynthesizedTouches(window: window).drag(from: CGPoint(x: frame.maxX - 200, y: frame.midY),
                                                       to: CGPoint(x: frame.minX + 200, y: frame.midY), steps: 6, stepSeconds: 0.012, holdSeconds: 0)
         _ = try await element(in: controller, "the second slide's number") { object in object.accessibilityLabel == "2 of 3" }

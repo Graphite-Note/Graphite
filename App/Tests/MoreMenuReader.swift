@@ -3,7 +3,7 @@
  * --------------------------
  * Layer: Tests
  * Description: Reads the entries of the More menu of a hosted window's bar, with the submenus that hold them,
- *              as opening the menu fills it: the system's overflow menu on iOS 27, the bar's own More button on 26.
+ *              as opening the menu fills it: the system's overflow menu (•••) of the bar.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -14,23 +14,13 @@
 import UIKit
 import ObjectiveC
 
-/// The More menu of a hosted window's bar. Tests run an entry's action as a tap on it runs it: on iOS 26, UIKit's menu
-/// takes no synthesized touch or accessibility activation of its rows.
+/// The More menu of a hosted window's bar, read without opening it.
 @MainActor
 final class MoreMenuReader {
     /// The More menu's entries: on the iPad its items are the system's overflow menu (•••) of the note's bar, which
-    /// the navigation item holds as a deferred element filled when the menu opens, as it is filled here. iOS 26 has no
-    /// such menu, and More is a menu button of the bar's own (`MoreToolbarMenu`), whose menu is read instead.
+    /// the navigation item holds as a deferred element filled when the menu opens, as it is filled here.
     func entries(in controller: UIViewController) -> [(path: [String], action: UIAction)] {
-        let items = navigationItems(in: controller.view)
-        if #available(iOS 27, *) {
-            return items.compactMap(\.additionalOverflowItems).flatMap { overflow in actions(in: [overflow]) }
-        }
-        let barButtons = items.flatMap { item in
-            item.trailingItemGroups.flatMap(\.barButtonItems) + (item.rightBarButtonItems ?? []) + item.centerItemGroups.flatMap(\.barButtonItems)
-        }
-        return barButtons.filter { button in button.title == "More" || button.accessibilityLabel == "More" }
-            .compactMap(\.menu).flatMap { menu in actions(in: menu.children) }
+        navigationItems(in: controller.view).compactMap(\.additionalOverflowItems).flatMap { overflow in actions(in: [overflow]) }
     }
 
     private func navigationItems(in view: UIView) -> [UINavigationItem] {
