@@ -7,8 +7,8 @@
  *              small to read (never on paper, which is always fitted).
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.9
- * Date: 24/11/2026
+ * Version: 0.10
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -94,7 +94,7 @@ struct ReadingScaledDiagram<Painting: View>: View {
         .frame(maxWidth: .infinity)
         #if canImport(UIKit)
         .environment(\.readingDiagramPlacement,
-                     ReadingDiagramPlacement(columnWidth: columnWidth, textSize: textSize, diagramSceneItems: prepared.scene.itemStorage))
+                     ReadingDiagramPlacement(columnWidth: columnWidth, textSize: textSize, diagramScene: prepared.scene.storageIdentifier))
         #endif
         .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.width } action: { width in
             if let change = ReadingDiagramRelayoutTrace.columnDidChangeWidth(to: width) { columnWidthChange = change }

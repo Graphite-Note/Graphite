@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Graphite-Note/MermaidDiagrams.git",
       "state" : {
-        "revision" : "de81532b76086f1367c19164bb486c037ff03d06",
-        "version" : "0.7.0"
+        "revision" : "b7d193333cd248d14e20fc58ca891b3bcd19ec5f",
+        "version" : "0.8.1"
       }
     },
     {

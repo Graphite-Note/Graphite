@@ -6,8 +6,8 @@
  *              the package's Core Graphics painter and kept, within a budget, while the reading view is open.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 24/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if canImport(UIKit)
@@ -18,16 +18,16 @@ import MermaidDiagrams
 /// What a diagram's picture is painted from: one scene, in one set of the note's colors in one appearance, at one number
 /// of pixels a point.
 struct ReadingDiagramPictureKey: Hashable, Sendable {
-    /// Where the scene's items are stored. A scene is never changed once made, and each kept picture holds its scene, so
-    /// while a picture is kept no other scene's items are stored there.
-    private let sceneItems: UInt
+    /// Which scene it is (`DiagramScene.storageIdentifier`, shared by its copies). A scene is never changed once made,
+    /// and each kept picture holds its scene, so while a picture is kept no other scene has its identifier.
+    private let sceneStorage: ObjectIdentifier
     private let sceneWidth: CGFloat
     private let sceneHeight: CGFloat
     let appearance: ReadingDiagramPictureAppearance
     let pixelsPerPoint: CGFloat
 
     init(scene: DiagramScene, appearance: ReadingDiagramPictureAppearance, pixelsPerPoint: CGFloat) {
-        sceneItems = scene.itemStorage
+        sceneStorage = scene.storageIdentifier
         sceneWidth = scene.size.width
         sceneHeight = scene.size.height
         self.appearance = appearance
@@ -36,7 +36,7 @@ struct ReadingDiagramPictureKey: Hashable, Sendable {
 
     /// Whether `other` paints the same scene, in whatever colors.
     func paintsTheSameScene(as other: ReadingDiagramPictureKey) -> Bool {
-        sceneItems == other.sceneItems && sceneWidth == other.sceneWidth && sceneHeight == other.sceneHeight
+        sceneStorage == other.sceneStorage && sceneWidth == other.sceneWidth && sceneHeight == other.sceneHeight
     }
 }
 
@@ -128,7 +128,7 @@ final class ReadingDiagramPictures {
     /// shown in the same column: a scroll brings them on screen with their pictures ready, as one that comes on screen
     /// before its picture is painted is empty for a frame or two.
     func paintNeighbors(of key: ReadingDiagramPictureKey, placement: ReadingDiagramPlacement, resolvingColorsIn environment: EnvironmentValues) async {
-        guard let index = noteDiagrams.firstIndex(where: { prepared in prepared.scene.itemStorage == placement.diagramSceneItems }) else { return }
+        guard let index = noteDiagrams.firstIndex(where: { prepared in prepared.scene.storageIdentifier == placement.diagramScene }) else { return }
         let nearest = (1...Self.diagramsPaintedAhead).flatMap { distance in [index + distance, index - distance] }
         for neighbor in nearest where noteDiagrams.indices.contains(neighbor) {
             let prepared = noteDiagrams[neighbor]
@@ -190,23 +190,17 @@ final class ReadingDiagramPictures {
 }
 
 /// Where a diagram is shown: the column's width and the note's text size, which say which of its scenes is shown and
-/// how far it is shrunk (`ReadingScaledDiagram`), and which diagram it is (where its regular scene's items are stored).
+/// how far it is shrunk (`ReadingScaledDiagram`), and which diagram it is (its regular scene's `storageIdentifier`, nil
+/// before one is placed).
 struct ReadingDiagramPlacement: Equatable {
     let columnWidth: CGFloat
     let textSize: Double
-    let diagramSceneItems: UInt
-}
-
-extension DiagramScene {
-    /// Where the scene's items are stored: the same for every copy of one scene, which is never changed once made.
-    var itemStorage: UInt {
-        items.withUnsafeBufferPointer { items in UInt(bitPattern: items.baseAddress) }
-    }
+    let diagramScene: ObjectIdentifier?
 }
 
 extension EnvironmentValues {
     /// Where the diagram being painted is shown; zero wide before its column is measured.
-    @Entry var readingDiagramPlacement = ReadingDiagramPlacement(columnWidth: 0, textSize: 0, diagramSceneItems: 0)
+    @Entry var readingDiagramPlacement = ReadingDiagramPlacement(columnWidth: 0, textSize: 0, diagramScene: nil)
 
     /// The reading view's pictures of its diagrams; nil where diagrams are painted as SwiftUI views (Live Preview, paper,
     /// the Mac).

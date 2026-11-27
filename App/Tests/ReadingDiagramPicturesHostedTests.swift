@@ -6,8 +6,8 @@
  *              as the SwiftUI painting looks, kept within the budget, let go on a memory warning, painted ahead of a scroll.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 24/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -99,12 +99,18 @@ final class ReadingDiagramPicturesHostedTests: XCTestCase {
         let other = ReadingDiagramPictureKey(scene: scenes[1], appearance: appearance(.light), pixelsPerPoint: scale)
         XCTAssertNotEqual(light, other)
         XCTAssertFalse(light.paintsTheSameScene(as: other))
+        // The same text prepared again is another scene of the same size: its own picture while both are kept.
+        let again = try preparedDiagrams().map(\.scene)[0]
+        let lightAgain = ReadingDiagramPictureKey(scene: again, appearance: appearance(.light), pixelsPerPoint: scale)
+        XCTAssertEqual(again.size, scenes[0].size)
+        XCTAssertNotEqual(light, lightAgain)
+        XCTAssertFalse(light.paintsTheSameScene(as: lightAgain))
     }
 
     /// The pictures of the diagrams read just before and after one shown are painted, in the column it is shown in.
     func testTheNeighboursOfADiagramShownArePaintedAhead() async throws {
         let diagrams = readingDiagrams()
-        // The same preparation the blocks hold: a diagram is told by where its scene's items are stored.
+        // The same preparation the blocks hold: a diagram is told by its scene's storage identifier.
         let prepared = try preparedDiagrams(of: diagrams)
         // Under a callout too, as a note's diagrams may be.
         let blocks = [RenderedBlock.callout(id: -1, type: "note", title: "Diagrams", folding: .notFoldable,
@@ -118,7 +124,7 @@ final class ReadingDiagramPicturesHostedTests: XCTestCase {
         }
         let shown = 10
         await pictures.paintNeighbors(of: key(shown), placement: ReadingDiagramPlacement(columnWidth: columnWidth, textSize: 17,
-                                                                                         diagramSceneItems: prepared[shown].scene.itemStorage),
+                                                                                         diagramScene: prepared[shown].scene.storageIdentifier),
                                       resolvingColorsIn: environment(.light))
         for neighbor in [8, 9, 11, 12] {
             XCTAssertNotNil(pictures.picture(for: key(neighbor)), "Diagram \(neighbor) is painted ahead.")

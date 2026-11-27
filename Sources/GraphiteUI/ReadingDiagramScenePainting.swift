@@ -6,8 +6,8 @@
  *              theme variables set.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 23/11/2026
+ * Version: 0.5
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -36,9 +36,11 @@ struct ReadingDiagramScenePainting: View {
 
     var body: some View {
         let colors = noteColors.overSeriesColors(of: scene, colorScheme: colorScheme)
+        // Read once: since MermaidDiagrams 0.8.0 each read of `items` makes every shape's path anew.
+        let items = scene.items
         ZStack(alignment: .topLeading) {
-            ForEach(scene.items.indices, id: \.self) { index in
-                switch scene.items[index] {
+            ForEach(items.indices, id: \.self) { index in
+                switch items[index] {
                 case .shape(let shape): ReadingDiagramSceneShape(shape: shape, sceneSize: scene.size, colors: colors)
                 case .text(let text): ReadingDiagramSceneText(text: text, font: text.font(in: scene), color: colors.color(of: text.paint),
                                                                 outlineColor: text.outline.map { colors.color(of: $0.paint) })
