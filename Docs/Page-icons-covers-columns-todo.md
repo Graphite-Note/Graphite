@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section.
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5 (2026-11-27, open).
 
 ## Request
 
@@ -72,6 +72,29 @@ Issue: [#259](https://github.com/Graphite-Note/Graphite/issues/259)
 - [x] Rendered checks of each surface in light and dark: tabs, file list, quick switcher, a link, Library mode, the cover open and collapsed, columns wide and stacked. Done 2026-11-26: pictures of the reading view (cover, columns, blank callout, links), the file list, the tab bar, Library mode, the quick switcher and the Icon… sheet, light and dark on the iPad, light on the iPhone and the Mac window test, dark in the Mac Debug copy. The collapsed cover by its drawn height (`ReadingCoverTests`), not in a picture.
 - [x] Checked in an iPad simulator in portrait and landscape, an iPhone simulator and a Debug copy of the Mac app, with a small demo vault. Done 2026-11-26: `PageLookHostedTests` on own simulators "Graphite Page Look iPad" and "Graphite Page Look iPhone" with a demo vault of made-up notes (portrait, and the iPad's window at its sideways size: a hosted test's window does not turn with the device, so the device itself was not rotated), and a re-signed Debug copy of the Mac app (`com.graphite.study.pagelook`) with the same vault.
 - [x] `Docs/Architecture.md`, `Docs/Coverage.md` and the Iconize row of `Docs/Community-plugins.md` describe what is built. Done 2026-11-26: the Architecture section Page icons, covers and columns, the Coverage section of the same name, the Iconize row of Community-plugins.md, and `Tests/ReleaseVault/Page look.md` with `Page look linked.md`.
+
+## 5. Pages imported from Notion look as they do in Notion
+
+Issue: [#268](https://github.com/Graphite-Note/Graphite/issues/268)
+
+Requested 2026-11-27, after a real Notion workspace was imported and compared with Notion itself: the importer writes Notion's page icons as pictures (`icon: "[[clock.gif]]"`, or a web address of Notion's own icon set such as `icon: https://app.notion.com/icons/clock_gray.svg`, about 550 pages of one workspace), covers as `banner`, and pages as headings over lines that each link to a page. Iconize does not draw a picture icon (it reads emoji and icon pack names), so in Obsidian these show only with Graphite's reading of them. Notion draws a page's icon large, over the lower left of its cover, the cover across the whole width above the title, and a link to a page as its small icon and title.
+
+Decisions:
+
+9. **A picture icon is the third kind of icon.** `NoteIcon.picture` reads every form `banner` takes (a wikilink or embed, a Markdown link, a plain path, a web address), so a picture of the vault or of the web, an SVG included, which Graphite draws with its own SVG renderer. Web pictures are fetched when first shown, at most 2 MB, and kept in memory for the window, never written to the vault.
+10. **The cover spans the reading view, as Notion's.** It is drawn across the whole width of the reading view, outside the readable column, 30% of the view's height between 140 and 280 points, and the page's icon sits over its lower left. A GIF shows its first frame.
+11. **A run of lines that each link to a note is a compact list**, one row per link, its icon then its title, as Notion's links to pages. The note's text stays as written.
+12. **Spacing is proposed, not changed here.** Graphite's spacing between blocks is measured against Notion's at the same width and the differences are recorded below with numbers, for a decision that applies to every note.
+
+- [ ] `NoteIcon` reads picture icons (vault and web), and the index's icons and the Icon… sheet keep them.
+- [ ] Picture icons are drawn wherever an icon is: the file list (iPad, iPhone, Mac), tabs, the quick switcher, Library mode.
+- [ ] The reading view draws the page's icon large above the title, over the lower left of the cover when there is one: emoji, symbol or picture.
+- [ ] Links to a note with a picture or symbol icon show it before the link's text, as emoji icons already do.
+- [ ] The cover spans the reading view's width (decision 10), checked with a GIF and a large PNG.
+- [ ] Consecutive link lines are drawn as a compact list (decision 11), in a multi-column callout too.
+- [ ] Headings with coloured text (`~={#hex}…=~`) keep their colour and size in the reading view.
+- [ ] Spacing measured against Notion and the proposal recorded (decision 12).
+- [ ] Before and after pictures of made-up notes of the imported shape, on the Mac and the iPad.
 
 ## Later
 

@@ -101,9 +101,26 @@ public struct CommunityPluginInstaller: Sendable {
         public let isOlderReleaseForCompatibility: Bool
     }
 
+    /// The release an install takes: the one the repository's current manifest names, or, as Obsidian does, the
+    /// newest in `versions.json` whose `minAppVersion` fits when that one needs a newer plugin API than Graphite's.
+    public struct Release: Sendable, Equatable {
+        public let repository: String
+        /// The repository's current manifest, whose name and identifier the release must keep.
+        public let currentManifest: CommunityPluginManifest
+        public let version: String
+        public let isOlderReleaseForCompatibility: Bool
+    }
+
     /// Installs or updates a plugin from its GitHub releases. `expectedIdentifier` is the
     /// directory's identifier, which the release's manifest must match.
     public func install(repository: String, expectedIdentifier: String?, providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) async throws -> Installation {
+        try await install(release(repository: repository, expectedIdentifier: expectedIdentifier, providedApiVersion: providedApiVersion))
+    }
+
+    /// The release `install` would take now, read from the repository without writing anything, so that it can be
+    /// named before it is downloaded and then installed as named (`install(_:)`).
+    public func release(repository: String, expectedIdentifier: String?,
+                        providedApiVersion: String = CommunityPluginCompatibility.providedApiVersion) async throws -> Release {
         guard Self.isUsableRepository(repository) else { throw GraphiteError.invalidPath(repository) }
         let rawBase = "https://raw.githubusercontent.com/\(repository)/HEAD/"
         guard let currentManifestData = try await download(rawBase + "manifest.json", maximumBytes: CommunityPluginManifest.maximumManifestBytes, isOptional: false) else {
@@ -125,6 +142,32 @@ public struct CommunityPluginInstaller: Sendable {
             isOlderRelease = true
         }
         guard !version.isEmpty, !version.contains("/"), !version.contains("..") else { throw GraphiteError.invalidFile("The plugin's version “\(version)” is not usable.") }
+        return Release(repository: repository, currentManifest: currentManifest, version: version, isOlderReleaseForCompatibility: isOlderRelease)
+    }
+
+    /// The bytes `install(release)` downloads, from the sizes GitHub gives for the release's `main.js`, `manifest.json` and
+    /// `styles.css`; nil when GitHub does not answer or the release has no `main.js`, so that a size is never guessed.
+    public func downloadSize(of release: Release) async -> Int? {
+        let address = "https://api.github.com/repos/\(release.repository)/releases/tags/\(release.version)"
+        struct GitHubRelease: Decodable {
+            struct Asset: Decodable { let name: String; let size: Int }
+            let assets: [Asset]
+        }
+        do {
+            guard let data = try await download(address, maximumBytes: Self.maximumSmallFileBytes, isOptional: true) else { return nil }
+            let assets = try JSONDecoder().decode(GitHubRelease.self, from: data).assets
+            let installed = assets.filter { asset in ["main.js", "manifest.json", "styles.css"].contains(asset.name) }
+            guard installed.contains(where: { asset in asset.name == "main.js" }) else { return nil }
+            return installed.reduce(0) { total, asset in total + asset.size }
+        } catch {
+            // The size only informs the question asked before the download: without it the question says so.
+            return nil
+        }
+    }
+
+    /// Installs `release`, the files of that version and no other.
+    public func install(_ release: Release) async throws -> Installation {
+        let repository = release.repository, version = release.version, currentManifest = release.currentManifest
         let releaseBase = "https://github.com/\(repository)/releases/download/\(version)/"
         guard let mainScript = try await download(releaseBase + "main.js", maximumBytes: VaultStore.maximumPluginScriptBytes, isOptional: false),
               let releaseManifestData = try await download(releaseBase + "manifest.json", maximumBytes: CommunityPluginManifest.maximumManifestBytes, isOptional: false) else {
@@ -146,7 +189,7 @@ public struct CommunityPluginInstaller: Sendable {
             // An update whose release has no styles drops the old release's.
             _ = try await store.delete(stylesPath, method: .permanent)
         }
-        return Installation(manifest: releaseManifest, folder: folder, isOlderReleaseForCompatibility: isOlderRelease)
+        return Installation(manifest: releaseManifest, folder: folder, isOlderReleaseForCompatibility: release.isOlderReleaseForCompatibility)
     }
 
     /// The newest plugin version in versions.json (`{"1.2.0": "0.15.0", …}`, plugin version
@@ -179,7 +222,7 @@ public struct CommunityPluginInstaller: Sendable {
     }
 
     /// The bytes at `address`; nil for a missing optional file.
-    private func download(_ address: String, maximumBytes: Int, isOptional: Bool) async throws -> Data? {
+    func download(_ address: String, maximumBytes: Int, isOptional: Bool) async throws -> Data? {
         guard let url = URL(string: address) else { throw GraphiteError.invalidPath(address) }
         let (data, response) = try await session.data(from: url)
         guard let httpResponse = response as? HTTPURLResponse else { throw GraphiteError.unavailable("GitHub did not answer over HTTP.") }

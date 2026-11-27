@@ -1,6 +1,6 @@
 # Notion's killer features, measured against Graphite
 
-Draft, 2026-11-26. Research note, not a plan: nothing here is built or scheduled.
+Draft, 2026-11-26, extended 2026-11-28. Pure research for now: nothing here is built, scheduled, or tracked as a todo or a GitHub issue. Turning any item into work means writing a `Docs/<Feature>-todo.md` and its issues first, as AGENTS.md describes.
 
 ## The question
 
@@ -13,6 +13,31 @@ Which of the features people cite as their reason to stay on Notion would fit Gr
 - **Buttons and synced blocks**, then toggles, comments and collaboration ([XDA](https://www.xda-developers.com/replacing-notion-with-obsidian-as-main-note-taking-app-here-how-it-went/), [Alphonso Labs](https://www.alphonsolabs.com/notion-obsidian-migration-checklist/)).
 - **The student pattern** is a handful of related databases (Courses, Lectures, Assignments, Exams, Readings), a course page template holding a linked Assignments view filtered to "this course", rollups for progress and grade weight, and a calendar of due dates ([Medium, Tomas Vemola](https://medium.com/@tomasvemola/how-i-organize-my-student-life-with-notion-and-why-you-should-too-d9f66714c469), [MindLifeUp](https://mindlifeup.com/notion-for-students-mastering-notion-for-college/), [JooJ template](https://note.com/jooj_wall/n/nb0b7df2e08c3?hl=en), [Notiease](https://notiease.com/article-best-templates)). The Reddit post named in the request (r/Notion, "How I use Notion as an engineering student") could not be fetched from this environment, so its specifics are not cited here.
 - **Why people leave Notion:** speed on large workspaces and on phones, offline use (real offline mode only since August 2025, per page and per device, offline databases capped at 50 rows), price, and lock-in ([Fabric](https://fabric.so/comparison/how-to-leave-notion-without-losing-your-mind), [Notion help: offline](https://www.notion.com/help/use-pages-offline), [AlternativeTo](https://alternativeto.net/news/2025/8/notion-rolls-out-offline-mode-edit-pages-without-an-internet-connection)). Graphite already wins on every one of these. The work is to close the structure gap without losing that.
+
+## A record, not a note
+
+The reason is easy to miss for someone who takes notes. Most Notion users barely write: a Notion page is usually a record, not a note. They keep lists of things with attributes (assignments with a course, a due date and a status; job applications with a stage; books with a rating; workouts, expenses, habits), and the page body is often close to empty. The value is the row and the views of the rows. Notion is closer to a spreadsheet dressed as a website, or an application builder for people who do not program, than to a note-taking app.
+
+What makes it click for them: an assignment entered once appears on the course page, on the calendar, on a "due this week" dashboard and on a board where it moves from To do to Done, with nothing copied. For a life run by deadlines, nothing in a plain note app does that.
+
+The other reasons are friction, not features:
+
+- **No setup.** A downloaded "University Dashboard" template works the same evening. "I know it can be done and I could learn how to do it, I just don't want to" (r/Notion, quoted in the second review below). A plugin recipe is not a feature.
+- **Looks.** Covers, icons and columns. People use what they enjoy looking at.
+- **Sharing.** A link to a page for a group partner, or Notion because a team or school already uses it.
+
+Students are often both kinds of user: notes for lectures, a tracker for deadlines, and today two apps for it.
+
+## The portability test
+
+Graphite already stores everything a Notion database needs. A record is a Markdown note, its fields are frontmatter properties (`due: 2026-12-05`, `status: todo`), a relation is a link (`course: "[[VLSI 3]]"`), and a view is a `.base` file. Obsidian reads all of it. What is missing is the interface: today the setup above means writing YAML and filter expressions by hand, and Notion's advantage is that nobody sees that machinery.
+
+Every candidate feature passes two checks:
+
+1. It writes only files that Obsidian, or any text editor, already understands.
+2. With Graphite deleted, the files still make sense on their own.
+
+Under that test the work is almost entirely interface on top of existing files. The items that would matter most on a switching student's first day are relations and new entries in views (section 1), the slash menu and block handles (section 4), and ready-made starter workspaces (section 14 below).
 
 ## Ranked shortlist
 
@@ -211,6 +236,48 @@ Effort: S is days, M is one to three weeks, L is more, for one person, before de
 
 **Why it matters.** "New Assignment" and "Start Lecture" buttons on a course page are a staple of Notion student templates.
 
+## Further ideas from a second review (2026-11-28)
+
+A ChatGPT conversation ("Compare Notion Obsidian Use", 2026-11-26 and 2026-11-27, not available as a link) reached mostly the same list as sections 1 to 12: relations, formulas and rollups over frontmatter, a block editor that saves Markdown, dashboards, columns, calendar, Kanban and chart views, buttons, and the same caution about bloat (someone who only writes notes never meets a schema or an automation). It also says that the SQLite index should be a disposable cache that can always be rebuilt from the files, which Graphite's `GraphiteIndex` already is. Four of its ideas are not in the sections above and pass the portability test. They are not ranked into the shortlist.
+
+### 13. Export a folder as a static website
+
+**Idea.** Publishing a note or a folder as a site, without Notion Sites' hosting.
+
+**How, as ordinary files.** A local export of a folder to plain HTML, CSS and images, drawn from the reading view (wikilinks become relative links, embeds become images or inline content), written to a folder the user uploads anywhere (GitHub Pages, their own server). No account and no hosting by Graphite, which is why it is separate from the publishing rejected below. The Webpage HTML Export community plugin does this for Obsidian on desktop; whether it runs in Graphite's plugin runtime, or a native export built on Export to PDF's rendering is lighter, is to check.
+
+**Core or plugin, M.**
+
+### 14. Starter workspaces
+
+**Idea.** Notion's template gallery installs a whole working system, not one page. That answers the strongest complaint in the sources, not wanting to build the system first.
+
+**How, as ordinary files.** A starter workspace is a folder copied into the vault: for students, `Courses.base`, `Assignments.base` and `Exams.base`, a course note template, a dashboard note embedding their views (section 2), and two example entries to delete. Installing it is a copy; removing it is deleting the folder. Anyone could share one as a zip or a GitHub repository, with no marketplace required. It is the natural place for the Notion importer (Docs/Notion-import-todo.md) to land an imported workspace too.
+
+**Core, S** once sections 1 and 2 work: the folder itself is content, and it is downloaded only when chosen, which keeps the app small.
+
+### 15. Local automations without a new format
+
+**Idea.** "When a new assignment is created for VLSI 3, put its deadline in the calendar, set a reminder and create revision tasks."
+
+**How, as ordinary files.** The review proposed a YAML automation engine of Graphite's own, which Obsidian would not read. The portable route reuses what exists: Templater's folder templates (a template applied to every new note in a folder, which can set properties and add task lines) and Calendar Copy (section 3, built 2026-11-26) for the deadline. Reminders stay with #47. Whether Templater's "trigger on new file creation" fires in Graphite's plugin runtime is to check. Automations that run while the app is closed need a background service and stay rejected.
+
+**Plugin, S to check.**
+
+### 16. Sharing a vault through a shared iCloud Drive folder
+
+**Idea.** A small group (a lab group, a project team) sharing notes without a collaboration server.
+
+**How, as ordinary files.** iCloud Drive lets a folder be shared with other Apple accounts. A vault, or a folder inside one, shared that way is still ordinary files, with no server or account beyond iCloud. It gives shared files, not live co-editing: two people editing the same note at once get iCloud's conflict copies ("Note 2.md"), which Graphite would need to detect and offer to merge. How Graphite behaves on a shared folder is untested.
+
+**Core, S to check, M if conflict handling needs work.**
+
+### Where the second review breaks portability
+
+- **A `.workspace/` folder of Graphite's own** (`schemas/`, `views/`, `layouts/`, `automations/` as YAML). Its own rule says not to invent formats where open ones exist, and they do: views are `.base` files, property types are `.obsidian/types.json`, layouts are callouts. The one thing with no Obsidian file is a schema of required fields per kind of note; a new-entry sheet built from a base's columns (section 1) covers most of it.
+- **Real-time collaboration with CRDTs**, ranked high there. It needs a relay server, accounts and reconciling CRDT state with Markdown edited elsewhere. It stays rejected below.
+- **A third "visual" editing mode** next to Live Preview and Source. A third mode is another round trip that can lose Markdown formatting; block handles inside Live Preview (section 4) give the same feel.
+
 ## Smaller items worth noting
 
 - **Page history.** Notion keeps 7 days on the Free plan ([Notion help](https://www.notion.com/help/duplicate-delete-and-restore-content)). Graphite's File recovery keeps device copies with no limit by plan, but shows no differences. A side-by-side diff in the recovery sheet would make it plainly better than Notion's. Core, S to M.
@@ -221,7 +288,7 @@ Effort: S is days, M is one to three weeks, L is more, for one person, before de
 ## Rejected
 
 - **Collaboration, comments, mentions of people, guests, teamspaces, permissions:** need accounts and a server, and Obsidian's files carry none of it.
-- **Publishing and sharing (Notion Sites, public links):** need hosting. Export to PDF and the share sheet already cover handing a note to someone.
+- **Publishing and sharing (Notion Sites, public links):** need hosting. Export to PDF and the share sheet already cover handing a note to someone, and a static site the user hosts themselves is section 13.
 - **Forms:** collect answers from other people, which needs a server. The local half, a sheet that asks for a base's properties when creating an entry, is part of section 1.
 - **Database automations (triggers on page added or property edited, notifications, mail):** need a process running in the background and a server for notifications. Local buttons (section 12) and the Tasks plugin's recurrence cover what a single student needs.
 - **Notion AI agents, cloud Q&A, AI Autofill, image generation:** need accounts, keys and a cloud model in the core. Siri answers from the vault (planned, on device) and downloadable plugins (Copilot, Smart Connections) cover them without the core paying.

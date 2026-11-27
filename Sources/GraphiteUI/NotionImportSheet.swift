@@ -2,8 +2,8 @@
  * File: NotionImportSheet.swift
  * -----------------------------
  * Layer: UI
- * Description: Import from Notion's sheets: an export file or Notion's API to import from, the progress card while it
- *              is imported, and the summary when it ends.
+ * Description: Import from Notion's sheets: an export file or Notion's API to import from, the offer of the
+ *              same importer as a plugin, the progress card while it is imported, and the summary when it ends.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -25,13 +25,17 @@ enum NotionImportSource: String, CaseIterable, Identifiable {
 /// into, and Choose Export, whose file chooser takes Notion's zip, the `Part-N` zips of a large export, or the folder a
 /// zip unzips to. From Notion's API: the integration's token and a new folder or an earlier import to update
 /// (`NotionAPIImportForm`).
+/// Below the export's chooser, the offer of the Notion Importer plugin (`NotionImporterPluginOffer`).
 struct NotionImportSheet: View {
     let choice: NotionImportChoice
+    /// The offer of the Notion Importer plugin, made once for the sheet; nil without a vault.
+    let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
     let startAPI: @MainActor (String, VaultPath, VaultPath?) -> Void
     let earlierImports: [VaultPath]
     @Environment(\.dismiss) private var dismiss
     @State private var showsChooser = false
+    @State private var pluginOffer: NotionImporterPluginOffer?
     @State private var source = NotionImportSource.export
 
     var body: some View {
@@ -52,7 +56,9 @@ struct NotionImportSheet: View {
                 } else {
                     exportSections
                 }
+                if let pluginOffer { NotionImporterPluginOfferSection(offer: pluginOffer) }
             }
+            .onAppear { if pluginOffer == nil { pluginOffer = makePluginOffer() } }
             .formStyle(.grouped)
             .navigationTitle("Import from Notion")
             #if canImport(UIKit)
@@ -178,6 +184,7 @@ struct NotionImportPresentation: ViewModifier {
     /// The sheet's folder while the sheet is on screen (`WorkspaceModel.notionImportChoice`).
     @Binding var choice: NotionImportChoice?
     let session: NotionImportSession?
+    let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
     /// Starts an import through Notion's API with the token, into the folder, or over the earlier import.
     let startAPI: @MainActor (String, VaultPath, VaultPath?) -> Void
@@ -196,7 +203,8 @@ struct NotionImportPresentation: ViewModifier {
                 }
             }
             .sheet(item: $choice) { choice in
-                NotionImportSheet(choice: choice, start: start, startAPI: startAPI, earlierImports: earlierImports(choice.directory))
+                NotionImportSheet(choice: choice, makePluginOffer: makePluginOffer, start: start, startAPI: startAPI,
+                                  earlierImports: earlierImports(choice.directory))
             }
             .sheet(isPresented: Binding(get: { finishedSummary != nil }, set: { isPresented in if !isPresented { close() } })) {
                 if let finishedSummary {

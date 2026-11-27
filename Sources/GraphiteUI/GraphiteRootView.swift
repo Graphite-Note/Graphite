@@ -367,6 +367,7 @@ struct GraphiteRootView: View {
             .modifier(NotebookImportPresentation(session: workspace.notebookImport, openNotebook: { path in Task { _ = await workspace.open(path) } },
                                                  close: workspace.endNotebookImport))
             .modifier(NotionImportPresentation(choice: $workspace.notionImportChoice, session: workspace.notionImport,
+                                               makePluginOffer: workspace.makeNotionImporterPluginOffer,
                                                start: { sources, directory in workspace.importNotionExport(sources, into: directory) },
                                                startAPI: workspace.startNotionAPIImport, earlierImports: workspace.earlierNotionImports(in:),
                                                openReport: { path in Task { _ = await workspace.open(path) } }, close: workspace.endNotionImport))
