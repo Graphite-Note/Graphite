@@ -57,7 +57,7 @@ final class NotePresentationHostedTests: XCTestCase {
         _ = try vault.writeFile("Sampling.md", text: Self.lecture)
         let index = try VaultIndex(databaseURL: vault.cacheDirectory.appendingPathComponent("index.sqlite"))
         addTeardownBlock { try? FileManager.default.removeItem(at: vault.cacheDirectory) } // Best-effort removal of a temporary folder.
-        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), root: vault.root, index: index,
+        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), vault: try XCTUnwrap(ReadingVault(vault.root, index)),
                                             configuration: ReadingConfiguration())
         let presentation = NotePresentation.started(from: source, clock: LiveApplicationClock(),
                                                     pencil: PresentationPencilChoices(tool: tool, inkColor: .red, laserStyle: .line))
@@ -161,9 +161,7 @@ final class NotePresentationHostedTests: XCTestCase {
         let rootController = try XCTUnwrap(window.rootViewController)
         try await waitUntil("the accessory's controller appears") { accessoryController(in: rootController) != nil }
         let accessory = try XCTUnwrap(accessoryController(in: rootController))
-        if #available(iOS 27.0, *) {
-            try await waitUntil("the external display's accessory is registered") { accessory.isRegistered }
-        }
+        try await waitUntil("the external display's accessory is registered") { accessory.isRegistered }
         window.isHidden = true
         window.rootViewController = nil
         try await waitUntil("the accessory goes with the presentation's screen") { !accessory.isRegistered }

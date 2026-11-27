@@ -7,8 +7,8 @@
  *              a screenshot of each page, and what went wrong; the Mac's and the iPad's tests run it.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -434,8 +434,8 @@ enum ReleaseVaultPassPart: String, CaseIterable {
             ["Attachments", "Books", "Books.base", "Canvas", "Embedded base.md", "Gallery", "Gallery.base", "Places", "Places.base", "Places.md",
              "Tasks", "Tasks.base"]
         case .textNotes:
-            ["Callouts.md", "Edge cases", "Links", "Markdown", "Math.md", "Pictures.md", "Plugins", "README.md", "Start here.md", "Tables.md",
-             "Templates", "Web"]
+            ["Callouts.md", "Edge cases", "Links", "Markdown", "Math.md", "Page look.md", "Page look linked.md", "Pictures.md", "Plugins", "README.md",
+             "Start here.md", "Tables.md", "Templates", "Web"]
         case .longAndRepeatedNotes: ["Daily", "Diagrams", "Lectures"]
         case .pdfsNotebooksAndDrawings: ["Drawings", "Imports", "Notebooks", "PDFs"]
         case .embeds: ["Embeds"]

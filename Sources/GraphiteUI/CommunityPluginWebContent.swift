@@ -163,3 +163,32 @@ enum ExternalLinkOpener {
         #endif
     }
 }
+
+// MARK: A plugin's file input
+
+/// The plugin web view's interface delegate. Its methods are all optional: on the iPad and the iPhone WebKit's own
+/// behavior stays, the system's document picker for a file input. WebKit on the Mac asks the delegate for the files
+/// and acts as if nothing was chosen without one.
+extension CommunityPluginMessageReceiver: WKUIDelegate {
+    #if os(macOS)
+    /// The open panel for an `<input type="file">` a plugin's page clicked, over the window showing the plugin panel.
+    /// The chosen files reach the page as a picked file does in a browser, read by WebKit with the access the panel
+    /// gives.
+    func webView(_ webView: WKWebView, runOpenPanelWith parameters: WKOpenPanelParameters, initiatedByFrame frame: WKFrameInfo,
+                 completionHandler: @escaping @MainActor @Sendable ([URL]?) -> Void) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = parameters.allowsDirectories
+        panel.allowsMultipleSelection = parameters.allowsMultipleSelection
+        panel.prompt = "Choose"
+        let finish: (NSApplication.ModalResponse) -> Void = { response in
+            completionHandler(response == .OK ? panel.urls : nil)
+        }
+        if let window = webView.window ?? NSApp.keyWindow {
+            panel.beginSheetModal(for: window, completionHandler: finish)
+        } else {
+            panel.begin(completionHandler: finish)
+        }
+    }
+    #endif
+}

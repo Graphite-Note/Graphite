@@ -18,6 +18,10 @@ import UIKit
 /// The canvas is not in a window, so one canvas point is one screen point and the zoom is 1.
 @MainActor
 final class LassoSelectionKindsHostedTests: XCTestCase {
+    /// The canvas owns its selection controller, which refers back to it without keeping it; the test keeps the canvas,
+    /// as the window does in the app. On iOS 26 nothing else kept it, and the controller read a freed canvas.
+    private var canvas: HistoryCanvasView?
+
     private func horizontalStroke(y: CGFloat) -> PKStroke {
         let controlPoints = stride(from: CGFloat(0), through: 100, by: 10).enumerated().map { index, x in
             PKStrokePoint(location: CGPoint(x: x, y: y), timeOffset: TimeInterval(index) / 100, size: CGSize(width: 2, height: 2),
@@ -33,6 +37,7 @@ final class LassoSelectionKindsHostedTests: XCTestCase {
         addTeardownBlock { @MainActor in LassoShape.stored = keptShape }
         let canvas = HistoryCanvasView(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
         canvas.drawing = PKDrawing(strokes: strokes)
+        self.canvas = canvas
         let controller = canvas.inkSelection
         controller.isActive = true
         return controller

@@ -80,7 +80,7 @@ final class MacPresentationInAppHostedTests: XCTestCase {
         _ = try vault.writeFile("Sampling.md", text: Self.lecture)
         let index = try VaultIndex(databaseURL: vault.cacheDirectory.appendingPathComponent("index.sqlite"))
         addTeardownBlock { try? FileManager.default.removeItem(at: vault.cacheDirectory) } // Best-effort removal of a temporary folder.
-        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), root: vault.root, index: index,
+        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), vault: try XCTUnwrap(ReadingVault(vault.root, index)),
                                             configuration: ReadingConfiguration())
         let presentation = NotePresentation.started(from: source, clock: LiveApplicationClock(),
                                                     pencil: PresentationPencilChoices(tool: .laser, inkColor: .red, laserStyle: .dot))

@@ -85,6 +85,14 @@ final class CommunityPluginVaultBridgeBoundaryTests: XCTestCase {
         try assertOutsideFolderIsUntouched()
     }
 
+    func testAppendingToAPathOutsideTheVaultIsRefused() async throws {
+        for attack in attackedPaths {
+            let answer = try await respond(["operation": "vault.append", "path": attack.path, "base64": Data("added".utf8).base64EncodedString()])
+            XCTAssertEqual(failureKind(of: answer), attack.expectedKind, attack.path)
+        }
+        try assertOutsideFolderIsUntouched()
+    }
+
     func testRemovingAPathOutsideTheVaultIsRefused() async throws {
         for attack in attackedPaths {
             for method in ["permanent", "local", "system", "vaultSetting"] {

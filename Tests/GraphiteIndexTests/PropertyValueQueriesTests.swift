@@ -3,11 +3,11 @@
  * -------------------------------------
  * Layer: Tests
  * Description: The values one property takes across the vault, for suggestions: counts, the limit, list and text values,
- *              capitals and accents.
+ *              capitals and accents, and the values read once filtered as the query would answer.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -57,5 +57,13 @@ final class PropertyValueQueriesTests: XCTestCase {
         XCTAssertEqual(values.map(\.value), ["VLSI 3"])
         let missing = try await index.propertyValues(of: "missing", matching: "")
         XCTAssertTrue(missing.isEmpty)
+    }
+
+    func testFilteringTheValuesReadOnceAnswersAsTheQueryDoes() async throws {
+        let all = try await index.propertyValues(of: "course", matching: "", limit: VaultIndex.maximumPropertyValuesKeptForSuggestions)
+        for query in ["", "arch", "electro", "VLSI", "3", "nothing"] {
+            let queried = try await index.propertyValues(of: "course", matching: query, limit: 2)
+            XCTAssertEqual(VaultIndex.propertyValues(all, matching: query, limit: 2), queried, "The values for \"\(query)\"")
+        }
     }
 }

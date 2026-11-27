@@ -4,11 +4,12 @@
  * Layer: UI
  * Description: The choices the Mac's markup row shows for its chosen tool: the Draw tool's colours and line widths,
  *              and the Text Box tool's font, size, faces, colour, alignment, fill and border, laid out in the row or
- *              folded into menus where the pane is narrow.
+ *              folded into menus where the pane is narrow; the text menus' items, with the change each makes,
+ *              as plain values.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -182,6 +183,50 @@ struct PDFMarkupTextFormatSource {
     }
 }
 
+/// An item of one of the Text Box tool's format menus: its title and the change choosing it makes.
+struct PDFMarkupTextFormatChoice: Identifiable {
+    let title: String
+    let change: PDFTextBoxFormatChange
+    var id: String { title }
+}
+
+/// The items of the Text Box tool's format menus, in their order, as the row shows them.
+enum PDFMarkupTextFormatMenus {
+    /// The offered families, with the current one first when it is none of them.
+    static func fonts(current family: String) -> [PDFMarkupTextFormatChoice] {
+        let families = PDFTextBoxFonts.offeredFamilies.contains(family) ? PDFTextBoxFonts.offeredFamilies : [family] + PDFTextBoxFonts.offeredFamilies
+        return families.map { offered in PDFMarkupTextFormatChoice(title: offered, change: .fontFamily(offered)) }
+    }
+
+    /// Sizes offered, in points, as on the iPad.
+    static let sizes: [PDFMarkupTextFormatChoice] = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72].map { size in
+        PDFMarkupTextFormatChoice(title: "\(sizeText(size)) pt", change: .fontSize(size))
+    }
+
+    static func sizeText(_ size: Double) -> String {
+        size.rounded() == size ? String(Int(size)) : size.formatted(.number.precision(.fractionLength(1)))
+    }
+
+    /// Black and the favourite colours, with the current one last when it is none of them.
+    static func colors(storedPalette: Data?, current: PDFTextColor) -> [PDFMarkupTextFormatChoice] {
+        PDFMarkupRowColors.choices(storedPalette: storedPalette, including: current).map { choice in
+            PDFMarkupTextFormatChoice(title: choice.name, change: .color(choice.color))
+        }
+    }
+
+    /// No Fill, then light fills that keep black text readable, as on the iPad.
+    static let fills: [PDFMarkupTextFormatChoice] = [PDFMarkupTextFormatChoice(title: "No Fill", change: .fill(nil))] + [
+        ("White", PDFTextColor(red: 1, green: 1, blue: 1)), ("Yellow", PDFTextColor(red: 1, green: 0.96, blue: 0.62)),
+        ("Green", PDFTextColor(red: 0.83, green: 0.95, blue: 0.8)), ("Blue", PDFTextColor(red: 0.82, green: 0.9, blue: 1)),
+        ("Pink", PDFTextColor(red: 1, green: 0.85, blue: 0.9)),
+    ].map { name, color in PDFMarkupTextFormatChoice(title: "\(name) Fill", change: .fill(color)) }
+
+    /// The alignments, as the folded menu's picker names them.
+    static let alignments: [PDFMarkupTextFormatChoice] = PDFTextAlignment.allCases.map { alignment in
+        PDFMarkupTextFormatChoice(title: alignment.rawValue.capitalized, change: .alignment(alignment))
+    }
+}
+
 /// The Text Box tool's format controls in the row: font, size, bold, italic and underline,
 /// colour, alignment, fill and border. They format the box selected or typed in, or, with
 /// none, the next new box, whose look is kept on the device (`PDFTextBoxDefaults`).
@@ -223,10 +268,8 @@ struct PDFMarkupTextFormatControls: View {
 
     private var fontMenu: some View {
         Menu {
-            let families = PDFTextBoxFonts.offeredFamilies.contains(format.attributes.fontFamily)
-                ? PDFTextBoxFonts.offeredFamilies : [format.attributes.fontFamily] + PDFTextBoxFonts.offeredFamilies
-            ForEach(families, id: \.self) { family in
-                Toggle(family, isOn: Binding(get: { family == format.attributes.fontFamily }, set: { _ in apply(.fontFamily(family)) }))
+            ForEach(PDFMarkupTextFormatMenus.fonts(current: format.attributes.fontFamily)) { choice in
+                Toggle(choice.title, isOn: Binding(get: { choice.title == format.attributes.fontFamily }, set: { _ in apply(choice.change) }))
             }
         } label: {
             Text(format.attributes.fontFamily).lineLimit(1)
@@ -239,21 +282,14 @@ struct PDFMarkupTextFormatControls: View {
 
     private var sizeMenu: some View {
         Menu {
-            ForEach(Self.offeredSizes, id: \.self) { size in Button("\(Self.sizeText(size)) pt") { apply(.fontSize(size)) } }
+            ForEach(PDFMarkupTextFormatMenus.sizes) { choice in Button(choice.title) { apply(choice.change) } }
         } label: {
-            Text("\(Self.sizeText(format.attributes.fontSize)) pt").monospacedDigit()
+            Text("\(PDFMarkupTextFormatMenus.sizeText(format.attributes.fontSize)) pt").monospacedDigit()
         }
         .fixedSize()
         .help("Size")
         .accessibilityLabel("Size")
-        .accessibilityValue("\(Self.sizeText(format.attributes.fontSize)) points")
-    }
-
-    /// Sizes offered, in points, as on the iPad.
-    private static let offeredSizes: [Double] = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 64, 72]
-
-    private static func sizeText(_ size: Double) -> String {
-        size.rounded() == size ? String(Int(size)) : size.formatted(.number.precision(.fractionLength(1)))
+        .accessibilityValue("\(PDFMarkupTextFormatMenus.sizeText(format.attributes.fontSize)) points")
     }
 
     private var faceButtons: some View {
@@ -279,8 +315,8 @@ struct PDFMarkupTextFormatControls: View {
 
     private var colorMenu: some View {
         Menu {
-            ForEach(PDFMarkupRowColors.choices(storedPalette: storedColorPalette, including: format.attributes.color), id: \.name) { choice in
-                Button(choice.name) { apply(.color(choice.color)) }
+            ForEach(PDFMarkupTextFormatMenus.colors(storedPalette: storedColorPalette, current: format.attributes.color)) { choice in
+                Button(choice.title) { apply(choice.change) }
             }
             Button("Other Color…") {
                 // The box selected when the panel opened, or the next new box.
@@ -317,16 +353,8 @@ struct PDFMarkupTextFormatControls: View {
         }
     }
 
-    /// Light fills that keep black text readable, as on the iPad.
-    private static let offeredFills: [(name: String, color: PDFTextColor)] = [
-        ("White", PDFTextColor(red: 1, green: 1, blue: 1)), ("Yellow", PDFTextColor(red: 1, green: 0.96, blue: 0.62)),
-        ("Green", PDFTextColor(red: 0.83, green: 0.95, blue: 0.8)), ("Blue", PDFTextColor(red: 0.82, green: 0.9, blue: 1)),
-        ("Pink", PDFTextColor(red: 1, green: 0.85, blue: 0.9)),
-    ]
-
-    @ViewBuilder private var fillItems: some View {
-        Button("No Fill") { apply(.fill(nil)) }
-        ForEach(Self.offeredFills, id: \.name) { fill in Button("\(fill.name) Fill") { apply(.fill(fill.color)) } }
+    private var fillItems: some View {
+        ForEach(PDFMarkupTextFormatMenus.fills) { choice in Button(choice.title) { apply(choice.change) } }
     }
 
     private var fillMenu: some View {

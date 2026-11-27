@@ -35,8 +35,7 @@ final class FileTreeFilterHostedTests: SettingsHostedTestCase {
     /// The window with its sidebar shown: a window with no file open starts with the sidebar hidden.
     private func showWindow(of workspace: WorkspaceModel) async throws -> UIViewController {
         let controller = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 1180, height: 820), horizontalSizeClass: .regular)
-        let showSidebar = try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" }
-        await follow(showSidebar)
+        try await showSidebar(in: controller)
         return controller
     }
 

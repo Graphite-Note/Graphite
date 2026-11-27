@@ -5,8 +5,8 @@
  * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 26/11/2026
+ * Version: 0.11
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -127,6 +127,11 @@ public actor VaultStore {
 
     public func save(_ data: Data, at path: VaultPath, expecting: WriteExpectation) throws -> FileRevision {
         try writer.write(data, to: path.url(in: root), expecting: expecting)
+    }
+
+    /// Adds `data` at the end of the file at `path`, in place (`AtomicFileWriter.append`).
+    public func append(_ data: Data, at path: VaultPath) throws {
+        try writer.append(data, to: path.url(in: root))
     }
 
     public func fileExists(_ path: VaultPath) throws -> Bool {

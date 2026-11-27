@@ -6,7 +6,7 @@ Decisions:
 
 - Graphite keeps one layout per size class. The outer display is a compact width (the phone layout) and the inner display a regular one. The system stands toolbars and the bottom bar on the side, and Graphite does not override where it puts them.
 - On iOS a document's More commands go into the system's overflow menu, so the bar never shows two "•••" buttons. The Mac keeps its More menu.
-- Graphite's own views follow a partly folded display through the system's division regions (iOS 27.1). The deployment target is iOS 26.0 ([OS-26-support-todo.md](OS-26-support-todo.md)), and the fold code does nothing before 27.1.
+- Graphite's own views follow a partly folded display through the system's division regions (iOS 27.1). The deployment target is iOS 27.0 ([OS-26-support-todo.md](OS-26-support-todo.md)), and the fold code does nothing before 27.1.
 
 ## 1. Layout on the Duo's displays and around the fold
 

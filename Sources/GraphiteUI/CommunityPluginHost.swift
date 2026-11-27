@@ -489,6 +489,7 @@ final class CommunityPluginHost {
         #endif
         let pluginWebView = WKWebView(frame: .zero, configuration: configuration)
         pluginWebView.navigationDelegate = messageReceiver
+        pluginWebView.uiDelegate = messageReceiver // a plugin's file input opens the Mac's open panel
         #if canImport(UIKit)
         // Apple Pencil and touches reach the page as pointer events (`pointerType` "pen", with
         // `pressure`, `tiltX` and `tiltY`, and hovering as moves without buttons), which

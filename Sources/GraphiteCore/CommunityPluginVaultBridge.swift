@@ -6,8 +6,8 @@
  *              page.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 17/11/2026
+ * Version: 0.7
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -78,6 +78,9 @@ public struct CommunityPluginVaultBridge: Sendable {
             return try await read(try decoder.decode(ReadRequest.self, from: messageData))
         case "vault.write":
             return try await write(try decoder.decode(WriteRequest.self, from: messageData))
+        case "vault.append":
+            let appended = try await append(try decoder.decode(AppendRequest.self, from: messageData))
+            return ["stat": try Self.stat(of: appended) ?? NSNull()]
         case "vault.createFolder":
             let path = try VaultPath(try decoder.decode(PathRequest.self, from: messageData).path)
             try await store.createDirectory(path)
@@ -117,6 +120,12 @@ public struct CommunityPluginVaultBridge: Sendable {
         let expectation: Expectation
         /// The dates the plugin asked the file to have (Obsidian's `DataWriteOptions`), in
         /// milliseconds since 1970, as JavaScript's dates count.
+        let modified: Double?
+        let created: Double?
+    }
+    private struct AppendRequest: Decodable {
+        let path: String
+        let base64: String
         let modified: Double?
         let created: Double?
     }
@@ -242,6 +251,31 @@ public struct CommunityPluginVaultBridge: Sendable {
             try await store.setFileTimes(modified: modified, created: request.created.map(Self.date(fromMilliseconds:)), at: path)
         }
         return ["revision": Self.revisionDictionary(revision), "stat": try Self.stat(of: location) ?? NSNull()]
+    }
+
+    /// `appendBinary`: the bytes added at the end of the file in place, so a plugin writes a file larger than one
+    /// message in pieces, each no larger than a write. The file's revision is not read back (it would read the whole
+    /// file at each piece): the runtime forgets the one it had, so its next write replaces what is there. Returns
+    /// the file's location as a new URL, since one whose values were read before the bytes were added keeps the old size.
+    private func append(_ request: AppendRequest) async throws -> URL {
+        let path = try VaultPath(request.path)
+        let location = try path.url(in: store.root)
+        guard let data = Data(base64Encoded: request.base64) else {
+            throw BridgeFailure(kind: "invalidData", message: "The plugin sent nothing to add to “\(path.rawValue)”.")
+        }
+        guard data.count <= Self.maximumTransferredBytes else {
+            throw BridgeFailure(kind: "tooLarge", message: "The plugin tried to add more than Graphite accepts in one write.")
+        }
+        if FileManager.default.fileExists(atPath: location.path), try Self.stat(of: location)?["isFolder"] as? Bool == true {
+            throw BridgeFailure(kind: "isFolder", message: "“\(path.rawValue)” is a folder.")
+        }
+        try await store.createDirectory(path.parent)
+        try await store.append(data, at: path)
+        if request.modified != nil || request.created != nil {
+            let modified = request.modified.map(Self.date(fromMilliseconds:))
+            try await store.setFileTimes(modified: modified, created: request.created.map(Self.date(fromMilliseconds:)), at: path)
+        }
+        return try path.url(in: store.root)
     }
 
     private static func date(fromMilliseconds milliseconds: Double) -> Date { Date(timeIntervalSince1970: milliseconds / 1000) }

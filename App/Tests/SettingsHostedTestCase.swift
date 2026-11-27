@@ -70,6 +70,11 @@ class SettingsHostedTestCase: XCTestCase {
         return controller
     }
 
+    /// Shows the window's sidebar through its Show Sidebar button.
+    func showSidebar(in controller: UIViewController) async throws {
+        await follow(try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" })
+    }
+
     func textFields(in view: UIView) -> [UITextField] {
         (view as? UITextField).map { field in [field] } ?? view.subviews.flatMap(textFields)
     }

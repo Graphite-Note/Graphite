@@ -7,22 +7,21 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 extension WorkspaceModel {
     /// Makes the course starter in `directory` (or `Courses`) where its files are missing, never replacing one, then
     /// makes a course named `name` with New of the starter's `Courses.base`, which opens it in a new tab.
     func createCourse(named name: String, in directory: VaultPath?) async {
-        guard let store, let index, let services = baseNoteServices else { return }
+        guard let bases = baseVaultAccess, let services = baseNoteServices else { return }
         do {
             let courseFolder = try directory.flatMap { folder in folder.rawValue.isEmpty ? nil : folder } ?? VaultPath(CourseStarter.defaultCourseFolder)
-            let coursesBase = try await installCourseStarter(in: courseFolder, store: store)
-            let model = BaseDocumentModel(source: .file(coursesBase), contextPath: coursesBase, store: store, index: index)
+            let coursesBase = try await installCourseStarter(in: courseFolder, store: bases.store)
+            let model = bases.model(of: coursesBase)
             await model.reload()
             if let loadError = model.loadErrorMessage { throw GraphiteError.unavailable(loadError) }
             guard await model.createNewItem(named: name, services: services) != nil else {

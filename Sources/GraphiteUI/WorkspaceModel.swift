@@ -5,8 +5,8 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.91
- * Date: 26/11/2026
+ * Version: 0.92
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -209,6 +209,8 @@ final class WorkspaceModel {
     }
     /// The vault's property names read for suggestions, kept until the index changes (`PropertySuggestions`).
     @ObservationIgnored var propertySuggestionCache: PropertySuggestionCache?
+    /// Each property's values read for suggestions, kept until the index changes (`PropertySuggestions`).
+    @ObservationIgnored var propertyValueSuggestionCache: PropertyValueSuggestionCache?
     /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
     /// none of them can affect do not run again.
     @ObservationIgnored var lastIndexChange: BaseContentChange?
@@ -1272,11 +1274,29 @@ final class WorkspaceModel {
         } catch { errorMessage.report(error) }
     }
 
+    /// Saves a pasted or dropped file as an attachment of the note and embeds it at `range`, after the
+    /// attachments asked for before it: the files of one drop all ask for one place, and each goes
+    /// after the one before, rather than in the order their saves happen to end.
+    func saveAttachmentInOrder(_ data: Data, stem: String, fileExtension: String, into session: MarkdownSession, at range: NSRange) {
+        // An open editor follows the note's edits since the drop itself and puts each file after the one before
+        // (`PendingInsertionRequests`); measured again here against the text of the drop, the place of a later file
+        // fell inside an earlier one's embed, and the editor took it for no request of its own.
+        let isPlacedByTheEditor = session.isEditorAttached
+        let textWhenChosen: String? = isPlacedByTheEditor ? nil : session.text
+        let previousSave = session.lastAttachmentSave
+        session.lastAttachmentSave = Task {
+            await previousSave?.value
+            await saveAttachment(data, stem: stem, fileExtension: fileExtension, into: session, at: range, textWhenChosen: textWhenChosen,
+                                 placedByTheEditor: isPlacedByTheEditor)
+        }
+    }
+
     /// Saves pasted, dropped, photographed, or picked data as an attachment, like
     /// Obsidian's "Pasted image …" files, and embeds it at `range` (the cursor when nil).
     /// - Parameter textWhenChosen: The note's text when `range` was chosen; its text now
     ///   when nil. Text typed while the file is written moves the range along with it.
-    func saveAttachment(_ data: Data, stem: String, fileExtension: String, into session: MarkdownSession, at range: NSRange? = nil, textWhenChosen: String? = nil) async {
+    func saveAttachment(_ data: Data, stem: String, fileExtension: String, into session: MarkdownSession, at range: NSRange? = nil, textWhenChosen: String? = nil,
+                        placedByTheEditor: Bool = false) async {
         guard let store else { return }
         let textWhenChosen = textWhenChosen ?? session.text
         do {
@@ -1284,7 +1304,8 @@ final class WorkspaceModel {
             let directory = try resolver.directory(for: settings.attachmentLocation, note: session.path)
             try await store.createDirectory(directory)
             let path = try await saveUnderFreeName(data, in: directory, stem: stem, fileExtension: fileExtension, store: store)
-            insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen)
+            insertEmbed(await embed(for: path, in: session.path, settings: settings), of: path, into: session, at: range, chosenIn: textWhenChosen,
+                        placedByTheEditor: placedByTheEditor)
             refreshIndex(for: [path])
             await showInListings(path)
         } catch { errorMessage.report(error) }
@@ -1293,7 +1314,8 @@ final class WorkspaceModel {
     /// Inserts the embed of an attachment just written into its note. Writing a large file
     /// takes a while, and the note may have closed or changed in another app meanwhile; the
     /// file then stays in the vault, and the person is told no embed was inserted.
-    func insertEmbed(_ embedText: String, of attachment: VaultPath, into session: MarkdownSession, at range: NSRange?, chosenIn textWhenChosen: String) {
+    func insertEmbed(_ embedText: String, of attachment: VaultPath, into session: MarkdownSession, at range: NSRange?, chosenIn textWhenChosen: String,
+                     placedByTheEditor: Bool = false) {
         guard let openSession = openMarkdownSession(at: session.path) else {
             errorMessage = "“\(attachment.rawValue)” was saved, but its note is no longer open, so no embed was inserted."
             return
@@ -1308,7 +1330,8 @@ final class WorkspaceModel {
             openSession.insertBlock(embedText)
             return
         }
-        openSession.insertBlock(embedText, at: Self.insertionRange(range, chosenIn: textWhenChosen, in: session))
+        openSession.insertBlock(embedText, at: Self.insertionRange(range, chosenIn: textWhenChosen, in: session),
+                                placedByTheEditor: placedByTheEditor && openSession.isEditorAttached)
     }
 
     /// Where an insertion chosen at `range` of `textWhenChosen` goes in the session's text
@@ -1894,3 +1917,14 @@ enum VaultSwitchRefusal: LocalizedError, Equatable {
         }
     }
 }
+
+extension WorkspaceModel {
+    /// The open vault's files and index for a base run away from its pane, or nil while no vault is open.
+    var baseVaultAccess: BaseVaultAccess? {
+        guard let store, let index else { return nil }
+        return BaseVaultAccess(store: store, index: index)
+    }
+}
+
+/// The index answers the Icons, Covers and Columns core plugin's catalog.
+extension VaultIndex: NoteIconLookup {}

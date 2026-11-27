@@ -14,7 +14,7 @@ import PackageDescription
 
 let package = Package(
     name: "Graphite",
-    platforms: [.iOS("26.0"), .macOS("26.0")],
+    platforms: [.iOS("27.0"), .macOS("26.0")],
     products: [
         .library(name: "GraphiteUI", targets: ["GraphiteUI"]),
         .library(name: "GraphiteCore", targets: ["GraphiteCore"]),

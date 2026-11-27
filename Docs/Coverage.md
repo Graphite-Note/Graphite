@@ -4,6 +4,38 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## A heading dragged from the reading view onto a PDF no longer freezes the Mac app: 2026-11-27
+
+[Split-down-and-section-links-todo.md](Split-down-and-section-links-todo.md) section 3 (issue #227), found dragging a heading with the mouse in the Mac app: the app froze once the drag reached the PDF. The PDF view reads the dragged section on the main thread to decide whether it takes the drag, and SwiftUI's pasteboard waited there for the reading view's item, which handed the section over only after a hop to the main actor. `SectionLinkTransfer.register` hands it over at once when there is nothing to prepare.
+
+- **Automated test:** `SectionLinksOnPDFTests.testAHeadingDraggedFromTheReadingViewGivesItsSectionWhileTheMainThreadWaits` asks the item for its section while the main thread waits, as the Mac's pasteboard does; it fails without the change. The rest of `SectionLinksOnPDFTests` passes.
+- **Checked by hand:** in a separate Debug copy of the Mac app on a demo vault, the heading Entropy dragged with the mouse from the reading view onto a PDF page landed as its picture, and the saved file links to it; Obsidian 1.15.1, given that file's address, opened the note at Entropy.
+- **Not established:** the click on the picture in Preview (Preview followed no link clicked by an automation tool).
+
+## Several files dropped at once into a note are embedded whole, in the order dropped: 2026-11-27
+
+`Docs/Drag-and-drop-todo.md` section 1 (issue #144), found dragging three made-up files from the Finder onto a note in the Mac app: they came out as `![[Made-up handout 1.pdf]]`, `!![[Made-up picture 1.png]]` and `[[Made-up schedule 1.csv]]`. Each file was saved in a task of its own, so the embeds followed the order the saves ended; and a file saved while an earlier embed still waited for the editor was placed past that embed, where the editor's tracker of the drop took it for another file's request, so one embed went one character into another, after its `!`. Now the files of a paste or drop save one after another (`WorkspaceModel.saveAttachmentInOrder`, `MarkdownSession.lastAttachmentSave`), and while the editor follows the drop each embed asks for the drop point itself (`MarkdownSession.insertBlock(_:at:separatedByBlankLines:placedByTheEditor:)`), which the editor pairs with its requests in order and puts after the files already in.
+
+- **Automated tests:** `MacEditorDroppedFilesTests` (3: dropped at the end of a note, in the middle of a line, and with every save ending before the editor shows the first; the first two fail without the change), `UiEditorMacDroppedAttachmentPlaceTests`, `UiEditorMacEditorTests`, `UiWorkspaceModelFixTests`, `WorkspaceImportFilesTests`, `UiEditorEditTrackingTests`.
+- **Checked:** see `Docs/Drag-and-drop-todo.md` section 1 for the drag from the Finder in the Mac app.
+
+## The Notion Importer plugin compiled to WebAssembly, run in Graphite: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) section 7 (issue #231). The plugin `graphite-notion-importer` of Graphite-Note/Importer (Importer#2, not yet merged or released): the Swift Importer's module inside `main.js`, its settings tab and import window, run in Graphite's plugin panel.
+
+- **Automated tests:** `CommunityPluginHostTests.testNotionImporterPluginImportsEachExportAsTheLinkedPackageDoes` (iPad, hosted) and `NotionImporterPluginInWebKitTests` (Mac, package) install the built plugin, press its buttons and compare each import with the linked package's, file by file. Both run only when their environment names the exports, which are never committed. `notion-importer-plugin.test.js` in the runtime test host covers an import, Stop, and a page without WebAssembly, where the plugin names Lockdown Mode and writes nothing. `CommunityPluginVaultBridgeAppendTests` and `vault.test.js` cover `vault.append`, which lets a plugin write a file over 64 MB.
+- **Checked in the iPad simulator** (iPad Pro 13-inch (M5), iOS 27.2) by an XCUITest probe that drives the installed app: Browse shows the Notion Importer in a "Graphite" section above Obsidian's directory, a local build turns on with its switch, and an export picked in the system's Files picker imports as the linked package does. Section 8's 1.16 GB export picked that way imported 10,051 notes and 500 attachments in 156 s, the web content process flat at 202 to 238 MB through the import and at most 352 MB.
+- **Measured on the Mac** on the same export: 170 s, the web content process between 85 and 153 MB through the import, the main actor at most 12 ms late.
+- **Not established:** installing from Browse (it needs the Importer's release, after its PR merge), a device in Lockdown Mode, the physical iPad, the Mac's Open panel by hand.
+
+## Obsidian's Importer installed from the directory beside the Swift import, and a large workspace stood in for: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) sections 2 and 3 (issues #173, #174).
+
+- **Installed as a person installs it:** Importer 3.2.0 from Obsidian's community directory through Settings › Community Plugins › Browse, Install and its switch, in an iPad simulator (iPad Pro 13-inch (M5), iOS 27.2) by an XCUITest probe on those screens, and on the Mac in a copy of the app with its own bundle identifier by background control. In the simulator its Notion › File import ran with the export picked in Files.
+- **Hosted test:** `CommunityPluginHostTests.testImporterInstalledFromObsidiansDirectoryImportsTheExportsAsTheSwiftImportDoes` installs through `CommunityPluginInstaller` and imports each export named by `GRAPHITE_NOTION_UPSTREAM_EXPORTS` on Importer's panel and with the linked Swift import, printing the counts and the notes only one of them wrote. Upstream's test export gives the same notes in both. A real export found online differs only by what the export holds (a backup copy of 91 pages Importer imports twice, files no page links, which only the Swift import copies). No gap of Graphite's runtime was found.
+- **Measured** on a made-up stand-in for a large workspace (15,052 pages with a database of 5,000 rows and 500 pictures, 1.16 GB in `Part-N` zips): in the simulator Importer took about 345 s, its web content process reaching 7,052 MB resident, and the Swift import about 216 s with Graphite's process at 898 MB. On the Mac the Swift import took 172 s with a 303 MB peak footprint.
+- **Not established:** Obsidian itself on the same exports, Importer's import run by hand on the Mac (its Open panel), the Mac's hosted run (it stopped before its first test), the physical iPad.
 ## Import from Notion through Notion's API, on a branch until the Importer's release: 2026-11-27
 
 [Notion-import-todo.md](Notion-import-todo.md) section 5's last item (issue #230), on the branch `notion-api-sheet`, which pins the Importer to its pull request 3 until a release holds it. The sheet's From picker offers Notion's API: the integration's token, kept in the device's keychain (`NotionTokenStore`), and a new folder or an earlier import to update ([Architecture](Architecture.md), "Importing Notion's export").
@@ -22,7 +54,8 @@ Last updated: 2026-11-27.
 - **Measured in Graphite:** `DiagramNoteScrollingHostedTests` in an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator of their own (iOS 27.2, Debug, load average 16 to 30 with other builds running): the reading view had no late frame on either (963 and 931 frames, the main thread's longest work in a frame 10.1 and 11.7 ms), and Live Preview none on the iPad (1,153 frames) and 7 of 1,211 on the iPhone.
 - **Automated tests:** `ReadingDiagramPicturesHostedTests` (4, with a new check that the same text prepared twice gives two pictures), `DiagramColumnWidthHostedTests` (3) and `DiagramNoteScrollingHostedTests` (4) on both simulators, 0 failures. 1,116 diagram, PDF and export tests of the Mac package suite on 0.8.1. The whole Mac package suite on 0.8.0 (5,356 tests, 3 failures under a load average of 30 to 64, `ViewSwitchingMacTests`, `PixelEraserPassTests` and `BaseWholeVaultTimingTests` time budgets, each passing when run alone, with Read Aloud, speech, dictation, audio, voice, recording, playback and narration left out, no audio opened). The iOS app built for the simulator with the hosted tests, and `check-rules.py`, `size-report.py`, `check-test-registration.py`, `check-invariant-pins.py`.
 - **Checked:** the hosted tests' pictures of the demo note's first diagram in the reading view and Live Preview on the iPad simulator. Not on a device, and not in the installed Mac app.
-- **Not established:** the package in the iOS simulators for 0.8.0 (its tables there are still 0.7.0's), and a device.
+- **Measured in the iOS simulators** (the package's `MermaidDiagramsDeviceBenchmark`, an iPad Pro 13-inch (M5) and an iPhone 17 Pro simulator, iOS 27.2, two other Xcode builds running): reading and layout 1.9 to 5.9 times as fast as Pele in WebKit, with the SVG 1.0 to 4.0 times (the iPhone's Git graphs 0.8 under a load spike).
+- **Not established:** a device.
 
 ## Rendered blocks laid out once as a note scrolls, and the Mac's responsive scrolling: 2026-11-27
 

@@ -5,7 +5,7 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.72
+ * Version: 0.73
  * Date: 27/11/2026
  */
 
@@ -296,7 +296,7 @@ struct MarkdownPane: View {
         if DocumentScanner.isSupported { actions.scanDocument = { noteState.showsDocumentScanner = true } }
         #endif
         actions.insertAttachment = { [workspace, session] data, stem, fileExtension, range in
-            Task { await workspace.saveAttachment(data, stem: stem, fileExtension: fileExtension, into: session, at: range) }
+            workspace.saveAttachmentInOrder(data, stem: stem, fileExtension: fileExtension, into: session, at: range)
         }
         actions.newNotebook = { [document, session] in document.notebookInsertion = NotebookInsertionRequest(session: session) }
         actions.insertLinkToVaultFile = { [workspace, session] path, range in
@@ -553,7 +553,7 @@ struct MarkdownPane: View {
         // bar has no room for, so there is one such menu, also on iPhone Duo's side bar.
         // Its icons take the tint of the items themselves: the column's accent, faint on the menu's
         // material in the dark, reached them past the bar's own (HUNT-280).
-        MoreToolbarMenu { moreMenuItems.tint(.primary) }
+        ToolbarOverflowMenu { moreMenuItems.tint(.primary) }
         #endif
     }
 

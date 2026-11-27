@@ -7,20 +7,18 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
 import Observation
 import GraphiteCore
 import GraphiteApple
-import GraphiteIndex
 
 /// What a copy of the open vault reads.
 struct CalendarCopySource {
     let vaultName: String
-    let store: VaultStore
-    let index: VaultIndex
+    let bases: BaseVaultAccess
     let settings: CalendarCopySettings
 }
 
@@ -143,7 +141,7 @@ final class CalendarCopyController {
 
     /// The entries of the chosen view, run as the base runs it on screen, and their titles.
     private func chosenEntries(basePath: VaultPath, viewName: String, source: CalendarCopySource) async throws -> ([BaseCalendarEntry], [VaultPath: String]) {
-        let model = BaseDocumentModel(source: .file(basePath), contextPath: basePath, store: source.store, index: source.index, preferredViewName: viewName)
+        let model = source.bases.model(of: basePath, preferredViewName: viewName)
         model.releaseLoadedRecords()
         await model.reload()
         if let loadErrorMessage = model.loadErrorMessage { throw CalendarCopyFailure.baseUnreadable(basePath, loadErrorMessage) }
@@ -225,7 +223,7 @@ extension WorkspaceModel {
         guard preferences.isEnabled(.calendarCopy), hasCompletedIndexScan, let index, let store, let currentVaultIdentifier,
               let vault = vaultLibrary.vault(withIdentifier: currentVaultIdentifier) else { return nil }
         let settings = (try? await store.calendarCopySettings()) ?? CalendarCopySettings() // An unreadable file: nothing chosen, and it is left as it is.
-        return CalendarCopySource(vaultName: vault.name, store: store, index: index, settings: settings)
+        return CalendarCopySource(vaultName: vault.name, bases: BaseVaultAccess(store: store, index: index), settings: settings)
     }
 
     /// After the index takes in changes, and once a scan of the vault ends.

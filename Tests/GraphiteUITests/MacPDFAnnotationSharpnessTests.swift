@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: The Mac's PDF view draws a placed picture and saved Pencil ink at the screen's
  *              resolution, as sharp as PDFKit's own drawing of the page, at fit and zoomed in,
- *              and within its memory bound; saved ink in its page's ink layer since HUNT-357.
+ *              and within its memory bound; saved ink in its page's ink layer since HUNT-357, and ink
+ *              drawn with the mouse at one, two and four times fit.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 16/11/2026
+ * Version: 0.3
+ * Date: 27/11/2026
  */
 import XCTest
 import PDFKit
@@ -70,14 +71,31 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
     /// page's ink layer since HUNT-357 (`MacPDFPageInkLayers`): its picture holds as many pixels per
     /// point as the screen shows, and a hard edge is as clean as in PDFKit's drawing of the page.
     func testSavedInkIsDrawnAtTheScreensResolutionAtFitAndZoomedIn() async throws {
-        let location = try await makeSavedPDF(withPicture: false, withInk: true)
+        try await assertInkIsDrawnAtTheScreensResolution(in: try await makeSavedPDF(withPicture: false, withInk: true), zooms: [1, 2], label: "ink")
+    }
+
+    /// Ink drawn with the mouse by the markup row's Draw tool (`MacPDFPointerInkTool`), saved and
+    /// opened again: at one, two and four times fit it is drawn at the screen's resolution.
+    func testInkDrawnWithTheMouseIsDrawnAtTheScreensResolutionAtOneTwoAndFourTimesFit() async throws {
+        let harness = try await MacPDFPageToolHarness.open(for: self, prefix: "MacPDFMouseInkSharpness")
+        harness.toolbar.useInkStyle(PDFMarkupInkStyle(color: .black, width: .bold))
+        harness.choose(.draw)
+        // A slanted line through the row 240 points up the page, as the saved ink above.
+        try harness.drag(through: (0...30).map { index in CGPoint(x: 100 + Double(index) * 3, y: 200 + Double(index) * 2.67) })
+        try await harness.session.save()
+        try await assertInkIsDrawnAtTheScreensResolution(in: harness.location, zooms: [1, 2, 4], label: "mouse ink")
+    }
+
+    /// Opens the saved PDF and measures its ink, which crosses the row 240 points up the page, at each zoom of fit.
+    private func assertInkIsDrawnAtTheScreensResolution(in location: URL, zooms: [CGFloat], label: String) async throws {
         let (window, pdfView) = try await show(location)
         defer { window.close() }
         let page = try XCTUnwrap(pdfView.document?.page(at: 0))
         let pageBox = page.bounds(for: .cropBox)
+        let fitScale = pdfView.scaleFactor
 
-        for zoom in [1.0, 2.0] {
-            if zoom != 1 { pdfView.scaleFactor = pdfView.scaleFactor * zoom }
+        for zoom in zooms {
+            pdfView.scaleFactor = fitScale * zoom
             let screenPixelsPerPoint = pdfView.scaleFactor * (window.backingScaleFactor)
             let shownSize = CGSize(width: pageBox.width * pdfView.scaleFactor, height: pageBox.height * pdfView.scaleFactor)
             guard MacPDFPageInkLayers.fitsInAPicture(MacPDFPageInkLayers.pixelSize(shownSize: shownSize, backingScale: window.backingScaleFactor)) else {
@@ -86,7 +104,7 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
                 try await waitUntil("PDFKit draws the zoomed page's ink") { !ink.isDrawnByPageInkLayer }
                 let measurement = try await settledMeasurement(of: ink, in: pdfView)
                 let reference = try referenceEdgeWidth(of: ink, in: pdfView, screenPixelsPerPoint: measurement.screenPixelsPerPoint)
-                print("HUNT-314 ink at \(zoom)x fit, drawn by PDFKit: layer \(format(measurement.layerPixelsPerPoint)) px/pt, screen \(format(measurement.screenPixelsPerPoint)) px/pt, edge \(format(measurement.edgeWidthOnScreen)) screen px, PDFPage.draw \(format(reference)) screen px")
+                print("HUNT-314 \(label) at \(zoom)x fit, drawn by PDFKit: layer \(format(measurement.layerPixelsPerPoint)) px/pt, screen \(format(measurement.screenPixelsPerPoint)) px/pt, edge \(format(measurement.edgeWidthOnScreen)) screen px, PDFPage.draw \(format(reference)) screen px")
                 XCTAssertGreaterThanOrEqual(measurement.layerPixelsPerPoint, measurement.screenPixelsPerPoint * 0.97,
                                             "At \(zoom)x fit the ink is drawn at the screen's resolution.")
                 XCTAssertLessThanOrEqual(measurement.edgeWidthOnScreen, reference + 0.75,
@@ -106,7 +124,7 @@ final class MacPDFAnnotationSharpnessTests: XCTestCase {
             // The file's page drawn by PDFKit; the shown page's strokes are drawn by its ink layer.
             let filePage = try XCTUnwrap(PDFDocument(url: location)?.page(at: 0))
             let reference = try referenceEdgeWidth(ofRowAt: 240, on: filePage, screenPixelsPerPoint: screenPixelsPerPoint)
-            print("HUNT-314 ink at \(zoom)x fit: page layer \(format(pixelsPerPoint)) px/pt, screen \(format(screenPixelsPerPoint)) px/pt, edge \(format(edgeWidth)) screen px, PDFPage.draw \(format(reference)) screen px")
+            print("HUNT-314 \(label) at \(zoom)x fit: page layer \(format(pixelsPerPoint)) px/pt, screen \(format(screenPixelsPerPoint)) px/pt, edge \(format(edgeWidth)) screen px, PDFPage.draw \(format(reference)) screen px")
             XCTAssertGreaterThanOrEqual(pixelsPerPoint, screenPixelsPerPoint * 0.97, "At \(zoom)x fit the ink is drawn at the screen's resolution.")
             XCTAssertLessThanOrEqual(edgeWidth, reference + 0.75, "At \(zoom)x fit the ink's edge is as clean as in PDFKit's own drawing of the page.")
         }

@@ -96,7 +96,7 @@ struct LibraryTile: View {
         // While choosing, a plain click only chooses; a double-click opens, as in the Finder.
         .simultaneousGesture(TapGesture(count: 2).onEnded { if selection.isSelecting { open() } })
         #endif
-        .modifier(LibraryTileDraggable(entries: entries, rawPath: entry.path.rawValue))
+        .draggable(containerItemID: entry.path.rawValue)
         .modifier(FolderTileDropTarget(entry: entry, actions: dropActions, isTargeted: $isDropTargeted))
         .modifier(LibraryTileMenu(entry: entry, library: library, entries: entries, isMenuAvailable: !selection.isSelecting, findPictures: findPictures))
     }

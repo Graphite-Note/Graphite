@@ -6,8 +6,8 @@
  *              note has stayed still a moment, one view a frame, stopped by a scroll or an edit.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if canImport(UIKit)
@@ -73,6 +73,7 @@ final class RenderedBlockLookahead {
         self.viewportStart = viewportStart
         task = Task { [weak self, clock] in
             do { try await clock.sleep(for: Self.stillness) } catch { return }
+            self?.renderedBlocks.startMakingViewsAhead()
             while !Task.isCancelled, makeNextView() {
                 do { try await clock.sleep(for: Self.pauseBetweenViews) } catch { break }
                 self?.renderedBlocks.keepViewsMadeAhead()

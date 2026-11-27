@@ -6,8 +6,8 @@
  *              picture that links to it (`SectionLinkTransfer`), and into a note it is written as a link to it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 23/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -32,7 +32,8 @@ struct ReadingSectionDrags {
         // A heading's line has no block identifier to add; `identifierEdit` is nil for it.
         let link = SectionLink.link(startingAt: offset, in: noteText, notePath: notePath).link
         let provider = NSItemProvider(object: ("[[" + link.linkText + "]]") as NSString)
-        SectionLinkTransfer.register(SectionLinkTransfer(link: link, vaultRoot: vaultRoot), on: provider) {}
+        // Nothing to prepare: the Mac's pasteboard reads the transfer while the main thread waits.
+        SectionLinkTransfer.register(SectionLinkTransfer(link: link, vaultRoot: vaultRoot), on: provider)
         provider.suggestedName = link.title
         return provider
     }

@@ -194,6 +194,29 @@ final class CommunityPluginInstallerRequestTests: XCTestCase {
         ])
         XCTAssertEqual(try installedText(".obsidian/themes/Minimal/theme.css"), "body { color: green; }")
     }
+
+    // MARK: Graphite's own list
+
+    func testGraphitesOwnListIsReadFromItsRepositoryAndIsEmptyWhenMissingOrUnreadable() async throws {
+        let installer = CommunityPluginInstaller(store: store, session: scriptedSession())
+        let missing = await installer.graphitePlugins()
+        XCTAssertEqual(missing, [], "no list yet: nothing listed, no error")
+        XCTAssertEqual(ScriptedGitHubProtocol.script.requestedAddresses, [CommunityPluginInstaller.graphitePluginsAddress])
+
+        ScriptedGitHubProtocol.script.answer(CommunityPluginInstaller.graphitePluginsAddress, """
+            [{"id": "graphite-notion-importer", "name": "Notion Importer", "author": "Bahey Shalash",
+              "description": "Imports Notion's HTML export.", "repo": "Graphite-Note/Importer"},
+             {"id": "bad", "name": "Bad", "author": "x", "description": "y", "repo": "../escape"}]
+            """)
+        let listed = await installer.graphitePlugins()
+        XCTAssertEqual(listed, [CommunityPluginDirectoryEntry(
+            id: "graphite-notion-importer", name: "Notion Importer", author: "Bahey Shalash",
+            description: "Imports Notion's HTML export.", repo: "Graphite-Note/Importer")], "an unusable repository is left out")
+
+        ScriptedGitHubProtocol.script.answer(CommunityPluginInstaller.graphitePluginsAddress, "{\"not\": \"a list\"}")
+        let unreadable = await installer.graphitePlugins()
+        XCTAssertEqual(unreadable, [], "a list that is not one lists nothing")
+    }
 }
 
 /// Answers the addresses a test scripted, 404 for any other, and records every address asked for.

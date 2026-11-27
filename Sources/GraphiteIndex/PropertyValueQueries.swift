@@ -6,8 +6,8 @@
  *              value is typed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -36,6 +36,17 @@ extension VaultIndex {
                 .map { row -> (path: String, node: String) in (row["path"], row["node"]) }
         }
         return Self.valueCounts(of: rows, matching: query, limit: limit)
+    }
+
+    /// At most this many of a property's values are kept for suggestions read once and filtered as the person types.
+    public static let maximumPropertyValuesKeptForSuggestions = 2_000
+
+    /// The values of `counts` (read with an empty query, most used first) that contain `query` ignoring capitals and
+    /// accents, in the same order, at most `limit`: what `propertyValues(of:matching:limit:)` answers for `query`, without
+    /// reading the index again at each keystroke.
+    public nonisolated static func propertyValues(_ counts: [PropertyValueCount], matching query: String, limit: Int) -> [PropertyValueCount] {
+        guard !query.isEmpty else { return Array(counts.prefix(limit)) }
+        return Array(counts.lazy.filter { count in contains(count.value, query) }.prefix(limit))
     }
 
     /// Counts the values of decoded rows, as `propertyValues(of:matching:limit:)` describes.

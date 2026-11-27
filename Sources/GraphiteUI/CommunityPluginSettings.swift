@@ -267,10 +267,12 @@ struct CommunityPluginOptionsPage: View {
     }
 }
 
-/// Obsidian's community directory, searchable, with installation.
+/// Graphite's own plugins (`Plugins/graphite-plugins.json`), then Obsidian's community directory, searchable, with
+/// installation.
 struct CommunityPluginBrowser: View {
     @Bindable var workspace: WorkspaceModel
     @Environment(\.dismiss) private var dismiss
+    @State private var graphiteEntries: [CommunityPluginDirectoryEntry] = []
     @State private var entries: [CommunityPluginDirectoryEntry] = []
     @State private var query = ""
     @State private var loadingProblem: String?
@@ -280,29 +282,30 @@ struct CommunityPluginBrowser: View {
 
     private var host: CommunityPluginHost { workspace.communityPlugins }
 
+    private var matchingGraphiteEntries: [CommunityPluginDirectoryEntry] {
+        CommunityPluginDirectoryEntry.search(graphiteEntries, for: query)
+    }
+
+    /// Obsidian's entries, without the plugins Graphite's own list already shows.
     private var matchingEntries: [CommunityPluginDirectoryEntry] {
-        Array(CommunityPluginDirectoryEntry.search(entries, for: query).prefix(300))
+        let graphiteIdentifiers = Set(graphiteEntries.map(\.id))
+        return Array(CommunityPluginDirectoryEntry.search(entries, for: query).lazy.filter { entry in !graphiteIdentifiers.contains(entry.id) }.prefix(300))
     }
 
     var body: some View {
         NavigationStack {
             List {
                 if isLoading { ProgressView() }
-                if let loadingProblem { Text(loadingProblem).foregroundStyle(.secondary) }
-                ForEach(matchingEntries) { entry in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(entry.name).font(.headline)
-                                Text("by \(entry.author)").font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            installButton(for: entry)
-                        }
-                        Text(entry.description).font(.callout).foregroundStyle(.secondary)
-                        if let outcome = outcomes[entry.id] { Text(outcome).font(.caption) }
+                if !matchingGraphiteEntries.isEmpty {
+                    Section("Graphite") {
+                        ForEach(matchingGraphiteEntries) { entry in row(for: entry) }
                     }
-                    .padding(.vertical, 2)
+                }
+                Section {
+                    if let loadingProblem { Text(loadingProblem).foregroundStyle(.secondary) }
+                    ForEach(matchingEntries) { entry in row(for: entry) }
+                } header: {
+                    if !graphiteEntries.isEmpty { Text("Obsidian's Community Plugins") }
                 }
             }
             .searchable(text: $query, prompt: "Search community plugins")
@@ -311,6 +314,22 @@ struct CommunityPluginBrowser: View {
             .task { await loadDirectory() }
         }
         .sheetMinimumSize(width: 480, height: 520)
+    }
+
+    private func row(for entry: CommunityPluginDirectoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(entry.name).font(.headline)
+                    Text("by \(entry.author)").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                installButton(for: entry)
+            }
+            Text(entry.description).font(.callout).foregroundStyle(.secondary)
+            if let outcome = outcomes[entry.id] { Text(outcome).font(.caption) }
+        }
+        .padding(.vertical, 2)
     }
 
     @ViewBuilder private func installButton(for entry: CommunityPluginDirectoryEntry) -> some View {
@@ -328,8 +347,11 @@ struct CommunityPluginBrowser: View {
         guard let store = workspace.store else { return }
         isLoading = true
         defer { isLoading = false }
+        let installer = CommunityPluginInstaller(store: store)
+        // Graphite's list is small and shown first; Obsidian's is loaded whatever becomes of it.
+        graphiteEntries = await installer.graphitePlugins()
         do {
-            entries = try await CommunityPluginInstaller(store: store).directory()
+            entries = try await installer.directory()
             loadingProblem = nil
         } catch {
             loadingProblem = "Obsidian's plugin directory could not be loaded. " + error.localizedDescription

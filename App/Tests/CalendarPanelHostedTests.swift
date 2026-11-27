@@ -52,8 +52,7 @@ final class CalendarPanelHostedTests: SettingsHostedTestCase {
 
     private func showWindow(of workspace: WorkspaceModel, size: CGSize = CGSize(width: 1180, height: 820)) async throws -> UIViewController {
         let controller = try host(GraphiteRootView(workspace: workspace), size: size, horizontalSizeClass: .regular)
-        let showSidebar = try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" }
-        await follow(showSidebar)
+        try await showSidebar(in: controller)
         return controller
     }
 

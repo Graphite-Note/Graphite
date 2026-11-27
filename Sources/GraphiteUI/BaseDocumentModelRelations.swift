@@ -7,12 +7,11 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 /// A note the relation picker offers, with why it is offered.
 struct BaseRelationCandidate: Identifiable, Hashable {
@@ -41,6 +40,16 @@ struct BaseRelationChoice: Identifiable, Hashable {
     var title: String { path?.stem ?? BaseLink.parse(writtenItem)?.displayText ?? writtenItem }
 }
 
+/// What a base's relation picker reads from the vault's index: its read port (Docs/solid/rewrite-foundations.md section
+/// 3.3 rule 3), answered by `VaultIndex` (BaseEmbedding.swift).
+protocol BaseRelationLookup: Sendable {
+    /// The values the vault gives the property, the most frequent first.
+    func relationValues(of key: String, limit: Int) async throws -> [String]
+    /// The files a link target written in `source` names, the best first.
+    func resolve(_ target: String, from source: VaultPath, isWiki: Bool) async throws -> [VaultPath]
+    func notes(directlyInside folder: VaultPath, limit: Int) async throws -> [VaultPath]
+}
+
 extension BaseDocumentModel {
     /// Notes the picker lists at most, the linked, folder and found notes together.
     static let maximumRelationCandidates = 60
@@ -55,8 +64,8 @@ extension BaseDocumentModel {
         guard case .note(let name) = property else { return false }
         if let value, !BaseRelation.links(in: value).isEmpty { return true }
         let limit = BaseRelation.examinedVaultValueCount
-        let vaultValues = (try? await index.propertyValues(of: name, matching: "", limit: limit)) ?? [] // No answer: not a relation.
-        return BaseRelation.isRelation(value: value, vaultValues: vaultValues.map(\.value))
+        let vaultValues = (try? await relationLookup.relationValues(of: name, limit: limit)) ?? [] // No answer: not a relation.
+        return BaseRelation.isRelation(value: value, vaultValues: vaultValues)
     }
 
     /// One link or a list, from the property's declared type and its value.
@@ -82,7 +91,7 @@ extension BaseDocumentModel {
         for item in writtenItems where !item.trimmingCharacters(in: .whitespaces).isEmpty {
             var reached: VaultPath?
             if let link = BaseLink.parse(item.trimmingCharacters(in: .whitespaces), source: path), !link.isExternal {
-                reached = try? await index.resolve(link.target, from: path).first // Unread: shown as written, unresolved.
+                reached = try? await relationLookup.resolve(link.target, from: path, isWiki: true).first // Unread: shown as written, unresolved.
             }
             choices.append(BaseRelationChoice(writtenItem: item, path: reached))
         }
@@ -107,7 +116,7 @@ extension BaseDocumentModel {
         var folders: [VaultPath] = []
         for notePath in linked where !folders.contains(notePath.parent) { folders.append(notePath.parent) }
         for folder in folders {
-            let folderNotes = (try? await index.notes(directlyInside: folder, limit: Self.maximumFolderNotes)) ?? [] // Unread: the folder offers none.
+            let folderNotes = (try? await relationLookup.notes(directlyInside: folder, limit: Self.maximumFolderNotes)) ?? [] // Unread: the folder offers none.
             folderNotes.forEach { notePath in offer(notePath, .sameFolder) }
         }
         if !trimmedQuery.isEmpty {
@@ -118,11 +127,12 @@ extension BaseDocumentModel {
 
     /// The notes the property's values link to across the vault, most linked first, resolved from the row's note.
     private func linkedNotes(of name: String, from path: VaultPath) async -> [VaultPath] {
-        let values = (try? await index.propertyValues(of: name, matching: "", limit: Self.examinedRelationValueCount)) ?? [] // Unread: none linked.
+        let values = (try? await relationLookup.relationValues(of: name, limit: Self.examinedRelationValueCount)) ?? [] // Unread: none linked.
         var notes: [VaultPath] = []
         for value in values {
-            guard let link = BaseLink.parse(value.value.trimmingCharacters(in: .whitespaces)), !link.isExternal,
-                  let notePath = try? await index.resolve(link.target, from: path).first, !notes.contains(notePath) else { continue } // Unresolved: left out.
+            guard let link = BaseLink.parse(value.trimmingCharacters(in: .whitespaces)), !link.isExternal,
+                  let notePath = try? await relationLookup.resolve(link.target, from: path, isWiki: true).first, // Unresolved: left out.
+                  !notes.contains(notePath) else { continue }
             notes.append(notePath)
         }
         return notes
