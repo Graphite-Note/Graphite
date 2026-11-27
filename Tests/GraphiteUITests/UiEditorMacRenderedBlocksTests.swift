@@ -6,8 +6,8 @@
  *              their concealed source, as the iPad does.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.14
- * Date: 23/11/2026
+ * Version: 0.15
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -284,6 +284,33 @@ final class UiEditorMacRenderedBlocksTests: XCTestCase {
         textView.textLayoutManager?.textViewportLayoutController.layoutViewport()
         try await awaitConditionAfterLayout { !renderedBlocks.hasKeptView(forBlockWithKey: firstKept.key) }
         XCTAssertTrue(blockViews(in: textView).contains { view in view.frame.intersects(textView.visibleRect) && view.frame.minX >= 0 })
+    }
+
+    /// Six PDF embeds just below the screen, as `Embeds/PDFs in every form.md` has them, with the
+    /// iPhone's 32 MB for the kept views: the views made ahead stop at what the kept views hold, and
+    /// each stays kept. Before, the third pushed out the first, which was made again, without end.
+    func testViewsMadeAheadStopAtWhatTheKeptViewsHold() throws {
+        let intro = String(repeating: "Intro line.\n", count: 20)
+        let text = intro + (1...6).map { index in "![[Slides \(index).pdf]]\n" }.joined(separator: "\n")
+        let source = text as NSString
+        let blocks = LivePreviewBlockScanner.blocks(in: source)
+        let entries = zip(blocks, LivePreviewBlockKey.keys(for: blocks)).map { block, key in LivePreviewBlockEntry(block: block, range: block.range, key: key) }
+        XCTAssertEqual(entries.count, 6)
+        let renderedBlocks = LivePreviewRenderedBlocks(detachedViewsBudgetMegabytes: 32)
+        let textView = NSView(frame: CGRect(x: 0, y: 0, width: 600, height: 800))
+        let column = RenderedBlockColumn(minX: 0, textContainerTop: 0, width: 600)
+        let viewport = NSRange(location: 0, length: (intro as NSString).length)
+        renderedBlocks.startMakingViewsAhead()
+        var viewsMade = 0
+        while viewsMade < 20, renderedBlocks.makeNextViewAhead(below: viewport, in: entries, textView: textView, column: column,
+                                                               configuration: EditorConfiguration(),
+                                                               makeRootView: { _ in RenderedBlockRoot(view: AnyView(Color.clear), revealSource: {}) }) {
+            viewsMade += 1
+            renderedBlocks.keepViewsMadeAhead()
+        }
+        XCTAssertEqual(viewsMade, 2, "Two embeds of 12 MB fit in 32 MB; a third would push out the first")
+        XCTAssertEqual(entries.filter { entry in renderedBlocks.hasKeptView(forBlockWithKey: entry.key) }.count, 2)
+        XCTAssertFalse(renderedBlocks.hasViewsMadeAhead)
     }
 
     /// Typing in a paragraph moves the blocks after it; their views stay, not built again.
