@@ -4,10 +4,11 @@
  * Layer: Tests
  * Description: The Notion Importer plugin (the Swift Importer compiled to WebAssembly, Graphite-Note/Importer's
  *              Plugin/) run in the runtime: its settings tab and import window, an import of the made-up Notion
- *              export through the plugin API, a note already in the vault kept, and Stop.
+ *              export through the plugin API, a note already in the vault kept, Stop, and a web view without
+ *              WebAssembly (Lockdown Mode).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 27/11/2026
  */
 'use strict';
@@ -100,6 +101,35 @@ test('Stop ends the import at the next page with its report, and nothing it wrot
         const summary = plain(harness.app.plugins.plugins['graphite-notion-importer'].lastSummary);
         assert.equal(summary.wasCancelled, true);
         assert.match(harness.readVaultFile(summary.reportPath), /stopped before its end/);
+    } finally {
+        harness.close();
+    }
+});
+
+test('without WebAssembly, as in WebKit in Lockdown Mode, the plugin says so and imports nothing', { skip: !isBuilt && 'not built' }, async () => {
+    const harness = await harnessWithPlugin({});
+    try {
+        const window = harness.window;
+        window.eval('delete globalThis.WebAssembly');
+        assert.equal(window.eval('typeof WebAssembly'), 'undefined');
+        await harness.send({ operation: 'settings.show', pluginIdentifier: 'graphite-notion-importer' });
+        const notice = window.document.querySelector('.notion-importer-unavailable');
+        assert.ok(notice, 'the settings tab says WebAssembly is off');
+        assert.match(notice.textContent, /needs WebAssembly.*Lockdown Mode.*Import › From Notion/s);
+        Array.from(window.document.querySelectorAll('.setting-item button')).find((button) => button.textContent === 'Import…').click();
+        const status = window.document.querySelector('.notion-importer-status');
+        assert.match(status.textContent, /needs WebAssembly.*Lockdown Mode/s);
+        assert.ok(status.classList.contains('mod-warning'));
+        const input = window.document.querySelector('.notion-importer input[type=file]');
+        assert.equal(input.disabled, true);
+        const file = new File([fileSystem.readFileSync(smallExport)], 'Export-study-notes.zip', { type: 'application/zip' });
+        Object.defineProperty(input, 'files', { value: [file], configurable: true });
+        input.dispatchEvent(new window.Event('change'));
+        const importButton = Array.from(window.document.querySelectorAll('.notion-importer button')).find((button) => button.textContent === 'Import');
+        assert.equal(importButton.disabled, true, 'Import stays off with a file picked');
+        importButton.click();
+        assert.equal(fileSystem.existsSync(path.join(harness.vaultFolder, 'Notion')), false, 'nothing is written');
+        assert.deepEqual(harness.consoleMessages.filter((message) => message.level === 'error'), []);
     } finally {
         harness.close();
     }

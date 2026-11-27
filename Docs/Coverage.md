@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## The Notion Importer plugin compiled to WebAssembly, run in Graphite: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) section 7 (issue #231). The plugin `graphite-notion-importer` of Graphite-Note/Importer (Importer#2, not yet merged or released): the Swift Importer's module inside `main.js`, its settings tab and import window, run in Graphite's plugin panel.
+
+- **Automated tests:** `CommunityPluginHostTests.testNotionImporterPluginImportsEachExportAsTheLinkedPackageDoes` (iPad, hosted) and `NotionImporterPluginInWebKitTests` (Mac, package) install the built plugin, press its buttons and compare each import with the linked package's, file by file. Both run only when their environment names the exports, which are never committed. `notion-importer-plugin.test.js` in the runtime test host covers an import, Stop, and a page without WebAssembly, where the plugin names Lockdown Mode and writes nothing. `CommunityPluginVaultBridgeAppendTests` and `vault.test.js` cover `vault.append`, which lets a plugin write a file over 64 MB.
+- **Checked in the iPad simulator** (iPad Pro 13-inch (M5), iOS 27.2) by an XCUITest probe that drives the installed app: Browse shows the Notion Importer in a "Graphite" section above Obsidian's directory, a local build turns on with its switch, and an export picked in the system's Files picker imports as the linked package does. Section 8's 1.16 GB export picked that way imported 10,051 notes and 500 attachments in 156 s, the web content process flat at 202 to 238 MB through the import and at most 352 MB.
+- **Measured on the Mac** on the same export: 170 s, the web content process between 85 and 153 MB through the import, the main actor at most 12 ms late.
+- **Not established:** installing from Browse (it needs the Importer's release, after its PR merge), a device in Lockdown Mode, the physical iPad, the Mac's Open panel by hand.
+
 ## Obsidian's Importer installed from the directory beside the Swift import, and a large workspace stood in for: 2026-11-27
 
 [Notion-import-todo.md](Notion-import-todo.md) sections 2 and 3 (issues #173, #174).
