@@ -4,12 +4,12 @@
  * Layer: Tests
  * Description: Web frames on the Mac: the reading view's block for the reported note, tags inside HTML left as text, the
  *              frame's web view at the tag's size with a page served by the test, the web view's limits, a failed load,
- *              placeholders where a live page does not fit, the page given up when its view leaves the window, and the
- *              note scrolling on past a page's end.
+ *              placeholders where a live page does not fit, the page given up when its view leaves the window, the
+ *              note scrolling on past a page's end, and the frame's commands beside a page narrower than the column.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -260,6 +260,34 @@ final class WebFrameViewTests: XCTestCase {
         let webView = try await loadedWebView(in: window)
         try await settle(window)
         XCTAssertEqual(effectiveOpacity(of: webView), 1, "A loaded page is shown.")
+    }
+
+    func testBesideALoadedPageNarrowerThanTheColumnTheReadingViewOffersTheFramesCommands() async throws {
+        let server = try await LoopbackWebServer(pages: ["/grapher": Self.page])
+        self.server = server
+        let narrow = try XCTUnwrap(frame(src: server.address("/grapher").absoluteString, attributes: #"width="400" height="200""#))
+        let readingWindow = host(WebFrameBlock(frame: narrow, offersCommandsBeside: true).environment(\.webFramePresentation, .live))
+        _ = try await loadedWebView(in: readingWindow)
+        try await settle(readingWindow)
+        // The window's 640-point column, the page's 400 points at its left, 200 points tall at the top of the window.
+        let besideThePage = CGPoint(x: 520, y: readingWindow.frame.height - 100)
+        let menu = try XCTUnwrap(contextMenu(at: besideThePage, in: readingWindow), "The space beside the page has a menu in the reading view.")
+        XCTAssertEqual(menu.items.map(\.title), ["Open in Browser", "Copy Address"])
+
+        // Live Preview leaves that space to its block menu and its tap that shows the tag.
+        let livePreviewWindow = host(WebFrameBlock(frame: narrow).environment(\.webFramePresentation, .live))
+        _ = try await loadedWebView(in: livePreviewWindow)
+        try await settle(livePreviewWindow)
+        let livePreviewMenu = try contextMenu(at: besideThePage, in: livePreviewWindow)
+        XCTAssertNil(livePreviewMenu?.items.first { item in item.title == "Open in Browser" },
+                     "Without the reading view's request, the frame offers nothing beside its page.")
+    }
+
+    private func contextMenu(at point: CGPoint, in window: NSWindow) throws -> NSMenu? {
+        let rightClick = try XCTUnwrap(NSEvent.mouseEvent(with: .rightMouseDown, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+                                                          context: nil, eventNumber: 0, clickCount: 1, pressure: 1))
+        let target = try XCTUnwrap(window.contentView?.hitTest(point))
+        return target.menu(for: rightClick)
     }
 
     func testAFrameGivesItsPageUpWhenItsViewLeavesTheWindowAndLoadsItAgainWhenBack() async throws {

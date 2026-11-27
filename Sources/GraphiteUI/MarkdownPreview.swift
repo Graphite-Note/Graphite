@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.73
+ * Version: 0.74
  * Date: 27/11/2026
  */
 
@@ -1823,7 +1823,8 @@ struct ReadingBlocksView: View {
                 ReadingDiagramView(diagram: diagram, textSize: textSize, root: root, navigate: navigate, scrollToHeading: scrollToHeading)
             case .webFrame(_, let frame):
                 // The reading view sets list items in by about their marker's width; Live Preview's lists are not set in.
-                WebFrameBlock(frame: frame, textSize: CGFloat(textSize), listItemIndentation: CGFloat(textSize) * 0.9, listMarkerStyle: .primary)
+                WebFrameBlock(frame: frame, textSize: CGFloat(textSize), listItemIndentation: CGFloat(textSize) * 0.9, listMarkerStyle: .primary,
+                              offersCommandsBeside: true)
             case .missingSection(_, let path, let subpath):
                 Button { navigate(path.rawValue, true) } label: {
                     Label(NoteBlocks.missingSectionMessage(subpath: subpath, noteName: path.stem), systemImage: "questionmark.square.dashed")
