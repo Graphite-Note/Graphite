@@ -4,6 +4,13 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## Several files dropped at once into a note are embedded whole, in the order dropped: 2026-11-27
+
+`Docs/Drag-and-drop-todo.md` section 1 (issue #144), found dragging three made-up files from the Finder onto a note in the Mac app: they came out as `![[Made-up handout 1.pdf]]`, `!![[Made-up picture 1.png]]` and `[[Made-up schedule 1.csv]]`. Each file was saved in a task of its own, so the embeds followed the order the saves ended; and a file saved while an earlier embed still waited for the editor was placed past that embed, where the editor's tracker of the drop took it for another file's request, so one embed went one character into another, after its `!`. Now the files of a paste or drop save one after another (`WorkspaceModel.saveAttachmentInOrder`, `MarkdownSession.lastAttachmentSave`), and while the editor follows the drop each embed asks for the drop point itself (`MarkdownSession.insertBlock(_:at:separatedByBlankLines:placedByTheEditor:)`), which the editor pairs with its requests in order and puts after the files already in.
+
+- **Automated tests:** `MacEditorDroppedFilesTests` (3: dropped at the end of a note, in the middle of a line, and with every save ending before the editor shows the first; the first two fail without the change), `UiEditorMacDroppedAttachmentPlaceTests`, `UiEditorMacEditorTests`, `UiWorkspaceModelFixTests`, `WorkspaceImportFilesTests`, `UiEditorEditTrackingTests`.
+- **Checked:** see `Docs/Drag-and-drop-todo.md` section 1 for the drag from the Finder in the Mac app.
+
 ## The Notion Importer plugin compiled to WebAssembly, run in Graphite: 2026-11-27
 
 [Notion-import-todo.md](Notion-import-todo.md) section 7 (issue #231). The plugin `graphite-notion-importer` of Graphite-Note/Importer (Importer#2, not yet merged or released): the Swift Importer's module inside `main.js`, its settings tab and import window, run in Graphite's plugin panel.

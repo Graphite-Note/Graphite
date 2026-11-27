@@ -5,8 +5,8 @@
  * Description: What commands ask of an open note: insertions, ticking a task, its properties, and the find bar.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 02/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -44,8 +44,12 @@ extension MarkdownSession {
     /// are kept, so paragraphs never merge and a following `---` never turns the
     /// block into a heading.
     /// - Parameter separatedByBlankLines: Keeps an empty line around the block (quotes).
-    func insertBlock(_ block: String, at range: NSRange? = nil, separatedByBlankLines: Bool = false) {
-        let target = insertionTarget(for: range)
+    /// - Parameter placedByTheEditor: `range` is a place the editor follows itself (a paste or a
+    ///   drop it remembered), so it is asked for as given, not moved past the insertions still
+    ///   waiting: the editor pairs each such insertion with its request by that range, oldest first,
+    ///   and puts it after the items of the same drop already inserted.
+    func insertBlock(_ block: String, at range: NSRange? = nil, separatedByBlankLines: Bool = false, placedByTheEditor: Bool = false) {
+        let target = placedByTheEditor && range != nil ? (text: text as NSString, range: range ?? selection) : insertionTarget(for: range)
         let insertionRange = target.range
         let source = target.text
         // Never split the frontmatter: Obsidian would stop reading the note's properties.

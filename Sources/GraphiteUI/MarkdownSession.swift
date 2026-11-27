@@ -5,7 +5,7 @@
  * Description: An open note: its text, saving, conflicts, drafts of what cannot be saved, and queued insertions.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.28
+ * Version: 0.29
  * Date: 27/11/2026
  */
 
@@ -161,6 +161,10 @@ final class MarkdownSession {
     /// The version of the file the text was made over.
     private(set) var revision: FileRevision
     var activeSave: Task<Void, Error>?
+    /// The last attachment a paste or drop is saving into this note. Each saves after the one
+    /// before it, so the files of one drop are embedded in the order dropped rather than in
+    /// the order their saves happen to end (three files dropped at once came out reordered).
+    @ObservationIgnored var lastAttachmentSave: Task<Void, Never>?
     /// Where text that cannot reach the file waits, outside the vault; nil for a session
     /// that is not a tab's, as in tests.
     @ObservationIgnored var draftKeeper: DocumentDraftKeeper?
