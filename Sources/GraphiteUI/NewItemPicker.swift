@@ -6,7 +6,7 @@
  *              New button that opens it and carries out the choice once the menu has closed.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
+ * Version: 0.9
  * Date: 26/11/2026
  */
 
@@ -39,6 +39,7 @@ enum CreatableItem: Hashable, Identifiable {
     case pictureFromPhotos
     case takePhoto
     case importFiles
+    case importFromNotion
     case folder
 
     var id: Self { self }
@@ -55,6 +56,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .pictureFromPhotos: "Image from Photos"
         case .takePhoto: "Take Photo"
         case .importFiles: "Import"
+        case .importFromNotion: "Import from Notion"
         case .folder: "Folder"
         }
     }
@@ -72,6 +74,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .pictureFromPhotos: "A picture from your photo library, as a file here"
         case .takePhoto: "With the camera, as a file here"
         case .importFiles: "PDFs, images and other files"
+        case .importFromNotion: "An HTML export, as notes and bases"
         case .folder: "In this folder"
         }
     }
@@ -88,6 +91,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .pictureFromPhotos: "photo"
         case .takePhoto: "camera"
         case .importFiles: "square.and.arrow.down"
+        case .importFromNotion: "tray.and.arrow.down"
         case .folder: "folder.badge.plus"
         }
     }
@@ -98,6 +102,7 @@ enum CreatableItem: Hashable, Identifiable {
         case .document(.canvas): .canvas
         case .document(.base), .document(.course): .bases
         case .dailyNote: .dailyNotes
+        case .importFromNotion: .notionImport
         case .document(.notebook), .document(.note), .scanDocuments, .pictureFromPhotos, .takePhoto, .importFiles, .folder: nil
         }
     }
@@ -109,13 +114,13 @@ enum CreatableItem: Hashable, Identifiable {
                         isEditable: (CreationKind) -> Bool = { kind in kind.canBeEditedOnThisDevice }) -> (large: [CreatableItem], others: [CreatableItem]) {
         let largeKinds: [CreatableItem] = firstKind == .note ? [.document(.note), .document(.notebook)] : [.document(.notebook), .document(.note)]
         let others: [CreatableItem] = [.document(.canvas), .document(.base), .document(.course), .dailyNote, .scanDocuments, .pictureFromPhotos,
-                                       .takePhoto, .importFiles, .folder]
+                                       .takePhoto, .importFiles, .importFromNotion, .folder]
         func isOffered(_ item: CreatableItem) -> Bool {
             switch item {
             case .scanDocuments: canScanDocuments
             case .takePhoto: canTakePhoto
             case .document(let kind): isEditable(kind) && (item.requiredPlugin.map(isEnabled) ?? true)
-            case .dailyNote, .pictureFromPhotos, .importFiles, .folder: item.requiredPlugin.map(isEnabled) ?? true
+            case .dailyNote, .pictureFromPhotos, .importFiles, .importFromNotion, .folder: item.requiredPlugin.map(isEnabled) ?? true
             }
         }
         return (largeKinds.filter(isOffered), others.filter(isOffered))
@@ -225,6 +230,8 @@ struct NewItemActions {
     let savePicture: @MainActor (Data, Date, VaultPath?) async -> Void
     /// Whether this device has a camera, which Take Photo needs.
     let canTakePhoto: Bool
+    /// Opens Import from Notion's sheet for the folder.
+    var importFromNotion: (VaultPath?) -> Void = { _ in }
 }
 
 /// A New button that opens `NewItemPicker`, and the file chooser its Import asks for.
@@ -310,6 +317,7 @@ struct NewItemButton<Label: View>: View {
         case .pictureFromPhotos: showsPhotoPicker = true
         case .takePhoto: showsCamera = true
         case .importFiles: showsImporter = true
+        case .importFromNotion: actions.importFromNotion(actions.directory)
         case .folder: actions.newFolder(actions.directory)
         }
     }

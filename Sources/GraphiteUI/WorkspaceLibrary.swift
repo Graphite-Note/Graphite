@@ -5,8 +5,8 @@
  * Description: What the library view reads from and asks of a window.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.12
- * Date: 01/11/2026
+ * Version: 0.13
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -49,6 +49,7 @@ extension WorkspaceModel {
                        openDailyNote: { [weak self] in Task { await self?.openDailyNote() } },
                        newFolder: { [weak self] folder in self?.fileSheet = .newFolder(in: folder) },
                        importFiles: { [weak self] sources, folder in Task { await self?.importFiles(from: sources, into: folder) } },
+                       importFromNotion: { [weak self] folder in self?.chooseNotionExport(into: folder) },
                        receiveDrop: { [weak self] providers, folder in self?.receiveDrop(providers, into: folder) ?? false },
                        saveScannedNotebook: scannedNotebookSaver(),
                        reportProblem: { [weak self] message in self?.errorMessage = message },

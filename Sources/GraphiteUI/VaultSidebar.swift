@@ -6,7 +6,7 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.53
+ * Version: 0.54
  * Date: 26/11/2026
  */
 
@@ -387,7 +387,7 @@ struct VaultSidebar: View {
                        importFiles: { sources, directory in Task { await workspace.importFiles(from: sources, into: workspace.newFileDirectory(directory)) } },
                        saveScannedNotebook: workspace.scannedNotebookSaver(),
                        reportProblem: { [workspace] message in workspace.errorMessage = message },
-                       savePicture: workspace.pictureSaver(), canTakePhoto: WorkspaceModel.canTakePhotos)
+                       savePicture: workspace.pictureSaver(), canTakePhoto: WorkspaceModel.canTakePhotos, importFromNotion: workspace.chooseNotionExport)
     }
 
     @ViewBuilder private var newDocumentMenuItems: some View {
@@ -403,8 +403,7 @@ struct VaultSidebar: View {
         }
         Divider()
         Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(nil)) }
-        // As the iPad's New offers: PDFs, pictures, notebooks and folders copied into the vault, converted where they need to be.
-        Button("Import…", systemImage: "square.and.arrow.down") { workspace.isChoosingFilesToImport = true }
+        ImportMenuButtons(importFiles: { workspace.isChoosingFilesToImport = true }, importFromNotion: workspace.notionImportOpener)
     }
 
     /// The chosen list, or a community plugin's view, which fills the sidebar below the picker

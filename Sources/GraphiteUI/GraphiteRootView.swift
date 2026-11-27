@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.70
+ * Version: 0.71
  * Date: 26/11/2026
  */
 
@@ -366,6 +366,9 @@ struct GraphiteRootView: View {
             .overlay { NoticeBanner(notice: $workspace.notice).placedBesideDisplayFold(alignment: .top) }
             .modifier(NotebookImportPresentation(session: workspace.notebookImport, openNotebook: { path in Task { _ = await workspace.open(path) } },
                                                  close: workspace.endNotebookImport))
+            .modifier(NotionImportPresentation(choice: $workspace.notionImportChoice, session: workspace.notionImport,
+                                               start: { sources, directory in workspace.importNotionExport(sources, into: directory) },
+                                               openReport: { path in Task { _ = await workspace.open(path) } }, close: workspace.endNotionImport))
             .onChange(of: workspace.selection) { workspace.notice = nil }
             // Editable, so the title bar's menu offers Rename, as for documents in Files.
             .modifier(DocumentTitle(title: titleBinding, isCompactWidth: isCompactWidth))

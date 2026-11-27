@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.90
+ * Version: 0.91
  * Date: 26/11/2026
  */
 
@@ -82,6 +82,11 @@ final class WorkspaceModel {
     /// The notebook import running or showing its report: nil until notebooks are imported and again once its report is
     /// closed (`importNotebooks`, `endNotebookImport`), so the import holds nothing while it is not used.
     var notebookImport: NotebookImportSession?
+    /// The sheet of Import from Notion on screen, with the folder the export goes into (`NotionImportSheet`).
+    var notionImportChoice: NotionImportChoice?
+    /// The import of Notion's export running or showing its summary: nil until one starts and again once its summary is
+    /// closed (`importNotionExport`, `endNotionImport`), so nothing of the Importer exists while it is not used.
+    var notionImport: NotionImportSession?
     /// Files opened in Graphite from another app while no vault was open and several are known, waiting for the person
     /// to choose the vault they go into (`importOpenedFiles(_:into:)`).
     var openedFilesAwaitingVault: OpenedFilesAwaitingVault?
@@ -479,6 +484,7 @@ final class WorkspaceModel {
     private func prepareToLeaveCurrentVault(isReopeningCurrentVault: Bool) async throws {
         guard !recording.state.isActive else { throw GraphiteError.unavailable("Finish the current recording before switching vaults.") }
         guard notebookImport?.isImporting != true else { throw VaultSwitchRefusal.notebookImportIsRunning }
+        guard notionImport?.isImporting != true else { throw VaultSwitchRefusal.notionImportIsRunning }
         guard isReopeningCurrentVault || drawingEditorRequest == nil else { throw VaultSwitchRefusal.drawingIsOpen }
         rememberPlacesOfOpenDocuments()
         try await saveOpenDocuments()
@@ -1877,11 +1883,14 @@ enum VaultSwitchRefusal: LocalizedError, Equatable {
     case drawingIsOpen
     /// Notebooks are being imported into the open vault.
     case notebookImportIsRunning
+    /// Notion's export is being imported into the open vault.
+    case notionImportIsRunning
 
     var errorDescription: String? {
         switch self {
         case .drawingIsOpen: "Insert or cancel the drawing before switching vaults."
         case .notebookImportIsRunning: "Wait for the notebook import to finish, or stop it, before switching vaults."
+        case .notionImportIsRunning: "Wait for the Notion import to finish, or stop it, before switching vaults."
         }
     }
 }

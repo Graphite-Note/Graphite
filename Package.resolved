@@ -1,5 +1,5 @@
 {
-  "originHash" : "7ee7c0c3a1a1c51d2f53976674104c65f3624287a7681c94c73a5380576c4275",
+  "originHash" : "a447569909bb5abcebe1192f9fdb9c3501b97aae2fc765450517fe32240a73c6",
   "pins" : [
     {
       "identity" : "eventsource",
@@ -17,6 +17,15 @@
       "state" : {
         "revision" : "b83108d10f42680d78f23fe4d4d80fc88dab3212",
         "version" : "7.11.1"
+      }
+    },
+    {
+      "identity" : "importer",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Graphite-Note/Importer.git",
+      "state" : {
+        "revision" : "6dae8ffd47fae9a6ba745de71eb7edb166215456",
+        "version" : "0.1.0"
       }
     },
     {

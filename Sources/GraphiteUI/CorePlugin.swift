@@ -6,7 +6,7 @@
  *              defaults and symbols.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
+ * Version: 0.4
  * Date: 26/11/2026
  */
 
@@ -17,7 +17,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
     case backlinks, outgoingLinks, outline, properties, tags, wordCount
     case colors, drawings, audioRecorder, readAloud, bases, slashCommands
     case templates, dailyNotes, calendar, calendarCopy, footnotes, fileRecovery, bookmarks, graph, map, canvas, notebookImport
-    case postgreSQLMirror, pagePreview, slides, pageLook
+    case postgreSQLMirror, pagePreview, slides, pageLook, notionImport
 
     var id: String { rawValue }
 
@@ -46,6 +46,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .map: "Map View"
         case .canvas: "Canvas"
         case .notebookImport: "Goodnotes and Notability Import"
+        case .notionImport: "Notion Import"
         case .postgreSQLMirror: "PostgreSQL Mirror"
         case .pagePreview: "Page Preview"
         case .slides: "Slides"
@@ -92,6 +93,8 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
                 + "The notes themselves are never changed."
         case .notebookImport:
             "Turns Goodnotes and Notability notebooks into PDFs with editable handwriting when they are imported. Off, they are copied as they are."
+        case .notionImport:
+            "Imports Notion's HTML export, from Import from Notion in the New menu: pages as notes, databases as bases, and their attachments."
         case .pagePreview:
             "Shows a note beside a link to it while the pointer or Apple Pencil rests on the link, or when the link is held."
         case .slides:
@@ -110,7 +113,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .readAloud, .postgreSQLMirror, .calendarCopy: false
         case .backlinks, .outgoingLinks, .outline, .properties, .tags, .wordCount, .colors, .drawings, .audioRecorder,
              .bases, .templates, .dailyNotes, .calendar, .footnotes, .fileRecovery, .bookmarks, .graph, .map, .canvas, .notebookImport, .pagePreview,
-             .slides, .slashCommands, .pageLook: true
+             .slides, .slashCommands, .pageLook, .notionImport: true
         }
     }
 
@@ -139,6 +142,7 @@ enum CorePlugin: String, CaseIterable, Identifiable, Codable {
         case .map: "map"
         case .canvas: "rectangle.3.group"
         case .notebookImport: "square.and.arrow.down.on.square"
+        case .notionImport: "tray.and.arrow.down"
         case .postgreSQLMirror: "cylinder.split.1x2"
         case .pagePreview: "doc.text.magnifyingglass"
         case .slides: "play.rectangle"

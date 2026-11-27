@@ -5,7 +5,7 @@
  * Description: What the New menu offers on each device.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 26/11/2026
  */
 
@@ -38,7 +38,7 @@ final class CreatableItemTests: XCTestCase {
         let unsupported = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: { _ in true })
         XCTAssertFalse(unsupported.others.contains(.scanDocuments))
         let supported = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: true, canTakePhoto: false, isEditable: { _ in true })
-        XCTAssertEqual(supported.others, [.document(.canvas), .document(.base), .document(.course), .dailyNote, .scanDocuments, .pictureFromPhotos, .importFiles, .folder])
+        XCTAssertEqual(supported.others, [.document(.canvas), .document(.base), .document(.course), .dailyNote, .scanDocuments, .pictureFromPhotos, .importFiles, .importFromNotion, .folder])
     }
 
     func testScanDocumentsNeedsNoPluginSoItIsOfferedEvenWhenEveryPluginIsOff() {
@@ -50,7 +50,7 @@ final class CreatableItemTests: XCTestCase {
         let withoutCamera = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: { _ in true })
         XCTAssertFalse(withoutCamera.others.contains(.takePhoto))
         let withCamera = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: true, isEditable: { _ in true })
-        XCTAssertEqual(withCamera.others, [.document(.canvas), .document(.base), .document(.course), .dailyNote, .pictureFromPhotos, .takePhoto, .importFiles, .folder])
+        XCTAssertEqual(withCamera.others, [.document(.canvas), .document(.base), .document(.course), .dailyNote, .pictureFromPhotos, .takePhoto, .importFiles, .importFromNotion, .folder])
     }
 
     func testImageFromPhotosNeedsNoPluginAndNoCamera() {
@@ -63,7 +63,7 @@ final class CreatableItemTests: XCTestCase {
         let notEditable: (CreationKind) -> Bool = { kind in kind != .notebook && kind != .canvas }
         let notebookFirst = CreatableItem.offered(firstKind: .notebook, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: notEditable)
         XCTAssertEqual(notebookFirst.large, [.document(.note)])
-        XCTAssertEqual(notebookFirst.others, [.document(.base), .document(.course), .dailyNote, .pictureFromPhotos, .importFiles, .folder])
+        XCTAssertEqual(notebookFirst.others, [.document(.base), .document(.course), .dailyNote, .pictureFromPhotos, .importFiles, .importFromNotion, .folder])
         let editsEverything = CreatableItem.offered(firstKind: .note, isEnabled: { _ in true }, canScanDocuments: false, canTakePhoto: false, isEditable: { _ in true })
         XCTAssertEqual(editsEverything.large, [.document(.note), .document(.notebook)])
     }

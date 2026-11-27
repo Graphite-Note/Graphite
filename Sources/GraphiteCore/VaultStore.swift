@@ -5,8 +5,8 @@
  * Description: The vault's folder on disk: reading, saving, moving, copying and deleting its files, and its Obsidian settings.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 05/11/2026
+ * Version: 0.10
+ * Date: 26/11/2026
  */
 
 import Foundation
@@ -179,7 +179,9 @@ public actor VaultStore {
 
     private static var propertyTypesPath: String { ".obsidian/types.json" }
 
-    private func updatePropertyTypeAssignments(_ update: (inout [String: Any]) -> Void) throws {
+    /// Changes the property type assignments of `.obsidian/types.json` and keeps the rest of the file; unchanged
+    /// assignments leave the file as it was.
+    func updatePropertyTypeAssignments(_ update: (inout [String: Any]) -> Void) throws {
         try saveConfiguration(at: Self.propertyTypesPath) { existingData in
             var configuration: [String: Any] = [:]
             if let existingData, !existingData.isEmpty {

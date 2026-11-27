@@ -6,7 +6,7 @@
  *              which settings saved by earlier builds are read back through.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.11
+ * Version: 0.12
  * Date: 26/11/2026
  */
 
@@ -355,6 +355,7 @@ final class GraphitePreferencesPersistedKeysTests: XCTestCase {
             "postgreSQLMirror",
             "pagePreview",
             "slides", "pageLook",
+            "notionImport",
         ])
     }
 

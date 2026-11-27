@@ -20,6 +20,15 @@
       }
     },
     {
+      "identity" : "importer",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Graphite-Note/Importer.git",
+      "state" : {
+        "revision" : "6dae8ffd47fae9a6ba745de71eb7edb166215456",
+        "version" : "0.1.0"
+      }
+    },
+    {
       "identity" : "mermaiddiagrams",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Graphite-Note/MermaidDiagrams.git",

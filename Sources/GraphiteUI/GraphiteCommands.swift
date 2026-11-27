@@ -5,7 +5,7 @@
  * Description: The menu bar's commands and their shortcuts.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.19
+ * Version: 0.20
  * Date: 26/11/2026
  */
 
@@ -192,6 +192,9 @@ public struct GraphiteCommands: Commands {
             .keyboardShortcut(shortcut(.quickSwitcher))
         // PDFs, pictures, Goodnotes and Notability notebooks and folders, copied into the vault (`FileManagementPresentation`).
         Button("Import…") { workspace?.isChoosingFilesToImport = true }
+        if workspace?.preferences.isEnabled(.notionImport) == true {
+            Button("Import from Notion…") { workspace?.chooseNotionExport(into: nil) }
+        }
         Divider()
         Button("Close Tab") {
             guard let workspace else { return }

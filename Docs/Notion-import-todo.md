@@ -2,7 +2,7 @@
 
 Created: 2026-11-13. Rewritten 2026-11-26 around the Swift Importer.
 
-Status: 2026-11-26, the Swift package [Graphite-Note/Importer](https://github.com/Graphite-Note/Importer) imports Notion's HTML export (release 0.1.0, section 4), tested on macOS, Linux and built for WebAssembly in its CI. Not linked into Graphite yet (section 6). Obsidian's own Importer 3.2.0 runs unmodified in Graphite's plugin runtime on made-up Notion exports and API answers (section 3), and stays the reference the Swift importer is compared with. Issues: one per section, linked under each heading.
+Status: 2026-11-26, the Swift package [Graphite-Note/Importer](https://github.com/Graphite-Note/Importer) imports Notion's HTML export (release 0.1.0, section 4), tested on macOS, Linux and built for WebAssembly in its CI. Linked into Graphite since 2026-11-27: Import from Notion in the New menu (section 6). Obsidian's own Importer 3.2.0 runs unmodified in Graphite's plugin runtime on made-up Notion exports and API answers (section 3), and stays the reference the Swift importer is compared with. Issues: one per section, linked under each heading.
 
 ## Request
 
@@ -42,8 +42,8 @@ Issue: [#228](https://github.com/Graphite-Note/Graphite/issues/228)
   Done 2026-11-26: `.github/workflows/tests.yml` of the Importer, jobs on `macos-26` with Xcode 26.6 and on `ubuntu-24.04` in the `swift:6.2.4-noble` (the package's lowest tools version) and `swift:6.4.2-noble` containers. Passed on commit 6dae8ff with the 49 tests of section 4.
 - [x] The core and Notion targets built with the Swift SDK for WebAssembly in that workflow, so that nothing Apple-only enters them.
   Done 2026-11-26: the job `webassembly` installs swift.org's Swift SDK for WebAssembly 6.4.2 (`swift-6.4.2-RELEASE_wasm`, checked by its checksum) in the `swift:6.4.2-noble` container and builds `ImporterCore` and `NotionImport` with it, no local download needed. Passed on commit 6dae8ff. It builds with full Foundation: making the module small (section 7's measurements) is a later change, noted in the Importer's `docs/Design.md`, Known limits.
-- [ ] Version tags from the first import that works (section 4), each release pinned with `exact:` in Graphite's `Package.swift` and both `Package.resolved` files.
-  Done in part 2026-11-26: tag `0.1.0` of the Importer on commit 6dae8ff, once the HTML export imported Obsidian Importer's test export. Open: the pinning in Graphite, done with the linking of section 6.
+- [x] Version tags from the first import that works (section 4), each release pinned with `exact:` in Graphite's `Package.swift` and both `Package.resolved` files.
+  Done 2026-11-26 and 2026-11-27: tag `0.1.0` of the Importer on commit 6dae8ff, once the HTML export imported Obsidian Importer's test export, and pinned in Graphite with `exact: "0.1.0"` in `Package.swift`, `Package.resolved` and the Xcode project's `Package.resolved` (section 6).
 
 ## 2. Test material
 
@@ -112,14 +112,18 @@ Issue: [#230](https://github.com/Graphite-Note/Graphite/issues/230)
 - [ ] Linked database views (skipped upstream): a view of another database becomes a view in that database's base, embedded where the page had it.
 - [ ] Attachments downloaded while their page is converted (Notion's file links expire after about an hour), in ranges for large files.
 - [ ] Importing again: matched by `notion-id`, a note edited since the last import never overwritten, no duplicate folders or attachments (upstream's faults listed above).
+- [ ] The API import offered in Import from Notion's sheet, with the token kept in the Keychain (moved from section 6 on 2026-11-27).
 
 ## 6. In Graphite
 
 Issue: [#176](https://github.com/Graphite-Note/Graphite/issues/176)
 
-- [ ] The package pinned with `exact:` in Graphite, nothing of it created until an import starts. Launch time and memory at rest measured with and without it, the app's size difference recorded.
-- [ ] Import › From Notion… in the New menu (file list and library) opens a native sheet: an HTML export picked from Files, or an API import with the token kept in the Keychain. Decided 2026-11-26 with the choice of a linked package.
-- [ ] The import runs off the main actor and writes through Graphite's coordinated vault writes, the index refreshing in batches. The rest of Graphite stays usable. Leaving the vault while it runs is refused or pauses the import (the Goodnotes import refuses it). Pause and Cancel leave a usable partial import and its report.
+- [x] The package pinned with `exact:` in Graphite, nothing of it created until an import starts. Launch time and memory at rest measured with and without it, the app's size difference recorded.
+  Done 2026-11-27: `.package(url: "https://github.com/Graphite-Note/Importer.git", exact: "0.1.0")`, its product `Importer` a dependency of `GraphiteUI` (and `GraphiteUITests`), pinned in both `Package.resolved` files. Only `NotionImportDestination` and `NotionImportRun` import its modules, and `WorkspaceModel.notionImport` stays nil until an import starts and again once its summary is closed. Measured on the Mac with Release builds of c98c51e7 without and with the package, ad hoc signed and launched hidden eight times each while other sessions built: code (`__TEXT` of the stripped binary) 61.88 MB without and 62.42 MB with, so 528 KB more, data 16 KB more, the app 2.3 MB larger unstripped. First window after a median 0.53 s without and 0.54 s with (each from 0.48 to 0.58 s), and 47 MB of memory at rest in both, so no difference beyond the noise. `scripts/check-imports.py` lists `ImporterCore` and `NotionImport` as standalone packages.
+- [x] Import › From Notion… in the New menu (file list and library) opens a native sheet: an HTML export picked from Files. Decided 2026-11-26 with the choice of a linked package. The API import with its token in the Keychain moved to section 5 on 2026-11-27, since Notion's API is not ported yet.
+  Done 2026-11-27: Import from Notion in the New menu of the file list and the library (`CreatableItem.importFromNotion`), Import from Notion… in the Mac sidebar's menu and the Mac's File menu, while the new core plugin Notion Import (on by default) is on. The sheet (`NotionImportSheet`) says how to export from Notion and where the import goes, and its chooser takes Notion's zip, the `Part-N` zips of a large export, or the unzipped folder. Tests: `NotionImportWorkspaceTests`, `CreatableItemTests`. Checked on the iPad simulator (iPad Pro 13-inch (M5), iOS 27.2) by an XCUITest probe: the New menu, the sheet, the Files chooser and an import of Obsidian Importer's test export. Checked on the Mac in a Release copy: the library's New menu and the sheet, whose Choose Export… opens the file chooser. Not checked by hand: the Mac's File menu entry (the menu bar needs the app in front).
+- [x] The import runs off the main actor and writes through Graphite's coordinated vault writes, the index refreshing in batches. The rest of Graphite stays usable. Leaving the vault while it runs is refused or pauses the import (the Goodnotes import refuses it). Pause and Cancel leave a usable partial import and its report.
+  Done 2026-11-27: `NotionImportRun` in a detached task of utility priority, writing through `NotionImportDestination`: `VaultStore.save` with `.absent` for notes, bases and the report, attachments staged outside the vault and moved in by `AtomicFileWriter.replace`, property types merged by `VaultStore.assignPropertyTypesKeepingExisting`, written files handed to the index and the file list 50 at a time. Leaving the vault is refused (`VaultSwitchRefusal.notionImportIsRunning`). Pause holds the next write, Cancel stops at the next page and the report note says so. Tests: `NotionImportRunTests` (6), `NotionImportWorkspaceTests` (3). Checked on the iPad simulator with a made-up export of 3,001 pages: a note opened during the import, Pause held at 174 pages for 6 seconds, Resume went on to 3,062 files, and Cancel stopped another import at 566 notes with its report.
 
 ## 7. A downloadable plugin compiled to WebAssembly
 

@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.16
- * Date: 04/11/2026
+ * Version: 0.17
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -45,6 +45,8 @@ struct LibraryActions {
     let openDailyNote: () -> Void
     let newFolder: (VaultPath) -> Void
     let importFiles: ([URL], VaultPath) -> Void
+    /// Opens Import from Notion's sheet for a folder.
+    let importFromNotion: (VaultPath) -> Void
     /// Takes what a drop carries for a folder; see `LibraryDropActions.receive`.
     let receiveDrop: ([NSItemProvider], VaultPath) -> Bool
     /// Saves a finished document scan as a new notebook in a folder; nil where the device cannot scan.
@@ -285,7 +287,8 @@ struct LibraryView: View {
                               importFiles: { sources, directory in actions.importFiles(sources, directory ?? folder) },
                               saveScannedNotebook: actions.saveScannedNotebook,
                               reportProblem: actions.reportProblem,
-                              savePicture: actions.savePicture, canTakePhoto: actions.canTakePhoto)
+                              savePicture: actions.savePicture, canTakePhoto: actions.canTakePhoto,
+                              importFromNotion: { directory in actions.importFromNotion(directory ?? folder) })
     }
 
     // MARK: Grid
