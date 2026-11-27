@@ -185,7 +185,7 @@ On 2026-11-24, choosing how to go after the ten-times target the Speed items abo
 
 ## Speed, later
 
-Issue: [#262](https://github.com/Graphite-Note/Graphite/issues/262)
+Issue: [Graphite-Note/MermaidDiagrams#1](https://github.com/Graphite-Note/MermaidDiagrams/issues/1), in the package's repository, where the work is
 
 Decided 2026-11-27, after MermaidDiagrams 0.8.1: "just open an issue for now and we can consider it done for a while". The items the [Speed](#speed) section left open, moved here unchanged.
 
