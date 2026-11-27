@@ -2,7 +2,7 @@
 
 Created: 2026-11-12.
 
-Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; the keys and the timing checked 2026-11-19 and 2026-11-27; sections 1 and 2 checked on the Mac and the iPad 2026-11-27, section 3 on the iPad; open: section 3 on the Mac. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
+Status: built 2026-11-17: sections 1 to 3 suggest from the index, with their tests; the keys and the timing checked 2026-11-19 and 2026-11-27; every section checked on the Mac and the iPad 2026-11-27. Issues: [#167](https://github.com/Graphite-Note/Graphite/issues/167) (section 1), [#168](https://github.com/Graphite-Note/Graphite/issues/168) (section 2), [#169](https://github.com/Graphite-Note/Graphite/issues/169) (section 3).
 
 ## Request
 
@@ -71,4 +71,5 @@ Issue: [#169](https://github.com/Graphite-Note/Graphite/issues/169)
   Done 2026-11-17: the Properties panel and the Bases sheet (`PropertySuggestionsHostedTests`), the text editor (`PropertyCompletionTests`, `LivePreviewRevealTests`), the search (`SearchTermCompletionTests`, with the vault's values from `PropertySuggestions` as the others take them).
 - [x] Checked on the iPad.
   Done 2026-11-27, in an iPad Pro 11-inch (M5) simulator, iOS 27.2, with the made-up vault of 5,031 notes: the sidebar's search suggested `circuits` after `tag:ci`; in `Suggestion base.base`, holding an Optics cell and choosing Edit “course”…, then typing `Ro` over the value, suggested `Robotics` (625 notes); choosing it filled the field and Save wrote `course: Robotics` to the note's file.
-- [ ] Checked on the Mac: the search field's suggestion menu and the Bases sheet opened from a cell's context menu.
+- [x] Checked on the Mac: the search field's suggestion menu and the Bases sheet opened from a cell's context menu.
+  Done 2026-11-27 in a re-signed copy of a Debug build of main 579fea0c (its own bundle identifier), with the made-up vault of 5,031 notes: in the sidebar's search, `tag:ci` showed the suggestion `#circuits` (626 notes) under the field, and choosing it wrote `tag:#circuits` and listed the Circuits notes; in `Suggestion base.base`, a right-click on Optics note 0011's course cell offered Open and Edit “course”…, whose sheet, with `Ro` typed over the value, suggested `Robotics` (626 notes); choosing it filled the field, and Save wrote `course: Robotics` to the note's file and showed it in the table.
