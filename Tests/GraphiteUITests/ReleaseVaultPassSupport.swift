@@ -6,8 +6,8 @@
  *              time, the copy of the vault whose web frames point at the pass's own loopback server, and the Mac's load.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 19/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -87,7 +87,26 @@ enum ReleaseVaultWindow {
             contentView.cacheDisplay(in: contentView.bounds, to: representation)
         }
         if let context = NSGraphicsContext(bitmapImageRep: representation) { drawPDFPages(in: contentView, into: context.cgContext) }
-        return representation.representation(using: .png, properties: [:])
+        return onWindowBackground(representation, of: window)?.representation(using: .png, properties: [:])
+    }
+
+    /// `cacheDisplay` leaves transparent what no view paints, such as the reading view's page, which the window's own
+    /// background fills on screen: a picture viewer showed it white under the dark appearance's light text (HUNT-363).
+    /// The capture is laid over the window's background colour, resolved in the window's appearance.
+    private static func onWindowBackground(_ capture: NSBitmapImageRep, of window: NSWindow) -> NSBitmapImageRep? {
+        guard let image = capture.cgImage,
+              let composed = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: capture.pixelsWide, pixelsHigh: capture.pixelsHigh,
+                                              bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                                              colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
+              let context = NSGraphicsContext(bitmapImageRep: composed)?.cgContext else { return nil }
+        composed.size = capture.size
+        let area = CGRect(x: 0, y: 0, width: capture.pixelsWide, height: capture.pixelsHigh)
+        var background = CGColor(gray: 1, alpha: 1)
+        window.effectiveAppearance.performAsCurrentDrawingAppearance { background = window.backgroundColor.cgColor }
+        context.setFillColor(background)
+        context.fill(area)
+        context.draw(image, in: area)
+        return composed
     }
 
     /// `cacheDisplay` leaves a PDF view's pages blank: PDFKit draws them in tiled layers of its own. Each shown PDF view's
