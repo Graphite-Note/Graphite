@@ -8,7 +8,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 #if os(iOS)
@@ -51,7 +51,7 @@ final class CalendarCopyLiveStoreHostedTests: XCTestCase {
         addTeardownBlock { UserDefaults().removePersistentDomain(forName: suiteName) }
         let controller = CalendarCopyController(clock: LiveApplicationClock(), store: LiveCalendarCopyStore(), defaults: defaults)
         controller.currentDate = { Date(timeIntervalSince1970: 1_930_000_000) } // March 2031, so the notes are in the window.
-        let source = CalendarCopySource(vaultName: "Live Copy", store: VaultStore(root: vault), index: index,
+        let source = CalendarCopySource(vaultName: "Live Copy", bases: BaseVaultAccess(store: VaultStore(root: vault), index: index),
                                         settings: CalendarCopySettings(basePath: try VaultPath("Deadlines.base"), viewName: "Deadlines"))
 
         controller.copyNow(source)

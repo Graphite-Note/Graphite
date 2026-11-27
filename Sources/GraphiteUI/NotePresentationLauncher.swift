@@ -8,7 +8,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -117,7 +117,7 @@ struct NotePresentationLauncher: ViewModifier {
             let note = try await NotePDFExportPresentation.printedNote(at: path, in: vault, focusedNote: focusedNote)
             var configuration = readingConfiguration
             configuration.declaredPropertyTypes = note.declaredPropertyTypes
-            let source = NotePresentationSource(text: note.text, path: note.path, root: vault.root, index: vault.index, configuration: configuration)
+            let source = NotePresentationSource(text: note.text, path: note.path, vault: vault, configuration: configuration)
             let started = NotePresentation.started(from: source, clock: clock, pencil: .stored(in: deviceDefaults))
             show(started)
         } catch {

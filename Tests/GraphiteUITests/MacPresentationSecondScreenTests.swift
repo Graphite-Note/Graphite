@@ -64,7 +64,7 @@ final class MacPresentationSecondScreenTests: XCTestCase {
         XCTAssertEqual(NSScreen.screens.count, 1, "The check starts with one screen.")
         let vault = try TemporaryVault.make(prefix: "MacPresentationSecondScreen", for: self)
         let index = try VaultIndex(databaseURL: vault.cacheDirectory.appendingPathComponent("index.sqlite"))
-        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), root: vault.root, index: index,
+        let source = NotePresentationSource(text: Self.lecture, path: try VaultPath("Sampling.md"), vault: try XCTUnwrap(ReadingVault(vault.root, index)),
                                             configuration: ReadingConfiguration())
         let presentation = NotePresentation.started(from: source, clock: LiveApplicationClock(),
                                                     pencil: PresentationPencilChoices(tool: .laser, inkColor: .red, laserStyle: .dot))

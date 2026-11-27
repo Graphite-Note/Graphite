@@ -7,14 +7,13 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
 import Observation
 import os
 import GraphiteCore
-import GraphiteIndex
 
 /// The notes of the open vault that have an icon. Empty in a vault without `icon` properties, where drawing a row
 /// costs one empty-dictionary test.
@@ -31,7 +30,7 @@ final class NoteIconCatalog {
 
     /// Reads the icons again from `index`, or forgets them all without one. Observers are told only when an icon
     /// changed, so an index change that touched no `icon` property redraws nothing.
-    func reload(from index: VaultIndex?) async {
+    func reload(from index: (any NoteIconLookup)?) async {
         guard let index else { replaceIcons(with: [:]); return }
         do {
             let icons = try await index.noteIcons()
@@ -86,10 +85,16 @@ extension EnvironmentValues {
     @Entry var noteIcons: NoteIconCatalog? = nil
 }
 
+/// The icons of a vault's notes by path, read from its index: the catalog's read port (Docs/solid/rewrite-foundations.md
+/// section 3.3 rule 3), answered by `VaultIndex` (WorkspaceModel.swift).
+protocol NoteIconLookup: Sendable {
+    func noteIcons() async throws -> [VaultPath: NoteIcon]
+}
+
 /// The open vault's index and a key that changes whenever its icons may have: another vault, or a change of the
 /// index's properties (`WorkspaceModel.structureVersion`).
 struct NoteIconSource {
-    let index: VaultIndex?
+    let index: (any NoteIconLookup)?
     let reloadKey: String
 }
 

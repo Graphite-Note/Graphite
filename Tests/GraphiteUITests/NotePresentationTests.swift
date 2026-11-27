@@ -8,7 +8,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -59,7 +59,7 @@ final class NotePresentationTests: XCTestCase {
     private func presentation(of text: String, clock: ManualClock = ManualClock()) throws -> NotePresentation {
         let path = try VaultPath("Lectures/Sampling.md")
         _ = try vault.writeFile(path.rawValue, text: text)
-        let source = NotePresentationSource(text: text, path: path, root: vault.root, index: index, configuration: ReadingConfiguration())
+        let source = NotePresentationSource(text: text, path: path, vault: try XCTUnwrap(ReadingVault(vault.root, index)), configuration: ReadingConfiguration())
         return NotePresentation.started(from: source, clock: clock,
                                         pencil: PresentationPencilChoices(tool: .laser, inkColor: .red, laserStyle: .dot))
     }

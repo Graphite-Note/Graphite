@@ -8,7 +8,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -173,7 +173,7 @@ final class UiBasesCalendarTests: XCTestCase {
     // MARK: Calendar Copy
 
     private func copySource(viewName: String = "Deadlines") throws -> CalendarCopySource {
-        CalendarCopySource(vaultName: "Study", store: store, index: index,
+        CalendarCopySource(vaultName: "Study", bases: BaseVaultAccess(store: store, index: index),
                            settings: CalendarCopySettings(basePath: try VaultPath("Deadlines.base"), viewName: viewName))
     }
 

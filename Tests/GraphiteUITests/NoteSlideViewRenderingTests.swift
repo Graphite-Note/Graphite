@@ -8,7 +8,7 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -67,7 +67,7 @@ final class NoteSlideViewRenderingTests: XCTestCase {
     private func builtSlides(of text: String) async throws -> NotePresentation {
         let path = try VaultPath("Sampling.md")
         _ = try vault.writeFile(path.rawValue, text: text)
-        let source = NotePresentationSource(text: text, path: path, root: vault.root, index: index, configuration: ReadingConfiguration())
+        let source = NotePresentationSource(text: text, path: path, vault: try XCTUnwrap(ReadingVault(vault.root, index)), configuration: ReadingConfiguration())
         let presentation = NotePresentation.started(from: source, clock: ManualClock(),
                                                     pencil: PresentationPencilChoices(tool: .laser, inkColor: .red, laserStyle: .dot))
         try await waitUntil("every slide is built") {

@@ -7,12 +7,11 @@
  *
  * Authors: Bahey Shalash
  * Version: 0.1
- * Date: 26/11/2026
+ * Date: 27/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
-import GraphiteIndex
 
 /// What a slide shows while its blocks are built, once they are, or why they could not be.
 enum PresentedSlideContent {
@@ -26,8 +25,8 @@ enum PresentedSlideContent {
 struct NotePresentationSource {
     let text: String
     let path: VaultPath
-    let root: URL
-    let index: VaultIndex
+    /// The vault the slides are built in, as the reading view builds from it, so the presentation need not know the index.
+    let vault: ReadingVault
     /// The reading view's settings that change how a slide is built (line breaks, colours, property types).
     let configuration: ReadingConfiguration
 }
@@ -79,7 +78,7 @@ final class NotePresentation: Identifiable {
     /// A presentation of `source`'s slides, which start building at once.
     static func started(from source: NotePresentationSource, clock: any ApplicationClock, pencil: PresentationPencilChoices) -> NotePresentation {
         let slides = NoteSlides.slides(in: source.text)
-        let presentation = NotePresentation(title: source.path.stem, root: source.root, slideCount: slides.count, clock: clock, pencil: pencil)
+        let presentation = NotePresentation(title: source.path.stem, root: source.vault.root, slideCount: slides.count, clock: clock, pencil: pencil)
         presentation.startBuilding(slides, of: source)
         return presentation
     }
@@ -121,8 +120,7 @@ final class NotePresentation: Identifiable {
             for (slideIndex, noteSlide) in noteSlides.enumerated() {
                 let content: PresentedSlideContent
                 do {
-                    let build = try await ReadingViewBuilder().build(source: noteSlide.markdown, note: source.path, root: source.root,
-                                                                     index: source.index, configuration: configuration)
+                    let build = try await source.vault.build(noteSlide.markdown, note: source.path, configuration: configuration)
                     content = .built(build.blocks)
                 } catch is CancellationError {
                     return
