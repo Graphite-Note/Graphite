@@ -3,11 +3,12 @@
  * ------------------------------------
  * Layer: UI
  * Description: The touches on the device's presented slide: a finger's swipes and taps move between slides, and
- *              Apple Pencil, touching or hovering, draws the laser or fading ink, which every screen shows.
+ *              Apple Pencil, touching or hovering, draws the laser or fading ink, which every screen shows. The
+ *              controls drawn over the slide keep their touches.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if canImport(UIKit)
@@ -22,15 +23,19 @@ struct PresentationTouchSurface: UIViewRepresentable {
     /// Whether a finger draws too, as on PDF pages when Draw with Finger is on: then two fingers swipe.
     let drawsWithFinger: Bool
     let idleClock: any ApplicationClock
+    /// Where SwiftUI controls are drawn over the slide, in the window's coordinates: touches there are theirs.
+    var controlRegions: [CGRect] = []
 
     func makeUIView(context: Context) -> PresentationTouchSurfaceView {
         let surface = PresentationTouchSurfaceView(idleClock: idleClock)
         surface.attach(to: presentation, drawsWithFinger: drawsWithFinger)
+        surface.controlRegions = controlRegions
         return surface
     }
 
     func updateUIView(_ surface: PresentationTouchSurfaceView, context: Context) {
         surface.attach(to: presentation, drawsWithFinger: drawsWithFinger)
+        surface.controlRegions = controlRegions
     }
 
     static func dismantleUIView(_ surface: PresentationTouchSurfaceView, coordinator: ()) {
@@ -59,6 +64,9 @@ final class PresentationTouchSurfaceView: UIView, UIGestureRecognizerDelegate {
         return recognizer
     }()
     private lazy var hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
+    /// Where controls are drawn over the slide, in the window's coordinates. A platform view is hit before the
+    /// SwiftUI content drawn over it, so without this the slide took the taps meant for End and the Pencil menu.
+    var controlRegions: [CGRect] = []
 
     init(idleClock: any ApplicationClock) {
         marksView = PresentationMarksView(idleClock: idleClock)
@@ -76,6 +84,12 @@ final class PresentationTouchSurfaceView: UIView, UIGestureRecognizerDelegate {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("PresentationTouchSurfaceView is created in code.") }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let windowPoint = convert(point, to: nil)
+        guard !controlRegions.contains(where: { region in region.contains(windowPoint) }) else { return false }
+        return super.point(inside: point, with: event)
+    }
 
     func attach(to newPresentation: NotePresentation, drawsWithFinger: Bool) {
         if presentation !== newPresentation {

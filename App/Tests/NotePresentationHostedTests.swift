@@ -4,11 +4,13 @@
  * Layer: Tests
  * Description: A note presented as slides in the app on the iPad simulator: finger swipes and taps move between its
  *              slides, Apple Pencil draws the laser and fading ink without moving them, and the marks show on a second
- *              screen's slide too and go when the slide changes.
+ *              screen's slide too and go when the slide changes. A touch on the corner controls is theirs, not the
+ *              slide's. The keys are taken without a software keyboard, and the external display's scene accessory
+ *              is registered while the presentation shows.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if os(iOS)
@@ -116,6 +118,55 @@ final class NotePresentationHostedTests: XCTestCase {
 
     private func tap(at point: CGPoint, in window: UIWindow) async {
         await SynthesizedTouches(window: window).move(paths: [(point, point)], steps: 1, stepSeconds: 0.03, holdSeconds: 0)
+    }
+
+    /// The slide's touch surface is a platform view, hit before the SwiftUI controls drawn over it: a tap on End or
+    /// the Pencil menu moved the slide instead (found with real taps in the simulator). The controls' place is
+    /// left to them.
+    func testATapOnTheCornerControlsIsNotTheSlides() async throws {
+        try requireTouches()
+        let presentation = try await presentation()
+        let window = try await show(NotePresentationScreen(presentation: presentation, end: {}))
+        let surface = try touchSurface(in: window)
+        try await waitUntil("the corner controls are measured") { window.layoutIfNeeded(); return !surface.controlRegions.isEmpty }
+        let controls = try XCTUnwrap(surface.controlRegions.first)
+        XCTAssertGreaterThan(controls.minX, window.bounds.midX, "The controls are in the top right corner.")
+        XCTAssertLessThan(controls.maxY, window.bounds.midY)
+        let center = CGPoint(x: controls.midX, y: controls.midY)
+        let hitView = try XCTUnwrap(window.hitTest(center, with: nil))
+        XCTAssertFalse(hitView === surface || hitView.isDescendant(of: surface), "The slide's surface does not take the controls' touches.")
+        await tap(at: center, in: window)
+        XCTAssertEqual(presentation.position.index, 0, "A tap on the controls does not move the slide.")
+        let slideCenter = surface.convert(CGPoint(x: surface.bounds.maxX - 40, y: surface.bounds.midY), to: window)
+        let slideHitView = try XCTUnwrap(window.hitTest(slideCenter, with: nil))
+        XCTAssertTrue(slideHitView === surface || slideHitView.isDescendant(of: surface), "The rest of the slide keeps its touches.")
+    }
+
+    /// While a menu was open, iOS raised the software keyboard over the slide for the view holding the keys
+    /// (found on the iPhone simulator with the Pencil menu): the responder taking them has an empty input view.
+    func testTheKeysAreTakenWithoutASoftwareKeyboardAndTheDisplaysAccessoryIsRegistered() async throws {
+        let presentation = try await presentation()
+        let window = try await show(NotePresentationScreen(presentation: presentation, end: {}))
+        func responder(in view: UIView) -> PresentationKeyResponderView? {
+            (view as? PresentationKeyResponderView) ?? view.subviews.lazy.compactMap(responder(in:)).first
+        }
+        let keys = try XCTUnwrap(responder(in: window))
+        try await waitUntil("the presentation takes the keys") { keys.isFirstResponder }
+        XCTAssertEqual(keys.inputView?.bounds.height, 0, "No software keyboard for the keys' responder.")
+        XCTAssertEqual(PresentationKeyResponderView.modifiers(of: [.shift, .alternate]), [.shift, .option])
+
+        func accessoryController(in controller: UIViewController) -> PresentationSceneAccessoryController? {
+            (controller as? PresentationSceneAccessoryController) ?? controller.children.lazy.compactMap(accessoryController(in:)).first
+        }
+        let rootController = try XCTUnwrap(window.rootViewController)
+        try await waitUntil("the accessory's controller appears") { accessoryController(in: rootController) != nil }
+        let accessory = try XCTUnwrap(accessoryController(in: rootController))
+        if #available(iOS 27.0, *) {
+            try await waitUntil("the external display's accessory is registered") { accessory.isRegistered }
+        }
+        window.isHidden = true
+        window.rootViewController = nil
+        try await waitUntil("the accessory goes with the presentation's screen") { !accessory.isRegistered }
     }
 
     func testFingerSwipesAndTapsMoveBetweenTheSlides() async throws {

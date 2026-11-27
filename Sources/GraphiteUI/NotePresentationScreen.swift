@@ -7,8 +7,8 @@
  *              keys and the corner controls that move, choose the Pencil's tool and end.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -20,7 +20,9 @@ struct NotePresentationScreen: View {
     let presentation: NotePresentation
     /// Ends the presentation and closes what shows it.
     let end: () -> Void
+    #if os(macOS)
     @FocusState private var hasKeyboardFocus: Bool
+    #endif
 
     var body: some View {
         Group {
@@ -30,6 +32,7 @@ struct NotePresentationScreen: View {
                 SlideAloneView(presentation: presentation, end: end)
             }
         }
+        #if os(macOS)
         .focusable()
         .focusEffectDisabled()
         .focused($hasKeyboardFocus)
@@ -39,9 +42,16 @@ struct NotePresentationScreen: View {
             return .handled
         }
         .onAppear { hasKeyboardFocus = true }
+        #else
+        // A UIKit responder takes the keys: SwiftUI's key focus made iOS raise the software keyboard over the slide.
+        .background { PresentationKeyResponder(perform: perform).frame(width: 0, height: 0).accessibilityHidden(true) }
+        #endif
         .persistentSystemOverlays(.hidden)
         #if canImport(UIKit)
         .statusBarHidden()
+        #endif
+        #if os(iOS)
+        .background { PresentationSceneAccessory().frame(width: 0, height: 0).accessibilityHidden(true) }
         #endif
     }
 
@@ -58,6 +68,8 @@ struct NotePresentationScreen: View {
 struct PresentedSlide: View {
     let presentation: NotePresentation
     let content: PresentedSlideContent?
+    /// Where controls are drawn over the slide, in global coordinates: their touches are not the slide's.
+    var controlRegions: [CGRect] = []
     #if canImport(UIKit)
     @AppStorage(PDFAnnotationPreferenceKey.drawsWithFinger) private var drawsWithFinger = false
     #endif
@@ -66,7 +78,8 @@ struct PresentedSlide: View {
         NoteSlideView(content: content, root: presentation.root)
             #if canImport(UIKit)
             .overlay {
-                PresentationTouchSurface(presentation: presentation, drawsWithFinger: drawsWithFinger, idleClock: presentation.clock)
+                PresentationTouchSurface(presentation: presentation, drawsWithFinger: drawsWithFinger, idleClock: presentation.clock,
+                                         controlRegions: controlRegions)
             }
             #else
             .contentShape(Rectangle())
@@ -80,12 +93,16 @@ struct PresentedSlide: View {
 private struct SlideAloneView: View {
     let presentation: NotePresentation
     let end: () -> Void
+    /// Where the corner controls are, so the slide's touches leave them their taps.
+    @State private var cornerControlsFrame = CGRect.null
 
     var body: some View {
-        PresentedSlide(presentation: presentation, content: presentation.currentSlide)
+        PresentedSlide(presentation: presentation, content: presentation.currentSlide,
+                       controlRegions: cornerControlsFrame.isNull ? [] : [cornerControlsFrame.insetBy(dx: -8, dy: -8)])
             .ignoresSafeArea()
             .overlay(alignment: .topTrailing) {
                 PresentationCornerControls(presentation: presentation, end: end)
+                    .onGeometryChange(for: CGRect.self) { proxy in proxy.frame(in: .global) } action: { frame in cornerControlsFrame = frame }
                     .padding(12)
             }
             .overlay(alignment: .bottom) {
@@ -143,45 +160,101 @@ private struct PresentationCornerControls: View {
                 .keyboardShortcut(.cancelAction)
         }
         .buttonStyle(.bordered)
-        .controlSize(.small)
         .opacity(0.55)
     }
 }
 
-/// The presenter's view while another display shows the slide: this slide large, where the Pencil draws, beside
-/// the next slide, the slide number, the time since the presentation started and the controls.
+/// The presenter's view while another display shows the slide: this slide large, where the Pencil draws, with
+/// the next slide, the slide number, the time since the presentation started and the controls. Beside the slide
+/// on a wide screen, under it on a tall one (an iPad or an iPhone held upright).
 private struct PresenterView: View {
     let presentation: NotePresentation
     let end: () -> Void
+    /// The width of the column beside the slide on a wide screen.
+    static let sideColumnWidth: CGFloat = 320
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
-            PresentedSlide(presentation: presentation, content: presentation.currentSlide)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            VStack(alignment: .leading, spacing: 14) {
-                Text("Next").font(.headline).foregroundStyle(.secondary)
-                Group {
-                    if let nextSlide = presentation.nextSlide {
-                        NoteSlideView(content: nextSlide, root: presentation.root)
-                    } else {
-                        Text("End of the presentation").foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        GeometryReader { proxy in
+            if proxy.size.height > proxy.size.width {
+                VStack(alignment: .leading, spacing: 20) {
+                    PresenterSlideFrame(presentation: presentation, content: presentation.currentSlide, isTouched: true)
+                    HStack(alignment: .top, spacing: 20) {
+                        NextSlidePreview(presentation: presentation)
+                        PresenterStatus(presentation: presentation)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    Spacer(minLength: 0)
+                    PresenterButtons(presentation: presentation, end: end)
                 }
-                .aspectRatio(NotePresentation.canvasSize.width / NotePresentation.canvasSize.height, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                Text(PresentationSlideNumber.text(for: presentation.position))
-                    .font(.title2.monospacedDigit())
-                PresentationElapsedTimeText(presentation: presentation)
-                    .font(.system(size: 44, weight: .medium).monospacedDigit())
-                Spacer(minLength: 0)
-                PresenterButtons(presentation: presentation, end: end)
+            } else {
+                HStack(alignment: .top, spacing: 20) {
+                    PresenterSlideFrame(presentation: presentation, content: presentation.currentSlide, isTouched: true)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    VStack(alignment: .leading, spacing: 14) {
+                        NextSlidePreview(presentation: presentation)
+                        PresenterStatus(presentation: presentation)
+                        Spacer(minLength: 0)
+                        PresenterButtons(presentation: presentation, end: end)
+                    }
+                    .frame(width: Self.sideColumnWidth)
+                }
             }
-            .frame(width: 320)
         }
         .padding(20)
-        .background(.background)
+        .background(.background.secondary)
+    }
+}
+
+/// A slide in the presenter's view at the slide's own proportions, edged so a white slide shows on the view's
+/// ground. The current slide takes the Pencil and the moves (`isTouched`); the next one is only shown.
+private struct PresenterSlideFrame: View {
+    let presentation: NotePresentation
+    let content: PresentedSlideContent?
+    let isTouched: Bool
+
+    var body: some View {
+        Group {
+            if isTouched {
+                PresentedSlide(presentation: presentation, content: content)
+            } else {
+                NoteSlideView(content: content, root: presentation.root)
+            }
+        }
+        .aspectRatio(NotePresentation.canvasSize.width / NotePresentation.canvasSize.height, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(.separator) }
+    }
+}
+
+/// The next slide, smaller, or the end of the presentation after the last one.
+private struct NextSlidePreview: View {
+    let presentation: NotePresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Next").font(.headline).foregroundStyle(.secondary)
+            if let nextSlide = presentation.nextSlide {
+                PresenterSlideFrame(presentation: presentation, content: nextSlide, isTouched: false)
+            } else {
+                Text("End of the presentation").foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(NotePresentation.canvasSize.width / NotePresentation.canvasSize.height, contentMode: .fit)
+            }
+        }
+    }
+}
+
+/// The slide number and the time since the presentation started.
+private struct PresenterStatus: View {
+    let presentation: NotePresentation
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(PresentationSlideNumber.text(for: presentation.position))
+                .font(.title2.monospacedDigit())
+            PresentationElapsedTimeText(presentation: presentation)
+                .font(.system(size: 44, weight: .medium).monospacedDigit())
+        }
     }
 }
 
