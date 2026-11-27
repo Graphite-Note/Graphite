@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## Obsidian's Importer installed from the directory beside the Swift import, and a large workspace stood in for: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) sections 2 and 3 (issues #173, #174).
+
+- **Installed as a person installs it:** Importer 3.2.0 from Obsidian's community directory through Settings › Community Plugins › Browse, Install and its switch, in an iPad simulator (iPad Pro 13-inch (M5), iOS 27.2) by an XCUITest probe on those screens, and on the Mac in a copy of the app with its own bundle identifier by background control. In the simulator its Notion › File import ran with the export picked in Files.
+- **Hosted test:** `CommunityPluginHostTests.testImporterInstalledFromObsidiansDirectoryImportsTheExportsAsTheSwiftImportDoes` installs through `CommunityPluginInstaller` and imports each export named by `GRAPHITE_NOTION_UPSTREAM_EXPORTS` on Importer's panel and with the linked Swift import, printing the counts and the notes only one of them wrote. Upstream's test export gives the same notes in both. A real export found online differs only by what the export holds (a backup copy of 91 pages Importer imports twice, files no page links, which only the Swift import copies). No gap of Graphite's runtime was found.
+- **Measured** on a made-up stand-in for a large workspace (15,052 pages with a database of 5,000 rows and 500 pictures, 1.16 GB in `Part-N` zips): in the simulator Importer took about 345 s, its web content process reaching 7,052 MB resident, and the Swift import about 216 s with Graphite's process at 898 MB. On the Mac the Swift import took 172 s with a 303 MB peak footprint.
+- **Not established:** Obsidian itself on the same exports, Importer's import run by hand on the Mac (its Open panel), the Mac's hosted run (it stopped before its first test), the physical iPad.
+
 ## MermaidDiagrams 0.8.0 and 0.8.1, the redesign released: 2026-11-27
 
 `Docs/Native-diagrams-todo.md` (Redesign, issue #225, and Speed, issue #223). Graphite pins MermaidDiagrams 0.8.1: 0.8.0 is the redesign (reading, layout, scene and SVG as flat records over the text's bytes, every drawing as 0.7.0 drew it), 0.8.1 adds `DiagramScene.storageIdentifier`. Checking Graphite against 0.8.0 found two costs of its computed `DiagramScene.items`, which makes every shape's path on each read. The iPad's diagram pictures (`ReadingDiagramPictureKey`, `ReadingDiagramPlacement`) told scenes apart by the address of the items array, a new array on each read, so a painted picture was not found again for its scene and the diagrams around one shown were not painted ahead (two failures of `ReadingDiagramPicturesHostedTests.testTheNeighboursOfADiagramShownArePaintedAhead` in an iPad simulator). They now use `storageIdentifier`, which the scene's copies share. The Mac's reading view (`ReadingDiagramScenePainting`) read `items` twice per item, which made every path again for each item, and now reads them once.
