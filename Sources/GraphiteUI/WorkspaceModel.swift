@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.91
+ * Version: 0.92
  * Date: 27/11/2026
  */
 
@@ -209,6 +209,8 @@ final class WorkspaceModel {
     }
     /// The vault's property names read for suggestions, kept until the index changes (`PropertySuggestions`).
     @ObservationIgnored var propertySuggestionCache: PropertySuggestionCache?
+    /// Each property's values read for suggestions, kept until the index changes (`PropertySuggestions`).
+    @ObservationIgnored var propertyValueSuggestionCache: PropertyValueSuggestionCache?
     /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
     /// none of them can affect do not run again.
     @ObservationIgnored var lastIndexChange: BaseContentChange?
