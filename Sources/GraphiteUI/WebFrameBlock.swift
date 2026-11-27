@@ -6,8 +6,8 @@
  *              placeholder, loading indicator and failure message elsewhere.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -25,6 +25,10 @@ struct WebFrameBlock: View {
     var listItemIndentation: CGFloat = 0
     /// The colour of the view's list markers: the text's in the reading view, dimmed in Live Preview.
     var listMarkerStyle: HierarchicalShapeStyle = .secondary
+    /// Whether the column's space beside a page narrower than the column offers Open in Browser and Copy Address on a
+    /// long press or secondary click, where a live page keeps its own menus: the reading view's; Live Preview's block
+    /// menu offers them there, and a tap there shows the tag.
+    var offersCommandsBeside = false
     @Environment(\.webFramePresentation) private var presentation
     @Environment(\.webFrameLiveViews) private var liveViews
     @Environment(\.openURL) private var openURL
@@ -74,7 +78,16 @@ struct WebFrameBlock: View {
             .frame(maxWidth: .infinity, minHeight: height, maxHeight: height)
             .overlay(alignment: .topLeading) {
                 GeometryReader { geometry in
-                    box.frame(width: CGFloat(frame.shownWidth(columnWidth: Double(geometry.size.width))), height: height)
+                    let pageWidth = CGFloat(frame.shownWidth(columnWidth: Double(geometry.size.width)))
+                    HStack(spacing: 0) {
+                        box.frame(width: pageWidth, height: height)
+                        if offersCommandsBeside && pageWidth < geometry.size.width {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .contextMenu { frameCommands }
+                                .accessibilityHidden(true)
+                        }
+                    }
                 }
             }
             .onGeometryChange(for: Double?.self) { geometry in
@@ -119,11 +132,13 @@ struct WebFrameBlock: View {
         // Open in Browser and Copy Address, on the box while it shows no page: a live page keeps its own menus, and an
         // empty menu is not shown.
         .contextMenu {
-            if !(holdsPage && page.loadState == .loaded) {
-                Button { openURL(frame.address) } label: { Label("Open in Browser", systemImage: "safari") }
-                Button { Pasteboard.copy(frame.address.absoluteString) } label: { Label("Copy Address", systemImage: "doc.on.doc") }
-            }
+            if !(holdsPage && page.loadState == .loaded) { frameCommands }
         }
+    }
+
+    @ViewBuilder private var frameCommands: some View {
+        Button { openURL(frame.address) } label: { Label("Open in Browser", systemImage: "safari") }
+        Button { Pasteboard.copy(frame.address.absoluteString) } label: { Label("Copy Address", systemImage: "doc.on.doc") }
     }
 
     static func color(of color: WebFrameEmbed.Color) -> Color {
