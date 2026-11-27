@@ -6,13 +6,14 @@
  *              goes, what it writes, the property types, Pause, Cancel, the report, and an export that is not one.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import XCTest
 import GraphiteCore
 import GraphiteTestSupport
+import GraphiteFixtures
 @testable import GraphiteUI
 
 /// An import of Notion's export run as the workspace runs it, on a temporary vault: the export goes into a new folder
@@ -178,6 +179,28 @@ final class NotionImportRunTests: XCTestCase {
         let (summary, _) = await Self.run(Self.makeRun(vault: vault, delivered: delivered), sources: [exportFolder.location(of: "Export.zip")], into: .root)
         XCTAssertEqual(summary.failureMessage?.hasPrefix("The export could not be read as a zip file"), true, summary.failureMessage ?? "")
         XCTAssertFalse(vault.fileExists(at: "Notion"))
+    }
+
+    private static let madeUpExports = FixtureFolders.repositoryRoot.appendingPathComponent("Tests/Fixtures/NotionExports", isDirectory: true)
+
+    func testADownloadCutShortEndsInAMessageAndWritesNothing() async throws {
+        let vault = try TemporaryVault.make(prefix: "NotionImportTruncated", for: self)
+        let delivered = DeliveredFiles()
+        let (summary, _) = await Self.run(Self.makeRun(vault: vault, delivered: delivered),
+                                          sources: [Self.madeUpExports.appendingPathComponent("made-up-export-truncated.zip")], into: .root)
+        XCTAssertEqual(summary.failureMessage?.hasPrefix("The export could not be read as a zip file"), true, summary.failureMessage ?? "")
+        XCTAssertFalse(vault.fileExists(at: "Notion"))
+    }
+
+    func testAPartOfALargeExportAloneImportsItsPagesAndReportsTheLinkToAPageItLacks() async throws {
+        let vault = try TemporaryVault.make(prefix: "NotionImportPartAlone", for: self)
+        let delivered = DeliveredFiles()
+        let (summary, _) = await Self.run(Self.makeRun(vault: vault, delivered: delivered),
+                                          sources: [Self.madeUpExports.appendingPathComponent("made-up-export-Part-2.zip")], into: .root)
+        XCTAssertNil(summary.failureMessage)
+        XCTAssertEqual(summary.noteCount, 2)
+        XCTAssertTrue(vault.fileExists(at: "Notion/Semester/Algebra.md") || vault.fileExists(at: "Notion/Algebra.md"))
+        XCTAssertGreaterThan(summary.findingCount, 0, "The link to Semester, which this part lacks, is reported.")
     }
 
     func testTheSummaryWordingSaysWhatWasWrittenAndWhatTheReportLists() throws {

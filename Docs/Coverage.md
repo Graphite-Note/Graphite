@@ -4,6 +4,15 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## Notion import verified on real exports and a large one: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) section 8 (issue #177), with Graphite on Importer 0.1.0.
+
+- **Real exports found online**, kept in a local folder that is never committed or shown (`NotionLocalExportsPassTests`, macOS, run only when `GRAPHITE_NOTION_LOCAL_EXPORTS` names it): each imported through `NotionImportRun`, then every file of the import opened by `ReleaseVaultPass` (each note in Live Preview, reading view and source mode, a page at a time, each base in its view) and the index's unresolved links listed. Three HTML exports, 882 notes, 99 bases and 1,105 attachments in all: no note that failed to open, no block left as source, no base that did not draw. The only findings are pictures: some the exports' pages name but do not hold, and in one export 50 held under folder names an unzip with another encoding changed. Both are fixed in the Importer on its pull request 4, with which no embed is left unresolved, and reach Graphite with the next Importer release. Two Markdown exports are refused with their message. The same three HTML exports imported in the iPad simulator through Files, with the same counts.
+- **Malformed input:** `NotionImportRunTests` (8) adds a download cut short, ending in a message with nothing written, and the `Part-2` zip of an export alone, importing its pages and reporting the link to the page it lacks (`Tests/Fixtures/NotionExports/`, made-up). Paths that leave the export are refused in the Importer's own tests.
+- **Measured** on a made-up export of 10,051 pages and 500 pictures, 1.16 GB in four `Part-N` zips (`NotionLargeExportMeasurementTests`, run only when `GRAPHITE_NOTION_LARGE_EXPORT` names it): on the Mac 151 s, a peak footprint of 357 MB, the main actor at most 9 ms late and never over 50 ms. In the iPad simulator about 200 s and 215 MB at most.
+- **Not established:** the physical iPad, Obsidian opening the same vaults, typing and Pencil by hand during an import, the Mac's Open panel by hand, and everything of Notion's API in the app (section 5).
+
 ## Import from Notion, through the Swift Importer 0.1.0: 2026-11-27
 
 [Notion-import-todo.md](Notion-import-todo.md) section 6 (issues #176, #228): Notion's HTML export imported from the New menu, the sidebar's menu and the Mac's File menu, through Graphite's coordinated vault writes, with progress, Pause, Cancel and the Importer's report note ([Architecture](Architecture.md), "Importing Notion's export").
@@ -12,7 +21,7 @@ Last updated: 2026-11-27.
 - **Checked on the iPad simulator** (iPad Pro 13-inch (M5), iOS 27.2, by an XCUITest probe that drives the installed app, as the simulator panel's access was not answered): Import from Notion in the sidebar's New menu, the sheet, the Files chooser, Obsidian Importer's test export imported into `Notion` with its summary and Open the Import Report. A made-up export of 3,001 pages and 60 pictures (25 MB): a note opened and shown while it imports, Pause holding at 174 of 3,001 pages for 6 seconds and Resume going on, the whole import of 3,062 files in under two minutes, the pause included, and Cancel stopping a second import at 566 notes with "Notion Import Stopped" and a report that says it was stopped.
 - **Checked on the Mac** in a Release copy with its own bundle identifier and a scratch vault: Import from Notion in the library's New menu opens the sheet, and Choose Export… opens the Mac's file chooser. The chooser runs in another process, which background control cannot use, so the import itself was not run there by hand: the Mac package tests above run it through the same code and the vault's real store.
 - **Measured on the Mac** (Release builds of c98c51e7 without and with the package, ad hoc signed, launched hidden eight times each while other sessions built): the stripped binary's code grows by 528 KB (`__TEXT` 61.88 to 62.42 MB) and its data by 16 KB, the app by 2.3 MB unstripped. Time to the first window, median 0.53 s without and 0.54 s with (each from 0.48 to 0.58 s), and 47 MB of memory three to ten seconds after launch in both: no difference beyond the noise, as nothing of the package runs until an import starts.
-- **Not checked:** the Mac's File menu entry in the running app (the menu bar needs the app in front), an import over a gigabyte, the physical iPad, and importing the local exports of real workspaces (section 8).
+- **Not checked:** the Mac's File menu entry in the running app (the menu bar needs the app in front) and the physical iPad. An import over a gigabyte and the local exports of real workspaces were checked in section 8 (above).
 
 ## Block handles drag and turn blocks in Live Preview: 2026-11-26
 
