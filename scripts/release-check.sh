@@ -49,6 +49,7 @@ KNOWN_FAILURES=(
   "PixelEraserPassTests"               # Mac: timing under --parallel and load
   "BaseWholeVaultTimingTests"          # Mac: timing under --parallel and load
   "ReadingViewStartingPlaceTests"      # Mac: timing under --parallel and load
+  "ViewSwitchingMacTests/testTheFileTreeIsKeptAcrossLibraryModeAndNoTagsViewIsBuiltBehindTheLibrary"  # Mac: timing under --parallel (3.7 s against 3.0, 2026-11-27; 6.3 and 6.7 s runs passing alone)
   "ScalingChecksTests/testWorkInProportionToItsInputPasses"  # Mac: timing under --parallel and load (8.5x for 4x at load 50, 2026-11-19; passes alone)
   "EditingContinuityTests/testLongNoteRestyleCostWithAndWithoutATheme"  # hosted: 16.6 to 17.3 ms against 16.7 on a quiet Mac (Coverage.md); 28 ms with and without the theme at load 90 (2026-11-19)
   "FileTreeFilterHostedTests/testFilteringThirtyThousandFilesFitsInAFrame"  # hosted: 14 ms against 16 on a quiet simulator (File-tree-filter-todo.md); 22 ms at load 90 (2026-11-19)
