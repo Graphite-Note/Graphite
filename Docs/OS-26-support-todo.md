@@ -35,4 +35,5 @@ Issue: [#213](https://github.com/Graphite-Note/Graphite/issues/213)
 - [ ] Run the Mac app on macOS 26: open a vault, a note, a PDF with markup, the Library; the camera preview of a video recording; a neural voice reading (silently routed).
 - [ ] Run the iPad app on an iPadOS 26 simulator or device: the bar's More menu in a note, a PDF, a canvas and an empty tab; Library drag of one tile; a recording interrupted by another app's audio.
 - [ ] Hosted iPad suite on an iPadOS 26 simulator.
-- [ ] TestFlight: the build's minimum OS shows 26.0 once the branch is merged and uploaded.
+- [x] TestFlight: the build's minimum OS shows 26.0 once the branch is merged and uploaded.
+  Done 2026-11-27: App Store Connect's `minOsVersion` is 26.0 for every build uploaded since the merge, read from `/iris/v1/builds`: iOS 20261119.2258, 20261123.2116, 20261123.2132, 20261124.0759 and 20261124.1608, and Mac 20261123.2149, 20261124.0804 and 20261124.1618 (the newest two of main 0812f8ff).
