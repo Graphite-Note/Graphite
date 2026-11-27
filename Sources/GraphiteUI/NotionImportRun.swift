@@ -2,17 +2,19 @@
  * File: NotionImportRun.swift
  * ---------------------------
  * Layer: UI
- * Description: The work of one import of Notion's HTML export, away from the main actor: the chosen zips or folder
- *              read with the Importer and written into a new folder of the vault.
+ * Description: The work of one import from Notion, away from the main actor: the chosen zips or folder of Notion's
+ *              HTML export, or the workspace read through Notion's API, written with the Importer into a new folder of
+ *              the vault or over an earlier import.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
 import ImporterCore
+import ImporterFileSystem
 import NotionImport
 
 /// What an import of Notion's export has done so far: the pages written of all the export's pages.
@@ -40,6 +42,10 @@ struct NotionImportSummary: Equatable, Sendable {
     var wasCancelled = false
     /// Why nothing could be imported, as the person reads it; nil when the import ran.
     var failureMessage: String?
+    /// Why an import through the API ended before its end (a revoked token, Notion unreachable), with what it wrote kept.
+    var stoppedBecause: String?
+    /// Whether the import updated an earlier import of the same workspace instead of making a new folder.
+    var updatedEarlierImport = false
 }
 
 /// The work of one import of Notion's HTML export. The chosen files are Notion's zip (or the `Part-N` zips of a large
@@ -124,6 +130,59 @@ struct NotionImportRun: Sendable {
         let day = calendar.dateComponents([.year, .month, .day], from: date)
         let year = day.year ?? 0, month = day.month ?? 0, dayOfMonth = day.day ?? 0
         return String(format: "%04d-%02d-%02d", year, month, dayOfMonth)
+    }
+
+    /// Imports the workspace `client` reads through Notion's API into a new folder "Notion" in `directory`, or over the
+    /// earlier import in `earlierImport`, where only what nobody changed since is replaced.
+    func runAPI(client: NotionAPIClient, into directory: GraphiteCore.VaultPath, updating earlierImport: GraphiteCore.VaultPath?,
+                progress: AsyncStream<NotionImportProgress>.Continuation) async -> NotionImportSummary {
+        var summary = NotionImportSummary()
+        summary.updatedEarlierImport = earlierImport != nil
+        progress.yield(NotionImportProgress())
+        let writtenFiles = NotionImportWrittenFiles(deliver: filesDidChange)
+        do {
+            let folder: GraphiteCore.VaultPath
+            if let earlierImport {
+                folder = earlierImport
+            } else {
+                folder = try await store.uniquePath(directory: directory, stem: Self.folderName, extension: "")
+            }
+            summary.folder = folder
+            let destination = NotionImportDestination(store: store, pause: pause, filesWritten: writtenFiles)
+            let options = NotionAPIImportOptions(destinationFolder: try Self.importerPath(of: folder), importDate: Self.dayText(of: importDate, in: calendar)) {
+                finishedPageCount, pageCount in
+                progress.yield(NotionImportProgress(finishedPageCount: finishedPageCount, pageCount: pageCount))
+            }
+            let result = earlierImport == nil
+                ? try await NotionAPIImporter.importWorkspace(client: client, into: destination, options: options)
+                : try await NotionAPIImporter.updateImport(client: client, in: destination, options: options)
+            summary.reportPath = try NotionImportDestination.vaultPath(of: result.reportPath)
+            summary.noteCount = result.report.writtenCount(of: .note)
+            summary.baseCount = result.report.writtenCount(of: .base)
+            summary.attachmentCount = result.report.writtenCount(of: .attachment)
+            summary.findingCount = result.report.findings.count
+            summary.wasCancelled = result.wasCancelled
+            summary.stoppedBecause = result.stoppedBecause
+        } catch let refusal as NotionAPIError {
+            summary.failureMessage = "Notion could not be read: \(refusal.description)"
+        } catch {
+            summary.failureMessage = Self.failureMessage(for: error)
+        }
+        await writtenFiles.deliverPending()
+        if let folder = summary.folder, (try? await store.fileExists(folder)) == true { await filesDidChange([folder]) } // Nothing to show when none was made.
+        return summary
+    }
+
+    /// The folders in `directory` holding an earlier import through Notion's API, which a new import can update: each
+    /// keeps the record `NotionAPIImporter` leaves there.
+    static func earlierImports(in directory: GraphiteCore.VaultPath, root: URL) -> [GraphiteCore.VaultPath] {
+        guard let folder = try? directory.url(in: root) else { return [] } // Not a folder of the vault: nothing to update there.
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [] // Unlisted: the sheet offers a new folder alone.
+        return names.sorted().compactMap { name in
+            let record = folder.appendingPathComponent(name).appendingPathComponent(".notion-import.json")
+            guard FileManager.default.fileExists(atPath: record.path) else { return nil }
+            return try? GraphiteCore.VaultPath(directory.rawValue.isEmpty ? name : directory.rawValue + "/" + name) // A name no vault path takes is skipped.
+        }
     }
 
     /// An error that stopped the import before its first page, as the person reads it.

@@ -4,6 +4,16 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-27.
 
+## Import from Notion through Notion's API, on a branch until the Importer's release: 2026-11-27
+
+[Notion-import-todo.md](Notion-import-todo.md) section 5's last item (issue #230), on the branch `notion-api-sheet`, which pins the Importer to its pull request 3 until a release holds it. The sheet's From picker offers Notion's API: the integration's token, kept in the device's keychain (`NotionTokenStore`), and a new folder or an earlier import to update ([Architecture](Architecture.md), "Importing Notion's export").
+
+- **Automated tests, passing on macOS:** `NotionAPIImportRunTests` (4: the token sent to `api.notion.com` alone, never to a file's address, a look-alike server or after a redirect elsewhere; the token kept trimmed in the keychain and forgotten; a made-up workspace answered without a network imported into a new folder, then updated with a note edited in the vault kept; a token Notion refuses ending in a message), and `NotionImportRunTests`, `NotionImportWorkspaceTests`, `CreatableItemTests` after the 0.2.0 renames.
+- **Hosted, in an iPad simulator** (iPad Pro 13-inch (M5), iOS 27.2): `NotionAPIImportHostedTests` (3: the app's own keychain, an import through the workspace that the index finds and an update keeping an edited note, the API form laid out).
+- **Checked in the iPad simulator through the sheet** (an XCUITest probe on the installed app, its vault made through Create New Vault): Notion's API chosen, a made-up token typed, Import, and Notion's real server refusing it, shown as "Notion Import Failed" with "Notion refused the token (API token is invalid.)"; the sheet opened again keeps the token and Forget Token removes it.
+- **Checked on the Mac** in a copy with its own bundle identifier: File › Import from Notion… and the API form, Import disabled until a token is given. The token was not typed there (background control types into no password field).
+- **Not established:** an import from a real Notion workspace (no account), the Mac's hosted run (it stopped before its first test, as described in the todo), the physical iPad.
+
 ## MermaidDiagrams 0.8.0 and 0.8.1, the redesign released: 2026-11-27
 
 `Docs/Native-diagrams-todo.md` (Redesign, issue #225, and Speed, issue #223). Graphite pins MermaidDiagrams 0.8.1: 0.8.0 is the redesign (reading, layout, scene and SVG as flat records over the text's bytes, every drawing as 0.7.0 drew it), 0.8.1 adds `DiagramScene.storageIdentifier`. Checking Graphite against 0.8.0 found two costs of its computed `DiagramScene.items`, which makes every shape's path on each read. The iPad's diagram pictures (`ReadingDiagramPictureKey`, `ReadingDiagramPlacement`) told scenes apart by the address of the items array, a new array on each read, so a painted picture was not found again for its scene and the diagrams around one shown were not painted ahead (two failures of `ReadingDiagramPicturesHostedTests.testTheNeighboursOfADiagramShownArePaintedAhead` in an iPad simulator). They now use `storageIdentifier`, which the scene's copies share. The Mac's reading view (`ReadingDiagramScenePainting`) read `items` twice per item, which made every path again for each item, and now reads them once.

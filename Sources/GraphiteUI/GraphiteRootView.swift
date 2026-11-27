@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.71
- * Date: 26/11/2026
+ * Version: 0.72
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -368,6 +368,7 @@ struct GraphiteRootView: View {
                                                  close: workspace.endNotebookImport))
             .modifier(NotionImportPresentation(choice: $workspace.notionImportChoice, session: workspace.notionImport,
                                                start: { sources, directory in workspace.importNotionExport(sources, into: directory) },
+                                               startAPI: workspace.startNotionAPIImport, earlierImports: workspace.earlierNotionImports(in:),
                                                openReport: { path in Task { _ = await workspace.open(path) } }, close: workspace.endNotionImport))
             .onChange(of: workspace.selection) { workspace.notice = nil }
             // Editable, so the title bar's menu offers Rename, as for documents in Files.

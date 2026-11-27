@@ -2,11 +2,12 @@
  * File: NotionImportWording.swift
  * -------------------------------
  * Layer: UI
- * Description: The words of Import from Notion: how to export from Notion, the progress, and the summary of an import.
+ * Description: The words of Import from Notion: how to export from Notion or reach its API, the progress, and the
+ *              summary of an import.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -23,6 +24,32 @@ enum NotionImportWording {
         Pages become notes, databases become bases with their rows as notes, and attachments are copied beside them. \
         Nothing already in the vault is changed, and a report note lists what was simplified or left out.
         """
+
+    static let apiSteps = """
+        In Notion, open Settings › Connections › Develop or manage integrations, make an internal integration for your \
+        workspace and copy its token. Then share each page to import with it: in the page's ••• menu, Connections, and \
+        choose the integration. Subpages and databases inside a shared page come with it.
+        """
+
+    static let tokenFooter = "The token is kept in this device's keychain, never in the vault, and sent to Notion's API alone."
+
+    static let apiWhatIsImported = """
+        Pages become notes, databases become bases with their views, formulas and rows, and files Notion holds are \
+        downloaded beside them. A report note lists what was simplified or left out.
+        """
+
+    static let updateWhatIsImported = """
+        Each page and database goes where the earlier import put it. A note is replaced only when nobody changed it \
+        since: a note changed in the vault is kept, and the report lists it. New pages are added.
+        """
+
+    static let tokenNotKept = "The keychain did not keep the token, so the next import asks for it again."
+    static let tokenNotForgotten = "The keychain did not forget the token. Try again, or remove it in Keychain Access."
+
+    /// An earlier import offered for updating, as the sheet's folder menu says it.
+    static func updateDescription(of folder: VaultPath) -> String {
+        "Update the import in “\(folder.rawValue)”"
+    }
 
     /// Where the export goes, as the sheet says it: "Courses/Notion", or "Notion" in the vault's own folder.
     static func destinationDescription(of directory: VaultPath) -> String {
@@ -58,6 +85,12 @@ enum NotionImportWording {
         guard summary.failureMessage == nil else { return [] }
         var details: [String] = []
         if summary.wasCancelled { details.append("The import was stopped: what it wrote before stays, and the report says what was not imported.") }
+        if let stoppedBecause = summary.stoppedBecause {
+            details.append("The import ended early: \(stoppedBecause) What it wrote before stays.")
+        }
+        if summary.updatedEarlierImport {
+            details.append("Notes that changed in the vault since the earlier import were kept, as the report lists.")
+        }
         if summary.findingCount > 0 {
             details.append(summary.findingCount == 1 ? "The report lists 1 thing that was simplified or left out."
                 : "The report lists \(summary.findingCount.formatted()) things that were simplified or left out.")

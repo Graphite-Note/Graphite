@@ -2,12 +2,12 @@
  * File: NotionImportSession.swift
  * -------------------------------
  * Layer: UI
- * Description: One import of Notion's HTML export into the open vault, from the chosen export to closing its summary,
+ * Description: One import from Notion into the open vault, its HTML export or its API, from its start to closing its summary,
  *              with Pause, Resume and Cancel.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -36,11 +36,16 @@ final class NotionImportSession {
     }
 
     /// Starts importing `sources` (Notion's zips, or the folder one unzips to, chosen by the person) into `directory`.
-    init(sources: [URL], directory: VaultPath, run: NotionImportRun) {
-        pause = run.pause
+    convenience init(sources: [URL], directory: VaultPath, run: NotionImportRun) {
+        self.init(pause: run.pause) { progress in await run.run(sources: sources, into: directory, progress: progress) }
+    }
+
+    /// Starts `work`, an import that reports its progress to the continuation it is given, away from the main actor.
+    init(pause: NotionImportPause, work: @escaping @Sendable (AsyncStream<NotionImportProgress>.Continuation) async -> NotionImportSummary) {
+        self.pause = pause
         let (progressUpdates, continuation) = AsyncStream.makeStream(of: NotionImportProgress.self, bufferingPolicy: .bufferingNewest(1))
         let importTask = Task.detached(priority: .utility) {
-            let summary = await run.run(sources: sources, into: directory, progress: continuation)
+            let summary = await work(continuation)
             continuation.finish()
             return summary
         }

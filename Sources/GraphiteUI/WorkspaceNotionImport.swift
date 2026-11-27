@@ -2,15 +2,17 @@
  * File: WorkspaceNotionImport.swift
  * ---------------------------------
  * Layer: UI
- * Description: Opens Import from Notion's sheet and hands the chosen export to a Notion import session.
+ * Description: Opens Import from Notion's sheet and hands the chosen export, or the workspace read through Notion's
+ *              API with the integration's token, to a Notion import session.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
+import NotionImport
 
 /// The sheet of Import from Notion, for one vault folder.
 struct NotionImportChoice: Identifiable, Equatable {
@@ -53,6 +55,41 @@ extension WorkspaceModel {
         }, importDate: WallClock.currentDate(), calendar: BaseDateFormatting.displayCalendar)
         notionImport = NotionImportSession(sources: sources, directory: directory, run: run)
         return true
+    }
+
+    /// Imports the Notion workspace the integration's `token` reads, through Notion's API, into a new folder in
+    /// `directory`, or over the earlier import in `earlierImport`. The token stays in memory, handed to the transport
+    /// alone (`NotionURLSessionTransport`); tests give a transport of their own.
+    /// - Returns: Whether the import started.
+    @discardableResult
+    func importFromNotionAPI(token: String, into directory: VaultPath, updating earlierImport: VaultPath?,
+                             transport: (any NotionTransport)? = nil) -> Bool {
+        guard let store, !token.isEmpty || transport != nil else { return false }
+        guard notionImport == nil else {
+            errorMessage = "A Notion import is already running. Start this one when that import has finished."
+            return false
+        }
+        let pause = NotionImportPause()
+        let run = NotionImportRun(store: store, pause: pause, filesDidChange: { [weak self] paths in
+            self?.refreshIndex(for: paths)
+            await self?.refreshDirectory()
+        }, importDate: WallClock.currentDate(), calendar: BaseDateFormatting.displayCalendar)
+        let client = NotionAPIClient(transport: transport ?? NotionURLSessionTransport(token: token), clock: NotionContinuousClock())
+        notionImport = NotionImportSession(pause: pause) { progress in
+            await run.runAPI(client: client, into: directory, updating: earlierImport, progress: progress)
+        }
+        return true
+    }
+
+    /// Import from Notion's sheet starting an import through the API: `importFromNotionAPI` with the app's transport.
+    func startNotionAPIImport(token: String, into directory: VaultPath, updating earlierImport: VaultPath?) {
+        importFromNotionAPI(token: token, into: directory, updating: earlierImport)
+    }
+
+    /// The folders of `directory` holding an earlier import through Notion's API, which Import from Notion can update.
+    func earlierNotionImports(in directory: VaultPath) -> [VaultPath] {
+        guard let root = folderAccess?.root ?? store.map({ store in store.root }) else { return [] }
+        return NotionImportRun.earlierImports(in: directory, root: root)
     }
 
     /// Lets the import go once its summary is closed, so nothing of it stays.
