@@ -103,57 +103,18 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
 
     // MARK: The More menu
 
-    /// The More menu's entries: on the iPad its items are the system's overflow menu (•••) of the note's bar, which
-    /// the navigation item holds as a deferred element filled when the menu opens, as it is filled here.
-    private func moreMenuEntries(in controller: UIViewController) -> [(path: [String], action: UIAction)] {
-        navigationItems(in: controller.view).compactMap(\.additionalOverflowItems).flatMap { overflow in actions(in: [overflow]) }
-    }
-
-    private func navigationItems(in view: UIView) -> [UINavigationItem] {
-        ((view as? UINavigationBar)?.items ?? []) + view.subviews.flatMap(navigationItems)
-    }
-
-    /// The actions among `elements` at any depth, with the titles of the submenus that hold them; a deferred element
-    /// is filled as opening its menu fills it.
-    private func actions(in elements: [UIMenuElement], path: [String] = []) -> [(path: [String], action: UIAction)] {
-        elements.flatMap { element -> [(path: [String], action: UIAction)] in
-            if let submenu = element as? UIMenu { return actions(in: submenu.children, path: path + [submenu.title]) }
-            if let action = element as? UIAction { return [(path, action)] }
-            if let deferred = element as? UIDeferredMenuElement { return actions(in: fulfilledElements(of: deferred), path: path) }
-            return []
-        }
-    }
-
-    /// The elements a deferred element's provider gave, by element, filled as the menu opening asks for them.
-    private var providedElements: [ObjectIdentifier: [UIMenuElement]] = [:]
-
-    /// What a deferred element holds: its provider is asked once, as opening the menu asks it, and answers on the
-    /// main thread, at once or a moment later; empty until it has answered. UIKit keeps the provider in the
-    /// element's `_elementProvider`, a private object whose `__providerBlock` takes the completion.
-    private func fulfilledElements(of deferred: UIDeferredMenuElement) -> [UIMenuElement] {
-        let key = ObjectIdentifier(deferred)
-        if let elements = providedElements[key] { return elements }
-        providedElements[key] = []
-        guard let providerVariable = class_getInstanceVariable(UIDeferredMenuElement.self, "_elementProvider"),
-              let provider = object_getIvar(deferred, providerVariable) as? NSObject,
-              let blockVariable = class_getInstanceVariable(type(of: provider), "__providerBlock"),
-              let block = object_getIvar(provider, blockVariable) else { return [] }
-        typealias Completion = @convention(block) ([UIMenuElement]) -> Void
-        typealias Provider = @convention(block) (Completion) -> Void
-        let provide = unsafeBitCast(block as AnyObject, to: Provider.self)
-        provide { [weak self] elements in self?.providedElements[key] = elements }
-        return providedElements[key] ?? []
-    }
+    /// The More menu of the window's bar, read as opening it fills it.
+    private let moreMenu = MoreMenuReader()
 
     /// Runs the More menu's item as a tap on it runs it.
     private func choose(_ title: String, inSubmenu submenu: String, of controller: UIViewController) async throws {
         var entry: (path: [String], action: UIAction)?
         try await waitUntil("More › \(submenu) › \(title)", timeoutSeconds: 15) {
-            entry = self.moreMenuEntries(in: controller).first { entry in entry.action.title == title }
+            entry = self.moreMenu.entries(in: controller).first { entry in entry.action.title == title }
             return entry != nil
         }
         guard let entry else {
-            let titles = moreMenuEntries(in: controller).map { entry in (entry.path + [entry.action.title]).joined(separator: " › ") }
+            let titles = moreMenu.entries(in: controller).map { entry in (entry.path + [entry.action.title]).joined(separator: " › ") }
             return XCTFail("More has \(title): \(titles)")
         }
         XCTAssertEqual(entry.path.last, submenu, "\(title) is in More › \(submenu).")
@@ -262,6 +223,8 @@ final class NotePDFMenuHostedTests: SettingsHostedTestCase {
         XCTAssertGreaterThan(frame.width, Self.windowSize.width - 1, "The slide covers the window: \(frame)")
         attachScreenshot(named: "First slide from More › File › Start Presentation")
 
+        try SynthesizedInputCapability.requireItReachesSystemControls(
+            "A real swipe and tap move to the next slides (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
         await SynthesizedTouches(window: window).drag(from: CGPoint(x: frame.maxX - 200, y: frame.midY),
                                                       to: CGPoint(x: frame.minX + 200, y: frame.midY), steps: 6, stepSeconds: 0.012, holdSeconds: 0)
         _ = try await element(in: controller, "the second slide's number") { object in object.accessibilityLabel == "2 of 3" }

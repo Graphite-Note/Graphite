@@ -144,12 +144,13 @@ final class GraphTabHostedTests: SettingsHostedTestCase {
         await workspace.open(try VaultPath("Signals/Sampling.md"))
         for (name, size) in [("landscape", Self.windowSize), ("portrait", CGSize(width: Self.windowSize.height, height: Self.windowSize.width))] {
             let controller = try host(GraphiteRootView(workspace: workspace), size: size, horizontalSizeClass: .regular)
-            let showSidebar = try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" }
-            await follow(showSidebar)
+            try await showSidebar(in: controller)
             let graphButton = try await elementOnScreen(in: controller, "the Graph View button, in view") { object in
                 object.accessibilityLabel == "Graph View" && object.accessibilityTraits.contains(.button)
             }
             attachScreenshot(named: "Sidebar, \(name)")
+            try SynthesizedInputCapability.requireItReachesSystemControls(
+                "A real tap on Graph View opens the graph (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
             await follow(graphButton)
             try await waitUntil("the graph's tab in front") { workspace.layout.activeTab.coreView == .graph }
             await workspace.open(try VaultPath("Signals/Sampling.md"))

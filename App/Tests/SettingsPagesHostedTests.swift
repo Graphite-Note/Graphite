@@ -230,6 +230,9 @@ final class SettingsPagesHostedTests: SettingsHostedTestCase {
             $0.accessibilityLabel == "Font Size" && $0.accessibilityTraits.contains(.adjustable)
         }
         let sizeBefore = workspace.noteBaseFontSize
+        try SynthesizedInputCapability.requireItReachesSystemControls(
+            "A real drag of the slider sets the size and keeps it (16 to 21 points, checked on an iOS 26.5 simulator by XCUITest, "
+                + "2026-11-27); VoiceOver's own step was not.")
         slider.accessibilityIncrement()
         // Where the element found is the system's control itself, its step is the simulator's
         // accessibility bundle's to make. What such a step comes to is this value change, with

@@ -35,8 +35,7 @@ final class FileTreeFilterHostedTests: SettingsHostedTestCase {
     /// The window with its sidebar shown: a window with no file open starts with the sidebar hidden.
     private func showWindow(of workspace: WorkspaceModel) async throws -> UIViewController {
         let controller = try host(GraphiteRootView(workspace: workspace), size: CGSize(width: 1180, height: 820), horizontalSizeClass: .regular)
-        let showSidebar = try await element(in: controller, "Show Sidebar") { object in object.accessibilityLabel == "Show Sidebar" }
-        await follow(showSidebar)
+        try await showSidebar(in: controller)
         return controller
     }
 
@@ -85,6 +84,8 @@ final class FileTreeFilterHostedTests: SettingsHostedTestCase {
         attachScreenshot(named: "Filtered by bati")
 
         // Choosing the matching folder opens it with all it holds, and keeps it open once the filter is cleared.
+        try SynthesizedInputCapability.requireItReachesSystemControls(
+            "A real tap on a folder while filtering opens it (checked on an iOS 26.5 simulator by XCUITest, 2026-11-27).")
         await follow(batikha)
         try await waitUntil("the chosen folder shows all it holds") { self.shownRows(of: workspace).prefix(2) == ["Batikha-hour", "Batikha-hour/Steak.md"] }
         XCTAssertEqual(workspace.expandedFolders, [try VaultPath("Courses")], "The tree's own expanded folders wait as they were")
