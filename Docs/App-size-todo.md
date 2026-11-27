@@ -2,7 +2,7 @@
 
 Created: 2026-10-24. Issue: [#105](https://github.com/Graphite-Note/Graphite/issues/105).
 
-Status, 2026-11-19: section 1 has the link map left (its other items accepted or moved to section 3, #216); section 2 waits only for a check on a TestFlight install; section 3 is later. Before: main is over its size budget on both platforms, so `scripts/archive-for-testflight.sh` stops before the next upload. Section 1 is not started; section 2 (the welcome tour's pictures with the app) is built and tested in the simulator and the Mac package, and waits for its check on a TestFlight install.
+Status, 2026-11-27: section 1 is done (its parts named by module, the link map, on 2026-11-27; its other items accepted or moved to section 3, #216); section 2 waits only for a check on a TestFlight install; section 3 is later. Before: main is over its size budget on both platforms, so `scripts/archive-for-testflight.sh` stops before the next upload. Section 1 is not started; section 2 (the welcome tour's pictures with the app) is built and tested in the simulator and the Mac package, and waits for its check on a TestFlight install.
 
 ## Request
 
@@ -32,7 +32,21 @@ The growth is all in the binary; assets and resource bundles did not change. Sym
 - ~~The PostgreSQL Mirror's client costs nothing in the app while the plugin is off, or its size is accepted. The mirror feeds desktop apps such as QGIS; one option is to build it only into the Mac app.~~ Moved to #216 on 2026-11-19 (section 3), decided: "that plugin should not ship with the app, but that is a later discussion".
 - [x] `MermaidDiagrams` within its size target, or a new target agreed in `Docs/Native-diagrams-todo.md`.
   Done 2026-11-19: the package's 1.3 MB was accepted as its target ("Accept, move rest"), recorded in `Docs/Native-diagrams-todo.md`'s Performance targets.
-- [ ] The remaining growth named by module (a link map of the Release build) and each part kept or moved out.
+- [x] The remaining growth named by module (a link map of the Release build) and each part kept or moved out.
+  Done 2026-11-27: a Release build of the iOS app from main 6f15780e (`xcodebuild build -configuration Release -destination generic/platform=iOS LD_GENERATE_MAP_FILE=YES`), its app binary's link map summed by the object each symbol comes from (each package target is linked as one prelinked object, so the sums are per module; code and data of named symbols, before stripping): 68.8 MB in all.
+
+  | Part | Size | Modules | Kept or moved |
+  | --- | --- | --- | --- |
+  | Graphite's own code | 25.4 MB | GraphiteUI 19.0, GraphiteCore 4.4, GraphiteApple 1.5, GraphiteIndex 0.6 | kept |
+  | Read Aloud's neural voices | 20.4 MB | Cmlx 10.4, MLXLMCommon 2.0, MLXLLM 2.0, HuggingFace 1.6, MLXAudioTTS 0.9, Jinja 0.7, MLX 0.6, MLXAudioCodecs 0.5, GraphiteVoices 0.3, MLXNN 0.3, Hub 0.2, Tokenizers 0.2 | to section 3: linked whether or not a voice is downloaded; MLXLLM, MLXLMCommon, Jinja and the tokenizers come with `mlx-audio-swift`'s text-to-speech product, not from Graphite's own use |
+  | The PostgreSQL Mirror's client | 9.3 MB | BoringSSL 2.8, AsyncAlgorithms 1.0, PostgresNIO 1.0, SwiftNIO 2.1, connection pool 0.5, CryptoExtras 0.4, SwiftASN1 0.3, GraphitePostgreSQLMirror 0.2 | section 3 (#216), as decided |
+  | `MermaidDiagrams` | 5.5 MB | MermaidDiagrams | kept; 1.3 MB was accepted on 2026-11-19, and the 0.8.0 redesign since has more than quadrupled it, so its size is one of section 3's choices |
+  | Reading view and Markdown | 2.4 MB | Textual 1.2, swift-markdown 0.6, SwiftUIMath 0.4, cmark-gfm 0.2 | kept |
+  | GRDB (the index) | 2.2 MB | GRDB | kept |
+  | Importers | 1.2 MB | NotebookImport 0.7, NotionImport 0.3, ImporterCore 0.2 | kept |
+  | Pictures, YAML, the rest | 2.4 MB | SwiftDraw 1.0, Yams 0.5, linker-made symbols 0.8 | kept |
+
+  Beside the binary, the app bundle holds the asset catalog (28 MB), SwiftUIMath's fonts (7.1 MB) and MLX's Metal library (2.3 MB, `mlx-swift_Cmlx.bundle`), which goes with the voices. Which parts become downloads is section 3's second item.
 - ~~The budget recorded again (`scripts/app-size-budget.py --record`) only for growth that is accepted, and the next TestFlight upload passes without `--allow-size-growth`.~~ Moved to #216 on 2026-11-19 (section 3): what ships and what becomes a download is decided there first.
 
 ### 2. The welcome tour's pictures arrive with the app
