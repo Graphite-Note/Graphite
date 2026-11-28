@@ -80,27 +80,29 @@ final class UiLivePreviewImageLineTests: XCTestCase {
     /// What an earlier look-up of each picture left behind: where it was found and its decoded
     /// pixels, for the width it is shown at one pixel a point. The first frame of a new view
     /// draws those, since a look-up only ends after it.
-    private func rememberPictures(of pieces: [ImageLinePiece]) async throws {
+    private func rememberPictures(of pieces: [ImageLinePiece], textSize: Double = Double(NoteFontSize.defaultSize)) async throws {
         for embed in images(in: pieces) {
             let path = try VaultPath(embed.target)
             let location = try path.url(in: vault)
-            let pixelWidth = EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: embed.displaySize, displayScale: 1)
+            let shownSize = embed.displaySize?.scaled(by: NoteFontSize.zoomScale(forTextSize: textSize))
+            let pixelWidth = EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: shownSize, displayScale: 1)
             _ = try await ReadingImageCache.shared.thumbnail(for: location, kind: .block, displayPixelWidth: pixelWidth)
             LivePreviewEmbedImageLocations.remember(.init(path: path, location: location), for: embed, in: vault)
         }
     }
 
     /// Each embed's file is where its target says; the decoded pixels remembered for it are
-    /// what a first frame draws.
-    private func environment() -> LivePreviewEnvironment {
-        LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+    /// what a first frame draws. The text is at Graphite's default size unless given, where
+    /// a `|200` picture is 200 points wide.
+    private func environment(textSize: Double = Double(NoteFontSize.defaultSize)) -> LivePreviewEnvironment {
+        LivePreviewEnvironment(root: vault, textSize: textSize, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
                                resolve: { target, _ in try? VaultPath(target) },
                                open: { _ in }, follow: { _, _ in }, updateProperties: nil)
     }
 
-    private func firstFrame(of line: String, width: CGFloat) throws -> CGImage {
+    private func firstFrame(of line: String, width: CGFloat, textSize: Double = Double(NoteFontSize.defaultSize)) throws -> CGImage {
         let block = try XCTUnwrap(LivePreviewBlockScanner.blocks(in: line as NSString).first)
-        let renderer = ImageRenderer(content: LivePreviewWidgetView(block: block, environment: environment(), revealSource: {}, reportHeight: { _ in })
+        let renderer = ImageRenderer(content: LivePreviewWidgetView(block: block, environment: environment(textSize: textSize), revealSource: {}, reportHeight: { _ in })
             .environment(\.displayScale, 1)
             .frame(width: width))
         renderer.scale = 1
@@ -132,7 +134,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
     /// The width the editor gives the marker `- ` of a top-level bullet item in the test's text size.
     private func bulletMarkerWidth() -> Int {
         let marker = ImageLineListMarker(indentation: "", marker: "-", spacing: " ")
-        return Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: 17)).total.rounded(.up))
+        return Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: CGFloat(NoteFontSize.defaultSize))).total.rounded(.up))
     }
 
     // MARK: The reported line
@@ -163,6 +165,27 @@ final class UiLivePreviewImageLineTests: XCTestCase {
             }
             XCTAssertFalse(try isRed(rendered, x: 650, y: middleY), "No fourth picture in row \(row + 1).")
         }
+    }
+
+    /// ⌘+ made the text larger and left the pictures as they were. At 24-point text, half as
+    /// large again as the default 16, a `|200` picture is 300 points wide.
+    func testZoomedTextDrawsThePicturesWiderByAsMuchAsTheText() async throws {
+        for number in 1...9 { try writeRedImage(named: "Photo_\(number).JPG") }
+        try await rememberPictures(of: try imageLinePieces(Self.photoRow), textSize: 24)
+
+        // 700 points take two 300-point pictures and their gap; a third would need 908.
+        let rendered = try firstFrame(of: Self.photoRow, width: 700, textSize: 24)
+        // Two to one, each picture is 150 points tall: five rows and their four gaps, under 4 points of padding each side.
+        let spacing = Int(ImageLineFlowLayout.spacing)
+        XCTAssertEqual(rendered.height, 5 * 150 + 4 * spacing + 2 * 4, "The nine pictures take five rows of two.")
+        let middleY = 4 + 75
+        XCTAssertTrue(try isRed(rendered, x: 297, y: middleY), "The first picture is 300 points wide.")
+        XCTAssertFalse(try isRed(rendered, x: 301, y: middleY), "A gap follows it.")
+        XCTAssertTrue(try isRed(rendered, x: 300 + spacing + 2, y: middleY), "The second picture follows the gap.")
+        XCTAssertFalse(try isRed(rendered, x: 650, y: middleY), "No third picture in the row.")
+
+        let estimate = LivePreviewImageLineView.estimatedHeight(of: try imageLinePieces(Self.photoRow), columnWidth: 700, zoomScale: 1.5)
+        XCTAssertEqual(estimate, 5 * 225 + 4 * ImageLineFlowLayout.spacing + 8, "Without a height the estimate takes four by three, of the zoomed width.")
     }
 
     func testTheSourceShowsWhileTheCursorIsOnTheLineAndThePicturesOtherwise() {
@@ -506,7 +529,7 @@ final class UiLivePreviewImageLineTests: XCTestCase {
         let line = "1. ![[First.png|200]] ![[Second.png|200]]"
         try await rememberPictures(of: try imageLinePieces(line))
         let marker = ImageLineListMarker(indentation: "", marker: "1.", spacing: " ")
-        let markerWidth = Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: 17)).total.rounded(.up))
+        let markerWidth = Int(ImageLineListMarkerView.widths(of: marker, in: NoteTypography.standard.textFont(ofSize: CGFloat(NoteFontSize.defaultSize))).total.rounded(.up))
 
         // Room for one picture beside the number: the second wraps onto a row of its own.
         let rendered = try firstFrame(of: line, width: CGFloat(markerWidth + 300))

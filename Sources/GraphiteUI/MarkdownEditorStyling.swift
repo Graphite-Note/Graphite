@@ -459,9 +459,11 @@ final class MarkdownEditorStyling {
     /// The pictures of the image lines `markup`'s selection is on, but for the embeds whose
     /// source it shows; none while the selection reveals nothing or the blocks describe older text.
     private func inlinePictures(revealedBy markup: RevealedMarkup?, in textView: any MarkdownStyledTextView) -> [InlinePicture] {
-        guard rendersBlocks, let markup, let root = environment?.root, !textState.cachesDescribeOldText else { return [] }
+        guard rendersBlocks, let markup, let environment, !textState.cachesDescribeOldText else { return [] }
+        let root = environment.root
         return LivePreviewInlinePictures.pictures(in: textState.blockEntries, revealedMarkup: markup, source: currentSource(of: textView),
-                                                  columnWidth: textView.renderedBlockColumnWidth) { embed in
+                                                  columnWidth: textView.renderedBlockColumnWidth,
+                                                  zoomScale: NoteFontSize.zoomScale(forTextSize: environment.textSize)) { embed in
             LivePreviewInlinePictures.lastDecodedThumbnail(of: embed, in: root)
         }
     }

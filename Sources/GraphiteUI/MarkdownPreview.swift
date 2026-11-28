@@ -25,6 +25,13 @@ struct ReadingConfiguration: Equatable, Sendable {
     /// padding on each side), so the text stays in place when a note switches between
     /// reading and writing.
     static let readableColumnWidth: CGFloat = 730
+
+    /// Graphite's readable column at `textSize`: 730 points at the default size, grown and
+    /// shrunk with the text as the theme's column is, so as many words fit on a line and
+    /// the note's pictures, as wide as the column, follow the text when it is zoomed.
+    static func readableColumnWidth(forTextSize textSize: Double) -> CGFloat {
+        readableColumnWidth * CGFloat(NoteFontSize.zoomScale(forTextSize: textSize))
+    }
     /// The least room beside the text: Live Preview's 28-point inset and its 5-point padding.
     static let minimumHorizontalMargin: CGFloat = 33
 
@@ -1020,7 +1027,9 @@ struct MarkdownPreview: View {
     @State private var pictureHover = ReadingPictureHover()
     @Environment(\.readingImageActions) private var imageActions
     /// The readable column: Graphite's, or the vault theme's line width at this text size.
-    private var readableColumnWidth: CGFloat { theme?.readableColumnWidth(forTextSize: configuration.textSize) ?? ReadingConfiguration.readableColumnWidth }
+    private var readableColumnWidth: CGFloat {
+        theme?.readableColumnWidth(forTextSize: configuration.textSize) ?? ReadingConfiguration.readableColumnWidth(forTextSize: configuration.textSize)
+    }
     @State private var hasRestoredPosition = false
     @State private var pendingRestorationOffset: CGFloat?
     /// Where this view was before it restored the saved position, when nothing was saved:
@@ -1166,6 +1175,7 @@ struct MarkdownPreview: View {
             #if canImport(UIKit)
             .environment(\.readingDiagramPictures, diagramPictures)
             #endif
+            .environment(\.embeddedImageZoomScale, NoteFontSize.zoomScale(forTextSize: configuration.textSize))
             // Runs again once blocks exist: a note opened by a link or a search match is
             // asked to scroll before it has built anything to scroll to.
             .task(id: "\(blocks.count)-\(headingScrollRequest?.token.uuidString ?? "")") {
@@ -3220,6 +3230,9 @@ extension EnvironmentValues {
     /// The widest, in points, a note's column shows an image on a line of its own; nil when
     /// the column is as wide as the window.
     @Entry var embeddedImageColumnWidth: CGFloat? = nil
+    /// How much the note's text is zoomed (`NoteFontSize.zoomScale`), which the widths
+    /// its pictures are given (`|300`) are multiplied by.
+    @Entry var embeddedImageZoomScale: Double = 1
 }
 
 /// The width an image on a line of its own is decoded for.
@@ -3642,19 +3655,23 @@ private struct ReadingImageBlock: View {
     let version: Int
     @Environment(\.readingImageActions) private var imageActions
     @Environment(\.embeddedImageColumnWidth) private var columnWidth
+    @Environment(\.embeddedImageZoomScale) private var zoomScale
     @Environment(\.displayScale) private var displayScale
     @State private var loadedThumbnail: ReadingThumbnail?
     @State private var didFail = false
 
+    /// The `|width` the note gives, zoomed with the text.
+    private var shownDisplaySize: EmbedDisplaySize? { displaySize?.scaled(by: zoomScale) }
+
     private var displayPixelWidth: Int? {
-        EmbeddedImageDisplayWidth.pixelWidth(columnWidth: columnWidth, displaySize: displaySize, displayScale: displayScale)
+        EmbeddedImageDisplayWidth.pixelWidth(columnWidth: columnWidth, displaySize: shownDisplaySize, displayScale: displayScale)
     }
 
     var body: some View {
         Group {
             if let thumbnail = loadedThumbnail ?? (didFail ? nil : ReadingImageCache.shared.lastThumbnail(for: location, kind: .block, displayPixelWidth: displayPixelWidth)) {
                 EmbeddedImageView(image: thumbnail.image, aspectRatio: thumbnail.aspectRatio,
-                                  displayWidth: displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: thumbnail.aspectRatio)) },
+                                  displayWidth: shownDisplaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: thumbnail.aspectRatio)) },
                                   edit: thumbnail.isEditableDrawing ? imageActions?.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: imageActions.map { imageActions in { imageActions.viewImage(path) } },
                                   drawOnImage: DrawableImages.canDrawOn(path) ? imageActions?.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,

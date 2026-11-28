@@ -195,7 +195,8 @@ final class NoteLineWidthTests: XCTestCase {
         let margin = ReadingConfiguration.minimumHorizontalMargin
         let baseOffset = (Self.note as NSString).range(of: "```base").location
         for lineWidth in NoteLineWidth.allCases {
-            let columnWidth = lineWidth == .narrow ? ReadingConfiguration.readableColumnWidth : Self.windowWidth - 2 * margin
+            // The column grows with the text from its 730 points at 16-point text.
+            let columnWidth = lineWidth == .narrow ? ReadingConfiguration.readableColumnWidth(forTextSize: ReadingConfiguration().textSize) : Self.windowWidth - 2 * margin
             let columnMinX = (Self.windowWidth - columnWidth) / 2
             let columnMaxX = columnMinX + columnWidth
             let (frames, position) = try await readingFrames(vault: vault, lineWidth: lineWidth)

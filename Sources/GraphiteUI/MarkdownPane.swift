@@ -453,7 +453,7 @@ struct MarkdownPane: View {
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, pictureTabOpening: workspace.pictureTabOpening,
             indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
-            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
+            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth(forTextSize: noteTextSize) : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
             pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,

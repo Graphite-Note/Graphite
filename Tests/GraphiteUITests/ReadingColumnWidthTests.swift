@@ -55,4 +55,39 @@ final class ReadingColumnWidthTests: XCTestCase {
         let withoutWidth = NoteThemeStyle(tokens: VaultThemeTokens(fingerprint: "test", themeName: "Test", light: ThemeModeTokens(), dark: ThemeModeTokens()))
         XCTAssertNil(withoutWidth.readableColumnWidth(forTextSize: 16), "Without a theme width the reading view keeps its 730 points.")
     }
+
+    // MARK: Zooming with the text
+
+    func testTheZoomIsTheTextSizeOverSixteenNeverBelowElevenPoints() {
+        XCTAssertEqual(NoteFontSize.zoomScale(forTextSize: 16), 1)
+        XCTAssertEqual(NoteFontSize.zoomScale(forTextSize: 24), 1.5)
+        XCTAssertEqual(NoteFontSize.zoomScale(forTextSize: 8), 11.0 / 16, "A very small text size is treated as 11, as a theme's column is.")
+        XCTAssertEqual(NoteFontSize.zoomScale(forTextSize: .infinity), 1, "A size that is not a number does not zoom.")
+        XCTAssertEqual(NoteFontSize.zoomScale(forTextSize: .nan), 1)
+    }
+
+    /// ⌘+ grew the text and left the column, and the pictures as wide as it, as they were.
+    func testGraphitesColumnGrowsAndShrinksWithTheText() {
+        XCTAssertEqual(ReadingConfiguration.readableColumnWidth(forTextSize: 16), 730)
+        XCTAssertEqual(ReadingConfiguration.readableColumnWidth(forTextSize: 24), 1_095)
+        XCTAssertEqual(ReadingConfiguration.readableColumnWidth(forTextSize: 12), 547.5)
+    }
+
+    func testTheEditorsColumnIsTheReadingColumnAtThisSizeAndTheTextContainersPadding() {
+        var configuration = EditorConfiguration()
+        configuration.textSize = 16
+        XCTAssertEqual(configuration.readableColumnWidth, 740)
+        #if os(macOS)
+        XCTAssertEqual(configuration.readableColumnWidth, MarkdownMacTextView.graphiteReadableColumnWidth)
+        #else
+        XCTAssertEqual(configuration.readableColumnWidth, MarkdownTextView.readableColumnWidth)
+        #endif
+        XCTAssertEqual(EditorConfiguration.textContainerPadding, NSTextContainer().lineFragmentPadding)
+        configuration.textSize = 20
+        XCTAssertEqual(configuration.readableColumnWidth, 730 * 20 / 16 + 10, "Zoomed, the text lines up with the reading view's; the padding stays 5 points.")
+        var light = ThemeModeTokens()
+        light.lineWidth = 640
+        configuration.theme = NoteThemeStyle(tokens: VaultThemeTokens(fingerprint: "test", themeName: "Test", light: light, dark: ThemeModeTokens()))
+        XCTAssertEqual(configuration.readableColumnWidth, 640 * 20 / 16 + 10, "The theme's width at this size, and 5 points each side.")
+    }
 }

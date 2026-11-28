@@ -49,9 +49,11 @@ enum LivePreviewInlinePictures {
     /// The pictures of the image lines in `entries` that `revealedMarkup`'s selection is on,
     /// leaving out the embeds the selection touches, whose source shows. An embed whose
     /// picture no view has decoded yet keeps its text, as before the line showed pictures.
-    /// - Parameter thumbnail: The decoded picture of an embed, nil when there is none at hand.
+    /// - Parameters:
+    ///   - zoomScale: How much the note's text is zoomed (`NoteFontSize.zoomScale`), which a `|width` follows.
+    ///   - thumbnail: The decoded picture of an embed, nil when there is none at hand.
     static func pictures(in entries: [LivePreviewBlockEntry], revealedMarkup: RevealedMarkup, source: NSString, columnWidth: CGFloat,
-                         thumbnail: (EmbedReference) -> ReadingThumbnail?) -> [InlinePicture] {
+                         zoomScale: Double = 1, thumbnail: (EmbedReference) -> ReadingThumbnail?) -> [InlinePicture] {
         guard columnWidth > 0 else { return [] }
         let selection = revealedMarkup.selection
         var pictures: [InlinePicture] = []
@@ -63,7 +65,7 @@ enum LivePreviewInlinePictures {
                 let range = NSRange(location: entry.range.location + embed.range.location, length: embed.range.length)
                 guard !revealedMarkup.showsInlineElement(at: range), isEmbed(embed, at: range, in: source),
                       let found = thumbnail(embed) else { continue }
-                let pictureSize = size(of: embed, aspectRatio: found.aspectRatio, columnWidth: columnWidth)
+                let pictureSize = size(of: embed, aspectRatio: found.aspectRatio, columnWidth: columnWidth, zoomScale: zoomScale)
                 pictures.append(InlinePicture(range: range, layout: InlinePictureLayout(image: found.image, size: pictureSize)))
             }
         }
@@ -87,9 +89,11 @@ enum LivePreviewInlinePictures {
     }
 
     /// The size an image line's view gives the picture (`LivePreviewEmbedView`): its `|width`,
-    /// fitted inside a `|widthxheight`, or the column's width, never wider than the column.
-    static func size(of embed: EmbedReference, aspectRatio: CGFloat, columnWidth: CGFloat) -> CGSize {
-        let givenWidth = embed.displaySize.map { displaySize in CGFloat(displaySize.fittedWidth(aspectRatio: Double(aspectRatio))) } ?? columnWidth
+    /// fitted inside a `|widthxheight`, or the column's width, never wider than the column;
+    /// the given size zoomed by `zoomScale`, as the view's is.
+    static func size(of embed: EmbedReference, aspectRatio: CGFloat, columnWidth: CGFloat, zoomScale: Double = 1) -> CGSize {
+        let shownSize = embed.displaySize?.scaled(by: zoomScale)
+        let givenWidth = shownSize.map { displaySize in CGFloat(displaySize.fittedWidth(aspectRatio: Double(aspectRatio))) } ?? columnWidth
         let width = max(1, min(givenWidth, columnWidth - 2 * InlinePictureLayout.horizontalPadding))
         return CGSize(width: width, height: aspectRatio > 0 ? width / aspectRatio : width)
     }

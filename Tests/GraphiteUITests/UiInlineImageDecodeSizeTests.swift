@@ -60,8 +60,9 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
         }
     }
 
+    /// At Graphite's default text size, where a `|250` picture is 250 points wide.
     private func environment() -> LivePreviewEnvironment {
-        LivePreviewEnvironment(root: vault, textSize: 17, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+        LivePreviewEnvironment(root: vault, textSize: Double(NoteFontSize.defaultSize), colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
                                resolve: { target, _ in try? VaultPath(target) }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
     }
 

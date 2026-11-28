@@ -45,6 +45,18 @@ struct EditorConfiguration: Equatable {
     var accentHex = GraphiteTheme.defaultAccentHex
     /// The note's name shown as a large title above the text, or nil.
     var inlineTitle: String?
+
+    /// The editor's readable column at this text size: the reading view's text column (the
+    /// theme's line width, else Graphite's, both grown and shrunk with the text, so pictures
+    /// as wide as the column follow ⌘+ and ⌘– as the text does) and the text container's
+    /// 5-point padding on each side, so the text stays in place between reading and writing.
+    var readableColumnWidth: CGFloat {
+        (theme?.readableColumnWidth(forTextSize: textSize) ?? ReadingConfiguration.readableColumnWidth(forTextSize: textSize))
+            + 2 * Self.textContainerPadding
+    }
+
+    /// TextKit's `lineFragmentPadding`, beside the text on each side of the column.
+    static let textContainerPadding: CGFloat = 5
 }
 
 /// Obsidian's inline title: the note's name, larger than a first-level heading.

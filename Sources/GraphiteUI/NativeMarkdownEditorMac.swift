@@ -90,7 +90,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         textView.isRichText = false
         textView.quickFontSize = actions.quickFontSize
         textView.readableColumnWidth = configuration.usesReadableLineLength
-            ? (configuration.theme?.readableColumnWidth(forTextSize: configuration.textSize).map { width in width + 10 } ?? MarkdownMacTextView.graphiteReadableColumnWidth) : nil
+            ? configuration.readableColumnWidth : nil
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isContinuousSpellCheckingEnabled = configuration.usesSpellChecking
@@ -154,7 +154,7 @@ struct NativeMarkdownEditor: NSViewRepresentable {
         if coordinator.linkPreviews.use(linkPreviews, sourceNote: session.path) { textView.updateTrackingAreas() }
         (textView as? MarkdownMacTextView)?.quickFontSize = actions.quickFontSize
         (textView as? MarkdownMacTextView)?.readableColumnWidth = configuration.usesReadableLineLength
-            ? (configuration.theme?.readableColumnWidth(forTextSize: configuration.textSize).map { width in width + 10 } ?? MarkdownMacTextView.graphiteReadableColumnWidth) : nil
+            ? configuration.readableColumnWidth : nil
         (textView as? MarkdownMacTextView)?.suspendReadingFollow = suspendReadingFollow
         // Plugins that start, or start listening, after the editor was made reach it here.
         (textView as? MarkdownMacTextView)?.pluginContextMenuItems = coordinator.actions.pluginContextMenuItems == nil ? nil : { [weak coordinator] in

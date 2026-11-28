@@ -265,17 +265,16 @@ public struct GraphiteCommands: Commands {
         commandsWithShortcuts
         Divider()
         // Settings › Appearance › Font › Quick Font Size Adjustment, as in Obsidian; the size
-        // is the vault's, so the commands are there only while a vault is open.
+        // is the vault's, so the commands are there only while a vault is open. They stay
+        // enabled at the default size and at the ends of the range, where they change
+        // nothing: a disabled item left ⌘0 pressed again with no menu item, and the Mac beeped.
         if let workspace, workspace.adjustsNoteFontSizeQuickly {
             Button("Make Text Bigger") { workspace.adjustNoteBaseFontSize(bySteps: 1) }
                 .keyboardShortcut(shortcut(.increaseFontSize))
-                .disabled(workspace.noteBaseFontSize >= NoteFontSize.adjustableRange.upperBound)
             Button("Make Text Smaller") { workspace.adjustNoteBaseFontSize(bySteps: -1) }
                 .keyboardShortcut(shortcut(.decreaseFontSize))
-                .disabled(workspace.noteBaseFontSize <= NoteFontSize.adjustableRange.lowerBound)
             Button("Default Text Size") { workspace.resetNoteBaseFontSize() }
                 .keyboardShortcut(shortcut(.resetFontSize))
-                .disabled(workspace.noteBaseFontSize == NoteFontSize.defaultSize)
             Divider()
         }
     }

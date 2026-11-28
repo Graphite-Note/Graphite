@@ -156,6 +156,8 @@ final class LivePreviewRenderedBlocks {
 
     private struct BlockEstimate {
         let columnWidth: CGFloat
+        /// The text size it was made at, which the pictures' `|width` is zoomed by.
+        let textSize: Double
         let height: CGFloat
         /// The estimate from the block's source alone, which its view's height is compared with.
         let sourceEstimate: CGFloat
@@ -267,15 +269,19 @@ final class LivePreviewRenderedBlocks {
 
     /// The block's estimate from its source, corrected by what the blocks of its kind measured.
     private func estimate(of entry: LivePreviewBlockEntry, columnWidth: CGFloat, configuration: EditorConfiguration) -> BlockEstimate {
-        let kept = estimatedHeights[entry.key].flatMap { estimate in estimate.columnWidth == columnWidth ? estimate : nil }
+        let kept = estimatedHeights[entry.key].flatMap { estimate in
+            estimate.columnWidth == columnWidth && estimate.textSize == configuration.textSize ? estimate : nil
+        }
         let learningKey = kept?.learningKey
             ?? BlockEstimateLearning.Key(blockKind: entry.block.kind, columnWidth: columnWidth, textSize: configuration.textSize,
                                          typography: configuration.typography, themeFingerprint: configuration.theme?.tokens.fingerprint ?? "")
         let scale = learningKey.flatMap { key in Self.measuredHeights.estimates.scale(for: key) }
         if let kept, BlockEstimateLearning.isUnchanged(kept.scale, now: scale) { return kept }
-        let sourceEstimate = kept?.sourceEstimate ?? LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth)
-        let estimate = BlockEstimate(columnWidth: columnWidth, height: (sourceEstimate * (scale ?? 1)).rounded(), sourceEstimate: sourceEstimate,
-                                     learningKey: learningKey, scale: scale)
+        let sourceEstimate = kept?.sourceEstimate
+            ?? LivePreviewBlockHeightEstimate.height(of: entry.block, columnWidth: columnWidth,
+                                                     zoomScale: NoteFontSize.zoomScale(forTextSize: configuration.textSize))
+        let estimate = BlockEstimate(columnWidth: columnWidth, textSize: configuration.textSize, height: (sourceEstimate * (scale ?? 1)).rounded(),
+                                     sourceEstimate: sourceEstimate, learningKey: learningKey, scale: scale)
         estimatedHeights[entry.key] = estimate
         return estimate
     }
@@ -923,7 +929,8 @@ struct LivePreviewWidgetSignature: Equatable {
 /// The height a rendered block's view is given before it has measured itself, from what its
 /// source says of its size; the view's own height replaces it.
 enum LivePreviewBlockHeightEstimate {
-    static func height(of block: LivePreviewBlock, columnWidth: CGFloat) -> CGFloat {
+    /// - Parameter zoomScale: How much the note's text is zoomed, which the `|width` of its pictures follows.
+    static func height(of block: LivePreviewBlock, columnWidth: CGFloat, zoomScale: Double = 1) -> CGFloat {
         switch block.kind {
         case .frontmatter: return 44 + 34 * CGFloat(block.markdown.components(separatedBy: "\n").count - 2)
         case .table: return 40 * CGFloat(block.markdown.components(separatedBy: "\n").count - 1) + 16
@@ -949,7 +956,7 @@ enum LivePreviewBlockHeightEstimate {
             if DocumentKind(fileExtension: fileExtension) == .image { return 280 }
             return 60
         case .imageLine(let pieces):
-            return LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: columnWidth)
+            return LivePreviewImageLineView.estimatedHeight(of: pieces, columnWidth: columnWidth, zoomScale: zoomScale)
         }
     }
 }
