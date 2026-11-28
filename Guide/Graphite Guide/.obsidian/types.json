@@ -6,6 +6,11 @@
     "pages": "number",
     "visited": "date",
     "finished": "date",
+    "due": "date",
+    "points": "number",
+    "members": "number",
+    "sown": "date",
+    "week": "number",
     "tags": "tags",
     "aliases": "aliases"
   }

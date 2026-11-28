@@ -1,0 +1,32 @@
+filters:
+  and:
+    - file.hasTag("problem-set")
+    - file.inFolder("6 Everyday examples/Signals and Sound/Problem sets")
+properties:
+  file.name:
+    displayName: Problem set
+  note.due:
+    displayName: Due
+  note.status:
+    displayName: Status
+  note.points:
+    displayName: Points
+views:
+  - type: table
+    name: Due next
+    order:
+      - file.name
+      - due
+      - status
+      - points
+    sort:
+      - property: due
+        direction: ASC
+    summaries:
+      points: Average
+  - type: cards
+    name: Cards
+    order:
+      - file.name
+      - status
+      - due

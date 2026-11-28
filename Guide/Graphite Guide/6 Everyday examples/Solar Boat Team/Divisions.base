@@ -1,0 +1,33 @@
+filters:
+  and:
+    - file.hasTag("division")
+    - file.inFolder("6 Everyday examples/Solar Boat Team/Divisions")
+properties:
+  file.name:
+    displayName: Division
+  note.lead:
+    displayName: Lead
+  note.members:
+    displayName: Members
+  note.meets:
+    displayName: Meets on
+  note.building:
+    displayName: Building
+views:
+  - type: table
+    name: Divisions
+    order:
+      - file.name
+      - lead
+      - meets
+      - members
+      - building
+    summaries:
+      members: Sum
+  - type: cards
+    name: Cards
+    cardSize: 180
+    order:
+      - file.name
+      - lead
+      - meets

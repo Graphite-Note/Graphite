@@ -39,9 +39,9 @@ This guide is itself a vault: a folder of notes, pictures and PDFs that Graphite
 Both paths meet in the same notes about what Graphite can do:
 
 - **[[Handwriting and PDFs]]**: drawings inside notes, the Pencil tools, notebooks with real paper, writing on slides, recording a lecture, and marking up PDFs on the Mac.
-- **[[Making notes look good]]**: headings, lists, callouts, tables, math, code, diagrams and pictures, each shown next to what you type to make it.
+- **[[Making notes look good]]**: headings, lists, callouts, tables, math, code, diagrams and pictures, each shown next to what you type to make it, and [[Building a dashboard|a page like Notion's]] built step by step.
 - **[[Connecting notes]]**: links, tags, properties, Bases, the graph, the map, the canvas, daily notes and templates.
-- **[[Everyday examples]]**: recipes, favourite restaurants on a map, a course with slides, a weekend trip and a reading list, all linked to each other.
+- **[[Everyday examples]]**: recipes, favourite restaurants on a map, a course with slides, a weekend trip and a reading list, all linked to each other, and three dashboards: [[Signals and Sound|a course]], [[Solar Boat Team|a team's wiki]] and [[Balcony Garden|a garden]].
 - **[[Making it yours]]**: themes, fonts, features you can turn on and off, and keyboard shortcuts.
 
 ## How to read this guide

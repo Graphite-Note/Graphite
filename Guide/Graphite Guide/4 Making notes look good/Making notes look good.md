@@ -23,6 +23,7 @@ Every note in this part shows the Markdown in a grey box (**Copy this**), then w
 | [[Footnotes and comments]] | footnotes, and text only you see |
 | [[Pictures and embeds]] | pictures at any size, side by side, and other notes shown inside a note |
 | [[Web pages in notes]] | a web page inside a note |
+| [[Building a dashboard]] | a page like Notion's, built step by step: cover, icon, columns, links with icons, colours, a base, folds |
 
 > [!tip] Three ways to see a note
 > **Live Preview** shows the formatting while you write, and reveals the characters only around the cursor. The **reading view** (the **pencil** button, ⌘E) shows the finished note. **Source Mode** (**More** › **View**) shows the plain text. Try all three on this note.
