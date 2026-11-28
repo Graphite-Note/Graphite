@@ -218,17 +218,35 @@ extension CanvasSession {
         if let editedIdentifier = textEdit?.nodeIdentifier, target == .node(editedIdentifier) { return }
         endEditing()
         guard isWriting else {
+            if case .node(let identifier)? = target, identifier == focusedNodeIdentifier, let path = pictureOfImageCard(withIdentifier: identifier) {
+                pictureZoomRequest = path
+                return
+            }
             if case .node(let identifier)? = target { focusedNodeIdentifier = identifier } else { focusedNodeIdentifier = nil }
             return
         }
         switch target {
         case .node(let identifier)?:
+            if !extendsSelection, selectedNodeIdentifiers == [identifier], selectedEdgeIdentifiers.isEmpty,
+               let path = pictureOfImageCard(withIdentifier: identifier) {
+                // An image card tapped again once it is the selection zooms its picture, as a picture in a note does.
+                pictureZoomRequest = path
+                return
+            }
             if extendsSelection { toggleSelection(ofNode: identifier) } else { selectedNodeIdentifiers = [identifier]; selectedEdgeIdentifiers = [] }
         case .edge(let identifier)?:
             if extendsSelection { toggleSelection(ofEdge: identifier) } else { selectedNodeIdentifiers = []; selectedEdgeIdentifiers = [identifier] }
         case nil:
             if !extendsSelection { clearSelection() }
         }
+    }
+
+    /// The picture an image file's card shows; nil for any other card.
+    func pictureOfImageCard(withIdentifier identifier: String) -> VaultPath? {
+        guard case .file(let path, _)? = file.node(withIdentifier: identifier)?.content,
+              let vaultPath = try? VaultPath(path), // A card naming no vault path has no picture.
+              DocumentKind(path: vaultPath) == .image else { return nil }
+        return vaultPath
     }
 
     /// In Read, zooms to the card. In Write, as in Obsidian: edits a text card, renames

@@ -323,6 +323,40 @@ final class UiLivePreviewImageLineTests: XCTestCase {
                       "The list marker shows as written while the cursor is on its line, as before.")
     }
 
+    // MARK: Quotes and tasks (HUNT-380)
+
+    /// A picture in a quote, or in a task after its text, was left as its link text: those lines keep their text so the
+    /// quote's bar and the task's checkbox stay, and no view had decoded their pictures. As in Obsidian, they are drawn
+    /// among the line's text; the embed the cursor is in shows its source.
+    func testAPictureInAQuoteOrAfterATasksTextIsDrawnAmongTheText() async throws {
+        for name in ["Quoted.png", "Badge.png"] { try writeRedImage(named: name) }
+        let note = "Intro\n\n> ![[Quoted.png|90]]\n> A quoted picture.\n\n- [ ] A task with a picture ![[Badge.png|32]]\n\nAfter\n"
+        let (coordinator, textView, _) = try await makeEditor(text: note)
+        defer { withExtendedLifetime(coordinator) {} }
+        let source = note as NSString
+        let quoted = source.range(of: "![[Quoted.png|90]]"), badge = source.range(of: "![[Badge.png|32]]")
+        try await awaitConditionAfterLayout { self.picture(at: quoted, in: textView) != nil && self.picture(at: badge, in: textView) != nil }
+        XCTAssertEqual(picture(at: quoted, in: textView)?.size, CGSize(width: 90, height: 45), "The quote's picture at its width.")
+        XCTAssertEqual(picture(at: badge, in: textView)?.size, CGSize(width: 32, height: 16), "The task's picture at its width.")
+        XCTAssertTrue(showsSource(source.range(of: "A task with a picture"), in: textView), "The task keeps its text.")
+        XCTAssertFalse(isConcealedBlock(quoted.location, in: textView), "The quote's line is text, not a block.")
+
+        moveCursor(to: NSRange(location: badge.location + 4, length: 0), in: textView, coordinator)
+        XCTAssertTrue(showsSource(badge, in: textView), "The embed the cursor is in shows its source.")
+        XCTAssertNotNil(picture(at: quoted, in: textView), "The quote's picture stays drawn.")
+        moveCursor(to: NSRange(location: source.range(of: "After").location, length: 0), in: textView, coordinator)
+        XCTAssertNotNil(picture(at: badge, in: textView), "Leaving the task draws its picture again.")
+    }
+
+    func testOnlyQuotesAndTasksKeepTheirPicturesAsText() {
+        XCTAssertEqual(LivePreviewBlockScanner.pictureEmbedsKeptAsText(onLine: "> ![[a.png|90]]").map(\.target), ["a.png"])
+        XCTAssertEqual(LivePreviewBlockScanner.pictureEmbedsKeptAsText(onLine: "- [ ] Task ![[a.png|32]] and ![b|20](b.jpg)").map(\.target), ["a.png", "b.jpg"])
+        XCTAssertEqual(LivePreviewBlockScanner.pictureEmbedsKeptAsText(onLine: "> - [x] ![[a.png]]").map(\.target), ["a.png"])
+        for line in ["- ![[a.png|40]]", "Text ![[a.png|40]]", "> ![[Note]]", "> `![[a.png]]`", "- [ ] ![](https://example.com/a.png)", "> Quote only"] {
+            XCTAssertTrue(LivePreviewBlockScanner.pictureEmbedsKeptAsText(onLine: line).isEmpty, line)
+        }
+    }
+
     // MARK: Editor helpers
 
     private func makeEditorWithThreePictures() async throws -> (NativeMarkdownEditor.Coordinator, MarkdownMacTextView, NSScrollView) {

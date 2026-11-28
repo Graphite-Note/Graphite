@@ -261,6 +261,23 @@ public enum LivePreviewBlockScanner {
         return EmbedLocator.imageLinePieces(onLine: line)
     }
 
+    /// The pictures of a line that keeps its text in Live Preview although it embeds pictures: a quote's line, whose
+    /// `>` a rendered line would lose, and a task, whose checkbox must still tick (HUNT-380). Obsidian draws those
+    /// pictures among the line's text; the editor does the same with these embeds, their ranges counted in `line`.
+    /// Empty for any other line, and for a line with no picture of the vault.
+    public static func pictureEmbedsKeptAsText(onLine line: String) -> [EmbedReference] {
+        guard line.contains("![") else { return [] }
+        let firstCharacter = line.first { character in character != " " && character != "\t" }
+        let isQuote = firstCharacter == ">"
+        let isTask = !isQuote && MarkdownListSyntax.listLine(line).map { listLine in listLine.isListItem && listLine.taskStatus != nil } == true
+        guard isQuote || isTask, let pieces = EmbedLocator.imageLinePieces(onLine: line) else { return [] }
+        return pieces.compactMap { piece in
+            guard case .image(let embed) = piece,
+                  DocumentKind(fileExtension: (WikiLinkResolver.pathPart(embed.target) as NSString).pathExtension) == .image else { return nil }
+            return embed
+        }
+    }
+
     /// The pieces of a list item whose text embeds images, as `- ![[a.jpg|200]] ![[b.jpg|200]]`:
     /// its marker, then its text and images as a paragraph line's. Obsidian draws the bullet or
     /// number with the pictures beside it. A task keeps its text, so its checkbox can still be

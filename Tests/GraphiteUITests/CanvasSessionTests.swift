@@ -239,6 +239,34 @@ final class CanvasSessionTests: XCTestCase {
         XCTAssertEqual(session.file.edges.count, 2)
     }
 
+    /// HUNT-381: an image card tapped again once it is the selection asks for its picture's zoom, in Write and in Read;
+    /// the first tap only selects it, and a note's card is never zoomed.
+    func testAnImageCardTappedAgainOnceSelectedAsksToZoomItsPicture() async throws {
+        let pictureBoard = board.replacingOccurrences(of: "\"height\":300}\n", with: "\"height\":300},\n"
+            + "\t\t{\"id\":\"1000000000000004\",\"type\":\"file\",\"file\":\"Pictures/Badge.png\",\"x\":800,\"y\":0,\"width\":200,\"height\":200}\n")
+        try Data(pictureBoard.utf8).write(to: vault.appendingPathComponent(canvasPath.rawValue))
+        let session = try await openSession()
+        session.viewport = CanvasViewport(scale: 1, origin: CGPoint(x: -100, y: -100))
+        let pictureCard = try XCTUnwrap(session.file.node(withIdentifier: "1000000000000004"))
+        let pictureCenter = try viewCenter(of: pictureCard.id, in: session)
+        session.tap(atViewPoint: pictureCenter)
+        XCTAssertEqual(session.selectedNodeIdentifiers, [pictureCard.id])
+        XCTAssertNil(session.pictureZoomRequest, "The first tap selects the card.")
+        session.tap(atViewPoint: pictureCenter)
+        XCTAssertEqual(session.pictureZoomRequest, try VaultPath("Pictures/Badge.png"), "The second asks for the picture's zoom.")
+        XCTAssertEqual(session.selectedNodeIdentifiers, [pictureCard.id], "and keeps the card selected.")
+        session.pictureZoomRequest = nil
+        session.tap(atViewPoint: try viewCenter(of: "1000000000000003", in: session))
+        session.tap(atViewPoint: try viewCenter(of: "1000000000000003", in: session))
+        XCTAssertNil(session.pictureZoomRequest, "A note's card is not a picture.")
+
+        session.isWriting = false
+        session.tap(atViewPoint: pictureCenter)
+        XCTAssertNil(session.pictureZoomRequest, "In Read the first tap focuses the card.")
+        session.tap(atViewPoint: pictureCenter)
+        XCTAssertEqual(session.pictureZoomRequest, try VaultPath("Pictures/Badge.png"))
+    }
+
     func testTapsAndSelectionRectanglesSelectCardsAndConnections() async throws {
         let session = try await openSession()
         session.viewport = CanvasViewport(scale: 1, origin: CGPoint(x: -100, y: -100))

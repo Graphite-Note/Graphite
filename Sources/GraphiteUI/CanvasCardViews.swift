@@ -106,10 +106,17 @@ struct CanvasCardView: View {
             .clipShape(shape)
             .overlay { shape.strokeBorder(tint ?? CanvasPalette.neutralLine, lineWidth: CanvasPalette.cardBorderWidth) }
             // While writing, touches on a card move and select it; only the card being
-            // edited takes them itself.
-            .allowsHitTesting(!isWriting || isEdited)
+            // edited takes them itself, and a text card that is the selection, so a tap on
+            // its picture zooms it, as in a note (HUNT-381). The board's own taps are told too.
+            .allowsHitTesting(!isWriting || isEdited || isTextCardSelectedAlone)
             .overlay(alignment: .topLeading) { title }
             .modifier(CanvasCardAccessibilityModifier(accessibility: accessibility, isSelected: session.selectedNodeIdentifiers.contains(node.id)))
+    }
+
+    /// Whether this card is a text card and the whole selection.
+    private var isTextCardSelectedAlone: Bool {
+        guard case .text = node.content else { return false }
+        return session.selectedNodeIdentifiers == [node.id] && session.selectedEdgeIdentifiers.isEmpty
     }
 
     @ViewBuilder private var content: some View {

@@ -459,12 +459,54 @@ final class MarkdownEditorStyling {
     /// The pictures of the image lines `markup`'s selection is on, but for the embeds whose
     /// source it shows; none while the selection reveals nothing or the blocks describe older text.
     private func inlinePictures(revealedBy markup: RevealedMarkup?, in textView: any MarkdownStyledTextView) -> [InlinePicture] {
-        guard rendersBlocks, let markup, let environment, !textState.cachesDescribeOldText else { return [] }
-        let root = environment.root
-        return LivePreviewInlinePictures.pictures(in: textState.blockEntries, revealedMarkup: markup, source: currentSource(of: textView),
-                                                  columnWidth: textView.renderedBlockColumnWidth,
-                                                  zoomScale: NoteFontSize.zoomScale(forTextSize: environment.textSize)) { embed in
+        guard rendersBlocks, let environment, !textState.cachesDescribeOldText else { return [] }
+        let root = environment.root, source = currentSource(of: textView), columnWidth = textView.renderedBlockColumnWidth
+        let zoomScale = NoteFontSize.zoomScale(forTextSize: environment.textSize)
+        var pictures = markup.map { markup in
+            LivePreviewInlinePictures.pictures(in: textState.blockEntries, revealedMarkup: markup, source: source, columnWidth: columnWidth,
+                                               zoomScale: zoomScale) { embed in
+                LivePreviewInlinePictures.lastDecodedThumbnail(of: embed, in: root)
+            }
+        } ?? []
+        pictures += LivePreviewInlinePictures.pictures(keptAsTextFor: embedsKeptAsText(in: source), revealedMarkup: markup, source: source,
+                                                      columnWidth: columnWidth, zoomScale: zoomScale) { embed in
             LivePreviewInlinePictures.lastDecodedThumbnail(of: embed, in: root)
+        } missing: { embed in
+            findPictureKeptAsText(embed, environment: environment, columnWidth: columnWidth, in: textView)
+        }
+        return pictures
+    }
+
+    /// The picture embeds of quotes and tasks, found again only when the text or its blocks changed.
+    private var embedsKeptAsTextCache: (revision: Int, sourceLength: Int, embeds: [EmbedReference])?
+    /// The embeds of quotes and tasks whose picture is being found, or was not found, by target.
+    private var picturesKeptAsTextLookedUp: Set<String> = []
+
+    private func embedsKeptAsText(in source: NSString) -> [EmbedReference] {
+        if let cache = embedsKeptAsTextCache, cache.revision == textState.revision, cache.sourceLength == source.length { return cache.embeds }
+        let embeds = LivePreviewInlinePictures.embedsKeptAsText(in: source, outside: textState.blockEntries)
+        embedsKeptAsTextCache = (textState.revision, source.length, embeds)
+        return embeds
+    }
+
+    /// Finds and decodes the picture of a quote's or a task's embed, as an image line's view does, then restyles its
+    /// line to draw it. Each target is looked up once while the editor lives; a file found later shows when the
+    /// note is opened again.
+    private func findPictureKeptAsText(_ embed: EmbedReference, environment: LivePreviewEnvironment, columnWidth: CGFloat,
+                                       in textView: any MarkdownStyledTextView) {
+        guard picturesKeptAsTextLookedUp.insert(embed.target).inserted else { return }
+        let displayPixelWidth = Int((columnWidth * 3).rounded())
+        Task { @MainActor [weak self, weak textView] in
+            guard let path = await environment.resolve(embed.target, embed.isWiki), DocumentKind(path: path) == .image,
+                  let location = try? path.url(in: environment.root), // A path outside the vault has no picture to draw.
+                  case .found = await LivePreviewEmbedImageLocations.lookUpPicture(for: embed, path: path, location: location, in: environment.root,
+                                                                                   displayPixelWidth: displayPixelWidth),
+                  let self, let textView else { return }
+            let source = self.currentSource(of: textView)
+            let embedsOfTarget = self.embedsKeptAsText(in: source).filter { embedOfTarget in embedOfTarget.target == embed.target }
+            for embedOfTarget in embedsOfTarget where NSMaxRange(embedOfTarget.range) <= source.length {
+                self.restyle(source.lineRange(for: embedOfTarget.range), in: textView)
+            }
         }
     }
 
