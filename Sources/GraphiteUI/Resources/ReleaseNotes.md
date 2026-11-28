@@ -2,6 +2,11 @@
 
 ## 1.0.3
 
+### 2026-11-28 18:34
+
+- Added: Import from Notion can read a workspace straight from Notion with an integration's token, as well as from an exported zip or folder.
+- Changed: Imported Notion pages keep their covers, icons, columns, link lists, text colours and callouts, databases become bases with whole titles, and linked views become filtered tables.
+
 ### 2026-11-28 15:26
 
 - Changed: What's New shows the time of each update, so several updates on one day read apart.
