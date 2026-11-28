@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28.
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28, and [#274](https://github.com/Graphite-Note/Graphite/issues/274) for section 6 (open).
 
 ## Request
 
@@ -103,10 +103,31 @@ Spacing, measured 2026-11-28 at a 1,024 by 768 window. Notion (a public notion.s
 - While the core plugin is on, the `icon` and `banner` rows of the Properties panel folded away under the title, since the page already shows both.
 - The inline title kept at Obsidian's 1.75 times, which a vault's theme changes.
 
+## 6. Colours and column widths of pages imported from Notion
+
+Issue: [#274](https://github.com/Graphite-Note/Graphite/issues/274)
+
+Requested 2026-11-28 for the same imported workspaces: the importer writes Notion's coloured text and coloured backgrounds as inline HTML, `<span style="color:#rrggbb">…</span>` and `background-color`, which Obsidian draws natively, and Notion's uneven columns as `> > [!blank|wide-N]` inside `> [!multi-column]`, Modular CSS Layout's `wide-2` to `wide-5`.
+
+Decisions:
+
+13. **A span's colours are drawn whatever the Colors core plugin says**, since they are HTML that Obsidian draws without a plugin. `HTMLColorSpans` (Core) reads `color`, `background-color` and `background` written as `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()` or `rgba()`, and a span inside code stays text.
+14. **Coloured text stays readable in light and dark.** Text drawn in a colour of the note, a span's or the Colors plugin's, is darkened on a light page or lightened on a dark one by the least amount that reaches a 4.5:1 contrast (`AccentLegibility`), as Graphite's code colours already are, and a coloured background is drawn at a third of its strength on a dark page. The note keeps the colour as written.
+15. **The colour command knows spans.** With the cursor or selection in a span's coloured text, choosing a colour rewrites the span's `color` and Remove takes the span's colours out, keeping the text and any other style of the span.
+16. **Column widths follow the snippet.** A nested callout's `wide-2` to `wide-5` makes its column grow two to five times as much as the others, as the snippet's `flex-grow` does, so `CalloutColumnArrangement`'s weights now come from each column's metadata.
+
+- [ ] `HTMLColorSpans` reads colour and background spans (decision 13).
+- [ ] The reading view draws them, and Live Preview's rendered blocks with it.
+- [ ] Live Preview's editor colours a span's text and background and hides its tags until the cursor is in it.
+- [ ] Coloured text and backgrounds read in light and dark (decision 14).
+- [ ] The colour command recolours and removes a span's colours (decision 15).
+- [ ] Column widths from `wide-2` to `wide-5` in the reading view and Live Preview (decision 16).
+- [ ] Checked on the Mac, the iPad and the iPhone with made-up notes, light and dark.
+
 ## Later
 
 - Iconize's own store of icons (`.obsidian/plugins/obsidian-icon-folder/data.json`), which keeps the icons set without frontmatter, and its `iconColor` property.
-- Column widths from `wide-2` to `wide-5` and the snippet's other options (`col3`, `fw` and `pw` widths), which need the metadata of each nested callout carried into the reading view's blocks.
+- The snippet's other column options (`col3`, `fw` and `pw` widths). Column widths from `wide-2` to `wide-5` moved to section 6.
 - Icons on links in Live Preview, where they would be drawn over the concealed `[[`, and SF Symbol icons before links in the reading view.
 - Export to PDF draws multi-column and blank callouts as ordinary boxes.
 - Turning the iPad simulator itself to landscape, and measuring on the iPad and on a physical device.
