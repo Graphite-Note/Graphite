@@ -261,7 +261,10 @@
     /// does not wait for it.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
       if gestureRecognizer === linkSecondaryClickGesture {
-        return hasLinkMenu(at: touch.location(in: self))
+        // Graphite addition: a secondary click is a pointer's. UIKit gives a finger's tap to
+        // a tap recognizer whatever its button mask, so a tap on a link with a menu (a
+        // picture's) showed the menu instead of following the link.
+        return touch.type == .indirectPointer && hasLinkMenu(at: touch.location(in: self))
       }
       guard gestureRecognizer === linkPressGesture else { return true }
       guard let link = model.link(for: touch.location(in: self)) else { return false }

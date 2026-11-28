@@ -84,6 +84,24 @@ final class PictureZoomAndTabHostedTests: XCTestCase {
         attachScreenshot(named: "The note after zooming in and out")
     }
 
+    /// HUNT-382: a finger's tap on a picture inside a sentence zooms it, as a tap on a link follows it. Textual's
+    /// secondary-click recognizer took the finger's tap, as UIKit ignores a button mask for touches, and showed the
+    /// picture's menu instead.
+    func testAFingersTapOnAPictureInsideASentenceZoomsIt() async throws {
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        let workspace = try await makeWorkspace()
+        let controller = try host(workspace)
+        _ = try await scrollToThePictures(in: controller)
+        let window = try XCTUnwrap(self.window)
+        let picture = try await pictureElement(labelled: "Inline", in: controller)
+        let frame = window.convert(picture.accessibilityFrame, from: nil)
+        let touches = SynthesizedTouches(window: window)
+        touches.begin(at: [CGPoint(x: frame.midX, y: frame.midY)])
+        await touches.hold(seconds: 0.05)
+        touches.end()
+        try await waitUntil("the tapped picture is zoomed into", timeoutSeconds: 5) { workspace.viewedImage?.rawValue == Self.inlinePicture }
+    }
+
     // MARK: Tabs
 
     /// Open in New Tab on the table's picture and on the picture on its own line opens each file in a tab
