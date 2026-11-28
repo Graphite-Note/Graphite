@@ -2,11 +2,11 @@
  * File: PagePreviewCardHostedTests.swift
  * --------------------------------------
  * Layer: Tests
- * Description: Page Preview's card over the hosted workspace on the iPad: a tap on a link inside the card opens its note, and the pointer resting on a link shows the card after its delay.
+ * Description: Page Preview's card over the hosted workspace on the iPad: a tap on a link inside the card opens its note, and the pointer resting on a link, in the editor or the reading view, shows the card after its delay.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 12/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 #if os(iOS)
 import XCTest
@@ -112,6 +112,42 @@ final class PagePreviewCardHostedTests: XCTestCase {
         try await waitUntil("the card closes once its delay ends") { if case .hidden = cards.phase { true } else { false } }
     }
 
+    /// The reading view's hover, through Textual's text view (patch 12) as UIKit calls it for
+    /// a trackpad's pointer or Apple Pencil hovering: the card waits for its delay, then shows.
+    func testThePointerRestingOnALinkInTheReadingViewShowsItsCardAfterTheDelay() async throws {
+        let clock = HostedControlledClock()
+        let workspace = try await makeWorkspace(clock: clock)
+        try await openNoteInReadingView(in: workspace)
+        let window = try XCTUnwrap(window)
+        // Target.md's link is alone on its line, so the element found is the link's own text.
+        let link = try await accessibilityElement(in: window) { element in
+            element.accessibilityLabel == "Third" && element.accessibilityTraits.contains(.staticText)
+        }
+        let linkPoint = CGPoint(x: link.accessibilityFrame.minX + 8, y: link.accessibilityFrame.midY)
+        var textView: UIView?
+        try await waitUntil("the reading view's text is under the link") {
+            textView = window.hitTest(linkPoint, with: nil).flatMap { view in Self.isTextSelectionView(view) ? view : nil }
+            return textView != nil
+        }
+        let interactionView = try XCTUnwrap(textView)
+        let handler = NSSelectorFromString("handleLinkHover:")
+        XCTAssertTrue(interactionView.responds(to: handler), "Textual's hover recognizer calls this handler.")
+        let hover = PointerHover(over: interactionView)
+
+        hover.move(to: linkPoint, state: .began)
+        _ = interactionView.perform(handler, with: hover)
+        try await waitUntil("the card waits for its delay") { clock.requestedDurations.contains(LinkPreviewModel.showDelay) }
+        XCTAssertFalse(accessibilityElements(in: window).contains(where: Self.isCardTitle), "Before the delay ends, no card shows.")
+        clock.endSleeps()
+        _ = try await accessibilityElement(in: window, matching: Self.isCardTitle)
+        attachScreenshot(named: "The card shown by hovering in the reading view")
+    }
+
+    /// The card's title, a button named after the note it shows.
+    private static func isCardTitle(_ element: NSObject) -> Bool {
+        element.accessibilityLabel == "Third" && element.accessibilityTraits.contains(.button)
+    }
+
     // MARK: Helpers
 
     /// A hover recognizer that reports a pointer at a chosen point, given to the editor's
@@ -176,6 +212,22 @@ final class PagePreviewCardHostedTests: XCTestCase {
         let editor = try XCTUnwrap(editors().first { editor in editor.text == session.text })
         editor.layoutIfNeeded()
         return (editor, try XCTUnwrap(editor.delegate as? NativeMarkdownEditor.Coordinator))
+    }
+
+    /// `Target.md` in the reading view, in a window of its own under the window's preview cards.
+    private func openNoteInReadingView(in workspace: WorkspaceModel) async throws {
+        await workspace.open(try VaultPath("Target.md"), placement: .currentTab)
+        let session = try XCTUnwrap(workspace.markdownSession)
+        session.viewMode = .reading
+        let controller = UIHostingController(rootView: AnyView(NavigationStack {
+            WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
+        }.modifier(LinkPreviewLayer(isEnabled: true, vault: workspace.linkPreviewVault))))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { scene in scene as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = scene.effectiveGeometry.coordinateSpace.bounds
+        window.rootViewController = controller
+        window.makeKeyAndVisible()
+        self.window = window
     }
 
     /// The window's cards, once the editor was given them from the environment.
