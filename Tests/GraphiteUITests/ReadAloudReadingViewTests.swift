@@ -206,7 +206,7 @@ final class ReadAloudReadingViewTests: XCTestCase {
                                                      readingContext: LivePreviewReadingContext(controller: reader, path: path))
             let root = LivePreviewWidgetView(block: block, environment: environment, revealSource: {}, reportHeight: { _ in })
                 .coordinateSpace(.named(ReadingCoordinateSpace.name))
-                .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in MainActor.assumeIsolated { state.frames = frames } }
+                .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
                 .frame(width: 360, height: 240, alignment: .topLeading)
             let hosting = NSHostingView(rootView: root)
             let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 360, height: 240), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -295,9 +295,7 @@ private struct FollowingProbe: View {
                         headingScrollRequest: .constant(nil), handledScrollToken: .constant(nil),
                         navigate: { _, _ in }, openPDF: { _, _ in }, updateProperties: nil,
                         savedPosition: position, readingWord: ReadingWordSource { state.range }, followsReading: state.followsReading)
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated { state.frames = frames }
-            }
+            .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
             .frame(width: 360, height: 240)
     }
 }
@@ -313,9 +311,7 @@ private struct HighlightProbe: View {
             .textual.textSelection(.enabled)
             .textual.readingHighlight(state.range, coordinateSpace: "ReadingProbe")
             .coordinateSpace(.named("ReadingProbe"))
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated { state.frames = frames }
-            }
+            .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
             .frame(width: 360, height: 120, alignment: .topLeading)
             .foregroundStyle(.black)
             .background(.white)

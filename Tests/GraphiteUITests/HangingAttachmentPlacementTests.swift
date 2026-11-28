@@ -152,9 +152,7 @@ final class HangingAttachmentPlacementTests: XCTestCase {
             .font(Self.bodyFont)
             .textual.readingHighlight(FormulaWithSourceRangeParser.sourceRange, coordinateSpace: "Probe")
             .coordinateSpace(.named("Probe"))
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { geometries in
-                MainActor.assumeIsolated { frames.geometries = geometries }
-            }
+            .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { geometries in frames.geometries = geometries })
             .frame(width: 400, height: 200, alignment: .topLeading)
         let hostingView = NSHostingView(rootView: view)
         let window = shownInvisibly(hostingView, size: CGSize(width: 400, height: 200))

@@ -1058,6 +1058,7 @@ struct MarkdownPreview: View {
     /// The word read, where it is drawn and where the view is scrolled, for following the
     /// word; kept out of the view's state, which each would otherwise update at every word.
     @State private var readingFollow = ReadingFollowState()
+    @Environment(\.readingHighlightReceiver) private var outerHighlightReceiver
     @State private var errorMessage: String?
     /// Whether the last build had embeds it could not find, which may appear once indexed.
     @State private var hasMissingEmbeds = false
@@ -1094,6 +1095,8 @@ struct MarkdownPreview: View {
                             .accessibilityAddTraits(.isHeader)
                             .padding(.bottom, 6)
                     }
+                    let _ = readingFollow.framesDidChange = followReadingWordIfNeeded
+                    let _ = readingFollow.outerReceiver = outerHighlightReceiver
                     let _ = blockActions.update(navigate: navigate, scrollToHeading: { anchor in
                         pendingRestorationOffset = nil
                         let target = HeadingScrollRequest.readingScrollTarget(forLinkAnchor: anchor, in: blocks)
@@ -1150,12 +1153,9 @@ struct MarkdownPreview: View {
                     pictureHover.hide()
                 }
             }
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated {
-                    readingFollow.highlightFrames = frames
-                    followReadingWordIfNeeded()
-                }
-            }
+            // The word's frames come from the text that draws it (`ReadingHighlightReceiver`), not through a preference,
+            // which the lazy stack reduced over every block at every update while nothing was read (Textual patch 34).
+            .environment(\.readingHighlightReceiver, readingFollow.highlightReceiver)
             .onChange(of: followsReading) { _, _ in
                 wordDidMove(to: readingFollow.range)
                 followReadingWordIfNeeded()
@@ -1423,6 +1423,17 @@ private struct ReadingWordTracker: View {
 fileprivate final class ReadingFollowState {
     var range: NSRange?
     var highlightFrames: [ReadingHighlightGeometry] = []
+    /// Follows the word once its frames arrive; the view sets it at each update, as what it reads changes.
+    var framesDidChange: (() -> Void)?
+    /// A receiver given around the view, told the frames too.
+    weak var outerReceiver: ReadingHighlightReceiver?
+    /// Where the texts report the frames of the word read (Textual patch 34), one for the view's life.
+    lazy var highlightReceiver = ReadingHighlightReceiver { [weak self] frames in
+        guard let self else { return }
+        self.highlightFrames = frames
+        self.framesDidChange?()
+        self.outerReceiver?.forward(frames)
+    }
     var viewport = ReadingViewport(verticalOffset: 0, maximumVerticalOffset: 0, topInset: 0)
     var scrollProxy: ScrollViewProxy?
     var followTask: Task<Void, Never>?
@@ -2085,6 +2096,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     /// The word being read, when it is in this text; nil otherwise.
     let activeRange: NSRange?
     @Environment(\.readingHighlightFill) private var readingHighlightFill
+    @Environment(\.readingHighlightReceiver) private var readingHighlightReceiver
     @Environment(\.readingIsPrinted) private var isPrinted
     @Environment(\.readingTagSearch) private var tagSearch
     @Environment(\.readingImageActions) private var imageActions
@@ -2106,9 +2118,12 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                     }) == true {
                         RoundedRectangle(cornerRadius: 3).fill(ReadAloudHighlightStyle.color)
                         GeometryReader { geometry in
-                            Color.clear.preference(key: ReadingHighlightGeometryKey.self,
-                                                   value: [ReadingHighlightGeometry(sourceRange: activeRange,
-                                                                                     frame: geometry.frame(in: .named(ReadingCoordinateSpace.name)))])
+                            let frame = geometry.frame(in: .named(ReadingCoordinateSpace.name))
+                            Color.clear
+                                .onChange(of: frame, initial: true) { _, frame in
+                                    readingHighlightReceiver?.report([ReadingHighlightGeometry(sourceRange: activeRange, frame: frame)], of: activeRange)
+                                }
+                                .onDisappear { readingHighlightReceiver?.report([], of: activeRange) }
                         }
                         .allowsHitTesting(false)
                     }
