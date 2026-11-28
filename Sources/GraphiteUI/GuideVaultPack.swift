@@ -20,7 +20,7 @@ import GraphiteCore
 /// against the commit and `GuideVaultContentsTests` against the vault in the checkout, so a change to the vault is
 /// pinned again before it ships.
 enum GuideVaultPack {
-    static let revision = "1e3725f3677da9d2ebd39beb08e2dfccc5e3c0bc"
+    static let revision = "698d354b7e7aa7e300cdc53bf6648698526770ad"
     /// The note the Guide vault opens at when no other is asked for.
     static let startNote = "Start here"
     private static let baseAddress = URL(string: "https://raw.githubusercontent.com/Graphite-Note/Graphite/\(revision)/Guide/Graphite%20Guide")
@@ -79,8 +79,8 @@ enum GuideVaultPack {
                   sha256: "87f4f8d65a916d5b753e4a97d7a0a4adad9e129e0f996d76fa375a09e0ec1424"),
         AddOnFile(name: "3 Handwriting and PDFs/Writing on slides.md", byteCount: 3895,
                   sha256: "f259ccacc7cc8d877ed2e3ba589b367f301fda2aeaf8f1eeea58c1fe48256296"),
-        AddOnFile(name: "4 Making notes look good/Building a dashboard.md", byteCount: 8481,
-                  sha256: "059d3e15c7d3904ab782137a16fc67dda1c613d2799fb896ddabd390d44019a7"),
+        AddOnFile(name: "4 Making notes look good/Building a dashboard.md", byteCount: 8456,
+                  sha256: "c0716df98c907ef8c3023f06947b3fffd76a530a8749467a06d581554089df3c"),
         AddOnFile(name: "4 Making notes look good/Code.md", byteCount: 1295,
                   sha256: "eee5f45c0ace68be5721770cc283bd59b64207100eeac365fe459ab3d70d6e60"),
         AddOnFile(name: "4 Making notes look good/Diagrams.md", byteCount: 5007,
@@ -121,8 +121,8 @@ enum GuideVaultPack {
                   sha256: "2b8539f484cc997f434e542d0259a4c9242bb045af07d5a5c5e3292fcbde9d5b"),
         AddOnFile(name: "5 Connecting notes/Tags and properties.md", byteCount: 1592,
                   sha256: "4d0068297fa15a79db0ca93d81837914dc1e3fdf3e2afb048227acd89a866153"),
-        AddOnFile(name: "6 Everyday examples/Balcony Garden/Balcony Garden.md", byteCount: 1404,
-                  sha256: "63118dcab09c2b53f0bb31fff075639e4874a335e2637ec45ce4a760931a0fe1"),
+        AddOnFile(name: "6 Everyday examples/Balcony Garden/Balcony Garden.md", byteCount: 1368,
+                  sha256: "22d101582c6e3f5c7a0d05e99b50b16ef13a6a00b91bceb09dcbe3104044ba7b"),
         AddOnFile(name: "6 Everyday examples/Balcony Garden/Garden journal.md", byteCount: 355,
                   sha256: "08b9be9eaf77dfafded46ad585f5c412d0b6919f6addae3d4219f61c280f4a32"),
         AddOnFile(name: "6 Everyday examples/Balcony Garden/Plants.base", byteCount: 624,
@@ -211,8 +211,8 @@ enum GuideVaultPack {
                   sha256: "45fd6346e93928fd3c751b4ac858c2f13436da04682327dde35f8315208ffec6"),
         AddOnFile(name: "6 Everyday examples/Signals and Sound/Problem sets/Problem set 4.md", byteCount: 184,
                   sha256: "c1a6d0c6c6c301984150e0b8cf1607455e0500003bdbbf530546cd6e1569a07c"),
-        AddOnFile(name: "6 Everyday examples/Signals and Sound/Signals and Sound.md", byteCount: 1830,
-                  sha256: "164c4227dcba8f3512cf9ff78859936021ea05b18dce251ff271e3265353b84c"),
+        AddOnFile(name: "6 Everyday examples/Signals and Sound/Signals and Sound.md", byteCount: 1794,
+                  sha256: "4e272f3b342ac352a0fba537e097af8f7d3ee5d4c239352fdc596be21857539f"),
         AddOnFile(name: "6 Everyday examples/Signals and Sound/Week 1 - Sampling.md", byteCount: 913,
                   sha256: "0942bf7260b4f1ddfb4c255dd94dfe6292ac611f479eb14f3f008b266e751646"),
         AddOnFile(name: "6 Everyday examples/Signals and Sound/Week 2 - Frequencies.md", byteCount: 808,
@@ -231,8 +231,8 @@ enum GuideVaultPack {
                   sha256: "1f980731e1ad616006989f072bed9c7a54f267eef435d582d15a656562737dbb"),
         AddOnFile(name: "6 Everyday examples/Solar Boat Team/Safety on the water.md", byteCount: 336,
                   sha256: "912201f6f08be092734e6ce377442bf3942e2550de546b73736c0f5985c5b956"),
-        AddOnFile(name: "6 Everyday examples/Solar Boat Team/Solar Boat Team.md", byteCount: 1838,
-                  sha256: "e2a3ef4ef0cfe0d16f5724e6fc583d12bd52e4bb409d3d94939a0f3eebfe6616"),
+        AddOnFile(name: "6 Everyday examples/Solar Boat Team/Solar Boat Team.md", byteCount: 1804,
+                  sha256: "ff3ef4fc0bb0aa450af94e58df7abe993022093d57c44c30fcaabaebab88554d"),
         AddOnFile(name: "6 Everyday examples/Solar Boat Team/Welcome aboard.md", byteCount: 400,
                   sha256: "a33b85355a0df88eb2e8953516025007828d7c178553ee7d3ed18cb7b72adf4f"),
         AddOnFile(name: "6 Everyday examples/Solar Boat Team/Workshop rules.md", byteCount: 289,
