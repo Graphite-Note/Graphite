@@ -6,8 +6,8 @@
  *              files are in VaultStoreObsidianSettings.swift.
  *
  * Authors: Bahey Shalash
- * Version: 0.12
- * Date: 27/11/2026
+ * Version: 0.13
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -197,7 +197,7 @@ public actor VaultStore {
         coordinator.coordinate(writingItemAt: sourceLocation, options: .forMoving, writingItemAt: destinationLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedDestination in
             moveResult = Result {
                 coordinator.item(at: coordinatedSource, willMoveTo: coordinatedDestination)
-                try FileManager.default.moveItem(at: coordinatedSource, to: coordinatedDestination)
+                try ComposedFileNames.moveItem(at: coordinatedSource, to: coordinatedDestination)
                 coordinator.item(at: coordinatedSource, didMoveTo: coordinatedDestination)
             }
         }
@@ -309,7 +309,7 @@ public actor VaultStore {
             var coordinationError: NSError?
             var copyResult: Result<Void, Error>?
             writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: copyLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedCopy in
-                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedCopy) }
+                copyResult = Result { try ComposedFileNames.copyItem(at: coordinatedSource, to: coordinatedCopy) }
             }
             if let coordinationError { throw coordinationError }
             guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }

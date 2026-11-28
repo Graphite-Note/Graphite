@@ -3,11 +3,12 @@
  * ----------------------------
  * Layer: Core
  * Description: File revisions, and coordinated reads, whole-or-nothing writes and appends of the person's files, each
- *              write recorded on Graphite's own presenter so macOS's report of it is not taken for another app's change.
+ *              write recorded on Graphite's own presenter so macOS's report of it is not taken for another app's change,
+ *              and every new name written in Unicode's composed form (NFC).
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 27/11/2026
+ * Version: 0.7
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -142,7 +143,7 @@ public struct AtomicFileWriter: Sendable {
         makeCoordinator().coordinate(writingItemAt: url, options: [], error: &coordinationError) { destination in
             appendResult = Result {
                 if !FileManager.default.fileExists(atPath: destination.path) {
-                    try Data().write(to: destination, options: .withoutOverwriting)
+                    try ComposedFileNames.createEmptyFile(at: destination)
                 }
                 let handle = try FileHandle(forWritingTo: destination)
                 defer { try? handle.close() } // Closed below after a write; a failed write is already reported.
@@ -183,7 +184,7 @@ public struct AtomicFileWriter: Sendable {
                 if exists {
                     _ = try FileManager.default.replaceItemAt(destination, withItemAt: staging)
                 } else {
-                    try FileManager.default.moveItem(at: staging, to: destination)
+                    try ComposedFileNames.moveItem(at: staging, to: destination)
                 }
                 Self.flushToPermanentStorage(directoryOf: destination)
                 recordOwnWrite(at: destination)
@@ -248,12 +249,102 @@ public extension AtomicFileWriter {
         var creationResult: Result<Void, Error>?
         makeCoordinator().coordinate(writingItemAt: url, options: [], error: &coordinationError) { location in
             creationResult = Result {
-                try FileManager.default.createDirectory(at: location, withIntermediateDirectories: true)
+                try ComposedFileNames.createDirectory(at: location)
                 recordOwnWrite(at: location)
             }
         }
         if let coordinationError { throw coordinationError }
         guard let creationResult else { throw GraphiteError.unavailable("The file provider did not allow creating the folder.") }
         try creationResult.get()
+    }
+}
+
+/// Gives every name Graphite makes in the vault the composed spelling (NFC) on disk.
+///
+/// Foundation's file calls hand the system a URL's file-system representation, and Apple's
+/// platforms decompose it: `Data.write(to:)`, `FileManager.moveItem`, `copyItem` and
+/// `createDirectory` leave “Café” on disk as “Cafe” and a combining accent (U+0301). APFS
+/// finds the file under either spelling, but tools that compare the bytes do not: git, Obsidian
+/// on another system, sync to a file system that keeps both. POSIX calls given a Swift string
+/// keep its bytes, so the names here go through `renamex_np`, `mkdir` and `open` with the path
+/// composed.
+///
+/// Replacing a file that is already there keeps the name it has on disk, so a vault whose
+/// files were written decomposed keeps them as they are; `VaultPath` composes the names it
+/// reads, so links and the index find them all the same.
+public enum ComposedFileNames {
+    /// The path of `location` with its text composed. APFS and HFS+ look folders up in
+    /// either form, so composing the folders above the new name changes nothing there.
+    static func composedPath(of location: URL) -> String {
+        location.path.precomposedStringWithCanonicalMapping
+    }
+
+    /// Whether the name of `location` reads differently composed and decomposed, the only
+    /// names Foundation writes in the wrong form. A file URL already reports its name
+    /// decomposed, so both forms are made from it.
+    static func hasComposableName(_ location: URL) -> Bool {
+        let name = location.lastPathComponent
+        return !name.precomposedStringWithCanonicalMapping.utf8.elementsEqual(name.decomposedStringWithCanonicalMapping.utf8)
+    }
+
+    /// Moves `source` to `destination` in one rename, under the composed name. Never replaces
+    /// another item: a change of capitals or of accents alone is allowed, since the volume sees
+    /// the same item. Across volumes, or where the volume has no exclusive rename, Foundation
+    /// moves it and the name is composed after.
+    public static func moveItem(at source: URL, to destination: URL) throws {
+        if renamex_np(source.path, composedPath(of: destination), UInt32(RENAME_EXCL)) == 0 { return }
+        let renameFailure = errno
+        guard renameFailure == EXDEV || renameFailure == ENOTSUP || renameFailure == EINVAL else {
+            throw POSIXError(POSIXErrorCode(rawValue: renameFailure) ?? .EIO)
+        }
+        try FileManager.default.moveItem(at: source, to: destination)
+        composeName(at: destination)
+    }
+
+    /// Copies `source` to `destination` with Foundation, then composes the copy's name.
+    /// A folder's contents keep the names they have on disk.
+    public static func copyItem(at source: URL, to destination: URL) throws {
+        try FileManager.default.copyItem(at: source, to: destination)
+        composeName(at: destination)
+    }
+
+    /// Makes the folder at `location` and any missing folder above it, each under its composed
+    /// name; nothing happens when the folder is there.
+    public static func createDirectory(at location: URL) throws {
+        var missingFolders: [URL] = []
+        var folder = location.standardizedFileURL
+        var isDirectory: ObjCBool = false
+        while !FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory) {
+            missingFolders.append(folder)
+            let parent = folder.deletingLastPathComponent()
+            guard parent.path != folder.path else { break }
+            folder = parent
+        }
+        if missingFolders.isEmpty, !isDirectory.boolValue {
+            throw CocoaError(.fileWriteFileExists, userInfo: [NSFilePathErrorKey: location.path])
+        }
+        for missingFolder in missingFolders.reversed() where mkdir(composedPath(of: missingFolder), 0o777) != 0 {
+            let creationFailure = errno
+            // Made meanwhile by someone else: what was asked for is there.
+            guard creationFailure == EEXIST, FileManager.default.fileExists(atPath: missingFolder.path, isDirectory: &isDirectory),
+                  isDirectory.boolValue else {
+                throw POSIXError(POSIXErrorCode(rawValue: creationFailure) ?? .EIO)
+            }
+        }
+    }
+
+    /// Makes an empty file at `location` under its composed name; fails when something is there.
+    public static func createEmptyFile(at location: URL) throws {
+        let descriptor = open(composedPath(of: location), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0o666)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        close(descriptor)
+    }
+
+    /// Renames the item Foundation just made at `location` to the composed spelling of its
+    /// name. Best effort: the item is in place and found under either spelling, so a volume
+    /// that refuses the rename leaves the name as Foundation wrote it.
+    static func composeName(at location: URL) {
+        guard hasComposableName(location) else { return }
+        _ = renamex_np(location.path.decomposedStringWithCanonicalMapping, composedPath(of: location), UInt32(RENAME_EXCL))
     }
 }
