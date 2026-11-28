@@ -19,6 +19,9 @@ public enum NoteIcon: Hashable, Sendable {
     case emoji(String)
     /// An SF Symbol, named as the system names it (`book.closed`).
     case symbol(systemName: String)
+    /// A picture of the vault or of the web, written as a `banner` is (`[[clock.gif]]`, a web address), as the Notion
+    /// importer writes a page's own icon.
+    case picture(NoteBanner.Source)
 
     /// The property that holds a note's icon: Iconize's default frontmatter field, which Pixel Banner also reads.
     public static let propertyKey = "icon"
@@ -26,13 +29,19 @@ public enum NoteIcon: Hashable, Sendable {
     /// At most this many characters of a property's text are looked at: an icon is one emoji or one symbol name.
     static let maximumReadCharacters = 80
 
+    /// At most this many characters of a picture icon's text are read: a link or a web address.
+    static let maximumPictureCharacters = 2_048
+
     /// The icon `propertyText` names, or nil when it names none Graphite can draw: empty text, an icon of an
-    /// Iconize pack other than Lucide's, or a Lucide name without an SF Symbol in `NoteIconSymbols`.
+    /// Iconize pack other than Lucide's, a Lucide name without an SF Symbol in `NoteIconSymbols`, or a link to a file
+    /// that is not a picture.
     public init?(propertyText: String) {
         let trimmed = Self.unquoted(String(propertyText.prefix(Self.maximumReadCharacters)).trimmingCharacters(in: .whitespacesAndNewlines))
         guard let first = trimmed.first else { return nil }
         if Self.isEmoji(first) {
             self = .emoji(String(first))
+        } else if let picture = Self.picture(in: String(propertyText.prefix(Self.maximumPictureCharacters))) {
+            self = .picture(picture)
         } else if let systemName = NoteIconSymbols.systemName(forIconizeName: trimmed) {
             self = .symbol(systemName: systemName)
         } else if Self.isSymbolName(trimmed) {
@@ -48,6 +57,19 @@ public enum NoteIcon: Hashable, Sendable {
         switch self {
         case .emoji(let emoji): emoji
         case .symbol(let systemName): NoteIconSymbols.iconizeName(forSystemName: systemName) ?? systemName
+        case .picture(.vaultFile(let linkTarget)): "[[\(linkTarget)]]"
+        case .picture(.webAddress(let address)): address.absoluteString
+        }
+    }
+
+    /// The picture a text names as a `banner` names one: a vault file only when its name is a picture's, so a link to a
+    /// note is no icon.
+    static func picture(in text: String) -> NoteBanner.Source? {
+        guard let source = NoteBanner.source(ofBannerText: Self.unquoted(text.trimmingCharacters(in: .whitespacesAndNewlines))) else { return nil }
+        switch source {
+        case .webAddress: return source
+        case .vaultFile(let linkTarget):
+            return DocumentKind(fileExtension: (linkTarget as NSString).pathExtension) == .image ? source : nil
         }
     }
 

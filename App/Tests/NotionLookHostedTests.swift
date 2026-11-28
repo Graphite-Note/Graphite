@@ -1,0 +1,141 @@
+/**
+ * File: NotionLookHostedTests.swift
+ * ---------------------------------
+ * Layer: Tests
+ * Description: Pictures, in the app's window on the iPad and iPhone simulators, of a made-up course page of the shape the Notion importer writes:
+ *              picture icons of the vault and of the web, a GIF cover, a large PNG cover, three columns of coloured
+ *              headings over lines that each link to a page, in the reading view, light and dark.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 28/11/2026
+ */
+
+#if os(iOS)
+import XCTest
+import UIKit
+import SwiftUI
+import ImageIO
+import UniformTypeIdentifiers
+import GraphiteCore
+@testable import GraphiteUI
+
+/// The page's large icon and its cover are drawn while the plugin is on and not while it is off; the pictures are kept
+/// with the result bundle. The web icon comes from a loopback server, so nothing leaves the Mac.
+@MainActor
+final class NotionLookHostedTests: XCTestCase {
+
+    /// A small clock drawn as an SVG, as Notion's own icon set draws its icons.
+    static let clockSVG = """
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#6b6b6b" stroke-width="2"/>\
+        <path d="M12 7v5l3 2" fill="none" stroke="#6b6b6b" stroke-width="2" stroke-linecap="round"/></svg>
+        """
+
+    private static func writePicture(to location: URL, type: UTType, width: Int, height: Int, frames: [(CGFloat, CGFloat, CGFloat)]) throws {
+        let destination = try XCTUnwrap(CGImageDestinationCreateWithURL(location as CFURL, type.identifier as CFString, frames.count, nil))
+        for (red, green, blue) in frames {
+            let context = try XCTUnwrap(CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+            let gradient = try XCTUnwrap(CGGradient(colorSpace: CGColorSpaceCreateDeviceRGB(), colorComponents: [red, green, blue, 1, blue, red, green, 1],
+                                                    locations: [0, 1], count: 2))
+            context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: width, y: height), options: [])
+            CGImageDestinationAddImage(destination, try XCTUnwrap(context.makeImage()), nil)
+        }
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+    }
+
+    private func makeVault(webIcon: URL) throws -> URL {
+        let page = """
+            ---
+            icon: "[[clock.svg]]"
+            banner: "[[stars.gif]]"
+            ---
+            A made-up course page in the shape the Notion importer writes.
+
+            > [!multi-column]
+            > > [!blank]
+            > > ## ~={#E03E3E}Lectures=~
+            > > [[Lecture 1]]
+            > >
+            > > [[Lecture 2]]
+            >
+            > > [!blank]
+            > > ## ~={#0B6E99}Labs=~
+            > > [[Lab 1]]
+            > >
+            > > [[Lab 2]]
+            >
+            > > [!blank]
+            > > ## Exams
+            > > [[Midterm]]
+
+            ## Resources
+
+            ---
+
+            [[Reading list]]
+
+            [[Office hours]]
+
+            [[Lab 1]]
+
+            """
+        let vault = try TemporaryVault.make(prefix: "NotionLook", files: [
+            "Course hub.md": page,
+            "Course with photo.md": "---\nicon: 🎓\nbanner: \"[[wide.png]]\"\n---\nA page whose cover is a large photo.\n\n[[Lecture 1]]\n\n[[Lab 1]]\n",
+            "Lecture 1.md": "---\nicon: \"[[clock.svg]]\"\n---\n",
+            "Lecture 2.md": "---\nicon: \(webIcon.absoluteString)\n---\n",
+            "Lab 1.md": "---\nicon: 🧪\n---\n",
+            "Lab 2.md": "---\nicon: LiFlaskConical\n---\n",
+            "Midterm.md": "---\nicon: \"[[stars.gif]]\"\n---\n",
+            "Reading list.md": "---\nicon: 📚\n---\n",
+            "Office hours.md": "No icon.\n",
+            "clock.svg": Self.clockSVG,
+        ], for: self).root
+        try Self.writePicture(to: vault.appendingPathComponent("stars.gif"), type: .gif, width: 600, height: 200,
+                              frames: [(0.2, 0.3, 0.6), (0.6, 0.3, 0.2)])
+        try Self.writePicture(to: vault.appendingPathComponent("wide.png"), type: .png, width: 4_000, height: 1_500, frames: [(0.1, 0.5, 0.4)])
+        return vault
+    }
+
+    private func attach(_ window: UIWindow, named name: String) -> UIImage {
+        let picture = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+        let attachment = XCTAttachment(image: picture)
+        attachment.name = (UIDevice.current.userInterfaceIdiom == .phone ? "iphone-" : "ipad-") + name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        return picture
+    }
+
+    func testTheNotionShapedPageDrawsItsIconCoverColumnsAndLinkLines() async throws {
+        let webServer = try await LoopbackWebServer(pages: ["/icons/clock_gray.svg": Self.clockSVG])
+        addTeardownBlock { webServer.stop() }
+        let device = try IsolatedWorkspaceDevice.make(for: self)
+        let workspace = device.makeWorkspace()
+        workspace.preferences.library.presentation = .list
+        workspace.preferences.showsCoversOnPhone = true
+        try await workspace.openFolderAsVault(try makeVault(webIcon: webServer.address("/icons/clock_gray.svg")))
+        try await waitUntil("the vault is indexed", timeoutSeconds: 60) { workspace.hasCompletedIndexScan && !workspace.isIndexing }
+        _ = await workspace.open(try VaultPath("Course hub.md"), placement: .currentTab)
+        workspace.markdownSession?.viewMode = .reading
+        let window = try ReleaseVaultWindow.show(GraphiteRootView(workspace: workspace), for: self)
+        let quietWatch = MainThreadQuietWatch(window: window, quietStepsToStop: 200)
+        _ = try await quietWatch.measure({})
+        let drawn = attach(window, named: "course-hub-light")
+        workspace.preferences.appearanceMode = .dark
+        _ = try await quietWatch.measure({})
+        _ = attach(window, named: "course-hub-dark")
+        workspace.preferences.appearanceMode = .light
+        _ = await workspace.open(try VaultPath("Course with photo.md"), placement: .currentTab)
+        workspace.markdownSession?.viewMode = .reading
+        _ = try await quietWatch.measure({})
+        _ = attach(window, named: "photo-cover-light")
+        _ = await workspace.open(try VaultPath("Course hub.md"), placement: .currentTab)
+        workspace.markdownSession?.viewMode = .reading
+        workspace.setCorePluginEnabled(.pageLook, false)
+        _ = try await quietWatch.measure({})
+        let off = attach(window, named: "course-hub-plugin-off")
+        XCTAssertNotEqual(drawn.pngData(), off.pngData(), "The icon, the cover and the columns are drawn only while the plugin is on.")
+    }
+}
+#endif

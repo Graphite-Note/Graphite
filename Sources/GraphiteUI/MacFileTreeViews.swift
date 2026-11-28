@@ -40,6 +40,19 @@ final class NoteIconImages {
     private var imagesByIcon: [NoteIcon: NSImage] = [:]
     static let maximumImageCount = 512
     private static let iconPointSize: CGFloat = 12
+    /// The window's icons, whose pictures a picture icon is drawn from; nil while icons are off.
+    weak var catalog: NoteIconCatalog?
+
+    /// The picture of a picture icon, read once by the window's `NoteIconPictures`; nil for another icon or a picture
+    /// that cannot be read.
+    func loadedPicture(of icon: NoteIcon) async -> NSImage? {
+        guard case .picture(let source) = icon, let catalog, let location = catalog.pictureLocation(of: source),
+              let picture = try? await catalog.pictures.picture(at: location) else { return nil } // Unreadable: no icon.
+        let image = NSImage(cgImage: picture.image, size: NSSize(width: Self.iconPointSize + 2, height: Self.iconPointSize + 2))
+        if imagesByIcon.count >= Self.maximumImageCount { imagesByIcon.removeAll() }
+        imagesByIcon[icon] = image
+        return image
+    }
 
     func image(of icon: NoteIcon) -> NSImage? {
         if let image = imagesByIcon[icon] { return image }
@@ -62,6 +75,9 @@ final class NoteIconImages {
                 text.draw(in: rectangle)
                 return true
             }
+        case .picture:
+            // Read off the main actor by `loadedPicture(of:)`.
+            return nil
         }
     }
 }
@@ -191,6 +207,12 @@ final class FileTreeCellView: NSTableCellView {
         iconView?.image = image
         iconView?.isHidden = image == nil
         needsLayout = true
+        if image == nil, let newIcon, case .picture = newIcon {
+            Task { [weak self] in
+                guard await images.loadedPicture(of: newIcon) != nil, let self, self.icon == newIcon else { return }
+                self.show(newIcon, images: images)
+            }
+        }
     }
 
     /// The icon's slot before the name, the width of the iPad tree's marker slot.

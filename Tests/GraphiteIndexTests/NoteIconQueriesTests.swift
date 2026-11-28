@@ -20,7 +20,7 @@ final class NoteIconQueriesTests: XCTestCase {
         let directory = try TemporaryVault.make(prefix: "NoteIcons", for: self).root
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
         try await index.update(try notes.map { note in
-            IndexedFile(path: try VaultPath(note.path), size: 1, modified: .now, markdown: note.markdown)
+            IndexedFile(path: try VaultPath(note.path), size: 1, modified: .now, markdown: note.path.hasSuffix(".md") ? note.markdown : nil)
         }, generation: "test")
         return index
     }
@@ -51,5 +51,18 @@ final class NoteIconQueriesTests: XCTestCase {
     func testAnUnreadableRowNamesNoIcon() {
         let icons = VaultIndex.noteIcons(fromRows: [(path: "A.md", node: "not json"), (path: "B.md", node: #"{"scalar":{"text":"📚","isPlain":true}}"#)])
         XCTAssertEqual(icons.count, 1)
+    }
+
+    func testAPictureIconOfTheVaultIsNamedByItsPathAndOneNoFileAnswersIsNone() async throws {
+        let index = try await index(with: [
+            ("Icons/clock.gif", ""),
+            ("Courses/Lab.md", "---\nicon: \"[[clock.gif]]\"\n---\n"),
+            ("Courses/Gone.md", "---\nicon: \"[[missing.png]]\"\n---\n"),
+            ("Courses/Web.md", "---\nicon: https://www.example.com/icons/clock_gray.svg\n---\n"),
+        ])
+        let icons = try await index.noteIcons()
+        XCTAssertEqual(icons[try VaultPath("Courses/Lab.md")], .picture(.vaultFile(linkTarget: "Icons/clock.gif")))
+        XCTAssertNil(icons[try VaultPath("Courses/Gone.md")])
+        XCTAssertEqual(icons[try VaultPath("Courses/Web.md")], .picture(.webAddress(try XCTUnwrap(URL(string: "https://www.example.com/icons/clock_gray.svg")))))
     }
 }

@@ -26,15 +26,33 @@ struct ReadingCover: Equatable, Sendable {
     let verticalFocus: Double
 }
 
+/// What the top of a note shows from its frontmatter: its cover and its icon, as Notion draws a page.
+struct ReadingPageLook: Equatable, Sendable {
+    var cover: ReadingCover?
+    /// The note's icon, a picture of the vault named by its path in the vault.
+    var icon: NoteIcon?
+}
+
 extension ReadingViewBuilder {
-    /// The cover the note's frontmatter names, or nil without a `banner` property, or when its picture is not a
-    /// picture of the vault. The frontmatter is parsed only when it holds the word `banner`.
-    func cover(inFrontmatter frontmatterText: String, note: VaultPath, root: URL, index: some ReadingFileLookup,
-               configuration: ReadingConfiguration) async -> ReadingCover? {
-        guard frontmatterText.range(of: NoteBanner.propertyKey, options: .caseInsensitive) != nil,
-              let yaml = try? MarkdownSemantics.parse(frontmatterText).frontmatter, // Frontmatter that does not parse has no banner.
-              let properties = NoteProperties.parse(yaml, declaredTypes: configuration.declaredPropertyTypes),
-              let banner = NoteBanner(properties: properties) else { return nil }
+    /// The cover and the icon the note's frontmatter names, each only when the configuration draws it. The frontmatter
+    /// is parsed only when it holds the word `banner` or `icon`.
+    func pageLook(inFrontmatter frontmatterText: String, note: VaultPath, root: URL, index: some ReadingFileLookup,
+                  configuration: ReadingConfiguration) async -> ReadingPageLook {
+        guard frontmatterText.range(of: NoteBanner.propertyKey, options: .caseInsensitive) != nil
+                || frontmatterText.range(of: NoteIcon.propertyKey, options: .caseInsensitive) != nil,
+              let yaml = try? MarkdownSemantics.parse(frontmatterText).frontmatter, // Frontmatter that does not parse shows nothing.
+              let properties = NoteProperties.parse(yaml, declaredTypes: configuration.declaredPropertyTypes) else { return ReadingPageLook() }
+        var pageLook = ReadingPageLook()
+        if configuration.drawsCover, let banner = NoteBanner(properties: properties) {
+            pageLook.cover = await cover(of: banner, note: note, root: root, index: index)
+        }
+        if configuration.drawsPageLook, let icon = NoteIconEditing.icon(in: properties) {
+            pageLook.icon = await resolved(icon, note: note, root: root, index: index)
+        }
+        return pageLook
+    }
+
+    private func cover(of banner: NoteBanner, note: VaultPath, root: URL, index: some ReadingFileLookup) async -> ReadingCover? {
         switch banner.source {
         case .webAddress(let address):
             return ReadingCover(picture: .webAddress(address), verticalFocus: banner.verticalFocus)
@@ -42,6 +60,55 @@ extension ReadingViewBuilder {
             guard let path = await resolve(linkTarget, isWiki: true, note: note, root: root, index: index), DocumentKind(path: path) == .image,
                   let location = try? path.url(in: root) else { return nil } // A path outside the vault names no cover.
             return ReadingCover(picture: .vaultFile(path: path, location: location), verticalFocus: banner.verticalFocus)
+        }
+    }
+
+    /// A picture icon of the vault named by its path in the vault, found from the note as an embed is; nil when no
+    /// picture answers it.
+    private func resolved(_ icon: NoteIcon, note: VaultPath, root: URL, index: some ReadingFileLookup) async -> NoteIcon? {
+        guard case .picture(.vaultFile(let linkTarget)) = icon else { return icon }
+        guard let path = await resolve(linkTarget, isWiki: true, note: note, root: root, index: index), DocumentKind(path: path) == .image else { return nil }
+        return .picture(.vaultFile(linkTarget: path.rawValue))
+    }
+}
+
+/// The top of a note in the reading view, as Notion draws a page: the cover across the whole reading view, then the
+/// note's icon, large, over the cover's lower left. Nothing for a note without either.
+struct ReadingPageHeader: View {
+    let pageLook: ReadingPageLook
+    let notePath: VaultPath
+    let textSize: Double
+    /// How far the column's content starts below the reading view's top, which the cover reaches up to.
+    let topInset: CGFloat
+    /// Where the column starts in the reading view, which the cover reaches back to.
+    @State private var columnMinX: CGFloat = 0
+
+    /// Notion's page icon is 78 points beside 16-point text.
+    static let iconSizeInEms = 4.9
+    /// The part of the icon over the cover, Notion's 42 of 78 points.
+    static let iconOverlapFraction = 0.54
+
+    var body: some View {
+        if pageLook.cover != nil || pageLook.icon != nil {
+            VStack(alignment: .leading, spacing: 0) {
+                if let cover = pageLook.cover {
+                    // The button ends where the column does, as the column is centred in the reading view.
+                    ReadingCoverView(cover: cover, notePath: notePath, buttonTrailingInset: max(columnMinX, 8))
+                        .containerRelativeFrame(.horizontal)
+                        .offset(x: -columnMinX)
+                        .padding(.top, -topInset)
+                }
+                if let icon = pageLook.icon {
+                    let iconSize = CGFloat(textSize * Self.iconSizeInEms)
+                    NoteIconImage(icon: icon, pointSize: iconSize)
+                        .frame(width: iconSize, height: iconSize)
+                        .padding(.top, pageLook.cover == nil ? 0 : -iconSize * Self.iconOverlapFraction)
+                }
+            }
+            // Where the column starts in the reading view: the header is laid at the column's leading edge.
+            .onGeometryChange(for: CGFloat.self) { proxy in proxy.frame(in: .named(ReadingCoordinateSpace.name)).minX } action: { minX in
+                columnMinX = minX
+            }
         }
     }
 }
@@ -62,24 +129,33 @@ struct CoversOnPhoneSection: View {
     }
 }
 
-/// The cover above the note's title: the picture cropped to a short band of the note's width, with a button that
-/// folds it to a strip and opens it again. A picture that cannot be read leaves no room.
+/// The cover above the note's title: the picture cropped to a band across the reading view, with a button that folds
+/// it to a strip and opens it again. A picture that cannot be read leaves no room.
 struct ReadingCoverView: View {
     let cover: ReadingCover
     let notePath: VaultPath
+    /// How far in from the cover's right edge its button sits: the note's column ends there.
+    var buttonTrailingInset: CGFloat = 8
     @Environment(\.calloutFoldNote) private var foldNote
     @State private var loadedImage: CGImage?
     @State private var didFail = false
     /// Whether the cover is open, when no fold store keeps it (a note shown outside a pane).
     @State private var isExpandedWithoutStore = true
 
-    static let expandedHeightPoints: CGFloat = 140
+    /// Notion's cover takes 30% of the window's height; Graphite keeps it between these.
+    static let viewHeightFraction: CGFloat = 0.3
+    static let smallestExpandedHeightPoints: CGFloat = 140
+    static let largestExpandedHeightPoints: CGFloat = 280
     static let collapsedHeightPoints: CGFloat = 22
-    static let cornerRadiusPoints: CGFloat = 10
     /// The key the cover is folded under in the note's fold store, beside its callouts' keys.
     static let foldKey = "graphite-cover"
     /// The widest the picture is decoded: the readable column at the largest display scale, with room to spare.
     static let maximumPixelWidth = 2400
+
+    /// The open cover's height in a reading view `viewHeight` points high.
+    static func expandedHeight(forViewHeight viewHeight: CGFloat) -> CGFloat {
+        min(max(viewHeight * viewHeightFraction, smallestExpandedHeightPoints), largestExpandedHeightPoints)
+    }
 
     private var isExpanded: Bool {
         guard let foldNote else { return isExpandedWithoutStore }
@@ -90,8 +166,10 @@ struct ReadingCoverView: View {
         if !didFail {
             picture
                 .frame(maxWidth: .infinity)
-                .frame(height: isExpanded ? Self.expandedHeightPoints : Self.collapsedHeightPoints)
-                .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadiusPoints))
+                .containerRelativeFrame(.vertical) { viewHeight, _ in
+                    isExpanded ? Self.expandedHeight(forViewHeight: viewHeight) : Self.collapsedHeightPoints
+                }
+                .clipped()
                 .overlay(alignment: isExpanded ? .bottomTrailing : .trailing) { foldButton }
                 .animation(GraphiteMotion.animation(.snappy(duration: 0.2)), value: isExpanded)
                 .accessibilityElement(children: .contain)
@@ -128,7 +206,8 @@ struct ReadingCoverView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(isExpanded ? 8 : 2)
+        .padding(.vertical, isExpanded ? 8 : 2)
+        .padding(.trailing, buttonTrailingInset)
         .accessibilityLabel(isExpanded ? "Hide Cover" : "Show Cover")
     }
 

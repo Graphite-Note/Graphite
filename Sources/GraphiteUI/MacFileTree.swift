@@ -46,6 +46,7 @@ struct MacFileTree: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let controller = context.coordinator
         controller.requestCreation = requestCreation
+        controller.noteIconImages.catalog = noteIcons
         // Read here, so a change to any of them updates the tree, and only to them.
         controller.update(FileTreeController.State(
             rootEntries: workspace.rootEntries,
@@ -105,7 +106,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         var noteIcons: [VaultPath: NoteIcon] = [:]
     }
 
-    private let noteIconImages = NoteIconImages()
+    let noteIconImages = NoteIconImages()
 
     let workspace: WorkspaceModel
     var requestCreation: (CreationKind, VaultPath) -> Void = { _, _ in }

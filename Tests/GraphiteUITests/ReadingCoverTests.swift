@@ -49,42 +49,60 @@ final class ReadingCoverTests: XCTestCase {
         var configuration = ReadingConfiguration()
         configuration.drawsCover = true
         let drawn = try await build(note, configuration: configuration)
-        XCTAssertEqual(drawn.cover, ReadingCover(picture: .vaultFile(path: try VaultPath("Covers/Hills.png"),
+        XCTAssertEqual(drawn.pageLook.cover, ReadingCover(picture: .vaultFile(path: try VaultPath("Covers/Hills.png"),
                                                                     location: try VaultPath("Covers/Hills.png").url(in: vault)), verticalFocus: 0.25))
         configuration.drawsCover = false
         let notDrawn = try await build(note, configuration: configuration)
-        XCTAssertNil(notDrawn.cover, "Off, as on a phone by default: the note starts at its title.")
+        XCTAssertNil(notDrawn.pageLook.cover, "Off, as on a phone by default: the note starts at its title.")
     }
 
     func testABannerThatNamesNoPictureOfTheVaultIsNoCover() async throws {
         var configuration = ReadingConfiguration()
         configuration.drawsCover = true
         let missing = try await build("---\nbanner: \"[[Missing.png]]\"\n---\n", configuration: configuration)
-        XCTAssertNil(missing.cover)
+        XCTAssertNil(missing.pageLook.cover)
         let note = try await build("---\nbanner: \"[[Lab]]\"\n---\n", configuration: configuration)
-        XCTAssertNil(note.cover, "A note is not a picture.")
+        XCTAssertNil(note.pageLook.cover, "A note is not a picture.")
         let none = try await build("No frontmatter.", configuration: configuration)
-        XCTAssertNil(none.cover)
+        XCTAssertNil(none.pageLook.cover)
     }
 
     func testALinkToANoteWithAnEmojiIconShowsItFirstWhileIconsAreOn() async throws {
         var configuration = ReadingConfiguration()
         let withoutIcons = try await build("See [[Lab]].", configuration: configuration)
         XCTAssertFalse(markdownRuns(withoutIcons.blocks).joined().contains("🧪"))
-        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(emojiByPath: [try VaultPath("Lab.md"): "🧪"], version: 1)
+        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let withIcons = try await build("See [[Lab]] and [[Lab|the lab]].", configuration: configuration)
         let text = markdownRuns(withIcons.blocks).joined()
-        XCTAssertTrue(text.contains("[🧪 Lab]("), text)
-        XCTAssertTrue(text.contains("[🧪 the lab]("), "An alias keeps the icon too: \(text)")
+        XCTAssertTrue(text.contains("🧪 [Lab]("), "The icon stands before the link, outside its text: \(text)")
+        XCTAssertTrue(text.contains("🧪 [the lab]("), "An alias keeps the icon too: \(text)")
+    }
+
+    func testALinkToANoteWithAPictureOrSymbolIconShowsItAsASmallPicture() async throws {
+        var configuration = ReadingConfiguration()
+        let notion = try XCTUnwrap(URL(string: "https://example.com/icons/clock_gray.svg"))
+        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [
+            try VaultPath("Lab.md"): .picture(.vaultFile(linkTarget: "Covers/Hills.png")),
+            try VaultPath("Covers/Hills.png"): .picture(.webAddress(notion)),
+        ], root: vault, version: 1)
+        let pictureLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
+        XCTAssertTrue(pictureLink.contains("![](file://"), pictureLink)
+        XCTAssertTrue(pictureLink.contains("Hills.png#"), "The vault's picture, sized to the text: \(pictureLink)")
+        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .symbol(systemName: "atom")], root: vault, version: 2)
+        let symbolLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
+        XCTAssertTrue(symbolLink.contains("![](graphite-note-icon://symbol/atom"), symbolLink)
+        let webAddress = try XCTUnwrap(NoteIconInlineAddress.url(of: .picture(.webAddress(notion)), root: vault, textSize: 17))
+        XCTAssertEqual(NoteIconInlineAddress.named(by: webAddress), .webAddress(notion))
+        XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(URL(string: symbolLink.components(separatedBy: "![](")[1].components(separatedBy: ")")[0]))),
+                       .symbol("atom"))
     }
 
     func testLinkPrefixesCompareByTheirVersion() throws {
         let path = try VaultPath("Lab.md")
-        XCTAssertEqual(NoteIconLinkPrefixes(emojiByPath: [path: "🧪"], version: 3), NoteIconLinkPrefixes(emojiByPath: [:], version: 3),
+        XCTAssertEqual(NoteIconLinkPrefixes(iconsByPath: [path: .emoji("🧪")], root: nil, version: 3), NoteIconLinkPrefixes(iconsByPath: [:], root: nil, version: 3),
                        "One version names one set of icons, so the reading configuration compares in constant time.")
-        XCTAssertNotEqual(NoteIconLinkPrefixes(emojiByPath: [path: "🧪"], version: 3), NoteIconLinkPrefixes(emojiByPath: [path: "🧪"], version: 4))
-        XCTAssertEqual(NoteIconLinkPrefixes(icons: [path: .emoji("🧪"), try VaultPath("B.md"): .symbol(systemName: "atom")], version: 1).emojiByPath,
-                       [path: "🧪"], "A symbol cannot be written into a link's text.")
+        XCTAssertNotEqual(NoteIconLinkPrefixes(iconsByPath: [path: .emoji("🧪")], root: nil, version: 3),
+                          NoteIconLinkPrefixes(iconsByPath: [path: .emoji("🧪")], root: nil, version: 4))
     }
 
     func testTurningCoversOrIconsOnBuildsTheNoteAgain() throws {
@@ -93,7 +111,7 @@ final class ReadingCoverTests: XCTestCase {
         withCover.drawsCover = true
         XCTAssertNotEqual(plain.hashValueForReload, withCover.hashValueForReload)
         var withIcons = plain
-        withIcons.noteIconLinkPrefixes = NoteIconLinkPrefixes(emojiByPath: [try VaultPath("Lab.md"): "🧪"], version: 2)
+        withIcons.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: nil, version: 2)
         XCTAssertNotEqual(plain.hashValueForReload, withIcons.hashValueForReload)
     }
 
@@ -118,7 +136,7 @@ final class ReadingCoverTests: XCTestCase {
         let catalog = NoteIconCatalog()
         await catalog.reload(from: index)
         XCTAssertEqual(catalog.icon(of: try VaultPath("Lab.md")), .emoji("🧪"))
-        XCTAssertEqual(catalog.linkPrefixes.emojiByPath, [try VaultPath("Lab.md"): "🧪"])
+        XCTAssertEqual(catalog.linkPrefixes.iconsByPath, [try VaultPath("Lab.md"): .emoji("🧪")])
         let version = catalog.linkPrefixes.version
         await catalog.reload(from: index)
         XCTAssertEqual(catalog.linkPrefixes.version, version, "The same icons change nothing, so nothing is drawn again.")
@@ -148,11 +166,45 @@ final class ReadingCoverTests: XCTestCase {
             let renderer = ImageRenderer(content: view)
             return CGFloat(try XCTUnwrap(renderer.cgImage).height) / renderer.scale
         }
-        XCTAssertEqual(try drawnHeight(), ReadingCoverView.expandedHeightPoints, "A cover starts open.")
+        let openHeight = try drawnHeight()
+        XCTAssertGreaterThanOrEqual(openHeight, ReadingCoverView.smallestExpandedHeightPoints, "A cover starts open.")
         store.setExpanded(false, notePath: notePath.rawValue, key: ReadingCoverView.foldKey)
         XCTAssertEqual(try drawnHeight(), ReadingCoverView.collapsedHeightPoints, "Folded, it is a strip.")
         XCTAssertTrue(store.isExpanded(notePath: "Other.md", key: ReadingCoverView.foldKey, initially: true), "Only that note's cover folds.")
         store.setExpanded(true, notePath: notePath.rawValue, key: ReadingCoverView.foldKey)
-        XCTAssertEqual(try drawnHeight(), ReadingCoverView.expandedHeightPoints)
+        XCTAssertEqual(try drawnHeight(), openHeight)
+    }
+
+    func testTheCoverTakesNotionsThirtyPercentOfTheViewBetweenItsBounds() {
+        XCTAssertEqual(ReadingCoverView.expandedHeight(forViewHeight: 768), 230.4, accuracy: 0.01, "Notion's 230 of 768 points.")
+        XCTAssertEqual(ReadingCoverView.expandedHeight(forViewHeight: 300), ReadingCoverView.smallestExpandedHeightPoints)
+        XCTAssertEqual(ReadingCoverView.expandedHeight(forViewHeight: 1_400), ReadingCoverView.largestExpandedHeightPoints)
+    }
+
+    func testThePageLookFindsTheNotesIconAndResolvesAPictureOfTheVault() async throws {
+        var configuration = ReadingConfiguration()
+        configuration.drawsPageLook = true
+        let emoji = try await build("---\nicon: 📚\n---\n# Course", configuration: configuration)
+        XCTAssertEqual(emoji.pageLook.icon, .emoji("📚"))
+        XCTAssertNil(emoji.pageLook.cover, "Covers are drawn only where drawsCover says.")
+        let picture = try await build("---\nicon: \"[[Hills.png]]\"\n---\n", configuration: configuration)
+        XCTAssertEqual(picture.pageLook.icon, .picture(.vaultFile(linkTarget: "Covers/Hills.png")))
+        let missing = try await build("---\nicon: \"[[Gone.png]]\"\n---\n", configuration: configuration)
+        XCTAssertNil(missing.pageLook.icon)
+        configuration.drawsPageLook = false
+        let off = try await build("---\nicon: 📚\n---\n", configuration: configuration)
+        XCTAssertNil(off.pageLook.icon)
+    }
+
+    func testLinkLinesAreDrawnOnePerLineOnlyWhileThePluginIsOn() async throws {
+        var configuration = ReadingConfiguration()
+        let note = "[[Lab]]\n\n[[Course]]"
+        let apartRuns = markdownRuns(try await build(note, configuration: configuration).blocks)
+        XCTAssertEqual(apartRuns.count, 1)
+        let apart = apartRuns.joined()
+        configuration.drawsPageLook = true
+        let together = markdownRuns(try await build(note, configuration: configuration).blocks).joined()
+        XCTAssertTrue(apart.contains("\n\n["), "Two paragraphs: \(apart.debugDescription)")
+        XCTAssertFalse(together.contains("\n\n["), "One line each: \(together.debugDescription)")
     }
 }

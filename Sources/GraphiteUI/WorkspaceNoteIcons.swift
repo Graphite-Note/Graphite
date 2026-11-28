@@ -15,6 +15,6 @@ import Foundation
 extension WorkspaceModel {
     /// The index the window's `NoteIconCatalog` reads, and when to read it again (`PageLookLayer`).
     var noteIconSource: NoteIconSource {
-        NoteIconSource(index: index, reloadKey: "\(currentVaultIdentifier?.uuidString ?? "")|\(structureVersion)")
+        NoteIconSource(index: index, root: folderAccess?.root, reloadKey: "\(currentVaultIdentifier?.uuidString ?? "")|\(structureVersion)")
     }
 }

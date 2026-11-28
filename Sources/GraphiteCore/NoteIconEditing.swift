@@ -38,8 +38,13 @@ public enum NoteIconEditing {
         let frontmatterLength = FrontmatterLocator.length(in: source)
         guard frontmatterLength > 0,
               let yaml = try? MarkdownSemantics.parse(source.substring(to: frontmatterLength)).frontmatter, // Unparsable frontmatter names no icon.
-              let properties = NoteProperties.parse(yaml),
-              let property = properties.first(where: { property in property.key.caseInsensitiveCompare(NoteIcon.propertyKey) == .orderedSame }),
+              let properties = NoteProperties.parse(yaml) else { return nil }
+        return icon(in: properties)
+    }
+
+    /// The icon the `icon` property among `properties` names; nil without one Graphite draws.
+    public static func icon(in properties: [NoteProperty]) -> NoteIcon? {
+        guard let property = properties.first(where: { property in property.key.caseInsensitiveCompare(NoteIcon.propertyKey) == .orderedSame }),
               case .text(let text) = property.value else { return nil }
         return NoteIcon(propertyText: text)
     }

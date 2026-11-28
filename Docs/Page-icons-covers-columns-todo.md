@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5 (2026-11-27, open).
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28.
 
 ## Request
 
@@ -86,15 +86,22 @@ Decisions:
 11. **A run of lines that each link to a note is a compact list**, one row per link, its icon then its title, as Notion's links to pages. The note's text stays as written.
 12. **Spacing is proposed, not changed here.** Graphite's spacing between blocks is measured against Notion's at the same width and the differences are recorded below with numbers, for a decision that applies to every note.
 
-- [ ] `NoteIcon` reads picture icons (vault and web), and the index's icons and the Icon… sheet keep them.
-- [ ] Picture icons are drawn wherever an icon is: the file list (iPad, iPhone, Mac), tabs, the quick switcher, Library mode.
-- [ ] The reading view draws the page's icon large above the title, over the lower left of the cover when there is one: emoji, symbol or picture.
-- [ ] Links to a note with a picture or symbol icon show it before the link's text, as emoji icons already do.
-- [ ] The cover spans the reading view's width (decision 10), checked with a GIF and a large PNG.
-- [ ] Consecutive link lines are drawn as a compact list (decision 11), in a multi-column callout too.
-- [ ] Headings with coloured text (`~={#hex}…=~`) keep their colour and size in the reading view.
-- [ ] Spacing measured against Notion and the proposal recorded (decision 12).
-- [ ] Before and after pictures of made-up notes of the imported shape, on the Mac and the iPad.
+- [x] `NoteIcon` reads picture icons (vault and web), and the index's icons and the Icon… sheet keep them. Done 2026-11-28: `NoteIcon.picture`, `VaultIndex.noteIcons()` naming each vault picture by its path (`resolvingPictureLinks`), the Icon… sheet's Remove Icon for any kind. `NoteIconTests.testPictureIconsAreReadAsTheNotionImporterWritesThem`, `NoteIconQueriesTests.testAPictureIconOfTheVaultIsNamedByItsPathAndOneNoFileAnswersIsNone`.
+- [x] Picture icons are drawn wherever an icon is: the file list (iPad, iPhone, Mac), tabs, the quick switcher, Library mode. Done 2026-11-28: `NoteIconPictures`, `PictureDataDecoding` (an SVG through `SVGImageRenderer`), `NoteIconImage`'s picture case, the Mac outline's `NoteIconImages.loadedPicture`. Looked at in the file list and tabs of `NotionLookMacPicturesTests`, `NotionLookHostedTests` and `PageLookHostedTests` (iPad Pro 11-inch (M5) and iPhone 17 Pro simulators, iOS 27.2): an SVG and a GIF of the vault and an SVG of the web served on the loopback address. The quick switcher and Library mode draw them through the same `NoteIconImage` and were not looked at with a picture icon.
+- [x] The reading view draws the page's icon large above the title, over the lower left of the cover when there is one: emoji, symbol or picture. Done 2026-11-28: `ReadingPageHeader`, `ReadingPageLook` (`ReadingViewBuilder.pageLook`), 4.9 times the text size, 54% of it over the cover as Notion's 42 of 78 points. `ReadingCoverTests.testThePageLookFindsTheNotesIconAndResolvesAPictureOfTheVault`. Looked at on the Mac, the iPad and the iPhone, light and dark.
+- [x] Links to a note with a picture or symbol icon show it before the link's text, as emoji icons already do. Done 2026-11-28: `NoteIconInlineAddress`, `VaultImageLoader` drawing `graphite-note-icon:` addresses, the icon written before the link outside its text. `ReadingCoverTests.testALinkToANoteWithAPictureOrSymbolIconShowsItAsASmallPicture`. Looked at in the same pictures.
+- [x] The cover spans the reading view's width (decision 10), checked with a GIF and a large PNG. Done 2026-11-28: `ReadingCoverView` across the reading view, 30% of its height from 140 to 280 points (Notion: 230 of 768 points), its button at the column's right edge. `ReadingCoverTests.testTheCoverTakesNotionsThirtyPercentOfTheViewBetweenItsBounds` and the fold test. A two-frame GIF (its first frame shows) and a 4,000 by 1,500 PNG looked at on the Mac, the iPad and the iPhone.
+- [x] Consecutive link lines are drawn as a compact list (decision 11), in a multi-column callout too. Done 2026-11-28: `CompactLinkLines` (Core), applied while the plugin is on. `CompactLinkLinesTests` (4), `ReadingCoverTests.testLinkLinesAreDrawnOnePerLineOnlyWhileThePluginIsOn`. Lines 35 points apart at 17-point text on the Mac (Notion: 30 to 35 pixels at 16). Found while checking: a `[!blank]` column of a multi-column callout laid each of its blocks out as a column of its own. Each column is now one view, and `CalloutColumnsLayoutTests` and the pictures cover it.
+- [x] Headings with coloured text (`~={#hex}…=~`) keep their colour and size in the reading view. Done 2026-11-28: nothing to change: `## ~={#E03E3E}Lectures=~` keeps its colour at the heading's size in the reading view, in the pictures on the Mac, the iPad and the iPhone.
+- [x] Spacing measured against Notion and the proposal recorded (decision 12). Done 2026-11-28: measured on a public Notion page of the same shape at 1,024 by 768 and recorded below.
+- [x] Before and after pictures of made-up notes of the imported shape, on the Mac and the iPad. Done 2026-11-28: `NotionLookMacPicturesTests` run on main 926a4b66 (before) and with this section (after), light and dark, and `NotionLookHostedTests` on the iPad and the iPhone simulators. The pictures are of made-up notes and were looked at.
+
+Spacing, measured 2026-11-28 at a 1,024 by 768 window. Notion (a public notion.site page of the same shape, read from the page's own layout): text 16 px on 24 px lines, links to pages 30 to 35 px apart with a 22 to 24 px icon, a second-level heading 24 px in a 48 px block, the title 40 px, the page icon 78 px, the cover 230 px across the window, columns about 46 px apart. Graphite: text 17 points, a fixed 14 points between every block, the inline title 1.75 times the text (Notion 2.5), headings 1.6, 1.4 and 1.25 times (Notion 1.875, 1.5 and 1.25), columns 16 points apart, and the Properties panel under the title, which Notion does not show. Proposal, for a decision that applies to every note and is not made here:
+
+- Between paragraphs, lists and link lines, 6 points instead of 14 (Notion's 2 px margins and 3 px padding), with the room above a heading scaled by its level instead (1.4, 1.0 and 0.75 times the text above levels 1, 2 and 3), and 4 points below it.
+- Columns 32 points apart instead of 16, nearer Notion's 46.
+- While the core plugin is on, the `icon` and `banner` rows of the Properties panel folded away under the title, since the page already shows both.
+- The inline title kept at Obsidian's 1.75 times, which a vault's theme changes.
 
 ## Later
 

@@ -60,6 +60,9 @@ struct ReadingConfiguration: Equatable, Sendable {
     var diagramFontPostScriptName: String?
     /// Whether the note's `banner` property is drawn as a cover above its title (`ReadingCover`).
     var drawsCover = false
+    /// Whether the Icons, Covers and Columns core plugin is on: the note's `icon` property is drawn large above its title
+    /// (`ReadingPageHeader`) and lines that each link to a note are drawn one per line (`CompactLinkLines`).
+    var drawsPageLook = false
     /// The emoji put before links to notes that have one as their icon; none while icons are off.
     var noteIconLinkPrefixes = NoteIconLinkPrefixes.none
 }
@@ -266,8 +269,8 @@ struct ReadingViewBuild: Sendable {
     var blockLocations: [ReadingBlockLocation] = []
     var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
     var foldKeys = ReadingFoldKeys()
-    /// The note's cover, found from its `banner` property while covers are drawn.
-    var cover: ReadingCover?
+    /// The note's cover and icon, found from its `banner` and `icon` properties while they are drawn.
+    var pageLook = ReadingPageLook()
 }
 
 /// The keys the reading view folds by, taken from the note as it is written. A heading's
@@ -369,8 +372,9 @@ actor ReadingViewBuilder {
            let properties = NoteProperties.parse(frontmatter, declaredTypes: configuration.declaredPropertyTypes), !properties.isEmpty {
             rendered.append(.properties(properties))
         }
-        let cover = configuration.drawsCover && frontmatterLength > 0
-            ? await cover(inFrontmatter: sourceText.substring(to: frontmatterLength), note: note, root: root, index: index, configuration: configuration) : nil
+        let pageLook = (configuration.drawsCover || configuration.drawsPageLook) && frontmatterLength > 0
+            ? await pageLook(inFrontmatter: sourceText.substring(to: frontmatterLength), note: note, root: root, index: index, configuration: configuration)
+            : ReadingPageLook()
         // References become raised numbers that link to the list of footnotes at the end.
         let readableBody = Footnotes.preparedForReadingKeepingOffsets(sourceText.substring(from: frontmatterLength)) { number in
             "[\(number)](\(GraphiteOpenLink.footnoteDestination(number: number)))"
@@ -423,7 +427,7 @@ actor ReadingViewBuilder {
             catch { /* Preview remains available when narration cannot map this note. */ }
         }
         return ReadingViewBuild(blocks: rendered, hasUnresolvedEmbeds: hasUnresolvedEmbeds, blockLocations: blockLocations,
-                                readingSourceTokensByBlock: readingSourceTokensByBlock, foldKeys: foldKeys, cover: cover)
+                                readingSourceTokensByBlock: readingSourceTokensByBlock, foldKeys: foldKeys, pageLook: pageLook)
     }
 
     private func sourceTokens(_ tokens: [ReadAloudSourceToken], for locatedBlocks: [NotePreviewDocument.LocatedBlock],
@@ -479,14 +483,16 @@ actor ReadingViewBuilder {
         var rendered: [RenderedBlock] = []
         for locatedBlock in blocks {
             switch locatedBlock.block {
-            case .markdown(let markdown):
+            case .markdown(let writtenMarkdown):
+                // Lines that each link to a note stand one per line, as Notion's links to pages, while the plugin is on.
+                let markdown = configuration.drawsPageLook ? CompactLinkLines.compacted(writtenMarkdown) : writtenMarkdown
                 // A reference link whose definition is in another block still finds it.
                 let text = try await prepared(ReferenceLinkDefinitions.appendingDefinitions(taskSource.referenceDefinitions, neededBy: markdown), note: note, root: root, index: index, configuration: configuration) { lineIndex, status in
                     guard locatedBlock.lineStartOffsets.indices.contains(lineIndex), let lineStart = taskSource.noteOffset(locatedBlock.lineStartOffsets[lineIndex]) else { return nil }
                     return ReadingTasks.location(ofTaskStartingAt: lineStart, status: status, in: taskSource.noteText)
                 }
                 if configuration.runsPluginPostProcessors {
-                    let request = CommunityPluginReadingBlockRequest(kind: .section, source: markdown, note: note,
+                    let request = CommunityPluginReadingBlockRequest(kind: .section, source: writtenMarkdown, note: note,
                                                                      firstLine: taskSource.noteLine(ofBodyOffset: locatedBlock.startOffset),
                                                                      lineCount: max(1, locatedBlock.lineStartOffsets.count))
                     rendered.append(.pluginSection(id: identifier(), text: text, request: request))
@@ -718,9 +724,9 @@ actor ReadingViewBuilder {
                    await resolve(link.target, isWiki: link.isWiki, note: note, root: root, index: index) == nil {
                     destination = GraphiteOpenLink.markingUnresolved(destination)
                 }
-                let label = await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
-                    + Self.displayText(target: link.target, alias: link.label)
-                replacement = "[\(Self.escapedLabel(label))](\(destination))"
+                // A link to a note with an icon shows it first, outside the link's text, as Notion shows a link to a page.
+                replacement = await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
+                    + "[\(Self.escapedLabel(Self.displayText(target: link.target, alias: link.label)))](\(destination))"
             } else {
                 continue
             }
@@ -1022,7 +1028,9 @@ struct MarkdownPreview: View {
     /// position, so it is never taken for one and restored over a scroll.
     @State private var offsetBeforeRestoring: CGFloat?
     @State private var blocks: [RenderedBlock] = []
-    @State private var cover: ReadingCover?
+    /// Room above and below the note's column; a cover reaches up through it to the view's top.
+    static let verticalPaddingPoints: CGFloat = 32
+    @State private var pageLook = ReadingPageLook()
     @State private var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
     @State private var foldKeys = ReadingFoldKeys()
     /// Where the note's own top-level blocks start in its text, by block, for dragging headings (`ReadingSectionDrags`).
@@ -1058,7 +1066,7 @@ struct MarkdownPreview: View {
         ScrollViewReader { scrollProxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
-                    if let cover { ReadingCoverView(cover: cover, notePath: path) }
+                    ReadingPageHeader(pageLook: pageLook, notePath: path, textSize: configuration.textSize, topInset: Self.verticalPaddingPoints)
                     if let inlineTitle = configuration.inlineTitle {
                         Text(inlineTitle)
                             .font(InlineTitleStyle.swiftUIFont(textSize: configuration.textSize, typography: typography, theme: theme))
@@ -1079,7 +1087,7 @@ struct MarkdownPreview: View {
                 // One column for the title, the properties, the text and every block, bases
                 // included: the readable column, or the view inside its margins (HUNT-324).
                 .frame(maxWidth: configuration.usesReadableLineLength ? readableColumnWidth : .infinity, alignment: .leading)
-                .padding(.horizontal, ReadingConfiguration.minimumHorizontalMargin).padding(.vertical, 32)
+                .padding(.horizontal, ReadingConfiguration.minimumHorizontalMargin).padding(.vertical, Self.verticalPaddingPoints)
                 .frame(maxWidth: .infinity)
             }
             .scrollPosition($scrollPosition)
@@ -1208,7 +1216,7 @@ struct MarkdownPreview: View {
                 let key = ReadingBuildKey(source: source, path: path, root: root, configuration: configuration, dependsOnIndex: hasMissingEmbeds)
                 let cachedBuild = ReadingBlocksCache.Build(key: key, blocks: build.blocks, hasMissingEmbeds: hasMissingEmbeds,
                                                           blockLocations: build.blockLocations, readingSourceTokensByBlock: build.readingSourceTokensByBlock,
-                                                          foldKeys: build.foldKeys, cover: build.cover)
+                                                          foldKeys: build.foldKeys, pageLook: build.pageLook)
                 show(cachedBuild)
                 blocksCache?.lastBuild = cachedBuild
             } catch is CancellationError {
@@ -1340,7 +1348,7 @@ struct MarkdownPreview: View {
         wordCells.index(build.readingSourceTokensByBlock)
         wordDidMove(to: readingFollow.range)
         blocks = build.blocks; errorMessage = nil
-        if cover != build.cover { cover = build.cover }
+        if pageLook != build.pageLook { pageLook = build.pageLook }
         blocksVersion += 1
         hasMissingEmbeds = build.hasMissingEmbeds
         shownBuildKey = build.key
@@ -1593,7 +1601,7 @@ final class ReadingBlocksCache {
         var blockLocations: [ReadingBlockLocation] = []
         var readingSourceTokensByBlock: [String: [ReadAloudSourceToken]] = [:]
         var foldKeys = ReadingFoldKeys()
-        var cover: ReadingCover?
+        var pageLook = ReadingPageLook()
     }
 
     var lastBuild: Build?
@@ -1637,7 +1645,7 @@ extension ReadingConfiguration {
         hasher.combine(runsPluginPostProcessors)
         hasher.combine(dividesMarkdownIntoSections)
         hasher.combine(diagramFontPostScriptName)
-        hasher.combine(drawsCover); hasher.combine(noteIconLinkPrefixes.version)
+        hasher.combine(drawsCover); hasher.combine(drawsPageLook); hasher.combine(noteIconLinkPrefixes.version)
         return hasher.finalize()
     }
 }
@@ -1651,6 +1659,8 @@ struct ReadingFolding {
 }
 
 struct ReadingBlocksView: View {
+    /// The space between blocks, as the note's own column lays them out.
+    static let blockSpacingPoints: CGFloat = 14
     let blocks: [RenderedBlock]
     let root: URL
     let textSize: Double
@@ -1769,12 +1779,18 @@ struct ReadingBlocksView: View {
                 case .columns:
                     CalloutColumnsLayout {
                         ForEach(body) { column in
-                            ReadingBlocksView(blocks: [column], root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
-                                              openPDF: openPDF, updateProperties: nil)
+                            // One subview per column: a blank callout's blocks would each be a column of their own.
+                            VStack(alignment: .leading, spacing: Self.blockSpacingPoints) {
+                                ReadingBlocksView(blocks: [column], root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
+                                                  openPDF: openPDF, updateProperties: nil)
+                            }
                         }
                     }
                 case .contentOnly:
-                    ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading, openPDF: openPDF, updateProperties: nil)
+                    VStack(alignment: .leading, spacing: Self.blockSpacingPoints) {
+                        ReadingBlocksView(blocks: body, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
+                                          openPDF: openPDF, updateProperties: nil)
+                    }
                 }
             case .video(_, let location):
                 EmbeddedMediaPlayer(location: location)
@@ -2035,6 +2051,7 @@ private struct WordEnvironmentText: View {
 private struct ObsidianMarkdownTextContent: View, Equatable {
     let markdown: String
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -2096,7 +2113,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))
                 .textual.thematicBreakStyle(ObsidianThematicBreakStyle(theme: theme))
@@ -2949,6 +2966,7 @@ struct CalloutView<Body: View>: View {
     let automaticallyExpandsForReading: Bool
     @ViewBuilder let content: () -> Body
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
@@ -3011,7 +3029,7 @@ struct CalloutView<Body: View>: View {
                         .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
                         .foregroundStyle(appearance.titleColor)
                         .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale))
+                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
                         .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
                         .allowsHitTesting(Self.containsLink(title))
                     if folding != .notFoldable {
@@ -3091,8 +3109,25 @@ struct VaultImageLoader: AttachmentLoader {
     let root: URL
     /// Pixels a point where the text is shown; a scale below 1 is a view not on a screen yet.
     let displayScale: CGFloat
+    /// The window's pictures of notes' icons, which icons before links are drawn from; nil while icons are off.
+    let iconPictures: NoteIconPictures?
+
+    /// The pixels of an icon drawn before a link (`NoteIconInlineAddress`).
+    private func iconImage(_ named: NoteIconInlineAddress.Named) async throws -> CGImage {
+        switch named {
+        case .symbol(let systemName):
+            return try NoteIconSymbolPicture.image(systemName: systemName, pixelDimension: NoteIconPictures.pixelDimension)
+        case .webAddress(let address):
+            guard let iconPictures else { throw NoteIconPictureError.iconsOff }
+            return try await iconPictures.picture(at: .webAddress(address)).image
+        }
+    }
 
     func attachment(for location: URL, text: String, environment: ColorEnvironmentValues) async throws -> VaultImageAttachment {
+        if let named = NoteIconInlineAddress.named(by: location) {
+            return VaultImageAttachment(image: try await iconImage(named), description: text, displaySize: PreviewImageFragment.displaySize(in: location),
+                                        path: nil)
+        }
         let fileLocation = URL(fileURLWithPath: location.path)
         let normalizedRoot = root.resolvingSymlinksInPath().path + "/"
         guard location.isFileURL, fileLocation.resolvingSymlinksInPath().path.hasPrefix(normalizedRoot) else {

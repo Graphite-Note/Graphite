@@ -58,4 +58,16 @@ final class NoteIconTests: XCTestCase {
                            .symbol(systemName: pairing.systemName), pairing.systemName)
         }
     }
+
+    func testPictureIconsAreReadAsTheNotionImporterWritesThem() throws {
+        XCTAssertEqual(NoteIcon(propertyText: "\"[[Icons/clock.gif]]\""), .picture(.vaultFile(linkTarget: "Icons/clock.gif")))
+        XCTAssertEqual(NoteIcon(propertyText: "[[logo.svg]]"), .picture(.vaultFile(linkTarget: "logo.svg")))
+        let notion = try XCTUnwrap(URL(string: "https://www.example.com/icons/clock_gray.svg"))
+        XCTAssertEqual(NoteIcon(propertyText: notion.absoluteString), .picture(.webAddress(notion)))
+        XCTAssertEqual(NoteIcon(propertyText: "Icons/clock.png"), .picture(.vaultFile(linkTarget: "Icons/clock.png")))
+        XCTAssertNil(NoteIcon(propertyText: "[[Some note]]"), "A link to a note is no icon.")
+        XCTAssertEqual(NoteIcon(propertyText: "photo"), .symbol(systemName: "photo"), "A symbol name is no path.")
+        XCTAssertEqual(NoteIcon.picture(.webAddress(notion)).propertyText, notion.absoluteString)
+        XCTAssertEqual(NoteIcon.picture(.vaultFile(linkTarget: "Icons/clock.gif")).propertyText, "[[Icons/clock.gif]]")
+    }
 }

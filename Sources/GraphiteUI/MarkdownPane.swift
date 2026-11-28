@@ -255,7 +255,7 @@ struct MarkdownPane: View {
                              runsPluginPostProcessors: workspace.communityPlugins.runsMarkdownPostProcessors,
                              marksUnresolvedLinks: workspace.noteTheme != nil,
                              diagramFontPostScriptName: workspace.noteTypography.diagramFontPostScriptName,
-                             drawsCover: drawsCovers,
+                             drawsCover: drawsCovers, drawsPageLook: preferences.isEnabled(.pageLook),
                              noteIconLinkPrefixes: noteIcons?.linkPrefixes ?? .none)
     }
 

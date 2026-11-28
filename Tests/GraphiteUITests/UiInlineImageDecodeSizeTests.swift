@@ -133,12 +133,12 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
     func testTheLoaderDecodesForTheEmbedsWidthAtTheScreensScale() throws {
         let location = vault.appendingPathComponent("Photo.JPG")
         let sized = PreviewImageFragment.url(for: location, displaySize: EmbedDisplaySize(width: 250, height: nil), version: 0)
-        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 3).displayPixelWidth(for: sized), 750)
-        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 2).displayPixelWidth(for: sized), 500)
+        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 3, iconPictures: nil).displayPixelWidth(for: sized), 750)
+        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 2, iconPictures: nil).displayPixelWidth(for: sized), 500)
         // A view not on a screen yet reports no scale: one pixel a point, decoded again once it is.
-        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 0).displayPixelWidth(for: sized), 250)
+        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 0, iconPictures: nil).displayPixelWidth(for: sized), 250)
         let unsized = PreviewImageFragment.url(for: location, displaySize: nil, version: 0)
-        XCTAssertNil(VaultImageLoader(root: vault, displayScale: 3).displayPixelWidth(for: unsized))
+        XCTAssertNil(VaultImageLoader(root: vault, displayScale: 3, iconPictures: nil).displayPixelWidth(for: unsized))
     }
 }
 #endif
