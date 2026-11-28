@@ -7,7 +7,7 @@
  *              callout's paragraphs as blocks of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 28/11/2026
  */
 
@@ -214,5 +214,41 @@ final class ReadingCoverTests: XCTestCase {
         XCTAssertEqual(Array(build.foldKeys.columnWeightsByBlock.values), [[2, 1]])
         let even = try await self.build("> [!multi-column]\n> > [!blank]\n> > A\n>\n> > [!blank]\n> > B", configuration: ReadingConfiguration())
         XCTAssertTrue(even.foldKeys.columnWeightsByBlock.isEmpty, "Even columns need no weights.")
+    }
+
+    /// The Notion importer writes a page's list of links as one paragraph, each link ending in a hard line break.
+    func testALinkListWithHardBreaksKeepsItsLinesAndAnIconBeforeEachLink() async throws {
+        var configuration = ReadingConfiguration()
+        configuration.drawsPageLook = true
+        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
+        let text = markdownRuns(try await build("[[Lab]]  \n[[Lab|Second lab]]  \n[[Course]]  \n", configuration: configuration).blocks).joined()
+        XCTAssertTrue(text.contains("🧪 [Lab]("), text)
+        XCTAssertTrue(text.contains("🧪 [Second lab]("), text)
+        XCTAssertEqual(text.components(separatedBy: "  \n").count, 4, "Three lines, each ending in its hard break: \(text.debugDescription)")
+        XCTAssertFalse(text.contains("\n\n"), text.debugDescription)
+    }
+
+    /// Spans in a heading, a link line and a table cell reach the renderer as colour markers, never as their tags.
+    func testSpansInHeadingsLinkLinesAndTableCellsBecomeColours() async throws {
+        let note = """
+            ## <span style="color:#e05a52">Admin</span>
+
+            [[Lab]] <span style="color:#d9730d">due Monday</span>  
+            [[Course]]
+
+            | Week | Topic |
+            | --- | --- |
+            | 1 | <span style="background-color:#fbf3db">Intro</span> |
+            """
+        let build = try await build(note, configuration: ReadingConfiguration())
+        // What is drawn: the heading's text and the other blocks. Its anchor keeps the heading as written, as Obsidian's
+        // heading links name it.
+        let drawn = build.blocks.map { block in
+            if case .heading(_, _, let text, _) = block { text } else { String(describing: block) }
+        }.joined(separator: "\n")
+        XCTAssertFalse(drawn.lowercased().contains("<span"), drawn)
+        XCTAssertTrue(drawn.contains(String(ReadingMarkers.colorStartMarker) + "#e05a52"), drawn)
+        XCTAssertTrue(drawn.contains(String(ReadingMarkers.colorStartMarker) + "#d9730d"), drawn)
+        XCTAssertTrue(drawn.contains(String(ReadingMarkers.backgroundStartMarker) + "#fbf3db"), drawn)
     }
 }

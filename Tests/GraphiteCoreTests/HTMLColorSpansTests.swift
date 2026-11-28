@@ -6,7 +6,7 @@
  *              view, recoloured and removed, and spans in code stay text.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -79,5 +79,12 @@ final class HTMLColorSpansTests: XCTestCase {
         let styled = "<span style=\"color:#e03e3e;font-style:italic\">x</span>"
         XCTAssertEqual(applying(HTMLColorSpans.removingColor(in: styled as NSString, selection: NSRange(location: 47, length: 0)), to: styled),
                        "<span style=\"font-style:italic\">x</span>")
+    }
+
+    func testAColouredHeadingIsListedWithoutItsTags() {
+        XCTAssertEqual(HTMLColorSpans.textWithoutTags("<span style=\"color:#e05a52\">Admin</span> and <span style='background:#fbf3db'>dates</span>"),
+                       "Admin and dates")
+        XCTAssertEqual(HTMLColorSpans.textWithoutTags("Plain <b>bold</b>"), "Plain <b>bold</b>", "Other HTML is not a colour span.")
+        XCTAssertEqual(HTMLColorSpans.textWithoutTags("`<span style=\"color:red\">code</span>`"), "`<span style=\"color:red\">code</span>`")
     }
 }

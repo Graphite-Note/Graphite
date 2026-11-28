@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.75
+ * Version: 0.76
  * Date: 28/11/2026
  */
 
@@ -2532,7 +2532,7 @@ struct ObsidianMarkdownParser: MarkupParser {
     ///
     /// Markers are single scalars and are found as scalars: a marker followed by a combining
     /// mark, as in `==\u{0301}e==`, is one Character with it.
-    static func applyMarkers(start: Character, hexEnd: Character?, end: Character, to text: inout AttributedString,
+    private static func applyMarkers(start: Character, hexEnd: Character?, end: Character, to text: inout AttributedString,
                                      apply: (String, Range<AttributedString.Index>, inout AttributedString) -> Void) {
         guard let startMarker = start.unicodeScalars.first, let endMarker = end.unicodeScalars.first else { return }
         let hexEndMarker = hexEnd?.unicodeScalars.first
@@ -3697,6 +3697,21 @@ private struct ReadingImageBlock: View {
                 // A task cancelled while it waited for a decoding slot ends in an error; it is not a failure of the picture.
                 if !Task.isCancelled { didFail = true }
             }
+        }
+    }
+}
+
+extension ObsidianMarkdownParser {
+    /// The reading view's colour and background markers (`ReadingMarkers`), a span's or the Colors feature's, drawn so
+    /// they read on a light page and a dark one.
+    static func applyNoteColorMarkers(to attributed: inout AttributedString) {
+        applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
+            if let color = PlatformColor.legibleNoteText(hex: hex) { text[range].foregroundColor = Color(color) }
+        }
+        applyMarkers(start: ReadingMarkers.backgroundStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.backgroundEndMarker,
+                     to: &attributed) { hex, range, text in
+            guard let color = PlatformColor.noteBackground(hex: hex) else { return }
+            text[range][RoundedRunBackgroundAttribute.self] = RoundedRunBackground(color: Color(color), cornerRadius: 3, horizontalPadding: 1)
         }
     }
 }

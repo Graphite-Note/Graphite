@@ -6,8 +6,8 @@
  *              and map.
  *
  * Authors: felixchvl
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -263,9 +263,9 @@ struct NoteLinksInspector: View {
             Section("Outline") {
                 if outline.isEmpty { Text("No headings").foregroundStyle(.secondary) }
                 ForEach(outline) { heading in
-                    // Headings read as text, as in Obsidian's outline, not as tinted links.
+                    // Headings read as text, as in Obsidian's outline, not as tinted links, and a coloured heading without its tags.
                     Button { workspace.headingScrollRequest = HeadingScrollRequest(anchor: heading.anchor, occurrence: heading.occurrence) } label: {
-                        Text(heading.text).lineLimit(2)
+                        Text(HTMLColorSpans.textWithoutTags(heading.text)).lineLimit(2)
                             .interfaceFont(.callout, weight: heading.level == 1 ? .semibold : nil)
                             .foregroundStyle(heading.level <= 2 ? .primary : .secondary)
                             .padding(.leading, CGFloat(heading.level - 1) * 14)

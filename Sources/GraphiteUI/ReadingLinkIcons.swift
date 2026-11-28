@@ -6,13 +6,12 @@
  *              and Iconize an icon in Obsidian: an emoji as text, a picture or a symbol as a small picture inside the text.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 28/11/2026
  */
 
 import Foundation
 import GraphiteCore
-import GraphiteIndex
 
 extension ReadingConfiguration {
     /// Whether the build answers every wikilink of the note in one read of the index: a theme marks those no file

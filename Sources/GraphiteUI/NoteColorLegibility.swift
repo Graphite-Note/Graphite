@@ -6,14 +6,13 @@
  *              one: text darkened or lightened just enough, a background made a dark tint of its hue on a dark page. The note is unchanged.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
 import SwiftUI
 import GraphiteCore
 import Synchronization
-import Textual
 #if canImport(UIKit)
 import UIKit
 #else
@@ -130,21 +129,6 @@ private enum NoteColorCache {
         colorsByKey.withLock { colors in
             if colors.count >= maximumCount { colors.removeAll() }
             colors[key] = color
-        }
-    }
-}
-
-extension ObsidianMarkdownParser {
-    /// The reading view's colour and background markers (`ReadingMarkers`), a span's or the Colors feature's, drawn so
-    /// they read on a light page and a dark one.
-    static func applyNoteColorMarkers(to attributed: inout AttributedString) {
-        applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
-            if let color = PlatformColor.legibleNoteText(hex: hex) { text[range].foregroundColor = Color(color) }
-        }
-        applyMarkers(start: ReadingMarkers.backgroundStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.backgroundEndMarker,
-                     to: &attributed) { hex, range, text in
-            guard let color = PlatformColor.noteBackground(hex: hex) else { return }
-            text[range][RoundedRunBackgroundAttribute.self] = RoundedRunBackground(color: Color(color), cornerRadius: 3, horizontalPadding: 1)
         }
     }
 }

@@ -5,10 +5,10 @@
  * Description: Pictures, in a Mac window of the app, of a made-up course page of the shape the Notion importer writes:
  *              picture icons of the vault and of the web, a GIF cover, a large PNG cover, three columns of coloured
  *              headings over lines that each link to a page, and a page of Notion's text and background colours as HTML
- *              spans with columns of uneven widths, in the reading view and Live Preview, light and dark.
+ *              spans in text, a heading, a list of links and a table, with columns of uneven widths, in the reading view and Live Preview, light and dark.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 28/11/2026
  */
 
@@ -59,6 +59,16 @@ final class NotionLookMacPicturesTests: XCTestCase {
         > > [!blank]
         > > ## Narrow
         > > [[Lab 1]]
+
+        ## <span style="color:#e05a52">Admin</span>
+        [[Lab 1]]  
+        [[Lab 2]] <span style="color:#d9730d">due Monday</span>  
+        [[Midterm]]  
+
+        | Week | Topic |
+        | --- | --- |
+        | 1 | <span style="background-color:#FBF3DB">Intro</span> |
+        | 2 | <span style="color:#337EA9">Lists</span> |
 
         > [!note] A callout with <span style="color:#D9730D">orange</span> words
         > And a <span style="background-color:#E7F3F8">blue background</span> inside it.

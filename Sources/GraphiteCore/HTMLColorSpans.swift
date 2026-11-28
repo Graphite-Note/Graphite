@@ -6,7 +6,7 @@
  *              Notion importer writes Notion's colours and Obsidian draws them: found, recoloured and removed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -52,6 +52,16 @@ public enum HTMLColorSpans {
             }
         }
         return found.sorted { firstSpan, secondSpan in firstSpan.openingTagRange.location < secondSpan.openingTagRange.location }
+    }
+
+    /// `text` with the tags of its colour and background spans taken out and their text kept: a coloured heading as the
+    /// outline lists it.
+    public static func textWithoutTags(_ text: String) -> String {
+        let tagRanges = spans(in: text as NSString).flatMap { span in [span.openingTagRange, span.closingTagRange] }
+        guard !tagRanges.isEmpty else { return text }
+        let shown = NSMutableString(string: text)
+        for tagRange in tagRanges.sorted(by: { firstTag, secondTag in firstTag.location > secondTag.location }) { shown.deleteCharacters(in: tagRange) }
+        return shown as String
     }
 
     /// The text and background colours a span's attributes give in their `style`.
