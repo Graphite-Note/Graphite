@@ -5,8 +5,8 @@
  * Description: A look chosen in Graphite on the Mac is written where Finder reads it, so the tile
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 18/11/2026
+ * Version: 0.12
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -327,6 +327,24 @@ extension LibraryModelTests {
         await library.reload(source: source(identifier: identifier), sortOrder: .alphabetical)
 
         try await waitUntil("the changed note's preview is drawn") { self.noteText(in: library, at: note.path) == "New, longer text" }
+    }
+
+    /// A notebook written in Graphite and saved after the library had listed its folder kept its blank tile:
+    /// Graphite's own saves list no folder again, so the tile hears of the save itself.
+    func testAFileGraphiteSavesWhileItsTileIsShownGetsANewPreview() async throws {
+        let library = LibraryModel()
+        try Data("Old text".utf8).write(to: vault.appendingPathComponent("Inbox.md"))
+        await library.reload(source: source(), sortOrder: .alphabetical)
+        let note = try XCTUnwrap(library.items.first { entry in entry.path.name == "Inbox.md" })
+        library.tileAppeared(note)
+        try await waitUntil("the first preview is drawn") { self.noteText(in: library, at: note.path) == "Old text" }
+
+        try Data("New, longer text".utf8).write(to: vault.appendingPathComponent("Inbox.md"))
+        await library.filesWereSaved([note.path, try VaultPath("Courses/Summary.md")])
+
+        try await waitUntil("the saved note's preview is drawn") { self.noteText(in: library, at: note.path) == "New, longer text" }
+        let listedNote = try XCTUnwrap(library.items.first { entry in entry.path == note.path })
+        XCTAssertNotEqual(LibraryPreviewCache.Key(entry: listedNote), LibraryPreviewCache.Key(entry: note), "the tile is given the saved version")
     }
 
     /// BUG-SHELL-09: every tile on screen rendered at once, without a limit.

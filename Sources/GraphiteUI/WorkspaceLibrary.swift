@@ -5,8 +5,8 @@
  * Description: What the library view reads from and asks of a window.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.13
- * Date: 26/11/2026
+ * Version: 0.14
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -21,7 +21,13 @@ extension WorkspaceModel {
             folderListingVersions: folderListingVersions,
                      firstCreatedKind: preferences.library.firstCreatedKind, isPluginEnabled: preferences.isEnabled,
                      presentation: preferences.library.presentation, confirmsDeletion: vaultSettings.confirmsDeletion,
-                     deletionMethod: vaultSettings.deletionMethod)
+                     deletionMethod: vaultSettings.deletionMethod, savedFiles: librarySavedFiles)
+    }
+
+    /// The files of the index's latest change, when it was a refresh of named files: what a save reports.
+    private var librarySavedFiles: LibrarySavedFiles {
+        let change = lastIndexChange
+        return LibrarySavedFiles(version: indexVersion, paths: change?.version == indexVersion ? change?.paths : nil)
     }
 
     /// Makes the previews of the vault's files that the library's tiles and the tab overview's

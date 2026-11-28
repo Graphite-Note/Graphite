@@ -4,15 +4,26 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-28.
 
+## New notebooks, their tiles, and a library of 100,000 notes: 2026-11-28
+
+[Notebook-library-and-new-file-todo.md](Notebook-library-and-new-file-todo.md) Verification (issue #38), and HUNT-385 of [Bug-hunt-todo.md](Bug-hunt-todo.md) (issue #123).
+
+- **Created and written, iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, Debug), by finger:** a notebook embedded in a note, one in a folder with a link, one from the library's New menu; each written in, kept after quitting (PDFKit read 2, 1 and 1 strokes) and shown with its strokes on its tile.
+- **HUNT-385:** a notebook written after the library had listed its folder kept its blank tile, as Graphite's own saves list no folder again. `LibraryModel.filesWereSaved` reads the saved files on screen again: `LibraryModelTests.testAFileGraphiteSavesWhileItsTileIsShownGetsANewPreview`, and in the simulator the tile showed a new stroke in the same session.
+- **Readers:** Files and Preview on the iPad; Quick Look and PDFKit on the Mac; appearance streams for Obsidian's pdf.js; the note's embed and link each name one file. Obsidian itself was not opened.
+- **A vault of 100,000 notes:** `LibraryLargeVaultScrollingHostedTests` (simulator, Debug, a heavily loaded Mac): the folder of 10,000 notes listed and laid out in 0.26 s; scrolled 60 points a frame, median 47.9 ms while the index read the vault and 29.0 ms after it had, most frames over 17.7 ms; memory 57 to 100 MB; 50 previews kept for the tiles shown.
+- **Cloud placeholders, on the Mac:** in a made-up iCloud Drive folder with one PDF evicted, the library showed it as "In iCloud" and did not download it.
+- **Not established:** smooth scrolling of a large folder (the measure above is not smooth; a device and a Release build were not used), the physical iPad and Apple Pencil, Obsidian itself.
+
 ## Imported notebooks edited by finger in the iPad simulator: 2026-11-28
 
 [Goodnotes-Notability-import-todo.md](Goodnotes-Notability-import-todo.md) Phase 5 (issue #32). The made-up notebooks of `Tests/SyntheticNotebooks` imported through `NotebookImportRun`, then opened in an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, Debug build).
 
 - **Edited by finger:** an imported stroke selected alone by the lasso (the paper stays out), recolored, resized and moved; the imported picture selected by a tap, resized and moved; the pixel eraser cutting an imported stroke without touching the ruled paper; a new stroke written on the page; an imported text box edited with the text tool.
 - **Saved and reopened:** all of it was there after Graphite was quit and opened again, and the re-edited stroke still selected as one stroke.
-- **Other readers:** Files on the iPad shows the edited notebooks as Graphite does.
+- **Other readers:** Files and the Preview app on the iPad show the edited notebooks as Graphite does; on the Mac, Quick Look (`qlmanage`) draws every mark, PDFKit reads each back, and each carries the appearance stream Obsidian's PDF viewer (pdf.js) draws.
 - **Speed:** `DenseNotebookImportSpeedHostedTests` (in the iPad app's process): 1,000 strokes in 2.01 s, 4,000 in 7.52 s, two pages of 5,159 and 6,145 strokes in 20.2 s.
-- **Not established:** Preview and Obsidian on the Mac, Goodnotes or Notability beside the import, the physical iPad and Apple Pencil, the real samples on the iPad.
+- **Not established:** Preview opened as an app on the Mac and Obsidian itself (launching it would reopen the last vault it showed), Goodnotes or Notability beside the import, the physical iPad and Apple Pencil, the real samples on the iPad.
 
 ## New notes, folders and renames named in the Mac's file tree rows: 2026-11-28
 

@@ -5,8 +5,8 @@
  * Description: The library of one window: the folder shown as a grid, its listing, the filter, the
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 01/11/2026
+ * Version: 0.10
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -284,6 +284,25 @@ final class LibraryModel {
         let isRequested = requestedPreviewKeys[entry.path] == LibraryPreviewCache.Key(entry: entry)
         if isRequested, hasFinalPreview(entry.path) || isPreviewPending(entry.path) { return }
         requestPreview(of: entry)
+    }
+
+    /// Graphite or another app saved these files: a tile of one on screen shows the saved version. A save of
+    /// Graphite's own lists no folder again (an autosave every few seconds would list a large folder each
+    /// time), so only the entries of the saved files on screen are read again. The old picture stays until
+    /// the new one is drawn.
+    func filesWereSaved(_ paths: Set<VaultPath>) async {
+        guard let source else { return }
+        let shownPaths = paths.filter { path in visibleTileCounts[path] != nil }
+        guard !shownPaths.isEmpty else { return }
+        let savedEntries = await source.store.entries(at: shownPaths)
+        guard source.vaultIdentifier == self.source?.vaultIdentifier else { return }
+        for case let (path, savedEntry?) in savedEntries where visibleTileCounts[path] != nil {
+            guard requestedPreviewKeys[path] != LibraryPreviewCache.Key(entry: savedEntry) else { continue }
+            // The listing gets the new date and size, so a tile scrolled back asks for this version.
+            if let listedIndex = listedEntries.firstIndex(where: { entry in entry.path == path }) { listedEntries[listedIndex] = savedEntry }
+            if let itemIndex = items.firstIndex(where: { entry in entry.path == path }) { items[itemIndex] = savedEntry }
+            requestPreview(of: savedEntry)
+        }
     }
 
     /// Stops a tile's preview work and lets go of its picture once it leaves the screen.
