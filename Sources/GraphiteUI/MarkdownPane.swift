@@ -5,7 +5,7 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.74
+ * Version: 0.75
  * Date: 28/11/2026
  */
 
@@ -264,10 +264,10 @@ struct MarkdownPane: View {
         preferences.isEnabled(.pageLook) && (SettingsDevice.current != .phone || preferences.showsCoversOnPhone)
     }
 
-    /// The note's name above its text, written as the tab and the title bar write it, so the
-    /// three agree: with `.md` when Settings › Files and Links › Show File Extensions is on.
+    /// The note's name above its text, without `.md` as Obsidian and Notion write a page's title, whatever Settings ›
+    /// Files and Links › Show File Extensions says for the tab and the file list.
     private var inlineTitle: String? {
-        workspace.showsInlineTitle ? preferences.displayName(for: session.path) : nil
+        workspace.showsInlineTitle ? session.path.stem : nil
     }
 
     private var editorConfiguration: EditorConfiguration {

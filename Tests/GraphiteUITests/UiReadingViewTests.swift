@@ -1,3 +1,14 @@
+/**
+ * File: UiReadingViewTests.swift
+ * ------------------------------
+ * Layer: Tests
+ * Description: The reading view's build and drawing of a note: properties, links, embeds, tasks, math and the rest.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 28/11/2026
+ */
+
 import XCTest
 import AppKit
 import SwiftUI
@@ -392,7 +403,7 @@ final class UiReadingViewTests: XCTestCase {
 
     func testFrontmatterBecomesPropertiesAndTheBodyKeepsItsLinks() async throws {
         let build = try await build("---\ntitle: Lecture\n---\n# Heading\n\nSee [[Other]] and **bold** text\n", note: "Note.md")
-        guard case .properties(let properties) = build.blocks.first else { return XCTFail("The note's properties are not shown first.") }
+        guard case .properties(let properties, _) = build.blocks.first else { return XCTFail("The note's properties are not shown first.") }
         XCTAssertEqual(properties.map(\.key), ["title"])
         let texts = markdownTexts(build.blocks)
         XCTAssertFalse(texts.joined().contains("title: Lecture"))

@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.76
+ * Version: 0.77
  * Date: 28/11/2026
  */
 
@@ -76,7 +76,8 @@ struct ReadingConfiguration: Equatable, Sendable {
 
 /// A reading-view block after links are resolved and files located.
 indirect enum RenderedBlock: Identifiable, Sendable {
-    case properties([NoteProperty])
+    /// `hiddenKeys` (lowercased) are not shown: the cover's and the icon's, which the page's header draws.
+    case properties([NoteProperty], hiddenKeys: Set<String>)
     case markdown(id: Int, text: String)
     case displayMath(id: Int, text: String)
     /// `anchor` is the heading's scroll target: its anchor for the note's first heading with
@@ -378,14 +379,15 @@ actor ReadingViewBuilder {
         // parsing the whole note with MarkdownSemantics would cost more than the rest of the build.
         let frontmatterLength = FrontmatterLocator.length(in: sourceText)
         var rendered: [RenderedBlock] = []
-        if configuration.showsProperties, frontmatterLength > 0,
-           let frontmatter = try MarkdownSemantics.parse(sourceText.substring(to: frontmatterLength)).frontmatter,
-           let properties = NoteProperties.parse(frontmatter, declaredTypes: configuration.declaredPropertyTypes), !properties.isEmpty {
-            rendered.append(.properties(properties))
-        }
         let pageLook = (configuration.drawsCover || configuration.drawsPageLook) && frontmatterLength > 0
             ? await pageLook(inFrontmatter: sourceText.substring(to: frontmatterLength), note: note, root: root, index: index, configuration: configuration)
             : ReadingPageLook()
+        if configuration.showsProperties, frontmatterLength > 0,
+           let frontmatter = try MarkdownSemantics.parse(sourceText.substring(to: frontmatterLength)).frontmatter,
+           let properties = NoteProperties.parse(frontmatter, declaredTypes: configuration.declaredPropertyTypes),
+           properties.contains(where: { property in !pageLook.drawnPropertyKeys.contains(property.key.lowercased()) }) {
+            rendered.append(.properties(properties, hiddenKeys: pageLook.drawnPropertyKeys))
+        }
         // References become raised numbers that link to the list of footnotes at the end.
         let readableBody = Footnotes.preparedForReadingKeepingOffsets(sourceText.substring(from: frontmatterLength)) { number in
             "[\(number)](\(GraphiteOpenLink.footnoteDestination(number: number)))"
@@ -1739,9 +1741,9 @@ struct ReadingBlocksView: View {
     @ViewBuilder private func blockView(for entry: (block: RenderedBlock, foldKey: String?, hasBody: Bool)) -> some View {
             let block = entry.block
             switch block {
-            case .properties(let properties):
+            case .properties(let properties, let hiddenKeys):
                 PropertiesPanel(properties: properties, update: updateProperties, follow: navigate, declaredTypes: declaredPropertyTypes,
-                                suggestions: propertySuggestions)
+                                suggestions: propertySuggestions, hiddenKeys: hiddenKeys)
             case .markdown(_, let text):
                 ObsidianMarkdownText(markdown: text, root: root, textSize: textSize, navigate: navigate, scrollToHeading: scrollToHeading,
                                      sourceTokens: readingSourceTokensByBlock[block.id])

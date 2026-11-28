@@ -7,7 +7,7 @@
  *              callout's paragraphs as blocks of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 28/11/2026
  */
 
@@ -250,5 +250,63 @@ final class ReadingCoverTests: XCTestCase {
         XCTAssertTrue(drawn.contains(String(ReadingMarkers.colorStartMarker) + "#e05a52"), drawn)
         XCTAssertTrue(drawn.contains(String(ReadingMarkers.colorStartMarker) + "#d9730d"), drawn)
         XCTAssertTrue(drawn.contains(String(ReadingMarkers.backgroundStartMarker) + "#fbf3db"), drawn)
+    }
+
+    func testAReloadAskedForDuringARunningReadIsAnsweredAfterItInsteadOfCancellingIt() async throws {
+        let catalog = NoteIconCatalog()
+        let later = FixedIconLookup(icons: [try VaultPath("Lab.md"): .emoji("🔧")])
+        let first = FixedIconLookup(icons: [try VaultPath("Lab.md"): .emoji("🧪")]) {
+            await MainActor.run { catalog.requestReload(from: later, root: nil) }
+        }
+        catalog.requestReload(from: first, root: nil)
+        await catalog.finishReloading()
+        XCTAssertEqual(catalog.icon(of: try VaultPath("Lab.md")), .emoji("🔧"), "The request made during the first read is read after it.")
+        let firstReads = await first.readCount, laterReads = await later.readCount
+        XCTAssertEqual(firstReads, 1)
+        XCTAssertEqual(laterReads, 1)
+        catalog.requestReload(from: first, root: nil)
+        catalog.requestReload(from: later, root: nil)
+        await catalog.finishReloading()
+        let firstReadsAfter = await first.readCount
+        XCTAssertEqual(firstReadsAfter, 1, "Two requests before a read starts make one read, of the newer source.")
+    }
+
+    func testTheReadingViewLeavesTheCoversAndIconsRowsToThePagesHeader() async throws {
+        var configuration = ReadingConfiguration()
+        let note = "---\nbanner: \"[[Covers/Hills.png]]\"\nbanner_y: 0.3\nicon: 🧪\ncourse: EE330\n---\nText"
+        guard case .properties(let shown, let hiddenWithoutLook)? = try await build(note, configuration: configuration).blocks.first else {
+            return XCTFail("No properties")
+        }
+        XCTAssertTrue(hiddenWithoutLook.isEmpty, "Without the plugin every row shows.")
+        configuration.drawsCover = true
+        configuration.drawsPageLook = true
+        guard case .properties(let properties, let hidden)? = try await build(note, configuration: configuration).blocks.first else {
+            return XCTFail("No properties")
+        }
+        XCTAssertEqual(properties.map(\.key), shown.map(\.key), "Every property stays in the panel's edits.")
+        XCTAssertEqual(hidden, ["banner", "banner_y", "banner-y", "icon"])
+        let onlyACover = try await build("---\nbanner: \"[[Covers/Hills.png]]\"\n---\nText", configuration: configuration)
+        if case .properties? = onlyACover.blocks.first { XCTFail("A note whose only property is its cover shows no Properties panel.") }
+        let missingPicture = try await build("---\nbanner: \"[[Nowhere.png]]\"\n---\nText", configuration: configuration)
+        guard case .properties(_, let keptRows)? = missingPicture.blocks.first else { return XCTFail("A cover not drawn keeps its row.") }
+        XCTAssertTrue(keptRows.isEmpty)
+    }
+}
+
+/// An index answering fixed icons, counting its reads, and running `duringRead` while it reads.
+private actor FixedIconLookup: NoteIconLookup {
+    let icons: [VaultPath: NoteIcon]
+    let duringRead: (@Sendable () async -> Void)?
+    private(set) var readCount = 0
+
+    init(icons: [VaultPath: NoteIcon], duringRead: (@Sendable () async -> Void)? = nil) {
+        self.icons = icons
+        self.duringRead = duringRead
+    }
+
+    func noteIcons() async throws -> [VaultPath: NoteIcon] {
+        readCount += 1
+        if readCount == 1 { await duringRead?() }
+        return icons
     }
 }

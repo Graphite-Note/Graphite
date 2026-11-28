@@ -6,8 +6,8 @@
  *              core plugin is on, for the file list, tabs, the quick switcher, links and Library mode.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 27/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -35,6 +35,31 @@ final class NoteIconCatalog {
 
     func icon(of path: VaultPath) -> NoteIcon? {
         iconsByPath.isEmpty ? nil : iconsByPath[path]
+    }
+
+    /// The read under way, and the source asked for since it started.
+    private var reloadWorker: Task<Void, Never>?
+    private var pendingSource: (index: (any NoteIconLookup)?, root: URL?)?
+
+    /// Reads the icons again, after the read under way if there is one. No read is cut short by a newer request, and
+    /// the newest request is answered by a read that starts after it: while a large vault's first index is written,
+    /// each change asks again, and a read cancelled by the next one left the links of such a vault without icons until
+    /// the index stopped changing.
+    func requestReload(from index: (any NoteIconLookup)?, root: URL?) {
+        pendingSource = (index, root)
+        guard reloadWorker == nil else { return }
+        reloadWorker = Task { [weak self] in
+            while let self, let source = self.pendingSource {
+                self.pendingSource = nil
+                await self.reload(from: source.index, root: source.root)
+            }
+            self?.reloadWorker = nil
+        }
+    }
+
+    /// Waits for the reads asked for so far (tests).
+    func finishReloading() async {
+        while let worker = reloadWorker { await worker.value }
     }
 
     /// Reads the icons again from `index`, or forgets them all without one. Observers are told only when an icon
@@ -117,7 +142,7 @@ struct PageLookLayer: ViewModifier {
                 guard isEnabled else { catalog = nil; return }
                 let shownCatalog = catalog ?? NoteIconCatalog()
                 catalog = shownCatalog
-                await shownCatalog.reload(from: currentSource.index, root: currentSource.root)
+                shownCatalog.requestReload(from: currentSource.index, root: currentSource.root)
             }
     }
 }

@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28, and [#274](https://github.com/Graphite-Note/Graphite/issues/274) for section 6, built 2026-11-28.
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28, and [#274](https://github.com/Graphite-Note/Graphite/issues/274) for section 6, built 2026-11-28, and [#278](https://github.com/Graphite-Note/Graphite/issues/278) for section 7, built 2026-11-28.
 
 ## Request
 
@@ -125,10 +125,28 @@ Decisions:
 - [x] Checked on the Mac, the iPad and the iPhone with made-up notes, light and dark. Done 2026-11-28: `NotionLookMacPicturesTests` on main before the change (raw tags, even columns) and after it, reading view and Live Preview, light and dark, and hosted `NotionLookHostedTests.testNotionsColoursAndUnevenColumnsAreDrawnInBothModes` on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator (iOS 27.2), where the iPhone stacks the columns. The pictures were looked at. Not checked: a physical device.
 - [x] The shapes of the first re-import of a real workspace: a coloured heading (`## <span style="color:#e05a52">Admin</span>`), a list of links written as one paragraph with a hard break after each link, a span beside a link and spans in table cells. Done 2026-11-28: all were already drawn by the reading view and Live Preview (tags hidden off the line, the heading's size kept, the icon before each link of the list in the reading view). The outline listed a coloured heading with its tags and now lists its text (`HTMLColorSpans.textWithoutTags`), its anchor kept as written as Obsidian's heading links name it. Tests: `ReadingCoverTests.testALinkListWithHardBreaksKeepsItsLinesAndAnIconBeforeEachLink` and `testSpansInHeadingsLinkLinesAndTableCellsBecomeColours`, `LivePreviewHTMLColorSpanTests` (three new), `HTMLColorSpansTests.testAColouredHeadingIsListedWithoutItsTags`, the made-up page's pictures on the Mac and the iPad simulator with these shapes. Live Preview draws no icons before links (in Later).
 
+## 7. The page's header and its links on a real imported workspace
+
+Issue: [#278](https://github.com/Graphite-Note/Graphite/issues/278)
+
+Requested 2026-11-28 after the wiki home page of the first re-import of a real workspace was compared with the live Notion page: no icon before any link of the page, the title written with `.md`, and the Properties panel showing the `banner` and `icon` rows that the cover and the large icon already draw. The colour spans of that page were drawn raw in the build compared, made before section 6.
+
+Decisions:
+
+17. **The inline title is the note's name without `.md`**, as Obsidian's inline title and Notion's page title are, whatever Settings › Files and Links › Show File Extensions says. The tab and the file list keep that setting.
+18. **The reading view leaves the cover's and the icon's rows to the page's header.** While the plugin draws them, `banner`, `banner_y`, `banner-y` and `icon` are not shown in the Properties panel, and a note with no other property shows no panel, as Notion shows none. They stay in the note and in every edit of the panel. A banner that names no picture keeps its row. Live Preview and source mode show every row.
+19. **A read of the icons is never cut short.** The window's icon catalog reads the icons again after each change of the index. Each change cancelled the read under way, so while a large vault's first index was written no read finished and no link had its icon. One read now runs at a time, and the newest request is answered by a read that starts after it.
+
+- [x] The catalog's reads run to their end while the index changes (decision 19), and a picture link that cannot be read drops only its own icon. Done 2026-11-28: `NoteIconCatalog.requestReload`, called by `PageLookLayer`, and `VaultIndex.resolvingPictureLinks`. Tests: `ReadingCoverTests.testAReloadAskedForDuringARunningReadIsAnsweredAfterItInsteadOfCancellingIt`. The comparison app's own index was looked up read-only and holds the icons (2,592 rows), so a read that never finished is the likely cause there. Not checked in that app on that vault.
+- [x] The inline title without `.md` (decision 17). Done 2026-11-28: `MarkdownPane.inlineTitle` writes the note's stem. Checked in the pictures below with Show File Extensions on, as by default.
+- [x] The cover's and the icon's rows left out of the reading view's Properties panel (decision 18). Done 2026-11-28: `ReadingPageLook.drawnPropertyKeys`, `RenderedBlock.properties(_:hiddenKeys:)`, `PropertiesPanel.hiddenKeys`, `NoteBanner.coverPropertyKeys`. Tests: `ReadingCoverTests.testTheReadingViewLeavesTheCoversAndIconsRowsToThePagesHeader` (rows kept in the panel's edits, no panel for a note with only a cover, a cover not drawn keeps its row).
+- [x] Checked with a made-up page of the wiki home's shape (pages in a subfolder, `> > ---` opening each column, a hard break after each link, `[[path|alias]]` links, emoji and picture icons) on the Mac and the iPad simulator. Done 2026-11-28: drawn in the Mac app's window from a test that was not kept (every icon before its link, the title without `.md`, no Properties panel), and hosted `NotionLookHostedTests` on an iPad Pro 11-inch (M5) simulator (iOS 27.2), with the plugin on and off. Not checked: a physical device.
+
 ## Later
 
 - Iconize's own store of icons (`.obsidian/plugins/obsidian-icon-folder/data.json`), which keeps the icons set without frontmatter, and its `iconColor` property.
 - The snippet's other column options (`col3`, `fw` and `pw` widths). Column widths from `wide-2` to `wide-5` moved to section 6.
 - Icons on links in Live Preview, where they would be drawn over the concealed `[[`, and SF Symbol icons before links in the reading view.
 - Export to PDF draws multi-column and blank callouts as ordinary boxes.
+- A plain page glyph before links to pages without an icon, and Notion's slightly bolder, underlined link lines (section 7's comparison).
 - Turning the iPad simulator itself to landscape, and measuring on the iPad and on a physical device.

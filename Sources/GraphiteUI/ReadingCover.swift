@@ -7,8 +7,8 @@
  *              a strip for the session from a button on it.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 27/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -31,6 +31,11 @@ struct ReadingPageLook: Equatable, Sendable {
     var cover: ReadingCover?
     /// The note's icon, a picture of the vault named by its path in the vault.
     var icon: NoteIcon?
+
+    /// The properties the page's header already draws, lowercased, which the Properties panel leaves out.
+    var drawnPropertyKeys: Set<String> {
+        (cover == nil ? [] : NoteBanner.coverPropertyKeys).union(icon == nil ? [] : [NoteIcon.propertyKey])
+    }
 }
 
 extension ReadingViewBuilder {
