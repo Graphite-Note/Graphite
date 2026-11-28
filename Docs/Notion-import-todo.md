@@ -247,7 +247,7 @@ Request of 2026-11-28, in the owner's words: "keep improving and redoing and tun
 - [ ] The import report lists only real losses.
   Round 4: 2 left out (1,730 report lines in round 1, most of them phone numbers taken for missing pages, now `tel:` links) and 260 simplified, each format, date range and set of rows made from a database's CSV said once.
 - [ ] Peak memory stays flat (hundreds of MB at most) and the time is reported.
-  Round 4: the workspace in 345 s with a peak footprint of 48 MB (59 MB resident). Before: 32 minutes and a peak footprint of 35 GB, as Foundation's file handles left every buffer read to an autorelease pool that the import never drains; files are now read and written through their descriptors. Not ticked until the time is measured on the iPad too.
+  Round 4: the workspace in 345 s with a peak footprint of 48 MB (59 MB resident). Before: 32 minutes and a peak footprint of 35 GB, as Foundation's file handles left every buffer read to an autorelease pool that the import never drains. Files are now read and written through their descriptors. Not ticked until the time is measured on the iPad too.
 - [ ] A side by side of 12 representative pages, live Notion against Graphite's reading view at the same width: the workspace's home, Aerodynamics, ESF ASF, Semester projects, a page with a big database, one with many pictures, one with toggles, one with callouts, one with columns, one with code and equations, a long meeting-notes page, and one deep subpage. Screenshots stay local.
   Round 2 checked: the home page (columns, headings, link order and icons), a formulas page (its icon, underlined heading and math blocks) and Semester projects (icon, description, embedded base). Open: the other nine, each round.
 
