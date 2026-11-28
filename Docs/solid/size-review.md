@@ -385,7 +385,8 @@ These rows review every item that had no row at the first 70. They were measured
 | `Sources/GraphiteUI/NativeMarkdownEditorMac.swift` | `NativeMarkdownEditor` | 910 | split planned → as the `NativeMarkdownEditor.swift` row of `NativeMarkdownEditor` says, for the Mac's representable | The Mac's representable and its nested coordinator, counted together (`SRP-EDITOR-01`). |
 | `Sources/GraphiteUI/NativeMarkdownEditorMac.swift` | `Coordinator` | 747 | split planned → as the `NativeMarkdownEditor.swift` row of `Coordinator` says: a delegate adapter with `NoteEditorSessionDuties` and the appliers | The Mac coordinator grew with the Mac editor's parity with the iPad (263ca30b, c3f2737e) and holds the same duties as the iPad's (`CC-EDITOR-04`). |
 | `Sources/GraphiteUI/MarkdownTextView.swift` | `(file)` | 447 | one concept | It is the iPad's and iPhone's text view and nothing else; its paste and drop code is the split the `MarkdownTextView` row plans. |
-| `Sources/GraphiteUI/GuideVaultPack.swift` | `GuideVaultPack` | 333 | one concept | Its length is the guide vault's file list (name, size and SHA-256 of each of 161 files), written by `scripts/make-guide-vault.py --pack-revision`; the code around it is the pack's address and three constants (2026-11-28, Docs/Guide-vault-todo.md section 6). |
+| `Sources/GraphiteUI/GuideVaultPack.swift` | `(file)` | 431 | one concept | The file is the one type below, whose length is generated data (2026-11-28, Docs/Guide-vault-todo.md section 8). |
+| `Sources/GraphiteUI/GuideVaultPack.swift` | `GuideVaultPack` | 429 | one concept | Its length is the guide vault's file list (name, size and SHA-256 of each of 177 files) and the earlier pins' versions (31), both written by `scripts/make-guide-vault.py --pack-revision`; the code around them is the pack's address and three constants (2026-11-28, Docs/Guide-vault-todo.md sections 6 to 8). |
 
 ## 5. Counts
 
