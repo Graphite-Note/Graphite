@@ -291,6 +291,23 @@ final class ReadingCoverTests: XCTestCase {
         guard case .properties(_, let keptRows)? = missingPicture.blocks.first else { return XCTFail("A cover not drawn keeps its row.") }
         XCTAssertTrue(keptRows.isEmpty)
     }
+
+    func testLinksWithoutAnIconInAListOfIconLinksGetAPageGlyphAndProseLinksDoNot() async throws {
+        var configuration = ReadingConfiguration()
+        configuration.drawsPageLook = true
+        configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
+        let glyph = "graphite-note-icon://symbol/doc.text"
+        let list = markdownRuns(try await build("[[Lab]]  \n[[Course]]  \n[[Missing]]", configuration: configuration).blocks).joined()
+        XCTAssertTrue(list.contains("🧪 [Lab]("), list)
+        XCTAssertEqual(list.components(separatedBy: glyph).count - 1, 2, "Each link without an icon gets the page: \(list)")
+        let paragraphs = markdownRuns(try await build("[[Lab]]\n\n[[Course]]", configuration: configuration).blocks).joined()
+        XCTAssertTrue(paragraphs.contains(glyph), "Paragraphs drawn as one list get it too: \(paragraphs)")
+        let prose = markdownRuns(try await build("See [[Lab]] and [[Course]].\n\n[[Course]]  \n[[Missing]]", configuration: configuration).blocks).joined()
+        XCTAssertFalse(prose.contains(glyph), "Prose, and a list with no icon, stay as written: \(prose)")
+        configuration.noteIconLinkPrefixes = .none
+        let noIcons = markdownRuns(try await build("[[Lab]]  \n[[Course]]", configuration: configuration).blocks).joined()
+        XCTAssertFalse(noIcons.contains(glyph))
+    }
 }
 
 /// An index answering fixed icons, counting its reads, and running `duringRead` while it reads.

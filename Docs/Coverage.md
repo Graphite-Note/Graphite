@@ -3042,6 +3042,8 @@ The shapes of the first re-import of a real workspace (2026-11-28): `ReadingCove
 
 The page's header and its links on a real imported workspace (section 7, 2026-11-28): `ReadingCoverTests.testAReloadAskedForDuringARunningReadIsAnsweredAfterItInsteadOfCancellingIt` and `testTheReadingViewLeavesTheCoversAndIconsRowsToThePagesHeader`, the properties blocks of `UiReadingViewTests` and `UiEditorAreaHandoffTests`, and a made-up page of the wiki home's shape drawn in the Mac app's window (title without `.md`, no Properties panel, an icon before each link). The inline title's name is checked by those pictures, not by a test of its own.
 
+A page before links without an icon in a list of icon links (section 7, 2026-11-28): `ReadingCoverTests.testLinksWithoutAnIconInAListOfIconLinksGetAPageGlyphAndProseLinksDoNot` (hard-break lists and paragraphs drawn as one list, not prose, not a list without icons) and the made-up course hub's pictures on the Mac and the iPad simulator.
+
 ## The test vault
 
 `Tests/test_vault/` (not committed; see `.gitignore`) is a copy of a real course vault plus edge cases for testing by hand. Every edge-case note starts with a "What to check" callout saying what correct behavior looks like, compared with Obsidian.

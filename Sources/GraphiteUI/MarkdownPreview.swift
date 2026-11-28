@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.77
+ * Version: 0.78
  * Date: 28/11/2026
  */
 
@@ -699,6 +699,8 @@ actor ReadingViewBuilder {
         // A link written over two lines becomes one line, after which the lines no longer
         // have the indices `taskLocation` knows them by.
         var keepsLines = true
+        let pageGlyphLinkLocations = await linksWithoutIconInIconLists(semantics.links, in: markdown, paddingLength: paddingLength, note: note,
+                                                                       root: root, index: index, configuration: configuration)
         // A link whose place in the text could not be found has an empty range; replacing
         // it would insert a second copy instead of replacing the one written.
         for link in semantics.links.reversed() {
@@ -740,8 +742,9 @@ actor ReadingViewBuilder {
                     destination = GraphiteOpenLink.markingUnresolved(destination)
                 }
                 // A link to a note with an icon shows it first, outside the link's text, as Notion shows a link to a page.
-                replacement = await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
-                    + "[\(Self.escapedLabel(Self.displayText(target: link.target, alias: link.label)))](\(destination))"
+                let icon = pageGlyphLinkLocations.contains(linkRange.location) ? pageGlyphPrefix(configuration: configuration)
+                    : await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
+                replacement = icon + "[\(Self.escapedLabel(Self.displayText(target: link.target, alias: link.label)))](\(destination))"
             } else {
                 continue
             }
