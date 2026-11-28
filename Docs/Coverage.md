@@ -21,7 +21,8 @@ Last updated: 2026-11-28.
 - **Readers:** Files and Preview on the iPad; Quick Look and PDFKit on the Mac; appearance streams for Obsidian's pdf.js; the note's embed and link each name one file. Obsidian itself was not opened.
 - **A vault of 100,000 notes:** `LibraryLargeVaultScrollingHostedTests` (simulator, Debug, a heavily loaded Mac): the folder of 10,000 notes listed and laid out in 0.26 s; scrolled 60 points a frame, median 47.9 ms while the index read the vault and 29.0 ms after it had, most frames over 17.7 ms; memory 57 to 100 MB; 50 previews kept for the tiles shown.
 - **Cloud placeholders, on the Mac:** in a made-up iCloud Drive folder with one PDF evicted, the library showed it as "In iCloud" and did not download it.
-- **Not established:** smooth scrolling of a large folder (the measure above is not smooth; a device and a Release build were not used), the physical iPad and Apple Pencil, Obsidian itself.
+- **HUNT-390, the scroll made smooth at 60 Hz:** the slow frames above were measured with the accessibility runtime on and a tile body that made its menu's actions and was drawn again for any tile's preview. With the actions made only for an assistive technology and the preview read in a view of its own, an optimized build scrolls the folder of 10,000 notes while the index reads 100,000 with all 1,200 frames on time (main thread median 2.4 ms a frame, 95th percentile 9.7 ms, longest 11.9 ms, the Mac at a load average of 13).
+- **Not established:** the 8.3 ms of a 120 Hz iPad (196 of 1,200 frames over it, most where a row of tiles appears), a Release build and a device, the scroll with VoiceOver on after the change, the physical iPad and Apple Pencil, Obsidian itself.
 
 ## Imported notebooks edited by finger in the iPad simulator: 2026-11-28
 

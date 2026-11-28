@@ -5,8 +5,8 @@
  * Description: One folder or file of the library's grid, as the Files app shows it: its picture, its name and its date.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 01/11/2026
+ * Version: 0.4
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -42,6 +42,8 @@ struct LibraryTile: View {
     @ScaledMetric(relativeTo: .subheadline) private var textScale: CGFloat = 1
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.noteIcons) private var noteIcons
+    /// Whether VoiceOver or Switch Control runs: only then are the menu's actions made for each tile as it appears.
+    @Environment(\.accessibilityEnabled) private var isAssistiveTechnologyRunning
 
     /// The picture's height at the default text size; the folder symbol fills most of it.
     static let baseArtworkHeightPoints: CGFloat = 120
@@ -86,8 +88,9 @@ struct LibraryTile: View {
         .accessibilityAddTraits(selection == .chosen ? [.isButton, .isSelected] : .isButton)
         .accessibilityHint(selection.isSelecting ? (selection == .chosen ? "Deselects it." : "Selects it.") : "")
         .accessibilityActions {
-            // The context menu's actions, which VoiceOver offers as custom actions too.
-            if !selection.isSelecting {
+            // The context menu's actions, which VoiceOver offers as custom actions too. Making them reads the workspace for
+            // every tile that scrolls on screen, so they are made only while an assistive technology can offer them (HUNT-390).
+            if !selection.isSelecting, isAssistiveTechnologyRunning {
                 ForEach(entries.accessibilityActions(entry)) { entryAction in Button(entryAction.title, action: entryAction.perform) }
             }
         }
@@ -134,8 +137,11 @@ struct LibraryTile: View {
     /// A folder says how many items it holds, as the Files app does; a file says the date its listing is sorted by.
     private var subtitle: String {
         if entry.isDirectory, let itemCount = library.folderItemCounts.counts[entry.path] { return LibraryTileSpokenLabel.itemCountText(itemCount) }
-        return sortOrder.shownDate(of: entry).formatted(date: .abbreviated, time: .omitted)
+        return Self.dateStyle.format(sortOrder.shownDate(of: entry))
     }
+
+    /// The date under a file's name; one style for every tile, rather than one made each time a tile is drawn.
+    private static let dateStyle = Date.FormatStyle(date: .abbreviated, time: .omitted)
 
     private func activate() {
         if selection.isSelecting { choose(Self.plainChoiceGesture) } else { open() }
@@ -159,7 +165,7 @@ struct LibraryTile: View {
             LibraryFolderTileArtwork(folder: entry.path, looks: library.folderLooks, symbolPointSize: artworkHeightPoints * 0.8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            LibraryFileArtwork(entry: entry, preview: library.visiblePreviews[entry.path])
+            LibraryFileTileArtwork(entry: entry, library: library)
         }
     }
 
@@ -172,6 +178,18 @@ struct LibraryTile: View {
         }
         return LibraryTileSpokenLabel.folder(name: name, lookDescription: library.folderLooks.shownLook(of: entry.path).style?.spokenDescription,
                                              itemCount: library.folderItemCounts.counts[entry.path])
+    }
+}
+
+/// A file tile's picture, read from the library's previews in a view of its own: the previews of the tiles on screen are
+/// one dictionary, and a tile reading it in its own body was drawn again, caption and all, each time any tile's preview
+/// arrived (HUNT-390). Now only these small views are.
+private struct LibraryFileTileArtwork: View {
+    let entry: VaultEntry
+    let library: LibraryModel
+
+    var body: some View {
+        LibraryFileArtwork(entry: entry, preview: library.visiblePreviews[entry.path])
     }
 }
 

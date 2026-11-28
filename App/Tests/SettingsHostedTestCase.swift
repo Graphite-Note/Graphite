@@ -6,8 +6,8 @@
  *              technology reads, tapped as a finger taps and scrolled to the row wanted.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 04/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 #if os(iOS)
@@ -202,7 +202,8 @@ class SettingsHostedTestCase: XCTestCase {
         return elements
     }
 
-    private static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
+    /// Switches the simulator's accessibility runtime on or off for this process, as VoiceOver's being on or off does.
+    static func setAccessibilityRuntimeEnabled(_ isEnabled: Bool) throws {
         let library = try XCTUnwrap(dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW), "The simulator's accessibility library.")
         typealias Setter = @convention(c) (Int32) -> Void
         for name in ["_AXSSetAutomationEnabled", "_AXSApplicationAccessibilitySetEnabled"] {
