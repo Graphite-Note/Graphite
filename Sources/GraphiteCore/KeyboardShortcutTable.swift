@@ -36,7 +36,7 @@ public enum ShortcutRefusal: Equatable, Sendable {
 
 /// What the person is warned about before a shortcut is given to a command.
 public enum ShortcutAssignmentWarning: Equatable, Sendable {
-    /// Every app uses it for the same thing (⌘Q, ⌘C).
+    /// Every app uses it for the same thing (⌘C, ⌘V).
     case standardInEveryApplication(SystemKeyboardShortcut)
     /// Other commands use it; they lose it when the person goes on.
     case usedByCommands([String])

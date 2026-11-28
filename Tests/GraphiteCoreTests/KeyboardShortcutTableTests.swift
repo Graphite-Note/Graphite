@@ -83,9 +83,8 @@ final class KeyboardShortcutTableTests: XCTestCase {
             return XCTFail("⌘Tab belongs to the system on the Mac.")
         }
         XCTAssertEqual(switcher.purpose, .switchApplications)
-        guard case .allowed(let warnings) = table().check(commandQ, for: "editor:toggle-bold", systemShortcuts: mac),
-              case .standardInEveryApplication(let quit)? = warnings.first else {
-            return XCTFail("⌘Q is allowed after a warning.")
+        guard case .refused(.takenBySystem(let quit)) = table().check(commandQ, for: "editor:toggle-bold", systemShortcuts: mac) else {
+            return XCTFail("The Quit menu item takes ⌘Q before the page sees it on the Mac.")
         }
         XCTAssertEqual(quit.purpose, .quit)
         XCTAssertEqual(table().check(commandH, for: "editor:toggle-bold", systemShortcuts: mac),
@@ -114,9 +113,9 @@ final class KeyboardShortcutTableTests: XCTestCase {
             }
         }
         let commandQ = KeyCombination(.command, .character("Q"))
-        XCTAssertEqual(SystemKeyboardShortcuts(platform: .macOS).shortcut(matching: commandQ)?.kind, .standard, "The Mac's own Graphite can take ⌘Q.")
+        // Both systems' app menus quit with ⌘Q before the app sees the key.
+        XCTAssertEqual(SystemKeyboardShortcuts(platform: .macOS).shortcut(matching: commandQ)?.kind, .reserved, "The Quit menu item takes ⌘Q on the Mac.")
         let iPad = SystemKeyboardShortcuts(platform: .iPadOS)
-        // iPadOS's app menu quits with ⌘Q before the app sees the key.
         for combination in [KeyCombination(.command, .character("H")), KeyCombination(.command, .named(.space)), KeyCombination(.command, .named(.tab)), commandQ] {
             XCTAssertEqual(iPad.shortcut(matching: combination)?.kind, .reserved, "\(combination)")
         }
