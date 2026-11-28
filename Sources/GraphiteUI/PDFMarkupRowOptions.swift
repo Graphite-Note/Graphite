@@ -36,19 +36,6 @@ extension PDFTextColor {
     }
 }
 
-/// The colours the row offers for ink and text: black, then the favourite colours of Settings › Colors.
-enum PDFMarkupRowColors {
-    /// The colours, with `currentColor` last when it is none of them (one chosen in the colour
-    /// panel, or a selected shape's), so it shows ticked.
-    static func choices(storedPalette: Data?, including currentColor: PDFTextColor? = nil) -> [(name: String, color: PDFTextColor)] {
-        let favorites = [("Black", PDFTextColor.black)] + GraphitePreferences.colorPalette(decoding: storedPalette).compactMap { favorite in
-            PDFTextColor(hex: favorite.hex).map { color in (favorite.name.capitalized, color) }
-        }
-        guard let currentColor, !favorites.contains(where: { favorite in favorite.1 == currentColor }) else { return favorites }
-        return favorites + [(currentColor.hex.uppercased(), currentColor)]
-    }
-}
-
 /// Images for the labels of the row's folded menus, which AppKit draws from an image, not
 /// from a SwiftUI shape: made as images, they keep their colour, and their edge follows the
 /// appearance, so black shows on a dark row.
