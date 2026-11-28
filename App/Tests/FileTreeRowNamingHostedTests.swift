@@ -134,6 +134,58 @@ final class FileTreeRowNamingHostedTests: SettingsHostedTestCase {
         XCTAssertFalse(fileExists("Untitled.md"))
     }
 
+    /// A hardware keyboard types as soon as the field has the keyboard: every letter stays, in order, with the cursor
+    /// after the last. Seen 2026-11-28 in a simulator: "Week 1 Signals" typed at once came out "Week 1 S", the cursor at
+    /// the start, as the selection meant for a rename was put on the new item's field after typing had begun.
+    func testLettersTypedAtOnceIntoANewItemAreKept() async throws {
+        let workspace = try await openWorkspace()
+        let controller = try await showWindow(of: workspace)
+
+        XCTAssertTrue(workspace.beginNamingInFileTree(.note, in: try VaultPath("Courses")))
+        let field = try await nameField(in: controller, placeholder: FileTreeNameDraft.untitledName)
+        for letter in "Week 1 Signals" {
+            field.insertText(String(letter))
+            await Task.yield()
+        }
+        // The cursor stays after the last letter typed.
+        try await waitUntil("the field holds every letter, the cursor after them, not \(field.text ?? "")") {
+            field.text == "Week 1 Signals" && field.selectedTextRange.map { range in
+                range.isEmpty && field.offset(from: field.beginningOfDocument, to: range.start) == 14
+            } == true
+        }
+        pressReturn(in: field)
+        try await waitUntil("the note is made with every letter") { self.fileExists("Courses/Week 1 Signals.md") }
+    }
+
+    /// Escape drops the new item; the next new item's field starts empty and makes nothing until it is named. Seen
+    /// 2026-11-28 in a simulator: New Note again right after an Escape made and opened the note the Escape dropped.
+    func testANewItemAfterAnEscapeStartsEmpty() async throws {
+        let workspace = try await openWorkspace()
+        let controller = try await showWindow(of: workspace)
+        let courses = try VaultPath("Courses")
+        let naming = workspace.fileTreeContents.rowNaming
+
+        XCTAssertTrue(workspace.beginNamingInFileTree(.note, in: courses))
+        let first = try await nameField(in: controller, placeholder: FileTreeNameDraft.untitledName)
+        first.insertText("Week 3 draft")
+        try await waitUntil("the field holds the typed name") { first.text == "Week 3 draft" }
+        naming.end(.escapeKey)
+        try await waitUntil("the field is gone") { naming.field == nil }
+
+        XCTAssertTrue(workspace.beginNamingInFileTree(.note, in: courses))
+        // The dropped field's text field can hold the keyboard until the new one takes it; its leaving speaks for
+        // nothing.
+        var second: UITextField?
+        try await waitUntil("an empty field has the keyboard, not \(self.textFields(in: controller.view).compactMap(\.text))") {
+            second = self.textFields(in: controller.view).first { field in field.window != nil && field.isFirstResponder }
+            return second?.text == ""
+        }
+        second?.insertText("Week 4")
+        pressReturn(in: try XCTUnwrap(second))
+        try await waitUntil("the named note is made") { self.fileExists("Courses/Week 4.md") }
+        XCTAssertFalse(fileExists("Courses/Week 3 draft.md"), "The name Escape dropped is never made.")
+    }
+
     /// While the list shows search results, no row can be named: the Rename sheet stands in.
     func testTheSheetStandsInWhenTheTreeIsNotShown() async throws {
         let workspace = try await openWorkspace()

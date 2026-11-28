@@ -759,7 +759,7 @@ private struct FileTreeRows: View, Equatable {
         var id: String {
             switch self {
             case .entry(let row): row.entry.path.rawValue
-            case .newItemField: FileTreeRowNaming.newItemRowIdentifier
+            case .newItemField(let field, _): field.rowIdentifier
             }
         }
     }

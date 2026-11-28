@@ -21,6 +21,14 @@ import GraphiteCore
     struct Field: Equatable {
         let subject: FileTreeNamingSubject
         var text: String
+        /// This field's own. A new item's row had one identifier for every field, so the list kept the row of a field
+        /// Escape had dropped for the next new item, with the name typed into it and the keyboard, and a change of
+        /// focus made that name; a row now speaks only for its own field.
+        let instance = UUID()
+
+        /// The identifier of the list's row the field is in: the renamed item's, or the new item's own, which no item's
+        /// path can be, so the field keeps its row, and the keyboard, as listings arrive.
+        var rowIdentifier: String { renamedPath?.rawValue ?? "\u{0}new-item-field-\(instance.uuidString)" }
 
         /// The folder the named item is in.
         var folder: VaultPath {
@@ -37,15 +45,8 @@ import GraphiteCore
 
     private(set) var field: Field?
 
-    /// The identifier of the list's row the field is in: the renamed item's, or the new item's own.
-    var scrollTarget: String? {
-        guard let field else { return nil }
-        return field.renamedPath?.rawValue ?? Self.newItemRowIdentifier
-    }
-
-    /// The new item's row in the list: not a path any item can have, so the field keeps its row, and the keyboard, as
-    /// listings arrive.
-    nonisolated static let newItemRowIdentifier = "\u{0}new-item-field"
+    /// The identifier of the list's row the field is in.
+    var scrollTarget: String? { field?.rowIdentifier }
     /// Set when the field asks to be focused again: Return on a name that cannot be used keeps the field open, as the
     /// keyboard's Return otherwise takes the focus away.
     private(set) var refocusRequest = 0
@@ -257,7 +258,7 @@ struct FileTreeNameFieldRow: View {
                         Text(suffix).foregroundStyle(.secondary).lineLimit(1).layoutPriority(1)
                     }
                 }
-                if let problem = naming.problem {
+                if let problem = draft.problem(typed: text) {
                     Text(problem).font(.caption).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -266,12 +267,15 @@ struct FileTreeNameFieldRow: View {
             text = field.text
             isFocused = true
             // The whole name selected, as the Files app and the Mac's tree start a rename: on the next turn, once the
-            // field holds the text, or the selection is dropped and the cursor goes to the end.
+            // field holds the text, or the selection is dropped and the cursor goes to the end. A new item's empty
+            // field has nothing to select, and letters a hardware keyboard typed before that turn keep their place:
+            // a selection put on them moved the cursor to the start and lost the letters after it.
             let name = field.text
-            Task { @MainActor in selection = TextSelection(range: name.startIndex..<name.endIndex) }
-        }
-        .onChange(of: text) { _, typed in
-            if naming.field?.subject == field.subject { naming.setText(typed) }
+            guard !name.isEmpty else { return }
+            Task { @MainActor in
+                guard text == name else { return }
+                selection = TextSelection(range: text.startIndex..<text.endIndex)
+            }
         }
         .onChange(of: naming.refocusRequest) { isFocused = true }
         .onChange(of: isFocused) { _, focused in
@@ -279,8 +283,9 @@ struct FileTreeNameFieldRow: View {
         }
     }
 
-    /// Typed into the row's own text, which the naming follows: a binding into the naming made each key redraw the list
-    /// before the field had taken it, and fast typing lost characters.
+    /// Typed into the row's own text, handed to the naming only when the field ends: a binding into the naming, and
+    /// then each key's text passed on to it, redrew the list at each key, which wrote older text back over letters the
+    /// field had just taken, and fast typing lost them (a hardware keyboard made "Week 3 drft" of "Week 3 draft").
     private var nameField: some View {
         TextField(draft.placeholder, text: $text, selection: $selection)
             .focused($isFocused)
@@ -297,10 +302,10 @@ struct FileTreeNameFieldRow: View {
             .accessibilityLabel(field.renamedPath == nil ? "New item name" : "Name")
     }
 
-    /// Hands the naming the text as typed so far, which a key that ends the field can come before the change reaches it.
+    /// Hands the naming the text typed, which it decides the field's end with.
     private func end(_ end: FileTreeNamingEnd) {
-        // A row left after another field began speaks for nothing.
-        guard naming.field?.subject == field.subject else { return }
+        // A row left after another field began speaks for nothing, even one naming the same new item.
+        guard naming.field?.instance == field.instance else { return }
         naming.setText(text)
         naming.end(end)
     }
