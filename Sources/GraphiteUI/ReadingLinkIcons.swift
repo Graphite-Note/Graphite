@@ -6,7 +6,7 @@
  *              and Iconize an icon in Obsidian: an emoji as text, a picture or a symbol as a small picture inside the text.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 28/11/2026
  */
 
@@ -75,6 +75,48 @@ extension ReadingViewBuilder {
         if case .emoji(let emoji) = icon { return emoji + " " }
         guard let location = NoteIconInlineAddress.url(of: icon, root: root, textSize: configuration.textSize) else { return "" }
         return "![](\(GraphiteOpenLink.markdownDestination(location))) "
+    }
+
+    /// A plain page drawn before a link to a note without an icon, as Notion draws a page without one.
+    static let pageGlyph = NoteIcon.symbol(systemName: "doc.text")
+
+    func pageGlyphPrefix(configuration: ReadingConfiguration) -> String {
+        NoteIconInlineAddress.url(of: Self.pageGlyph, root: configuration.noteIconLinkPrefixes.root ?? URL(fileURLWithPath: "/"),
+                                  textSize: configuration.textSize).map { location in "![](\(GraphiteOpenLink.markdownDestination(location))) " } ?? ""
+    }
+
+    /// Where the links that get `pageGlyph` start in `markdown`: those alone on a line of a list of two or more such lines
+    /// (`CompactLinkLines.isLinkLine`) where another line's link shows an icon, so the list's text lines up as in Notion.
+    /// Links in prose, and lists where no link has an icon, are left as they are.
+    func linksWithoutIconInIconLists(_ links: [NoteLink], in markdown: String, paddingLength: Int, note: VaultPath, root: URL,
+                                     index: some ReadingFileLookup, configuration: ReadingConfiguration) async -> Set<Int> {
+        guard !configuration.noteIconLinkPrefixes.iconsByPath.isEmpty, markdown.contains("[[") else { return [] }
+        let text = markdown as NSString
+        var lists: [[NoteLink]] = [[]]
+        var lineStart = 0
+        while lineStart < text.length {
+            let lineRange = text.lineRange(for: NSRange(location: lineStart, length: 0))
+            lineStart = NSMaxRange(lineRange)
+            let line = text.substring(with: lineRange).trimmingCharacters(in: .newlines)
+            let linkOnLine = links.first { link in
+                link.isWiki && !link.isEmbed && NSLocationInRange(link.location - paddingLength, lineRange)
+            }
+            if CompactLinkLines.isLinkLine(line), let linkOnLine {
+                lists[lists.count - 1].append(linkOnLine)
+            } else if !lists[lists.count - 1].isEmpty {
+                lists.append([])
+            }
+        }
+        var locations: Set<Int> = []
+        for list in lists where list.count > 1 {
+            var withoutIcon: [Int] = []
+            for link in list {
+                let icon = await iconPrefix(ofLinkTo: link, note: note, root: root, index: index, configuration: configuration)
+                if icon.isEmpty { withoutIcon.append(link.location - paddingLength) }
+            }
+            if withoutIcon.count < list.count { locations.formUnion(withoutIcon) }
+        }
+        return locations
     }
 }
 

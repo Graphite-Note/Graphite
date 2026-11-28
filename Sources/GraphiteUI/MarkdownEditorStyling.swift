@@ -477,33 +477,20 @@ final class MarkdownEditorStyling {
         return pictures
     }
 
-    /// The picture embeds of quotes and tasks, found again only when the text or its blocks changed.
-    private var embedsKeptAsTextCache: (revision: Int, sourceLength: Int, embeds: [EmbedReference])?
-    /// The embeds of quotes and tasks whose picture is being found, or was not found, by target.
-    private var picturesKeptAsTextLookedUp: Set<String> = []
+    /// The pictures of quotes and tasks, found once each (`LivePreviewPicturesKeptAsText`).
+    private let picturesKeptAsText = LivePreviewPicturesKeptAsText()
 
     private func embedsKeptAsText(in source: NSString) -> [EmbedReference] {
-        if let cache = embedsKeptAsTextCache, cache.revision == textState.revision, cache.sourceLength == source.length { return cache.embeds }
-        let embeds = LivePreviewInlinePictures.embedsKeptAsText(in: source, outside: textState.blockEntries)
-        embedsKeptAsTextCache = (textState.revision, source.length, embeds)
-        return embeds
+        picturesKeptAsText.embeds(in: source, revision: textState.revision, blockEntries: textState.blockEntries)
     }
 
-    /// Finds and decodes the picture of a quote's or a task's embed, as an image line's view does, then restyles its
-    /// line to draw it. Each target is looked up once while the editor lives; a file found later shows when the
-    /// note is opened again.
+    /// Finds a quote's or a task's picture, then restyles the lines that embed it to draw it.
     private func findPictureKeptAsText(_ embed: EmbedReference, environment: LivePreviewEnvironment, columnWidth: CGFloat,
                                        in textView: any MarkdownStyledTextView) {
-        guard picturesKeptAsTextLookedUp.insert(embed.target).inserted else { return }
-        let displayPixelWidth = Int((columnWidth * 3).rounded())
-        Task { @MainActor [weak self, weak textView] in
-            guard let path = await environment.resolve(embed.target, embed.isWiki), DocumentKind(path: path) == .image,
-                  let location = try? path.url(in: environment.root), // A path outside the vault has no picture to draw.
-                  case .found = await LivePreviewEmbedImageLocations.lookUpPicture(for: embed, path: path, location: location, in: environment.root,
-                                                                                   displayPixelWidth: displayPixelWidth),
-                  let self, let textView else { return }
+        picturesKeptAsText.findPicture(of: embed, environment: environment, columnWidth: columnWidth) { [weak self, weak textView] target in
+            guard let self, let textView else { return }
             let source = self.currentSource(of: textView)
-            let embedsOfTarget = self.embedsKeptAsText(in: source).filter { embedOfTarget in embedOfTarget.target == embed.target }
+            let embedsOfTarget = self.embedsKeptAsText(in: source).filter { embedOfTarget in embedOfTarget.target == target }
             for embedOfTarget in embedsOfTarget where NSMaxRange(embedOfTarget.range) <= source.length {
                 self.restyle(source.lineRange(for: embedOfTarget.range), in: textView)
             }

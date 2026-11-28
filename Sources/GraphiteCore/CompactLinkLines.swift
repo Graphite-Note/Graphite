@@ -6,7 +6,7 @@
  *              Notion draws its links to pages; the note's text is never changed.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -41,7 +41,7 @@ public enum CompactLinkLines {
     static let hardLineBreak = "  "
 
     /// Whether a line holds one wikilink to a note and nothing else, an alias allowed.
-    static func isLinkLine(_ line: String) -> Bool {
+    public static func isLinkLine(_ line: String) -> Bool {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("[["), trimmed.hasSuffix("]]"), trimmed.count > 4 else { return false }
         let inner = trimmed.dropFirst(2).dropLast(2)

@@ -6,8 +6,8 @@
  *              shows them, with an even number of columns over a display's fold.
  *
  * Authors: Bahey Shalash
- * Version: 0.17
- * Date: 26/11/2026
+ * Version: 0.18
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -30,11 +30,20 @@ struct LibraryVault {
     /// The vault's "Confirm file deletion" and "Deleted files" settings, which deleting the selection follows.
     let confirmsDeletion: Bool
     let deletionMethod: DeletionMethod
+    /// The files the index took in last, so their tiles on screen show what was just saved in them.
+    let savedFiles: LibrarySavedFiles
 
     /// Lists again when the vault, its sort order, or its files change.
     var reloadKey: String {
         "\(source?.vaultIdentifier.uuidString ?? "")|\(listingVersion)|\(sortOrder.rawValue)"
     }
+}
+
+/// The index's latest change and, when it was about named files, which ones: Graphite's own saves
+/// list no folder again, so this is how a tile learns that its file was written.
+struct LibrarySavedFiles: Equatable {
+    let version: Int
+    let paths: Set<VaultPath>?
 }
 
 /// What the library asks the workspace to do.
@@ -128,6 +137,9 @@ struct LibraryView: View {
         }
         .task(id: "\(vault.reloadKey)|\(vault.folderListingVersions[library.folder] ?? 0)") {
             await library.reload(source: vault.source, sortOrder: vault.sortOrder)
+        }
+        .task(id: vault.savedFiles) {
+            if let savedPaths = vault.savedFiles.paths { await library.filesWereSaved(savedPaths) }
         }
         // A folder's tile says how many items it holds, which a change inside it may move.
         .onChange(of: vault.folderListingVersions) { library.folderItemCounts.refreshVisibleFolders() }
