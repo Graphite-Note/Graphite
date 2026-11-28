@@ -2,6 +2,10 @@
 
 ## 1.0.3
 
+### 2026-11-28 12:52
+
+- Fixed [Mac]: Pressing Command-Q while Settings waits for a keyboard shortcut no longer quits Graphite; the page explains that the system keeps it.
+
 ### 2026-11-28 12:24
 
 - Changed: Inline code in the reading view is drawn on a rounded chip, as Obsidian and Notion draw it.
