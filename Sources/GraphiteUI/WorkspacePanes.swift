@@ -6,8 +6,8 @@
  *              that can be dragged or held on a display's fold, each side's tab bar, and the document of its active tab.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.54
- * Date: 28/11/2026
+ * Version: 0.53
+ * Date: 26/11/2026
  */
 
 import SwiftUI
@@ -556,9 +556,6 @@ private struct TabItem: View {
         .onHover { isOver in isPointerOver = isOver }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(isActive ? [.isButton, .isSelected] : .isButton)
-        // The tap gesture gives the combined element no action of its own: without this, VoiceOver's press on the Mac
-        // (AXPress) left the tab unchosen (HUNT-393).
-        .accessibilityAction { activate() }
         .accessibilityAction(named: "Close", close)
     }
 }

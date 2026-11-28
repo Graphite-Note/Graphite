@@ -3061,6 +3061,8 @@ A page before links without an icon in a list of icon links (section 7, 2026-11-
 
 Icons of a vault opened unchanged since its last scan (section 7, 2026-11-28): `NoteIconCatalogLoadMacTests.testAVaultUnchangedSinceItsLastScanStillShowsItsIcons`, which failed before the change, and a made-up vault of 3,013 notes drawn fresh, rewritten and unchanged in the Mac app's window.
 
+Long links to pages kept on one line (section 7, 2026-11-28): `ReadingCoverTests.testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps` (paragraphs of icon links marked, prose, list items, lines with other text and links without icons not) and `testAMarkedParagraphKeepsEachLineOnOneLineAndDrawsShortLinesAsOneTextDoes` (Textual patch 38: same height, lines within a pixel, a long line cut instead of wrapped), and the made-up course hub's pictures on the Mac with a long link in a column.
+
 Every icon before a link in the same square (section 7, 2026-11-28): `ReadingCoverTests.testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline` (an emoji and a wide picture drawn square, every kind's address read back at 20 points beside 16-point text, the attachment's square and baseline), the earlier icon tests reading the emoji's picture, and the made-up course hub's pictures on the Mac and the iPad simulator, light and dark.
 
 ## The test vault

@@ -8,7 +8,7 @@
  *              spans in text, a heading, a list of links and a table, with columns of uneven widths, in the reading view and Live Preview, light and dark.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
+ * Version: 0.4
  * Date: 28/11/2026
  */
 
@@ -110,6 +110,8 @@ final class NotionLookMacPicturesTests: XCTestCase {
             > > [[Lab 1]]
             > >
             > > [[Lab 2]]
+            > >
+            > > [[Signals and systems of the lab bench, its instruments and their calibration]]
             >
             > > [!blank]
             > > ## Exams
@@ -135,6 +137,7 @@ final class NotionLookMacPicturesTests: XCTestCase {
             "Lab 1.md": "---\nicon: 🧪\n---\n",
             "Lab 2.md": "---\nicon: LiFlaskConical\n---\n",
             "Midterm.md": "---\nicon: \"[[stars.gif]]\"\n---\n",
+            "Signals and systems of the lab bench, its instruments and their calibration.md": "---\nicon: 🔬\n---\n",
             "Reading list.md": "---\nicon: 📚\n---\n",
             "Office hours.md": "No icon.\n",
             "clock.svg": Self.clockSVG,

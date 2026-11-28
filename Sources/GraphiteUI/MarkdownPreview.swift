@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.80
+ * Version: 0.81
  * Date: 28/11/2026
  */
 
@@ -2318,6 +2318,8 @@ struct ObsidianMarkdownParser: MarkupParser {
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
         ReadingMarkerPunctuation.removingFrames(from: &attributed)
         Self.applyNoteColorMarkers(to: &attributed)
+        // Lines of an icon and a link stay on one line, cut with an ellipsis in a narrow column, as Notion's.
+        for range in ReadingIconLinkLines.paragraphRanges(in: attributed) { attributed[range][TruncatedLinesAttribute.self] = true }
         let themeColors = themeColors, textSize = textSize
         Self.applyMarkers(start: ReadingMarkers.underlineStartMarker, hexEnd: nil, end: ReadingMarkers.underlineEndMarker, to: &attributed) { _, range, text in
             text[range].underlineStyle = .single

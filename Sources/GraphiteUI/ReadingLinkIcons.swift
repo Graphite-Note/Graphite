@@ -6,7 +6,7 @@
  *              and Iconize an icon in Obsidian: an emoji as text, a picture or a symbol as a small picture inside the text.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
+ * Version: 0.7
  * Date: 28/11/2026
  */
 
@@ -141,5 +141,55 @@ extension ReadingViewBuilder {
             return CalloutColumnArrangement.weight(ofColumnStartingAt: offset, in: noteText)
         }
         if weights.contains(where: { weight in weight != 1 }) { columnWeightsByBlock[blockIdentifier] = weights }
+    }
+}
+
+/// Paragraphs of the reading view's text whose every line is an icon, a space and one link, as a list of links to notes
+/// is drawn with icons on (`CompactLinkLines`). Notion keeps each such line on one line and cuts it with an ellipsis in
+/// a narrow column, where a wrapped line would start again under the icon. Paragraphs in a list item or a table, and
+/// lines with other text beside their link, are left to wrap.
+enum ReadingIconLinkLines {
+    static func paragraphRanges(in text: AttributedString) -> [Range<AttributedString.Index>] {
+        guard text.runs[\.imageURL].contains(where: { imageURL, _ in imageURL?.scheme == NoteIconInlineAddress.scheme }) else { return [] }
+        var ranges: [Range<AttributedString.Index>] = []
+        for (intent, range) in text.runs[\.presentationIntent] {
+            guard let intent, intent.components.first?.kind == .paragraph,
+                  !intent.components.contains(where: { component in Self.wrapsItsLines(component.kind) }),
+                  isIconLinkParagraph(text[range]) else { continue }
+            ranges.append(range)
+        }
+        return ranges
+    }
+
+    private static func wrapsItsLines(_ kind: PresentationIntent.Kind) -> Bool {
+        switch kind {
+        case .listItem, .tableCell, .tableRow, .tableHeaderRow, .table: true
+        default: false
+        }
+    }
+
+    /// Whether each line of `paragraph` (its hard line breaks) is an icon of `NoteIconInlineAddress`, then one link.
+    static func isIconLinkParagraph(_ paragraph: AttributedSubstring) -> Bool {
+        var hasIcon = false
+        var link: URL?
+        func lineEnds() -> Bool {
+            defer { hasIcon = false; link = nil }
+            return hasIcon && link != nil
+        }
+        for run in paragraph.runs {
+            let segments = String(paragraph[run.range].characters).split(separator: "\n", omittingEmptySubsequences: false)
+            for (segmentIndex, segment) in segments.enumerated() {
+                if segmentIndex > 0, !lineEnds() { return false }
+                if segment.allSatisfy(\.isWhitespace) { continue }
+                if run.imageURL?.scheme == NoteIconInlineAddress.scheme, !hasIcon, link == nil {
+                    hasIcon = true
+                } else if let runLink = run.link, hasIcon, link == nil || link == runLink {
+                    link = runLink
+                } else {
+                    return false
+                }
+            }
+        }
+        return lineEnds()
     }
 }

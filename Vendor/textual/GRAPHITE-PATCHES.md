@@ -163,6 +163,10 @@ Remove this vendored copy and return to the upstream package once an upstream re
 
 `ReadingHighlight.swift`: `ReadingHighlightReceiver` keeps the frames each text reported by that text (`report(_:of:from:)`, a `UUID` held in the modifier's state), no longer by the word's range alone. Patch 34 kept them by range, so in a table, where every cell's text reports for the word read, a cell after the word's own reported no frame and took the word's frames away. The highlight's frames of a Live Preview table then never reached the host (`ReadAloudReadingViewTests.testLivePreviewTableMathAndOpenCalloutHighlightActualRenderedContent`, failing since patch 34). A host that reports one text per word, as the reading view's numbered equations do, still reports by range.
 
+## 38. Lines of a paragraph kept on one line each
+
+`Sources/Textual/TruncatedLines.swift` (new), `Internal/StructuredText/Paragraph.swift`: a paragraph whose runs carry the public `TruncatedLinesAttribute` draws each of its lines (the text between its hard line breaks) as a text fragment of its own, limited to one line and cut with an ellipsis at its end when wider than the paragraph. The fragments stand in a stack spaced by the paragraph's line spacing, so lines that fit take the height one text of those lines takes, each line within a pixel of its place there (a line between others can be rounded to the pixel above, half a point at a scale of 2). Graphite marks the paragraphs whose every line is a note's icon and one link (`ReadingIconLinkLines` in `ReadingLinkIcons.swift`), as Notion keeps its links to pages on one line: in a narrow column, a long link's second line started under the icon. Upstream wraps every paragraph. Tests: `ReadingCoverTests.testAMarkedParagraphKeepsEachLineOnOneLineAndDrawsShortLinesAsOneTextDoes` and `testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps`.
+
 Remove this vendored copy and return to the upstream package once an upstream release contains equivalents of these changes.
 
 ## 12. Links tell a host when the pointer rests on them

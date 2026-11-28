@@ -4,10 +4,10 @@
  * Layer: Tests
  * Description: The reading view finds a note's cover from its `banner` property only while covers are drawn, puts a
  *              linked note's emoji icon before the link's text only while icons are on, and builds a multi-column
- *              callout's paragraphs as blocks of their own.
+ *              callout's paragraphs as blocks of their own; lines of an icon and a link stay on one line.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 28/11/2026
  */
 
@@ -335,6 +335,69 @@ final class ReadingCoverTests: XCTestCase {
         let environment = TextEnvironmentValues()
         XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: environment), CGSize(width: 20, height: 20))
         XCTAssertLessThan(attachment.baselineOffset(in: environment), 0, "The square reaches below the baseline as an emoji does.")
+    }
+
+    func testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps() throws {
+        let icon = "![](\(try XCTUnwrap(NoteIconInlineAddress.url(of: .symbol(systemName: "doc.text"), root: vault, textSize: 16))))"
+        let parser = ObsidianMarkdownParser(baseURL: vault, textSize: 16)
+        func isTruncated(_ markdown: String) throws -> Bool {
+            TruncatedLines.isMarked(try parser.attributedString(for: markdown))
+        }
+        XCTAssertTrue(try isTruncated("\(icon) [Lab](Lab.md)  \n\(icon) [A long second lab](Lab.md)  \n\(icon) [Course](Course.md)"))
+        XCTAssertTrue(try isTruncated("\(icon) [Lab](Lab.md)"), "A link to a page alone on its line, as Notion's.")
+        XCTAssertFalse(try isTruncated("\(icon) [Lab](Lab.md)  \n[Course](Course.md)"), "A line without an icon is not a list of pages.")
+        XCTAssertFalse(try isTruncated("\(icon) [Lab](Lab.md) is due Monday"), "Text beside the link wraps.")
+        XCTAssertFalse(try isTruncated("See \(icon) [Lab](Lab.md)"))
+        XCTAssertFalse(try isTruncated("- \(icon) [Lab](Lab.md)"), "A list item wraps.")
+        XCTAssertFalse(try isTruncated("[Lab](Lab.md)  \n[Course](Course.md)"), "Links without icons wrap, as Obsidian's.")
+        let paragraphs = try parser.attributedString(for: "Prose that wraps.\n\n\(icon) [Lab](Lab.md)")
+        let marked = paragraphs.runs.filter { run in run[TruncatedLinesAttribute.self] == true }.map { run in String(paragraphs[run.range].characters) }
+        XCTAssertFalse(marked.joined().contains("Prose"), "Only the paragraph of links: \(marked)")
+    }
+
+    func testAMarkedParagraphKeepsEachLineOnOneLineAndDrawsShortLinesAsOneTextDoes() throws {
+        let short = "[Lab](a)  \n[Course](b)  \n[Midterm](c)"
+        let long = "[Lab](a)  \n[Signals and systems of the lab bench](b)  \n[Midterm](c)"
+        func drawn(_ markdown: String, width: CGFloat, marked: Bool) throws -> CGImage {
+            let view = StructuredText(markdown, parser: LineMarkingParser(marks: marked)).font(.system(size: 16)).frame(width: width, alignment: .leading)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            return try XCTUnwrap(renderer.cgImage)
+        }
+        let oneText = try drawn(short, width: 400, marked: false), lines = try drawn(short, width: 400, marked: true)
+        XCTAssertEqual(lines.height, oneText.height, "Lines that fit take the height one text takes.")
+        let linesBands = try Self.inkedRowBands(of: lines), oneTextBands = try Self.inkedRowBands(of: oneText)
+        XCTAssertEqual(linesBands.count, 3)
+        XCTAssertEqual(linesBands.count, oneTextBands.count)
+        for (line, oneTextLine) in zip(linesBands, oneTextBands) {
+            XCTAssertLessThanOrEqual(abs(line.lowerBound - oneTextLine.lowerBound), 1, "Each line within a pixel of one text's: \(linesBands) \(oneTextBands)")
+        }
+        XCTAssertEqual(try drawn(long, width: 120, marked: true).height, oneText.height, "A long line is cut, not wrapped.")
+        XCTAssertGreaterThan(try drawn(long, width: 120, marked: false).height, oneText.height, "Unmarked, it wraps.")
+    }
+
+    /// The rows of pixels drawn on, as runs of consecutive rows: one per line of text.
+    private static func inkedRowBands(of image: CGImage) throws -> [Range<Int>] {
+        let data = try XCTUnwrap(image.dataProvider?.data as Data?)
+        var bands: [Range<Int>] = []
+        var bandStart: Int?
+        for row in 0...image.height {
+            let isInked = row < image.height && (0..<image.width).contains { column in data[row * image.bytesPerRow + column * 4 + 3] > 0 }
+            if isInked, bandStart == nil { bandStart = row }
+            if !isInked, let start = bandStart { bands.append(start..<row); bandStart = nil }
+        }
+        return bands
+    }
+}
+
+/// Parses Markdown as Textual does, marking every paragraph to keep its lines on one line when `marks` is true.
+private struct LineMarkingParser: MarkupParser {
+    let marks: Bool
+
+    func attributedString(for input: String) throws -> AttributedString {
+        var text = try AttributedStringMarkdownParser(baseURL: nil).attributedString(for: input)
+        if marks { text[text.startIndex..<text.endIndex][TruncatedLinesAttribute.self] = true }
+        return text
     }
 }
 
