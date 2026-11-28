@@ -62,6 +62,17 @@ Highlight, underline and strike through text, draw with the mouse or trackpad, a
 - **Knowledge tools.** Full-text search with `folder:`, backlinks, outline, tags, a fast graph view, Bases (table, cards, list and map), maps that can center on you, and a calendar of daily notes with Apple Calendar and Reminders, each switchable like Obsidian's core plugins.
 - **Obsidian community plugins and themes**, run from the vault's own `.obsidian` folder. See [what works today](Docs/Community-plugins.md).
 
+### Move in from Notion
+
+- **A Notion page arrives as Notion shows it.** Import Notion's HTML export, or a workspace through Notion's API: the cover and the icon, columns, colored text and highlights, callouts with their icons, toggle headings that fold, equations, and databases as bases with their columns, their rows' whole titles and their views on other pages. [More pictures](https://github.com/Graphite-Note/Importer#a-notion-page-imported) in the Importer's README.
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/notion-import-notion.jpg" alt="A Notion page with a cover, an icon, a quote, a callout and three columns of links to pages"></td>
+    <td width="50%"><img src=".github/assets/notion-import-graphite.jpg" alt="The same page imported into Graphite, in dark appearance"></td>
+  </tr>
+</table>
+
 ### Built to be trusted
 
 - **A small core.** The welcome tour's pictures come with the iPad and iPhone app and can be removed in Settings; larger extras such as voices are downloaded on first use.
