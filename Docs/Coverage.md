@@ -2,7 +2,17 @@
 
 What Graphite does today, how each part is verified, and what is still missing. `OBJECTIVE.md` describes the complete product; this file tracks progress toward it. Update it with every change that adds, removes, or re-verifies behavior.
 
-Last updated: 2026-11-27.
+Last updated: 2026-11-28.
+
+## Imported notebooks edited by finger in the iPad simulator: 2026-11-28
+
+[Goodnotes-Notability-import-todo.md](Goodnotes-Notability-import-todo.md) Phase 5 (issue #32). The made-up notebooks of `Tests/SyntheticNotebooks` imported through `NotebookImportRun`, then opened in an iPad simulator (iPad Pro 11-inch (M5), iOS 27.2, Debug build).
+
+- **Edited by finger:** an imported stroke selected alone by the lasso (the paper stays out), recolored, resized and moved; the imported picture selected by a tap, resized and moved; the pixel eraser cutting an imported stroke without touching the ruled paper; a new stroke written on the page; an imported text box edited with the text tool.
+- **Saved and reopened:** all of it was there after Graphite was quit and opened again, and the re-edited stroke still selected as one stroke.
+- **Other readers:** Files on the iPad shows the edited notebooks as Graphite does.
+- **Speed:** `DenseNotebookImportSpeedHostedTests` (in the iPad app's process): 1,000 strokes in 2.01 s, 4,000 in 7.52 s, two pages of 5,159 and 6,145 strokes in 20.2 s.
+- **Not established:** Preview and Obsidian on the Mac, Goodnotes or Notability beside the import, the physical iPad and Apple Pencil, the real samples on the iPad.
 
 ## New notes, folders and renames named in the Mac's file tree rows: 2026-11-28
 

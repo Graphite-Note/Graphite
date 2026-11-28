@@ -5,8 +5,8 @@
  * Description: Import and drops from other apps: copies into a folder, never moves the source.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 02/11/2026
+ * Version: 0.5
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -83,6 +83,26 @@ final class WorkspaceImportFilesTests: XCTestCase {
         XCTAssertLessThan(photoEmbed.lowerBound, slidesLink.lowerBound, "In the order dropped.")
         XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent("Board.png").path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: photo.path), "The source is copied, never moved.")
+    }
+
+    /// Three files dropped at once on the reading view are all saved and embedded, in the order dropped. (A Finder drop of
+    /// a PDF, a picture and a CSV on the Mac app's reading view once added only the first two; that loss did not happen
+    /// here, outside the app's sandbox.)
+    func testThreeFilesDroppedAtOnceOnTheReadingViewAreAllEmbeddedInTheirOrder() async throws {
+        let (workspace, vault) = try await makeWorkspace(files: ["Note.md": "First line\n"])
+        await workspace.open(try VaultPath("Note.md"))
+        let session = try XCTUnwrap(workspace.markdownSession)
+        let files = [try outsideFile(named: "Handout.pdf", contents: "pdf"), try outsideFile(named: "Picture.png", contents: "png"),
+                     try outsideFile(named: "Schedule.csv", contents: "day,room\nMonday,BC 01\n")]
+
+        XCTAssertTrue(workspace.receiveDrop(files.map { file in NSItemProvider(object: file as NSURL) }, intoNote: session))
+        try await waitUntil("the three files are in the note") { session.text.contains("Schedule.csv") }
+
+        XCTAssertNil(workspace.errorMessage)
+        XCTAssertEqual(session.text, "First line\n![[Handout.pdf]]\n![[Picture.png]]\n![[Schedule.csv]]\n")
+        for name in ["Handout.pdf", "Picture.png", "Schedule.csv"] {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: vault.appendingPathComponent(name).path), name)
+        }
     }
 
     func testADropOfAWebAddressOnANoteIsRefused() async throws {
