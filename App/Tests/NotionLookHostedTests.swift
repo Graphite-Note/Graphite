@@ -8,7 +8,7 @@
  *              spans in text, a heading, a list of links and a table, with columns of uneven widths, in the reading view and Live Preview, light and dark.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 28/11/2026
  */
 
@@ -94,6 +94,8 @@ final class NotionLookHostedTests: XCTestCase {
             banner: "[[stars.gif]]"
             ---
             A made-up course page in the shape the Notion importer writes.
+
+            **Lab input** → `Sensor readings from the bench` + `reset commands`
 
             > [!multi-column]
             > > [!blank]

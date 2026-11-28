@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.81
+ * Version: 0.82
  * Date: 28/11/2026
  */
 
@@ -2184,7 +2184,8 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     }
 
     /// Links in the accent, and inline code in the monospace font. SF Mono keeps Textual's
-    /// own code style, which follows a heading's size; another family is set as a font.
+    /// own code style, which follows a heading's size; another family is set as a font. The
+    /// code's rounded background is the parser's (`drawInlineCodeAsChips`).
     private var inlineStyle: InlineStyle {
         // With a theme, the parser colors each link (internal, unresolved, external) and tag.
         var linkedStyle = theme == nil ? InlineStyle.default.link(.foregroundColor(accent)) : InlineStyle.default.link(KeptTextProperty())
@@ -2192,14 +2193,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
         // The theme's bold and italic colors.
         if let boldColor = theme?.boldColor { linkedStyle = linkedStyle.strong(.fontWeight(.semibold), .foregroundColor(Color(boldColor))) }
         if let italicColor = theme?.italicColor { linkedStyle = linkedStyle.emphasis(.italic, .foregroundColor(Color(italicColor))) }
-        let codeBackground = theme?.codeBackground.map { color in Color(color) }
-        guard case .installed = typography.monospaceFamily else {
-            guard let codeBackground else { return linkedStyle }
-            return linkedStyle.code(.monospaced, .fontScale(0.94), .backgroundColor(codeBackground))
-        }
-        if let codeBackground {
-            return linkedStyle.code(.font(typography.monospaceSwiftUIFont(size: textSize)), .fontScale(0.94), .backgroundColor(codeBackground))
-        }
+        guard case .installed = typography.monospaceFamily else { return linkedStyle }
         return linkedStyle.code(.font(typography.monospaceSwiftUIFont(size: textSize)), .fontScale(0.94))
     }
 
@@ -2269,6 +2263,8 @@ struct ReadingThemeColors: Hashable {
     let tagBackground: Color?
     let highlight: Color
     let highlightText: Color?
+    /// The background of inline code.
+    let codeBackground: Color?
     /// Tag pills and highlights with the theme's corners and border, at a 16-point text
     /// size; `parser.textSize` scales them.
     let tagRadius: Double
@@ -2280,6 +2276,7 @@ struct ReadingThemeColors: Hashable {
     init?(theme: NoteThemeStyle?) {
         guard let theme else { return nil }
         highlightText = theme.highlightTextColor.map { color in Color(color) }
+        codeBackground = theme.codeBackground.map { color in Color(color) }
         // Graphite's tags are pills, as Obsidian's are by default.
         tagRadius = theme.tagRadius ?? Double(NoteThemeStyle.pillRadius)
         tagBorder = theme.tagBorderColor.map { color in Color(color) }
@@ -2348,6 +2345,8 @@ struct ObsidianMarkdownParser: MarkupParser {
             attributed[range].baselineOffset = textSize * 0.35
         }
         if let themeColors { Self.applyThemeColors(themeColors, textSize: textSize, to: &attributed) }
+        let codeBackground = themeColors?.codeBackground ?? Color(MarkdownTextStyler.codeBackgroundColor)
+        Self.drawInlineCodeAsChips(in: &attributed, background: codeBackground, textSize: textSize)
         styleTags(in: &attributed)
         replaceTaskMarkers(in: &attributed)
         Self.replaceLineBreakMarkers(in: &attributed)
@@ -2394,6 +2393,34 @@ struct ObsidianMarkdownParser: MarkupParser {
             linkRuns.append((range, color))
         }
         for (range, color) in linkRuns { text[range].foregroundColor = color }
+    }
+
+    /// Inline code on a rounded tint of the theme's code background, a little wider than its text, as Obsidian and Notion
+    /// draw it (Obsidian's 4-pixel corners at 16-point text). The character before and the one after the code are kerned
+    /// by the tint's overhang, so the tint keeps a whole space from the text beside it. Code already on a highlight keeps
+    /// the highlight.
+    static func drawInlineCodeAsChips(in text: inout AttributedString, background: Color, textSize: Double) {
+        var codeOffsets: [Range<Int>] = []
+        for run in text.runs where run.inlinePresentationIntent?.contains(.code) == true && run[RoundedRunBackgroundAttribute.self] == nil {
+            let start = text.characters.distance(from: text.startIndex, to: run.range.lowerBound)
+            codeOffsets.append(start..<(start + text.characters.distance(from: run.range.lowerBound, to: run.range.upperBound)))
+        }
+        guard !codeOffsets.isEmpty else { return }
+        let overhang = NoteThemeStyle.scaled(2, textSize: textSize)
+        let chip = RoundedRunBackground(color: background, cornerRadius: NoteThemeStyle.scaled(4, textSize: textSize), horizontalPadding: overhang)
+        let characterCount = text.characters.count
+        func range(_ offsets: Range<Int>) -> Range<AttributedString.Index> {
+            text.characters.index(text.startIndex, offsetBy: offsets.lowerBound)..<text.characters.index(text.startIndex, offsetBy: offsets.upperBound)
+        }
+        for offsets in codeOffsets {
+            text[range(offsets)][RoundedRunBackgroundAttribute.self] = chip
+            for neighbour in [offsets.lowerBound - 1, offsets.upperBound] where neighbour >= 0 && neighbour < characterCount {
+                let neighbourRange = range(neighbour..<(neighbour + 1))
+                if text.characters[neighbourRange.lowerBound] != "\n", text[neighbourRange][RoundedRunBackgroundAttribute.self] == nil {
+                    text[neighbourRange].kern = overhang
+                }
+            }
+        }
     }
 
     /// Whether a run is HTML, a tag in a sentence or a block of it. Its text is the tag as written, so a `#ccc` in a

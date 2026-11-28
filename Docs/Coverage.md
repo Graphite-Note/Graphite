@@ -3065,6 +3065,8 @@ Icons of a vault opened unchanged since its last scan (section 7, 2026-11-28): `
 
 Long links to pages kept on one line (section 7, 2026-11-28): `ReadingCoverTests.testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps` (paragraphs of icon links marked, prose, list items, lines with other text and links without icons not) and `testAMarkedParagraphKeepsEachLineOnOneLineAndDrawsShortLinesAsOneTextDoes` (Textual patch 38: same height, lines within a pixel, a long line cut instead of wrapped), and the made-up course hub's pictures on the Mac with a long link in a column.
 
+Inline code on a rounded chip in the reading view (section 7, 2026-11-28): `InlineCodeChipTests` (3, Mac: the chip, its corners and overhang scaled with the text size, the spaces beside the code kerned by the overhang, a theme's code background, a highlight around code kept, the chip's pixels drawn behind the code) and the made-up course hub's pictures with inline code on the Mac and the iPad simulator.
+
 Every icon before a link in the same square (section 7, 2026-11-28): `ReadingCoverTests.testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline` (an emoji and a wide picture drawn square, every kind's address read back at 20 points beside 16-point text, the attachment's square and baseline), the earlier icon tests reading the emoji's picture, and the made-up course hub's pictures on the Mac and the iPad simulator, light and dark.
 
 ## The test vault
