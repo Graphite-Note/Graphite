@@ -2151,7 +2151,8 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale, iconPictures: noteIcons?.pictures))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
+                                                                iconPictures: noteIcons?.pictures))
                 .textual.attachmentScale(imageZoomScale)
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))

@@ -167,7 +167,8 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
         }
         let atDefault = try await drawnPhotoWidth(textSize: Double(NoteFontSize.defaultSize))
         let zoomed = try await drawnPhotoWidth(textSize: Double(NoteFontSize.defaultSize) * 1.5)
-        XCTAssertEqual(Double(zoomed) / Double(atDefault), 1.5, accuracy: 0.05, "The picture's width at 24 points over its width at 16: \(zoomed) / \(atDefault).")
+        XCTAssertEqual(Double(zoomed) / Double(atDefault), 1.5, accuracy: 0.05,
+                       "The picture's width at 24 points over its width at 16: \(zoomed) / \(atDefault).")
     }
 
     /// The longest run of the photos' color (0.8, 0.3, 0.2) in a row of pixels, within a margin for scaling and JPEG.
