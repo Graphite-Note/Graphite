@@ -2,6 +2,11 @@
 
 ## 1.0.3
 
+### 2026-11-28 14:10
+
+- Added: The guide shows how to make a note look like a Notion page, with three example dashboards and a tutorial that builds one step by step.
+- Changed: Callouts imported from Notion are drawn as Notion draws them, with their icon on the first line and no title row.
+
 ### 2026-11-28 12:52
 
 - Fixed [Mac]: Pressing Command-Q while Settings waits for a keyboard shortcut no longer quits Graphite; the page explains that the system keeps it.
