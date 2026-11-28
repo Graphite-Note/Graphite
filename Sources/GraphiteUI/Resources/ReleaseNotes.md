@@ -2,6 +2,12 @@
 
 ## 1.0.3
 
+### 2026-11-28 20:09
+
+- Added: The Graphite Guide explains moving in from Notion.
+- Fixed: The Graphite Guide brings its copy up to date when it opens, so new guide pages appear without making a fresh copy.
+- Fixed [Mac]: Hiding the sidebar no longer sends New Note, Files Options and Show Sidebar into the toolbar's overflow menu.
+
 ### 2026-11-28 18:34
 
 - Added: Import from Notion can read a workspace straight from Notion with an integration's token, as well as from an exported zip or folder.
