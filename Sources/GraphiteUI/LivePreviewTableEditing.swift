@@ -83,26 +83,6 @@ final class LivePreviewTableEditor {
     /// The picture of the vault under the pointer, whose magnifier and "Open in New Tab" show over it.
     var hoveredPicture: ZoomablePictureFrame?
 
-    /// How far outside the table the pointer still counts as over it, so moving onto a "+" strip keeps it shown.
-    static let pointerReachOutsideTable = TableAddStripsGeometry.thickness + TableAddStripsGeometry.gap
-
-    /// The pointer moved to `pointInBlock`, in the block's top-down coordinates, or left the block (nil): the strips show
-    /// while it is over the table or near enough to reach a strip, the cell under it shows its grips (kept as the pointer
-    /// moves off the table onto a grip), and a picture under it its buttons.
-    func pointerMoved(toPointInBlock pointInBlock: CGPoint?) {
-        guard let pointInBlock, let layout else {
-            if isPointerOverTable { isPointerOverTable = false }
-            if hoveredPicture != nil { hoveredPicture = nil }
-            return
-        }
-        let point = CGPoint(x: pointInBlock.x - tableOriginInBlock.x, y: pointInBlock.y - tableOriginInBlock.y)
-        let reach = Self.pointerReachOutsideTable
-        let isOver = layout.bounds.insetBy(dx: -reach, dy: -reach).contains(point)
-        if isOver != isPointerOverTable { isPointerOverTable = isOver }
-        if layout.bounds.contains(point), let cell = Self.cell(at: point, in: layout), cell != hoveredCell { hoveredCell = cell }
-        let picture = pictureFrames.last { picture in picture.frame.contains(pointInBlock) }
-        if picture != hoveredPicture { hoveredPicture = picture }
-    }
     /// The rectangle of selected cells, from the cell it began at to the one it reaches.
     var selectionAnchor: TableCellPosition?
     var selectionHead: TableCellPosition?
