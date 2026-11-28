@@ -5,9 +5,9 @@
 <h1 align="center">Graphite</h1>
 
 <p align="center">
-  <strong>A fast, native Markdown note-taking app for your Obsidian vault.</strong><br>
+  <strong>A fast, native note-taking app for your Markdown notes and PDFs.</strong><br>
   On iPad, iPhone and Mac, with Apple Pencil drawing and PDF annotation on the iPad.<br>
-  Notes, drawings, PDFs and recordings stay ordinary files you own.
+  Ordinary files you own, so an Obsidian vault opens as it is.
 </p>
 
 
@@ -31,15 +31,15 @@
   </picture>
 </p>
 
-Graphite is a Markdown note-taking app for an Obsidian vault. It opens an ordinary folder and edits it in place: notes stay Markdown, notebooks and slides stay PDF, drawings stay PNG, PDF or SVG, and recordings stay M4A. If Graphite disappeared tomorrow, Obsidian, Finder, Preview and any Markdown editor could still read every file.
+Graphite is a note-taking app for Markdown notes and PDFs. It opens an ordinary folder and edits it in place: notes stay Markdown, notebooks and slides stay PDF, drawings stay PNG, PDF or SVG, and recordings stay M4A. If Graphite disappeared tomorrow, Finder, Preview and any Markdown editor could still read every file. Because the files are ordinary, an Obsidian vault works as it is: Graphite reads its links, embeds and properties, and even runs its community plugins and themes.
 
 It is a native app written in Swift on every device, small, fast and light on memory and battery. On the iPad it adds Apple Pencil: drawings inside notes and handwriting on PDFs, the notebook tools of Goodnotes without locking anything away. On the iPhone and the Mac, which have no Pencil, it is the same fast Markdown app, and the Mac marks up PDFs as Preview does.
 
 ## Features
 
-### Obsidian, native
+### Markdown notes
 
-- **Markdown the Obsidian way.** Live Preview, reading view and source mode; wikilinks, embeds, callouts, math, tasks, tags, properties and frontmatter, without rewriting notes on open.
+- **Markdown that works with Obsidian.** Live Preview, reading view and source mode; wikilinks, embeds, callouts, math, tasks, tags, properties and frontmatter, without rewriting notes on open.
 - **Tables you edit in place**, inside callouts and lists too, with Obsidian's "+" strips and cell menu, and long formulas that wrap so a table fits the page.
 - **Pictures and PDFs in notes**: photos side by side, zoom into any picture or open it in a tab, and a PDF embed that shows its whole first page.
 - **Mermaid diagrams drawn natively**, web pages in notes (`<iframe>`), and Export to PDF that prints formulas, drawings, diagrams and bases as the reading view shows them.
