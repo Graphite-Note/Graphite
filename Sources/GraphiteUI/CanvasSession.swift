@@ -165,6 +165,9 @@ final class CanvasSession {
     var pendingConnection: CanvasPendingConnection?
     var textEdit: CanvasTextEdit?
     var nameRequest: CanvasNameRequest?
+    /// A picture a tap asked to zoom: an image card tapped again once it is selected (HUNT-381). The canvas's pane
+    /// zooms it and sets this back to nil.
+    var pictureZoomRequest: VaultPath?
     @ObservationIgnored var activeDrag: CanvasDrag?
     /// "Snap to grid" and "Snap to objects", as in Obsidian's canvas menu. Kept on the
     /// device for every canvas, in the preferences the session is given; both are on until

@@ -51,7 +51,7 @@ enum WorkspaceCommandList {
             PaletteCommand(id: "search", command: .searchAllFiles, systemImage: "magnifyingglass") { workspace.searchFocusRequest += 1 },
             PaletteCommand(id: "new-note", command: .newNote, systemImage: "square.and.pencil") { window.create(.note) },
             PaletteCommand(id: "new-notebook", command: .newNotebook, systemImage: "book.closed") { window.create(.notebook) },
-            PaletteCommand(id: "new-folder", command: .newFolder, systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(nil)) },
+            PaletteCommand(id: "new-folder", command: .newFolder, systemImage: "folder.badge.plus") { workspace.requestNewFolder(in: workspace.newFileDirectory(nil)) },
             PaletteCommand(id: "toggle-left-sidebar", command: .toggleLeftSidebar, systemImage: "sidebar.left", run: window.toggleSidebar),
             PaletteCommand(id: "settings", command: .openSettings, systemImage: "gearshape", run: window.showSettings),
             PaletteCommand(id: "vaults", command: .openVault, systemImage: "building.columns", run: window.showVaultManager),
@@ -153,7 +153,7 @@ enum WorkspaceCommandList {
         }
         if let path = workspace.selection {
             commands += [
-                PaletteCommand(id: "rename", command: .renameFile, systemImage: "pencil") { workspace.fileSheet = .rename(path) },
+                PaletteCommand(id: "rename", command: .renameFile, systemImage: "pencil") { workspace.requestRename(path) },
                 PaletteCommand(id: "move", command: .moveFile, systemImage: "folder") { workspace.fileSheet = .move(path) },
                 PaletteCommand(id: "copy", command: .duplicateFile, systemImage: "plus.square.on.square") { Task { await workspace.duplicate(path) } },
                 PaletteCommand(id: "delete", command: .deleteFile, systemImage: "trash") { Task { await workspace.requestDeletion(of: path) } },

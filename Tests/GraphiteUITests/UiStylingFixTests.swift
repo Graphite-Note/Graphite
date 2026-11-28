@@ -5,8 +5,8 @@
  * Description: Regression tests for the editor's Markdown styling and inline formula layout.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 02/11/2026
+ * Version: 0.7
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -176,7 +176,8 @@ final class UiStylingFixTests: XCTestCase {
             "```swift\nfunc a() {}\n\nfunc b() {}\n```\nSee ~={#ff0000}this=~ note.\n",
             "Intro ~={#00ff00}green\nstill green=~\r\n\r\n```\r\ncode\r\n\r\n~={#ff0000}x=~\r\n```\r\nAfter ~={#0000ff}blue=~ text\r\n",
             "Para one ~={#ff0000}red\n   \nPara two=~ plain\n$$\n\n~={#ff0000}in math=~\n$$\nend ~={#00ff00}x=~\n",
-            "---\ntitle: ~={#ff0000}x=~\n---\n\n# Heading ~={#ff0000}red=~\n- item ~={#00ff00}green=~\n"
+            "---\ntitle: ~={#ff0000}x=~\n---\n\n# Heading ~={#ff0000}red=~\n- item ~={#00ff00}green=~\n",
+            "Intro <span style=\"color:#d9730d\">orange\nstill orange</SPAN> after\n\n```\n<span style=\"color:#ff0000\">x</span>\n```\nEnd <span style='background:#fbf3db'>y</span>\n"
         ]
         for note in notes {
             for usesCheckpoints in [false, true] {

@@ -219,6 +219,98 @@ final class PerformanceBenchmarkTests: XCTestCase {
         }
     }
 
+    /// Scrolling a long note as a finger or a trackpad does: a little every frame (32 points,
+    /// about 2,000 points a second), down to the end and back up, then still for a second.
+    /// Every frame, lines at a sixth, a half and five sixths of the screen are followed, so text
+    /// that moves by more than the scroll, anywhere on the screen and at any moment, counts: a
+    /// block's height that arrives a few frames after its view, or after the scroll stopped.
+    func testScrollingALongNoteAsAFingerDoes() async throws {
+        let noteText = Self.longLectureNote(sectionCount: 40)
+        for run in 1...Self.runCount {
+            let vault = try makeTemporaryDirectory(named: "FingerScrollBenchmark")
+            let notePath = try VaultPath("Lecture.md")
+            try Data(noteText.utf8).write(to: vault.appendingPathComponent(notePath.rawValue))
+            let workspace = WorkspaceModel()
+            workspace.folderAccess = FolderAccess(root: vault)
+            workspace.store = VaultStore(root: vault)
+            let index = try VaultIndex(databaseURL: vault.appendingPathComponent("index.sqlite"))
+            workspace.index = index
+            _ = try await index.reconcile(root: vault)
+            await workspace.open(notePath, placement: .currentTab)
+            let tab = try XCTUnwrap(workspace.layout.tabID(showing: notePath))
+            let session = try XCTUnwrap(workspace.document(for: tab).markdownSession)
+            session.viewMode = .livePreview
+            let window = try host(NavigationStack {
+                WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
+            })
+            let editor = try await waitForValue(timeout: .seconds(20)) { () -> BenchmarkTextView? in
+                self.layOut(window)
+                guard let editor = self.descendants(of: self.contentView(of: window), matching: BenchmarkTextView.self).first,
+                      self.text(of: editor) == session.text, self.visibleBounds(of: editor).width > 0,
+                      !self.blockViews(in: editor).isEmpty else { return nil }
+                return editor
+            }
+            for direction in [1.0, -1.0] {
+                let name = direction > 0 ? "down" : "up"
+                let scrolling = BenchmarkMeasurement(scenario: "note-finger-scroll-\(name)", run: run)
+                let jumps = ScrollJumpRecord(scenario: "note-finger-jumps-\(name)", run: run)
+                let stillJumps = ScrollJumpRecord(scenario: "note-finger-jumps-still-after-\(name)", run: run)
+                // The frames after the scroll stops, measured apart so they leave the scroll's frames as they are.
+                let still = BenchmarkMeasurement(scenario: "note-finger-still-after-\(name)", run: run)
+                var frame = 0
+                while frame < 5_000 {
+                    let viewportHeight = visibleBounds(of: editor).height
+                    let currentOffset = scrollOffset(of: editor)
+                    let nextOffset = min(max(0, documentHeight(of: editor) - viewportHeight), max(0, currentOffset + direction * 32))
+                    if abs(nextOffset - currentOffset) < 1 { break }
+                    let anchors = screenAnchors(in: editor)
+                    await scrolling.measureFrame { self.scroll(editor, to: nextOffset) }
+                    recordLargestMove(of: anchors, scrolledBy: nextOffset - currentOffset, in: editor, to: jumps, frame: frame, run: run, way: name)
+                    frame += 1
+                }
+                for stillFrame in 0..<60 {
+                    let anchors = screenAnchors(in: editor)
+                    await still.measureFrame {}
+                    recordLargestMove(of: anchors, scrolledBy: 0, in: editor, to: stillJumps, frame: stillFrame, run: run, way: "still-after-\(name)")
+                }
+                scrolling.finish()
+                still.finish()
+                jumps.finish()
+                stillJumps.finish()
+            }
+            close(window, of: workspace)
+        }
+    }
+
+    /// Lines at a sixth, a half and five sixths of the screen, and where they show.
+    private func screenAnchors(in editor: BenchmarkTextView) -> [ScrollAnchor] {
+        guard let textLayoutManager = editor.textLayoutManager else { return [] }
+        return [1.0 / 6, 0.5, 5.0 / 6].compactMap { fraction in
+            let y = scrollOffset(of: editor) + visibleBounds(of: editor).height * fraction - textContainerTop(of: editor)
+            guard let fragment = textLayoutManager.textLayoutFragment(for: CGPoint(x: 1, y: y)) else { return nil }
+            let location = fragment.rangeInElement.location
+            return screenPosition(of: location, in: editor).map { position in ScrollAnchor(location: location, screenPosition: position) }
+        }
+    }
+
+    private func recordLargestMove(of anchors: [ScrollAnchor], scrolledBy distance: CGFloat, in editor: BenchmarkTextView,
+                                   to record: ScrollJumpRecord, frame: Int, run: Int, way: String) {
+        let moves = anchors.map { anchor in
+            screenPosition(of: anchor.location, in: editor).map { position in position - (anchor.screenPosition - distance) } ?? 0
+        }
+        guard let largest = moves.max(by: { first, second in abs(first) < abs(second) }) else { return }
+        record.record(jump: abs(largest))
+        guard abs(largest) > 2, let textLayoutManager = editor.textLayoutManager,
+              let contentManager = textLayoutManager.textContentManager else { return }
+        let source = text(of: editor) as NSString
+        let described = zip(anchors, moves).map { anchor, move in
+            let offset = contentManager.offset(from: contentManager.documentRange.location, to: anchor.location)
+            let line = source.substring(with: source.lineRange(for: NSRange(location: min(offset, source.length), length: 0)))
+            return String(format: "%.1f@%.0f'%@'", move, anchor.screenPosition, String(line.prefix(40)).replacingOccurrences(of: "\n", with: ""))
+        }
+        print("GRAPHITE-JUMP run=\(run) way=\(way) frame=\(frame) offset=\(Int(scrollOffset(of: editor))) moves=\(described.joined(separator: " | "))")
+    }
+
     // MARK: A note of handwritten PDFs
 
     /// Scrolling down a homework note that embeds seven PDFs of five pages, each page written with 520 strokes, at about the
@@ -846,6 +938,11 @@ final class ScrollJumpRecord {
     func record(_ anchor: ScrollAnchor, movedTo screenPosition: CGFloat?, scrolledBy distance: CGFloat) {
         guard let screenPosition else { return }
         jumps.append(abs(screenPosition - (anchor.screenPosition - distance)))
+    }
+
+    /// A move already measured, such as the largest of a frame's lines.
+    func record(jump: CGFloat) {
+        jumps.append(jump)
     }
 
     func finish() {

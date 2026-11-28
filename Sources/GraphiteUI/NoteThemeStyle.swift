@@ -281,7 +281,7 @@ struct NoteThemeStyle: Equatable {
     /// The readable column for a text size: the theme's width, which Obsidian sets in pixels
     /// for its 16-pixel text, grown with the text so as many words fit on a line.
     func readableColumnWidth(forTextSize textSize: Double) -> CGFloat? {
-        lineWidth.map { width in CGFloat(width * max(textSize, 11) / 16) }
+        lineWidth.map { width in CGFloat(width * NoteFontSize.zoomScale(forTextSize: textSize)) }
     }
 
     // MARK: Colors that follow the appearance

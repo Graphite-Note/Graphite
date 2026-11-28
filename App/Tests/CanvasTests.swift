@@ -158,6 +158,58 @@ final class CanvasTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: fileLocation, encoding: .utf8), boardText, "Undo saves the file back byte for byte.")
     }
 
+    /// HUNT-381: by finger, a picture on a card zooms once its card is selected: the picture in a text card's text, and
+    /// an image file's card tapped again; a selected text card still moves when dragged.
+    func testAPictureOnASelectedCardZoomsByFingerAndTheCardStillMoves() async throws {
+        try skipWhereTheBoardIsFittedToAPhone()
+        XCTAssertNil(SynthesizedTouches.unavailableReason)
+        let pictures = "{\n\t\"nodes\":[\n"
+            + "\t\t{\"id\":\"3000000000000001\",\"type\":\"text\",\"text\":\"See ![[Picture.png|200]] here\",\"x\":0,\"y\":0,\"width\":300,\"height\":200},\n"
+            + "\t\t{\"id\":\"3000000000000002\",\"type\":\"file\",\"file\":\"Picture.png\",\"x\":400,\"y\":0,\"width\":300,\"height\":200}\n"
+            + "\t],\n\t\"edges\":[]\n}"
+        let workspace = try await makeWorkspace(extraFiles: ["Pictures.canvas": pictures])
+        let tabID = try await open("Pictures.canvas", in: workspace)
+        let session = try XCTUnwrap(workspace.document(for: tabID).canvasSession)
+        session.isWriting = true
+        // Snapping is kept on the device for every canvas: it is put back as it was for the tests after this one.
+        let (snappedToGrid, snappedToObjects) = (session.snapsToGrid, session.snapsToObjects)
+        defer { session.snapsToGrid = snappedToGrid; session.snapsToObjects = snappedToObjects }
+        session.snapsToGrid = false
+        session.snapsToObjects = false
+        let controller = try host(workspace)
+        _ = try await boardView(in: controller)
+        try await waitUntil { session.viewSize.width > 0 }
+        let window = try XCTUnwrap(self.window)
+        let board = try XCTUnwrap(boardController(in: controller)?.view)
+        let touches = SynthesizedTouches(window: window)
+        func tap(atBoardPoint boardPoint: CGPoint) async throws {
+            let point = window.convert(session.viewport.viewPoint(forBoardPoint: boardPoint), from: board)
+            touches.begin(at: [point])
+            await touches.hold(seconds: 0.05)
+            touches.end()
+            // Past the double tap's wait, so the next tap is a tap of its own.
+            await touches.hold(seconds: 0.5)
+        }
+
+        let textCard = "3000000000000001", pictureCard = "3000000000000002"
+        try await tap(atBoardPoint: CGPoint(x: 150, y: 80))
+        try await waitUntil("the text card is selected") { session.selectedNodeIdentifiers == [textCard] }
+        XCTAssertNil(workspace.viewedImage, "The first tap selects the card.")
+        try await tap(atBoardPoint: CGPoint(x: 150, y: 80))
+        try await waitUntil("the picture in the selected card is zoomed into", timeoutSeconds: 5) { workspace.viewedImage?.rawValue == "Picture.png" }
+        workspace.viewedImage = nil
+
+        let start = window.convert(session.viewport.viewPoint(forBoardPoint: CGPoint(x: 260, y: 170)), from: board)
+        await touches.drag(from: start, to: CGPoint(x: start.x, y: start.y + 120), steps: 8)
+        try await waitUntil("the selected text card moved") { (session.file.node(withIdentifier: textCard)?.frame.minY ?? 0) > 40 }
+
+        try await tap(atBoardPoint: CGPoint(x: 550, y: 100))
+        try await waitUntil("the picture's card is selected") { session.selectedNodeIdentifiers == [pictureCard] }
+        XCTAssertNil(workspace.viewedImage)
+        try await tap(atBoardPoint: CGPoint(x: 550, y: 100))
+        try await waitUntil("the picture's card tapped again zooms its picture", timeoutSeconds: 5) { workspace.viewedImage?.rawValue == "Picture.png" }
+    }
+
     func testATextCardIsEditedInPlaceAndSaved() async throws {
         try skipWhereTheBoardIsFittedToAPhone()
         let workspace = try await makeWorkspace()

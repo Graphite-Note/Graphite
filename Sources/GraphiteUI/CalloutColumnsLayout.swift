@@ -3,11 +3,12 @@
  * --------------------------------
  * Layer: UI
  * Description: The blocks of a `[!multi-column]` callout laid out side by side by `CalloutColumnArrangement`, wrapping
- *              onto new rows when the note is too narrow, as Modular CSS Layout lays them out in Obsidian.
+ *              onto new rows when the note is too narrow and widened by `wide-2` to `wide-5`, as Modular CSS Layout lays them
+ *              out in Obsidian.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -16,6 +17,9 @@ import GraphiteCore
 /// Places each subview as a column of the arrangement at the width it is offered, rows top to bottom with the
 /// arrangement's gap between them, each row as tall as its tallest column and its columns aligned at the top.
 struct CalloutColumnsLayout: Layout {
+    /// Each column's weight (`wide-2` grows twice as much); a column without one weighs 1.
+    var weights: [Int] = []
+
     struct Cache {
         var width: CGFloat?
         var arrangement = CalloutColumnArrangement(weights: [], availableWidth: 0)
@@ -52,7 +56,8 @@ struct CalloutColumnsLayout: Layout {
     private func arrangement(width: CGFloat, subviews: Subviews, cache: inout Cache) -> CalloutColumnArrangement {
         if cache.width != width {
             cache.width = width
-            cache.arrangement = CalloutColumnArrangement(weights: Array(repeating: 1, count: subviews.count), availableWidth: width)
+            let columnWeights = subviews.indices.map { index in weights.indices.contains(index) ? weights[index] : 1 }
+            cache.arrangement = CalloutColumnArrangement(weights: columnWeights, availableWidth: width)
         }
         return cache.arrangement
     }

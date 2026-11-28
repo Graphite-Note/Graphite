@@ -29,6 +29,7 @@ Sources/GraphiteApple/DiagnosticRecords.swift       DiagnosticContext.state     
 Sources/GraphiteApple/PDFPicture.swift              PDFPictureAnnotation.fileReadingLock # NSLock serialising picture file reads
 Sources/GraphiteApple/PDFTextBoxAnnotation.swift    PDFTextBoxAnnotation.fileReadingLock # NSLock serialising text box file reads, as for pictures
 Sources/GraphiteCore/CodeSyntaxHighlighting.swift   CodeSyntaxHighlighter.cachedTokens  # Mutex token cache; becomes an instance of the reading renderer (foundations 3.4)
+Sources/GraphiteUI/NoteColorLegibility.swift        NoteColorCache.colorsByKey          # Mutex cache of a note's colours by hex, at most 256, read by the editor's styler and the reading view's parser, off and on the main thread
 Sources/GraphiteUI/PencilToolbar.swift              PencilInkSample.cache               # NSCache of ink sample images, bounded by the system
 Sources/GraphiteUI/LivePreviewRenderedBlocks.swift  LivePreviewRenderedBlocks.measuredHeights # bounded cache (capacity 2,000); leaks between tests
 Sources/GraphiteUI/GraphitePreferences.swift        GraphitePreferences.accentColorsByHex # colour memo; moves with preferences (SRP-SHELL-06)

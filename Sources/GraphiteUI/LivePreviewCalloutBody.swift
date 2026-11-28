@@ -5,8 +5,8 @@
  * Description: A Live Preview callout drawn as a box, and the reading-view blocks of its body or of an embedded note.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.3
- * Date: 16/11/2026
+ * Version: 0.4
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -45,11 +45,17 @@ struct LivePreviewCalloutView: View {
     /// list or quote a column of its own as in the reading view. A tap shows the source.
     private func layoutWithoutBox(arrangesColumns: Bool) -> some View {
         let sectioned = arrangesColumns ? bodyLocated.map(NotePreviewDocument.dividedIntoSections) : bodyLocated
+        // Each column's weight from its callout header in the callout's source (`> > [!blank|wide-2]`).
+        let source = noteReading.map { reading in reading.sourceMarkdown as NSString }
+        let weights = (sectioned ?? []).map { column -> Int in
+            guard case .callout = column.block, let source else { return 1 }
+            return CalloutColumnArrangement.weight(ofColumnStartingAt: column.startOffset, in: source)
+        }
         return LivePreviewBlockStack(blocks: sectioned?.map(\.block) ?? bodyBlocks, located: sectioned, noteReading: noteReading, environment: environment,
                                      allowsNoteEmbeds: true, revealSource: revealSource,
                                      // Read Aloud's sections follow the callout's own blocks, which sectioning may have divided.
                                      readingSection: sectioned?.count == bodyLocated?.count ? readingSection : nil, tableEditing: tableEditing,
-                                     arrangesColumns: arrangesColumns)
+                                     arrangesColumns: arrangesColumns, columnWeights: weights)
             .contentShape(Rectangle())
             .onTapGesture(perform: revealSource)
             .environment(\.calloutFoldNote, environment.calloutFoldNote)
@@ -88,10 +94,12 @@ struct LivePreviewBlockStack: View {
     var tableEditing: LivePreviewCalloutTableEditing? = nil
     /// Lays the blocks out side by side (`CalloutColumnsLayout`), for a multi-column callout.
     var arrangesColumns = false
+    /// The columns' weights, from `wide-2` to `wide-5`; empty for even columns.
+    var columnWeights: [Int] = []
 
     var body: some View {
         if arrangesColumns {
-            CalloutColumnsLayout { blockViews }
+            CalloutColumnsLayout(weights: columnWeights) { blockViews }
         } else {
             VStack(alignment: .leading, spacing: 8) { blockViews }
         }

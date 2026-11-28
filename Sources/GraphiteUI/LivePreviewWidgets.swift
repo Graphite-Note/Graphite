@@ -92,6 +92,18 @@ struct LivePreviewEnvironment {
     /// The widest, in points, the note's column shows an embedded image; nil when the
     /// column is as wide as the window. Images are decoded for this width.
     var embeddedImageColumnWidth: CGFloat? = nil
+
+    /// The size an embed's `|width` is drawn at: zoomed with the note's text
+    /// (`NoteFontSize.zoomScale`), so ⌘+ and ⌘– grow and shrink its pictures too.
+    func shownDisplaySize(of embed: EmbedReference) -> EmbedDisplaySize? {
+        embed.displaySize?.scaled(by: NoteFontSize.zoomScale(forTextSize: textSize))
+    }
+
+    /// The `|width` to write for a picture dragged to `shownWidth` points: the width it would
+    /// have at the default text size, in whole points, at least 1.
+    func noteWidth(ofShownWidth shownWidth: Int) -> Int {
+        max(1, Int((Double(shownWidth) / NoteFontSize.zoomScale(forTextSize: textSize)).rounded()))
+    }
     var readingContext: LivePreviewReadingContext? = nil
     /// Where the lasso's pictures of an embedded PDF go: this note.
     var lassoNoteDestination: LassoNoteDestination? = nil
@@ -234,8 +246,10 @@ struct LivePreviewWidgetView: View {
 
     /// Writes a width dragged at the image's corner into the embed, as one edit: the block's
     /// first embed, or, on a line of several pictures, the one starting at `location` in it.
+    /// The width dragged is the one shown, zoomed with the text; the note gets it unzoomed.
     private func resizeImage(of embed: EmbedReference, at location: Int? = nil) -> ((Int) -> Void)? {
-        sourceEditing.map { sourceEditing in { width in
+        sourceEditing.map { [environment] sourceEditing in { shownWidth in
+            let width = environment.noteWidth(ofShownWidth: shownWidth)
             sourceEditing.replaceSource(ObjectIdentifier(LivePreviewEmbedView.self)) { source in
                 guard let location else { return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, in: source) }
                 return EmbedWidthEditing.settingWidth(width, ofEmbedOf: embed.target, at: location, in: source)
@@ -622,7 +636,7 @@ struct LivePreviewEmbedView: View {
             case .image(let path, let image, let aspectRatio, let isEditableDrawing):
                 // The </> button shows the source.
                 EmbeddedImageView(image: image, aspectRatio: aspectRatio,
-                                  displayWidth: embed.displaySize.map { size in CGFloat(size.fittedWidth(aspectRatio: aspectRatio)) },
+                                  displayWidth: environment.shownDisplaySize(of: embed).map { size in CGFloat(size.fittedWidth(aspectRatio: aspectRatio)) },
                                   edit: isEditableDrawing ? environment.editDrawing.map { editDrawing in { editDrawing(path) } } : nil,
                                   view: environment.viewImage.map { viewImage in { viewImage(path) } } ?? revealSource,
                                   drawOnImage: DrawableImages.canDrawOn(path) ? environment.drawOnImage.map { drawOnImage in { drawOnImage(path) } } : nil,
@@ -685,7 +699,8 @@ struct LivePreviewEmbedView: View {
     }
 
     private var displayPixelWidth: Int? {
-        EmbeddedImageDisplayWidth.pixelWidth(columnWidth: environment.embeddedImageColumnWidth, displaySize: embed.displaySize, displayScale: displayScale)
+        EmbeddedImageDisplayWidth.pixelWidth(columnWidth: environment.embeddedImageColumnWidth, displaySize: environment.shownDisplaySize(of: embed),
+                                             displayScale: displayScale)
     }
 
     private var isMissing: Bool {

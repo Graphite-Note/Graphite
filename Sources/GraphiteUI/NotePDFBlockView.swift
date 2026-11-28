@@ -6,8 +6,8 @@
  *              layout width, in light colours and without anything that only works on screen.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 12/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -41,7 +41,7 @@ struct NotePDFBlockView: View {
             Text(title)
                 .font(InlineTitleStyle.swiftUIFont(textSize: textSize, typography: typography, theme: nil))
                 .padding(.bottom, 6)
-        case .reading(.properties(let properties)):
+        case .reading(.properties(let properties, _)):
             NotePDFProperties(properties: properties, textSize: textSize)
         case .reading(let renderedBlock):
             blocks([renderedBlock])

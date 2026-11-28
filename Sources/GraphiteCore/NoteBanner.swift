@@ -6,8 +6,8 @@
  *              with the vertical position both plugins keep, read once into a value the reading view draws.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -33,6 +33,8 @@ public struct NoteBanner: Hashable, Sendable {
     static let bannersVerticalKey = "banner_y"
     /// Pixel Banner's vertical position, a percentage.
     static let pixelBannerVerticalKey = "banner-y"
+    /// The properties a cover is drawn from, lowercased: the picture and both plugins' positions.
+    public static let coverPropertyKeys: Set<String> = [propertyKey, bannersVerticalKey, pixelBannerVerticalKey]
     /// The middle of the picture shows when no position is written.
     public static let defaultVerticalFocus = 0.5
 

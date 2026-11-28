@@ -5,8 +5,8 @@
  * Description: The properties of a note, shown above its text.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.9
- * Date: 16/11/2026
+ * Version: 0.10
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -26,6 +26,9 @@ struct PropertiesPanel: View {
     var declaredTypes: [String: PropertyType] = [:]
     /// The vault's names, values and tags suggested while they are typed; nil suggests nothing.
     var suggestions: PropertySuggestionLookup? = nil
+    /// Properties not shown (lowercased keys), kept in the note and in every edit: in the reading view, the cover's and
+    /// the icon's, which the page's header draws.
+    var hiddenKeys: Set<String> = []
     @State private var editing = PropertyListEditing()
     @State private var nameSuggestions = PropertySuggestionState()
     @State private var isExpanded = true
@@ -88,7 +91,10 @@ struct PropertiesPanel: View {
 
     /// The note's properties, or the list this panel last committed while the note has not
     /// been parsed again yet.
-    private var shownProperties: [NoteProperty] { editing.properties(parsedProperties: properties) }
+    private var shownProperties: [NoteProperty] {
+        let listed = editing.properties(parsedProperties: properties)
+        return hiddenKeys.isEmpty ? listed : listed.filter { property in !hiddenKeys.contains(property.key.lowercased()) }
+    }
 
     private func commit(_ updatedProperties: [NoteProperty]?) {
         guard let updatedProperties else { return }

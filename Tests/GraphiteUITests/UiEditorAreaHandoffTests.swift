@@ -1,3 +1,14 @@
+/**
+ * File: UiEditorAreaHandoffTests.swift
+ * ------------------------------------
+ * Layer: Tests
+ * Description: Changes other groups handed to the editor, reading view, and Live Preview files.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 28/11/2026
+ */
+
 #if os(macOS)
 import AppKit
 import XCTest
@@ -154,7 +165,7 @@ final class UiEditorAreaHandoffTests: XCTestCase {
         var configuration = ReadingConfiguration()
         configuration.declaredPropertyTypes = session.declaredPropertyTypes
         let build = try await ReadingViewBuilder().build(source: source, note: session.path, root: vault, index: index, configuration: configuration)
-        guard case .properties(let properties)? = build.blocks.first else { return XCTFail("No properties block") }
+        guard case .properties(let properties, _)? = build.blocks.first else { return XCTFail("No properties block") }
         XCTAssertEqual(properties.first { property in property.key == "code" }?.value, .text("007"))
 
         // Changing another property keeps the declared text as written.

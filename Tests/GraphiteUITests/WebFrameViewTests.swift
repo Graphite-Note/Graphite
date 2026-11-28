@@ -156,7 +156,8 @@ final class WebFrameViewTests: XCTestCase {
         }
         let first = try XCTUnwrap(webViews(in: window).first { webView in webView.url == server.address("/frame1") })
         XCTAssertEqual(first.bounds.height, 400, accuracy: 0.5)
-        XCTAssertEqual(first.bounds.width, ReadingConfiguration.readableColumnWidth, accuracy: 0.5, "100% of the readable column.")
+        XCTAssertEqual(first.bounds.width, ReadingConfiguration.readableColumnWidth(forTextSize: ReadingConfiguration().textSize), accuracy: 0.5,
+                       "100% of the readable column, which grows with the text from 730 points at 16.")
         XCTAssertLessThanOrEqual(webViews(in: window).count, WebFrameLiveSelection.maximumLiveCount)
         XCTAssertFalse(server.requestedPaths.contains("/frame8"), "The last frame, screens below, is not loaded.")
         let scrollView = try XCTUnwrap(scrollViews(in: try XCTUnwrap(window.contentView)).max { leftView, rightView in

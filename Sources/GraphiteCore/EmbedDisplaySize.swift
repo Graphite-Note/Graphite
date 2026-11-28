@@ -30,6 +30,13 @@ public struct EmbedDisplaySize: Hashable, Sendable {
         return value
     }
 
+    /// Both dimensions multiplied by `scale`, as a note zoomed to a larger text size shows a
+    /// `|300` picture wider; this size itself for a scale that is not a positive number.
+    public func scaled(by scale: Double) -> EmbedDisplaySize {
+        guard scale.isFinite, scale > 0, scale != 1 else { return self }
+        return EmbedDisplaySize(width: width * scale, height: height.map { height in height * scale })
+    }
+
     /// The width to draw an image of `aspectRatio` (width over height) at, so that it fits
     /// both given dimensions without being stretched.
     public func fittedWidth(aspectRatio: Double) -> Double {

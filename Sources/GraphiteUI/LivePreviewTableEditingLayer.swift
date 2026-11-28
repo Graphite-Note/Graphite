@@ -6,8 +6,8 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 18/11/2026
+ * Version: 0.6
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -154,6 +154,10 @@ struct LivePreviewTableEditingLayer: View {
                                   })
             .padding(.vertical, textSize * LivePreviewTableEditor.verticalPaddingScale)
             .padding(.horizontal, textSize * LivePreviewTableEditor.horizontalPaddingScale)
+            // The field's own height, before it is stretched to the row's: the drawn cell grows to it.
+            .onGeometryChange(for: CGFloat.self) { geometry in geometry.size.height } action: { height in
+                editor.editedFieldHeightDidChange(height)
+            }
             // Centered in the row's height, as the rendered cells are.
             .frame(width: frame.width, alignment: .leading)
             .frame(minHeight: frame.height, alignment: .leading)
@@ -166,6 +170,19 @@ struct LivePreviewTableEditingLayer: View {
             .offset(x: frame.minX, y: frame.minY)
             .onAppear { editor.lastEditingFrame = frame }
             .onChange(of: frame) { _, newFrame in editor.lastEditingFrame = newFrame }
+    }
+}
+
+/// Grows the edited cell of a Live Preview table to its field's height, so a cell whose source
+/// wraps onto more lines than its drawn text grows its row instead of the field covering the
+/// row below. Other cells, and every cell in reading view, are left as they are.
+struct EditedTableCellRoom: ViewModifier {
+    let row: Int
+    let column: Int
+    @Environment(\.livePreviewTableEditor) private var editor
+
+    func body(content: Content) -> some View {
+        content.frame(minHeight: editor?.minimumHeight(ofCellAtRow: row, column: column))
     }
 }
 

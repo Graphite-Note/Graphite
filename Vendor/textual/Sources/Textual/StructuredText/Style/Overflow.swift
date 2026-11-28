@@ -79,10 +79,33 @@ public struct Overflow<Content: View>: View {
       isWiderThanContainer = false
       return
     }
-    guard let measuredContentWidth = widths.measuredContentWidth, let availableWidth = widths.availableWidth, availableWidth > 0,
-          measuredContentWidth > availableWidth + Self.widthTolerance else { return }
-    widths.widthWhenFoundWider = availableWidth
-    isWiderThanContainer = true
+    guard isMeasuredWider else {
+      widths.widerCheck?.cancel()
+      widths.widerCheck = nil
+      return
+    }
+    guard widths.widerCheck == nil else { return }
+    // Graphite: content measured wider moves into the scroll view only if it is still wider a
+    // moment later. A table measured while its cells were drawn again after an edit was wider
+    // for one pass, and the scroll view it was kept in for good clipped its editing controls.
+    widths.widerCheck = Task { @MainActor in
+      try? await Task.sleep(for: Self.widerConfirmationDelay)
+      guard !Task.isCancelled else { return }
+      widths.widerCheck = nil
+      guard isMeasuredWider, let availableWidth = widths.availableWidth else { return }
+      widths.widthWhenFoundWider = availableWidth
+      isWiderThanContainer = true
+    }
+  }
+
+  /// Graphite: how long content stays measured wider before it moves into the scroll view.
+  static var widerConfirmationDelay: Duration { .milliseconds(300) }
+
+  private var isMeasuredWider: Bool {
+    guard let measuredContentWidth = widths.measuredContentWidth, let availableWidth = widths.availableWidth, availableWidth > 0 else {
+      return false
+    }
+    return measuredContentWidth > availableWidth + Self.widthTolerance
   }
 
   public var body: some View {
@@ -162,6 +185,9 @@ extension EnvironmentValues {
   /// space grows past it: measured in the scroll view, the content passes through other
   /// widths as it is laid out again, and comparing those switched it in and out for good.
   var widthWhenFoundWider: CGFloat?
+  /// Graphite: the pending check that content measured wider is still wider after
+  /// `widerConfirmationDelay`, cancelled once it fits again.
+  var widerCheck: Task<Void, Never>?
 }
 
 /// Graphite: takes the width it is offered whatever its content's width, with the content at

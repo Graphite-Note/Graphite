@@ -6,8 +6,8 @@
  *              page. The values and failures the answers carry are in CommunityPluginVaultBridgeAnswers.swift.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 27/11/2026
+ * Version: 0.9
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -336,7 +336,7 @@ public struct CommunityPluginVaultBridge: Sendable {
             var coordinationError: NSError?
             var copyResult: Result<Void, Error>?
             writer.makeCoordinator().coordinate(readingItemAt: sourceLocation, options: [], writingItemAt: destinationLocation, options: .forReplacing, error: &coordinationError) { coordinatedSource, coordinatedDestination in
-                copyResult = Result { try FileManager.default.copyItem(at: coordinatedSource, to: coordinatedDestination) }
+                copyResult = Result { try ComposedFileNames.copyItem(at: coordinatedSource, to: coordinatedDestination) }
             }
             if let coordinationError { throw coordinationError }
             guard let copyResult else { throw GraphiteError.unavailable("The file provider did not allow the copy.") }

@@ -6,8 +6,8 @@
  *              a vault without icons costs one query that finds no rows.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -27,7 +27,22 @@ extension VaultIndex {
                              arguments: [NoteIcon.propertyKey, Self.maximumNoteIconsRead])
                 .map { row -> (path: String, node: String) in (row["path"], row["node"]) }
         }
-        return Self.noteIcons(fromRows: rows)
+        return await resolvingPictureLinks(in: Self.noteIcons(fromRows: rows))
+    }
+
+    /// The icons with each picture of the vault named by its path in the vault, found from its note as an embed is; a
+    /// picture no file answers is no icon.
+    nonisolated func resolvingPictureLinks(in icons: [VaultPath: NoteIcon]) async -> [VaultPath: NoteIcon] {
+        var resolvedIcons = icons
+        for (notePath, icon) in icons {
+            guard case .picture(.vaultFile(let linkTarget)) = icon else { continue }
+            if let picturePath = (try? await resolve(linkTarget, from: notePath))?.first { // A link that cannot be read drops its icon only.
+                resolvedIcons[notePath] = .picture(.vaultFile(linkTarget: picturePath.rawValue))
+            } else {
+                resolvedIcons[notePath] = nil
+            }
+        }
+        return resolvedIcons
     }
 
     /// The icons of decoded rows: a scalar that names an icon; a list, a mapping or an unreadable row names none.

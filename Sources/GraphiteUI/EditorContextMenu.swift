@@ -6,8 +6,8 @@
  *              entries the slash commands list, drawn from the same entries.
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 26/11/2026
+ * Version: 0.7
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -173,11 +173,14 @@ enum EditorContextMenuContent {
         }
         guard checksColorRemoval else { return .submenu("Color", "paintpalette", colorEntries) }
         let noteState = actions.noteState()
-        let canRemoveColor = TextColorMarkup.removingColor(in: noteState.text, selection: noteState.selection, paletteHexByName: paletteHexByName) != nil
+        // The Colors syntax's colour first, else an HTML span's (`HTMLColorSpans`).
+        func removal(in text: NSString, selection: NSRange) -> MarkdownTextEdit? {
+            TextColorMarkup.removingColor(in: text, selection: selection, paletteHexByName: paletteHexByName)
+                ?? HTMLColorSpans.removingColor(in: text, selection: selection)
+        }
+        let canRemoveColor = removal(in: noteState.text, selection: noteState.selection) != nil
         let removeEntry = EditorContextMenuEntry.action("Remove", "xmark.circle", isEnabled: canRemoveColor) {
-            applying(actions) { text, selection in
-                TextColorMarkup.removingColor(in: text, selection: selection, paletteHexByName: paletteHexByName)
-            }
+            applying(actions) { text, selection in removal(in: text, selection: selection) }
         }
         return .submenu("Color", "paintpalette", [.group(colorEntries), .group([removeEntry])])
     }

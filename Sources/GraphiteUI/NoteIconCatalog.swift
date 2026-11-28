@@ -6,8 +6,8 @@
  *              core plugin is on, for the file list, tabs, the quick switcher, links and Library mode.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 27/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -20,17 +20,52 @@ import GraphiteCore
 @MainActor @Observable
 final class NoteIconCatalog {
     private(set) var iconsByPath: [VaultPath: NoteIcon] = [:]
-    /// The emoji icons, for the reading view's links (`NoteIconLinkPrefixes`), made when the icons change.
+    /// The icons for the reading view's links (`NoteIconLinkPrefixes`), made when the icons change.
     private(set) var linkPrefixes = NoteIconLinkPrefixes.none
     private var changeCount = 0
+    /// The vault the icons' pictures are in, set with each reload.
+    private(set) var root: URL?
+    /// The decoded pictures of picture icons, shared by every place that draws one.
+    let pictures = NoteIconPictures()
+
+    /// Where the picture of a picture icon is read from; nil before a vault is read.
+    func pictureLocation(of source: NoteBanner.Source) -> NoteIconPictureLocation? {
+        root.flatMap { vaultRoot in NoteIconPictureLocation(source: source, root: vaultRoot) }
+    }
 
     func icon(of path: VaultPath) -> NoteIcon? {
         iconsByPath.isEmpty ? nil : iconsByPath[path]
     }
 
+    /// The read under way, and the source asked for since it started.
+    private var reloadWorker: Task<Void, Never>?
+    private var pendingSource: (index: (any NoteIconLookup)?, root: URL?)?
+
+    /// Reads the icons again, after the read under way if there is one. No read is cut short by a newer request, and
+    /// the newest request is answered by a read that starts after it: while a large vault's first index is written,
+    /// each change asks again, and a read cancelled by the next one left the links of such a vault without icons until
+    /// the index stopped changing.
+    func requestReload(from index: (any NoteIconLookup)?, root: URL?) {
+        pendingSource = (index, root)
+        guard reloadWorker == nil else { return }
+        reloadWorker = Task { [weak self] in
+            while let self, let source = self.pendingSource {
+                self.pendingSource = nil
+                await self.reload(from: source.index, root: source.root)
+            }
+            self?.reloadWorker = nil
+        }
+    }
+
+    /// Waits for the reads asked for so far (tests).
+    func finishReloading() async {
+        while let worker = reloadWorker { await worker.value }
+    }
+
     /// Reads the icons again from `index`, or forgets them all without one. Observers are told only when an icon
     /// changed, so an index change that touched no `icon` property redraws nothing.
-    func reload(from index: (any NoteIconLookup)?) async {
+    func reload(from index: (any NoteIconLookup)?, root: URL? = nil) async {
+        self.root = root
         guard let index else { replaceIcons(with: [:]); return }
         do {
             let icons = try await index.noteIcons()
@@ -46,34 +81,23 @@ final class NoteIconCatalog {
         guard icons != iconsByPath else { return }
         iconsByPath = icons
         changeCount += 1
-        linkPrefixes = NoteIconLinkPrefixes(icons: icons, version: changeCount)
+        linkPrefixes = NoteIconLinkPrefixes(iconsByPath: icons, root: root, version: changeCount)
     }
 
     private static let logger = Logger(subsystem: "com.graphite.study", category: "NoteIcons")
 }
 
-/// The emoji of the notes whose icon is one, which the reading view puts before the text of links to them. A link's
-/// text is drawn as text, so an SF Symbol icon is not shown there.
+/// The icons of the notes, which the reading view puts before the text of links to them, with the vault their
+/// pictures are in.
 ///
 /// Two values are equal when their versions are: a version names one set of icons of one catalog, so comparing it
 /// stands for comparing every entry, which a reading configuration is compared by at every update of its pane.
 struct NoteIconLinkPrefixes: Equatable, Sendable {
-    let emojiByPath: [VaultPath: String]
+    let iconsByPath: [VaultPath: NoteIcon]
+    let root: URL?
     let version: Int
 
-    static let none = NoteIconLinkPrefixes(emojiByPath: [:], version: 0)
-
-    init(emojiByPath: [VaultPath: String], version: Int) {
-        self.emojiByPath = emojiByPath
-        self.version = version
-    }
-
-    init(icons: [VaultPath: NoteIcon], version: Int) {
-        self.init(emojiByPath: icons.compactMapValues { icon in
-            guard case .emoji(let emoji) = icon else { return nil }
-            return emoji
-        }, version: version)
-    }
+    static let none = NoteIconLinkPrefixes(iconsByPath: [:], root: nil, version: 0)
 
     nonisolated static func ==(leftPrefixes: NoteIconLinkPrefixes, rightPrefixes: NoteIconLinkPrefixes) -> Bool {
         leftPrefixes.version == rightPrefixes.version
@@ -95,6 +119,8 @@ protocol NoteIconLookup: Sendable {
 /// index's properties (`WorkspaceModel.structureVersion`).
 struct NoteIconSource {
     let index: (any NoteIconLookup)?
+    /// The vault the icons' pictures are in.
+    let root: URL?
     let reloadKey: String
 }
 
@@ -116,7 +142,7 @@ struct PageLookLayer: ViewModifier {
                 guard isEnabled else { catalog = nil; return }
                 let shownCatalog = catalog ?? NoteIconCatalog()
                 catalog = shownCatalog
-                await shownCatalog.reload(from: currentSource.index)
+                shownCatalog.requestReload(from: currentSource.index, root: currentSource.root)
             }
     }
 }

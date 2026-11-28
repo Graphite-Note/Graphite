@@ -1,3 +1,15 @@
+/**
+ * File: MarkdownBlockContextCheckpoints.swift
+ * -------------------------------------------
+ * Layer: UI
+ * Description: The Markdown scanner's block state at line starts, kept between edits so restyling a line does not rescan
+ *              the note, and whether the note may hold a colour (`~={` or `<span`), so a note without one never looks for it.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 28/11/2026
+ */
+
 import Foundation
 import GraphiteCore
 #if canImport(UIKit)
@@ -27,7 +39,8 @@ final class MarkdownBlockContextCheckpoints: NSObject {
     /// Whether the text may hold a color's opening marker; nil until looked for. Once
     /// true it stays true: a note whose last marker is deleted is searched as before.
     private var mayContainColorMarker: Bool?
-    private static let colorOpeningMarkerStart = "~={"
+    /// The Colors syntax's opening marker and an HTML span's opening tag, either of which can colour text.
+    private static let colorOpeningMarkerStarts = ["~={", "<span"]
     /// The spans returned last, newest first, by the range asked for. Two are kept: a
     /// cursor jumping between two lines asks for both.
     private var recentSpans: [(range: NSRange, spans: [MarkdownStyleSpan])] = []
@@ -70,7 +83,7 @@ final class MarkdownBlockContextCheckpoints: NSObject {
     func mayContainColorMarker(in textStorage: NSTextStorage, source: NSString) -> Bool {
         observe(textStorage)
         if let mayContainColorMarker { return mayContainColorMarker }
-        let containsMarker = source.range(of: Self.colorOpeningMarkerStart).location != NSNotFound
+        let containsMarker = Self.colorOpeningMarkerStarts.contains { marker in source.range(of: marker, options: .caseInsensitive).location != NSNotFound }
         mayContainColorMarker = containsMarker
         return containsMarker
     }
@@ -137,11 +150,13 @@ final class MarkdownBlockContextCheckpoints: NSObject {
         // A marker can only have appeared in the new text or across one of its ends,
         // where a deletion can join `~=` to `{`.
         let text = textStorage.mutableString
-        let markerLength = (Self.colorOpeningMarkerStart as NSString).length
-        let searchStart = max(0, editedRange.location - (markerLength - 1))
-        let searchEnd = min(text.length, NSMaxRange(editedRange) + (markerLength - 1))
-        if text.range(of: Self.colorOpeningMarkerStart, options: [], range: NSRange(location: searchStart, length: searchEnd - searchStart)).location != NSNotFound {
-            mayContainColorMarker = true
+        for marker in Self.colorOpeningMarkerStarts {
+            let markerLength = (marker as NSString).length
+            let searchStart = max(0, editedRange.location - (markerLength - 1))
+            let searchEnd = min(text.length, NSMaxRange(editedRange) + (markerLength - 1))
+            if text.range(of: marker, options: .caseInsensitive, range: NSRange(location: searchStart, length: searchEnd - searchStart)).location != NSNotFound {
+                mayContainColorMarker = true
+            }
         }
     }
 }

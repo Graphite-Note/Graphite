@@ -3,7 +3,8 @@
  * -------------------------------------
  * Layer: UI
  * Description: While the cursor is on a line of images, Live Preview shows the source of the embed the cursor is in
- *              and draws the line's other pictures among its text, at their sizes, as Obsidian does.
+ *              and draws the line's other pictures among its text, at their sizes, as Obsidian does; a quote's and a
+ *              task's pictures are drawn among their text at all times.
  *
  * Authors: Bahey Shalash
  * Version: 0.1
@@ -49,9 +50,11 @@ enum LivePreviewInlinePictures {
     /// The pictures of the image lines in `entries` that `revealedMarkup`'s selection is on,
     /// leaving out the embeds the selection touches, whose source shows. An embed whose
     /// picture no view has decoded yet keeps its text, as before the line showed pictures.
-    /// - Parameter thumbnail: The decoded picture of an embed, nil when there is none at hand.
+    /// - Parameters:
+    ///   - zoomScale: How much the note's text is zoomed (`NoteFontSize.zoomScale`), which a `|width` follows.
+    ///   - thumbnail: The decoded picture of an embed, nil when there is none at hand.
     static func pictures(in entries: [LivePreviewBlockEntry], revealedMarkup: RevealedMarkup, source: NSString, columnWidth: CGFloat,
-                         thumbnail: (EmbedReference) -> ReadingThumbnail?) -> [InlinePicture] {
+                         zoomScale: Double = 1, thumbnail: (EmbedReference) -> ReadingThumbnail?) -> [InlinePicture] {
         guard columnWidth > 0 else { return [] }
         let selection = revealedMarkup.selection
         var pictures: [InlinePicture] = []
@@ -63,11 +66,47 @@ enum LivePreviewInlinePictures {
                 let range = NSRange(location: entry.range.location + embed.range.location, length: embed.range.length)
                 guard !revealedMarkup.showsInlineElement(at: range), isEmbed(embed, at: range, in: source),
                       let found = thumbnail(embed) else { continue }
-                let pictureSize = size(of: embed, aspectRatio: found.aspectRatio, columnWidth: columnWidth)
+                let pictureSize = size(of: embed, aspectRatio: found.aspectRatio, columnWidth: columnWidth, zoomScale: zoomScale)
                 pictures.append(InlinePicture(range: range, layout: InlinePictureLayout(image: found.image, size: pictureSize)))
             }
         }
         return pictures
+    }
+
+    /// The picture embeds of the lines that keep their text although they embed pictures, a quote's or a task's
+    /// (`LivePreviewBlockScanner.pictureEmbedsKeptAsText`), outside the rendered blocks, their ranges counted in `source`.
+    /// Only the lines holding `![` are read.
+    static func embedsKeptAsText(in source: NSString, outside entries: [LivePreviewBlockEntry]) -> [EmbedReference] {
+        var embeds: [EmbedReference] = []
+        var searchStart = 0
+        while searchStart < source.length {
+            let found = source.range(of: "![", options: .literal, range: NSRange(location: searchStart, length: source.length - searchStart))
+            guard found.location != NSNotFound else { break }
+            let lineRange = source.lineRange(for: found)
+            searchStart = NSMaxRange(lineRange)
+            let blockIndex = firstIndex(endingAtOrAfter: lineRange.location, in: entries)
+            if blockIndex < entries.count, NSIntersectionRange(entries[blockIndex].range, lineRange).length > 0 { continue }
+            let line = source.substring(with: lineRange).trimmingCharacters(in: .newlines)
+            for embed in LivePreviewBlockScanner.pictureEmbedsKeptAsText(onLine: line) {
+                embeds.append(EmbedReference(target: embed.target, isWiki: embed.isWiki, displaySize: embed.displaySize,
+                                             range: NSRange(location: lineRange.location + embed.range.location, length: embed.range.length),
+                                             label: embed.label))
+            }
+        }
+        return embeds
+    }
+
+    /// The pictures of `embeds`, from `embedsKeptAsText`, but for those whose source the selection shows and those no
+    /// picture is decoded for yet, which `missing` is told of.
+    static func pictures(keptAsTextFor embeds: [EmbedReference], revealedMarkup: RevealedMarkup?, source: NSString, columnWidth: CGFloat,
+                         zoomScale: Double = 1, thumbnail: (EmbedReference) -> ReadingThumbnail?, missing: (EmbedReference) -> Void) -> [InlinePicture] {
+        guard columnWidth > 0 else { return [] }
+        return embeds.compactMap { embed in
+            guard revealedMarkup?.showsInlineElement(at: embed.range) != true, isEmbed(embed, at: embed.range, in: source) else { return nil }
+            guard let found = thumbnail(embed) else { missing(embed); return nil }
+            let pictureSize = size(of: embed, aspectRatio: found.aspectRatio, columnWidth: columnWidth, zoomScale: zoomScale)
+            return InlinePicture(range: embed.range, layout: InlinePictureLayout(image: found.image, size: pictureSize))
+        }
     }
 
     /// The picture an image line's view last decoded for `embed`, kept by the reading view's
@@ -87,9 +126,11 @@ enum LivePreviewInlinePictures {
     }
 
     /// The size an image line's view gives the picture (`LivePreviewEmbedView`): its `|width`,
-    /// fitted inside a `|widthxheight`, or the column's width, never wider than the column.
-    static func size(of embed: EmbedReference, aspectRatio: CGFloat, columnWidth: CGFloat) -> CGSize {
-        let givenWidth = embed.displaySize.map { displaySize in CGFloat(displaySize.fittedWidth(aspectRatio: Double(aspectRatio))) } ?? columnWidth
+    /// fitted inside a `|widthxheight`, or the column's width, never wider than the column;
+    /// the given size zoomed by `zoomScale`, as the view's is.
+    static func size(of embed: EmbedReference, aspectRatio: CGFloat, columnWidth: CGFloat, zoomScale: Double = 1) -> CGSize {
+        let shownSize = embed.displaySize?.scaled(by: zoomScale)
+        let givenWidth = shownSize.map { displaySize in CGFloat(displaySize.fittedWidth(aspectRatio: Double(aspectRatio))) } ?? columnWidth
         let width = max(1, min(givenWidth, columnWidth - 2 * InlinePictureLayout.horizontalPadding))
         return CGSize(width: width, height: aspectRatio > 0 ? width / aspectRatio : width)
     }

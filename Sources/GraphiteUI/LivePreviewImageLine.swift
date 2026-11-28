@@ -64,7 +64,8 @@ struct LivePreviewImageLineView: View {
                     LivePreviewEmbedView(embed: embed, environment: environment, revealSource: revealSource, resizeImage: resizeImage?(embed))
                         .onPreferenceChange(DraggedPictureWidthKey.self) { width in draggedWidths[offset] = width }
                         .layoutValue(key: ImageLinePieceSizing.self,
-                                     value: .picture(width: draggedWidths[offset] ?? embed.displayWidth.map { width in CGFloat(width) }))
+                                     value: .picture(width: draggedWidths[offset]
+                                                        ?? environment.shownDisplaySize(of: embed).map { size in CGFloat(size.width) }))
                 }
             }
         }
@@ -72,8 +73,9 @@ struct LivePreviewImageLineView: View {
 
     /// The line's height before its view has measured itself: its pictures at their widths,
     /// four by three where no height is given, and its text as a line of text, in rows as
-    /// `ImageLineFlowLayout` places them.
-    nonisolated static func estimatedHeight(of pieces: [ImageLinePiece], columnWidth: CGFloat) -> CGFloat {
+    /// `ImageLineFlowLayout` places them. The pictures' sizes are zoomed by `zoomScale`, as
+    /// the note's text is (`NoteFontSize.zoomScale`).
+    nonisolated static func estimatedHeight(of pieces: [ImageLinePiece], columnWidth: CGFloat, zoomScale: Double = 1) -> CGFloat {
         let markerWidth: CGFloat = pieces.contains { piece in if case .listMarker = piece { true } else { false } } ? estimatedMarkerWidth : 0
         let columnWidth = max(columnWidth - markerWidth, 1)
         let sizes = pieces.compactMap { piece -> CGSize? in
@@ -83,8 +85,9 @@ struct LivePreviewImageLineView: View {
             case .text(let text):
                 return CGSize(width: min(columnWidth, CGFloat(text.count) * estimatedCharacterWidth), height: estimatedTextHeight)
             case .image(let embed):
-                let width = min(embed.displayWidth.map { width in CGFloat(width) } ?? columnWidth, columnWidth)
-                return CGSize(width: width, height: embed.displaySize?.height.map { height in CGFloat(height) } ?? width * 3 / 4)
+                let displaySize = embed.displaySize?.scaled(by: zoomScale)
+                let width = min(displaySize.map { size in CGFloat(size.width) } ?? columnWidth, columnWidth)
+                return CGSize(width: width, height: displaySize?.height.map { height in CGFloat(height) } ?? width * 3 / 4)
             }
         }
         return ImageLineFlowLayout.rows(of: sizes, availableWidth: columnWidth).size.height + 8

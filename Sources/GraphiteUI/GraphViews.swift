@@ -5,8 +5,8 @@
  * Description: The whole-vault graph, the local graph of a note, and their settings.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.17
- * Date: 01/11/2026
+ * Version: 0.18
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -62,7 +62,7 @@ struct LocalGraphPanel: View {
         .task(id: workspace.currentVaultIdentifier) {
             if let vaultIdentifier = workspace.currentVaultIdentifier { colorGroupStore.loadGroups(ofVault: vaultIdentifier) }
         }
-        .task(id: workspace.structureVersion) {
+        .task(id: workspace.vaultStructureKey) {
             vaultGraph = await workspace.vaultGraph()
             recolor()
         }
@@ -178,7 +178,7 @@ struct VaultGraphView: View {
         .task(id: workspace.currentVaultIdentifier) {
             if let vaultIdentifier = workspace.currentVaultIdentifier { colorGroupStore.loadGroups(ofVault: vaultIdentifier) }
         }
-        .task(id: workspace.structureVersion) {
+        .task(id: workspace.vaultStructureKey) {
             vaultGraph = await workspace.vaultGraph()
             await showFilteredGraph()
             recolor()

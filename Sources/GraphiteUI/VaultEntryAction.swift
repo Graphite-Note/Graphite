@@ -78,7 +78,7 @@ extension WorkspaceModel {
         switch action {
         case .openInNewTab: Task { await open(path, placement: .newTab) }
         case .openOnOtherSide: Task { await open(path, placement: .otherGroup) }
-        case .rename: fileSheet = .rename(path)
+        case .rename: requestRename(path)
         case .moveTo: fileSheet = .move(path)
         case .makeCopy: Task { await duplicate(path) }
         case .bookmark, .removeBookmark: Task { await toggleBookmark(path) }

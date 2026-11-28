@@ -74,6 +74,11 @@ struct CanvasPane: View {
             CanvasFilePicker(workspace: workspace, kind: kind) { path in Task { await addFileCard(path) } }
         }
         .modifier(CanvasNameRequestAlert(session: session))
+        .onChange(of: session.pictureZoomRequest) { _, path in
+            guard let path else { return }
+            session.pictureZoomRequest = nil
+            zoom(path)
+        }
     }
 
     // MARK: What the cards need
@@ -115,6 +120,12 @@ struct CanvasPane: View {
     private func open(_ path: VaultPath) {
         workspace.activateTab(tabID)
         Task { await workspace.open(path) }
+    }
+
+    /// Zooms a card's picture over the canvas, as the pictures in its text cards zoom (`imageActions`).
+    private func zoom(_ path: VaultPath) {
+        workspace.viewedImageNote = nil
+        workspace.viewedImage = path
     }
 
     private func addFileCard(_ path: VaultPath) async {
@@ -377,6 +388,9 @@ private struct CanvasSelectionBar: View {
                     case .text: Button("Edit Text", systemImage: "pencil") { session.beginEditingText(of: onlyNode.id) }
                     case .group: Button("Rename Group", systemImage: "pencil") { session.nameRequest = .groupLabel(nodeIdentifier: onlyNode.id) }
                     case .file(let path, _):
+                        if let picture = session.pictureOfImageCard(withIdentifier: onlyNode.id) {
+                            Button("Zoom In", systemImage: PictureCommand.zoomIn.systemImage) { session.pictureZoomRequest = picture }
+                        }
                         if let vaultPath = try? VaultPath(path) { Button("Open File", systemImage: "arrow.up.forward.square") { open(vaultPath) } }
                     case .link, .unknown: EmptyView()
                     }

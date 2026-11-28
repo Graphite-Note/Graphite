@@ -105,8 +105,10 @@ public struct SystemKeyboardShortcuts: Sendable {
         reserved(.command, .character("H"), .homeScreen),
         reserved([.command, .shift], .character("3"), .screenshot),
         reserved([.command, .shift], .character("4"), .screenshotOfPart),
-        // The app menu iPadOS's menu bar gives every app quits with it.
-        standard(.command, .character("Q"), .quit),
+        // The app menu iPadOS's menu bar gives every app quits with it, before any key command
+        // or key press of the app sees it: pressed on the Keyboard Shortcuts page while it waits
+        // for a key, ⌘Q closed Graphite (iPadOS 27.2, 2026-11-28).
+        reserved(.command, .character("Q"), .quit),
         standard(.command, .character("M"), .minimize),
         standard(.command, .character("`"), .cycleWindows),
     ] + editingShortcuts

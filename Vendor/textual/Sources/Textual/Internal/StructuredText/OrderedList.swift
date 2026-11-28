@@ -23,6 +23,14 @@ extension StructuredText {
 
     var body: some View {
       let runs = content.blockRuns(parent: intent)
+      // Graphite patch: every marker is laid out as wide as the list's largest ordinal's, which
+      // for decimal markers (monospaced digits) is the widest, so the markers line up in the
+      // first pass. Upstream lined them up only in a second pass, with the widest width the
+      // first pass reported; that is still done when the markers came out of different widths.
+      let sizingOrdinal = runs.compactMap { run -> Int? in
+        guard case .listItem(let ordinal) = run.intent?.kind else { return nil }
+        return ordinal
+      }.max() ?? 0
 
       BlockVStack {
         ForEach(runs.indices, id: \.self) { index in
@@ -31,12 +39,16 @@ extension StructuredText {
           OrderedListItem(
             intent: run.intent,
             content: content[run.range],
+            sizingOrdinal: sizingOrdinal,
             markerWidth: markerWidth
           )
         }
       }
-      .onPreferenceChange(MarkerWidthKey.self) { @MainActor in
-        markerWidth = $0
+      .onPreferenceChange(MarkerWidthKey.self) { @MainActor widths in
+        guard let widths else { return }
+        // Markers already of one width need no frame; once given one, they keep following the widest.
+        guard widths.narrowest != widths.widest || markerWidth != nil else { return }
+        if markerWidth != widths.widest { markerWidth = widths.widest }
       }
       .environment(\.resolvedListItemSpacing, listItemSpacing.resolve(in: textEnvironment))
       .environment(\.listItemSpacingEnabled, true)
@@ -51,15 +63,18 @@ extension StructuredText {
 
     private let intent: PresentationIntent.IntentType?
     private let content: AttributedSubstring
+    private let sizingOrdinal: Int
     private let markerWidth: CGFloat?
 
     init(
       intent: PresentationIntent.IntentType?,
       content: AttributedSubstring,
+      sizingOrdinal: Int,
       markerWidth: CGFloat?
     ) {
       self.intent = intent
       self.content = content
+      self.sizingOrdinal = sizingOrdinal
       self.markerWidth = markerWidth
     }
 
@@ -81,6 +96,28 @@ extension StructuredText {
     }
 
     private var marker: some View {
+      ZStack(alignment: .trailing) {
+        if sizingOrdinal != ordinal {
+          resolvedMarker(ordinal: sizingOrdinal)
+            .hidden()
+            .accessibilityHidden(true)
+        }
+        resolvedMarker(ordinal: ordinal)
+      }
+      .background {
+        // Propagate the marker width
+        GeometryReader { proxy in
+          Color.clear
+            .preference(
+              key: MarkerWidthKey.self,
+              value: MarkerWidths(narrowest: proxy.size.width, widest: proxy.size.width)
+            )
+        }
+      }
+      .frame(width: markerWidth, alignment: .trailing)
+    }
+
+    private func resolvedMarker(ordinal: Int) -> AnyView {
       AnyView(
         orderedListMarker.resolve(
           configuration: .init(
@@ -89,17 +126,6 @@ extension StructuredText {
           )
         )
       )
-      .background {
-        // Propagate the marker width
-        GeometryReader { proxy in
-          Color.clear
-            .preference(
-              key: MarkerWidthKey.self,
-              value: proxy.size.width
-            )
-        }
-      }
-      .frame(width: markerWidth, alignment: .trailing)
     }
 
     private var indentationLevel: Int {
@@ -114,11 +140,22 @@ extension StructuredText {
     }
   }
 
-  fileprivate struct MarkerWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat? = nil
+  /// The narrowest and the widest width the list's markers were laid out at.
+  fileprivate struct MarkerWidths: Equatable {
+    var narrowest: CGFloat
+    var widest: CGFloat
+  }
 
-    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
-      value = [value, nextValue()].compactMap(\.self).max()
+  fileprivate struct MarkerWidthKey: PreferenceKey {
+    static let defaultValue: MarkerWidths? = nil
+
+    static func reduce(value: inout MarkerWidths?, nextValue: () -> MarkerWidths?) {
+      guard let next = nextValue() else { return }
+      guard let current = value else {
+        value = next
+        return
+      }
+      value = MarkerWidths(narrowest: min(current.narrowest, next.narrowest), widest: max(current.widest, next.widest))
     }
   }
 }

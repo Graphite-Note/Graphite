@@ -20,4 +20,13 @@ final class EmbedDisplaySizeLimitTests: XCTestCase {
         XCTAssertNil(EmbedDisplaySize.parse(label: "Infinity"))
         XCTAssertEqual(EmbedDisplaySize.parse(label: "0.5"), EmbedDisplaySize(width: 0.5, height: nil))
     }
+
+    /// A note zoomed to larger text shows its `|300` pictures wider by as much.
+    func testAScaledSizeMultipliesBothDimensionsAndIgnoresAScaleThatIsNotPositive() {
+        XCTAssertEqual(EmbedDisplaySize(width: 300, height: 200).scaled(by: 1.5), EmbedDisplaySize(width: 450, height: 300))
+        XCTAssertEqual(EmbedDisplaySize(width: 300, height: nil).scaled(by: 0.5), EmbedDisplaySize(width: 150, height: nil))
+        for scale in [0, -2, Double.nan, .infinity] {
+            XCTAssertEqual(EmbedDisplaySize(width: 300, height: nil).scaled(by: scale), EmbedDisplaySize(width: 300, height: nil), "\(scale)")
+        }
+    }
 }

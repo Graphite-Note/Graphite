@@ -246,7 +246,7 @@ struct VaultSidebar: View {
                     Menu { newDocumentMenuItems } label: {
                         Label("New Note", systemImage: "square.and.pencil")
                     } primaryAction: {
-                        creation = CreationRequest(kind: .note)
+                        creation = workspace.creationSheet(.note)
                     }
                     .tint(.primary)
                     .help("New Note")
@@ -381,9 +381,9 @@ struct VaultSidebar: View {
 
     private var newItemActions: NewItemActions {
         NewItemActions(directory: nil,
-                       create: { kind, directory in creation = CreationRequest(kind: kind, directory: directory) },
+                       create: { kind, directory in creation = workspace.creationSheet(kind, in: directory) },
                        openDailyNote: { Task { await workspace.openDailyNote() } },
-                       newFolder: { directory in workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(directory)) },
+                       newFolder: { directory in workspace.requestNewFolder(in: workspace.newFileDirectory(directory)) },
                        importFiles: { sources, directory in Task { await workspace.importFiles(from: sources, into: workspace.newFileDirectory(directory)) } },
                        saveScannedNotebook: workspace.scannedNotebookSaver(),
                        reportProblem: { [workspace] message in workspace.errorMessage = message },
@@ -391,18 +391,18 @@ struct VaultSidebar: View {
     }
 
     @ViewBuilder private var newDocumentMenuItems: some View {
-        Button("New Note", systemImage: "doc.text") { creation = CreationRequest(kind: .note) }
-        Button("New Notebook", systemImage: "book.closed") { creation = CreationRequest(kind: .notebook) }
+        Button("New Note", systemImage: "doc.text") { creation = workspace.creationSheet(.note) }
+        Button("New Notebook", systemImage: "book.closed") { creation = workspace.creationSheet(.notebook) }
         if workspace.preferences.isEnabled(.bases) {
-            Button("New Base", systemImage: "tablecells") { creation = CreationRequest(kind: .base) }
-            Button("New Course", systemImage: "graduationcap") { creation = CreationRequest(kind: .course) }
+            Button("New Base", systemImage: "tablecells") { creation = workspace.creationSheet(.base) }
+            Button("New Course", systemImage: "graduationcap") { creation = workspace.creationSheet(.course) }
         }
-        if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { creation = CreationRequest(kind: .canvas) } }
+        if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { creation = workspace.creationSheet(.canvas) } }
         if workspace.preferences.isEnabled(.dailyNotes) {
             Button("Today's Daily Note", systemImage: "calendar") { Task { await workspace.openDailyNote() } }
         }
         Divider()
-        Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: workspace.newFileDirectory(nil)) }
+        Button("New Folder", systemImage: "folder.badge.plus") { workspace.requestNewFolder(in: workspace.newFileDirectory(nil)) }
         ImportMenuButtons(importFiles: { workspace.isChoosingFilesToImport = true }, importFromNotion: workspace.notionImportOpener)
     }
 
@@ -422,7 +422,7 @@ struct VaultSidebar: View {
             #if os(macOS)
             if showsNativeFileTree {
                 MacFileTree(workspace: workspace, typography: typography, fileToReveal: $fileToReveal) { kind, directory in
-                    creation = CreationRequest(kind: kind, directory: directory)
+                    creation = workspace.creationSheet(kind, in: directory)
                 }
             } else {
                 swiftUIList
@@ -552,7 +552,7 @@ struct VaultSidebar: View {
             } else if workspace.rootEntries.isEmpty {
                 Text("This vault is empty. Create a note with the \(Image(systemName: "square.and.pencil")) button.").foregroundStyle(.secondary)
             } else {
-                FileTreeRows(workspace: workspace) { kind, directory in creation = CreationRequest(kind: kind, directory: directory) }
+                FileTreeRows(workspace: workspace) { kind, directory in creation = workspace.creationSheet(kind, in: directory) }
             }
     }
 
@@ -611,7 +611,7 @@ struct VaultSidebar: View {
             workspace.revealFolder(folder)
         } menu: {
             VaultEntryMenu(entry: VaultEntry(path: folder, isDirectory: true, size: 0, modified: .distantPast), workspace: workspace) { kind, directory in
-                creation = CreationRequest(kind: kind, directory: directory)
+                creation = workspace.creationSheet(kind, in: directory)
             }
         }
     }
@@ -969,7 +969,7 @@ struct VaultEntryMenu: View {
             Button("New Course", systemImage: "graduationcap") { requestCreation(.course, entry.path) }
         }
         if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { requestCreation(.canvas, entry.path) } }
-        Button("New Folder", systemImage: "folder.badge.plus") { workspace.fileSheet = .newFolder(in: entry.path) }
+        Button("New Folder", systemImage: "folder.badge.plus") { workspace.requestNewFolder(in: entry.path) }
         Divider()
         actionButton(.rename)
         actionButton(.moveTo)

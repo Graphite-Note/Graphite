@@ -5,8 +5,8 @@
  * Description: The notes the map places, kept until the vault's files, links or properties change.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.4
- * Date: 01/11/2026
+ * Version: 0.5
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -20,14 +20,15 @@ extension WorkspaceModel {
         guard let index, let root = folderAccess?.root else { return nil }
         let version = structureVersion
         let propertyNames = await Task.detached(priority: .userInitiated) { PlacedNote.propertyNames(vaultRoot: root) }.value
-        if let placedNotesCache, placedNotesCache.structureVersion == version, placedNotesCache.propertyNames == propertyNames {
+        if let placedNotesCache, placedNotesCache.index == ObjectIdentifier(index), placedNotesCache.structureVersion == version,
+           placedNotesCache.propertyNames == propertyNames {
             return placedNotesCache.notes
         }
         do {
             let notes = try await index.placedNotes(propertyNames: propertyNames)
             // Notes of a vault left during the query are neither kept nor shown.
             guard self.index === index else { return nil }
-            placedNotesCache = (version, propertyNames, notes)
+            placedNotesCache = (ObjectIdentifier(index), version, propertyNames, notes)
             return notes
         } catch {
             if self.index === index { errorMessage.report(error) }

@@ -463,7 +463,7 @@ private struct TabBar: View {
                 workspace.revealCurrentFile()
             }
             RevealInFinderButton(path: path, vaultRoot: workspace.folderAccess?.root)
-            Button("Rename…", systemImage: "pencil") { workspace.fileSheet = .rename(path) }
+            Button("Rename…", systemImage: "pencil") { workspace.requestRename(path) }
             CommunityPluginFileActionsButton(host: workspace.communityPlugins, path: path, source: "tab-header")
         }
     }

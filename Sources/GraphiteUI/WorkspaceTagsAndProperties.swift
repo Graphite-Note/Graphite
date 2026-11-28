@@ -5,8 +5,8 @@
  * Description: The vault's tags and properties for the sidebar lists, and searching for one.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 27/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -21,11 +21,18 @@ struct PropertySummary: Identifiable, Equatable {
     var id: String { key.lowercased() }
 }
 
-/// Each property's values as last read for suggestions, most used first, with the index version they were read at: a
+/// Each property's values as last read for suggestions, most used first, with the index and version they were read at: a
 /// keystroke filters them in memory instead of reading up to 20,000 rows of the index again.
 struct PropertyValueSuggestionCache {
-    let indexVersion: Int
+    let key: SuggestionCacheKey
     var valuesByKey: [String: [PropertyValueCount]]
+}
+
+/// What the suggestions read once are kept for: the index they were read from and its version. The version alone can be
+/// the same in the vault a window left, whose index stays until the next one's is open (HUNT-384).
+struct SuggestionCacheKey: Equatable {
+    let index: ObjectIdentifier?
+    let indexVersion: Int
 }
 
 /// Obsidian's Tags view and Properties view over the whole vault.
@@ -56,7 +63,7 @@ extension WorkspaceModel {
     /// `propertySuggestions` whose `[[` links are written as the vault's link format writes them from `notePath`.
     func propertySuggestions(linkingFrom notePath: VaultPath?) -> PropertySuggestions {
         var suggestions = PropertySuggestions(vaultTags: { [weak self] query, limit in
-            let tags = (try? await self?.index?.tags(matching: query, limit: limit)) ?? [] // No answer, no suggestions; typing goes on.
+            let tags = VaultIndex.tags(await self?.cachedTagCounts() ?? [], matching: query, limit: limit)
             return tags.map { tagCount in (tagCount.tag, tagCount.fileCount) }
         }, vaultValues: { [weak self] name, query, limit in
             let values = VaultIndex.propertyValues(await self?.cachedPropertyValues(of: name) ?? [], matching: query, limit: limit)
@@ -87,30 +94,48 @@ extension WorkspaceModel {
         PropertySuggestionLookup(suggestions: propertySuggestions(linkingFrom: notePath))
     }
 
+    /// What the suggestions read once are kept for.
+    var suggestionCacheKey: SuggestionCacheKey {
+        SuggestionCacheKey(index: index.map(ObjectIdentifier.init), indexVersion: indexVersion)
+    }
+
     /// The vault's property names with their types, read once for each version of the index: the names change only when
     /// a note is indexed again, and reading them all takes longer than a keystroke's frame in a large vault.
     private func cachedPropertySummaries() async -> [PropertySummary] {
-        let version = indexVersion
-        if let cached = propertySuggestionCache, cached.indexVersion == version { return cached.summaries }
+        let key = suggestionCacheKey
+        if let cached = propertySuggestionCache, cached.key == key { return cached.summaries }
         guard let summaries = try? await vaultProperties() else { return [] } // No answer: no suggestions, nothing kept.
-        propertySuggestionCache = PropertySuggestionCache(indexVersion: version, summaries: summaries)
+        guard suggestionCacheKey == key else { return summaries } // The index changed while reading: answer, but keep nothing.
+        propertySuggestionCache = PropertySuggestionCache(key: key, summaries: summaries)
         return summaries
     }
 
     /// A property's values for suggestions, read once for each version of the index: reading them takes about 0.1 s in a
     /// vault of 33,000 notes on a Mac, several frames, while filtering them as each key is typed takes well under one.
     private func cachedPropertyValues(of key: String) async -> [PropertyValueCount] {
-        let version = indexVersion
+        let cacheKey = suggestionCacheKey
         let folded = key.lowercased()
-        if let cached = propertyValueSuggestionCache, cached.indexVersion == version, let values = cached.valuesByKey[folded] { return values }
+        if let cached = propertyValueSuggestionCache, cached.key == cacheKey, let values = cached.valuesByKey[folded] { return values }
         let limit = VaultIndex.maximumPropertyValuesKeptForSuggestions
         guard let values = try? await index?.propertyValues(of: key, matching: "", limit: limit) else { return [] } // No answer: none kept.
-        guard indexVersion == version else { return values } // The index changed while reading: answer, but keep nothing.
-        if propertyValueSuggestionCache?.indexVersion != version {
-            propertyValueSuggestionCache = PropertyValueSuggestionCache(indexVersion: version, valuesByKey: [:])
+        guard suggestionCacheKey == cacheKey else { return values } // The index changed while reading: answer, but keep nothing.
+        if propertyValueSuggestionCache?.key != cacheKey {
+            propertyValueSuggestionCache = PropertyValueSuggestionCache(key: cacheKey, valuesByKey: [:])
         }
         propertyValueSuggestionCache?.valuesByKey[folded] = values
         return values
+    }
+
+    /// The vault's tags for suggestions, read once for each version of the index: matching them in the index took 10 to
+    /// 20 ms at each keystroke in a vault of 33,000 notes on a Mac, a frame or more, while filtering them takes well under.
+    private func cachedTagCounts() async -> [TagCount] {
+        let key = suggestionCacheKey
+        if let tagSuggestionCache, tagSuggestionCache.key == key { return tagSuggestionCache.tags }
+        let limit = VaultIndex.maximumTagsKeptForSuggestions
+        guard let tags = try? await index?.tags(matching: "", limit: limit) else { return [] } // No answer: none kept.
+        guard suggestionCacheKey == key else { return tags } // The index changed while reading: answer, but keep nothing.
+        tagSuggestionCache = (key, tags)
+        return tags
     }
 
     /// Shows the notes with a tag, nested tags included, in the sidebar's search.

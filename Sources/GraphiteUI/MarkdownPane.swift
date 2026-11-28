@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.73
- * Date: 27/11/2026
+ * Version: 0.75
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -255,7 +255,7 @@ struct MarkdownPane: View {
                              runsPluginPostProcessors: workspace.communityPlugins.runsMarkdownPostProcessors,
                              marksUnresolvedLinks: workspace.noteTheme != nil,
                              diagramFontPostScriptName: workspace.noteTypography.diagramFontPostScriptName,
-                             drawsCover: drawsCovers,
+                             drawsCover: drawsCovers, drawsPageLook: preferences.isEnabled(.pageLook),
                              noteIconLinkPrefixes: noteIcons?.linkPrefixes ?? .none)
     }
 
@@ -264,10 +264,10 @@ struct MarkdownPane: View {
         preferences.isEnabled(.pageLook) && (SettingsDevice.current != .phone || preferences.showsCoversOnPhone)
     }
 
-    /// The note's name above its text, written as the tab and the title bar write it, so the
-    /// three agree: with `.md` when Settings › Files and Links › Show File Extensions is on.
+    /// The note's name above its text, without `.md` as Obsidian and Notion write a page's title, whatever Settings ›
+    /// Files and Links › Show File Extensions says for the tab and the file list.
     private var inlineTitle: String? {
-        workspace.showsInlineTitle ? preferences.displayName(for: session.path) : nil
+        workspace.showsInlineTitle ? session.path.stem : nil
     }
 
     private var editorConfiguration: EditorConfiguration {
@@ -369,8 +369,9 @@ struct MarkdownPane: View {
 
     /// Wraps the selection in Obsidian's Colors syntax, or a placeholder when nothing is
     /// selected, so the markup shows. The toolbar's Color menu and the editor's context
-    /// menu write it alike.
+    /// menu write it alike. In an HTML colour span, as Notion's imported colours are, the span takes the colour instead.
     private func insertColor(hex: String, placeholder: String) {
+        if let recolored = HTMLColorSpans.recoloring(in: session.text as NSString, selection: session.selection, hex: hex) { return session.apply(recolored) }
         session.insert("~={\(hex)}\(Self.selectedText(in: session, placeholder: placeholder))=~")
     }
 
@@ -453,7 +454,7 @@ struct MarkdownPane: View {
             viewImage: viewImage, editDrawing: drawingEditor, drawOnImage: imageDrawing, pictureTabOpening: workspace.pictureTabOpening,
             indexVersion: workspace.indexVersion,
             // Reading view's column, a little wider than Live Preview's, bounds the decode.
-            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth : nil,
+            embeddedImageColumnWidth: workspace.usesReadableLineLength ? ReadingConfiguration.readableColumnWidth(forTextSize: noteTextSize) : nil,
             readingContext: workspace.readAloud.map { reader in LivePreviewReadingContext(controller: reader, path: session.path) },
             lassoNoteDestination: LassoNoteDestination.note(session, in: workspace),
             pluginCodeBlocks: workspace.communityPlugins.hostWhilePluginsAreOn,

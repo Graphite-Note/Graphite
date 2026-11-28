@@ -276,4 +276,13 @@ enum NoteFontSize {
         guard scale.isFinite, scale > 0 else { return startingSize }
         return clamped(Double(CGFloat(startingSize) * scale))
     }
+
+    /// How much larger than at the default size a note drawn at `textSize` points is. ⌘+,
+    /// ⌘–, ⌘0 and pinching change the text size, and the readable column and the widths
+    /// pictures are given (`|300`) grow and shrink with it, as a zoom does, so a note's
+    /// pictures keep their size next to its text.
+    static func zoomScale(forTextSize textSize: Double) -> Double {
+        guard textSize.isFinite else { return 1 }
+        return max(textSize, Double(adjustableRange.lowerBound)) / Double(defaultSize)
+    }
 }

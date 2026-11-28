@@ -127,8 +127,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
             return coordinator.performCompletionEdits(edits, in: textView)
         }
         textView.usesReadableLineLength = configuration.usesReadableLineLength
-        // The theme's line width, plus the text container's padding on each side.
-        textView.readableColumnWidth = configuration.theme?.readableColumnWidth(forTextSize: configuration.textSize).map { width in width + 10 } ?? MarkdownTextView.readableColumnWidth
+        // The reading view's column at this text size, plus the text container's padding on each side.
+        textView.readableColumnWidth = configuration.readableColumnWidth
         // The theme's inline title (Phase 3), else the text font at 1.75 times, semibold.
         textView.inlineTitle = configuration.inlineTitle.map { title in
             (title, InlineTitleStyle.font(textSize: configuration.textSize, typography: configuration.typography, theme: configuration.theme),
@@ -217,8 +217,8 @@ struct NativeMarkdownEditor: UIViewRepresentable {
         coordinator.quickFontSizePinch?.adjustment = actions.quickFontSize
         textView.convertsPastedHTML = configuration.editingBehavior.convertsPastedHTML
         textView.usesReadableLineLength = configuration.usesReadableLineLength
-        // The theme's line width, plus the text container's padding on each side.
-        textView.readableColumnWidth = configuration.theme?.readableColumnWidth(forTextSize: configuration.textSize).map { width in width + 10 } ?? MarkdownTextView.readableColumnWidth
+        // The reading view's column at this text size, plus the text container's padding on each side.
+        textView.readableColumnWidth = configuration.readableColumnWidth
         // The theme's inline title (Phase 3), else the text font at 1.75 times, semibold.
         textView.inlineTitle = configuration.inlineTitle.map { title in
             (title, InlineTitleStyle.font(textSize: configuration.textSize, typography: configuration.typography, theme: configuration.theme),

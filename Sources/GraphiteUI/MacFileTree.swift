@@ -35,12 +35,18 @@ struct MacFileTree: NSViewRepresentable {
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        context.coordinator.makeScrollView()
+        workspace.registerFileTreeNaming(context.coordinator)
+        return context.coordinator.makeScrollView()
+    }
+
+    static func dismantleNSView(_ scrollView: NSScrollView, coordinator: FileTreeController) {
+        coordinator.workspace.unregisterFileTreeNaming(coordinator)
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         let controller = context.coordinator
         controller.requestCreation = requestCreation
+        controller.noteIconImages.catalog = noteIcons
         // Read here, so a change to any of them updates the tree, and only to them.
         controller.update(FileTreeController.State(
             rootEntries: workspace.rootEntries,
@@ -100,7 +106,7 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         var noteIcons: [VaultPath: NoteIcon] = [:]
     }
 
-    private let noteIconImages = NoteIconImages()
+    let noteIconImages = NoteIconImages()
 
     let workspace: WorkspaceModel
     var requestCreation: (CreationKind, VaultPath) -> Void = { _, _ in }
@@ -116,9 +122,15 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     private var stateWhileFiltering: State?
     /// A folder revealed (`revealFolder`), which stays selected until another file opens.
     private var revealedFolder: VaultPath?
-    private var rootNodes: [FileTreeNode] = []
+    private(set) var rootNodes: [FileTreeNode] = []
     /// Every node listed, by path, so a listing reuses the nodes already made.
-    private var nodesByPath: [VaultPath: FileTreeNode] = [:]
+    private(set) var nodesByPath: [VaultPath: FileTreeNode] = [:]
+    /// A rename or a new item named in a row (`MacFileTreeNaming.swift`).
+    var namingPhase = FileTreeNamingPhase.idle
+    /// While a name is typed the rows stay as they are, so a listing does not take the field away: the latest
+    /// state and the folders listed meanwhile are shown once the field is left.
+    private var stateHeldWhileNaming: State?
+    private var foldersToListAfterNaming: Set<VaultPath> = []
     /// Folders whose contents are being listed.
     private var foldersBeingListed: Set<VaultPath> = []
     /// Set while the tree expands, folds or selects rows itself, so the delegate does not
@@ -128,6 +140,8 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     private var pendingReveal: VaultPath?
 
     static let cellIdentifier = NSUserInterfaceItemIdentifier("FileTreeCell")
+    /// The new item's row has a cell of its own, which no listed row reuses.
+    static let newItemCellIdentifier = NSUserInterfaceItemIdentifier("FileTreeNewItemCell")
     static let vaultItemType = NSPasteboard.PasteboardType(UTType.graphiteVaultItem.identifier)
 
     init(workspace: WorkspaceModel) {
@@ -176,6 +190,10 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Following the workspace
 
     func update(_ newState: State) {
+        if case .editing = namingPhase {
+            stateHeldWhileNaming = newState
+            return
+        }
         if filteredTree != nil {
             if newState.selection != (stateWhileFiltering ?? state).selection { revealedFolder = nil }
             stateWhileFiltering = newState
@@ -302,6 +320,10 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
 
     private func show(_ listedEntries: [VaultEntry], in node: FileTreeNode) {
         guard nodesByPath[node.path] === node, let outlineView else { return }
+        if case .editing = namingPhase {
+            foldersToListAfterNaming.insert(node.path)
+            return
+        }
         workspace.checkConflictVersions(ofListedFiles: listedEntries.lazy.filter { entry in !entry.isDirectory }.map(\.path))
         if let children = node.children, children.map(\.entry) == listedEntries { return revealPendingFile() }
         isApplyingState = true
@@ -311,6 +333,18 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         expandFolders(state.expandedFolders)
         selectOpenFile()
         revealPendingFile()
+        startNamingWaitingFor(node)
+    }
+
+    /// Shows what was held back while a name was typed.
+    func applyChangesHeldWhileNaming() {
+        let heldState = stateHeldWhileNaming, foldersListed = foldersToListAfterNaming
+        stateHeldWhileNaming = nil
+        foldersToListAfterNaming = []
+        if let heldState { update(heldState) }
+        for path in foldersListed {
+            if let node = nodesByPath[path], node.children != nil { list(node) }
+        }
     }
 
     private func selectOpenFile() {
@@ -406,15 +440,33 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Data source
 
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        guard let node = item as? FileTreeNode else { return filteredTree?.rootNodes.count ?? rootNodes.count }
-        return (filteredTree?.children(of: node) ?? node.children)?.count ?? 0
+        if item is FileTreeNewItemRow { return 0 }
+        let folder = item as? FileTreeNode
+        if let filteredTree {
+            guard let node = folder else { return filteredTree.rootNodes.count }
+            return filteredTree.children(of: node).count
+        }
+        let listedCount = folder.map { node in node.children?.count ?? 0 } ?? rootNodes.count
+        return listedCount + (newItemRow.map { row in row.folder === folder ? 1 : 0 } ?? 0)
     }
 
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        guard let node = item as? FileTreeNode else { return filteredTree?.rootNodes[index] ?? rootNodes[index] }
+        let folder = item as? FileTreeNode
+        // A filtered tree names nothing in its rows (`beginNaming`), so it has no new item's row.
+        if let filteredTree {
+            guard let node = folder else { return filteredTree.rootNodes[index] }
+            let children = filteredTree.children(of: node)
+            return children.indices.contains(index) ? children[index] : node
+        }
+        var listedIndex = index
+        if let newItemRow, newItemRow.folder === folder {
+            if index == newItemRow.index { return newItemRow }
+            if index > newItemRow.index { listedIndex -= 1 }
+        }
+        guard let node = folder else { return rootNodes[listedIndex] }
         // A folder not listed yet has no children to ask for.
-        guard let children = filteredTree?.children(of: node) ?? node.children, children.indices.contains(index) else { return node }
-        return children[index]
+        guard let children = node.children, children.indices.contains(listedIndex) else { return node }
+        return children[listedIndex]
     }
 
     func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool {
@@ -424,6 +476,13 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
     // MARK: Delegate
 
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
+        if let newItemRow = item as? FileTreeNewItemRow {
+            let cell = outlineView.makeView(withIdentifier: Self.newItemCellIdentifier, owner: self) as? FileTreeCellView ?? FileTreeCellView()
+            cell.identifier = Self.newItemCellIdentifier
+            cell.configure(title: "", extensionSuffix: nil, hasConflictVersions: false, font: rowFont)
+            if let nameField = nameField(for: newItemRow) { cell.showNameField(nameField.field, extensionSuffix: nameField.extensionSuffix) }
+            return cell
+        }
         guard let node = item as? FileTreeNode else { return nil }
         if !node.entry.isDirectory { workspace.checkConflictVersionsOfRowShown(node.path) }
         let cell = outlineView.makeView(withIdentifier: Self.cellIdentifier, owner: self) as? FileTreeCellView ?? FileTreeCellView()
@@ -434,9 +493,28 @@ final class FileTreeController: NSObject, NSOutlineViewDataSource, NSOutlineView
         cell.configure(title: title, extensionSuffix: suffix, highlightedRange: highlightedRange,
                        icon: drawnState.noteIcons.isEmpty ? nil : drawnState.noteIcons[node.path].map { icon in (icon, noteIconImages) },
                        hasConflictVersions: drawnState.conflictedPaths.contains(node.path),
-                       font: NoteTypography.font(drawnState.typography.interfaceFamily, size: NSFont.systemFontSize, weight: .regular))
+                       font: rowFont)
         cell.setAccessibilityLabel(workspace.preferences.displayName(for: node.path))
+        // A reused cell may still hold the field of the row it showed before.
+        if let nameField = nameField(for: node) {
+            cell.showNameField(nameField.field, extensionSuffix: nameField.extensionSuffix)
+        } else {
+            cell.removeNameField()
+        }
         return cell
+    }
+
+    /// The rows' font, which the name field takes too.
+    var rowFont: NSFont {
+        NoteTypography.font((stateWhileFiltering ?? state).typography.interfaceFamily, size: NSFont.systemFontSize, weight: .regular)
+    }
+
+    /// Whether the Files panel's filter narrows the tree, whose rows then name nothing.
+    var isFiltering: Bool { filteredTree != nil }
+
+    /// The row of a new item being named is the field, not an item to select.
+    func outlineView(_ outlineView: NSOutlineView, shouldSelectItem item: Any) -> Bool {
+        item is FileTreeNode
     }
 
     /// The extension after the name, muted so the name reads first: always for files other

@@ -2,11 +2,12 @@
  * File: ReadingInlineHTML.swift
  * -----------------------------
  * Layer: Core
- * Description: The HTML Obsidian draws in a note: comments hidden, line breaks, highlights, underline, raised and lowered text.
+ * Description: The HTML Obsidian draws in a note: comments hidden, line breaks, highlights, underline, raised and lowered text,
+ *              and spans that colour their text or its background.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 01/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -19,8 +20,9 @@ import Foundation
 enum ReadingInlineHTML {
     private static let tagPattern = ReadingInlineHTMLPattern.tagPattern.compiled()
 
-    static func prepared(_ markdown: String) -> String {
-        guard markdown.contains("<") else { return markdown }
+    static func prepared(_ writtenMarkdown: String) -> String {
+        guard writtenMarkdown.contains("<") else { return writtenMarkdown }
+        let markdown = markingColorSpans(in: writtenMarkdown)
         let source = markdown as NSString
         let matches = tagPattern.matches(in: markdown, range: NSRange(location: 0, length: source.length))
         guard !matches.isEmpty else { return markdown }
@@ -28,6 +30,33 @@ enum ReadingInlineHTML {
         let output = NSMutableString(string: markdown)
         for match in matches.reversed() where !codeRanges.intersects(match.range) {
             output.replaceCharacters(in: match.range, with: replacement(for: match, in: source))
+        }
+        return output as String
+    }
+
+    /// Each colour or background span's tags made the reading view's markers (`HTMLColorSpans`): the text colour opens
+    /// before the background and closes after it.
+    static func markingColorSpans(in markdown: String) -> String {
+        let source = markdown as NSString
+        let spans = HTMLColorSpans.spans(in: source)
+        guard !spans.isEmpty else { return markdown }
+        var replacements: [(range: NSRange, text: String)] = []
+        for span in spans {
+            var opening = "", closing = ""
+            if let textHex = span.textHex {
+                opening += String(ReadingMarkers.colorStartMarker) + textHex + String(ReadingMarkers.colorHexEndMarker)
+                closing = String(ReadingMarkers.colorEndMarker) + closing
+            }
+            if let backgroundHex = span.backgroundHex {
+                opening += String(ReadingMarkers.backgroundStartMarker) + backgroundHex + String(ReadingMarkers.colorHexEndMarker)
+                closing = String(ReadingMarkers.backgroundEndMarker) + closing
+            }
+            replacements.append((span.openingTagRange, opening))
+            replacements.append((span.closingTagRange, closing))
+        }
+        let output = NSMutableString(string: markdown)
+        for replacement in replacements.sorted(by: { first, second in first.range.location > second.range.location }) {
+            output.replaceCharacters(in: replacement.range, with: replacement.text)
         }
         return output as String
     }

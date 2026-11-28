@@ -5,8 +5,8 @@
  * Description: Reads what a drop on the library carries from its item providers.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 04/11/2026
+ * Version: 0.9
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -72,22 +72,29 @@ enum LibraryDropReader {
     /// - Parameter vaultRoot: The vault dropped into. An item of another window's vault is a
     ///   file from outside to it: copied in, rather than moving whatever has that path here.
     static func read(_ providers: [NSItemProvider], vaultRoot: URL? = nil) async -> [LibraryDropSource] {
+        // Every item starts loading at once: loaded one after another, the later items of a Finder drop on the
+        // reading view came back empty once the drag had ended, and only the first files of the drop were added.
+        let readings = providers.map { provider in Task { await source(of: provider, vaultRoot: vaultRoot) } }
         var sources: [LibraryDropSource] = []
-        for provider in providers {
-            if isVaultItem(provider) {
-                guard let transfer = await vaultItem(of: provider) else { continue }
-                if transfer.isFromAnotherVault(than: vaultRoot) {
-                    if let location = transfer.sourceLocation { sources.append(.file(DroppedFile(location: location, stagingFolder: nil))) }
-                } else {
-                    sources.append(.vaultItem(transfer.path))
-                }
-            } else if isFileAddress(provider) {
-                if let location = await fileAddress(of: provider) { sources.append(.file(DroppedFile(location: location, stagingFolder: nil))) }
-            } else if let type = importableType(of: provider) {
-                if let file = await stagedFile(of: provider, type: type) { sources.append(.file(file)) }
-            }
+        for reading in readings {
+            if let source = await reading.value { sources.append(source) }
         }
         return sources
+    }
+
+    private static func source(of provider: NSItemProvider, vaultRoot: URL?) async -> LibraryDropSource? {
+        if isVaultItem(provider) {
+            guard let transfer = await vaultItem(of: provider) else { return nil }
+            if transfer.isFromAnotherVault(than: vaultRoot) {
+                return transfer.sourceLocation.map { location in .file(DroppedFile(location: location, stagingFolder: nil)) }
+            }
+            return .vaultItem(transfer.path)
+        }
+        if isFileAddress(provider) {
+            return await fileAddress(of: provider).map { location in .file(DroppedFile(location: location, stagingFolder: nil)) }
+        }
+        if let type = importableType(of: provider), let file = await stagedFile(of: provider, type: type) { return .file(file) }
+        return nil
     }
 
     // MARK: Deciding
