@@ -5,8 +5,8 @@
  * Description: The private-use characters the reading-view rewrite puts into a note's text, and the escape for the note's own.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 01/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -30,6 +30,10 @@ package enum ReadingMarkers {
     /// Around text of the note in `<u>`, which is underlined.
     package static let underlineStartMarker: Character = "\u{E00C}"
     package static let underlineEndMarker: Character = "\u{E00D}"
+    /// Around text of the note on a coloured background (`<span style="background-color:…">`): the start, then the
+    /// colour's hex and `colorHexEndMarker`, and the end.
+    package static let backgroundStartMarker: Character = "\u{E008}"
+    package static let backgroundEndMarker: Character = "\u{E00E}"
     /// Around a display formula that has equation numbers, kept as written with its `\tag`
     /// commands, which the reading view lays out itself.
     package static let numberedEquationStartMarker: Character = "\u{E00A}"
@@ -37,11 +41,11 @@ package enum ReadingMarkers {
     static let numberedEquationStartScalar: Unicode.Scalar = "\u{E00A}"
     static let numberedEquationEndScalar: Unicode.Scalar = "\u{E00B}"
 
-    /// The markers, U+E000 to U+E007 and U+E00A to U+E00D, the escape lead, U+E009, and the
-    /// unused U+E008. A note's own character in this range, such as an icon-font
+    /// The markers, U+E000 to U+E008 and U+E00A to U+E00E, and the escape lead, U+E009. A note's own character in
+    /// this range, such as an icon-font
     /// glyph, is escaped, so it is not turned into a checkbox or a color that deletes the
     /// text after it.
-    private static let escapedScalarValues: ClosedRange<UInt32> = 0xE000...0xE00D
+    private static let escapedScalarValues: ClosedRange<UInt32> = 0xE000...0xE00E
     package static let escapeLead: Unicode.Scalar = "\u{E009}"
     /// A character `escapedScalarValues.lowerBound + n` is written as the lead, then the
     /// scalar `standInOffset` above it. Stand-ins follow a lead only when written here.

@@ -6,8 +6,8 @@
  *              wrap when a column would be narrower than 200 points, and stack one per row on a phone.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -52,5 +52,14 @@ final class CalloutColumnArrangementTests: XCTestCase {
         XCTAssertEqual(CalloutLayout(type: "blank-container"), .contentOnly)
         XCTAssertEqual(CalloutLayout(type: "note"), .box)
         XCTAssertEqual(CalloutLayout(type: "multi-columns"), .box, "Only the snippet's own name.")
+    }
+
+    func testAColumnsWeightComesFromItsCalloutHeader() {
+        let note = "> [!multi-column]\n> > [!blank|wide-3]\n> > Text\n>\n> > [!blank]\n> > More\n> Plain paragraph" as NSString
+        XCTAssertEqual(CalloutColumnArrangement.weight(ofColumnStartingAt: note.range(of: "> > [!blank|wide-3]").location, in: note), 3)
+        XCTAssertEqual(CalloutColumnArrangement.weight(ofColumnStartingAt: note.range(of: "> > [!blank]").location, in: note), 1)
+        XCTAssertEqual(CalloutColumnArrangement.weight(ofColumnStartingAt: note.range(of: "Plain").location, in: note), 1)
+        XCTAssertEqual(CalloutColumnArrangement.weight(ofCalloutMetadata: "flex-h wide-2"), 2)
+        XCTAssertEqual(CalloutColumnArrangement.weight(ofCalloutMetadata: "wide-9"), 1, "Only wide-2 to wide-5 exist in the snippet.")
     }
 }

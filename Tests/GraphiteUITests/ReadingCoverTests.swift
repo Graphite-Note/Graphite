@@ -7,8 +7,8 @@
  *              callout's paragraphs as blocks of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -206,5 +206,13 @@ final class ReadingCoverTests: XCTestCase {
         let together = markdownRuns(try await build(note, configuration: configuration).blocks).joined()
         XCTAssertTrue(apart.contains("\n\n["), "Two paragraphs: \(apart.debugDescription)")
         XCTAssertFalse(together.contains("\n\n["), "One line each: \(together.debugDescription)")
+    }
+
+    func testUnevenColumnsKeepTheirWeightsForTheReadingView() async throws {
+        let note = "> [!multi-column]\n> > [!blank|wide-2]\n> > ## Lectures\n> > [[Lab]]\n>\n> > [!blank]\n> > ## Labs"
+        let build = try await build(note, configuration: ReadingConfiguration())
+        XCTAssertEqual(Array(build.foldKeys.columnWeightsByBlock.values), [[2, 1]])
+        let even = try await self.build("> [!multi-column]\n> > [!blank]\n> > A\n>\n> > [!blank]\n> > B", configuration: ReadingConfiguration())
+        XCTAssertTrue(even.foldKeys.columnWeightsByBlock.isEmpty, "Even columns need no weights.")
     }
 }

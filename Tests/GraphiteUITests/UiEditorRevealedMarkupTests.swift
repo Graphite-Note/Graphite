@@ -1,3 +1,15 @@
+/**
+ * File: UiEditorRevealedMarkupTests.swift
+ * --------------------------------------
+ * Layer: Tests
+ * Description: Which markup Live Preview shows as written around the selection, one element at a time as in Obsidian,
+ *              and how little a moving cursor restyles.
+ *
+ * Authors: Bahey Shalash
+ * Version: 0.1
+ * Date: 28/11/2026
+ */
+
 import XCTest
 import AppKit
 @testable import GraphiteCore
@@ -126,9 +138,9 @@ final class UiEditorRevealedMarkupTests: XCTestCase {
         // Either edge of the colored element counts.
         XCTAssertTrue(shownMarkers(cursorAt: source.range(of: "~={#ff0000}").location) == (true, false))
         XCTAssertTrue(shownMarkers(cursorAt: NSMaxRange(source.range(of: "=~"))) == (true, false))
-        // The text keeps its color either way.
+        // The text keeps its color either way, drawn so it reads on the page (`NoteColorLegibility`).
         let textStorage = styledStorage(note, revealedMarkup: RevealedMarkup(selection: NSRange(location: 0, length: 0), in: source))
-        XCTAssertEqual(textStorage.attribute(.foregroundColor, at: source.range(of: "red").location, effectiveRange: nil) as? NSColor, NSColor(graphiteHex: "#ff0000"))
+        XCTAssertEqual(textStorage.attribute(.foregroundColor, at: source.range(of: "red").location, effectiveRange: nil) as? NSColor, NSColor.legibleNoteText(hex: "#ff0000"))
     }
 
     /// A color can run over several lines of a paragraph; the cursor anywhere in it shows
@@ -460,11 +472,11 @@ final class UiEditorRevealedMarkupTests: XCTestCase {
         // Deleting the `X` joins `~=` and `{` into a marker.
         textStorage.replaceCharacters(in: textStorage.mutableString.range(of: "X"), with: "")
         restyleLine(containing: "Second")
-        XCTAssertEqual(color(of: "red"), NSColor(graphiteHex: "#ff0000"))
+        XCTAssertEqual(color(of: "red"), NSColor.legibleNoteText(hex: "#ff0000"))
         // Typing a whole marker.
         textStorage.replaceCharacters(in: NSRange(location: textStorage.mutableString.range(of: "Third").location, length: 0), with: "~={#00ff00}green=~ ")
         restyleLine(containing: "Third")
-        XCTAssertEqual(color(of: "green"), NSColor(graphiteHex: "#00ff00"))
+        XCTAssertEqual(color(of: "green"), NSColor.legibleNoteText(hex: "#00ff00"))
         XCTAssertFalse(isShownAsWritten(textStorage.mutableString.range(of: "~={#00ff00}"), in: textStorage))
         XCTAssertEqual(attributeRuns(of: textStorage), attributeRuns(of: styledStorage(textStorage.string, revealedMarkup: nil)))
     }

@@ -5,8 +5,8 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.74
- * Date: 27/11/2026
+ * Version: 0.75
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -293,6 +293,8 @@ struct ReadingFoldKeys: Equatable, Sendable {
     /// Which of the callouts with the same type and title each callout is, by block
     /// (`ReadAloudFolding.calloutOccurrences`), so opening one leaves the others as they were.
     var calloutOccurrencesByBlock: [String: Int] = [:]
+    /// The weight of each column of a multi-column callout whose columns are not all even (`wide-2` to `wide-5`), by block.
+    var columnWeightsByBlock: [String: [Int]] = [:]
 }
 
 /// Where one of the reading view's top-level blocks starts in the note's text, and for a
@@ -358,6 +360,8 @@ actor ReadingViewBuilder {
     /// The written title of each callout built so far, by block (`ReadingFoldKeys`).
     private var calloutTitlesByBlock: [String: String] = [:]
     private var calloutOccurrencesByBlock: [String: Int] = [:]
+    /// The column weights of each multi-column callout built so far, by block (`ReadingFoldKeys`).
+    var columnWeightsByBlock: [String: [Int]] = [:]
     /// The measurers of the last font diagrams were laid out in, made when a note first has a diagram and made
     /// again only when the font or size changes: reading a font's advances costs more than laying a diagram out.
     private var diagramTypography: DiagramTypography?
@@ -393,11 +397,12 @@ actor ReadingViewBuilder {
                                            for: configuration)
         calloutTitlesByBlock = [:]
         calloutOccurrencesByBlock = [:]
+        columnWeightsByBlock = [:]
         let renderedBody = try await render(locatedBlocks, note: note, root: root, index: index, configuration: configuration,
                                             allowsTransclusion: allowsTransclusion, taskSource: taskSource)
         // Each located block renders as one block, in order.
         var foldKeys = ReadingFoldKeys(headingKeysByBlock: [:], calloutTitlesByBlock: calloutTitlesByBlock,
-            calloutOccurrencesByBlock: calloutOccurrencesByBlock)
+            calloutOccurrencesByBlock: calloutOccurrencesByBlock, columnWeightsByBlock: columnWeightsByBlock)
         // Each heading is found in the note by where its line starts, and takes the key the
         // editor gives the heading there.
         var editorHeadingKeysByLineStart: [Int: String]?
@@ -519,6 +524,7 @@ actor ReadingViewBuilder {
                 calloutDepth -= 1
                 let calloutBlock = RenderedBlock.callout(id: identifier(), type: type, title: renderedTitle, folding: folding, body: renderedBody)
                 recordFoldKey(of: calloutBlock.id, title: title, atBodyOffset: locatedBlock.startOffset, taskSource: taskSource)
+                if CalloutLayout(type: type) == .columns { recordColumnWeights(of: calloutBlock.id, columns: bodyBlocks, taskSource: taskSource) }
                 rendered.append(calloutBlock)
             case .embed(let embed):
                 rendered.append(try await renderEmbed(embed, note: note, root: root, index: index, configuration: configuration, allowsTransclusion: allowsTransclusion))
@@ -1787,7 +1793,7 @@ struct ReadingBlocksView: View {
                                           openPDF: openPDF, updateProperties: nil)
                     }
                 case .columns:
-                    CalloutColumnsLayout {
+                    CalloutColumnsLayout(weights: foldKeys.columnWeightsByBlock[block.id] ?? []) {
                         ForEach(body) { column in
                             // One subview per column: a blank callout's blocks would each be a column of their own.
                             VStack(alignment: .leading, spacing: Self.blockSpacingPoints) {
@@ -2282,9 +2288,7 @@ struct ObsidianMarkdownParser: MarkupParser {
         let markdown = ReadingMarkerPunctuation.framing(MarkdownTableEmptyRows.keepingEmptyRows(in: ReadingMathPreparation.inliningEquationNumbers(in: input)))
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
         ReadingMarkerPunctuation.removingFrames(from: &attributed)
-        Self.applyMarkers(start: ReadingMarkers.colorStartMarker, hexEnd: ReadingMarkers.colorHexEndMarker, end: ReadingMarkers.colorEndMarker, to: &attributed) { hex, range, text in
-            if let color = Color(graphiteHex: hex) { text[range].foregroundColor = color }
-        }
+        Self.applyNoteColorMarkers(to: &attributed)
         let themeColors = themeColors, textSize = textSize
         Self.applyMarkers(start: ReadingMarkers.underlineStartMarker, hexEnd: nil, end: ReadingMarkers.underlineEndMarker, to: &attributed) { _, range, text in
             text[range].underlineStyle = .single
@@ -2528,7 +2532,7 @@ struct ObsidianMarkdownParser: MarkupParser {
     ///
     /// Markers are single scalars and are found as scalars: a marker followed by a combining
     /// mark, as in `==\u{0301}e==`, is one Character with it.
-    private static func applyMarkers(start: Character, hexEnd: Character?, end: Character, to text: inout AttributedString,
+    static func applyMarkers(start: Character, hexEnd: Character?, end: Character, to text: inout AttributedString,
                                      apply: (String, Range<AttributedString.Index>, inout AttributedString) -> Void) {
         guard let startMarker = start.unicodeScalars.first, let endMarker = end.unicodeScalars.first else { return }
         let hexEndMarker = hexEnd?.unicodeScalars.first

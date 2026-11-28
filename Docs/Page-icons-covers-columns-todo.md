@@ -2,7 +2,7 @@
 
 Created: 2026-11-26.
 
-Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28, and [#274](https://github.com/Graphite-Note/Graphite/issues/274) for section 6 (open).
+Status: 2026-11-26, built, tested and checked on the iPad and iPhone simulators and the Mac. Every item is ticked with what checked it and what was not checked. Issues: [#256](https://github.com/Graphite-Note/Graphite/issues/256) to [#259](https://github.com/Graphite-Note/Graphite/issues/259), one per section, and [#268](https://github.com/Graphite-Note/Graphite/issues/268) for section 5, built 2026-11-28, and [#274](https://github.com/Graphite-Note/Graphite/issues/274) for section 6, built 2026-11-28.
 
 ## Request
 
@@ -112,17 +112,17 @@ Requested 2026-11-28 for the same imported workspaces: the importer writes Notio
 Decisions:
 
 13. **A span's colours are drawn whatever the Colors core plugin says**, since they are HTML that Obsidian draws without a plugin. `HTMLColorSpans` (Core) reads `color`, `background-color` and `background` written as `#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()` or `rgba()`, and a span inside code stays text.
-14. **Coloured text stays readable in light and dark.** Text drawn in a colour of the note, a span's or the Colors plugin's, is darkened on a light page or lightened on a dark one by the least amount that reaches a 4.5:1 contrast (`AccentLegibility`), as Graphite's code colours already are, and a coloured background is drawn at a third of its strength on a dark page. The note keeps the colour as written.
+14. **Coloured text stays readable in light and dark.** Text drawn in a colour of the note, a span's or the Colors plugin's, is darkened on a light page or lightened on a dark one by the least amount that reaches a 4.5:1 contrast (`AccentLegibility`), as Graphite's code colours already are, and a coloured background is drawn as written on a light page and as a dark tint of its hue on a dark one (22% lightness, as Notion's own dark backgrounds are 19 to 25%), since Notion's pale backgrounds would otherwise put light text on a light patch. The note keeps the colour as written.
 15. **The colour command knows spans.** With the cursor or selection in a span's coloured text, choosing a colour rewrites the span's `color` and Remove takes the span's colours out, keeping the text and any other style of the span.
 16. **Column widths follow the snippet.** A nested callout's `wide-2` to `wide-5` makes its column grow two to five times as much as the others, as the snippet's `flex-grow` does, so `CalloutColumnArrangement`'s weights now come from each column's metadata.
 
-- [ ] `HTMLColorSpans` reads colour and background spans (decision 13).
-- [ ] The reading view draws them, and Live Preview's rendered blocks with it.
-- [ ] Live Preview's editor colours a span's text and background and hides its tags until the cursor is in it.
-- [ ] Coloured text and backgrounds read in light and dark (decision 14).
-- [ ] The colour command recolours and removes a span's colours (decision 15).
-- [ ] Column widths from `wide-2` to `wide-5` in the reading view and Live Preview (decision 16).
-- [ ] Checked on the Mac, the iPad and the iPhone with made-up notes, light and dark.
+- [x] `HTMLColorSpans` reads colour and background spans (decision 13). Done 2026-11-28: `HTMLColorSpans` (Core) with `HTMLColorSpansPattern` in the static pattern registry. Tests: `HTMLColorSpansTests` (spans with their text and background, `#rgb` to `rgba()`, nesting, code, unclosed spans), `StaticPatternTests`.
+- [x] The reading view draws them, and Live Preview's rendered blocks with it. Done 2026-11-28: `ReadingInlineHTML` writes colour and background markers (two new `ReadingMarkers`), drawn by `ObsidianMarkdownParser.applyNoteColorMarkers`, the background as a rounded run. Callouts and tables of Live Preview go through the same text. Tests: `HTMLColorSpansTests.testTheReadingViewGetsColourAndBackgroundMarkers` and `testANotesOwnBackgroundMarkerCharacterIsEscaped`, the pictures below.
+- [x] Live Preview's editor colours a span's text and background and hides its tags until the cursor is in it. Done 2026-11-28: `MarkdownTextStyler.coloredSections` takes spans beside the Colors syntax, and `MarkdownBlockContextCheckpoints` looks for `<span` too. Found while checking: the Mac's spelling checker drew a red dot for words inside a hidden tag (`rgba`, a hex of letters), and now marks nothing in hidden inline markup. Tests: `LivePreviewHTMLColorSpanTests` (5), a span note in `UiStylingFixTests.testLineRestylesColorLikeWholeNoteRestyles`.
+- [x] Coloured text and backgrounds read in light and dark (decision 14). Done 2026-11-28: `PlatformColor.legibleNoteText` and `noteBackground` (`NoteColorLegibility.swift`), kept by hex so a restyled line compares equal. Tests: `NoteColorLegibilityTests` (3). Notion's nine text colours and seven backgrounds looked at in light and dark on the Mac, the iPad and the iPhone.
+- [x] The colour command recolours and removes a span's colours (decision 15). Done 2026-11-28: `HTMLColorSpans.recoloring` from `MarkdownPane.insertColor`, `removingColor` behind the context menu's Remove. Tests: `HTMLColorSpansTests.testTheColourCommandRecoloursASpanKeepingItsOtherStyle` and `testRemoveTakesTheColoursOutAndTheSpanWhenNothingElseIsLeft`. Not tried by hand in the app.
+- [x] Column widths from `wide-2` to `wide-5` in the reading view and Live Preview (decision 16). Done 2026-11-28: `CalloutColumnArrangement.weight(ofColumnStartingAt:in:)`, kept by the reading view's build in `ReadingFoldKeys.columnWeightsByBlock`, read by `LivePreviewCalloutBody`, shared out by `CalloutColumnsLayout(weights:)`. Tests: `CalloutColumnArrangementTests.testAColumnsWeightComesFromItsCalloutHeader`, `ReadingCoverTests.testUnevenColumnsKeepTheirWeightsForTheReadingView`, the pictures below.
+- [x] Checked on the Mac, the iPad and the iPhone with made-up notes, light and dark. Done 2026-11-28: `NotionLookMacPicturesTests` on main before the change (raw tags, even columns) and after it, reading view and Live Preview, light and dark, and hosted `NotionLookHostedTests.testNotionsColoursAndUnevenColumnsAreDrawnInBothModes` on an iPad Pro 11-inch (M5) and an iPhone 17 Pro simulator (iOS 27.2), where the iPhone stacks the columns. The pictures were looked at. Not checked: a physical device.
 
 ## Later
 

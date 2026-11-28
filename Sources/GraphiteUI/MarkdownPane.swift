@@ -5,8 +5,8 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.73
- * Date: 27/11/2026
+ * Version: 0.74
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -369,8 +369,9 @@ struct MarkdownPane: View {
 
     /// Wraps the selection in Obsidian's Colors syntax, or a placeholder when nothing is
     /// selected, so the markup shows. The toolbar's Color menu and the editor's context
-    /// menu write it alike.
+    /// menu write it alike. In an HTML colour span, as Notion's imported colours are, the span takes the colour instead.
     private func insertColor(hex: String, placeholder: String) {
+        if let recolored = HTMLColorSpans.recoloring(in: session.text as NSString, selection: session.selection, hex: hex) { return session.apply(recolored) }
         session.insert("~={\(hex)}\(Self.selectedText(in: session, placeholder: placeholder))=~")
     }
 

@@ -4,10 +4,11 @@
  * Layer: Tests
  * Description: Pictures, in a Mac window of the app, of a made-up course page of the shape the Notion importer writes:
  *              picture icons of the vault and of the web, a GIF cover, a large PNG cover, three columns of coloured
- *              headings over lines that each link to a page, in the reading view, light and dark.
+ *              headings over lines that each link to a page, and a page of Notion's text and background colours as HTML
+ *              spans with columns of uneven widths, in the reading view and Live Preview, light and dark.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -32,6 +33,38 @@ final class NotionLookMacPicturesTests: XCTestCase {
     static let clockSVG = """
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#6b6b6b" stroke-width="2"/>\
         <path d="M12 7v5l3 2" fill="none" stroke="#6b6b6b" stroke-width="2" stroke-linecap="round"/></svg>
+        """
+
+    /// Notion's text and background colours as the importer writes them, in columns two and one wide (`wide-2`).
+    static let colouredPage = """
+        ---
+        icon: 🎨
+        ---
+        Text in <span style="color:#787774">gray</span>, <span style="color:#9F6B53">brown</span>, \
+        <span style="color:#D9730D">orange</span>, <span style="color:#CB912F">yellow</span>, <span style="color:#448361">green</span>, \
+        <span style="color:#337EA9">blue</span>, <span style="color:#9065B0">purple</span>, <span style="color:#C14C8A">pink</span> \
+        and <span style="color:#D44C47">red</span>.
+
+        Backgrounds: <span style="background-color:#F1F1EF">gray</span>, <span style="background-color:#FBECDD">orange</span>, \
+        <span style="background-color:#FBF3DB">yellow</span>, <span style="background-color:#EDF3EC">green</span>, \
+        <span style="background-color:#E7F3F8">blue</span>, <span style="background-color:rgba(244, 240, 247, 0.8)">purple</span> \
+        and <span style="background-color:#FDEBEC">red</span>, and <span style="color:#D44C47;background-color:#FDEBEC">both at once</span>.
+
+        > [!multi-column]
+        > > [!blank|wide-2]
+        > > ## <span style="color:#337EA9">Wide column</span>
+        > > This column is twice as wide as the one beside it, as a Notion column dragged wider.
+        > > <span style="background-color:#FBF3DB">A highlighted sentence in a column.</span>
+        >
+        > > [!blank]
+        > > ## Narrow
+        > > [[Lab 1]]
+
+        > [!note] A callout with <span style="color:#D9730D">orange</span> words
+        > And a <span style="background-color:#E7F3F8">blue background</span> inside it.
+
+        `<span style="color:#D44C47">code stays text</span>`
+
         """
 
     private static func writePicture(to location: URL, type: UTType, width: Int, height: Int, frames: [(CGFloat, CGFloat, CGFloat)]) throws {
@@ -85,6 +118,7 @@ final class NotionLookMacPicturesTests: XCTestCase {
             """
         let vault = try TemporaryVault.make(prefix: "NotionLook", files: [
             "Course hub.md": page,
+            "Coloured page.md": Self.colouredPage,
             "Course with photo.md": "---\nicon: 🎓\nbanner: \"[[wide.png]]\"\n---\nA page whose cover is a large photo.\n\n[[Lecture 1]]\n\n[[Lab 1]]\n",
             "Lecture 1.md": "---\nicon: \"[[clock.svg]]\"\n---\n",
             "Lecture 2.md": "---\nicon: \(webIcon.absoluteString)\n---\n",
@@ -116,14 +150,18 @@ final class NotionLookMacPicturesTests: XCTestCase {
         let window = try ReleaseVaultWindow.show(GraphiteRootView(workspace: workspace), for: self)
         window.setContentSize(NSSize(width: 1_024, height: 768))
         let quietWatch = MainThreadQuietWatch(window: window, quietStepsToStop: 200)
-        for (name, file) in [("course-hub", "Course hub.md"), ("photo-cover", "Course with photo.md")] {
-            _ = await workspace.open(try VaultPath(file), placement: .currentTab)
-            workspace.markdownSession?.viewMode = .reading
+        let pages: [(name: String, file: String, mode: NoteViewMode)] = [
+            ("course-hub", "Course hub.md", .reading), ("photo-cover", "Course with photo.md", .reading),
+            ("colours-reading", "Coloured page.md", .reading), ("colours-live-preview", "Coloured page.md", .livePreview),
+        ]
+        for page in pages {
+            _ = await workspace.open(try VaultPath(page.file), placement: .currentTab)
+            workspace.markdownSession?.viewMode = page.mode
             for appearance in [AppearanceMode.light, .dark] {
                 workspace.preferences.appearanceMode = appearance
                 _ = try await quietWatch.measure({})
                 let picture = try XCTUnwrap(ReleaseVaultWindow.screenshot(of: window))
-                try picture.write(to: output.appendingPathComponent("mac-\(name)-\(appearance.rawValue).png"))
+                try picture.write(to: output.appendingPathComponent("mac-\(page.name)-\(appearance.rawValue).png"))
             }
         }
     }

@@ -6,7 +6,7 @@
  *              and Iconize an icon in Obsidian: an emoji as text, a picture or a symbol as a small picture inside the text.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 28/11/2026
  */
 
@@ -76,5 +76,18 @@ extension ReadingViewBuilder {
         if case .emoji(let emoji) = icon { return emoji + " " }
         guard let location = NoteIconInlineAddress.url(of: icon, root: root, textSize: configuration.textSize) else { return "" }
         return "![](\(GraphiteOpenLink.markdownDestination(location))) "
+    }
+}
+
+extension ReadingViewBuilder {
+    /// Records the weights of a multi-column callout's columns, read from each column's callout header in the note
+    /// (`> > [!blank|wide-2]`); nothing for columns that are all even.
+    func recordColumnWeights(of blockIdentifier: String, columns: [NotePreviewDocument.LocatedBlock], taskSource: ReadingTaskSource) {
+        let noteText = taskSource.noteText as NSString
+        let weights = columns.map { column -> Int in
+            guard case .callout = column.block, let offset = taskSource.noteOffset(column.startOffset) else { return 1 }
+            return CalloutColumnArrangement.weight(ofColumnStartingAt: offset, in: noteText)
+        }
+        if weights.contains(where: { weight in weight != 1 }) { columnWeightsByBlock[blockIdentifier] = weights }
     }
 }

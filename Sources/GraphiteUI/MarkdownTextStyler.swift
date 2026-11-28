@@ -5,8 +5,8 @@
  * Description: Styles Markdown source in place, with attributes only, for the editor.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.22
- * Date: 17/11/2026
+ * Version: 0.23
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -374,10 +374,9 @@ struct MarkdownTextStyler {
         textStorage.beginEditing()
         textStorage.setAttributes(baseAttributes(font: fonts.baseFont), range: styledRange)
         apply(spans, within: [styledRange], to: textStorage, source: source, revealedMarkup: revealedMarkup, fonts: fonts)
-        if configuration.colorsEnabled {
-            let sections = coloredSections(touching: styledRange, source: source, textStorage: textStorage, blockContextCheckpoints: blockContextCheckpoints)
-            applyColors(of: sections, within: nil, to: textStorage, revealedMarkup: revealedMarkup)
-        }
+        // A span's colours are HTML, drawn whatever the Colors core plugin says; the Colors syntax only while it is on.
+        let sections = coloredSections(touching: styledRange, source: source, textStorage: textStorage, blockContextCheckpoints: blockContextCheckpoints)
+        applyColors(of: sections, within: nil, to: textStorage, revealedMarkup: revealedMarkup)
         let hiddenRanges = (configuration.mode == .livePreview ? concealedBlocks.map(\.range) : []) + foldedRegions.map(\.hiddenRange)
         // The box sets each code line's text color, which the tokens' colors then go over.
         if drawsConcealedReplacements {
@@ -428,8 +427,7 @@ struct MarkdownTextStyler {
         }
         func scannedLines(_ lines: NSRange) -> ScannedLines {
             let spans = blockContextCheckpoints?.spans(in: textStorage, source: source, range: lines) ?? MarkdownStyleScanner.spans(in: source, range: lines)
-            let sections = configuration.colorsEnabled
-                ? coloredSections(touching: lines, source: source, textStorage: textStorage, blockContextCheckpoints: blockContextCheckpoints) : []
+            let sections = coloredSections(touching: lines, source: source, textStorage: textStorage, blockContextCheckpoints: blockContextCheckpoints)
             return ScannedLines(lines: lines, spans: spans, coloredSections: sections)
         }
         var scans: [ScannedLines] = []
@@ -605,7 +603,10 @@ struct MarkdownTextStyler {
         let openingMarkerRange: NSRange
         let closingMarkerRange: NSRange?
         let contentRange: NSRange
-        let color: PlatformColor
+        /// The text's colour; nil for a span that colours only its background.
+        let color: PlatformColor?
+        /// A span's background colour.
+        var background: PlatformColor?
 
         var markerRanges: [NSRange] { [openingMarkerRange, closingMarkerRange].compactMap { markerRange in markerRange } }
 
@@ -625,20 +626,26 @@ struct MarkdownTextStyler {
         // between the blank lines around it.
         let runStart = Self.paragraphRunStart(atLineContaining: range.location, in: source)
         let runEnd = Self.paragraphRunEnd(atLineContaining: NSMaxRange(range), in: source)
-        // Without an opening marker there is nothing to color: the common case, answered
-        // without parsing.
-        guard source.range(of: "~={", range: NSRange(location: runStart, length: runEnd - runStart)).location != NSNotFound else { return [] }
+        // Without an opening marker or a span there is nothing to color: the common case, answered without parsing.
+        let runRange = NSRange(location: runStart, length: runEnd - runStart)
+        let hasColorsMarker = configuration.colorsEnabled && source.range(of: "~={", range: runRange).location != NSNotFound
+        let hasSpan = source.range(of: "<span", options: .caseInsensitive, range: runRange).location != NSNotFound
+        guard hasColorsMarker || hasSpan else { return [] }
         let contextStart = colorContextStart(from: runStart, source: source, textStorage: textStorage, blockContextCheckpoints: blockContextCheckpoints)
         let contextText = source.substring(with: NSRange(location: contextStart, length: runEnd - contextStart)) as NSString
-        let sections = TextColorMarkup.sections(in: contextText, paletteHexByName: configuration.paletteHexByName)
-            .sorted { firstSection, secondSection in firstSection.depth < secondSection.depth }
-        return sections.compactMap { section in
-            guard let color = PlatformColor(graphiteHex: section.hexColor) else { return nil }
-            let coloredSection = ColoredSection(openingMarkerRange: section.openingMarkerRange.shifted(by: contextStart),
-                                                closingMarkerRange: section.closingMarkerRange?.shifted(by: contextStart),
-                                                contentRange: section.contentRange.shifted(by: contextStart), color: color)
-            return NSIntersectionRange(coloredSection.elementRange, range).length > 0 ? coloredSection : nil
-        }
+        let colorsSections = hasColorsMarker ? TextColorMarkup.sections(in: contextText, paletteHexByName: configuration.paletteHexByName)
+            .sorted { firstSection, secondSection in firstSection.depth < secondSection.depth }.compactMap { section -> ColoredSection? in
+                guard let color = PlatformColor.legibleNoteText(hex: section.hexColor) else { return nil }
+                return ColoredSection(openingMarkerRange: section.openingMarkerRange.shifted(by: contextStart),
+                                      closingMarkerRange: section.closingMarkerRange?.shifted(by: contextStart),
+                                      contentRange: section.contentRange.shifted(by: contextStart), color: color)
+            } : []
+        let spanSections = hasSpan ? HTMLColorSpans.spans(in: contextText).sorted { first, second in first.depth < second.depth }.map { span in
+            ColoredSection(openingMarkerRange: span.openingTagRange.shifted(by: contextStart), closingMarkerRange: span.closingTagRange.shifted(by: contextStart),
+                           contentRange: span.contentRange.shifted(by: contextStart), color: span.textHex.flatMap(PlatformColor.legibleNoteText(hex:)),
+                           background: span.backgroundHex.flatMap(PlatformColor.noteBackground(hex:)))
+        } : []
+        return (colorsSections + spanSections).filter { section in NSIntersectionRange(section.elementRange, range).length > 0 }
     }
 
     /// Colors the sections' text and hides or tints their markers. Given `restyledRanges`
@@ -654,12 +661,13 @@ struct MarkdownTextStyler {
         }
         for section in sections {
             for piece in pieces(of: section.contentRange) {
-                textStorage.addAttribute(.foregroundColor, value: section.color, range: piece)
+                if let color = section.color { textStorage.addAttribute(.foregroundColor, value: color, range: piece) }
+                if let background = section.background { textStorage.addAttribute(.backgroundColor, value: background, range: piece) }
             }
             let showsMarkers = showsInlineElement(at: section.elementRange, revealedMarkup: revealedMarkup)
             for piece in section.markerRanges.flatMap(pieces) {
                 if showsMarkers {
-                    textStorage.addAttribute(.foregroundColor, value: section.color.withAlphaComponent(0.55), range: piece)
+                    textStorage.addAttribute(.foregroundColor, value: (section.color ?? Self.secondaryTextColor).withAlphaComponent(0.55), range: piece)
                 } else {
                     conceal(piece, in: textStorage)
                 }
@@ -880,6 +888,17 @@ struct MarkdownTextStyler {
     func conceal(_ range: NSRange, in textStorage: NSTextStorage) {
         textStorage.addAttribute(.font, value: Self.concealedFont, range: range)
         textStorage.addAttribute(.foregroundColor, value: PlatformColor.clear, range: range)
+    }
+
+    /// Whether any character of `range` is inline markup the styler hid (`conceal`), as a span's tag or a colour's hex.
+    static func touchesConcealedMarkup(_ range: NSRange, in textStorage: NSTextStorage) -> Bool {
+        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: textStorage.length))
+        guard clamped.length > 0 else { return false }
+        var touches = false
+        textStorage.enumerateAttribute(.font, in: clamped) { font, _, stop in
+            if let font = font as? PlatformFont, font.pointSize <= concealedFont.pointSize { touches = true; stop.pointee = true }
+        }
+        return touches
     }
 
     private func concealBlock(_ block: ConcealedBlock, source: NSString, in textStorage: NSTextStorage) {

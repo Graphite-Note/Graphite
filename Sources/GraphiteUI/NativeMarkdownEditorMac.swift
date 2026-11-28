@@ -5,8 +5,8 @@
  * Description: The Mac's note editor: the NSViewRepresentable and its coordinator.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.4
- * Date: 26/11/2026
+ * Version: 0.5
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -585,11 +585,14 @@ struct NativeMarkdownEditor: NSViewRepresentable {
             return Self.selection(newSelectedCharRange, keptBelowConcealedPropertiesEndingAt: NSMaxRange(entry.range))
         }
 
-        /// The spelling checker marks nothing in a block's concealed source: its marks were
-        /// drawn at the hidden lines' height, a red speck above the block's view.
+        /// The spelling checker marks nothing in a block's concealed source, nor in hidden inline markup such as a
+        /// span's `style` or a colour's hex: its marks were drawn at the hidden text's size, a red speck in the text or
+        /// above the block's view.
         func textView(_ textView: NSTextView, shouldSetSpellingState value: Int, range affectedCharRange: NSRange) -> Int {
-            guard value != 0, concealedEntries(in: textView).contains(where: { entry in NSIntersectionRange(entry.range, affectedCharRange).length > 0 }) else { return value }
-            return 0
+            guard value != 0 else { return value }
+            let inConcealedBlock = concealedEntries(in: textView).contains { entry in NSIntersectionRange(entry.range, affectedCharRange).length > 0 }
+            let inHiddenMarkup = textView.textStorage.map { storage in MarkdownTextStyler.touchesConcealedMarkup(affectedCharRange, in: storage) } ?? false
+            return inConcealedBlock || inHiddenMarkup ? 0 : value
         }
 
         /// An edit that starts in the concealed YAML and reaches its end, as a backspace at

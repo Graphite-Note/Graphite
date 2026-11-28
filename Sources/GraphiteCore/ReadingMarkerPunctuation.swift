@@ -6,8 +6,8 @@
  *              and italic beside them open and close as beside the Obsidian syntax they stand for.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 23/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -31,6 +31,7 @@ package enum ReadingMarkerPunctuation {
         ReadingMarkers.colorStartMarker, ReadingMarkers.colorHexEndMarker, ReadingMarkers.colorEndMarker,
         ReadingMarkers.highlightStartMarker, ReadingMarkers.highlightEndMarker,
         ReadingMarkers.underlineStartMarker, ReadingMarkers.underlineEndMarker, ReadingMarkers.lineBreakMarker,
+        ReadingMarkers.backgroundStartMarker, ReadingMarkers.backgroundEndMarker,
     ].compactMap { marker in marker.unicodeScalars.first })
 
     /// `markdown` with `frame` before and after each inline marker.

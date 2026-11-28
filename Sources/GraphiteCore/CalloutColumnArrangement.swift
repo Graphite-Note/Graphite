@@ -7,8 +7,8 @@
  *              weights and wrap onto a new row when the note is too narrow, down to one column per row.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import CoreGraphics
@@ -79,6 +79,25 @@ public struct CalloutColumnArrangement: Equatable, Sendable {
             rows.append(Self.columns(of: rowIndices, weights: weights, width: width, minimumColumnWidth: minimumColumnWidth, gap: gap))
         }
         self.rows = rows
+    }
+
+    /// The weight a column's callout metadata gives it: `wide-2` to `wide-5` as in the snippet, else 1.
+    public static func weight(ofCalloutMetadata metadata: String) -> Int {
+        for part in metadata.split(whereSeparator: { character in character == " " || character == "," }) {
+            guard part.hasPrefix("wide-"), let weight = Int(part.dropFirst("wide-".count)), (2...5).contains(weight) else { continue }
+            return weight
+        }
+        return 1
+    }
+
+    /// The weight of the column whose block starts at `offset` of `text`: its callout header's metadata
+    /// (`> > [!blank|wide-2]`) when the block is a callout, else 1.
+    public static func weight(ofColumnStartingAt offset: Int, in text: NSString) -> Int {
+        guard offset >= 0, offset <= text.length else { return 1 }
+        let line = text.substring(with: text.lineRange(for: NSRange(location: offset, length: 0)))
+        guard let open = line.range(of: "[!"), let close = line.range(of: "]", range: open.upperBound..<line.endIndex),
+              let bar = line.range(of: "|", range: open.upperBound..<close.lowerBound) else { return 1 }
+        return weight(ofCalloutMetadata: String(line[bar.upperBound..<close.lowerBound]))
     }
 
     /// Whether every block has a row of its own, as on a phone.
