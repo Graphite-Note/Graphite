@@ -2,6 +2,11 @@
 
 ## 1.0.3
 
+### 2026-11-28 12:24
+
+- Changed: Inline code in the reading view is drawn on a rounded chip, as Obsidian and Notion draw it.
+- Fixed [iPad]: A new note dropped with Escape while naming it in the file list is no longer made by the next New Note, and every letter typed into a name is kept.
+
 ### 2026-11-28 11:45
 
 - Added: A What's New page lists every version's changes, opens once after an update, and is in Settings under About and in the Mac's Help menu.
