@@ -5,8 +5,8 @@
  * Description: Live Preview's rendered blocks: their hosted views, heights and the environment they are given.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.28
- * Date: 27/11/2026
+ * Version: 0.29
+ * Date: 28/11/2026
  */
 
 #if canImport(UIKit)
@@ -30,9 +30,42 @@ typealias RenderedBlockTextView = NSView
 /// menu: SwiftUI's hosting view does not offer an AppKit view's `menu`.
 final class RenderedBlockHostingView: NSHostingView<AnyView> {
     weak var blockMenu: RenderedBlockEditSourceMenu?
+    private var pointerTrackingArea: NSTrackingArea?
 
     override func menu(for event: NSEvent) -> NSMenu? {
         blockMenu?.makeMenu(at: convert(event.locationInWindow, from: nil), isFlipped: isFlipped, height: bounds.height) ?? super.menu(for: event)
+    }
+
+    /// The pointer over the block, for a view that follows it (a table's strips and grips): SwiftUI's own hover does not
+    /// reach a view under the text selection's AppKit view, which covers a block's text (HUNT-389).
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let pointerTrackingArea { removeTrackingArea(pointerTrackingArea) }
+        let trackingArea = NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                                          owner: self, userInfo: nil)
+        addTrackingArea(trackingArea)
+        pointerTrackingArea = trackingArea
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        super.mouseMoved(with: event)
+        reportPointer(at: event.locationInWindow)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        super.mouseEntered(with: event)
+        reportPointer(at: event.locationInWindow)
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        super.mouseExited(with: event)
+        blockMenu?.context.pointerMoved?(nil)
+    }
+
+    private func reportPointer(at locationInWindow: CGPoint) {
+        guard let pointerMoved = blockMenu?.context.pointerMoved else { return }
+        let point = convert(locationInWindow, from: nil)
+        pointerMoved(isFlipped ? point : CGPoint(x: point.x, y: bounds.height - point.y))
     }
 }
 #endif
@@ -767,6 +800,9 @@ final class RenderedBlockMenuContext {
     var itemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
     /// The commands of a picture at the point, before the view's own (`RenderedBlockPictureMenu`).
     var pictureItemsAtPoint: ((CGPoint) -> [RenderedBlockMenuItem])?
+    /// The pointer at a point of the block, in its top-down coordinates, or off the block (nil); told by the Mac's
+    /// hosting view, for a view that follows the pointer where SwiftUI's hover does not reach (HUNT-389).
+    var pointerMoved: ((CGPoint?) -> Void)?
 
     /// Everything the view adds to its menu at `point`.
     func items(at point: CGPoint) -> [RenderedBlockMenuItem] {

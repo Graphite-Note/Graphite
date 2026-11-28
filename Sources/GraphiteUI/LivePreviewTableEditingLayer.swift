@@ -6,8 +6,8 @@
  *              cells' outline, the "+" strips and the grips, from the table's cells as laid out (`TableCellGrid`).
  *
  * Authors: Bahey Shalash
- * Version: 0.6
- * Date: 27/11/2026
+ * Version: 0.7
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -25,14 +25,9 @@ struct LivePreviewTableEditingLayer: View {
     @Environment(\.noteTypography) private var typography
     @Environment(\.noteTheme) private var theme
     @Environment(\.readingImageActions) private var imageActions
-    @State private var isPointerOverTable = false
     @State private var isPointerOverStrip = false
-    /// The picture the pointer rests on, whose magnifier and "Open in New Tab" show over it.
-    @State private var hoveredPicture: ZoomablePictureFrame?
-    /// The cell under the pointer, whose row and column show their grips.
-    @State private var hoveredCell: TableCellPosition?
 
-    private var showsAddStrips: Bool { isPointerOverTable || isPointerOverStrip || editor.editingCell != nil }
+    private var showsAddStrips: Bool { editor.isPointerOverTable || isPointerOverStrip || editor.editingCell != nil }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -52,13 +47,13 @@ struct LivePreviewTableEditingLayer: View {
             if let selection = editor.selectionFrame(in: layout) {
                 TableCellSelectionOutline(frame: selection)
             }
-            if let hoveredPicture, let imageActions, editor.editingCell == nil {
+            if let hoveredPicture = editor.hoveredPicture, let imageActions, editor.editingCell == nil {
                 pictureButtons(for: hoveredPicture, actions: imageActions)
             }
             if showsAddStrips {
                 LivePreviewTableAddStrips(geometry: TableAddStripsGeometry(tableBounds: layout.bounds, blockBounds: editor.tablePlacement.blockBoundsInTable),
                                           editor: editor, isPointerOverStrip: $isPointerOverStrip)
-                LivePreviewTableGrips(layout: layout, editor: editor, hoveredCell: hoveredCell)
+                LivePreviewTableGrips(layout: layout, editor: editor, hoveredCell: editor.hoveredCell)
             }
         }
         .coordinateSpace(.named(TableCellSelectionGesture.coordinateSpaceName))
@@ -71,9 +66,14 @@ struct LivePreviewTableEditingLayer: View {
             editor.tablePlacement = placement
         }
         .onChange(of: layout, initial: true) { _, newLayout in editor.layout = newLayout }
+        #if canImport(UIKit)
         // The pointer, or an Apple Pencil held over the iPad's screen, shows the strips, and over a
         // picture its buttons; on the whole layer, so moving onto the buttons stays over the table.
+        // On the Mac the text selection's AppKit view lies over the table and SwiftUI's hover never
+        // reaches this layer (HUNT-389): the block's hosting view follows the pointer instead
+        // (`RenderedBlockHostingView`, `LivePreviewTableEditor.pointerMoved(toPointInBlock:)`).
         .onContinuousHover(coordinateSpace: .local) { phase in pointerMoved(phase) }
+        #endif
         // Text selection's overlay would otherwise take the taps.
         .modifier(TableControlOutsideTextSelection())
     }
@@ -81,14 +81,14 @@ struct LivePreviewTableEditingLayer: View {
     private func pointerMoved(_ phase: HoverPhase) {
         switch phase {
         case .active(let location):
-            if !isPointerOverTable { isPointerOverTable = true }
-            let cell = layout.bounds.contains(location) ? LivePreviewTableEditor.cell(at: location, in: layout) : hoveredCell
-            if cell != hoveredCell { hoveredCell = cell }
+            if !editor.isPointerOverTable { editor.isPointerOverTable = true }
+            let cell = layout.bounds.contains(location) ? LivePreviewTableEditor.cell(at: location, in: layout) : editor.hoveredCell
+            if cell != editor.hoveredCell { editor.hoveredCell = cell }
             let picture = imageActions == nil ? nil : editor.pictureFrames.last { picture in picture.frame.contains(pointInBlock(location)) }
-            if picture != hoveredPicture { hoveredPicture = picture }
+            if picture != editor.hoveredPicture { editor.hoveredPicture = picture }
         case .ended:
-            isPointerOverTable = false
-            hoveredPicture = nil
+            editor.isPointerOverTable = false
+            editor.hoveredPicture = nil
             // The cell stays: moving onto its grip, outside the table, keeps the grip shown.
         }
     }
