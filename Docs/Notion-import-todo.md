@@ -232,6 +232,25 @@ Each format of Obsidian's Importer 3.2.0, ported to the Importer once Notion's H
 - [ ] Airtable (API), CSV, HTML and Markdown files.
 - [ ] Goodnotes and Notability: whether `Packages/NotebookImport` moves into the Importer, to be decided once the Importer's layout has settled.
 
+## 10. Notion's export since 2025, measured on a real workspace
+
+Issue: [#280](https://github.com/Graphite-Note/Graphite/issues/280)
+
+Request of 2026-11-28, in the owner's words: "keep improving and redoing and tuning the importer until it is perfect (do not keep old versions of the imports.) if the import is anything less than perfect people wont switch." The material: a real team workspace exported on 2026-11-27 in the HTML Notion writes since 2025 (7,433 pages, 316 databases, 33 GB), private and held only on the development Mac (`LocalFixtures.nosync`), never committed, quoted or shown, beside the four exports of section 2. Each round fixes the Importer, imports every export again into the comparison vault (one import of each, the previous one deleted first), measures, and compares the pages with live Notion, read only.
+
+- [ ] `compare.py` (a local comparator of each page's HTML with its note, block by block, extended to the 2025 format) shows no unexplained difference on any page of any export, the 7,433 included: every remaining difference is a documented, deliberate choice.
+  Round 4 (2026-11-28, Importer#6): 8,416 pages compared, 695 findings, 392 of them on the workspace (from 2,048 in round 1). Explained so far: pictures the export lacks marked in their place, punctuation moved out of styles where Markdown cannot open or close them, links to pages written as one block's lines, upstream's own test differences (`Differences.md` in the Importer). Open: 10 linked views whose rows the export does not give (Markdown tables), 4 links to an HTML file of the export, and the comparator's own limits, being sorted round by round.
+- [ ] Every database is a base with its views, typed properties, column order and widths.
+  Round 4: 305 bases (0 before the 2025 format was read): each database's page, and each inline database with no page of its own, over the folder of its rows, with its columns' order and widths (`columnSize`) and typed rows. A database's page with its own icon, text or cover is a note embedding its base. Open: the export names no view, so each base has one table view ("Table"). Notion's other views come with the API import (section 5).
+- [ ] Every icon, cover, callout (icon and color), column layout (with widths), color, picture width, toggle and divider is in the Markdown.
+  Round 4: icons from `data-emoji`, callouts from `<aside>` with their background as their type, columns as `[!multi-column]` with `[!blank|wide-N]` per column, text colors as `<span style="color:…">`, block backgrounds as `<mark style="background:…">`, pictures with their width (`![[x.png|720]]`). Graphite's own gaps found on the way went to their sections: span colors and column widths (`Docs/Page-icons-covers-columns-todo.md`).
+- [ ] The import report lists only real losses.
+  Round 4: 2 left out (1,730 report lines in round 1, most of them phone numbers taken for missing pages, now `tel:` links) and 260 simplified, each format, date range and set of rows made from a database's CSV said once.
+- [ ] Peak memory stays flat (hundreds of MB at most) and the time is reported.
+  Round 4: the workspace in 345 s with a peak footprint of 48 MB (59 MB resident). Before: 32 minutes and a peak footprint of 35 GB, as Foundation's file handles left every buffer read to an autorelease pool that the import never drains; files are now read and written through their descriptors. Not ticked until the time is measured on the iPad too.
+- [ ] A side by side of 12 representative pages, live Notion against Graphite's reading view at the same width: the workspace's home, Aerodynamics, ESF ASF, Semester projects, a page with a big database, one with many pictures, one with toggles, one with callouts, one with columns, one with code and equations, a long meeting-notes page, and one deep subpage. Screenshots stay local.
+  Round 2 checked: the home page (columns, headings, link order and icons), a formulas page (its icon, underlined heading and math blocks) and Semester projects (icon, description, embedded base). Open: the other nine, each round.
+
 ## Risks
 
 - **Notion changes its export and API.** The API is pinned by version (`2025-09-03`). The HTML export is not versioned: fixtures are recorded again when an import of the test material stops matching.
