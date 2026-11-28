@@ -3,11 +3,11 @@
  * -----------------------------------
  * Layer: Tests
  * Description: A rendered block's text is laid out with its blocks and styled text the first time, at its final height
- *              (Textual patches 30 to 33), so a block that scrolls in is laid out once.
+ *              (Textual patches 30 to 33 and 36), so a block that scrolls in is laid out once.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 27/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -23,18 +23,19 @@ private final class LaidOutHeights {
     var heights: [CGFloat] = []
 }
 
-/// Passes its one subview through and writes down the height it measures.
+/// Offers its one subview the width it is offered and any height, as the note's stack of
+/// blocks does, and writes down the height it measures.
 private struct HeightRecordingLayout: Layout {
     let record: LaidOutHeights
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let size = subviews.first?.sizeThatFits(proposal) ?? .zero
+        let size = subviews.first?.sizeThatFits(ProposedViewSize(width: proposal.width, height: nil)) ?? .zero
         MainActor.assumeIsolated { record.heights.append(size.height) }
         return size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(bounds.size))
+        subviews.first?.place(at: bounds.origin, proposal: ProposedViewSize(width: bounds.width, height: nil))
     }
 }
 
@@ -56,9 +57,7 @@ final class TextualFirstLayoutTests: XCTestCase {
     /// A list's items were spaced by their views in a first pass and by the list item spacing,
     /// read from a preference, in a second; a numbered list's markers were each as wide as their
     /// own number in a first pass, lining up only in a second, which laid every item's text out
-    /// again at its new width (Textual patch 33). Text of several blocks that is not a list, such
-    /// as a paragraph followed by a list, still takes the second pass for the spacing between
-    /// its blocks, which only moves them: their sizes are the ones already measured.
+    /// again at its new width (Textual patch 33).
     func testAListIsLaidOutAtItsFinalHeightTheFirstTime() throws {
         let numberedItems = (1...12).map { number in "\(number). Item \(number) of a numbered list long enough to wrap onto a second line in the column" }
         try assertLaidOutAtItsFinalHeightTheFirstTime([
@@ -70,12 +69,45 @@ final class TextualFirstLayoutTests: XCTestCase {
         ])
     }
 
+    /// Text of several blocks that is not a list was spaced by its views in a first pass and by
+    /// the spacing its blocks ask for, read from a preference, in a second (Textual patch 36).
+    func testTextOfSeveralBlocksIsLaidOutAtItsFinalHeightTheFirstTime() throws {
+        let blocks = [
+            "A quote's first paragraph, long enough to wrap onto a second line in a column of six hundred points.\n\nIts second paragraph.",
+            "A paragraph before a quote.\n\n> The quote's first paragraph.\n>\n> Its second paragraph.",
+            "A paragraph before a table.\n\n| Stage | Size |\n| --- | --- |\n| 1 | 1 |",
+            "## A heading\n\nThe paragraph under it.\n\n---\n\nA paragraph after a rule.",
+        ]
+        try assertLaidOutAtItsFinalHeightTheFirstTime(blocks.map { markdown in (markdown, AnyView(Self.text(markdown))) })
+        // The first is laid out as one block quote, the others as the body of a callout.
+        let quoted = "> " + blocks[0].replacingOccurrences(of: "\n", with: "\n> ")
+        let calloutBodies = [
+            "A paragraph in a callout, before its list.\n\n- First item\n- Second item, long enough to wrap onto a second line in the callout's column",
+            "A paragraph in a callout.",
+            "A paragraph, a code block and a list.\n\n```swift\nlet answer = 42\nprint(answer)\n```\n\n1. One\n2. Two",
+        ]
+        try assertLaidOutAtItsFinalHeightTheFirstTime([(quoted, AnyView(Self.text(quoted)))] + calloutBodies.map { markdown in
+            (markdown, AnyView(CalloutView(type: "note", title: "Note", folding: .notFoldable, root: Self.root, textSize: 17, navigate: { _, _ in }) {
+                Self.text(markdown)
+            }))
+        })
+    }
+
+    private static let root = URL(fileURLWithPath: "/", isDirectory: true)
+
+    private static func text(_ markdown: String) -> ObsidianMarkdownText {
+        ObsidianMarkdownText(markdown: markdown, root: root, textSize: 17, navigate: { _, _ in }, scrollToHeading: { _ in })
+    }
+
     private func assertLaidOutAtItsFinalHeightTheFirstTime(_ blocks: [String], file: StaticString = #filePath, line: UInt = #line) throws {
-        for markdown in blocks {
+        try assertLaidOutAtItsFinalHeightTheFirstTime(blocks.map { markdown in (markdown, AnyView(Self.text(markdown))) }, file: file, line: line)
+    }
+
+    private func assertLaidOutAtItsFinalHeightTheFirstTime(_ views: [(markdown: String, view: AnyView)], file: StaticString = #filePath,
+                                                           line: UInt = #line) throws {
+        for (markdown, view) in views {
             let record = LaidOutHeights()
-            let text = ObsidianMarkdownText(markdown: markdown, root: URL(fileURLWithPath: "/", isDirectory: true), textSize: 17,
-                                            navigate: { _, _ in }, scrollToHeading: { _ in })
-            let hosting = NSHostingView(rootView: HeightRecordingLayout(record: record) { text }.frame(width: 600, alignment: .topLeading))
+            let hosting = NSHostingView(rootView: HeightRecordingLayout(record: record) { view }.frame(width: 600, alignment: .topLeading))
             let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: 400), styleMask: .borderless, backing: .buffered, defer: false)
             window.contentView = hosting
             window.showInvisibly()
