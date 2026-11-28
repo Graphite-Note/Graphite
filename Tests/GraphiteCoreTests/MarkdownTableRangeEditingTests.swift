@@ -2,11 +2,11 @@
  * File: MarkdownTableRangeEditingTests.swift
  * ------------------------------------------
  * Layer: Tests
- * Description: Tests of a row above the header, moving any row, and clearing, deleting, copying and pasting a table's cells.
+ * Description: Tests of a row above the header, moving any row or column by any number of places, and clearing, deleting, copying and pasting a table's cells.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 17/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -39,6 +39,19 @@ final class MarkdownTableRangeEditingTests: XCTestCase {
         """)
         XCTAssertEqual(MarkdownTableEditing.movingRow(1, to: 1, in: table), table)
         XCTAssertNil(MarkdownTableEditing.movingRow(1, to: 3, in: table))
+    }
+
+    /// A grip dragged across several rows or columns moves its row or column that far in one
+    /// edit, the ones between shifting by one, the header line and the delimiter kept in place.
+    func testAGripDragMovesARowOrAColumnByMoreThanOnePlace() {
+        let fourRows = "| h | x |\n| - | :-: |\n| 1 | a |\n| 2 | b |\n| 3 | c |\n"
+        XCTAssertEqual(MarkdownTableEditing.movingRow(3, to: 1, in: fourRows), "| h | x |\n| - | :-: |\n| 3 | c |\n| 1 | a |\n| 2 | b |\n")
+        XCTAssertEqual(MarkdownTableEditing.movingRow(1, to: 3, in: fourRows), "| h | x |\n| - | :-: |\n| 2 | b |\n| 3 | c |\n| 1 | a |\n")
+        XCTAssertEqual(MarkdownTableEditing.movingRow(3, to: 0, in: fourRows), "| 3 | c |\n| - | :-: |\n| h | x |\n| 1 | a |\n| 2 | b |\n",
+                       "The last row dragged onto the header becomes the header.")
+        let fourColumns = "| a | b | c | d |\n| :- | -- | -: | -- |\n| 1 | 2 | 3 | 4 |\n"
+        XCTAssertEqual(MarkdownTableEditing.movingColumn(at: 0, by: 3, in: fourColumns), "| b | c | d | a |\n| -- | -: | -- | :- |\n| 2 | 3 | 4 | 1 |\n")
+        XCTAssertEqual(MarkdownTableEditing.movingColumn(at: 3, by: -2, in: fourColumns), "| a | d | b | c |\n| :- | -- | -- | -: |\n| 1 | 4 | 2 | 3 |\n")
     }
 
     func testNewColumnTakesTheGivenAlignment() {

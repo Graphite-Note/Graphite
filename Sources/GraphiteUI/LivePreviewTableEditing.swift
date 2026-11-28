@@ -6,8 +6,8 @@
  *              puts its layer over the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.10
- * Date: 17/11/2026
+ * Version: 0.11
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -84,6 +84,10 @@ final class LivePreviewTableEditor {
     private(set) var commandCell: TableCellPosition?
     /// Asks the cell editor to take the keyboard: it changes when editing begins.
     private(set) var focusRequest = 0
+    /// The height the edited cell's field takes, its padding included: the drawn cell grows to
+    /// it, and so its row, when the cell's source takes more lines than its drawn text, as
+    /// Obsidian's row grows with the edited cell (`EditedTableCellRoom`).
+    private(set) var editedCellHeight: CGFloat?
     /// The edited cell's text, as `MarkdownTableEditing.editableText(ofCellSource:)` shows it.
     var draftText = "" {
         didSet { if draftText != oldValue { draftDidChange(from: oldValue) } }
@@ -167,6 +171,19 @@ final class LivePreviewTableEditor {
 
     // MARK: Editing a cell
 
+    /// The edited cell's field took another height, as its text wrapped onto another line.
+    func editedFieldHeightDidChange(_ height: CGFloat) {
+        let roundedHeight = height.rounded(.up)
+        if editingCell != nil, roundedHeight != editedCellHeight { editedCellHeight = roundedHeight }
+    }
+
+    /// The height the drawn cell at `row` and `column` keeps at least: its field's while it is
+    /// edited, nil for every other cell.
+    func minimumHeight(ofCellAtRow row: Int, column: Int) -> CGFloat? {
+        guard let editingCell, editingCell.row == row, editingCell.column == column else { return nil }
+        return editedCellHeight
+    }
+
     /// The cell field's padding inside a cell, in text sizes, as the rendered cells have it.
     static let horizontalPaddingScale = 0.6
     static let verticalPaddingScale = 0.35
@@ -196,6 +213,7 @@ final class LivePreviewTableEditor {
             sourceEditing?.setDraftCommit(ObjectIdentifier(self)) { [weak self] in self?.commitDraft() }
         }
         self.caret = caret
+        if cell != editingCell { editedCellHeight = nil }
         committedDraft = text
         cellTextAsWritten = text
         editingCell = cell
@@ -216,6 +234,7 @@ final class LivePreviewTableEditor {
         guard editingCell != nil else { return }
         commitDraft()
         editingCell = nil
+        editedCellHeight = nil
         clearSelection()
         lastEditingFrame = nil
         sourceEditing?.setDraftCommit(ObjectIdentifier(self), nil)

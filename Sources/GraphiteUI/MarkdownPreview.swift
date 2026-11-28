@@ -2895,6 +2895,7 @@ struct ObsidianTableCellStyle: StructuredText.TableCellStyle {
             .fontWeight(configuration.row == 0 ? .semibold : .regular)
             .foregroundStyle(configuration.row == 0 ? (theme?.tableHeaderTextColor.map { color in AnyShapeStyle(Color(color)) } ?? AnyShapeStyle(.primary)) : AnyShapeStyle(.primary))
             .textual.padding(.fontScaled(top: 0.35, leading: 0.6, bottom: 0.35, trailing: 0.6))
+            .modifier(EditedTableCellRoom(row: configuration.row, column: configuration.column))
     }
 }
 
