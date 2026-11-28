@@ -21,7 +21,8 @@ import GraphiteIndex
 /// Found in the iPad simulator on 2026-11-12 and 2026-11-13 (Docs/Bug-hunt-todo.md, HUNT-353): a tap in a note, or in
 /// a table's cell, showed the sidebar beside the note. The software keyboard took its room from the window's root view,
 /// which measured the window's shape: 834 points wide and 1,194 tall less the keyboard is wider than tall, so the window
-/// read as turned sideways, where the sidebar shows beside the documents. Nothing here plays sound.
+/// read as turned sideways, where the sidebar shows beside the documents. On a simulator whose keyboard is lower the
+/// window is made shorter until it has that shape. Nothing here plays sound.
 @MainActor
 final class SidebarAtKeyboardHostedTests: XCTestCase {
     private var window: UIWindow?
@@ -68,6 +69,17 @@ final class SidebarAtKeyboardHostedTests: XCTestCase {
         }
         try await waitUntil("the software keyboard shows", timeoutSeconds: 10) { keyboardHeight() > 200 }
         print("SIDEBAR-AT-KEYBOARD keyboard \(keyboardHeight()) points high, window less it \(window.bounds.height - keyboardHeight())")
+        if window.bounds.height - keyboardHeight() >= window.bounds.width {
+            // A larger simulator's keyboard is lower (HUNT-379: on the 13-inch one, 1,194 less it is 925). The window is
+            // made shorter from the top, its bottom kept at the keyboard's edge, until less the keyboard it is wider than
+            // tall, as on the 11-inch simulator; the window itself stays upright.
+            let shorterHeight = window.bounds.width + keyboardHeight() - 60
+            XCTAssertGreaterThan(shorterHeight, window.bounds.width, "The shorter window is still upright")
+            window.frame = CGRect(x: window.frame.minX, y: window.frame.maxY - shorterHeight, width: window.bounds.width, height: shorterHeight)
+            try await waitUntil("the shorter window less its keyboard is wider than tall") {
+                window.bounds.height - keyboardHeight() < window.bounds.width
+            }
+        }
         XCTAssertLessThan(window.bounds.height - keyboardHeight(), window.bounds.width, "The window less its keyboard is wider than tall, as found")
         try await waitUntilSettled("the layout with the keyboard has settled") { textView.convert(textView.bounds, to: window) }
         let typingFrame = textView.convert(textView.bounds, to: window)
