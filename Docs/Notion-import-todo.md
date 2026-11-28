@@ -262,9 +262,12 @@ Issue: [#283](https://github.com/Graphite-Note/Graphite/issues/283)
 
 Request of 2026-11-28: the README shows the import with real pictures, a Notion page next to the same page imported into Graphite, a few pairs covering what Obsidian's Importer loses and this one keeps. A few lines and pictures, no large tables. No picture comes from the team workspace of section 10 or from any export without a license that allows it: the pages shown are made for the purpose (fictional demo content) or come from a source whose license allows it. Where the Notion side comes from is undecided.
 
-- [ ] A demo workspace made for the purpose, exported from Notion as HTML and imported into a vault, showing: a cover and an icon, columns, colored text and highlights, callouts with their icons, toggles, equations, a database as a base with its views, a linked view of a database, and lists of links to pages with their icons.
-- [ ] Pairs captured on the Mac in light and dark: each Notion page beside the same page in Graphite's reading view at the same width.
+- [x] A demo workspace made for the purpose, exported from Notion as HTML and imported into a vault, showing: a cover and an icon, columns, colored text and highlights, callouts with their icons, toggles, equations, a database as a base with its views, a linked view of a database, and lists of links to pages with their icons.
+  Done 2026-11-28: "Signals & Systems", fictional course content made in Notion for the purpose (82 KB, 14 files), the Importer's fixture `Tests/Fixtures/Notion/signals-and-systems.zip`, imported by its `NotionReadmeDemoTests` and with Importer 0.5.1 into the comparison vault, where the comparator finds no unexplained difference. Making it found what 0.5.1 fixed: titles cut at a colon, colors as HTML spans, callouts drawn as titles, a base's view named "Table".
+- [x] Pairs captured on the Mac in light and dark: each Notion page beside the same page in Graphite's reading view at the same width.
+  Done 2026-11-28: four sections (the top of the course page, its database and key ideas, a checklist with code, the Sampling page's linked view), Notion in dark and Graphite (main 211baaa1 with Importer 0.5.1) in dark and light, sidebars hidden, nothing private in them. Cropped to the page and written as JPEG, 1326 and 1600 pixels wide, about 100 to 150 KB each.
 - [ ] The Importer's README shows the pairs with a few lines each, and Graphite's README shows one pair linking to it.
+  2026-11-28: written. The Importer's README with the four pairs and one light picture is Graphite-Note/Importer#10. Graphite's README with the top pair, under "Move in from Notion", is on PR #260, as it shows Importer 0.5.1, which main does not hold yet (main pins 0.1.0). Ticked once both are merged.
 
 ## Risks
 
