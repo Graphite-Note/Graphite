@@ -6,7 +6,7 @@
  *              Added, Changed and Fixed lines, read from the strict Markdown of ReleaseNotes.md.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -95,6 +95,16 @@ public struct ReleaseNoteGroup: Hashable, Sendable {
     public var day: DateComponents {
         let number = moment.minutesNumber / 10_000
         return DateComponents(year: number / 10_000, month: number / 100 % 100, day: number % 100)
+    }
+
+    /// The group's day and time when its heading gives a time, so the groups of several uploads on
+    /// one day read apart; nil for a heading with a date alone.
+    public var dayAndTime: DateComponents? {
+        guard heading.contains(" ") else { return nil }
+        var components = day
+        components.hour = moment.minutesNumber % 10_000 / 100
+        components.minute = moment.minutesNumber % 100
+        return components
     }
 }
 

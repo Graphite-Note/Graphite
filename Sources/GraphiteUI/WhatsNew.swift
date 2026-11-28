@@ -6,7 +6,7 @@
  *              came since the last update marked; and its opening once after an update.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -224,7 +224,11 @@ private struct WhatsNewGroupView: View {
         }
     }
 
+    /// The day, with the time for a group that has one: several uploads a day otherwise read as the same heading.
     private var dayText: String {
+        if let dayAndTime = group.dayAndTime, let date = calendar.date(from: dayAndTime) {
+            return date.formatted(date: .long, time: .shortened)
+        }
         guard let date = calendar.date(from: group.day) else { return group.heading }
         return date.formatted(date: .long, time: .omitted)
     }

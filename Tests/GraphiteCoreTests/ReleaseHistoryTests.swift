@@ -6,7 +6,7 @@
  *              device, and when a launch opens What's New.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -46,6 +46,8 @@ final class ReleaseHistoryTests: XCTestCase {
         ])
         XCTAssertEqual(history.versions[0].groups[1].entries[0].platforms, [.iPad, .iPhone])
         XCTAssertEqual(history.versions[0].groups[1].day, DateComponents(year: 2026, month: 11, day: 27))
+        XCTAssertNil(history.versions[0].groups[1].dayAndTime, "a date alone shows no time")
+        XCTAssertEqual(history.versions[0].groups[0].dayAndTime, DateComponents(year: 2026, month: 11, day: 28, hour: 14, minute: 5))
     }
 
     func testADateWithoutATimeIsTheLastMinuteOfItsDayAndOrdersWithBuildNumbers() throws {

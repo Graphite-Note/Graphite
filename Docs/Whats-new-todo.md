@@ -2,7 +2,7 @@
 
 Created: 2026-11-28.
 
-Status: planned and section 1 built 2026-11-28; section 2 built and checked in an iPad simulator, the Mac's Settings button and Help menu item not yet checked by hand. Issues: [#285](https://github.com/Graphite-Note/Graphite/issues/285) (section 1), [#286](https://github.com/Graphite-Note/Graphite/issues/286) (section 2).
+Status: built and checked 2026-11-28 (both sections). Issues: [#285](https://github.com/Graphite-Note/Graphite/issues/285) (section 1), [#286](https://github.com/Graphite-Note/Graphite/issues/286) (section 2).
 
 ## Request
 
@@ -31,5 +31,5 @@ Issue: [#286](https://github.com/Graphite-Note/Graphite/issues/286)
 
 - [x] A page grouped by version, newest first, each version's days with their Added, Changed and Fixed lines, scrolling through every version; the groups since the last update are marked as new. Done 2026-11-28: `WhatsNewPage` in `Sources/GraphiteUI/WhatsNew.swift`, version headers pinned while scrolling, each line's kind a coloured word. `WhatsNewTests.testThePageDrawsTheBundledHistoryWithGroupsMarkedNew`. Checked in an iPad simulator (iPad Pro 11-inch, iOS 27.2) in light and dark: an update from build 20261117.1236 marked 17 November and later as New and left 16 November unmarked.
 - [x] It opens by itself once after an update, as the Decisions say, in one window only when several windows reopen. Done 2026-11-28: `AfterUpdateWhatsNew` with `WhatsNewAtLaunch.decide` (GraphiteCore); `WhatsNewScheduleTests` (6). Checked in the iPad simulator with a build numbered 20261128.1200: a new install showed the welcome tour and recorded the build without opening What's New, an update opened it, and the next launch opened nothing. Several windows reopening at once not checked.
-- [ ] Settings › General › About › What's New, and Help › What's New in Graphite on the Mac.
-- [ ] Checked on the Mac and in an iPad simulator: the first launch after an update shows it, the next launch does not, a new install shows the welcome tour instead.
+- [x] Settings › General › About › What's New, and Help › What's New in Graphite on the Mac. Done 2026-11-28: both checked by hand in a separate copy of the Mac app (its own bundle ID) built from main acfb3379: the Settings button opens the page as a sheet over Settings, the Help item opens it in a window of its own. Settings' button is not tapped on the iPad.
+- [x] Checked on the Mac and in an iPad simulator: the first launch after an update shows it, the next launch does not, a new install shows the welcome tour instead. Done 2026-11-28: the iPad simulator as in the item above; on the Mac, in the same copy numbered 20261128.1300, a new install showed the welcome tour and recorded the build, a launch as an update from 20261117.1236 opened the sheet with the newer groups marked New, Done closed it, and the next launch opened nothing. The check showed several uploads of one day under the same date heading; a group with a time now shows it (`ReleaseNoteGroup.dayAndTime`).

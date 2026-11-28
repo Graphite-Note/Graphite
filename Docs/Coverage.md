@@ -10,7 +10,8 @@ Last updated: 2026-11-28.
 
 - **Automated tests, passing on macOS:** `ReleaseHistoryTests` (7: versions, groups, kinds and platforms read; a date alone as the end of its day, ordered with build numbers; build numbers with or without the time's leading zeros; narrowing to a device; malformed lines, empty versions and groups, and groups out of order refused with their line numbers), `WhatsNewScheduleTests` (6: an update, the same build again, a new install, an update from before What's New, an update with nothing for the device, a build without a number), `WhatsNewTests` (2: the bundled file read in full with lines on every device; the page drawn).
 - **Checked in an iPad simulator** (iPad Pro 11-inch, iOS 27.2, build numbered 20261128.1200): a new install showed the welcome tour only, an update from 20261117.1236 opened the page with the groups since then marked New, in light and dark, the version header stayed pinned while scrolling, and the next launch opened nothing.
-- **Not checked:** the Mac's sheet, window and Help menu item by hand, the Settings button on either platform, several windows reopening at once.
+- **Checked by hand on the Mac** (a copy of the app under its own bundle ID, built from main acfb3379 and numbered 20261128.1300): a new install showed the welcome tour only, a launch as an update from 20261117.1236 opened the sheet with the newer groups marked New, the next launch opened nothing, Settings › General › What's New opened the sheet over Settings and Help › What's New in Graphite a window of its own. The check showed the day's several uploads under one repeated date heading: a group with a time now shows it ("28 November 2026 at 12:52", `ReleaseNoteGroup.dayAndTime`, tested in `ReleaseHistoryTests`).
+- **Not checked:** the Settings button on the iPad, several windows reopening at once.
 
 ## The Mac's reading view and right sidebar come and go without the toolbar being made again: 2026-11-28
 
