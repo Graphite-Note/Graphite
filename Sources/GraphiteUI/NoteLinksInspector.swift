@@ -5,8 +5,8 @@
  * Description: The right sidebar of a note: outline, backlinks, outgoing links, tags, footnotes and the local graph
  *              and map.
  *
- * Authors: felixchvl
- * Version: 0.6
+ * Authors: felixchvl, Bahey Shalash
+ * Version: 0.7
  * Date: 28/11/2026
  */
 
@@ -40,7 +40,7 @@ struct NoteLinksInspector: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var outline: [OutlineHeading] = []
 
-    struct OutlineHeading: Identifiable {
+    struct OutlineHeading: Identifiable, Sendable {
         let id: Int
         let level: Int
         let text: String
@@ -55,19 +55,37 @@ struct NoteLinksInspector: View {
     private func readNoteParts() async {
         do {
             try await Task.sleep(for: .milliseconds(250))
-            let text = session.text
             let path = session.path
-            let semantics = try await Task.detached { try MarkdownSemantics.parse(text) }.value
+            let parts = try await Self.readParts(of: session.text)
             // A detached task goes on after this one is cancelled, and its result is for the note it was started on.
             guard !Task.isCancelled, session.path == path else { return }
-            let body = semantics.body
-            let (listedFootnotes, headings) = await Task.detached { (Footnotes.listed(in: text), Self.outlineHeadings(in: body)) }.value
-            guard !Task.isCancelled, session.path == path else { return }
-            outgoing = Self.outgoingLinks(in: semantics.links); tags = semantics.tags
-            footnotes = listedFootnotes
-            outline = headings
+            outgoing = parts.outgoing; tags = parts.tags
+            footnotes = parts.footnotes
+            outline = parts.outline
         } catch is CancellationError {
         } catch { workspace.errorMessage.report(error) }
+    }
+
+    /// What the sidebar lists of a note, all read from its text.
+    struct NoteParts: Sendable {
+        let outgoing: [OutgoingLink]
+        let tags: [String]
+        let footnotes: [(note: Footnotes.Note, location: Int)]
+        let outline: [OutlineHeading]
+    }
+
+    /// The note's parts, read by `reading` in a detached task, so never on the main thread even when asked from the main
+    /// actor, as the view's task asks; tests pass a `reading` that records where it ran.
+    nonisolated static func readParts(of text: String,
+                                      reading: @escaping @Sendable (String) throws -> NoteParts = { text in try parts(of: text) }) async throws -> NoteParts {
+        try await Task.detached { try reading(text) }.value
+    }
+
+    /// The note's parts, read where this is called.
+    nonisolated static func parts(of text: String) throws -> NoteParts {
+        let semantics = try MarkdownSemantics.parse(text)
+        return NoteParts(outgoing: outgoingLinks(in: semantics.links), tags: semantics.tags,
+                         footnotes: Footnotes.listed(in: text), outline: outlineHeadings(in: semantics.body))
     }
 
     /// The outline of a note's body, each heading numbered among those that read the same,
@@ -83,7 +101,7 @@ struct NoteLinksInspector: View {
 
     /// A link this note makes, kept with its syntax: a Markdown link's target is a
     /// percent-encoded path relative to the note, which Wikilink rules would misread.
-    struct OutgoingLink: Hashable {
+    struct OutgoingLink: Hashable, Sendable {
         let target: String
         let isWiki: Bool
 

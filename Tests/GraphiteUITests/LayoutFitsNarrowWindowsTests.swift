@@ -6,8 +6,8 @@
  *              where they stand, and the phone's palette and bookmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 21/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -98,10 +98,10 @@ final class LayoutFitsNarrowWindowsTests: XCTestCase {
     // MARK: HUNT-274, HUNT-260: a phone held sideways
 
     func testAPhoneHeldSidewaysKeepsTheControlsInTheNavigationBar() {
-        XCTAssertFalse(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular, verticalSizeClass: .compact),
+        XCTAssertFalse(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular, verticalSizeClass: .compact, toolbar: .iPad),
                        "A Max phone held sideways is regular in width and compact in height.")
-        XCTAssertTrue(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular, verticalSizeClass: .regular))
-        XCTAssertTrue(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular), "An iPad: no vertical class given.")
+        XCTAssertTrue(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular, verticalSizeClass: .regular, toolbar: .iPad))
+        XCTAssertTrue(DocumentToolbarLayout.usesControlRow(detailWidth: 700, horizontalSizeClass: .regular, toolbar: .iPad), "An iPad: no vertical class given.")
     }
 
     func testTheBarsGiveWayToTheNoteWhileTypingInACompactHeight() {

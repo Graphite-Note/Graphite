@@ -6,8 +6,8 @@
  *              tools.
  *
  * Authors: Bahey Shalash, felixchvl
- * Version: 0.9
- * Date: 04/11/2026
+ * Version: 1.0
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -88,6 +88,36 @@ enum DocumentToolbarLayout {
     /// their own where that has no room either.
     static let minimumDetailWidthForToolbarControls: CGFloat = 1_100
 
+    /// The Mac's toolbar has no Undo and Redo: beside the title, Back, Forward and the search field it held Format,
+    /// Insert, Write, More and Sidebar whole down to a documents area of about 600 points, and put Write, More and
+    /// Sidebar in its overflow menu at about 520 (measured 2026-11-28 in `ViewSwitchingWindow`). At the iPad's 1,100,
+    /// a window of 1,440 points moved Write out of the toolbar whenever the right sidebar opened, and back when it
+    /// closed, and SwiftUI made the toolbar's items and their menus again each time (`Docs/View-switching-speed-todo.md`
+    /// section 2).
+    static let minimumMacDetailWidthForToolbarControls: CGFloat = 640
+
+    /// The window toolbar a document's controls are laid out in.
+    enum Toolbar {
+        /// iPadOS's, whose overflow menu would hold Undo and Redo a menu away.
+        case iPad
+        /// The Mac's.
+        case mac
+
+        #if os(macOS)
+        static let current = Toolbar.mac
+        #else
+        static let current = Toolbar.iPad
+        #endif
+
+        /// Narrower than this, the controls leave this toolbar.
+        var minimumDetailWidthForControls: CGFloat {
+            switch self {
+            case .iPad: DocumentToolbarLayout.minimumDetailWidthForToolbarControls
+            case .mac: DocumentToolbarLayout.minimumMacDetailWidthForToolbarControls
+            }
+        }
+    }
+
     /// The narrowest tab bar that holds the controls and still shows two tabs. Its own
     /// buttons and the controls take about 250 points.
     static let minimumTabBarWidthForControls: CGFloat = 480
@@ -101,11 +131,12 @@ enum DocumentToolbarLayout {
     /// - Parameters:
     ///   - detailWidth: The width of the documents area, nil when unknown.
     ///   - verticalSizeClass: The window's vertical size class, nil when unknown.
+    ///   - toolbar: The toolbar the controls would be in, this platform's unless asked.
     static func usesControlRow(detailWidth: CGFloat?, horizontalSizeClass: UserInterfaceSizeClass?,
-                               verticalSizeClass: UserInterfaceSizeClass? = nil) -> Bool {
+                               verticalSizeClass: UserInterfaceSizeClass? = nil, toolbar: Toolbar = .current) -> Bool {
         if horizontalSizeClass == .compact || verticalSizeClass == .compact { return false }
         guard let detailWidth else { return false }
-        return detailWidth < minimumDetailWidthForToolbarControls
+        return detailWidth < toolbar.minimumDetailWidthForControls
     }
 
     /// Whether the navigation bar and the tab bar give way while the keyboard is up: in a window of compact height, a

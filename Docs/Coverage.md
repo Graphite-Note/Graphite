@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-28.
 
+## The Mac's reading view and right sidebar come and go without the toolbar being made again: 2026-11-28
+
+[View-switching-speed-todo.md](View-switching-speed-todo.md) section 2 (issue #147). In a 1,440-point window the right sidebar left the documents area under the 1,100 points at which a note's Write left the toolbar, so each opening and closing moved Write and SwiftUI made the toolbar's items and their menus again. The Mac keeps the controls in its toolbar down to 640 points (`DocumentToolbarLayout.Toolbar`), where it was measured to hold them whole; the iPad keeps 1,100. Format and Insert, which show only while a note is written, are a toolbar group of their own on the Mac, so switching between Live Preview and the reading view no longer makes Write, More, Sidebar and the menus' items again: on the long lecture of the made-up vault (Release, medians of 16) Live Preview → Reading went from 227 to 69 ms of main thread and Reading → Live Preview from 252 to 110 ms. The right sidebar's outline, links, tags and footnotes are read through `NoteLinksInspector.readParts(of:reading:)`, off the main thread.
+
+- **Automated tests, passing on macOS:** `ViewSwitchingMacTests.testTheRightSidebarOpensAndClosesWithoutTheToolbarsItemsBeingMadeAgain` (the toolbar keeps its own items through an opening and a closing), `ViewSwitchingMacTests.testTheReadingViewKeepsTheToolbarsWriteMoreAndSidebarItems`, `WorkspaceFocusModeTests` (the Mac's and the iPad's thresholds), `LayoutFitsNarrowWindowsTests`, `NoteLinksInspectorPartsTests` (2: the parts are read off the main thread when the main actor asks, and what they are).
+- **Measured** (Mac, Release, the made-up vault of section 3, medians of six, same build but for the threshold): showing the right sidebar 208 and 316 → 110 and 105 ms of main thread, hiding 348 and 397 → 99 and 76 ms (two rounds), its longest step under 75 ms. Opening a picture in a tab 36 to 76 ms after the first (133 to 244 ms).
+- **Not established:** a press of the button by hand on a Mac, and the toolbar's look in a window between 640 and 1,100 points of documents area, which now keeps Write in the toolbar rather than the tab bar (the items' presence was read, not looked at).
+
 ## New notebooks, their tiles, and a library of 100,000 notes: 2026-11-28
 
 [Notebook-library-and-new-file-todo.md](Notebook-library-and-new-file-todo.md) Verification (issue #38), and HUNT-385 of [Bug-hunt-todo.md](Bug-hunt-todo.md) (issue #123).
