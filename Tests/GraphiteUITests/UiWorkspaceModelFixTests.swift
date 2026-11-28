@@ -341,6 +341,22 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertFalse(nextNodes.contains("Old.md"), "\(nextNodes)")
     }
 
+    /// The tags kept for suggestions from the index of the vault being left are not the next vault's, even under the same
+    /// index version: the kept tags name the index they were read from (as the graph does, HUNT-384).
+    func testTagSuggestionsKeptFromTheIndexOfTheVaultBeingLeftAreNotTheNextVaults() async throws {
+        let firstVault = try makeVault(files: ["Old.md": "A note of the vault being left. #oldvaulttag"])
+        let workspace = try await openedWorkspace(firstVault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let suggestions = workspace.propertySuggestions
+        let oldTags = await suggestions.vaultTags("oldvault", 10).map(\.tag)
+        XCTAssertEqual(oldTags, ["oldvaulttag"])
+
+        // The next vault's index comes in, the index version as it was.
+        workspace.index = try VaultIndex(databaseURL: try makeVault().appendingPathComponent("index.sqlite"))
+        let nextTags = await suggestions.vaultTags("oldvault", 10).map(\.tag)
+        XCTAssertEqual(nextTags, [], "The next vault suggests none of the tags of the vault it left.")
+    }
+
     /// A map query of the vault being left that ends after the switch neither fills the cache
     /// nor reaches the next vault's map.
     func testAMapQueryOfTheVaultBeingLeftIsNotShownInTheNextVault() async throws {

@@ -5,8 +5,8 @@
  * Description: Paging, cancellation, text matching and error reporting of search and the quick switcher.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 01/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -360,5 +360,23 @@ final class IndexSearchFixTests: XCTestCase {
         }
         let none = try await index.tags(matching: "", limit: -1)
         XCTAssertTrue(none.isEmpty)
+    }
+
+    /// The tags read once and filtered in memory, as suggestions use them, are what the query answers for each query.
+    func testTheTagsFilteredInMemoryAreTheOnesTheQueryGives() async throws {
+        try await index.update([
+            try note("A.md", "#Été #course/math"),
+            try note("B.md", "#été #course/physics #Lecture"),
+            try note("C.md", "#Été #été #lecture #course/math"),
+            try note("D.md", "#lecture #Week_1"),
+        ], generation: "test")
+        let all = try await index.tags(matching: "", limit: VaultIndex.maximumTagsKeptForSuggestions)
+        for query in ["", "ét", "ÉT", "course", "COURSE/M", "lec", "week_", "e", "nothing"] {
+            for limit in [1, 2, 30] {
+                let queried = try await index.tags(matching: query, limit: limit)
+                XCTAssertEqual(VaultIndex.tags(all, matching: query, limit: limit), queried, "\(query), \(limit)")
+            }
+        }
+        XCTAssertTrue(VaultIndex.tags(all, matching: "", limit: 0).isEmpty)
     }
 }

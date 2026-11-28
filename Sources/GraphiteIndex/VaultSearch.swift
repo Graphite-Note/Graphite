@@ -5,8 +5,8 @@
  * Description: Places in the note that matched, in order. Empty when only the name matched.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 11/11/2026
+ * Version: 0.10
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -785,6 +785,20 @@ extension VaultIndex {
             }.prefix(limit))
         }
     }
+
+    /// The tags of `counts` (read with an empty query, most used first) whose name contains `query` ignoring capitals, in
+    /// the same order, at most `limit`: what `tags(matching:limit:)` answers for `query`, without reading the index again
+    /// at each keystroke. Spellings are grouped by their lowercased name either way, so filtering the whole list keeps
+    /// the query's groups, counts and order.
+    public nonisolated static func tags(_ counts: [TagCount], matching query: String, limit: Int) -> [TagCount] {
+        guard limit > 0 else { return [] }
+        let foldedQuery = query.lowercased()
+        guard !foldedQuery.isEmpty else { return Array(counts.prefix(limit)) }
+        return Array(counts.lazy.filter { count in count.tag.lowercased().contains(foldedQuery) }.prefix(limit))
+    }
+
+    /// At most this many tags are kept for suggestions read once and filtered as the person types.
+    public static let maximumTagsKeptForSuggestions = 20_000
 
     /// Every level of every tag (`course` and `course/math` for `#course/math`), each with
     /// the notes that have it or a tag nested under it, for the Tags view's nested list.

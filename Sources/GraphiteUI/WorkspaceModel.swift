@@ -214,6 +214,8 @@ final class WorkspaceModel {
     @ObservationIgnored var propertySuggestionCache: PropertySuggestionCache?
     /// Each property's values read for suggestions, kept until the index changes (`PropertySuggestions`).
     @ObservationIgnored var propertyValueSuggestionCache: PropertyValueSuggestionCache?
+    /// The vault's tags read for suggestions, most used first, kept until the index changes (`PropertySuggestions`).
+    @ObservationIgnored var tagSuggestionCache: (key: SuggestionCacheKey, tags: [TagCount])?
     /// Which files Graphite's own save changed for the newest `indexVersion`; open bases that
     /// none of them can affect do not run again.
     @ObservationIgnored var lastIndexChange: BaseContentChange?

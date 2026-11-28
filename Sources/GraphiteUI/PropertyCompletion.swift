@@ -6,8 +6,8 @@
  *              in the editor's suggestion list, and the same suggestions for the Properties panel's fields.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 16/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -91,7 +91,7 @@ struct PropertySuggestions {
 
 /// The vault's property names as last read for suggestions, with the index version they were read at.
 struct PropertySuggestionCache {
-    let indexVersion: Int
+    let key: SuggestionCacheKey
     let summaries: [PropertySummary]
 }
 
