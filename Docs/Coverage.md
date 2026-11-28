@@ -3059,6 +3059,8 @@ A page before links without an icon in a list of icon links (section 7, 2026-11-
 
 Icons of a vault opened unchanged since its last scan (section 7, 2026-11-28): `NoteIconCatalogLoadMacTests.testAVaultUnchangedSinceItsLastScanStillShowsItsIcons`, which failed before the change, and a made-up vault of 3,013 notes drawn fresh, rewritten and unchanged in the Mac app's window.
 
+Every icon before a link in the same square (section 7, 2026-11-28): `ReadingCoverTests.testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline` (an emoji and a wide picture drawn square, every kind's address read back at 20 points beside 16-point text, the attachment's square and baseline), the earlier icon tests reading the emoji's picture, and the made-up course hub's pictures on the Mac and the iPad simulator, light and dark.
+
 ## The test vault
 
 `Tests/test_vault/` (not committed; see `.gitignore`) is a copy of a real course vault plus edge cases for testing by hand. Every edge-case note starts with a "What to check" callout saying what correct behavior looks like, compared with Obsidian.

@@ -6,7 +6,7 @@
  *              and Iconize an icon in Obsidian: an emoji as text, a picture or a symbol as a small picture inside the text.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 28/11/2026
  */
 
@@ -25,42 +25,52 @@ enum NoteIconInlineAddress {
     static let scheme = "graphite-note-icon"
     static let symbolHost = "symbol"
     static let webHost = "web"
+    static let emojiHost = "emoji"
+    static let vaultHost = "vault"
     static let addressKey = "address"
-    /// An icon before a link is as tall as a line's capitals and a little more.
-    static let sizeInEms = 1.1
+    /// Every icon before a link takes the same square, 1.25 em as Notion's 20-point icons beside its 16-pixel text, so
+    /// the lines of a list of links are as tall as each other and their text starts at the same place.
+    static let sizeInEms = 1.25
+    /// How far below the baseline the square starts, as a share of its side: an emoji's own place on the line.
+    static let shareBelowBaseline = 0.18
 
     static func url(of icon: NoteIcon, root: URL, textSize: Double) -> URL? {
         let size = EmbedDisplaySize(width: (textSize * sizeInEms).rounded(), height: nil)
+        var components = URLComponents()
+        components.scheme = scheme
         switch icon {
-        case .emoji: return nil
+        case .emoji(let emoji):
+            components.host = emojiHost; components.queryItems = [URLQueryItem(name: addressKey, value: emoji)]
         case .picture(.vaultFile(let linkTarget)):
             guard let path = try? VaultPath(linkTarget), let location = try? path.url(in: root) else { return nil } // Not a vault path: no icon.
-            return PreviewImageFragment.url(for: location, displaySize: size, version: 0)
+            components.host = vaultHost; components.queryItems = [URLQueryItem(name: addressKey, value: location.path)]
         case .picture(.webAddress(let address)):
-            var components = URLComponents()
-            components.scheme = scheme; components.host = webHost
-            components.queryItems = [URLQueryItem(name: addressKey, value: address.absoluteString)]
-            return components.url.map { url in PreviewImageFragment.url(for: url, displaySize: size, version: 0) }
+            components.host = webHost; components.queryItems = [URLQueryItem(name: addressKey, value: address.absoluteString)]
         case .symbol(let systemName):
-            var components = URLComponents()
-            components.scheme = scheme; components.host = symbolHost; components.path = "/" + systemName
-            return components.url.map { url in PreviewImageFragment.url(for: url, displaySize: size, version: 0) }
+            components.host = symbolHost; components.path = "/" + systemName
         }
+        return components.url.map { url in PreviewImageFragment.url(for: url, displaySize: size, version: 0) }
     }
 
-    /// What an icon address names: a symbol's name, or a picture's web address.
+    /// What an icon address names.
     enum Named: Equatable {
         case symbol(String)
         case webAddress(URL)
+        case emoji(String)
+        case vaultFile(URL)
     }
 
     static func named(by location: URL) -> Named? {
         guard location.scheme == scheme else { return nil }
         if location.host == symbolHost { return .symbol(String(location.path.dropFirst())) }
-        guard location.host == webHost,
-              let text = URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { item in item.name == addressKey })?.value,
-              let address = URL(string: text) else { return nil }
-        return .webAddress(address)
+        guard let text = URLComponents(url: location, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { item in item.name == addressKey })?.value
+        else { return nil }
+        switch location.host {
+        case emojiHost: return .emoji(text)
+        case vaultHost: return .vaultFile(URL(fileURLWithPath: text))
+        case webHost: return URL(string: text).map(Named.webAddress)
+        default: return nil
+        }
     }
 }
 
@@ -72,9 +82,10 @@ extension ReadingViewBuilder {
         guard !configuration.noteIconLinkPrefixes.iconsByPath.isEmpty, !link.isEmbed, !link.target.hasPrefix("#"),
               let linkedNote = await resolve(link.target, isWiki: link.isWiki, note: note, root: root, index: index),
               let icon = configuration.noteIconLinkPrefixes.iconsByPath[linkedNote] else { return "" }
-        if case .emoji(let emoji) = icon { return emoji + " " }
         guard let location = NoteIconInlineAddress.url(of: icon, root: root, textSize: configuration.textSize) else { return "" }
-        return "![](\(GraphiteOpenLink.markdownDestination(location))) "
+        // An emoji is its picture's description, which reads it aloud and copies it.
+        let description = if case .emoji(let emoji) = icon { emoji } else { "" }
+        return "![\(description)](\(GraphiteOpenLink.markdownDestination(location))) "
     }
 
     /// A plain page drawn before a link to a note without an icon, as Notion draws a page without one.

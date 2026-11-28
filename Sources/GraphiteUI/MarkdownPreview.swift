@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.78
+ * Version: 0.79
  * Date: 28/11/2026
  */
 
@@ -3149,19 +3149,26 @@ struct VaultImageLoader: AttachmentLoader {
 
     /// The pixels of an icon drawn before a link (`NoteIconInlineAddress`).
     private func iconImage(_ named: NoteIconInlineAddress.Named) async throws -> CGImage {
+        let side = NoteIconPictures.pixelDimension
         switch named {
         case .symbol(let systemName):
-            return try NoteIconSymbolPicture.image(systemName: systemName, pixelDimension: NoteIconPictures.pixelDimension)
+            return try NoteIconSymbolPicture.image(systemName: systemName, pixelDimension: side)
+        case .emoji(let emoji):
+            return try NoteIconSquarePicture.emoji(emoji, pixelDimension: side)
+        case .vaultFile(let fileLocation):
+            return try NoteIconSquarePicture.squared(try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline,
+                                                                                                   displayPixelWidth: side).image, pixelDimension: side)
         case .webAddress(let address):
             guard let iconPictures else { throw NoteIconPictureError.iconsOff }
-            return try await iconPictures.picture(at: .webAddress(address)).image
+            return try NoteIconSquarePicture.squared(try await iconPictures.picture(at: .webAddress(address)).image, pixelDimension: side)
         }
     }
 
     func attachment(for location: URL, text: String, environment: ColorEnvironmentValues) async throws -> VaultImageAttachment {
         if let named = NoteIconInlineAddress.named(by: location) {
-            return VaultImageAttachment(image: try await iconImage(named), description: text, displaySize: PreviewImageFragment.displaySize(in: location),
-                                        path: nil)
+            let displaySize = PreviewImageFragment.displaySize(in: location)
+            return VaultImageAttachment(image: try await iconImage(named), description: text, displaySize: displaySize, path: nil,
+                                        iconSide: displaySize.map { size in Double(size.width) })
         }
         let fileLocation = URL(fileURLWithPath: location.path)
         let normalizedRoot = root.resolvingSymlinksInPath().path + "/"
@@ -3210,10 +3217,16 @@ struct VaultImageAttachment: Attachment {
     let displaySize: EmbedDisplaySize?
     /// The picture's path in the vault; nil outside it.
     let path: VaultPath?
+    /// For an icon before a link, the side of its square, in points (`NoteIconInlineAddress`).
+    var iconSide: Double? = nil
     @MainActor var body: some View {
         InlinePictureView(image: image, description: description, path: path)
     }
+    func baselineOffset(in environment: TextEnvironmentValues) -> CGFloat {
+        iconSide.map { side in -side * NoteIconInlineAddress.shareBelowBaseline } ?? 0
+    }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
+        if let iconSide { return CGSize(width: iconSide, height: iconSide) }
         let width = Double(image.width), height = Double(image.height)
         guard width > 0, height > 0 else { return CGSize(width: 300, height: 200) }
         let naturalWidth = displaySize?.fittedWidth(aspectRatio: width / height) ?? width

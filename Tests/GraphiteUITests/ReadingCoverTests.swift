@@ -7,12 +7,13 @@
  *              callout's paragraphs as blocks of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 28/11/2026
  */
 
 import XCTest
 import SwiftUI
+@testable import Textual
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -36,6 +37,12 @@ final class ReadingCoverTests: XCTestCase {
 
     private func build(_ source: String, configuration: ReadingConfiguration) async throws -> ReadingViewBuild {
         try await ReadingViewBuilder().build(source: source, note: try VaultPath("Course.md"), root: vault, index: index, configuration: configuration)
+    }
+
+    /// How an emoji icon is written before a link: a square picture whose description is the emoji, then a space.
+    private static func emojiIcon(_ emoji: String) -> String {
+        let address = NoteIconInlineAddress.url(of: .emoji(emoji), root: URL(fileURLWithPath: "/"), textSize: ReadingConfiguration().textSize)
+        return "![\(emoji)](\(address.map(GraphiteOpenLink.markdownDestination) ?? "")) "
     }
 
     private func markdownRuns(_ blocks: [RenderedBlock]) -> [String] {
@@ -74,8 +81,8 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let withIcons = try await build("See [[Lab]] and [[Lab|the lab]].", configuration: configuration)
         let text = markdownRuns(withIcons.blocks).joined()
-        XCTAssertTrue(text.contains("🧪 [Lab]("), "The icon stands before the link, outside its text: \(text)")
-        XCTAssertTrue(text.contains("🧪 [the lab]("), "An alias keeps the icon too: \(text)")
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Lab]("), "The icon stands before the link, outside its text: \(text)")
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[the lab]("), "An alias keeps the icon too: \(text)")
     }
 
     func testALinkToANoteWithAPictureOrSymbolIconShowsItAsASmallPicture() async throws {
@@ -86,7 +93,7 @@ final class ReadingCoverTests: XCTestCase {
             try VaultPath("Covers/Hills.png"): .picture(.webAddress(notion)),
         ], root: vault, version: 1)
         let pictureLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
-        XCTAssertTrue(pictureLink.contains("![](file://"), pictureLink)
+        XCTAssertTrue(pictureLink.contains("![](graphite-note-icon://vault?address="), pictureLink)
         XCTAssertTrue(pictureLink.contains("Hills.png#"), "The vault's picture, sized to the text: \(pictureLink)")
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .symbol(systemName: "atom")], root: vault, version: 2)
         let symbolLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
@@ -222,8 +229,8 @@ final class ReadingCoverTests: XCTestCase {
         configuration.drawsPageLook = true
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let text = markdownRuns(try await build("[[Lab]]  \n[[Lab|Second lab]]  \n[[Course]]  \n", configuration: configuration).blocks).joined()
-        XCTAssertTrue(text.contains("🧪 [Lab]("), text)
-        XCTAssertTrue(text.contains("🧪 [Second lab]("), text)
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Lab]("), text)
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Second lab]("), text)
         XCTAssertEqual(text.components(separatedBy: "  \n").count, 4, "Three lines, each ending in its hard break: \(text.debugDescription)")
         XCTAssertFalse(text.contains("\n\n"), text.debugDescription)
     }
@@ -298,7 +305,7 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let glyph = "graphite-note-icon://symbol/doc.text"
         let list = markdownRuns(try await build("[[Lab]]  \n[[Course]]  \n[[Missing]]", configuration: configuration).blocks).joined()
-        XCTAssertTrue(list.contains("🧪 [Lab]("), list)
+        XCTAssertTrue(list.contains(Self.emojiIcon("🧪") + "[Lab]("), list)
         XCTAssertEqual(list.components(separatedBy: glyph).count - 1, 2, "Each link without an icon gets the page: \(list)")
         let paragraphs = markdownRuns(try await build("[[Lab]]\n\n[[Course]]", configuration: configuration).blocks).joined()
         XCTAssertTrue(paragraphs.contains(glyph), "Paragraphs drawn as one list get it too: \(paragraphs)")
@@ -307,6 +314,27 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = .none
         let noIcons = markdownRuns(try await build("[[Lab]]  \n[[Course]]", configuration: configuration).blocks).joined()
         XCTAssertFalse(noIcons.contains(glyph))
+    }
+
+    func testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline() throws {
+        let side = NoteIconPictures.pixelDimension
+        let emoji = try NoteIconSquarePicture.emoji("🏢", pixelDimension: side)
+        XCTAssertEqual([emoji.width, emoji.height], [side, side])
+        let wide = try XCTUnwrap(CGContext(data: nil, width: 400, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        let squared = try NoteIconSquarePicture.squared(wide, pixelDimension: side)
+        XCTAssertEqual([squared.width, squared.height], [side, side], "A wide logo is fitted into the square.")
+        for icon in [NoteIcon.emoji("🏢"), .symbol(systemName: "doc.text"), .picture(.vaultFile(linkTarget: "Covers/Hills.png")),
+                     .picture(.webAddress(try XCTUnwrap(URL(string: "https://example.com/i.svg"))))] {
+            let address = try XCTUnwrap(NoteIconInlineAddress.url(of: icon, root: vault, textSize: 16))
+            XCTAssertNotNil(NoteIconInlineAddress.named(by: address), "\(icon)")
+            XCTAssertEqual(PreviewImageFragment.displaySize(in: address)?.width, 20, "Notion's 20 points beside 16-point text: \(icon)")
+        }
+        XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(NoteIconInlineAddress.url(of: .emoji("🏢"), root: vault, textSize: 16))), .emoji("🏢"))
+        let attachment = VaultImageAttachment(image: emoji, description: "🏢", displaySize: nil, path: nil, iconSide: 20)
+        let environment = TextEnvironmentValues()
+        XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: environment), CGSize(width: 20, height: 20))
+        XCTAssertLessThan(attachment.baselineOffset(in: environment), 0, "The square reaches below the baseline as an emoji does.")
     }
 }
 
