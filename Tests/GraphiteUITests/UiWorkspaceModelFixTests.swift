@@ -5,8 +5,8 @@
  * Description: Vault switching, link following, external changes, and attachment saving in the
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.13
- * Date: 02/11/2026
+ * Version: 0.14
+ * Date: 27/11/2026
  */
 
 import XCTest
@@ -298,6 +298,47 @@ final class UiWorkspaceModelFixTests: XCTestCase {
         XCTAssertNil(staleGraph)
         let currentNodes = try XCTUnwrap(currentGraph).nodes.map(\.id)
         XCTAssertFalse(currentNodes.contains("Old.md"), "\(currentNodes)")
+    }
+
+    /// A window that changes vaults reads the next vault's graph and map, even when the two vaults' structure
+    /// versions are the same number: the views read them again on `vaultStructureKey`, and a window opened before
+    /// its index reads them once the index is there. (Seen 2026-11-27: the Large vault's window drew the
+    /// Release vault's graph, and a graph tab restored at launch stayed on "Reading links…".)
+    func testTheVaultStructureKeyChangesWithTheVaultAndItsIndexNotOnlyWithTheStructureVersion() async throws {
+        let firstVault = try makeVault(files: ["Old.md": "A note of the first vault."])
+        let secondVault = try makeVault(files: ["New.md": "A note of the second vault."])
+        let workspace = try await openedWorkspace(firstVault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let firstKey = workspace.vaultStructureKey
+        XCTAssertNotNil(firstKey.index, "The key names the vault's index once it is open.")
+
+        try await workspace.openFolderAsVault(secondVault)
+        try await waitUntil { workspace.hasCompletedIndexScan && workspace.index != nil }
+        let secondKey = workspace.vaultStructureKey
+        XCTAssertNotEqual(firstKey.vaultIdentifier, secondKey.vaultIdentifier)
+        XCTAssertNotEqual(firstKey, VaultStructureKey(vaultIdentifier: secondKey.vaultIdentifier, index: secondKey.index,
+                                                      structureVersion: firstKey.structureVersion),
+                          "With the same structure version, another vault is another key.")
+        let graph = await workspace.vaultGraph()
+        let nodes = try XCTUnwrap(graph).nodes.map(\.id)
+        XCTAssertTrue(nodes.contains("New.md"), "\(nodes)")
+        XCTAssertFalse(nodes.contains("Old.md"), "\(nodes)")
+    }
+
+    /// HUNT-384: a graph read from the index of the vault being left, which stays until the next vault's is open, is
+    /// not the next vault's graph, even under the same structure version.
+    func testAGraphKeptFromTheIndexOfTheVaultBeingLeftIsNotTheNextVaultsGraph() async throws {
+        let firstVault = try makeVault(files: ["Old.md": "A note of the vault being left."])
+        let workspace = try await openedWorkspace(firstVault)
+        try await waitUntil { workspace.hasCompletedIndexScan }
+        let oldGraph = await workspace.vaultGraph()
+        XCTAssertTrue(try XCTUnwrap(oldGraph).nodes.contains { node in node.id == "Old.md" })
+
+        // The next vault's index comes in, the structure version as it was.
+        workspace.index = try VaultIndex(databaseURL: try makeVault().appendingPathComponent("index.sqlite"))
+        let nextGraph = await workspace.vaultGraph()
+        let nextNodes = try XCTUnwrap(nextGraph).nodes.map(\.id)
+        XCTAssertFalse(nextNodes.contains("Old.md"), "\(nextNodes)")
     }
 
     /// A map query of the vault being left that ends after the switch neither fills the cache

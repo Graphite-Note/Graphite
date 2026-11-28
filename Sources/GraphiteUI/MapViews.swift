@@ -5,8 +5,8 @@
  * Description: The open note and the notes it links to, or that link to it, on a map in the right
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.6
- * Date: 11/11/2026
+ * Version: 0.7
+ * Date: 27/11/2026
  */
 
 import SwiftUI
@@ -62,7 +62,7 @@ struct LocalMapPanel: View {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .task(id: workspace.structureVersion) {
+        .task(id: workspace.vaultStructureKey) {
             placedNotes = await workspace.placedNotes()
             vaultGraph = await workspace.vaultGraph()
         }
@@ -127,6 +127,6 @@ struct VaultMapScreen: View {
                 }
             }
         }
-        .task(id: workspace.structureVersion) { placedNotes = await workspace.placedNotes() }
+        .task(id: workspace.vaultStructureKey) { placedNotes = await workspace.placedNotes() }
     }
 }

@@ -6,26 +6,41 @@
  *              a node opens.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.8
- * Date: 01/11/2026
+ * Version: 0.9
+ * Date: 27/11/2026
  */
 
 import Foundation
 import GraphiteCore
 
+/// What a view of the whole vault (its graph, its map) reads the vault again for: another vault,
+/// the vault's index once it is open, or a change of the files, links, tags or aliases. The
+/// structure version alone repeats between vaults, so a window that changed vaults kept the
+/// last vault's graph, and a view that asked before the index was open never asked again.
+struct VaultStructureKey: Hashable {
+    let vaultIdentifier: UUID?
+    let index: ObjectIdentifier?
+    let structureVersion: Int
+}
+
 /// Obsidian's Graph view core plugin.
 extension WorkspaceModel {
+    /// When a view of the whole vault reads `vaultGraph()` or `placedNotes()` again.
+    var vaultStructureKey: VaultStructureKey {
+        VaultStructureKey(vaultIdentifier: currentVaultIdentifier, index: index.map(ObjectIdentifier.init), structureVersion: structureVersion)
+    }
+
     /// The vault's notes and links, built again only after the index takes in a change of the
     /// files, links, tags, aliases or properties, not as a note's text is typed.
     func vaultGraph() async -> LinkGraph? {
         guard let index else { return nil }
         let version = structureVersion
-        if let graphCache, graphCache.structureVersion == version { return graphCache.graph }
+        if let graphCache, graphCache.index == ObjectIdentifier(index), graphCache.structureVersion == version { return graphCache.graph }
         do {
             let graph = try await index.linkGraph()
             // A graph of a vault left during the query is neither kept nor shown.
             guard self.index === index else { return nil }
-            graphCache = (version, graph)
+            graphCache = (ObjectIdentifier(index), version, graph)
             return graph
         } catch is CancellationError {
             // The graph's view went away or asked again (a tab hidden, the index changed) while

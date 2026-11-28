@@ -5,7 +5,7 @@
  * Description: The open vault's workspace: its files, tabs, index and services.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.92
+ * Version: 0.93
  * Date: 27/11/2026
  */
 
@@ -250,13 +250,15 @@ final class WorkspaceModel {
     let editorMenus = EditorMenuRegistry()
     /// Obsidian's bookmarks, from `.obsidian/bookmarks.json`.
     var bookmarks = BookmarkList()
-    /// The whole vault's graph, built once per change of the vault's files, links, tags and aliases.
-    @ObservationIgnored var graphCache: (structureVersion: Int, graph: LinkGraph)?
+    /// The whole vault's graph, built once per change of the vault's files, links, tags and aliases, and the index it
+    /// was read from: a vault being left keeps its index until the next one's is open, and a graph asked for meanwhile
+    /// is the old vault's, whatever the structure version (HUNT-384).
+    @ObservationIgnored var graphCache: (index: ObjectIdentifier, structureVersion: Int, graph: LinkGraph)?
     /// Where the graph view left its nodes, so it opens as it was.
     @ObservationIgnored var graphPositions: [String: SIMD2<Double>] = [:]
     /// Whether the graph view is on screen.
     /// The notes the map places, read once per index change.
-    @ObservationIgnored var placedNotesCache: (structureVersion: Int, propertyNames: [String], notes: [PlacedNote])?
+    @ObservationIgnored var placedNotesCache: (index: ObjectIdentifier, structureVersion: Int, propertyNames: [String], notes: [PlacedNote])?
     /// Whether the map view is on screen.
     var isMapPresented = false
     /// Whether the vault list is on screen. Settings asks for it too, from its own window on the Mac.
