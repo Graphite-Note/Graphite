@@ -5,8 +5,9 @@
 <h1 align="center">Graphite</h1>
 
 <p align="center">
-  <strong>An Apple Pencil-first study app for your Obsidian vault.</strong><br>
-  Notes, handwriting, PDFs and lecture recordings, kept as ordinary files you own.
+  <strong>A fast, native Markdown note-taking app for your Obsidian vault.</strong><br>
+  On iPad, iPhone and Mac, with Apple Pencil drawing and PDF annotation on the iPad.<br>
+  Notes, drawings, PDFs and recordings stay ordinary files you own.
 </p>
 
 
@@ -30,28 +31,11 @@
   </picture>
 </p>
 
-Graphite gives an Obsidian vault the notebook and PDF tools of Goodnotes without locking anything away. It opens an ordinary folder and edits it in place: notes stay Markdown, notebooks and slides stay PDF, drawings stay PNG, PDF or SVG, and recordings stay M4A. If Graphite disappeared tomorrow, Obsidian, Finder, Preview and any Markdown editor could still read every file.
+Graphite is a Markdown note-taking app for an Obsidian vault. It opens an ordinary folder and edits it in place: notes stay Markdown, notebooks and slides stay PDF, drawings stay PNG, PDF or SVG, and recordings stay M4A. If Graphite disappeared tomorrow, Obsidian, Finder, Preview and any Markdown editor could still read every file.
 
-It is a native app written in Swift, built iPad-first for lectures and handwriting, with a Mac app that stays small and fast and an iPhone app that works as a quick Obsidian client.
+It is a native app written in Swift on every device, small, fast and light on memory and battery. On the iPad it adds Apple Pencil: drawings inside notes and handwriting on PDFs, the notebook tools of Goodnotes without locking anything away. On the iPhone and the Mac, which have no Pencil, it is the same fast Markdown app, and the Mac marks up PDFs as Preview does.
 
 ## Features
-
-### Move in from Goodnotes and Notability
-
-- **Your notebooks come with you.** Import `.goodnotes` notebooks and Notability `.note` files, one at a time, a whole folder, or a ZIP of either. Each page keeps its paper, page size, ink, pictures, typed text boxes, outline and bookmarks, and Notability recordings come along as audio files. The result is an ordinary PDF that any reader opens and Graphite keeps editing.
-- **Open in Graphite from anywhere.** Graphite is in the share sheet and Open With for Goodnotes and Notability files, ZIP archives, PDFs, pictures and Markdown. Notebooks are converted, ZIPs are unpacked with their folders, and everything lands in your vault.
-- **Dense handwriting stays smooth.** A formula sheet with thousands of strokes a page scrolls at the display's rate and zooms without freezing, and PDFs Graphite writes are about a third the size they used to be.
-
-### Write by hand, Pencil first
-
-- **Pencil drawings inside notes**, saved as ordinary PNG, PDF or SVG attachments with a normal `![[embed]]`, editable stroke by stroke later.
-- **PDF notebooks and slides**: paper templates, page thumbnails, reordering, bookmarks, text boxes, and annotations stored in the PDF itself.
-- **Your colours, arranged by dragging**, as in Apple's markup palette.
-- **Lecture recording** that keeps going while you move between documents.
-
-### PDF markup on the Mac
-
-Highlight, underline and strike through text, draw with the mouse or trackpad, add text boxes, sign with a signature you drew once, and draw rectangles, ovals, lines and arrows, all from one row of tools. Everything is a standard PDF annotation that Preview and Acrobat show, and ink made on the Mac stays editable with the Pencil on the iPad.
 
 ### Obsidian, native
 
@@ -62,6 +46,23 @@ Highlight, underline and strike through text, draw with the mouse or trackpad, a
 - **Knowledge tools.** Full-text search with `folder:`, backlinks, outline, tags, a fast graph view, Bases (table, cards, list and map), maps that can center on you, and a calendar of daily notes with Apple Calendar and Reminders, each switchable like Obsidian's core plugins.
 - **Obsidian community plugins and themes**, run from the vault's own `.obsidian` folder. See [what works today](Docs/Community-plugins.md).
 
+### Write by hand on the iPad
+
+- **Apple Pencil drawings inside notes**, saved as ordinary PNG, PDF or SVG attachments with a normal `![[embed]]`, editable stroke by stroke later.
+- **PDF notebooks and slides**: paper templates, page thumbnails, reordering, bookmarks, text boxes, and annotations stored in the PDF itself.
+- **Your colours, arranged by dragging**, as in Apple's markup palette.
+- **Lecture recording** that keeps going while you move between documents.
+
+### PDF markup on the Mac
+
+Highlight, underline and strike through text, draw with the mouse or trackpad, add text boxes, sign with a signature you drew once, and draw rectangles, ovals, lines and arrows, all from one row of tools. Everything is a standard PDF annotation that Preview and Acrobat show, and ink made on the Mac stays editable with the Pencil on the iPad.
+
+### Move in from Goodnotes and Notability
+
+- **Your notebooks come with you.** Import `.goodnotes` notebooks and Notability `.note` files, one at a time, a whole folder, or a ZIP of either. Each page keeps its paper, page size, ink, pictures, typed text boxes, outline and bookmarks, and Notability recordings come along as audio files. The result is an ordinary PDF that any reader opens and Graphite keeps editing.
+- **Open in Graphite from anywhere.** Graphite is in the share sheet and Open With for Goodnotes and Notability files, ZIP archives, PDFs, pictures and Markdown. Notebooks are converted, ZIPs are unpacked with their folders, and everything lands in your vault.
+- **Dense handwriting stays smooth.** A formula sheet with thousands of strokes a page scrolls at the display's rate and zooms without freezing, and PDFs Graphite writes are about a third the size they used to be.
+
 ### Built to be trusted
 
 - **A small core.** The welcome tour's pictures come with the iPad and iPhone app and can be removed in Settings; larger extras such as voices are downloaded on first use.
@@ -69,7 +70,7 @@ Highlight, underline and strike through text, draw with the mouse or trackpad, a
 
 ## Apple Pencil drawings inside notes
 
-Put the cursor where a derivation, a circuit or a sketch belongs and insert a drawing. Graphite opens a canvas as wide as the note that grows downward as you write, with PencilKit's tools. **Insert** saves it next to your other attachments and places a normal embed, such as `![[Fourier harmonics.png]]`, where the cursor was.
+On the iPad, put the cursor where a derivation, a circuit or a sketch belongs and insert a drawing. Graphite opens a canvas as wide as the note that grows downward as you write, with PencilKit's tools. **Insert** saves it next to your other attachments and places a normal embed, such as `![[Fourier harmonics.png]]`, where the cursor was.
 
 You choose the file format. PNG keeps every brush exactly as drawn, and PDF or SVG keeps the ink as sharp vector lines. Each format can be opened in Graphite and edited stroke by stroke again, while Obsidian, Preview or a browser simply sees an image.
 
@@ -86,7 +87,7 @@ You choose the file format. PNG keeps every brush exactly as drawn, and PDF or S
 
 ## Annotating PDFs
 
-Lecture slides, papers and notebooks are PDFs, and Graphite writes on them directly. Choose a pen, highlighter or eraser from a palette that floats over the page, or keep the tools in a bar above it. Ink is saved as standard PDF annotations, so Preview, Acrobat and Obsidian show what you wrote. Pages can be added, reordered, rotated and bookmarked, and blank notebooks get real paper (dotted, grid, ruled, Cornell and more) as page content.
+Lecture slides, papers and notebooks are PDFs, and Graphite writes on them directly. On the iPad, choose a pen, highlighter or eraser from a palette that floats over the page, or keep the tools in a bar above it. Ink is saved as standard PDF annotations, so Preview, Acrobat and Obsidian show what you wrote. Pages can be added, reordered, rotated and bookmarked, and blank notebooks get real paper (dotted, grid, ruled, Cornell and more) as page content.
 
 A PDF page also embeds in a note at the height you choose, so the slide you need sits next to your notes on it.
 
