@@ -3,11 +3,11 @@
  * ----------------------------------
  * Layer: Tests
  * Description: What a drop on the library reads: an item dragged inside Graphite, files from another app with their
- *              names, and a file the Finder drags.
+ *              names, a file the Finder drags, and a file of a text type offered unnamed by its type alone.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 04/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 import XCTest
 import UniformTypeIdentifiers
@@ -111,6 +111,34 @@ final class LibraryDropReaderTests: XCTestCase {
         XCTAssertEqual(dropped.location.lastPathComponent, "Timetable.campus")
         XCTAssertEqual(try String(contentsOf: dropped.location, encoding: .utf8), "hello")
         DroppedFileBatch(files: [dropped]).discard()
+    }
+
+    /// HUNT-395: SwiftUI hands a file the Finder drags onto the Mac's reading view by its content type alone, with no
+    /// address and no name. A CSV, Markdown or JSON file offered that way is a file under its own name; only a selection's
+    /// text types still need a name.
+    func testAFileOfATextTypeOfferedByItsTypeAloneArrivesUnderItsOwnName() async throws {
+        for (fileName, type) in [("Made-up schedule.csv", UTType.commaSeparatedText), ("Lecture.md", UTType(filenameExtension: "md")!),
+                                 ("Data.json", UTType.json)] {
+            let original = try file(named: fileName)
+            let provider = NSItemProvider()
+            provider.registerFileRepresentation(forTypeIdentifier: type.identifier, fileOptions: [], visibility: .all) { completion in
+                completion(original, false, nil)
+                return nil
+            }
+            XCTAssertNil(provider.suggestedName, fileName)
+            XCTAssertTrue(LibraryDropReader.canRead([provider]), fileName)
+            let sources = await LibraryDropReader.read([provider])
+            guard sources.count == 1, case .file(let dropped) = sources[0] else { return XCTFail("\(fileName) arrives as one file, not \(sources).") }
+            XCTAssertEqual(dropped.location.lastPathComponent, fileName)
+            XCTAssertEqual(try String(contentsOf: dropped.location, encoding: .utf8), "hello", fileName)
+            DroppedFileBatch(files: [dropped]).discard()
+        }
+        let selection = NSItemProvider()
+        selection.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            completion(Data("Some selected words".utf8), nil)
+            return nil
+        }
+        XCTAssertFalse(LibraryDropReader.canRead([selection]), "A selection's text, offered without a name, is still not a file.")
     }
 
     func testAWebAddressCreatesNothing() async throws {
