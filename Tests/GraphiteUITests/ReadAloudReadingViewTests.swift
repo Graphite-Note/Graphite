@@ -6,8 +6,8 @@
  *              and the highlight drawn on the spoken word.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 24/10/2026
+ * Version: 0.9
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -22,6 +22,21 @@ import GraphiteTestSupport
 
 @MainActor
 final class ReadAloudReadingViewTests: XCTestCase {
+    /// A table's cells each report for the word's range; a cell that does not draw the word reports no frame, which
+    /// left the receiver with none when it came after the cell that drew it (Textual patch 37).
+    @MainActor
+    func testATextThatDoesNotDrawTheWordKeepsTheFramesAnotherTextDrewForIt() {
+        var received: [ReadingHighlightGeometry] = []
+        let receiver = ReadingHighlightReceiver { frames in received = frames }
+        let range = NSRange(location: 4, length: 6)
+        let drawn = ReadingHighlightGeometry(sourceRange: range, frame: CGRect(x: 10, y: 20, width: 40, height: 18))
+        receiver.report([drawn], of: range, from: "cell repeat")
+        receiver.report([], of: range, from: "cell clear")
+        XCTAssertEqual(received, [drawn])
+        receiver.report([], of: range, from: "cell repeat")
+        XCTAssertEqual(received, [])
+    }
+
     func testRenderedWordsRetainExactOccurrencesAcrossMarkdownTransforms() async throws {
         let directory = try TemporaryVault.make(prefix: "ReadAloudReading", for: self).root
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
