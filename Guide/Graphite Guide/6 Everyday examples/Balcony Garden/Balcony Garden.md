@@ -52,4 +52,4 @@ so a pot 30 cm across filled 25 cm deep takes $\pi \times 15^2 \times 25 \approx
 
 ==The mint keeps a pot of its own==: planted with the others, it spreads into every corner of the pot.
 
-*The garden is made up for the guide.*
+*The garden is made up for the guide. Pages imported with [[Moving in from Notion|Import from Notion]] are written in the same Markdown as this one.*

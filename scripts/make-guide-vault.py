@@ -11,7 +11,9 @@ made again the same way:
 - copies of files Graphite's own writers made for the release test vault (Tests/ReleaseVault): a drawing of every Pencil
   tool, a circuit drawing and a Cornell notebook, so they open for editing stroke by stroke;
 - the pack list of the guide (`Sources/GraphiteUI/GuideVaultPack.swift`'s file list), with `--pack-revision <commit>`:
-  every file's name, size and SHA-256 at that commit, for the in-app Guide's download.
+  every file's name, size and SHA-256 at that commit, for the in-app Guide's download, and the earlier files: each path
+  and SHA-256 that a revision pinned before had and this one does not, so the Guide can tell its own unchanged files in
+  a reader's copy from the reader's edits when it brings the copy up to date (Docs/Guide-vault-todo.md, section 7).
 
 The screenshots of the app in `Attachments/Screenshots/` are taken from the simulators and the Mac app, not drawn here.
 
@@ -336,17 +338,47 @@ def vault_files_at(revision):
     return files
 
 
+def pinned_revisions():
+    """Every revision the pack list was pinned at in the history of the checkout, the one written now included."""
+    history = subprocess.run(["git", "-C", REPOSITORY_ROOT, "log", "--format=", "-p", "--", os.path.relpath(PACK_DEFINITION, REPOSITORY_ROOT)],
+                             capture_output=True, check=True, text=True).stdout
+    current = open(PACK_DEFINITION, encoding="utf-8").read()
+    return set(re.findall(r'static let revision = "([0-9a-f]{40})"', history + current))
+
+
+def earlier_files(revision, current_files):
+    """(name, contents) of each path and version that an earlier pinned revision had and `revision` does not."""
+    current = {(name, hashlib.sha256(contents).hexdigest()) for name, contents in current_files}
+    earlier = {}
+    for earlier_revision in sorted(pinned_revisions() - {revision}):
+        resolves = subprocess.run(["git", "-C", REPOSITORY_ROOT, "cat-file", "-e", earlier_revision + "^{commit}"], capture_output=True).returncode == 0
+        if not resolves:
+            continue
+        for name, contents in vault_files_at(earlier_revision):
+            key = (name, hashlib.sha256(contents).hexdigest())
+            if key not in current:
+                earlier[key] = contents
+    return sorted((name, contents) for (name, _), contents in earlier.items())
+
+
+def pack_lines(files):
+    return [f'        AddOnFile(name: "{name}", byteCount: {len(contents)},\n                  sha256: "{hashlib.sha256(contents).hexdigest()}"),'
+            for name, contents in files]
+
+
 def write_pack_list(revision):
     files = vault_files_at(revision)
-    lines = [f'        AddOnFile(name: "{name}", byteCount: {len(contents)},\n                  sha256: "{hashlib.sha256(contents).hexdigest()}"),'
-             for name, contents in files]
+    earlier = earlier_files(revision, files)
     definition = open(PACK_DEFINITION, encoding="utf-8").read()
     definition = re.sub(r'static let revision = "[0-9a-f]{40}"', f'static let revision = "{revision}"', definition)
-    definition = re.sub(r"(static let files: \[AddOnFile\] = \[\n)(?:.*?\n)?(    \])", lambda match: match.group(1) + "\n".join(lines) + "\n" + match.group(2),
-                        definition, count=1, flags=re.DOTALL)
+    for list_name, entries in (("files", files), ("earlierFiles", earlier)):
+        definition = re.sub(rf"(static let {list_name}: \[AddOnFile\] = \[\n)(?:.*?\n)?(    \])",
+                            lambda match: match.group(1) + "".join(line + "\n" for line in pack_lines(entries)) + match.group(2),
+                            definition, count=1, flags=re.DOTALL)
     with open(PACK_DEFINITION, "w", encoding="utf-8") as handle:
         handle.write(definition)
-    print(f"{os.path.relpath(PACK_DEFINITION, REPOSITORY_ROOT)}: {len(files)} files at {revision[:10]}, {sum(len(contents) for _, contents in files) / 1_048_576:.2f} MB")
+    print(f"{os.path.relpath(PACK_DEFINITION, REPOSITORY_ROOT)}: {len(files)} files at {revision[:10]}, {sum(len(contents) for _, contents in files) / 1_048_576:.2f} MB,"
+          f" {len(earlier)} earlier versions")
 
 
 def main():

@@ -67,4 +67,4 @@ $$
 > [!faq]- Can I join halfway through the year?
 > Yes. Every division has small jobs for a first month; ask its lead on Tuesday.
 
-*The team and its boat are made up for the guide.*
+*The team and its boat are made up for the guide. Pages imported with [[Moving in from Notion|Import from Notion]] are written in the same Markdown as this one.*

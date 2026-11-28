@@ -58,4 +58,4 @@ CD audio samples at $f_s = 44.1\ \text{kHz}$, so it keeps everything up to about
 > [!faq]- Can I bring notes to the exam?
 > One sheet, written by hand on both sides. [[Formula sheet]] is a good start.
 
-*This course is made up for the guide. [[Building a dashboard]] builds this page again step by step.*
+*This course is made up for the guide. [[Building a dashboard]] builds this page again step by step. Pages imported with [[Moving in from Notion|Import from Notion]] are written in the same Markdown as this one.*

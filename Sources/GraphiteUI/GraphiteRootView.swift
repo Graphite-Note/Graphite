@@ -373,7 +373,7 @@ struct GraphiteRootView: View {
                                                start: { sources, directory in workspace.importNotionExport(sources, into: directory) },
                                                startAPI: workspace.startNotionAPIImport, earlierImports: workspace.earlierNotionImports(in:),
                                                openReport: { path in Task { _ = await workspace.open(path) } }, close: workspace.endNotionImport))
-            .onChange(of: workspace.selection) { workspace.notice = nil }
+            .onChange(of: workspace.selection) { workspace.clearNoticeOnSelectionChange() }
             // Editable, so the title bar's menu offers Rename, as for documents in Files.
             .modifier(DocumentTitle(title: titleBinding, isCompactWidth: isCompactWidth))
             #if canImport(UIKit)

@@ -259,4 +259,4 @@ $$
 To see a finished page as plain text, open it and choose **More** › **View** › **Source Mode**.
 
 > [!info] 📥
-> Coming from Notion? Pages brought in with **Import from Notion…** arrive in this same shape: covers, icons, columns, coloured text, and databases as bases.
+> Coming from Notion? **Import from Notion…** writes exactly this Markdown: covers, icons, columns, link lists with icons, coloured text, callouts and databases as bases. An imported Notion page and a dashboard built by hand are the same kind of note. See [[Moving in from Notion]].

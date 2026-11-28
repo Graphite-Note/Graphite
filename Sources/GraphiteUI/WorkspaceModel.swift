@@ -195,6 +195,8 @@ final class WorkspaceModel {
     /// Something that happened as asked but not quite as expected; a banner over the
     /// document shows it (`NoticeBanner`) rather than an alert.
     var notice: String?
+    /// The document whose opening the notice came with: its selection keeps the notice (`clearNoticeOnSelectionChange`).
+    var noticeComesWithSelection: VaultPath?
     var indexingMessage = ""
     var isIndexing = false
     var directoryVersion = 0

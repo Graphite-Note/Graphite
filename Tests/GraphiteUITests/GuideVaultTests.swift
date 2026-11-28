@@ -109,6 +109,13 @@ final class GuideVaultTests: XCTestCase {
         XCTAssertEqual(GuideVaultPack.pack?.delivery, .downloadOnly, "A download, not part of the app (the lean-core rule).")
     }
 
+    func testTheEarlierFilesAreOnlyVersionsThePackNoLongerHas() {
+        let current = Set(GuideVaultPack.files.map { file in file.name + " " + file.sha256 })
+        XCTAssertGreaterThan(GuideVaultPack.earlierFiles.count, 10, "The revisions pinned before this one.")
+        XCTAssertEqual(GuideVaultPack.earlierFiles.filter { file in current.contains(file.name + " " + file.sha256) }.map(\.name), [],
+                       "Run scripts/make-guide-vault.py --pack-revision again.")
+    }
+
     /// Fenced and inline code are syntax shown, not links.
     private static func withoutCode(_ text: String) -> String {
         let fences = text.replacingOccurrences(of: #"(?s)(`{3,}).*?\1"#, with: "", options: .regularExpression)
@@ -121,6 +128,7 @@ final class GuideVaultTests: XCTestCase {
 final class GuideVaultCopyTests: XCTestCase {
     private var packFolder: URL!
     private var copy: GuideVaultCopy!
+    private var pack: AddOnPack!
 
     override func setUpWithError() throws {
         let root = try TemporaryVault.make(prefix: "GuideVaultCopyTests", for: self).root
@@ -133,11 +141,19 @@ final class GuideVaultCopyTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         addTeardownBlock { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
         copy = GuideVaultCopy(documentsFolder: root.appendingPathComponent("Documents", isDirectory: true), defaults: defaults)
+        pack = try GuideVaultCopyUpdateTests.pack(of: packFolder, revision: "abc123")
+    }
+
+    func testTheCopyRecordsThePacksRevisionAndFileNames() throws {
+        XCTAssertNil(copy.recordedRevision())
+        _ = try copy.makeCopy(of: pack, from: packFolder)
+        XCTAssertEqual(copy.recordedRevision(), "abc123")
+        XCTAssertEqual(copy.recordedFileNames(), ["Start here.md", "1 New to files/What a vault is.md"])
     }
 
     func testTheFirstCopyIsMadeOnceWithoutThePacksMarker() throws {
         XCTAssertNil(copy.existingCopyName())
-        let name = try copy.makeCopy(from: packFolder)
+        let name = try copy.makeCopy(of: pack, from: packFolder)
         XCTAssertEqual(name, "Graphite Guide")
         XCTAssertEqual(copy.existingCopyName(), "Graphite Guide", "The same copy opens the next time.")
         let vault = copy.documentsFolder.appendingPathComponent(name)
@@ -146,11 +162,11 @@ final class GuideVaultCopyTests: XCTestCase {
     }
 
     func testAFreshCopyGoesBesideTheOldOneAndLeavesItAsTheReaderLeftIt() throws {
-        let first = try copy.makeCopy(from: packFolder)
+        let first = try copy.makeCopy(of: pack, from: packFolder)
         let changedNote = copy.documentsFolder.appendingPathComponent(first).appendingPathComponent("Start here.md")
         try Data("# My own notes".utf8).write(to: changedNote)
 
-        let second = try copy.makeCopy(from: packFolder)
+        let second = try copy.makeCopy(of: pack, from: packFolder)
 
         XCTAssertEqual(second, "Graphite Guide 2")
         XCTAssertEqual(copy.existingCopyName(), "Graphite Guide 2", "The fresh copy is the one that opens from now on.")
@@ -160,9 +176,9 @@ final class GuideVaultCopyTests: XCTestCase {
     }
 
     func testACopyTheReaderRemovedIsMadeAgain() throws {
-        let name = try copy.makeCopy(from: packFolder)
+        let name = try copy.makeCopy(of: pack, from: packFolder)
         try FileManager.default.removeItem(at: copy.documentsFolder.appendingPathComponent(name))
         XCTAssertNil(copy.existingCopyName())
-        XCTAssertEqual(try copy.makeCopy(from: packFolder), "Graphite Guide")
+        XCTAssertEqual(try copy.makeCopy(of: pack, from: packFolder), "Graphite Guide")
     }
 }

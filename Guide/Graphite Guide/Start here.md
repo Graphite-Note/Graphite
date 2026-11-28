@@ -11,6 +11,7 @@ This guide is itself a vault: a folder of notes, pictures and PDFs that Graphite
 
 > [!question] Where are you coming from?
 > - **Goodnotes or Notability**, or you have never kept notes as files: start with [[What a vault is]]. It explains, in plain words, where your notes live and why that is good for you.
+> - **Notion**: start with [[Moving in from Notion]]. Your pages come over with their covers, icons, columns and databases.
 > - **Obsidian**: start with [[What Graphite opens]]. Your vault works as it is, and [[What Graphite adds]] shows the new parts.
 > - **New to both**: read [[What a vault is]], then try the examples in [[Everyday examples]].
 
@@ -34,6 +35,7 @@ This guide is itself a vault: a folder of notes, pictures and PDFs that Graphite
 | [[What the files are]] | [[What differs]] |
 | [[Sharing a folder]] | [[Using both apps]] |
 | [[Moving in from Goodnotes and Notability]] | |
+| [[Moving in from Notion]] | |
 | [[Backups]] | |
 
 Both paths meet in the same notes about what Graphite can do:

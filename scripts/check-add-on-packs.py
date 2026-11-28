@@ -60,7 +60,9 @@ def check(definition_path):
     # The address's folder, with its spaces as the repository names them (`Guide/Graphite%20Guide`).
     folder = urllib.parse.unquote(re.search(r'/\\\(revision\)/([^"]+)"\)', text).group(1))
     problems = []
-    files = FILE_PATTERN.findall(text)
+    # Only the pack's own list: the guide also lists the files of earlier revisions (`earlierFiles`), which are not at this one.
+    pack_list = re.search(r"static let files: \[AddOnFile\] = \[\n(.*?)\n    \]", text, flags=re.DOTALL)
+    files = FILE_PATTERN.findall(pack_list.group(1) if pack_list else text)
     for name, byte_count, sha256 in files:
         path = f"{folder}/{name}"
         result = subprocess.run(["git", "-C", REPOSITORY_ROOT, "show", f"{revision}:{path}"], capture_output=True)

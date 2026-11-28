@@ -46,4 +46,4 @@ Graphite shows the import's progress and, at the end, a short report of each not
 | Recording a lecture | The **microphone** button (see [[Recording a lecture]]) |
 | Search | Search reads every note and the text boxes on PDF pages; inside one open PDF, **Find** reads its printed text. Handwriting is not searched yet |
 
-Next: [[Backups]].
+Next: [[Moving in from Notion]].

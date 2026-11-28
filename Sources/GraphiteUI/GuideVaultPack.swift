@@ -5,7 +5,7 @@
  * Description: The Graphite Guide vault as an add-on pack: every file of Guide/Graphite Guide at a pinned commit.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 16/11/2026
  */
 
@@ -353,5 +353,51 @@ enum GuideVaultPack {
                   sha256: "b089dd8dd781d8a4c9c53efcea6a3faf55061e011cfc6cb08e839a33d02b967b"),
         AddOnFile(name: "Templates/Recipe.md", byteCount: 114,
                   sha256: "fc62818f23efb2c8388921715ce3980998086dc536f481df26773ca780fd9ba6"),
+    ]
+
+    /// Each file an earlier pinned revision had at a path with bytes this one does not have, written by the same
+    /// script: a file of the reader's copy with these bytes is the Guide's own, never changed by the reader, and
+    /// `GuideVaultCopyUpdate` may replace or remove it.
+    static let earlierFiles: [AddOnFile] = [
+        AddOnFile(name: ".obsidian/types.json", byteCount: 211,
+                  sha256: "2f5c6ed4e1408e0f97bb13ac00073fb621e71da2a53f41a9f2058f7ec0c1f6f0"),
+        AddOnFile(name: "2 Coming from Obsidian/What Graphite adds.md", byteCount: 2291,
+                  sha256: "fc21f1b167570fb60291b8c8c74e5b0ff1fdb6f1257d5134630cb7fd33e16c15"),
+        AddOnFile(name: "3 Handwriting and PDFs/Drawings in notes.md", byteCount: 2012,
+                  sha256: "73efd26f21119b9e3796f1a6ef65b7f1970634a140f9947fd0f07f4855e7b4af"),
+        AddOnFile(name: "3 Handwriting and PDFs/Handwriting and PDFs.md", byteCount: 1269,
+                  sha256: "a231a636eb25f97aa7d799ef29c006092e82ba840cdbc2ba25dec49214d48ef2"),
+        AddOnFile(name: "3 Handwriting and PDFs/Notebooks and paper.md", byteCount: 1533,
+                  sha256: "72a1d82c7dc213b0faed06871c73dc561f0889961d223cf82a5ded46c0e46dab"),
+        AddOnFile(name: "3 Handwriting and PDFs/PDF markup on the Mac.md", byteCount: 1495,
+                  sha256: "aa676ada09e574b049e79ce6aa0fd45547cc8ca75c9b259680468f2b927e6ebf"),
+        AddOnFile(name: "3 Handwriting and PDFs/PDF markup on the Mac.md", byteCount: 1420,
+                  sha256: "96cadd05e9e9065ba268beefff67ee2f65121189c226679e172d079994f3531e"),
+        AddOnFile(name: "3 Handwriting and PDFs/Pencil tools.md", byteCount: 2347,
+                  sha256: "8afc74210712bd36948178f83eaa96ce5b28f6c3a1453a6e429c74813404ace3"),
+        AddOnFile(name: "3 Handwriting and PDFs/Writing on slides.md", byteCount: 1919,
+                  sha256: "0cbccba020a00421508ceb139f94023477123bf66542ec975c75e76bb02a73f9"),
+        AddOnFile(name: "4 Making notes look good/Building a dashboard.md", byteCount: 8481,
+                  sha256: "059d3e15c7d3904ab782137a16fc67dda1c613d2799fb896ddabd390d44019a7"),
+        AddOnFile(name: "4 Making notes look good/Diagrams.md", byteCount: 1547,
+                  sha256: "127552cf11d62bb4cb2ed9243f4eb56512ca20e4860c336d10cf838776781372"),
+        AddOnFile(name: "4 Making notes look good/Making notes look good.md", byteCount: 1855,
+                  sha256: "8b6fdfc509dace516c02e3dee4dce5ca49ecb1fc457ed6028a251b83188c255b"),
+        AddOnFile(name: "4 Making notes look good/Making notes look good.md", byteCount: 1972,
+                  sha256: "2cdec77e42e8c4d806a53c559fb427a5a190ba2c800fc5e011bcdda1331418cc"),
+        AddOnFile(name: "5 Connecting notes/Bases.md", byteCount: 1855,
+                  sha256: "397ed23b7281e032933ca3e9a56fb4c0bcda41135922dc53fc8b3ce348f18f64"),
+        AddOnFile(name: "6 Everyday examples/Balcony Garden/Balcony Garden.md", byteCount: 1404,
+                  sha256: "63118dcab09c2b53f0bb31fff075639e4874a335e2637ec45ce4a760931a0fe1"),
+        AddOnFile(name: "6 Everyday examples/Everyday examples.md", byteCount: 1431,
+                  sha256: "c5d277d7059bc6aba3536e6cb2c80a02ce3a0af21e64e62636ba2e32a28aea02"),
+        AddOnFile(name: "6 Everyday examples/Signals and Sound/Signals and Sound.md", byteCount: 1830,
+                  sha256: "164c4227dcba8f3512cf9ff78859936021ea05b18dce251ff271e3265353b84c"),
+        AddOnFile(name: "6 Everyday examples/Solar Boat Team/Solar Boat Team.md", byteCount: 1838,
+                  sha256: "e2a3ef4ef0cfe0d16f5724e6fc583d12bd52e4bb409d3d94939a0f3eebfe6616"),
+        AddOnFile(name: "7 Making it yours/Library and list.md", byteCount: 1132,
+                  sha256: "803fecc3ab7447aea3e442559cc74987e08c85fad78b12642af33a5d9bc9a515"),
+        AddOnFile(name: "Start here.md", byteCount: 3060,
+                  sha256: "df4b053369f587e26ab961c6562cc7fb8e46e2358e2120e5d47b5546f25c8250"),
     ]
 }

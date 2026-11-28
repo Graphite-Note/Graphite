@@ -17,7 +17,7 @@ These folders show the kinds of things people keep in a vault, all made up for t
 
 ## Dashboards
 
-Three pages laid out as Notion pages are: a cover, an icon, columns of links with an icon before each, coloured headings, a base and folded answers. Open them in the reading view (the **pencil** button, ⌘E) to see the cover and the icons. [[Building a dashboard]] makes the first one step by step.
+Three pages laid out as Notion pages are: a cover, an icon, columns of links with an icon before each, coloured headings, a base and folded answers. Open them in the reading view (the **pencil** button, ⌘E) to see the cover and the icons. [[Building a dashboard]] makes the first one step by step, and [[Moving in from Notion]] brings your own Notion pages over in the same Markdown.
 
 | Dashboard | What it is | Start at |
 | --- | --- | --- |
