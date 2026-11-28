@@ -4,11 +4,11 @@
  * Layer: Tests
  * Description: In the Mac's Live Preview, a table's cell menu offers Obsidian's items and sorts the note's rows as one
  *              undoable edit; the Edit menu's Table submenu offers them for the cell being edited, with the shortcut
- *              Settings › Keyboard Shortcuts gives them.
+ *              Settings › Keyboard Shortcuts gives them; the pointer over a table draws its strips.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 17/11/2026
+ * Version: 0.4
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -105,6 +105,41 @@ final class UiEditorMacTableMenuTests: XCTestCase {
         XCTAssertNotNil(session.blockViews.tableCellCommandTarget, "As in Obsidian, the cell the menu was opened on stays edited after its command.")
         textView.undoManager?.undo()
         XCTAssertEqual(textView.string, Self.tableNote, "The sort is one edit.")
+    }
+
+    /// HUNT-389: the pointer moving over the table in the note's own text view draws its "+" strips and the cell's grips,
+    /// with no cell edited, and leaving it takes them away: the block's hosting view follows the pointer, which SwiftUI's
+    /// hover under the text selection's AppKit view did not.
+    func testThePointerOverTheTableDrawsItsStripsAndLeavingTakesThemAway() async throws {
+        let (coordinator, textView, _) = try await makeEditor(text: Self.tableNote)
+        defer { withExtendedLifetime(coordinator) {} }
+        try await awaitConditionAfterLayout("The table is drawn") { self.tableView(in: textView) != nil }
+        let tableView = try XCTUnwrap(tableView(in: textView) as? RenderedBlockHostingView)
+        let window = try XCTUnwrap(tableView.window)
+        let before = try picture(of: tableView)
+
+        let point = tableView.convert(pointInFirstBodyCell(of: tableView), to: nil)
+        let moved = try XCTUnwrap(NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                     windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+        tableView.mouseMoved(with: moved)
+        var drawnWithPointer = before
+        try await awaitConditionAfterLayout("The strips are drawn with the pointer over the table") {
+            drawnWithPointer = (try? self.picture(of: tableView)) ?? before
+            return drawnWithPointer != before
+        }
+
+        let exited = try XCTUnwrap(NSEvent.enterExitEvent(with: .mouseExited, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+                                                          windowNumber: window.windowNumber, context: nil, eventNumber: 0, trackingNumber: 0, userData: nil))
+        tableView.mouseExited(with: exited)
+        try await awaitConditionAfterLayout("The strips go when the pointer leaves") { (try? self.picture(of: tableView)) == before }
+        XCTAssertNil(textView.subviews.compactMap { $0 as? NSTextField }.first { field in field.currentEditor() != nil }, "No cell was edited.")
+    }
+
+    /// The view as drawn, pixel for pixel.
+    private func picture(of view: NSView) throws -> Data {
+        let representation = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: representation)
+        return try XCTUnwrap(representation.representation(using: .png, properties: [:]))
     }
 
     /// Begins editing the first body row's first cell, with the table's editor given what the

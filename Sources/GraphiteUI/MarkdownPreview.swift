@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.78
+ * Version: 0.83
  * Date: 28/11/2026
  */
 
@@ -1058,6 +1058,7 @@ struct MarkdownPreview: View {
     /// The word read, where it is drawn and where the view is scrolled, for following the
     /// word; kept out of the view's state, which each would otherwise update at every word.
     @State private var readingFollow = ReadingFollowState()
+    @Environment(\.readingHighlightReceiver) private var outerHighlightReceiver
     @State private var errorMessage: String?
     /// Whether the last build had embeds it could not find, which may appear once indexed.
     @State private var hasMissingEmbeds = false
@@ -1094,6 +1095,8 @@ struct MarkdownPreview: View {
                             .accessibilityAddTraits(.isHeader)
                             .padding(.bottom, 6)
                     }
+                    let _ = readingFollow.framesDidChange = followReadingWordIfNeeded
+                    let _ = readingFollow.outerReceiver = outerHighlightReceiver
                     let _ = blockActions.update(navigate: navigate, scrollToHeading: { anchor in
                         pendingRestorationOffset = nil
                         let target = HeadingScrollRequest.readingScrollTarget(forLinkAnchor: anchor, in: blocks)
@@ -1150,12 +1153,9 @@ struct MarkdownPreview: View {
                     pictureHover.hide()
                 }
             }
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated {
-                    readingFollow.highlightFrames = frames
-                    followReadingWordIfNeeded()
-                }
-            }
+            // The word's frames come from the text that draws it (`ReadingHighlightReceiver`), not through a preference,
+            // which the lazy stack reduced over every block at every update while nothing was read (Textual patch 34).
+            .environment(\.readingHighlightReceiver, readingFollow.highlightReceiver)
             .onChange(of: followsReading) { _, _ in
                 wordDidMove(to: readingFollow.range)
                 followReadingWordIfNeeded()
@@ -1423,6 +1423,17 @@ private struct ReadingWordTracker: View {
 fileprivate final class ReadingFollowState {
     var range: NSRange?
     var highlightFrames: [ReadingHighlightGeometry] = []
+    /// Follows the word once its frames arrive; the view sets it at each update, as what it reads changes.
+    var framesDidChange: (() -> Void)?
+    /// A receiver given around the view, told the frames too.
+    weak var outerReceiver: ReadingHighlightReceiver?
+    /// Where the texts report the frames of the word read (Textual patch 34), one for the view's life.
+    lazy var highlightReceiver = ReadingHighlightReceiver { [weak self] frames in
+        guard let self else { return }
+        self.highlightFrames = frames
+        self.framesDidChange?()
+        self.outerReceiver?.forward(frames)
+    }
     var viewport = ReadingViewport(verticalOffset: 0, maximumVerticalOffset: 0, topInset: 0)
     var scrollProxy: ScrollViewProxy?
     var followTask: Task<Void, Never>?
@@ -2072,6 +2083,8 @@ private struct WordEnvironmentText: View {
 private struct ObsidianMarkdownTextContent: View, Equatable {
     let markdown: String
     @Environment(\.displayScale) private var displayScale
+    /// How much the note is zoomed: the pictures inside its text grow with it (HUNT-388).
+    @Environment(\.embeddedImageZoomScale) private var imageZoomScale
     @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
@@ -2085,6 +2098,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     /// The word being read, when it is in this text; nil otherwise.
     let activeRange: NSRange?
     @Environment(\.readingHighlightFill) private var readingHighlightFill
+    @Environment(\.readingHighlightReceiver) private var readingHighlightReceiver
     @Environment(\.readingIsPrinted) private var isPrinted
     @Environment(\.readingTagSearch) private var tagSearch
     @Environment(\.readingImageActions) private var imageActions
@@ -2099,20 +2113,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
 
     var body: some View {
         if let numberedEquation {
-            NumberedEquationView(equation: numberedEquation, textSize: textSize)
-                .background {
-                    if let activeRange, sourceTokens?.contains(where: { token in
-                        token.isEquation && NSIntersectionRange(token.sourceRange, activeRange).length > 0
-                    }) == true {
-                        RoundedRectangle(cornerRadius: 3).fill(ReadAloudHighlightStyle.color)
-                        GeometryReader { geometry in
-                            Color.clear.preference(key: ReadingHighlightGeometryKey.self,
-                                                   value: [ReadingHighlightGeometry(sourceRange: activeRange,
-                                                                                     frame: geometry.frame(in: .named(ReadingCoordinateSpace.name)))])
-                        }
-                        .allowsHitTesting(false)
-                    }
-                }
+            numberedEquationView(numberedEquation)
         } else {
             StructuredText(markdown, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens,
                                                                     themeColors: ReadingThemeColors(theme: theme), accent: accent,
@@ -2134,7 +2135,9 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
+                                                                iconPictures: noteIcons?.pictures))
+                .textual.attachmentScale(imageZoomScale)
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))
                 .textual.thematicBreakStyle(ObsidianThematicBreakStyle(theme: theme))
@@ -2146,6 +2149,27 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.linkInteractions(pictureLinkInteractions)
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
+    }
+
+    /// A numbered equation on a line of its own, with the reading highlight behind it while it is read aloud.
+    private func numberedEquationView(_ equation: NumberedEquation) -> some View {
+        NumberedEquationView(equation: equation, textSize: textSize)
+            .background {
+                if let activeRange, sourceTokens?.contains(where: { token in
+                    token.isEquation && NSIntersectionRange(token.sourceRange, activeRange).length > 0
+                }) == true {
+                    RoundedRectangle(cornerRadius: 3).fill(ReadAloudHighlightStyle.color)
+                    GeometryReader { geometry in
+                        let frame = geometry.frame(in: .named(ReadingCoordinateSpace.name))
+                        Color.clear
+                            .onChange(of: frame, initial: true) { _, frame in
+                                readingHighlightReceiver?.report([ReadingHighlightGeometry(sourceRange: activeRange, frame: frame)], of: activeRange)
+                            }
+                            .onDisappear { readingHighlightReceiver?.report([], of: activeRange) }
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
     }
 
     /// The menu and ⌘-click of the pictures in the text. On the iPad a rendered block of Live
@@ -2160,7 +2184,8 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
     }
 
     /// Links in the accent, and inline code in the monospace font. SF Mono keeps Textual's
-    /// own code style, which follows a heading's size; another family is set as a font.
+    /// own code style, which follows a heading's size; another family is set as a font. The
+    /// code's rounded background is the parser's (`drawInlineCodeAsChips`).
     private var inlineStyle: InlineStyle {
         // With a theme, the parser colors each link (internal, unresolved, external) and tag.
         var linkedStyle = theme == nil ? InlineStyle.default.link(.foregroundColor(accent)) : InlineStyle.default.link(KeptTextProperty())
@@ -2168,14 +2193,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
         // The theme's bold and italic colors.
         if let boldColor = theme?.boldColor { linkedStyle = linkedStyle.strong(.fontWeight(.semibold), .foregroundColor(Color(boldColor))) }
         if let italicColor = theme?.italicColor { linkedStyle = linkedStyle.emphasis(.italic, .foregroundColor(Color(italicColor))) }
-        let codeBackground = theme?.codeBackground.map { color in Color(color) }
-        guard case .installed = typography.monospaceFamily else {
-            guard let codeBackground else { return linkedStyle }
-            return linkedStyle.code(.monospaced, .fontScale(0.94), .backgroundColor(codeBackground))
-        }
-        if let codeBackground {
-            return linkedStyle.code(.font(typography.monospaceSwiftUIFont(size: textSize)), .fontScale(0.94), .backgroundColor(codeBackground))
-        }
+        guard case .installed = typography.monospaceFamily else { return linkedStyle }
         return linkedStyle.code(.font(typography.monospaceSwiftUIFont(size: textSize)), .fontScale(0.94))
     }
 
@@ -2245,6 +2263,8 @@ struct ReadingThemeColors: Hashable {
     let tagBackground: Color?
     let highlight: Color
     let highlightText: Color?
+    /// The background of inline code.
+    let codeBackground: Color?
     /// Tag pills and highlights with the theme's corners and border, at a 16-point text
     /// size; `parser.textSize` scales them.
     let tagRadius: Double
@@ -2256,6 +2276,7 @@ struct ReadingThemeColors: Hashable {
     init?(theme: NoteThemeStyle?) {
         guard let theme else { return nil }
         highlightText = theme.highlightTextColor.map { color in Color(color) }
+        codeBackground = theme.codeBackground.map { color in Color(color) }
         // Graphite's tags are pills, as Obsidian's are by default.
         tagRadius = theme.tagRadius ?? Double(NoteThemeStyle.pillRadius)
         tagBorder = theme.tagBorderColor.map { color in Color(color) }
@@ -2294,6 +2315,8 @@ struct ObsidianMarkdownParser: MarkupParser {
         var attributed = try AttributedStringMarkdownParser(baseURL: baseURL, syntaxExtensions: [.math]).attributedString(for: markdown)
         ReadingMarkerPunctuation.removingFrames(from: &attributed)
         Self.applyNoteColorMarkers(to: &attributed)
+        // Lines of an icon and a link stay on one line, cut with an ellipsis in a narrow column, as Notion's.
+        for range in ReadingIconLinkLines.paragraphRanges(in: attributed) { attributed[range][TruncatedLinesAttribute.self] = true }
         let themeColors = themeColors, textSize = textSize
         Self.applyMarkers(start: ReadingMarkers.underlineStartMarker, hexEnd: nil, end: ReadingMarkers.underlineEndMarker, to: &attributed) { _, range, text in
             text[range].underlineStyle = .single
@@ -2322,6 +2345,8 @@ struct ObsidianMarkdownParser: MarkupParser {
             attributed[range].baselineOffset = textSize * 0.35
         }
         if let themeColors { Self.applyThemeColors(themeColors, textSize: textSize, to: &attributed) }
+        let codeBackground = themeColors?.codeBackground ?? Color(MarkdownTextStyler.codeBackgroundColor)
+        Self.drawInlineCodeAsChips(in: &attributed, background: codeBackground, textSize: textSize)
         styleTags(in: &attributed)
         replaceTaskMarkers(in: &attributed)
         Self.replaceLineBreakMarkers(in: &attributed)
@@ -2368,6 +2393,34 @@ struct ObsidianMarkdownParser: MarkupParser {
             linkRuns.append((range, color))
         }
         for (range, color) in linkRuns { text[range].foregroundColor = color }
+    }
+
+    /// Inline code on a rounded tint of the theme's code background, a little wider than its text, as Obsidian and Notion
+    /// draw it (Obsidian's 4-pixel corners at 16-point text). The character before and the one after the code are kerned
+    /// by the tint's overhang, so the tint keeps a whole space from the text beside it. Code already on a highlight keeps
+    /// the highlight.
+    static func drawInlineCodeAsChips(in text: inout AttributedString, background: Color, textSize: Double) {
+        var codeOffsets: [Range<Int>] = []
+        for run in text.runs where run.inlinePresentationIntent?.contains(.code) == true && run[RoundedRunBackgroundAttribute.self] == nil {
+            let start = text.characters.distance(from: text.startIndex, to: run.range.lowerBound)
+            codeOffsets.append(start..<(start + text.characters.distance(from: run.range.lowerBound, to: run.range.upperBound)))
+        }
+        guard !codeOffsets.isEmpty else { return }
+        let overhang = NoteThemeStyle.scaled(2, textSize: textSize)
+        let chip = RoundedRunBackground(color: background, cornerRadius: NoteThemeStyle.scaled(4, textSize: textSize), horizontalPadding: overhang)
+        let characterCount = text.characters.count
+        func range(_ offsets: Range<Int>) -> Range<AttributedString.Index> {
+            text.characters.index(text.startIndex, offsetBy: offsets.lowerBound)..<text.characters.index(text.startIndex, offsetBy: offsets.upperBound)
+        }
+        for offsets in codeOffsets {
+            text[range(offsets)][RoundedRunBackgroundAttribute.self] = chip
+            for neighbour in [offsets.lowerBound - 1, offsets.upperBound] where neighbour >= 0 && neighbour < characterCount {
+                let neighbourRange = range(neighbour..<(neighbour + 1))
+                if text.characters[neighbourRange.lowerBound] != "\n", text[neighbourRange][RoundedRunBackgroundAttribute.self] == nil {
+                    text[neighbourRange].kern = overhang
+                }
+            }
+        }
     }
 
     /// Whether a run is HTML, a tag in a sentence or a block of it. Its text is the tag as written, so a `#ccc` in a
@@ -2986,6 +3039,7 @@ struct CalloutView<Body: View>: View {
     let automaticallyExpandsForReading: Bool
     @ViewBuilder let content: () -> Body
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.embeddedImageZoomScale) private var imageZoomScale
     @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
@@ -3033,41 +3087,26 @@ struct CalloutView<Body: View>: View {
 
     var body: some View {
         let appearance = CalloutAppearance(type: type, theme: theme)
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                if folding != .notFoldable { withAnimation(GraphiteMotion.animation(.snappy)) { isExpanded.toggle() } }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: appearance.systemImage).foregroundStyle(appearance.titleColor)
-                    // A link in the title takes the tap before the fold button does. Textual
-                    // covers the whole text with its link tap, which took every tap on the
-                    // title, so a folded callout opened only from its icon or chevron: a
-                    // title without a link leaves the tap to the fold button.
-                    StructuredText(title, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens))
-                        .id(textSize)
-                        .id(sourceTokens)
-                        .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
-                        .foregroundStyle(appearance.titleColor)
-                        .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
-                        .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
-                        .allowsHitTesting(Self.containsLink(title))
-                    if folding != .notFoldable {
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(appearance.titleColor)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    }
-                    Spacer(minLength: 0)
+        let tint = appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity)
+        Group {
+            if folding == .notFoldable, title.isEmpty || CalloutIconTitle.emoji(in: title) != nil {
+                // Notion's callout (`> [!tip] 💡`, `> [!info|no-title]`): its icon on the first line of the body and no title row,
+                // in the type's tint. The parser leaves the title empty only for `no-title`, where the type's glyph stands for it.
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    notionIcon(appearance).accessibilityLabel(Text(type.capitalized))
+                    VStack(alignment: .leading, spacing: 8) { content().environment(\.tableGroundTint, tint) }
                 }
-                .contentShape(Rectangle())
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    titleRow(appearance)
+                    // A table cell's editor paints the callout's tint under the text it covers.
+                    if isExpanded { content().environment(\.tableGroundTint, tint) }
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(folding == .notFoldable ? "" : (isExpanded ? "Collapses the callout" : "Expands the callout"))
-            // A table cell's editor paints the callout's tint under the text it covers.
-            if isExpanded { content().environment(\.tableGroundTint, appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity)) }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity), in: RoundedRectangle(cornerRadius: calloutRadius))
+        .background(tint, in: RoundedRectangle(cornerRadius: calloutRadius))
         .overlay {
             // A theme's callout border, in the callout's own color.
             if let borderWidth = theme?.calloutBorderWidth {
@@ -3075,12 +3114,62 @@ struct CalloutView<Body: View>: View {
             }
         }
     }
+
+    /// The emoji of the title, or the type's glyph in its title colour when the title is hidden (`no-title`), each as wide
+    /// as the emoji's size, so the text of every such callout starts at the same place.
+    private func notionIcon(_ appearance: CalloutAppearance) -> some View {
+        let iconSize = textSize * CalloutAppearance.notionIconScale
+        return Group {
+            if let emoji = CalloutIconTitle.emoji(in: title) {
+                Text(emoji).font(typography.textSwiftUIFont(size: iconSize))
+            } else {
+                Image(systemName: appearance.systemImage).font(typography.textSwiftUIFont(size: textSize * 1.1)).foregroundStyle(appearance.titleColor)
+            }
+        }
+        .frame(width: iconSize)
+    }
+
+    /// The type's icon, the title and the fold chevron, which fold the callout.
+    private func titleRow(_ appearance: CalloutAppearance) -> some View {
+        Button {
+            if folding != .notFoldable { withAnimation(GraphiteMotion.animation(.snappy)) { isExpanded.toggle() } }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: appearance.systemImage).foregroundStyle(appearance.titleColor)
+                // A link in the title takes the tap before the fold button does. Textual
+                // covers the whole text with its link tap, which took every tap on the
+                // title, so a folded callout opened only from its icon or chevron: a
+                // title without a link leaves the tap to the fold button.
+                StructuredText(title, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens))
+                    .id(textSize)
+                    .id(sourceTokens)
+                    .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
+                    .foregroundStyle(appearance.titleColor)
+                    .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
+                    .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
+                                                                    iconPictures: noteIcons?.pictures))
+                    .textual.attachmentScale(imageZoomScale)
+                    .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
+                    .allowsHitTesting(Self.containsLink(title))
+                if folding != .notFoldable {
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(appearance.titleColor)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(folding == .notFoldable ? "" : (isExpanded ? "Collapses the callout" : "Expands the callout"))
+    }
 }
 
 /// Obsidian's callout types, their aliases, colors, and icons.
 struct CalloutAppearance {
     /// The opacity of the callout's color behind it.
     static let tintOpacity = 0.1
+    /// The size of a Notion callout's emoji beside its text (`CalloutIconTitle`), as Notion draws it: about 22 pixels at 16.
+    static let notionIconScale = 1.35
     /// The color the callout is tinted with.
     var color: Color
     /// The title, its icon and its fold chevron: the same color, darkened in light
@@ -3129,24 +3218,33 @@ struct VaultImageLoader: AttachmentLoader {
     let root: URL
     /// Pixels a point where the text is shown; a scale below 1 is a view not on a screen yet.
     let displayScale: CGFloat
+    /// How much the note is zoomed, which a picture given a width is drawn and decoded larger by.
+    var zoomScale: Double = 1
     /// The window's pictures of notes' icons, which icons before links are drawn from; nil while icons are off.
     let iconPictures: NoteIconPictures?
 
     /// The pixels of an icon drawn before a link (`NoteIconInlineAddress`).
     private func iconImage(_ named: NoteIconInlineAddress.Named) async throws -> CGImage {
+        let side = NoteIconPictures.pixelDimension
         switch named {
         case .symbol(let systemName):
-            return try NoteIconSymbolPicture.image(systemName: systemName, pixelDimension: NoteIconPictures.pixelDimension)
+            return try NoteIconSymbolPicture.image(systemName: systemName, pixelDimension: side)
+        case .emoji(let emoji):
+            return try NoteIconSquarePicture.emoji(emoji, pixelDimension: side)
+        case .vaultFile(let fileLocation):
+            return try NoteIconSquarePicture.squared(try await ReadingImageCache.shared.thumbnail(for: fileLocation, kind: .inline,
+                                                                                                   displayPixelWidth: side).image, pixelDimension: side)
         case .webAddress(let address):
             guard let iconPictures else { throw NoteIconPictureError.iconsOff }
-            return try await iconPictures.picture(at: .webAddress(address)).image
+            return try NoteIconSquarePicture.squared(try await iconPictures.picture(at: .webAddress(address)).image, pixelDimension: side)
         }
     }
 
     func attachment(for location: URL, text: String, environment: ColorEnvironmentValues) async throws -> VaultImageAttachment {
         if let named = NoteIconInlineAddress.named(by: location) {
-            return VaultImageAttachment(image: try await iconImage(named), description: text, displaySize: PreviewImageFragment.displaySize(in: location),
-                                        path: nil)
+            let displaySize = PreviewImageFragment.displaySize(in: location)
+            return VaultImageAttachment(image: try await iconImage(named), description: text, displaySize: displaySize, path: nil,
+                                        iconSide: displaySize.map { size in Double(size.width) })
         }
         let fileLocation = URL(fileURLWithPath: location.path)
         let normalizedRoot = root.resolvingSymlinksInPath().path + "/"
@@ -3162,7 +3260,7 @@ struct VaultImageLoader: AttachmentLoader {
     /// as an image without one is laid out at its pixel size.
     func displayPixelWidth(for location: URL) -> Int? {
         guard let displaySize = PreviewImageFragment.displaySize(in: location) else { return nil }
-        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize, displayScale: displayScale)
+        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize.scaled(by: zoomScale), displayScale: displayScale)
     }
 
     /// The picture's path in the vault, which its zoom names.
@@ -3195,15 +3293,27 @@ struct VaultImageAttachment: Attachment {
     let displaySize: EmbedDisplaySize?
     /// The picture's path in the vault; nil outside it.
     let path: VaultPath?
+    /// For an icon before a link, the side of its square, in points (`NoteIconInlineAddress`).
+    var iconSide: Double? = nil
     @MainActor var body: some View {
         InlinePictureView(image: image, description: description, path: path)
     }
+    func baselineOffset(in environment: TextEnvironmentValues) -> CGFloat {
+        iconSide.map { side in -side * Self.zoomScale(in: environment) * NoteIconInlineAddress.shareBelowBaseline } ?? 0
+    }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
+        let zoomScale = Self.zoomScale(in: environment)
+        if let iconSide { return CGSize(width: iconSide * zoomScale, height: iconSide * zoomScale) }
         let width = Double(image.width), height = Double(image.height)
         guard width > 0, height > 0 else { return CGSize(width: 300, height: 200) }
-        let naturalWidth = displaySize?.fittedWidth(aspectRatio: width / height) ?? width
+        let naturalWidth = (displaySize?.fittedWidth(aspectRatio: width / height) ?? width) * zoomScale
         let fittedWidth = min(max(proposal.width ?? naturalWidth, Self.narrowestFittedWidth), naturalWidth)
         return CGSize(width: fittedWidth, height: fittedWidth * height / width)
+    }
+    /// How much the note's text is zoomed (HUNT-388): the scale reaches the text's layout, which is not built again for it.
+    /// A picture's width and an icon's square, both given at the default text size, grow by it.
+    private static func zoomScale(in environment: TextEnvironmentValues) -> Double {
+        environment.attachmentScale.isFinite && environment.attachmentScale > 0 ? environment.attachmentScale : 1
     }
     /// The narrowest, in points, an image is drawn where it is offered less, as in a table
     /// too crowded to fit the note: narrower, a figure can no longer be made out.

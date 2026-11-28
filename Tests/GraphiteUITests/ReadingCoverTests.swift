@@ -4,15 +4,16 @@
  * Layer: Tests
  * Description: The reading view finds a note's cover from its `banner` property only while covers are drawn, puts a
  *              linked note's emoji icon before the link's text only while icons are on, and builds a multi-column
- *              callout's paragraphs as blocks of their own.
+ *              callout's paragraphs as blocks of their own; lines of an icon and a link stay on one line.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.6
  * Date: 28/11/2026
  */
 
 import XCTest
 import SwiftUI
+@testable import Textual
 import GraphiteCore
 import GraphiteIndex
 @testable import GraphiteUI
@@ -36,6 +37,12 @@ final class ReadingCoverTests: XCTestCase {
 
     private func build(_ source: String, configuration: ReadingConfiguration) async throws -> ReadingViewBuild {
         try await ReadingViewBuilder().build(source: source, note: try VaultPath("Course.md"), root: vault, index: index, configuration: configuration)
+    }
+
+    /// How an emoji icon is written before a link: a square picture whose description is the emoji, then a space.
+    private static func emojiIcon(_ emoji: String) -> String {
+        let address = NoteIconInlineAddress.url(of: .emoji(emoji), root: URL(fileURLWithPath: "/"))
+        return "![\(emoji)](\(address.map(GraphiteOpenLink.markdownDestination) ?? "")) "
     }
 
     private func markdownRuns(_ blocks: [RenderedBlock]) -> [String] {
@@ -74,8 +81,8 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let withIcons = try await build("See [[Lab]] and [[Lab|the lab]].", configuration: configuration)
         let text = markdownRuns(withIcons.blocks).joined()
-        XCTAssertTrue(text.contains("🧪 [Lab]("), "The icon stands before the link, outside its text: \(text)")
-        XCTAssertTrue(text.contains("🧪 [the lab]("), "An alias keeps the icon too: \(text)")
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Lab]("), "The icon stands before the link, outside its text: \(text)")
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[the lab]("), "An alias keeps the icon too: \(text)")
     }
 
     func testALinkToANoteWithAPictureOrSymbolIconShowsItAsASmallPicture() async throws {
@@ -86,12 +93,12 @@ final class ReadingCoverTests: XCTestCase {
             try VaultPath("Covers/Hills.png"): .picture(.webAddress(notion)),
         ], root: vault, version: 1)
         let pictureLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
-        XCTAssertTrue(pictureLink.contains("![](file://"), pictureLink)
+        XCTAssertTrue(pictureLink.contains("![](graphite-note-icon://vault?address="), pictureLink)
         XCTAssertTrue(pictureLink.contains("Hills.png#"), "The vault's picture, sized to the text: \(pictureLink)")
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .symbol(systemName: "atom")], root: vault, version: 2)
         let symbolLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
         XCTAssertTrue(symbolLink.contains("![](graphite-note-icon://symbol/atom"), symbolLink)
-        let webAddress = try XCTUnwrap(NoteIconInlineAddress.url(of: .picture(.webAddress(notion)), root: vault, textSize: 17))
+        let webAddress = try XCTUnwrap(NoteIconInlineAddress.url(of: .picture(.webAddress(notion)), root: vault))
         XCTAssertEqual(NoteIconInlineAddress.named(by: webAddress), .webAddress(notion))
         XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(URL(string: symbolLink.components(separatedBy: "![](")[1].components(separatedBy: ")")[0]))),
                        .symbol("atom"))
@@ -222,8 +229,8 @@ final class ReadingCoverTests: XCTestCase {
         configuration.drawsPageLook = true
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let text = markdownRuns(try await build("[[Lab]]  \n[[Lab|Second lab]]  \n[[Course]]  \n", configuration: configuration).blocks).joined()
-        XCTAssertTrue(text.contains("🧪 [Lab]("), text)
-        XCTAssertTrue(text.contains("🧪 [Second lab]("), text)
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Lab]("), text)
+        XCTAssertTrue(text.contains(Self.emojiIcon("🧪") + "[Second lab]("), text)
         XCTAssertEqual(text.components(separatedBy: "  \n").count, 4, "Three lines, each ending in its hard break: \(text.debugDescription)")
         XCTAssertFalse(text.contains("\n\n"), text.debugDescription)
     }
@@ -298,7 +305,7 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .emoji("🧪")], root: vault, version: 1)
         let glyph = "graphite-note-icon://symbol/doc.text"
         let list = markdownRuns(try await build("[[Lab]]  \n[[Course]]  \n[[Missing]]", configuration: configuration).blocks).joined()
-        XCTAssertTrue(list.contains("🧪 [Lab]("), list)
+        XCTAssertTrue(list.contains(Self.emojiIcon("🧪") + "[Lab]("), list)
         XCTAssertEqual(list.components(separatedBy: glyph).count - 1, 2, "Each link without an icon gets the page: \(list)")
         let paragraphs = markdownRuns(try await build("[[Lab]]\n\n[[Course]]", configuration: configuration).blocks).joined()
         XCTAssertTrue(paragraphs.contains(glyph), "Paragraphs drawn as one list get it too: \(paragraphs)")
@@ -307,6 +314,94 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = .none
         let noIcons = markdownRuns(try await build("[[Lab]]  \n[[Course]]", configuration: configuration).blocks).joined()
         XCTAssertFalse(noIcons.contains(glyph))
+    }
+
+    func testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline() throws {
+        let side = NoteIconPictures.pixelDimension
+        let emoji = try NoteIconSquarePicture.emoji("🏢", pixelDimension: side)
+        XCTAssertEqual([emoji.width, emoji.height], [side, side])
+        let wide = try XCTUnwrap(CGContext(data: nil, width: 400, height: 100, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        let squared = try NoteIconSquarePicture.squared(wide, pixelDimension: side)
+        XCTAssertEqual([squared.width, squared.height], [side, side], "A wide logo is fitted into the square.")
+        for icon in [NoteIcon.emoji("🏢"), .symbol(systemName: "doc.text"), .picture(.vaultFile(linkTarget: "Covers/Hills.png")),
+                     .picture(.webAddress(try XCTUnwrap(URL(string: "https://example.com/i.svg"))))] {
+            let address = try XCTUnwrap(NoteIconInlineAddress.url(of: icon, root: vault))
+            XCTAssertNotNil(NoteIconInlineAddress.named(by: address), "\(icon)")
+            XCTAssertEqual(PreviewImageFragment.displaySize(in: address)?.width, 20, "Notion's 20 points beside 16-point text: \(icon)")
+        }
+        XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(NoteIconInlineAddress.url(of: .emoji("🏢"), root: vault))), .emoji("🏢"))
+        let attachment = VaultImageAttachment(image: emoji, description: "🏢", displaySize: nil, path: nil, iconSide: 20)
+        let environment = TextEnvironmentValues()
+        XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: environment), CGSize(width: 20, height: 20))
+        XCTAssertLessThan(attachment.baselineOffset(in: environment), 0, "The square reaches below the baseline as an emoji does.")
+        let zoomed = TextEnvironmentValues(attachmentScale: 1.5)
+        XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: zoomed), CGSize(width: 30, height: 30),
+                       "At 24 points the square grows as the text does, though the note is not built again.")
+        XCTAssertEqual(attachment.baselineOffset(in: zoomed), attachment.baselineOffset(in: environment) * 1.5, accuracy: 0.001)
+    }
+
+    func testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps() throws {
+        let icon = "![](\(try XCTUnwrap(NoteIconInlineAddress.url(of: .symbol(systemName: "doc.text"), root: vault))))"
+        let parser = ObsidianMarkdownParser(baseURL: vault, textSize: 16)
+        func isTruncated(_ markdown: String) throws -> Bool {
+            TruncatedLines.isMarked(try parser.attributedString(for: markdown))
+        }
+        XCTAssertTrue(try isTruncated("\(icon) [Lab](Lab.md)  \n\(icon) [A long second lab](Lab.md)  \n\(icon) [Course](Course.md)"))
+        XCTAssertTrue(try isTruncated("\(icon) [Lab](Lab.md)"), "A link to a page alone on its line, as Notion's.")
+        XCTAssertFalse(try isTruncated("\(icon) [Lab](Lab.md)  \n[Course](Course.md)"), "A line without an icon is not a list of pages.")
+        XCTAssertFalse(try isTruncated("\(icon) [Lab](Lab.md) is due Monday"), "Text beside the link wraps.")
+        XCTAssertFalse(try isTruncated("See \(icon) [Lab](Lab.md)"))
+        XCTAssertFalse(try isTruncated("- \(icon) [Lab](Lab.md)"), "A list item wraps.")
+        XCTAssertFalse(try isTruncated("[Lab](Lab.md)  \n[Course](Course.md)"), "Links without icons wrap, as Obsidian's.")
+        let paragraphs = try parser.attributedString(for: "Prose that wraps.\n\n\(icon) [Lab](Lab.md)")
+        let marked = paragraphs.runs.filter { run in run[TruncatedLinesAttribute.self] == true }.map { run in String(paragraphs[run.range].characters) }
+        XCTAssertFalse(marked.joined().contains("Prose"), "Only the paragraph of links: \(marked)")
+    }
+
+    func testAMarkedParagraphKeepsEachLineOnOneLineAndDrawsShortLinesAsOneTextDoes() throws {
+        let short = "[Lab](a)  \n[Course](b)  \n[Midterm](c)"
+        let long = "[Lab](a)  \n[Signals and systems of the lab bench](b)  \n[Midterm](c)"
+        func drawn(_ markdown: String, width: CGFloat, marked: Bool) throws -> CGImage {
+            let view = StructuredText(markdown, parser: LineMarkingParser(marks: marked)).font(.system(size: 16)).frame(width: width, alignment: .leading)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            return try XCTUnwrap(renderer.cgImage)
+        }
+        let oneText = try drawn(short, width: 400, marked: false), lines = try drawn(short, width: 400, marked: true)
+        XCTAssertEqual(lines.height, oneText.height, "Lines that fit take the height one text takes.")
+        let linesBands = try Self.inkedRowBands(of: lines), oneTextBands = try Self.inkedRowBands(of: oneText)
+        XCTAssertEqual(linesBands.count, 3)
+        XCTAssertEqual(linesBands.count, oneTextBands.count)
+        for (line, oneTextLine) in zip(linesBands, oneTextBands) {
+            XCTAssertLessThanOrEqual(abs(line.lowerBound - oneTextLine.lowerBound), 1, "Each line within a pixel of one text's: \(linesBands) \(oneTextBands)")
+        }
+        XCTAssertEqual(try drawn(long, width: 120, marked: true).height, oneText.height, "A long line is cut, not wrapped.")
+        XCTAssertGreaterThan(try drawn(long, width: 120, marked: false).height, oneText.height, "Unmarked, it wraps.")
+    }
+
+    /// The rows of pixels drawn on, as runs of consecutive rows: one per line of text.
+    private static func inkedRowBands(of image: CGImage) throws -> [Range<Int>] {
+        let data = try XCTUnwrap(image.dataProvider?.data as Data?)
+        var bands: [Range<Int>] = []
+        var bandStart: Int?
+        for row in 0...image.height {
+            let isInked = row < image.height && (0..<image.width).contains { column in data[row * image.bytesPerRow + column * 4 + 3] > 0 }
+            if isInked, bandStart == nil { bandStart = row }
+            if !isInked, let start = bandStart { bands.append(start..<row); bandStart = nil }
+        }
+        return bands
+    }
+}
+
+/// Parses Markdown as Textual does, marking every paragraph to keep its lines on one line when `marks` is true.
+private struct LineMarkingParser: MarkupParser {
+    let marks: Bool
+
+    func attributedString(for input: String) throws -> AttributedString {
+        var text = try AttributedStringMarkdownParser(baseURL: nil).attributedString(for: input)
+        if marks { text[text.startIndex..<text.endIndex][TruncatedLinesAttribute.self] = true }
+        return text
     }
 }
 

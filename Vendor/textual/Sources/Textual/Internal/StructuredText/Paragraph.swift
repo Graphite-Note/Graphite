@@ -21,8 +21,14 @@ extension StructuredText {
     }
 
     private var label: some View {
-      WithInlineStyle(AttributedString(content)) {
-        TextFragment($0)
+      WithInlineStyle(AttributedString(content)) { styled in
+        // Graphite patch: a paragraph marked with `TruncatedLinesAttribute` draws each line on one
+        // line of its own (patch 38).
+        if TruncatedLines.isMarked(styled) {
+          TruncatedLines(content: styled)
+        } else {
+          TextFragment(styled)
+        }
       }
     }
 

@@ -4,11 +4,12 @@
  * Layer: Tests
  * Description: Photos shown side by side at a width are decoded for that width, never as the full camera
  *              image: a Live Preview line of ten 250-point photos, the same photos in a table cell drawn by the
- *              reading view's renderer, and a picture without a width, which keeps the inline limit (issue #102).
+ *              reading view's renderer, and a picture without a width, which keeps the inline limit (issue #102); a
+ *              picture inside text drawn and decoded zoomed with the note (HUNT-388).
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 11/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -19,6 +20,7 @@ import ImageIO
 import UniformTypeIdentifiers
 import GraphiteCore
 @testable import GraphiteUI
+@testable import Textual
 import GraphiteTestSupport
 
 /// The reported "Butter-basted steak.md" shows ten camera photos at `|250` on one line. Each picture is to be
@@ -60,9 +62,9 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
         }
     }
 
-    /// At Graphite's default text size, where a `|250` picture is 250 points wide.
-    private func environment() -> LivePreviewEnvironment {
-        LivePreviewEnvironment(root: vault, textSize: Double(NoteFontSize.defaultSize), colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
+    /// At Graphite's default text size, where a `|250` picture is 250 points wide, or at `textSize`.
+    private func environment(textSize: Double = Double(NoteFontSize.defaultSize)) -> LivePreviewEnvironment {
+        LivePreviewEnvironment(root: vault, textSize: textSize, colorsEnabled: true, paletteHexByName: [:], drawingVersion: 0,
                                resolve: { target, _ in try? VaultPath(target) }, open: { _ in }, follow: { _, _ in }, updateProperties: nil)
     }
 
@@ -140,6 +142,71 @@ final class UiInlineImageDecodeSizeTests: XCTestCase {
         XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 0, iconPictures: nil).displayPixelWidth(for: sized), 250)
         let unsized = PreviewImageFragment.url(for: location, displaySize: nil, version: 0)
         XCTAssertNil(VaultImageLoader(root: vault, displayScale: 3, iconPictures: nil).displayPixelWidth(for: unsized))
+    }
+    /// HUNT-388, drawn: a table's picture inside text at `|100`, drawn by Live Preview's renderer at the default size and at
+    /// 24 points, is drawn half as wide again zoomed, as the text is. Its width is read, the widest row of its color: the test
+    /// window cuts the view at its first measured height.
+    func testATablesPictureInsideTextIsDrawnLargerWhenTheNoteIsZoomed() async throws {
+        let photo = try XCTUnwrap(writePhotos(prefix: "Zoomed", count: 1).first)
+        let table = "| Photo |\n| --- |\n| a ![[\(photo.lastPathComponent)\\|100]] b |\n"
+        func drawnPhotoWidth(textSize: Double) async throws -> Int {
+            _ = show(RenderedMarkdownBlock(markdown: table, environment: environment(textSize: textSize)))
+            let hostingView = try XCTUnwrap(window?.contentView)
+            var width = 0, previousWidth = -1
+            // Decoding the photo can wait for a core while other builds run.
+            try await waitUntil("the photo is drawn at \(textSize) points, as wide twice in a row", timeoutSeconds: 60) {
+                hostingView.layoutSubtreeIfNeeded()
+                guard let representation = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) else { return false }
+                hostingView.cacheDisplay(in: hostingView.bounds, to: representation)
+                previousWidth = width
+                width = Self.widestPhotoColoredRow(in: representation)
+                return width > 0 && width == previousWidth
+            }
+            window?.orderOut(nil)
+            return width
+        }
+        let atDefault = try await drawnPhotoWidth(textSize: Double(NoteFontSize.defaultSize))
+        let zoomed = try await drawnPhotoWidth(textSize: Double(NoteFontSize.defaultSize) * 1.5)
+        XCTAssertEqual(Double(zoomed) / Double(atDefault), 1.5, accuracy: 0.05,
+                       "The picture's width at 24 points over its width at 16: \(zoomed) / \(atDefault).")
+    }
+
+    /// The longest run of the photos' color (0.8, 0.3, 0.2) in a row of pixels, within a margin for scaling and JPEG.
+    private static func widestPhotoColoredRow(in representation: NSBitmapImageRep) -> Int {
+        var widest = 0
+        for y in 0..<representation.pixelsHigh {
+            var run = 0
+            for x in 0..<representation.pixelsWide {
+                guard let color = representation.colorAt(x: x, y: y)?.usingColorSpace(.sRGB),
+                      abs(color.redComponent - 0.8) < 0.12, abs(color.greenComponent - 0.3) < 0.12, abs(color.blueComponent - 0.2) < 0.12 else {
+                    run = 0
+                    continue
+                }
+                run += 1
+                widest = max(widest, run)
+            }
+        }
+        return widest
+    }
+
+    /// HUNT-388: a picture inside text grows with the note's zoom, as its text does, with or without a width, and is
+    /// decoded for the zoomed width.
+    func testAPictureInsideTextIsDrawnAndDecodedZoomedWithTheNote() throws {
+        let image = try XCTUnwrap(CGContext(data: nil, width: 120, height: 60, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage())
+        let sized = VaultImageAttachment(image: image, description: "badge", displaySize: EmbedDisplaySize(width: 24, height: nil), path: nil)
+        let unsized = VaultImageAttachment(image: image, description: "chart", displaySize: nil, path: nil)
+        let atDefault = TextEnvironmentValues(), zoomed = TextEnvironmentValues(attachmentScale: 1.5)
+        XCTAssertEqual(sized.sizeThatFits(.unspecified, in: atDefault), CGSize(width: 24, height: 12))
+        XCTAssertEqual(sized.sizeThatFits(.unspecified, in: zoomed), CGSize(width: 36, height: 18), "At 24 points a |24 picture is 36 wide.")
+        XCTAssertEqual(unsized.sizeThatFits(.unspecified, in: zoomed), CGSize(width: 180, height: 90), "One without a width grows from its pixel size.")
+        XCTAssertEqual(unsized.sizeThatFits(ProposedViewSize(width: 100, height: nil), in: zoomed).width, 100, "A narrower cell still fits it.")
+        XCTAssertEqual(sized.sizeThatFits(.unspecified, in: TextEnvironmentValues(attachmentScale: 0)), CGSize(width: 24, height: 12),
+                       "A scale that is not positive is no zoom.")
+
+        let location = vault.appendingPathComponent("Photo.JPG")
+        let sizedLocation = PreviewImageFragment.url(for: location, displaySize: EmbedDisplaySize(width: 250, height: nil), version: 0)
+        XCTAssertEqual(VaultImageLoader(root: vault, displayScale: 2, zoomScale: 1.5, iconPictures: nil).displayPixelWidth(for: sizedLocation), 750)
     }
 }
 #endif

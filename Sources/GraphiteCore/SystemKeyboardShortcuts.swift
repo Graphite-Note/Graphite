@@ -91,7 +91,9 @@ public struct SystemKeyboardShortcuts: Sendable {
         reserved(.control, .named(.arrowDown), .applicationWindows),
         reserved(.control, .named(.arrowLeft), .previousSpace),
         reserved(.control, .named(.arrowRight), .nextSpace),
-        standard(.command, .character("Q"), .quit),
+        // The Quit menu item takes ⌘Q before the Keyboard Shortcuts page sees it: pressed while
+        // the page waited for a key, ⌘Q quit Graphite (macOS 27.2, 2026-11-28), as on the iPad.
+        reserved(.command, .character("Q"), .quit),
         standard(.command, .character("H"), .hide),
         standard([.command, .option], .character("H"), .hideOthers),
         standard(.command, .character("M"), .minimize),

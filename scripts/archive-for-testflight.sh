@@ -30,6 +30,15 @@ repository_root=$(cd "$(dirname "$0")/.." && pwd)
 build_number=$(date +%Y%m%d.%H%M)
 archive_path="$build_folder/Graphite-$platform-$build_number.xcarchive"
 
+# What's New lists each upload's changes under the version testers install (Docs/TestFlight.md), so the newest version in
+# the release history must be the version this build carries.
+marketing_version=$(sed -n 's/.*MARKETING_VERSION = \([0-9.]*\);.*/\1/p' "$repository_root/Graphite.xcodeproj/project.pbxproj" | head -n 1)
+newest_listed_version=$(sed -n 's/^## \([0-9.]*\)$/\1/p' "$repository_root/Sources/GraphiteUI/Resources/ReleaseNotes.md" | head -n 1)
+if [ "$marketing_version" != "$newest_listed_version" ]; then
+  echo "Sources/GraphiteUI/Resources/ReleaseNotes.md starts at version $newest_listed_version, the build is $marketing_version: add a '## $marketing_version' section with this upload's lines." >&2
+  exit 1
+fi
+
 if ps -axo comm | grep -qE "/(swift-build|swift-test|xcodebuild)$"; then
   echo "Another build or test run is in progress; run this when it has finished." >&2
   exit 1

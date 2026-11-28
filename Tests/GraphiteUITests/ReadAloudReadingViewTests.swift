@@ -6,8 +6,8 @@
  *              and the highlight drawn on the spoken word.
  *
  * Authors: Bahey Shalash
- * Version: 0.8
- * Date: 24/10/2026
+ * Version: 0.9
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -22,6 +22,21 @@ import GraphiteTestSupport
 
 @MainActor
 final class ReadAloudReadingViewTests: XCTestCase {
+    /// A table's cells each report for the word's range; a cell that does not draw the word reports no frame, which
+    /// left the receiver with none when it came after the cell that drew it (Textual patch 37).
+    @MainActor
+    func testATextThatDoesNotDrawTheWordKeepsTheFramesAnotherTextDrewForIt() {
+        var received: [ReadingHighlightGeometry] = []
+        let receiver = ReadingHighlightReceiver { frames in received = frames }
+        let range = NSRange(location: 4, length: 6)
+        let drawn = ReadingHighlightGeometry(sourceRange: range, frame: CGRect(x: 10, y: 20, width: 40, height: 18))
+        receiver.report([drawn], of: range, from: "cell repeat")
+        receiver.report([], of: range, from: "cell clear")
+        XCTAssertEqual(received, [drawn])
+        receiver.report([], of: range, from: "cell repeat")
+        XCTAssertEqual(received, [])
+    }
+
     func testRenderedWordsRetainExactOccurrencesAcrossMarkdownTransforms() async throws {
         let directory = try TemporaryVault.make(prefix: "ReadAloudReading", for: self).root
         let index = try VaultIndex(databaseURL: directory.appendingPathComponent("index.sqlite"))
@@ -206,7 +221,7 @@ final class ReadAloudReadingViewTests: XCTestCase {
                                                      readingContext: LivePreviewReadingContext(controller: reader, path: path))
             let root = LivePreviewWidgetView(block: block, environment: environment, revealSource: {}, reportHeight: { _ in })
                 .coordinateSpace(.named(ReadingCoordinateSpace.name))
-                .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in MainActor.assumeIsolated { state.frames = frames } }
+                .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
                 .frame(width: 360, height: 240, alignment: .topLeading)
             let hosting = NSHostingView(rootView: root)
             let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 360, height: 240), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -295,9 +310,7 @@ private struct FollowingProbe: View {
                         headingScrollRequest: .constant(nil), handledScrollToken: .constant(nil),
                         navigate: { _, _ in }, openPDF: { _, _ in }, updateProperties: nil,
                         savedPosition: position, readingWord: ReadingWordSource { state.range }, followsReading: state.followsReading)
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated { state.frames = frames }
-            }
+            .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
             .frame(width: 360, height: 240)
     }
 }
@@ -313,9 +326,7 @@ private struct HighlightProbe: View {
             .textual.textSelection(.enabled)
             .textual.readingHighlight(state.range, coordinateSpace: "ReadingProbe")
             .coordinateSpace(.named("ReadingProbe"))
-            .onPreferenceChange(ReadingHighlightGeometryKey.self) { frames in
-                MainActor.assumeIsolated { state.frames = frames }
-            }
+            .environment(\.readingHighlightReceiver, ReadingHighlightReceiver { frames in state.frames = frames })
             .frame(width: 360, height: 120, alignment: .topLeading)
             .foregroundStyle(.black)
             .background(.white)

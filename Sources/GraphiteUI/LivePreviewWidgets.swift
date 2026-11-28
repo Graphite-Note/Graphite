@@ -6,8 +6,8 @@
  *              lines of images.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.51
- * Date: 27/11/2026
+ * Version: 0.53
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -270,6 +270,7 @@ struct LivePreviewWidgetView: View {
                     guard sourceEditing != nil else { return }
                     let editors = calloutTableEditors
                     menuContext?.itemsAtPoint = { [weak editors] point in editors?.menuItems(at: point) ?? [] }
+                    menuContext?.pointerMoved = { [weak editors] point in editors?.pointerMoved(toPointInBlock: point) }
                 }
         }
     }
@@ -304,6 +305,7 @@ struct LivePreviewWidgetView: View {
                     .onAppear {
                         let editor = tableEditor
                         menuContext?.itemsAtPoint = { [weak editor] point in editor?.menuItems(at: point) ?? [] }
+                        menuContext?.pointerMoved = { [weak editor] point in editor?.pointerMoved(toPointInBlock: point) }
                     }
             } else {
                 RenderedMarkdownBlock(markdown: block.markdown, environment: environment, sourceTokens: readingSnapshot?.tokens, place: tablePlace)
@@ -473,6 +475,8 @@ struct RenderedMarkdownBlock: View {
                              // `follow` scrolls the note to a heading written as `#heading`,
                              // and a heading's anchor is its own anchor.
                              scrollToHeading: { anchor in environment.follow("#" + anchor, true) }, sourceTokens: sourceTokens)
+            // The pictures inside a table's or callout's text grow with the note's zoom, as its text does (HUNT-388).
+            .environment(\.embeddedImageZoomScale, NoteFontSize.zoomScale(forTextSize: environment.textSize))
             .task(id: preparationTaskKey) {
                 guard preparationTaskKey != settledPreparationTaskKey else { return }
                 let preparation = await LivePreviewText.preparedResolvingEmbeds(markdown, environment: environment, place: place)

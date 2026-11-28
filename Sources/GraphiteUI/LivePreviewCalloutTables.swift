@@ -6,8 +6,8 @@
  *              view, and each edit run on the table's lines with their quote markers kept.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -56,6 +56,11 @@ final class LivePreviewCalloutTableEditors {
     func menuItems(at point: CGPoint) -> [RenderedBlockMenuItem] {
         let table = editors.first { editor in editor.isOnTable(point) } ?? editors.first { editor in editor.editingCell != nil }
         return table?.menuItems(at: point) ?? []
+    }
+
+    /// The pointer at `point`, in the callout view's coordinates, or off it: each table shows its strips while it is near.
+    func pointerMoved(toPointInBlock point: CGPoint?) {
+        for editor in editors { editor.pointerMoved(toPointInBlock: point) }
     }
 }
 

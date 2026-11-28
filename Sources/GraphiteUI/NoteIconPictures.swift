@@ -6,7 +6,7 @@
  *              cache, a picture of the web (Notion's SVG icons among them) fetched once and kept for the window.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
+ * Version: 0.2
  * Date: 28/11/2026
  */
 
@@ -21,6 +21,8 @@ enum NoteIconPictureError: Error, Equatable {
     case tooLarge(limitBytes: Int)
     case noSymbol(String)
     case iconsOff
+    /// An icon before a link that could not be drawn into its square.
+    case notDrawn(String)
 }
 
 /// Where a picture icon's pixels are read from.

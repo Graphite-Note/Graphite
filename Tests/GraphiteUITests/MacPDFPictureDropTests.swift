@@ -4,16 +4,18 @@
  * Layer: Tests
  * Description: Pictures dropped onto a Mac PDF view: the page point under the drop agrees with PDFKit at every quarter
  *              turn and zoom; image data and a Finder file are placed where they landed, selected, one step each; a
- *              PDF file and a protected PDF take no drop; a dragged PDF file shows no "+" and its drop says why.
+ *              PDF file and a protected PDF take no drop; a dragged PDF file shows no "+" and its drop says why;
+ *              a PDF embedded in a note leaves dropped files to the note.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
 import XCTest
 import AppKit
+import SwiftUI
 import PDFKit
 import GraphiteCore
 import GraphiteApple
@@ -197,6 +199,36 @@ final class MacPDFPictureDropTests: XCTestCase {
         let imageData = try Self.pngData()
         let carried = pasteboard { pasteboard in pasteboard.setData(imageData, forType: .png) }
         XCTAssertFalse(target.takesDrop(from: carried))
+    }
+
+    /// HUNT-394: PDFKit registers its view for the Finder's files even while it takes none, so files dropped on the page of
+    /// a PDF embedded in a note were refused before the note's own drop saw them. An embed registers for no dragged type at
+    /// all, inside or out; the PDF viewer keeps its picture drops.
+    func testAPDFEmbeddedInANoteLeavesDroppedFilesToTheNote() async throws {
+        let fixture = try XCTUnwrap(openedHarness)
+        let input = PDFAnnotationInput(isEnabled: false, drawsWithFinger: false, showsToolPicker: false)
+        for isEmbedded in [true, false] {
+            let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 600, height: 800), styleMask: [.titled], backing: .buffered, defer: false)
+            window.isReleasedWhenClosed = false
+            addTeardownBlock { window.close() }
+            fixture.session.pdfView = nil
+            window.contentView = NSHostingView(rootView: GraphitePDFView(session: fixture.session, input: input, isEmbedded: isEmbedded))
+            window.contentView?.layoutSubtreeIfNeeded()
+            try await waitUntil("the PDF view is laid out") { (fixture.session.pdfView?.frame.height ?? 0) > 0 }
+            let pdfView = try XCTUnwrap(fixture.session.pdfView as? GraphiteMacPDFView)
+            let registeredTypes = Self.registeredDraggedTypes(in: pdfView)
+            if isEmbedded {
+                XCTAssertEqual(registeredTypes, [], "No view of an embedded PDF takes a drag the note would take.")
+                pdfView.registerForDraggedTypes([.fileURL, NSPasteboard.PasteboardType("NSFilenamesPboardType")])
+                XCTAssertEqual(pdfView.registeredDraggedTypes, [], "PDFKit registering again changes nothing.")
+            } else {
+                XCTAssertTrue(registeredTypes.isSuperset(of: Set(MacPDFPictureDropTarget.pasteboardTypes)), "The PDF viewer still takes pictures.")
+            }
+        }
+    }
+
+    private static func registeredDraggedTypes(in view: NSView) -> Set<NSPasteboard.PasteboardType> {
+        view.subviews.reduce(Set(view.registeredDraggedTypes)) { types, subview in types.union(registeredDraggedTypes(in: subview)) }
     }
 }
 #endif

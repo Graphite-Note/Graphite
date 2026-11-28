@@ -7,8 +7,8 @@
  *              full page.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 25/11/2026
+ * Version: 0.4
+ * Date: 28/11/2026
  */
 import XCTest
 import PencilKit
@@ -270,15 +270,14 @@ final class PixelEraserPassTests: XCTestCase {
     private func timeErase(on page: PKDrawing, acrossTheWholePage: Bool, pieceSecondsPerMove: Double) throws -> EraseTiming {
         var touch = PixelEraserTouch(drawing: page, width: 2, shownBounds: CGRect(x: -100, y: -100, width: 800, height: 1_000),
                                      pieceSecondsPerMove: pieceSecondsPerMove)
+        // The thread's processor time, not the wall clock: on a Mac busy with other builds a move waited for a core and
+        // took 14 ms of wall time for 1.8 ms of work.
         var moveMilliseconds: [Double] = []
         for move in touchMoves(acrossTheWholePage: acrossTheWholePage) {
-            let moveStart = DispatchTime.now().uptimeNanoseconds
-            touch.move(through: move.points, predicted: move.predicted)
-            moveMilliseconds.append(Double(DispatchTime.now().uptimeNanoseconds - moveStart) / 1_000_000)
+            moveMilliseconds.append(ProcessorTime.onThisThread { touch.move(through: move.points, predicted: move.predicted) }.milliseconds)
         }
-        let liftStart = DispatchTime.now().uptimeNanoseconds
-        let erasedDrawing = try XCTUnwrap(touch.erasedDrawing())
-        let liftMilliseconds = Double(DispatchTime.now().uptimeNanoseconds - liftStart) / 1_000_000
+        let (erased, liftMilliseconds) = ProcessorTime.onThisThread { touch.erasedDrawing() }
+        let erasedDrawing = try XCTUnwrap(erased)
         let sortedMoves = moveMilliseconds.sorted()
         return EraseTiming(slowestMoveMilliseconds: sortedMoves.last ?? 0, medianMoveMilliseconds: sortedMoves[sortedMoves.count / 2],
                            liftMilliseconds: liftMilliseconds, cutStrokeCount: touch.pass.cutStrokeIndices.count, erasedDrawing: erasedDrawing)

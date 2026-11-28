@@ -6,8 +6,8 @@
  *              it unfolds, and draws pictures and ink at the screen's resolution.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 17/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -69,6 +69,18 @@ final class GraphiteMacPDFView: PDFView {
     override func mouseUp(with event: NSEvent) {
         super.mouseUp(with: event)
         markupInteraction?.mouseUpFinished()
+    }
+
+    /// A PDF embedded in a note leaves dragged files to the note (HUNT-394). PDFKit registers its view for the Finder's files
+    /// even while it takes none (`acceptsDraggedFiles` is off), so a drop on an embed's page was refused before the note's
+    /// own drop could take it.
+    var leavesDroppedFilesToTheNote = false {
+        didSet { if leavesDroppedFilesToTheNote { unregisterDraggedTypes() } }
+    }
+
+    override func registerForDraggedTypes(_ newTypes: [NSPasteboard.PasteboardType]) {
+        guard !leavesDroppedFilesToTheNote else { return }
+        super.registerForDraggedTypes(newTypes)
     }
 
     override func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {

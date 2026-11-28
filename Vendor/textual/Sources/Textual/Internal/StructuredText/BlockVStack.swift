@@ -22,10 +22,13 @@ extension StructuredText {
     var body: some View {
       Group(subviews: content) { children in
         BlockVStackLayout(textAlignment: textAlignment) {
-          ForEach(children) {
-            BlockLayoutView($0)
+          ForEach(children) { child in
+            BlockLayoutView(child, requestedBlockSpacing: StructuredText.blockSpacing(of: child))
           }
         }
+        // Graphite patch: the stack's spacing, as the block preference gives it, for a stack
+        // around this one (patch 36).
+        .containerValue(\.textualContainedBlockSpacing, StructuredText.blockSpacing(of: children))
       }
     }
   }
@@ -40,12 +43,15 @@ extension StructuredText {
     @Environment(\.listItemSpacingEnabled) private var listItemSpacingEnabled
     @Environment(\.resolvedListItemSpacing) private var resolvedListItemSpacing
 
-    @State private var blockSpacing = BlockSpacing()
+    /// The spacing the preference gave, kept only when it is not the requested one.
+    @State private var preferredBlockSpacing: BlockSpacing?
 
     private let content: Content
+    private let requestedBlockSpacing: BlockSpacing
 
-    init(_ content: Content) {
+    init(_ content: Content, requestedBlockSpacing: BlockSpacing) {
       self.content = content
+      self.requestedBlockSpacing = requestedBlockSpacing
     }
 
     var body: some View {
@@ -56,10 +62,16 @@ extension StructuredText {
         content
           .layoutValue(key: BlockSpacingKey.self, value: resolvedListItemSpacing)
       } else {
-        // Read the block spacing preference and apply it as a layout value
+        // Graphite patch: the block is spaced at once by the spacing it requests, which its
+        // container values hold in the update that makes it (patch 36). Upstream spaced it by
+        // the preference alone, which reached the layout only in a second pass, after the
+        // first had spaced the blocks by their views. The preference is still read: a style
+        // that requests its spacing inside a view of its own, out of the container values'
+        // reach, is spaced by it in a second pass, as upstream.
+        let blockSpacing = preferredBlockSpacing ?? requestedBlockSpacing
         content
           .onPreferenceChange(BlockSpacingKey.self) { @MainActor value in
-            blockSpacing = value
+            if value != blockSpacing { preferredBlockSpacing = value }
           }
           .layoutValue(key: BlockSpacingKey.self, value: blockSpacing)
       }

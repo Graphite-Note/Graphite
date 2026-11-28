@@ -6,8 +6,8 @@
  *              matching file is loaded however many there are, and bases over a 32,000-file index stay fast.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 25/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -188,15 +188,15 @@ final class BaseWholeVaultTimingTests: XCTestCase {
 
     private static let view = "\nviews:\n  - type: table\n    name: Table\n    order: [file.name, status, rating]\n    sort:\n      - property: file.name\n        direction: ASC\n"
 
-    /// The fastest of three runs, which leaves out the first statement's preparation.
+    /// The fastest of three runs, which leaves out the first statement's preparation, in the test process's processor time:
+    /// on a Mac busy with other builds the wall clock also counted the waits for a core (1.6 s for the whole vault, 1.5 alone).
     private func timedRun(_ baseSource: String) async throws -> (run: BaseRun, elapsedSeconds: Double) {
         var fastest = Double.infinity
         var lastRun: BaseRun?
         for _ in 0..<3 {
-            let start = ContinuousClock.now
-            lastRun = try await BaseRun.run(baseSource, index: index)
-            let elapsed = ContinuousClock.now - start
-            fastest = min(fastest, Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18)
+            let (run, seconds) = try await ProcessorTime.inThisProcess { try await BaseRun.run(baseSource, index: index) }
+            lastRun = run
+            fastest = min(fastest, seconds)
         }
         return (try XCTUnwrap(lastRun), fastest)
     }

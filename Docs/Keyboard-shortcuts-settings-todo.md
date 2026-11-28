@@ -2,7 +2,7 @@
 
 Created: 2026-10-21.
 
-Status: built and tested in the package on 2026-10-21; checked with hardware keys in an iPad simulator and in a Mac copy on 2026-11-28. The Swiss French layout and the key presses that need the Mac app in front are in Later (#273). Before, shortcuts were fixed in code, in three places that did not know about each other: the menu commands in `GraphiteCommands.swift`, the editor's `editorShortcuts` in `NativeMarkdownEditor.swift` and the command palette's `WorkspaceCommandList`, which repeated some of them as display text. Now one list, `GraphiteCommand`, holds them all (see `Docs/Architecture.md`, "Commands and shortcuts"). `TableCellTextField`'s Tab, Escape and arrows, `QuickPalette`'s arrows and `WelcomeTour`'s keys stay fixed: they move within a control and are not commands.
+Status: built and tested in the package on 2026-10-21; checked with hardware keys in an iPad simulator and in a Mac copy on 2026-11-28. The key presses that need the Mac app in front were checked on 2026-11-28; the Swiss French layout is in Later (#287). Before, shortcuts were fixed in code, in three places that did not know about each other: the menu commands in `GraphiteCommands.swift`, the editor's `editorShortcuts` in `NativeMarkdownEditor.swift` and the command palette's `WorkspaceCommandList`, which repeated some of them as display text. Now one list, `GraphiteCommand`, holds them all (see `Docs/Architecture.md`, "Commands and shortcuts"). `TableCellTextField`'s Tab, Escape and arrows, `QuickPalette`'s arrows and `WelcomeTour`'s keys stay fixed: they move within a control and are not commands.
 
 ## Request
 
@@ -17,11 +17,11 @@ Issue: [#55](https://github.com/Graphite-Note/Graphite/issues/55)
 - [x] Recording: the next key press with its modifiers becomes the shortcut; Escape cancels. A key without ⌘, ⌃ or ⌥ is refused unless it is a function key, so typing is never taken over.
 - [x] Conflicts with another Graphite command: both rows are marked; assigning a shortcut that is in use asks whether to move it (the other command loses it) or cancel.
 - [x] Conflicts with the system, from a table in Graphite for each platform, in three kinds:
-  - Taken by the system, never reaches Graphite (macOS: ⌘Tab, ⌘Space, ⌃Space, ⇧⌘3, ⇧⌘4, ⇧⌘5, ⌃⌘Q, ⌥⌘D, ⌥⌘Esc, Mission Control's ⌃ arrows; iPadOS: ⌘H, ⌘Space, ⌘Tab, ⌘Q, the Globe key's shortcuts). Refused, with the reason shown.
-  - Standard in every app (⌘Q, ⌘H, ⌘M, ⌘` for windows, ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z, ⌘A, ⌘, for Settings). Allowed after a warning that other apps use it for that.
+  - Taken by the system, never reaches Graphite (macOS: ⌘Tab, ⌘Space, ⌃Space, ⇧⌘3, ⇧⌘4, ⇧⌘5, ⌃⌘Q, ⌘Q (since 2026-11-28), ⌥⌘D, ⌥⌘Esc, Mission Control's ⌃ arrows; iPadOS: ⌘H, ⌘Space, ⌘Tab, ⌘Q, the Globe key's shortcuts). Refused, with the reason shown.
+  - Standard in every app (⌘H, ⌘M, ⌘` for windows, ⌘C, ⌘V, ⌘X, ⌘Z, ⇧⌘Z, ⌘A, ⌘, for Settings). Allowed after a warning that other apps use it for that.
   - Graphite's own default for another command: covered by the item above.
   The table is checked by hand on macOS 27 and iPadOS 27 against Apple's keyboard shortcut lists, and its source is noted in the code.
-  Done: `SystemKeyboardShortcuts` (Core) holds both tables, with Apple's "Mac keyboard shortcuts" (support.apple.com/102650) and "Learn iPad keyboard shortcuts" (support.apple.com/102393) noted as the source; read against those pages on 2026-10-21, not yet tried key by key on macOS 27 and iPadOS 27. iPadOS's Globe shortcuts are left out, since Graphite cannot record the Globe key; ⌘Q was in the iPad's standard list because of the app menu iPadOS's menu bar gives every app; since 2026-11-28 it is in its reserved list, as that menu quits before Graphite sees the key. A reserved shortcut never reaches Graphite while the system keeps it, so it can only be "seen refused" when the system's shortcut is turned off or when `hotkeys.json` (from Obsidian) holds it: the row then says the system uses it.
+  Done: `SystemKeyboardShortcuts` (Core) holds both tables, with Apple's "Mac keyboard shortcuts" (support.apple.com/102650) and "Learn iPad keyboard shortcuts" (support.apple.com/102393) noted as the source; read against those pages on 2026-10-21, not yet tried key by key on macOS 27 and iPadOS 27. iPadOS's Globe shortcuts are left out, since Graphite cannot record the Globe key; ⌘Q was in the iPad's standard list because of the app menu iPadOS's menu bar gives every app; since 2026-11-28 it is in its reserved list, as that menu quits before Graphite sees the key, and so is the Mac's, whose Quit menu item does the same. A reserved shortcut never reaches Graphite while the system keeps it, so it can only be "seen refused" when the system's shortcut is turned off or when `hotkeys.json` (from Obsidian) holds it: the row then says the system uses it.
 - [x] Mac: shortcuts the user set in System Settings › Keyboard › Keyboard Shortcuts › App Shortcuts (`NSUserKeyEquivalents`, for Graphite or for all apps) override the menu's. The page shows them on their rows as "set in System Settings". Check whether a sandboxed Graphite can also read the user's changes to the system's own shortcuts; if not, the page says the table covers only the system's defaults.
   Built: `SystemSettingsAppShortcuts` reads `NSUserKeyEquivalents` (Graphite's and all apps') and the page shows it on the row whose Mac menu title it names (`UserKeyEquivalents`, Core, parses it; tested). Graphite is sandboxed and cannot read the system's own shortcut changes (`com.apple.symbolichotkeys`), so the page says the table covers the system's defaults. Not yet checked in the running app with a shortcut set in System Settings.
   Done 2026-11-28, in a Debug build of the Mac app under its own bundle identifier with a demo vault: `NSUserKeyEquivalents` written into the copy's own preferences as System Settings writes them (`New Note` = ⌃⌘N) showed on the Create new note row as "Set in System Settings: ⌃⌘N", beside the vault's ⌘N, after the app was opened again. The page's footnote says the table covers the system's defaults only. AppKit's own use of the shortcut in the menu bar was not pressed.
@@ -41,8 +41,14 @@ Issue: [#55](https://github.com/Graphite-Note/Graphite/issues/55)
 
 Issue: [#273](https://github.com/Graphite-Note/Graphite/issues/273)
 
-- [ ] Keyboard layouts: shortcuts checked on the Swiss French layout on the Mac and the iPad, where `/`, `[`, `]` and `` ` `` need ⌥ or ⇧ (on the Mac, `allowsAutomaticKeyEquivalentLocalization`). Moved from the scope on 2026-11-28; how recording reads such keys is said there.
-- [ ] On the Mac with Graphite in front: a changed shortcut pressed in a note, and ⌘Q pressed while the page records a shortcut (whether the recorder or the Quit menu item takes it).
+- [x] On the Mac with Graphite in front: a changed shortcut pressed in a note, and ⌘Q pressed while the page records a shortcut (whether the recorder or the Quit menu item takes it).
+  Done 2026-11-28, in the Mac Debug copy with its own bundle identifier and a demo vault, Graphite in front, real key presses: with bold moved to ⌃⌘B in `hotkeys.json`, ⌃⌘B on a selected word in the note wrote `**bold.**` to the file. ⌘Q pressed while Toggle strikethrough's row showed "Press keys…" quit Graphite: the Quit menu item takes it before the page sees it, as on the iPad. So the Mac's table now keeps ⌘Q as the system's too, refused with the reason (`SystemKeyboardShortcuts`, `KeyboardShortcutTableTests.testEachKindOfSystemClashIsFoundFromThePlatformsTable` and `testEveryReservedShortcutOfThePlanIsInTheTables`).
+
+## Later: keyboard layouts
+
+Issue: [#287](https://github.com/Graphite-Note/Graphite/issues/287)
+
+- [ ] Keyboard layouts: shortcuts checked on the Swiss French layout on the Mac and the iPad, where `/`, `[`, `]` and `` ` `` need ⌥ or ⇧ (on the Mac, `allowsAutomaticKeyEquivalentLocalization`). Moved from the scope on 2026-11-28; how recording reads such keys is said there. On the Mac it needs the layout added to the input sources.
 
 ## Decisions
 

@@ -5,8 +5,8 @@
  * Description: Puts a PencilKit canvas on each PDF page and connects it to the tools, the palette, touches and saving.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
- * Date: 21/11/2026
+ * Version: 0.6
+ * Date: 28/11/2026
  */
 
 #if canImport(UIKit)
@@ -95,6 +95,16 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     private var textMarkEraser: PDFTextMarkEraser?
     private var pageObserver: PDFViewPageObserver?
     private var pictureSelection: PDFPictureSelectionController?
+    /// The rectangles, ovals, lines and arrows a finger selects, moves, reshapes, restyles and deletes;
+    /// made when a tap first looks for one.
+    private var madeShapeSelection: PDFShapeSelectionController?
+    var shapeSelection: PDFShapeSelectionController? {
+        if let madeShapeSelection { return madeShapeSelection }
+        guard let pdfView, !isDetached else { return nil }
+        let made = PDFShapeSelectionController(session: session, pdfView: pdfView)
+        madeShapeSelection = made
+        return made
+    }
     /// The page's text boxes: drawn over the ink, placed, selected and typed in.
     private var textBoxInteraction: PDFTextBoxInteraction?
     /// Takes pictures dropped onto the pages; a PDF embedded in a note leaves drops to the note.
@@ -372,6 +382,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         pageObserver?.stop()
         pictureSelection?.stop()
         pictureSelection = nil
+        madeShapeSelection?.stop()
+        madeShapeSelection = nil
         textBoxInteraction?.stop()
         pictureDrops?.stop()
         pictureDrops = nil
@@ -530,6 +542,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
             // The session's selected picture or text box may have changed; SwiftUI updates the view then.
             pictureSelection?.update()
             textBoxInteraction?.syncWithActivity()
+            // Shapes are selected while annotating, as pictures are.
+            if input.isEnabled { madeShapeSelection?.update() } else { madeShapeSelection?.clearSelection() }
         }
         // SwiftUI calls this on every update of the pane; the view tree is walked only
         // when the input actually changes.
@@ -1291,6 +1305,13 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         let viewPoint = recognizer.location(in: pdfView)
         guard presentMarkupMenu(at: viewPoint) else {
             pdfView.clearSelection()
+            // A tap on a shape that is the topmost object there selects it and shows its menu.
+            if input.isEnabled, !placesTextBoxes, shapeSelection?.selectShape(at: viewPoint) == true {
+                if session.selectedPicture != nil { session.selectedPicture = nil }
+                if session.textBoxActivity != .idle { session.textBoxActivity = .idle }
+                return
+            }
+            madeShapeSelection?.clearSelection()
             // A tap on a text box selects it, or types in the one selected; a tap beside it
             // ends typing or arranging.
             // A picture over the box there takes the tap.
@@ -1352,6 +1373,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
         // the picture. Taken as a tap too, a quick drag on a handle outside the picture ended
         // arranging instead; the drawing editor's `PictureTapGate` leaves such touches out too.
         if let touchedView = touch.view, touchedView is SelectionFrameView || touchedView.superview is SelectionFrameView { return false }
+        // A touch on the selected shape moves it or shows its menu (`PDFShapeFrameView`).
+        if touch.view is PDFShapeFrameView { return false }
         return input.isEnabled && takesTap(at: touch.location(in: pdfView), in: pdfView)
     }
 
@@ -1359,7 +1382,8 @@ final class PDFAnnotationCoordinator: NSObject, @preconcurrency PDFPageOverlayVi
     /// arranging a picture; any other tap is left to the pen.
     private func takesTap(at viewPoint: CGPoint, in pdfView: PDFView) -> Bool {
         markup(at: viewPoint) != nil || pdfView.currentSelection != nil || session.selectedPicture != nil
-            || pictureSelection?.picture(at: viewPoint) != nil || (!placesTextBoxes && textBoxInteraction?.takesTap(at: viewPoint) == true)
+            || pictureSelection?.picture(at: viewPoint) != nil || madeShapeSelection?.isShapeSelected == true || shapeSelection?.shape(at: viewPoint) != nil
+            || (!placesTextBoxes && textBoxInteraction?.takesTap(at: viewPoint) == true)
     }
 
     /// Whether the text tool is in use, whose own taps place and type in text boxes.

@@ -5,8 +5,8 @@
  * Description: The iPad's and iPhone's PDFView: its pages, zoom across resizes, and where touches go.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 24/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 #if canImport(UIKit)
@@ -302,6 +302,10 @@ final class GraphitePDFDisplayView: PDFView {
         }
         for case let pictureSelection as SelectionFrameView in subviews {
             if let touchedView = pictureSelection.hitTest(pictureSelection.convert(point, from: self), with: event) { return touchedView }
+        }
+        // A finger on the selected shape or one of its handles moves or reshapes it; the Pencil writes through it.
+        for case let shapeSelection as PDFShapeFrameView in subviews where !shapeSelection.isHidden {
+            if let touchedView = shapeSelection.hitTest(shapeSelection.convert(point, from: self), with: event) { return touchedView }
         }
         if let canvas = annotationCoordinator?.canvas(at: point, in: self) {
             // The drawing gesture lives on a subview of the canvas.

@@ -3,11 +3,12 @@
  * ---------------------------------
  * Layer: Tests
  * Description: Switching the Mac's whole window between Library and List keeps the file tree as it was, builds no Tags
- *              view behind the library, and leaves the main thread free.
+ *              view behind the library, and leaves the main thread free; the right sidebar and the reading view
+ *              come and go without the toolbar's items being made again.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 25/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -42,6 +43,55 @@ final class ViewSwitchingMacTests: XCTestCase {
         // machine and still catches a freeze such as the Tags view's 4.5 s.
         for measurement in [firstList, toLibrary, backToList] {
             SharedRunner.assertWithinTimingBudget(measurement.busy, isLessThan: .milliseconds(3_000), "A switch kept the main thread busy \(measurement.busy).")
+        }
+    }
+
+    /// In a window of 1,440 points the right sidebar left the documents area 840 points wide, under the 1,100 at which
+    /// Write left the toolbar for the tab bar; SwiftUI then made the toolbar's items and their menus again at each
+    /// opening and closing, about a third of the main thread's work (`Docs/View-switching-speed-todo.md` section 2).
+    func testTheRightSidebarOpensAndClosesWithoutTheToolbarsItemsBeingMadeAgain() async throws {
+        let (workspace, window) = try await ViewSwitchingWindow.open(.small, for: self)
+        let quietWatch = MainThreadQuietWatch(window: window)
+        _ = try await quietWatch.measure { workspace.preferences.library.presentation = .list }
+        let itemsBefore = window.toolbar?.items ?? []
+        XCTAssertTrue(itemsBefore.contains { item in item.label == "Write" }, "Write is in the toolbar: \(itemsBefore.map(\.label))")
+
+        _ = try await quietWatch.measure({ try? ViewSwitchingWindow.pressToolbarButton(labelled: "Sidebar", in: window) },
+                                         until: { ViewSwitchingWindow.showsRightSidebar(window) })
+        let itemsShown = window.toolbar?.items ?? []
+        _ = try await quietWatch.measure({ try? ViewSwitchingWindow.pressToolbarButton(labelled: "Sidebar", in: window) },
+                                         until: { !ViewSwitchingWindow.showsRightSidebar(window) })
+        let itemsHidden = window.toolbar?.items ?? []
+        for (moment, items) in [("with the right sidebar", itemsShown), ("after it closed", itemsHidden)] {
+            XCTAssertEqual(items.map(\.label), itemsBefore.map(\.label), "The same toolbar \(moment).")
+            XCTAssertTrue(zip(items, itemsBefore).allSatisfy { item, itemBefore in item === itemBefore }, "The toolbar's own items \(moment), not new ones.")
+        }
+    }
+
+    /// Format and Insert show only while the note is written. In the same toolbar group as Write, More and Sidebar,
+    /// their going and coming made SwiftUI make those three items and the menus' items again at each switch between
+    /// Live Preview and the reading view, about a third of its work (`Docs/View-switching-speed-todo.md` section 2).
+    func testTheReadingViewKeepsTheToolbarsWriteMoreAndSidebarItems() async throws {
+        let (workspace, window) = try await ViewSwitchingWindow.open(.small, for: self)
+        let quietWatch = MainThreadQuietWatch(window: window)
+        _ = try await quietWatch.measure { workspace.preferences.library.presentation = .list }
+        let session = try XCTUnwrap(workspace.markdownSession)
+        func documentItems() -> [NSToolbarItem] {
+            (window.toolbar?.items ?? []).filter { item in ["Write", "More", "Sidebar"].contains(item.label) }
+        }
+        func labels() -> [String] { (window.toolbar?.items ?? []).map(\.label) }
+        let itemsWhileWriting = documentItems()
+        XCTAssertEqual(itemsWhileWriting.map(\.label), ["Write", "More", "Sidebar"], "\(labels())")
+        XCTAssertTrue(labels().contains("Format") && labels().contains("Insert"), "\(labels())")
+
+        _ = try await quietWatch.measure { session.viewMode = .reading }
+        XCTAssertFalse(labels().contains("Format") || labels().contains("Insert"), "The reading view has no Format or Insert: \(labels())")
+        let itemsWhileReading = documentItems()
+        _ = try await quietWatch.measure { session.viewMode = .livePreview }
+        XCTAssertTrue(labels().contains("Format") && labels().contains("Insert"), "\(labels())")
+        for (moment, items) in [("in the reading view", itemsWhileReading), ("back in Live Preview", documentItems())] {
+            XCTAssertEqual(items.map(\.label), ["Write", "More", "Sidebar"], moment)
+            XCTAssertTrue(zip(items, itemsWhileWriting).allSatisfy { item, itemBefore in item === itemBefore }, "The toolbar's own items \(moment), not new ones.")
         }
     }
 

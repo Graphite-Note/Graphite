@@ -5,8 +5,8 @@
  * Description: Reads what a drop on the library carries from its item providers.
  *
  * Authors: Bahey Shalash
- * Version: 0.9
- * Date: 27/11/2026
+ * Version: 0.10
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -111,9 +111,15 @@ enum LibraryDropReader {
     /// same picture: Photos offers a photo as HEIC and as JPEG, and Obsidian shows no HEIC.
     private static let widelyShownPictureTypes: [UTType] = [.png, .jpeg, .gif, .webP]
 
-    /// The type to import a file by: data or a folder that is not an address, and not text unless
-    /// the provider names a file (a dragged selection of text has no name); failing that, any
-    /// other type of an item its app names.
+    /// The types a dragged selection of text is offered as. A file of a text type is offered by its own type (a CSV,
+    /// Markdown, JSON): SwiftUI hands a file the Finder drags on the Mac's reading view by its content type alone, with no
+    /// address and no name (HUNT-395), so such a type is a file even unnamed.
+    private static let selectionTextTypes: [UTType] = [.text, .plainText, .utf8PlainText, .utf16PlainText, .utf16ExternalPlainText,
+                                                        .rtf, .rtfd, .flatRTFD, .html]
+
+    /// The type to import a file by: data or a folder that is not an address, and not a selection's
+    /// text type unless the provider names a file (a dragged selection of text has no name); failing
+    /// that, any other type of an item its app names.
     static func importableType(of provider: NSItemProvider) -> UTType? {
         if provider.registeredContentTypes.contains(where: { type in type.conforms(to: .image) }),
            let pictureType = widelyShownPictureTypes.first(where: { type in provider.registeredContentTypes.contains(type) }) {
@@ -121,7 +127,8 @@ enum LibraryDropReader {
         }
         let types = provider.registeredContentTypes.filter { type in !type.conforms(to: .url) && type != .graphiteVaultItem }
         if let type = types.first(where: { type in
-            if type.conforms(to: .text) { return provider.suggestedName != nil }
+            if selectionTextTypes.contains(type) { return provider.suggestedName != nil }
+            if type.conforms(to: .text) { return true }
             return type.conforms(to: .data) || type.conforms(to: .directory) || type.conforms(to: .package)
         }) {
             return type
@@ -130,7 +137,7 @@ enum LibraryDropReader {
         // document, or a dynamic type the system made up for it) is still a file when the app
         // names it.
         guard provider.suggestedName != nil else { return nil }
-        return types.first { type in !type.conforms(to: .text) }
+        return types.first { type in !selectionTextTypes.contains(type) }
     }
 
     // MARK: Loading

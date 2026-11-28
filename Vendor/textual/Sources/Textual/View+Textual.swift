@@ -17,7 +17,9 @@ extension View {
 extension TextualNamespace where Base: View {
   /// Sets the spacing above and below the current block.
   @MainActor public func blockSpacing(_ blockSpacing: StructuredText.BlockSpacing) -> some View {
+    // Graphite patch: also a container value, which the block stack reads in its first pass.
     base.preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+      .containerValue(\.textualRequestedBlockSpacing, blockSpacing)
   }
 
   /// Sets the spacing above and below the current block using a font-relative value.
@@ -26,6 +28,7 @@ extension TextualNamespace where Base: View {
   ) -> some View {
     WithFontScaledValue(blockSpacing) { blockSpacing in
       base.preference(key: StructuredText.BlockSpacingKey.self, value: blockSpacing)
+        .containerValue(\.textualRequestedBlockSpacing, blockSpacing)
     }
   }
 
@@ -160,6 +163,12 @@ extension TextualNamespace where Base: View {
   /// Scales the font used within the view by a constant factor.
   @MainActor public func fontScale(_ scale: CGFloat) -> some View {
     base.modifier(FontScaleModifier(scale))
+  }
+
+  /// Graphite addition: how much the attachments of the text are zoomed, given to an attachment's sizing as
+  /// ``TextEnvironmentValues/attachmentScale``, as when the host zooms its text and its pictures with it.
+  public func attachmentScale(_ scale: Double) -> some View {
+    base.environment(\.textualAttachmentScale, scale)
   }
 
   /// Sets the attachment loader used to resolve image attachments.

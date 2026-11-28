@@ -6,8 +6,8 @@
  *              puts its layer over the table.
  *
  * Authors: Bahey Shalash
- * Version: 0.11
- * Date: 27/11/2026
+ * Version: 0.12
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -76,6 +76,13 @@ final class LivePreviewTableEditor {
     private static let commitDelay: Duration = .milliseconds(400)
 
     private(set) var editingCell: TableCellPosition?
+    /// Whether the pointer, or an Apple Pencil held over the screen, is over the table: its "+" strips show then.
+    var isPointerOverTable = false
+    /// The cell under the pointer, whose row and column show their grips.
+    var hoveredCell: TableCellPosition?
+    /// The picture of the vault under the pointer, whose magnifier and "Open in New Tab" show over it.
+    var hoveredPicture: ZoomablePictureFrame?
+
     /// The rectangle of selected cells, from the cell it began at to the one it reaches.
     var selectionAnchor: TableCellPosition?
     var selectionHead: TableCellPosition?

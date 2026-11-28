@@ -8,8 +8,8 @@
  *              note scrolling on past a page's end, and the frame's commands beside a page narrower than the column.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
- * Date: 27/11/2026
+ * Version: 0.5
+ * Date: 28/11/2026
  */
 
 import XCTest
@@ -156,8 +156,11 @@ final class WebFrameViewTests: XCTestCase {
         }
         let first = try XCTUnwrap(webViews(in: window).first { webView in webView.url == server.address("/frame1") })
         XCTAssertEqual(first.bounds.height, 400, accuracy: 0.5)
-        XCTAssertEqual(first.bounds.width, ReadingConfiguration.readableColumnWidth(forTextSize: ReadingConfiguration().textSize), accuracy: 0.5,
-                       "100% of the readable column, which grows with the text from 730 points at 16.")
+        // The column is 775.625 points at the Mac's 17; SwiftUI puts each edge of a view on the screen's pixels, so the frame
+        // is that width to within one pixel: 775.5 points on a Retina screen, 775 or 776 on the 1x screen of GitHub's runners.
+        let pixel = 1 / window.backingScaleFactor
+        XCTAssertEqual(first.bounds.width, ReadingConfiguration.readableColumnWidth(forTextSize: ReadingConfiguration().textSize), accuracy: pixel,
+                       "100% of the readable column, which grows with the text from 730 points at 16, on a \(window.backingScaleFactor)x screen's pixels.")
         XCTAssertLessThanOrEqual(webViews(in: window).count, WebFrameLiveSelection.maximumLiveCount)
         XCTAssertFalse(server.requestedPaths.contains("/frame8"), "The last frame, screens below, is not loaded.")
         let scrollView = try XCTUnwrap(scrollViews(in: try XCTUnwrap(window.contentView)).max { leftView, rightView in

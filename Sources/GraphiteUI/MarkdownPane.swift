@@ -5,7 +5,7 @@
  * Description: A note's pane: reading view, Live Preview or source, with its toolbar.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.75
+ * Version: 0.76
  * Date: 28/11/2026
  */
 
@@ -517,21 +517,27 @@ struct MarkdownPane: View {
         // Neutral icons, as in Obsidian; the accent is kept for links, selection, and toggles.
         // A compact width shows only Write and More, as Obsidian mobile's header does: the
         // keyboard's toolbar formats, attaches, draws, undoes and redoes while typing.
-        ToolbarItemGroup(placement: .primaryAction) { Group {
-            if isEditing && !isCompactWidth {
-                // On an iPad the keyboard's toolbar formats and inserts while typing, so
-                // Format and Insert wait in More, as on a phone; the Mac has no such toolbar.
-                #if canImport(UIKit)
-                drawButton
-                #else
+        #if os(macOS)
+        // A group of their own, which comes and goes with the editing: inside the group of Write, More and Sidebar,
+        // leaving the editor for the reading view and coming back made SwiftUI make those items and the menus' items
+        // again (`Docs/View-switching-speed-todo.md` section 2).
+        if isEditing && !isCompactWidth {
+            ToolbarItemGroup(placement: .primaryAction) { Group {
                 Menu("Format", systemImage: "textformat") {
                     formatMenuItems
                     Divider()
                     lineWidthPicker
                 }
                 Menu("Insert", systemImage: "paperclip") { insertMenuItems }
-                #endif
-            }
+            }.tint(.primary) }
+        }
+        #endif
+        ToolbarItemGroup(placement: .primaryAction) { Group {
+            #if canImport(UIKit)
+            // On an iPad the keyboard's toolbar formats and inserts while typing, so
+            // Format and Insert wait in More, as on a phone; the Mac has no such toolbar.
+            if isEditing && !isCompactWidth { drawButton }
+            #endif
             if !usesDocumentControlRow {
                 #if canImport(UIKit)
                 // An iPad's keyboard toolbar leaves Undo and Redo to the toolbar, also when

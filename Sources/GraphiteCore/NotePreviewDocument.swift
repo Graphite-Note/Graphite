@@ -5,7 +5,7 @@
  * Description: Splits a note into the blocks of its reading view, and finds headings by the text a link names.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.20
+ * Version: 0.21
  * Date: 16/11/2026
  */
 
@@ -207,7 +207,8 @@ public enum NotePreviewDocument {
                 }
                 let body = Self.blocks(fromLines: bodyLines, lineStartOffsets: bodyLineStartOffsets, calloutDepth: calloutDepth + 1,
                                        pluginCodeBlockLanguages: pluginCodeBlockLanguages)
-                blocks.append(LocatedBlock(block: .callout(type: callout.type, title: callout.title, folding: callout.folding, body: body.map(\.block)),
+                let title = CalloutIconTitle.shownTitle(callout.title, metadata: callout.metadata, folding: callout.folding, bodyLines: bodyLines)
+                blocks.append(LocatedBlock(block: .callout(type: callout.type, title: title, folding: callout.folding, body: body.map(\.block)),
                                            startOffset: lineStartOffsets[lineIndex], lineStartOffsets: [], body: body))
                 lineIndex += 1 + bodyLineCount
                 continue

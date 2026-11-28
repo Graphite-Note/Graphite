@@ -6,6 +6,7 @@ made again the same way:
 
 - the pictures of the everyday examples: dishes seen from above for the recipes, book covers for the reading list and a
   banner for the trip, drawn as flat shapes (no photo, no person);
+- the covers of the dashboards (`banner`) and the Solar Boat Team's picture icon (`icon`), an SVG;
 - the slides of the example course, a PDF with an outline, drawn with the release vault's PDF writer;
 - copies of files Graphite's own writers made for the release test vault (Tests/ReleaseVault): a drawing of every Pencil
   tool, a circuit drawing and a Cornell notebook, so they open for editing stroke by stroke;
@@ -23,6 +24,7 @@ Usage:
 import argparse
 import hashlib
 import importlib.util
+import math
 import os
 import re
 import shutil
@@ -194,6 +196,75 @@ def trip_banner():
     return picture.circle(320, 252, 6, (60, 60, 60)).circle(380, 252, 6, (60, 60, 60))
 
 
+# The dashboards' covers: wide, so the reading view can crop them to any window, and mostly flat, so they stay small.
+
+COVER_WIDTH, COVER_HEIGHT = 1200, 300
+
+
+def left_to_right(colors):
+    """A background that runs through `colors` from the left edge to the right one."""
+    def background(x, y):
+        position = min(max(x / COVER_WIDTH, 0), 1) * (len(colors) - 1)
+        index = min(int(position), len(colors) - 2)
+        return RELEASE.mix(colors[index], colors[index + 1], position - index)
+    return background
+
+
+def wave(picture, middle, amplitude, wavelength, half_thickness, color, phase=0.0):
+    """A sine curve drawn as a band across the whole picture."""
+    def inside(x, y):
+        return abs(y - (middle + amplitude * math.sin(2 * math.pi * x / wavelength + phase))) <= half_thickness
+    picture.shapes.append((inside, color, (0, middle - amplitude - half_thickness, picture.width, middle + amplitude + half_thickness)))
+    return picture
+
+
+def signals_cover():
+    picture = FlatPicture(COVER_WIDTH, COVER_HEIGHT, left_to_right([(36, 52, 112), (98, 62, 140), (214, 96, 104)]))
+    wave(picture, 150, 46, 300, 5, (236, 226, 250))
+    wave(picture, 150, 22, 150, 3, (180, 168, 222), phase=1.3)
+    for index in range(9):
+        picture.circle(90 + index * 128, 236, 6, (236, 226, 250))
+    return picture
+
+
+def solar_boat_cover():
+    picture = FlatPicture(COVER_WIDTH, COVER_HEIGHT, left_to_right([(250, 206, 150), (150, 196, 222), (70, 128, 186)]))
+    picture.circle(250, 118, 54, (255, 238, 176))
+    picture.rectangle(0, 214, COVER_WIDTH, COVER_HEIGHT, (40, 96, 150))
+    wave(picture, 214, 6, 120, 5, (40, 96, 150))
+    wave(picture, 256, 5, 160, 3, (90, 150, 196), phase=0.8)
+    picture.polygon([(620, 196), (840, 196), (812, 222), (648, 222)], (246, 246, 242))
+    picture.rectangle(668, 168, 792, 196, (30, 46, 80), 4)
+    for panel in range(4):
+        picture.rectangle(674 + panel * 30, 172, 700 + panel * 30, 192, (64, 112, 190), 2)
+    return picture
+
+
+def balcony_garden_cover():
+    picture = FlatPicture(COVER_WIDTH, COVER_HEIGHT, left_to_right([(246, 236, 214), (214, 232, 196), (150, 196, 150)]))
+    picture.rectangle(0, 250, COVER_WIDTH, COVER_HEIGHT, (196, 176, 150))
+    for left, leaf_color, fruit_color in ((180, (84, 146, 84), (220, 70, 56)), (520, (64, 128, 76), None), (860, (96, 156, 92), (236, 186, 60))):
+        for offset_x, offset_y in ((-30, -10), (30, -10), (0, -44), (-24, -74), (24, -74)):
+            picture.ellipse(left + 60 + offset_x, 170 + offset_y, 26, 16, leaf_color)
+        if fruit_color:
+            picture.circle(left + 40, 186, 11, fruit_color).circle(left + 84, 150, 10, fruit_color)
+        picture.polygon([(left, 206), (left + 120, 206), (left + 106, 266), (left + 14, 266)], (196, 108, 72))
+        picture.rectangle(left - 6, 198, left + 126, 212, (176, 92, 60), 3)
+    return picture
+
+
+SOLAR_BOAT_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <circle cx="44" cy="18" r="10" fill="#f5b83d"/>
+  <rect x="14" y="26" width="30" height="10" rx="2" fill="#24406e"/>
+  <rect x="17" y="28" width="7" height="6" fill="#4f86d0"/>
+  <rect x="26" y="28" width="7" height="6" fill="#4f86d0"/>
+  <rect x="35" y="28" width="7" height="6" fill="#4f86d0"/>
+  <polygon points="6,38 58,38 50,48 14,48" fill="#e8eef4" stroke="#24406e" stroke-width="2"/>
+  <path d="M4 54 Q 12 50 20 54 T 36 54 T 52 54 T 60 54" fill="none" stroke="#3a7dc0" stroke-width="3" stroke-linecap="round"/>
+</svg>
+"""
+
+
 PICTURES = {
     "Attachments/Tomato soup.png": tomato_soup,
     "Attachments/Lemon cake.png": lemon_cake,
@@ -204,6 +275,9 @@ PICTURES = {
     "Attachments/Cover - Maps of Small Places.png": lambda: book_cover((54, 110, 84), (232, 236, 220), "mountain"),
     "Attachments/Cover - The Patient Gardener.png": lambda: book_cover((120, 60, 96), (246, 214, 230), "squares"),
     "Attachments/Lisbon weekend.png": trip_banner,
+    "Attachments/Cover - Signals and Sound.png": signals_cover,
+    "Attachments/Cover - Solar Boat Team.png": solar_boat_cover,
+    "Attachments/Cover - Balcony Garden.png": balcony_garden_cover,
 }
 
 
@@ -286,6 +360,7 @@ def main():
         return 0
     for relative_path, make_picture in PICTURES.items():
         write_file(relative_path, make_picture().png())
+    write_file("Attachments/Solar boat.svg", SOLAR_BOAT_ICON.encode("utf-8"))
     write_course_slides()
     copy_graphite_files()
     total_bytes = sum(os.path.getsize(os.path.join(folder, name)) for folder, _, names in os.walk(VAULT_ROOT) for name in names)

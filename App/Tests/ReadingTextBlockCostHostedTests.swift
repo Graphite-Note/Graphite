@@ -14,6 +14,7 @@
 import XCTest
 import SwiftUI
 import MermaidDiagrams
+import Textual
 @testable import GraphiteUI
 
 /// The cost of one block of the reading view coming on screen, measured apart from scrolling, so the frames a scroll
@@ -41,6 +42,12 @@ final class ReadingTextBlockCostHostedTests: XCTestCase {
 
     func testMakingPlainTextsAsAYardstick() async throws {
         _ = try await measureTextBlocks(.plainText)
+    }
+
+    /// Textual's own text with its default parser and styles, which the reading view's blocks are made of: what a block
+    /// costs before Graphite's parser and styles.
+    func testMakingTextualTextsAsAYardstick() async throws {
+        _ = try await measureTextBlocks(.textualText)
     }
 
     /// Each diagram of the scrolling note shown alone, prepared beforehand as the reading view's builder prepares it, as
@@ -122,7 +129,7 @@ private final class BlockBatches {
     var batch = 0
 }
 
-private enum TextBlockKind { case reading, plainText }
+private enum TextBlockKind { case reading, plainText, textualText }
 
 /// A batch of headings and one-line paragraphs as the diagram note has them, each batch's words its own, so nothing
 /// made for one batch is found again for the next.
@@ -155,6 +162,8 @@ private struct TextBlockBatchView: View {
             Text(markdown(blockIndex).replacingOccurrences(of: "## ", with: "")).font(blockIndex.isMultiple(of: 2) ? .title2 : .body)
         case .reading:
             ObsidianMarkdownText(markdown: markdown(blockIndex), root: root, textSize: 17, navigate: { _, _ in }, scrollToHeading: { _ in })
+        case .textualText:
+            StructuredText(markdown: markdown(blockIndex))
         }
     }
 }

@@ -6,8 +6,8 @@
  *              the coordinator they make have files of their own.
  *
  * Authors: Bahey Shalash
- * Version: 0.45
- * Date: 21/11/2026
+ * Version: 0.46
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -184,7 +184,10 @@ struct GraphitePDFView: NSViewRepresentable {
         context.coordinator.pageInkLayers = pageInkLayers
         view.pageInkLayers = pageInkLayers
         view.pageOverlayViewProvider = pageInkLayers
-        if isEmbedded { PDFViewDocumentAnalysis.turnOff(in: view) }
+        if isEmbedded {
+            PDFViewDocumentAnalysis.turnOff(in: view)
+            view.leavesDroppedFilesToTheNote = true
+        }
         view.document = session.document
         view.autoScales = true
         view.interpolationQuality = .high

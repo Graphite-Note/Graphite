@@ -107,6 +107,27 @@ final class UiFileTreeInlineNamingMacTests: XCTestCase {
         XCTAssertEqual(cell.nameFieldCount, 0)
     }
 
+    /// A typed name left by a click elsewhere is kept, as in VSCodium, but the new note does not open: the click chose
+    /// another row, whose item opens (seen in the app on 2026-11-28, where the new note opened over the note clicked).
+    func testAClickElsewhereKeepsTheNameWithoutOpeningTheNewNote() async throws {
+        let (workspace, vault) = try makeWorkspace(files: ["Root.md"])
+        await workspace.refreshDirectory()
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 1 }
+        let root = try VaultPath("Root.md")
+        await workspace.open(root)
+        XCTAssertEqual(workspace.selection, root)
+
+        XCTAssertTrue(workspace.beginNamingInFileTree(.note, in: .root))
+        let fieldEditor = try typingEditor(in: outlineView)
+        fieldEditor.insertText("Click check", replacementRange: fieldEditor.selectedRange())
+        outlineView.window?.makeFirstResponder(outlineView)
+        try await waitUntil { FileManager.default.fileExists(atPath: vault.appendingPathComponent("Click check.md").path) }
+        await ManualClock.letResumedTasksRun()
+        XCTAssertEqual(workspace.selection, root, "The new note is made without taking the place of what the click opens.")
+        try await waitUntil { outlineView.numberOfRows == 2 && !(outlineView.item(atRow: 1) is FileTreeNewItemRow) }
+    }
+
     /// Rename turns the row's name into a field with the name selected; Return renames the file, and the row is a
     /// row again.
     func testARenameIsTypedInTheItemsRow() async throws {

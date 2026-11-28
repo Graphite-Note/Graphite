@@ -5,10 +5,10 @@
  * Description: A Live Preview table drawn in a Mac window with its editing layer: the edited cell grows its row to the field's
  *              height when the cell's source takes more lines than its drawn text, a column's grip sits above its column and,
  *              dropped on the next column, moves the column in the note, and a menu command leaves the table out of a scroll
- *              view, so its strips and grips stay drawn.
+ *              view, so its strips and grips stay drawn; the pointer over a cell shows the strips and its grips.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 28/11/2026
  */
 #if os(macOS)
@@ -158,6 +158,33 @@ final class LivePreviewTableInWindowTests: XCTestCase {
         }
         XCTAssertEqual(editor.editingCell, TableCellPosition(row: 2, column: 0), "The added row's cell is edited, so the strips show.")
         XCTAssertFalse(wasInAScrollView, "The table fits and is drawn in place, its strips and grips unclipped.")
+    }
+
+    /// The pointer over a cell, as the Mac's block view tells it (HUNT-389): the "+" strips and the cell's grips show without
+    /// editing, still near the table on the way to a strip, and go once the pointer is away; the cell stays for its grip.
+    func testThePointerOverACellShowsTheStripsAndItsGripsWithoutEditing() async throws {
+        let editor = try showTable()
+        try await laidOut({ layout in layout.numberOfRows == 3 }, "the table is laid out")
+        let layout = try XCTUnwrap(editor.layout)
+        let origin = editor.tableOriginInBlock
+        func inBlock(_ point: CGPoint) -> CGPoint { CGPoint(x: point.x + origin.x, y: point.y + origin.y) }
+
+        editor.pointerMoved(toPointInBlock: inBlock(CGPoint(x: layout.columnBounds(1).midX, y: layout.rowBounds(2).midY)))
+        XCTAssertTrue(editor.isPointerOverTable)
+        XCTAssertNil(editor.editingCell, "Nothing is edited: the pointer alone shows the strips.")
+        XCTAssertEqual(editor.hoveredCell, TableCellPosition(row: 2, column: 1), "The cell under the pointer shows its row's and column's grips.")
+
+        let besideTable = inBlock(CGPoint(x: layout.bounds.maxX + LivePreviewTableEditor.pointerReachOutsideTable / 2, y: layout.rowBounds(1).midY))
+        editor.pointerMoved(toPointInBlock: besideTable)
+        XCTAssertTrue(editor.isPointerOverTable, "On the way to the column strip, the strips stay.")
+        XCTAssertEqual(editor.hoveredCell, TableCellPosition(row: 2, column: 1), "Off the cells, the cell stays, for its grip.")
+
+        editor.pointerMoved(toPointInBlock: inBlock(CGPoint(x: layout.bounds.maxX + 80, y: layout.bounds.maxY + 80)))
+        XCTAssertFalse(editor.isPointerOverTable)
+        editor.pointerMoved(toPointInBlock: inBlock(CGPoint(x: layout.columnBounds(0).midX, y: layout.rowBounds(1).midY)))
+        XCTAssertEqual(editor.hoveredCell, TableCellPosition(row: 1, column: 0))
+        editor.pointerMoved(toPointInBlock: nil)
+        XCTAssertFalse(editor.isPointerOverTable, "The pointer off the block hides the strips.")
     }
 
     private var showsScrollView: Bool {

@@ -33,7 +33,7 @@ extension WorkspaceModel {
     }
 
     /// A new, empty `.canvas` file as Obsidian creates one, opened ready to add cards.
-    func createCanvas(named name: String, in directory: VaultPath? = nil) async {
+    func createCanvas(named name: String, in directory: VaultPath? = nil, opens: Bool = true) async {
         guard let store else { return }
         do {
             if let problem = FileNameRules.problem(with: name, isNote: false) { throw GraphiteError.unavailable(problem) }
@@ -42,6 +42,7 @@ extension WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "canvas")
             _ = try await store.save(CanvasFile.emptyFileData, at: path, expecting: .absent)
             refreshIndex(for: [path])
+            guard opens else { return await showInListings(path) }
             await open(path)
             await showInListings(path)
             #if canImport(UIKit)

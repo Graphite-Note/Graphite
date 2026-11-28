@@ -3,11 +3,11 @@
  * -------------------------------
  * Layer: UI
  * Description: The shape the Mac's Shapes tool draws next, with its border colour, fill and line width, kept on the
- *              device by one stored name.
+ *              device by one stored name, and the colours offered for shapes on the Mac and the iPad.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 13/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -67,5 +67,19 @@ struct PDFMarkupShapeStyle: Hashable, Sendable, RawRepresentable {
     func restyling(_ shape: PDFShape) -> PDFShape {
         PDFShape(name: shape.name, kind: shape.kind, start: shape.start, end: shape.end, borderColor: borderColor, fillColor: fillColor,
                  lineWidth: width.points, author: shape.author)
+    }
+}
+
+/// The colours the Mac's row and the iPad's shape menu offer for ink, text and shapes: black, then the favourite
+/// colours of Settings › Colors.
+enum PDFMarkupRowColors {
+    /// The colours, with `currentColor` last when it is none of them (one chosen in the colour
+    /// panel, or a selected shape's), so it shows ticked.
+    static func choices(storedPalette: Data?, including currentColor: PDFTextColor? = nil) -> [(name: String, color: PDFTextColor)] {
+        let favorites = [("Black", PDFTextColor.black)] + GraphitePreferences.colorPalette(decoding: storedPalette).compactMap { favorite in
+            PDFTextColor(hex: favorite.hex).map { color in (favorite.name.capitalized, color) }
+        }
+        guard let currentColor, !favorites.contains(where: { favorite in favorite.1 == currentColor }) else { return favorites }
+        return favorites + [(currentColor.hex.uppercased(), currentColor)]
     }
 }

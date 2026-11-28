@@ -26,6 +26,9 @@ public struct TextEnvironmentValues: Hashable, Sendable {
   /// The current color scheme contrast in the environment.
   public var colorSchemeContrast: ColorSchemeContrast
 
+  /// Graphite addition: how much the host zooms its attachments, as when its text is zoomed; 1 by default.
+  public var attachmentScale: Double
+
   /// A smaller environment value set used for color resolution.
   public var colorEnvironment: ColorEnvironmentValues {
     .init(
@@ -41,7 +44,8 @@ public struct TextEnvironmentValues: Hashable, Sendable {
     emojiProperties: EmojiProperties = .init(),
     mathProperties: MathProperties = .init(),
     colorScheme: ColorScheme = .light,
-    colorSchemeContrast: ColorSchemeContrast = .standard
+    colorSchemeContrast: ColorSchemeContrast = .standard,
+    attachmentScale: Double = 1
   ) {
     self.font = font
     self.dynamicTypeSize = dynamicTypeSize
@@ -50,6 +54,7 @@ public struct TextEnvironmentValues: Hashable, Sendable {
     self.mathProperties = mathProperties
     self.colorScheme = colorScheme
     self.colorSchemeContrast = colorSchemeContrast
+    self.attachmentScale = attachmentScale
   }
 }
 
@@ -62,7 +67,11 @@ extension EnvironmentValues {
       emojiProperties: emojiProperties,
       mathProperties: mathProperties,
       colorScheme: colorScheme,
-      colorSchemeContrast: colorSchemeContrast
+      colorSchemeContrast: colorSchemeContrast,
+      attachmentScale: textualAttachmentScale
     )
   }
+
+  /// Graphite addition: set with ``TextualNamespace/attachmentScale(_:)``.
+  @Entry var textualAttachmentScale: Double = 1
 }

@@ -15,6 +15,16 @@ These folders show the kinds of things people keep in a vault, all made up for t
 | A reading list | book covers, a status for each book, three views of one base | [[Reading list]] |
 | A day | a daily note that ties the others together | [[2026-11-16]] |
 
+## Dashboards
+
+Three pages laid out as Notion pages are: a cover, an icon, columns of links with an icon before each, coloured headings, a base and folded answers. Open them in the reading view (the **pencil** button, ⌘E) to see the cover and the icons. [[Building a dashboard]] makes the first one step by step.
+
+| Dashboard | What it is | Start at |
+| --- | --- | --- |
+| A course | lectures, labs, problem sets in a base, a formula, a checklist for the exam | [[Signals and Sound]] |
+| A team's wiki | onboarding, divisions in a base, the software used, a race-day checklist | [[Solar Boat Team]] |
+| A project at home | plants on a board by stage, a journal, how much soil a pot takes | [[Balcony Garden]] |
+
 ## How they connect
 
 ```mermaid

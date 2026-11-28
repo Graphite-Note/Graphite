@@ -473,7 +473,10 @@ struct VaultSidebar: View {
                     #if canImport(UIKit)
                     .environment(\.editMode, .constant(.active))
                     #endif
-                    .sidebarBar(edge: .bottom, spacing: nil) { pickingBar(pickedFiles) }
+                    .sidebarBar(edge: .bottom, spacing: nil) {
+                        SidebarPickingBar(pickedFiles: pickedFiles, done: { workspace.pickedSidebarFiles = nil },
+                                          showActions: { paths in Task { await workspace.communityPlugins.showFileActions(for: paths) } })
+                    }
             } else {
                 openingList
             }
@@ -494,24 +497,6 @@ struct VaultSidebar: View {
         }
     }
 
-    /// How many files are picked, the plugins' actions for them, and Done.
-    private func pickingBar(_ pickedFiles: Set<VaultPath>) -> some View {
-        HStack {
-            Button("Done") { workspace.pickedSidebarFiles = nil }
-            Spacer()
-            Text(pickedFiles.isEmpty ? "Pick Files" : pickedFiles.count == 1 ? "1 File" : "\(pickedFiles.count) Files")
-                .font(.callout).foregroundStyle(.secondary)
-            Spacer()
-            Button("Plugin Actions…", systemImage: "puzzlepiece.extension") {
-                let paths = pickedFiles.sorted { leftPath, rightPath in leftPath.rawValue < rightPath.rawValue }
-                Task { await workspace.communityPlugins.showFileActions(for: paths) }
-            }
-            .labelStyle(.titleOnly)
-            .disabled(pickedFiles.isEmpty)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-    }
-
     /// The file list as it usually is: picking a file opens it.
     private var openingList: some View {
         List(selection: Binding(get: { isDocumentColumnInFront ? workspace.selection : nil }, set: { newSelection in
@@ -529,6 +514,7 @@ struct VaultSidebar: View {
                 Task { await workspace.open(newSelection) }
             }
         })) { listContent }
+        .modifier(workspace.fileTreeRowNamingList(showsTree: panel == .files))
     }
 
     @ViewBuilder private var listContent: some View {
@@ -754,6 +740,7 @@ private struct FileTreeRows: View, Equatable {
     /// Owned by the workspace, so tapping a folder redraws only what `rows` changes, and this
     /// view reads nothing but `rows`.
     private var contents: FileTreeContents { workspace.fileTreeContents }
+    private var naming: FileTreeRowNaming { contents.rowNaming }
 
     /// The tree is the same as long as its workspace is: `requestCreation` is a new closure
     /// each time the sidebar is drawn but always sets the same binding, and what the tree
@@ -764,8 +751,47 @@ private struct FileTreeRows: View, Equatable {
         leftTree.workspace === rightTree.workspace
     }
 
+    /// A row of the tree, or the field naming a new item in a row of its folder.
+    private enum ShownItem: Identifiable {
+        case entry(FileTreeRow)
+        case newItemField(FileTreeRowNaming.Field, depth: Int)
+
+        var id: String {
+            switch self {
+            case .entry(let row): row.entry.path.rawValue
+            case .newItemField(let field, _): field.rowIdentifier
+            }
+        }
+    }
+
+    private var shownItems: [ShownItem] {
+        let rows = contents.shownRows
+        var items = rows.map(ShownItem.entry)
+        if let field = naming.field, case .newItem(let kind, let folder) = field.subject,
+           let place = FileTreeRowNaming.newItemPlace(in: rows, folder: folder, isFolder: kind == .folder) {
+            items.insert(.newItemField(field, depth: place.depth), at: place.index)
+        }
+        return items
+    }
+
     var body: some View {
-        ForEach(contents.shownRows) { row in
+        ForEach(shownItems) { item in
+            switch item {
+            case .entry(let row): entryRow(row)
+            case .newItemField(let field, let depth):
+                FileTreeNameFieldRow(naming: naming, field: field, depth: depth)
+                    .fileTreeRow()
+                    .selectionDisabled()
+            }
+        }
+    }
+
+    @ViewBuilder private func entryRow(_ row: FileTreeRow) -> some View {
+        if let field = naming.field, field.renamedPath == row.entry.path {
+            FileTreeNameFieldRow(naming: naming, field: field, depth: row.depth)
+                .fileTreeRow()
+                .selectionDisabled()
+        } else {
             VaultEntryRow(entry: row.entry, depth: row.depth, workspace: workspace, contents: contents, requestCreation: requestCreation)
                 .equatable()
                 // Only files can be selected; a folder just folds.
@@ -782,6 +808,29 @@ private struct FileTreeRows: View, Equatable {
     private func rowBackground(of path: VaultPath) -> (some View)? {
         let isMarked = contents.dropTargetFolder == path || contents.revealedFolder == path
         return isMarked ? RoundedRectangle(cornerRadius: GraphiteChrome.cornerRadius).fill(accent.opacity(0.18)) : nil
+    }
+}
+
+/// How many files are picked for plugins' actions, the actions for them, and Done.
+private struct SidebarPickingBar: View {
+    let pickedFiles: Set<VaultPath>
+    let done: () -> Void
+    let showActions: ([VaultPath]) -> Void
+
+    var body: some View {
+        HStack {
+            Button("Done", action: done)
+            Spacer()
+            Text(pickedFiles.isEmpty ? "Pick Files" : pickedFiles.count == 1 ? "1 File" : "\(pickedFiles.count) Files")
+                .font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            Button("Plugin Actions…", systemImage: "puzzlepiece.extension") {
+                showActions(pickedFiles.sorted { leftPath, rightPath in leftPath.rawValue < rightPath.rawValue })
+            }
+            .labelStyle(.titleOnly)
+            .disabled(pickedFiles.isEmpty)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 }
 
@@ -1028,7 +1077,7 @@ private struct VaultItemDragPreview: View {
 
 /// The layout every file tree row shares: indented by its depth, with a guide line for each
 /// level above it, a slot for a folder's chevron so names line up, and the title.
-private struct FileTreeRowLabel<Marker: View, Title: View>: View {
+struct FileTreeRowLabel<Marker: View, Title: View>: View {
     let depth: Int
     @ViewBuilder var marker: Marker
     @ViewBuilder var title: Title

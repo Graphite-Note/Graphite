@@ -49,20 +49,20 @@ extension StructuredText {
     }
 
     var body: some View {
-      let configuration = ListItemStyleConfiguration(
-        marker: .init(marker),
-        block: .init(
-          BlockContent(
-            parent: intent,
-            content: content
-          )
-        ),
-        indentationLevel: indentationLevel,
-        content: content
-      )
-      let resolvedStyle = listItemStyle.resolve(configuration: configuration)
+      // Graphite patch: the item's blocks are read as subviews, whose spacing the item passes
+      // on to the list, and the list to the block stack around it (patch 36).
+      Group(subviews: BlockContent(parent: intent, content: content)) { blocks in
+        let configuration = ListItemStyleConfiguration(
+          marker: .init(marker),
+          block: .init(blocks),
+          indentationLevel: indentationLevel,
+          content: content
+        )
+        let resolvedStyle = listItemStyle.resolve(configuration: configuration)
 
-      AnyView(resolvedStyle)
+        AnyView(resolvedStyle)
+          .containerValue(\.textualContainedBlockSpacing, StructuredText.blockSpacing(of: blocks))
+      }
     }
 
     private var marker: some View {

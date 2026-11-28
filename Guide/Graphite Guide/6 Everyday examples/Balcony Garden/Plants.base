@@ -1,0 +1,35 @@
+filters:
+  and:
+    - file.hasTag("plant")
+    - file.inFolder("6 Everyday examples/Balcony Garden/Plants")
+properties:
+  file.name:
+    displayName: Plant
+  note.stage:
+    displayName: Stage
+  note.sown:
+    displayName: Sown
+  note.harvest:
+    displayName: Harvest
+  note.sun:
+    displayName: Sun
+views:
+  - type: kanban
+    name: By stage
+    groupBy:
+      property: stage
+      direction: ASC
+    order:
+      - file.name
+      - harvest
+  - type: table
+    name: Every plant
+    order:
+      - file.name
+      - stage
+      - sown
+      - harvest
+      - sun
+    sort:
+      - property: sown
+        direction: ASC

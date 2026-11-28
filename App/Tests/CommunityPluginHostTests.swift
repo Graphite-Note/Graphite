@@ -5,8 +5,8 @@
  * Description: A community plugin running in WebKit inside the app, on the iPad and the Mac.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.16
- * Date: 17/11/2026
+ * Version: 0.17
+ * Date: 28/11/2026
  */
 import XCTest
 import SwiftUI
@@ -373,6 +373,52 @@ final class CommunityPluginHostTests: XCTestCase {
         XCTAssertFalse(shownHTML.contains("Book the room"), "Done tasks are not listed.")
     }
 
+    #if os(iOS)
+    /// Recent Files itself, built from its source (#52): the pointer coming onto a row of its
+    /// list, shown as a copy, asks for that note's card, which Page Preview shows beside the row.
+    func testRecentFilesRowShowsTheNotesCardBesideIt() async throws {
+        let (workspace, _, controller) = try await workspaceWithBuiltPlugins(["recent-files-obsidian"], notes: [
+            "Other.md": "# Other\n\nThe note the row names.\n",
+            "Start.md": "Start.\n",
+        ], showsLinkPreviews: true)
+        let host = workspace.communityPlugins
+        _ = try await openTab("Other.md", in: workspace)
+        _ = try await openTab("Start.md", in: workspace)
+        let runtime = try XCTUnwrap(host.webView)
+        _ = try await runtime.callAsyncJavaScript("await window.GraphitePluginRuntime.app.workspace.getLeaf('tab').setViewState({ type: 'recent-files', active: true });",
+                                                  arguments: [:], in: nil, contentWorld: .page)
+        let findsRow = "return [...document.querySelectorAll('[data-graphite-listens~=hover]')].some((element) => element.textContent.includes('Other'));"
+        var listCopy: WKWebView?
+        try await waitUntil("Recent Files' list shows Other", timeoutSeconds: 20) {
+            for webView in self.codeBlockWebViews(in: controller, host: host)
+            where try await webView.callAsyncJavaScript(findsRow, arguments: [:], in: nil, contentWorld: .defaultClient) as? Bool == true {
+                listCopy = webView
+                return true
+            }
+            return false
+        }
+        let webView = try XCTUnwrap(listCopy)
+        let coordinator = try XCTUnwrap(webView.navigationDelegate as? CommunityPluginCodeBlockDisplayCoordinator)
+        let cards = try XCTUnwrap(coordinator.linkPreviews.linkPreviews, "The copy shows the window's cards.")
+        let moveOntoRow = """
+        const row = [...document.querySelectorAll('[data-graphite-listens~=hover]')].find((element) => element.textContent.includes('Other'));
+        const bounds = row.getBoundingClientRect();
+        row.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', buttons: 0, clientX: bounds.left + 4, clientY: bounds.top + 4 }));
+        """
+        _ = try await webView.callAsyncJavaScript(moveOntoRow, arguments: [:], in: nil, contentWorld: .defaultClient)
+        try await waitUntil("Recent Files' row asks for its card", timeoutSeconds: 5) { cards.phase.request?.target == "Other.md" }
+        let request = try XCTUnwrap(cards.phase.request)
+        XCTAssertEqual(request.source, .plugin)
+        XCTAssertTrue(webView.convert(webView.bounds, to: nil).intersects(request.anchor), "The card goes beside the row: \(request.anchor)")
+        try await waitUntil("the card shows the note") {
+            if case .shown(_, let content) = cards.phase { content.path.rawValue == "Other.md" } else { false }
+        }
+        _ = try await webView.callAsyncJavaScript("document.dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));",
+                                                  arguments: [:], in: nil, contentWorld: .defaultClient)
+        try await waitUntil("leaving the list closes the card") { if case .hidden = cards.phase { true } else { false } }
+    }
+    #endif
+
     // MARK: The directory sweep's plugins
 
     // Plugins the sweep of Obsidian's directory found working on the iPad (Docs/Community-plugins.md),
@@ -614,7 +660,7 @@ final class CommunityPluginHostTests: XCTestCase {
         return (workspace, vault)
     }
 
-    private func workspaceWithBuiltPlugins(_ pluginIdentifiers: [String], notes: [String: String]) async throws
+    private func workspaceWithBuiltPlugins(_ pluginIdentifiers: [String], notes: [String: String], showsLinkPreviews: Bool = false) async throws
         -> (WorkspaceModel, URL, HostedViewController) {
         let builtFolders = pluginIdentifiers.map { plugin in Self.builtPluginsFolder.appendingPathComponent(plugin) }
         guard builtFolders.allSatisfy({ folder in FileManager.default.fileExists(atPath: folder.appendingPathComponent("main.js").path) }) else {
@@ -629,13 +675,18 @@ final class CommunityPluginHostTests: XCTestCase {
                 try Data(contentsOf: builtFolder.appendingPathComponent(file)).write(to: destination.appendingPathComponent(file))
             }
         }
+        // Graphite's own list as well as Obsidian's: from Obsidian's alone Graphite leaves out the plugins it does
+        // itself (`CommunityPluginList.pluginsGraphiteDoesItself`, Omnisearch among them), as a person turning them on
+        // in Graphite does not.
         let enabledList = try JSONSerialization.data(withJSONObject: pluginIdentifiers, options: [.prettyPrinted])
         try enabledList.write(to: vault.appendingPathComponent(".obsidian/community-plugins.json"))
+        try FileManager.default.createDirectory(at: vault.appendingPathComponent(".graphite"), withIntermediateDirectories: true)
+        try enabledList.write(to: vault.appendingPathComponent(CommunityPluginList.graphiteConfigurationPath))
         let workspace = WorkspaceModel()
         self.workspace = workspace
         try await workspace.openFolderAsVault(vault)
         openedVaultIdentifiers.append(try XCTUnwrap(workspace.currentVaultIdentifier))
-        let controller = try host(workspace)
+        let controller = try host(workspace, showsLinkPreviews: showsLinkPreviews)
         let host = workspace.communityPlugins
         await host.reloadInventory() // opening lists nothing while plugins are off
         try await waitUntil { Set(host.inventory.plugins.map(\.id)).isSuperset(of: pluginIdentifiers) }
@@ -661,10 +712,12 @@ final class CommunityPluginHostTests: XCTestCase {
     }
 
     /// The workspace in a window, with the plugin panel, notices and the web view's parking place.
-    private func host(_ workspace: WorkspaceModel) throws -> HostedViewController {
-        let rootView = AnyView(NavigationStack {
+    /// `showsLinkPreviews` adds the window's link cards, as `GraphiteRootView` does while Page Preview is on.
+    private func host(_ workspace: WorkspaceModel, showsLinkPreviews: Bool = false) throws -> HostedViewController {
+        let panes = NavigationStack {
             WorkspacePanes(workspace: workspace, showsLinksInspector: .constant(false), create: { _ in }, showQuickSwitcher: {})
-        }.modifier(CommunityPluginPresentation(workspace: workspace) {}))
+        }.modifier(CommunityPluginPresentation(workspace: workspace) {})
+        let rootView = showsLinkPreviews ? AnyView(panes.modifier(LinkPreviewLayer(isEnabled: true, vault: workspace.linkPreviewVault))) : AnyView(panes)
         #if os(iOS)
         let controller = UIHostingController(rootView: rootView)
         let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
