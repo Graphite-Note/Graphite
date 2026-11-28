@@ -98,6 +98,8 @@ struct FlattenedFileTree {
     var revealedFolder: VaultPath?
     /// The Files panel's filter by name, on both platforms.
     let filter = FileTreeFilter()
+    /// A new item's or a renamed item's name field in the iPad's and the iPhone's list (`FileTreeRowNaming`).
+    let rowNaming = FileTreeRowNaming()
     @ObservationIgnored private var tree = FlattenedFileTree()
 
     /// Rows made so far, which a test counts.
