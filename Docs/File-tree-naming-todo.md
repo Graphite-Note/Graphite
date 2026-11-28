@@ -2,7 +2,7 @@
 
 Created: 2026-11-27.
 
-Status: section 1 (the Mac) built, tested and checked by hand on 2026-11-28, except a PDF's rename and a real mouse click seen in the app (its last item); section 2 (the iPad and the iPhone) built, tested and checked in simulators on 2026-11-28. Issues: [#270](https://github.com/Graphite-Note/Graphite/issues/270) (section 1), [#271](https://github.com/Graphite-Note/Graphite/issues/271) (section 2).
+Status: section 1 (the Mac) built, tested and checked by hand on 2026-11-28; section 2 (the iPad and the iPhone) built, tested and checked in simulators on 2026-11-28. Issues: [#270](https://github.com/Graphite-Note/Graphite/issues/270) (section 1), [#271](https://github.com/Graphite-Note/Graphite/issues/271) (section 2).
 
 ## Request
 
@@ -32,7 +32,8 @@ Issue: [#270](https://github.com/Graphite-Note/Graphite/issues/270)
   Done 2026-11-28 in a re-signed Debug copy (`com.graphite.study.repro.naming`, its own container): File › New Note put the field after the root's folders; "index" showed "“index” is already in this folder. Choose a different name." under the field, Return left it open with the keyboard, "Week 3" made `Week 3.md` and opened it; the palette's Rename file showed `Week 3` selected in its row and Return renamed it to `Week 3 Sampling.md`; with the vault's folder for new notes at `Signals/Labs`, New Note opened Signals and Labs and put the field inside Labs; choosing Week 1 while it was empty made nothing and opened Week 1; New Folder "Results" was made in Labs. Found and fixed during the check: the popover drew above the field without its text (laid out by hand now, under the field), and the new item's reused cell kept the earlier field under the new one (`testASecondNewItemShowsOneField`).
 - [x] A PDF's muted extension after its rename field (the made-up PDF did not open in the first check).
   Done 2026-11-28: `UiFileTreeInlineNamingMacTests.testAPDFsRenameShowsItsExtensionMutedAfterTheField` renames `Handout.pdf` in the tree in a window: the field holds "Handout", ".pdf" shows after it in the secondary label color, inside the row, and the row's picture (`cacheDisplay`) has the extension's text drawn there; passes with the class's 9 other tests and `FileTreeNameDraftTests` (9) on the Mac.
-- [ ] Seen in the app: a real mouse click on a row below a new item's field (the check chose the row through accessibility, so the rows' shift within a click was not exercised). 2026-11-28: needs the screen, which was locked; a click inside a test app is not delivered to the row (see `MacFolderSearchInAppHostedTests`). Waits for a turn with the screen.
+- [x] Seen in the app: a real mouse click on a row below a new item's field (the check chose the row through accessibility, so the rows' shift within a click was not exercised).
+  Done 2026-11-28 in a Debug copy of main 74fc4e92 (`com.graphite.study.leftover`, the release test vault), with real mouse presses: File › New Note put the empty field after the root's folders, and a click on Gallery.base, four rows below it, opened Gallery.base and made nothing, the rows moving up one under the pointer. With "Click check" typed, a click on Math.md made `Click check.md` but opened it instead of Math.md: the new note opened after the click. Fixed: a field left by a click elsewhere makes the item without opening it (`finishNaming(_:opensCreatedItem:)`, the `opens` argument of `createNote`, `createBase` and `createCanvas`), and Return still opens it. Test: `UiFileTreeInlineNamingMacTests.testAClickElsewhereKeepsTheNameWithoutOpeningTheNewNote` (fails without the fix). The iPad's and the iPhone's list (section 2) still open the new item on a tap elsewhere.
 
 ## 2. The iPad's and the iPhone's file list name in their rows
 

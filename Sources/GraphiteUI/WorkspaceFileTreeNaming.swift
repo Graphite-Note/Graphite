@@ -57,16 +57,17 @@ extension WorkspaceModel {
         creationSheet(for: CreationRequest(kind: kind, directory: directory))
     }
 
-    /// Does what a finished name field asked for.
-    func finishNaming(_ outcome: FileTreeNamingOutcome) async {
+    /// Does what a finished name field asked for. `opensCreatedItem` false makes a new item without opening it: the
+    /// field was left by a click on another row, which opens that row's item.
+    func finishNaming(_ outcome: FileTreeNamingOutcome, opensCreatedItem: Bool = true) async {
         switch outcome {
         case .cancel: return
         case .rename(let path, let newName): await rename(path, to: newName)
         case .create(let kind, let name, let directory):
             switch kind {
-            case .note: await createNote(named: name, in: directory)
-            case .base: await createBase(named: name, in: directory)
-            case .canvas: await createCanvas(named: name, in: directory)
+            case .note: await createNote(named: name, in: directory, opens: opensCreatedItem)
+            case .base: await createBase(named: name, in: directory, opens: opensCreatedItem)
+            case .canvas: await createCanvas(named: name, in: directory, opens: opensCreatedItem)
             case .folder: await createFolder(named: name, in: directory)
             }
         }

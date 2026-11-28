@@ -1132,7 +1132,9 @@ final class WorkspaceModel {
 
     // MARK: Creation
 
-    func createNote(named name: String, in directory: VaultPath? = nil) async {
+    /// `opens` false makes the note and shows it in the lists without opening it: a name field left by a click on
+    /// another row, whose item is the one that opens.
+    func createNote(named name: String, in directory: VaultPath? = nil, opens: Bool = true) async {
         guard let store else { return }
         do {
             if let problem = FileNameRules.problem(with: name, isNote: true) { throw GraphiteError.unavailable(problem) }
@@ -1142,9 +1144,11 @@ final class WorkspaceModel {
             // Empty, as in Obsidian: the inline title shows the name.
             _ = try await store.save(Data(), at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await open(path)
-            // Ready to type, as in Obsidian.
-            openMarkdownSession(at: path)?.startsEditingWhenShown = true
+            if opens {
+                await open(path)
+                // Ready to type, as in Obsidian.
+                openMarkdownSession(at: path)?.startsEditingWhenShown = true
+            }
             await showInListings(path)
         } catch { errorMessage.report(error) }
     }
@@ -1201,7 +1205,7 @@ final class WorkspaceModel {
     }
 
     /// A new `.base` file with Obsidian's default: one table view of the whole vault.
-    func createBase(named name: String, in directory: VaultPath? = nil) async {
+    func createBase(named name: String, in directory: VaultPath? = nil, opens: Bool = true) async {
         guard let store else { return }
         do {
             if let problem = FileNameRules.problem(with: name, isNote: false) { throw GraphiteError.unavailable(problem) }
@@ -1210,7 +1214,7 @@ final class WorkspaceModel {
             let path = try await store.uniquePath(directory: directory, stem: name, extension: "base")
             _ = try await store.save(Data("views:\n  - type: table\n    name: Table\n".utf8), at: path, expecting: .absent)
             refreshIndex(for: [path])
-            await open(path)
+            if opens { await open(path) }
             await showInListings(path)
         } catch { errorMessage.report(error) }
     }

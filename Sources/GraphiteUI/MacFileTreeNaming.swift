@@ -227,7 +227,9 @@ extension FileTreeController: FileTreeNaming {
     }
 
     /// Called by the editor once its field is left: the row gets its title back, what the tree held back while the name
-    /// was typed is shown, and the workspace does what the field asked for.
+    /// was typed is shown, and the workspace does what the field asked for. A field left by a click elsewhere
+    /// (`returningKeyboard` false) keeps a typed name without opening the new item, so the row clicked is the one that
+    /// opens.
     func endNaming(with outcome: FileTreeNamingOutcome, returningKeyboard: Bool) {
         guard case .editing(let editor) = namingPhase, let outlineView else { return }
         namingPhase = .idle
@@ -240,7 +242,7 @@ extension FileTreeController: FileTreeNaming {
         }
         if returningKeyboard { outlineView.window?.makeFirstResponder(outlineView) }
         applyChangesHeldWhileNaming()
-        Task { await workspace.finishNaming(outcome) }
+        Task { await workspace.finishNaming(outcome, opensCreatedItem: returningKeyboard) }
     }
 
     /// A folder's contents arrived: a new item waiting for them gets its row.
