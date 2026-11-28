@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.82
+ * Version: 0.83
  * Date: 28/11/2026
  */
 
@@ -3087,43 +3087,26 @@ struct CalloutView<Body: View>: View {
 
     var body: some View {
         let appearance = CalloutAppearance(type: type, theme: theme)
-        VStack(alignment: .leading, spacing: 8) {
-            Button {
-                if folding != .notFoldable { withAnimation(GraphiteMotion.animation(.snappy)) { isExpanded.toggle() } }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: appearance.systemImage).foregroundStyle(appearance.titleColor)
-                    // A link in the title takes the tap before the fold button does. Textual
-                    // covers the whole text with its link tap, which took every tap on the
-                    // title, so a folded callout opened only from its icon or chevron: a
-                    // title without a link leaves the tap to the fold button.
-                    StructuredText(title, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens))
-                        .id(textSize)
-                        .id(sourceTokens)
-                        .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
-                        .foregroundStyle(appearance.titleColor)
-                        .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
-                                                                        iconPictures: noteIcons?.pictures))
-                        .textual.attachmentScale(imageZoomScale)
-                        .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
-                        .allowsHitTesting(Self.containsLink(title))
-                    if folding != .notFoldable {
-                        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(appearance.titleColor)
-                            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                    }
-                    Spacer(minLength: 0)
+        let tint = appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity)
+        Group {
+            if folding == .notFoldable, title.isEmpty || CalloutIconTitle.emoji(in: title) != nil {
+                // Notion's callout (`> [!tip] 💡`, `> [!info|no-title]`): its icon on the first line of the body and no title row,
+                // in the type's tint. The parser leaves the title empty only for `no-title`, where the type's glyph stands for it.
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    notionIcon(appearance).accessibilityLabel(Text(type.capitalized))
+                    VStack(alignment: .leading, spacing: 8) { content().environment(\.tableGroundTint, tint) }
                 }
-                .contentShape(Rectangle())
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    titleRow(appearance)
+                    // A table cell's editor paints the callout's tint under the text it covers.
+                    if isExpanded { content().environment(\.tableGroundTint, tint) }
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(folding == .notFoldable ? "" : (isExpanded ? "Collapses the callout" : "Expands the callout"))
-            // A table cell's editor paints the callout's tint under the text it covers.
-            if isExpanded { content().environment(\.tableGroundTint, appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity)) }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(appearance.color.opacity(theme?.calloutTintOpacity ?? CalloutAppearance.tintOpacity), in: RoundedRectangle(cornerRadius: calloutRadius))
+        .background(tint, in: RoundedRectangle(cornerRadius: calloutRadius))
         .overlay {
             // A theme's callout border, in the callout's own color.
             if let borderWidth = theme?.calloutBorderWidth {
@@ -3131,12 +3114,62 @@ struct CalloutView<Body: View>: View {
             }
         }
     }
+
+    /// The emoji of the title, or the type's glyph in its title colour when the title is hidden (`no-title`), each as wide
+    /// as the emoji's size, so the text of every such callout starts at the same place.
+    private func notionIcon(_ appearance: CalloutAppearance) -> some View {
+        let iconSize = textSize * CalloutAppearance.notionIconScale
+        return Group {
+            if let emoji = CalloutIconTitle.emoji(in: title) {
+                Text(emoji).font(typography.textSwiftUIFont(size: iconSize))
+            } else {
+                Image(systemName: appearance.systemImage).font(typography.textSwiftUIFont(size: textSize * 1.1)).foregroundStyle(appearance.titleColor)
+            }
+        }
+        .frame(width: iconSize)
+    }
+
+    /// The type's icon, the title and the fold chevron, which fold the callout.
+    private func titleRow(_ appearance: CalloutAppearance) -> some View {
+        Button {
+            if folding != .notFoldable { withAnimation(GraphiteMotion.animation(.snappy)) { isExpanded.toggle() } }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: appearance.systemImage).foregroundStyle(appearance.titleColor)
+                // A link in the title takes the tap before the fold button does. Textual
+                // covers the whole text with its link tap, which took every tap on the
+                // title, so a folded callout opened only from its icon or chevron: a
+                // title without a link leaves the tap to the fold button.
+                StructuredText(title, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens))
+                    .id(textSize)
+                    .id(sourceTokens)
+                    .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
+                    .foregroundStyle(appearance.titleColor)
+                    .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
+                    .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
+                                                                    iconPictures: noteIcons?.pictures))
+                    .textual.attachmentScale(imageZoomScale)
+                    .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
+                    .allowsHitTesting(Self.containsLink(title))
+                if folding != .notFoldable {
+                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(appearance.titleColor)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                }
+                Spacer(minLength: 0)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(folding == .notFoldable ? "" : (isExpanded ? "Collapses the callout" : "Expands the callout"))
+    }
 }
 
 /// Obsidian's callout types, their aliases, colors, and icons.
 struct CalloutAppearance {
     /// The opacity of the callout's color behind it.
     static let tintOpacity = 0.1
+    /// The size of a Notion callout's emoji beside its text (`CalloutIconTitle`), as Notion draws it: about 22 pixels at 16.
+    static let notionIconScale = 1.35
     /// The color the callout is tinted with.
     var color: Color
     /// The title, its icon and its fold chevron: the same color, darkened in light

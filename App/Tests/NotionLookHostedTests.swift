@@ -8,7 +8,7 @@
  *              spans in text, a heading, a list of links and a table, with columns of uneven widths, in the reading view and Live Preview, light and dark.
  *
  * Authors: Bahey Shalash
- * Version: 0.5
+ * Version: 0.6
  * Date: 28/11/2026
  */
 
@@ -46,6 +46,16 @@ final class NotionLookHostedTests: XCTestCase {
         <span style="background-color:#FBF3DB">yellow</span>, <span style="background-color:#EDF3EC">green</span>, \
         <span style="background-color:#E7F3F8">blue</span>, <span style="background-color:rgba(244, 240, 247, 0.8)">purple</span> \
         and <span style="background-color:#FDEBEC">red</span>, and <span style="color:#D44C47;background-color:#FDEBEC">both at once</span>.
+
+        > [!tip] 💡
+        > Office hours on Tuesdays in the lab. A Notion callout: its icon on the first line, no title row, and a long
+        > enough body to wrap onto a second line under the first.
+
+        > [!warning] ⚠️
+        > Bring your own cables.
+
+        > [!info|no-title]
+        > A Notion callout whose icon is one of Notion's own pictures: the type's glyph stands for it.
 
         > [!multi-column]
         > > [!blank|wide-2]

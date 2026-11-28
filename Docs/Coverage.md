@@ -3075,6 +3075,8 @@ Long links to pages kept on one line (section 7, 2026-11-28): `ReadingCoverTests
 
 Inline code on a rounded chip in the reading view (section 7, 2026-11-28): `InlineCodeChipTests` (3, Mac: the chip, its corners and overhang scaled with the text size, the spaces beside the code kerned by the overhang, a theme's code background, a highlight around code kept, the chip's pixels drawn behind the code) and the made-up course hub's pictures with inline code on the Mac and the iPad simulator.
 
+Notion callouts titled with their emoji or `no-title` (section 7, 2026-11-28): `CalloutIconTitleTests` (4, Core: emoji alone, with a variation selector, keycap, skin tone, joined or flag, against text, two emoji, a digit, `#` and `©`, then `no-title` among other metadata words, the title hidden only over a body and without a fold, a native callout keeping its type's name) and `CalloutNotionIconTests` (3, Mac: no title row with an emoji or a hidden title, a foldable one and other titles keep it), and the made-up coloured page's pictures with a tip, a warning and a `no-title` info callout in the reading view and Live Preview on the Mac and the iPad simulator.
+
 Every icon before a link in the same square (section 7, 2026-11-28): `ReadingCoverTests.testEveryIconBeforeALinkIsASquareOfTheSameSizeOnTheSameBaseline` (an emoji and a wide picture drawn square, every kind's address read back at 20 points beside 16-point text, the attachment's square and baseline), the earlier icon tests reading the emoji's picture, and the made-up course hub's pictures on the Mac and the iPad simulator, light and dark.
 
 ## The test vault
