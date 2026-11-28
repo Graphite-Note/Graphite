@@ -256,6 +256,16 @@ Request of 2026-11-28, in the owner's words: "keep improving and redoing and tun
 - [ ] A side by side of 12 representative pages, live Notion against Graphite's reading view at the same width: the workspace's home, Aerodynamics, ESF ASF, Semester projects, a page with a big database, one with many pictures, one with toggles, one with callouts, one with columns, one with code and equations, a long meeting-notes page, and one deep subpage. Screenshots stay local.
   Round 2 checked: the home page (columns, headings, link order and icons), a formulas page (its icon, underlined heading and math blocks) and Semester projects (icon, description, embedded base). Open: the other nine, each round.
 
+## 11. README pictures
+
+Issue: [#283](https://github.com/Graphite-Note/Graphite/issues/283)
+
+Request of 2026-11-28: the README shows the import with real pictures, a Notion page next to the same page imported into Graphite, a few pairs covering what Obsidian's Importer loses and this one keeps. A few lines and pictures, no large tables. No picture comes from the team workspace of section 10 or from any export without a license that allows it: the pages shown are made for the purpose (fictional demo content) or come from a source whose license allows it. Where the Notion side comes from is undecided.
+
+- [ ] A demo workspace made for the purpose, exported from Notion as HTML and imported into a vault, showing: a cover and an icon, columns, colored text and highlights, callouts with their icons, toggles, equations, a database as a base with its views, a linked view of a database, and lists of links to pages with their icons.
+- [ ] Pairs captured on the Mac in light and dark: each Notion page beside the same page in Graphite's reading view at the same width.
+- [ ] The Importer's README shows the pairs with a few lines each, and Graphite's README shows one pair linking to it.
+
 ## Risks
 
 - **Notion changes its export and API.** The API is pinned by version (`2025-09-03`). The HTML export is not versioned: fixtures are recorded again when an import of the test material stops matching.
