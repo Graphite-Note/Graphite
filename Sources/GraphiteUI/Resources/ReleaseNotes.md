@@ -2,6 +2,11 @@
 
 ## 1.0.3
 
+### 2026-11-28 15:26
+
+- Changed: What's New shows the time of each update, so several updates on one day read apart.
+- Changed: The guide's Notion-style dashboards and tutorial carry only their icon and cover, without tags.
+
 ### 2026-11-28 14:10
 
 - Added: The guide shows how to make a note look like a Notion page, with three example dashboards and a tutorial that builds one step by step.
