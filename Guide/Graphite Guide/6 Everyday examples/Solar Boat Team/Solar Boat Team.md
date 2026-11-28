@@ -1,9 +1,6 @@
 ---
 icon: "[[Solar boat.svg]]"
 banner: "[[Cover - Solar Boat Team.png]]"
-tags:
-  - guide/examples
-  - team
 ---
 # Solar Boat Team
 

@@ -1,9 +1,6 @@
 ---
 icon: 🌱
 banner: "[[Cover - Balcony Garden.png]]"
-tags:
-  - guide/examples
-  - garden
 ---
 # Balcony Garden
 

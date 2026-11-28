@@ -1,9 +1,6 @@
 ---
 icon: 🎧
 banner: "[[Cover - Signals and Sound.png]]"
-tags:
-  - guide/examples
-  - course
 ---
 # Signals and Sound
 

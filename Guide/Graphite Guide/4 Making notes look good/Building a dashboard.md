@@ -1,8 +1,6 @@
 ---
 icon: 🧱
 banner: "[[Cover - Signals and Sound.png]]"
-tags:
-  - guide/markdown
 ---
 # Building a dashboard
 
