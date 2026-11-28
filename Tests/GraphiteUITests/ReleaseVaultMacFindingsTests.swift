@@ -6,8 +6,8 @@
  *              section 15): where the reading view starts after Live Preview, and an embedded PDF's page in a callout.
  *
  * Authors: Bahey Shalash
- * Version: 0.3
- * Date: 25/11/2026
+ * Version: 0.4
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -101,16 +101,26 @@ final class ReleaseVaultMacFindingsTests: XCTestCase {
         _ = await pass.workspace.open(try VaultPath("Embeds/PDFs in every form.md"), placement: .currentTab)
         let root = try XCTUnwrap(pass.window.contentView)
         try await waitUntil("the note's editor is shown") { ReleaseVaultViews.noteTextView(in: root) != nil }
-        try await settle(root, seconds: 1)
+        let textView = try XCTUnwrap(ReleaseVaultViews.noteTextView(in: root))
+        let callout = (textView.string as NSString).range(of: "> [!info] A PDF page in a callout\n> ![[Lecture slides.pdf#page=4&height=240]]")
+        XCTAssertNotEqual(callout.location, NSNotFound, "The note holds the callout")
+        // The callout is scrolled to, again at each look, as the embeds above it are laid out at their heights and move it,
+        // until its embed shows a page. Stepping a screen at a time with a fixed wait at each step, as the pass does, ran
+        // past it on GitHub's runners, where the PDF had not loaded within the wait.
         var calloutPDF: GraphiteMacPDFView?
-        for _ in 1...ReleaseVaultPass.maximumPagesPerView {
-            calloutPDF = ReleaseVaultViews.descendants(of: root, ofType: GraphiteMacPDFView.self).first { pdfView in
-                ReleaseVaultViews.isShown(pdfView) && pdfView.pagePlace?.pageIndex == 3
+        try await waitUntil("the callout's embed shows a page", timeoutSeconds: 20 * SharedRunner.waitScale) {
+            textView.scrollRangeToVisible(callout)
+            root.layoutSubtreeIfNeeded()
+            // The PDF inside the view Live Preview draws over the callout's lines (its text is hidden under it), not another
+            // PDF of the note on the same screen.
+            let calloutText = textView.windowFrames(ofCharacters: callout).reduce(CGRect.null) { area, frame in area.union(frame) }
+            let calloutView = ReleaseVaultViews.renderedBlockViews(in: textView).first { blockView in
+                blockView.convert(blockView.bounds, to: nil).intersects(calloutText)
             }
-            if calloutPDF != nil { break }
-            guard let scroller = ReleaseVaultScrolling.pageScroller(in: root), let nextOffset = ReleaseVaultScrolling.nextPageOffset(of: scroller) else { break }
-            ReleaseVaultScrolling.scroll(scroller, to: nextOffset)
-            try await settle(root, seconds: 0.8)
+            calloutPDF = calloutView.flatMap { blockView in
+                ReleaseVaultViews.descendants(of: blockView, ofType: GraphiteMacPDFView.self).first(where: ReleaseVaultViews.isShown)
+            }
+            return calloutPDF?.pagePlace != nil
         }
         let pdfView = try XCTUnwrap(calloutPDF, "The callout's embed of page 4 is shown")
         try await settle(root, seconds: 1)

@@ -7,8 +7,8 @@
  *              Mac's and the iPad's switching tests and benchmarks.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 25/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 
 import Foundation
@@ -219,12 +219,13 @@ enum ViewSwitchingWindow {
         MacViewDrawing.drawLargeViewsWithoutTheMetalRenderer()
         let controller = NSHostingController(rootView: rootView)
         controller.sceneBridgingOptions = [.toolbars, .title]
-        let window = NSWindow(contentViewController: controller)
+        let window = WindowOfItsOwnSize(contentViewController: controller)
         window.styleMask = [.titled, .resizable, .closable, .miniaturizable, .fullSizeContentView]
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: .aqua)
         window.setContentSize(NSSize(width: 1_440, height: 900))
         window.showInvisibly()
+        XCTAssertEqual(window.frame.width, 1_440, "The window is as wide as asked, whatever the screen's width.")
         testCase.addTeardownBlock { @MainActor in
             window.contentViewController = nil
             window.close()
@@ -233,3 +234,12 @@ enum ViewSwitchingWindow {
     }
     #endif
 }
+
+#if os(macOS)
+/// A titled window keeps the size a test gives it. AppKit shrinks a titled, resizable window to its screen's width as it
+/// is put on screen: GitHub's runners have a screen of 1,024 points, where a window of 1,440 became one of 1,024, and the
+/// right sidebar then left the documents area under the 640 points at which Write leaves the toolbar.
+private final class WindowOfItsOwnSize: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+#endif
