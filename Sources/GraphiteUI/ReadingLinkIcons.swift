@@ -34,8 +34,10 @@ enum NoteIconInlineAddress {
     /// How far below the baseline the square starts, as a share of its side: an emoji's own place on the line.
     static let shareBelowBaseline = 0.18
 
-    static func url(of icon: NoteIcon, root: URL, textSize: Double) -> URL? {
-        let size = EmbedDisplaySize(width: (textSize * sizeInEms).rounded(), height: nil)
+    /// The square is given at the default text size, as a picture's `|width` is: the text's attachment scale (the note's
+    /// zoom, `NoteFontSize.zoomScale`) grows it with the text, which a note built once is not built again for.
+    static func url(of icon: NoteIcon, root: URL) -> URL? {
+        let size = EmbedDisplaySize(width: (Double(NoteFontSize.defaultSize) * sizeInEms).rounded(), height: nil)
         var components = URLComponents()
         components.scheme = scheme
         switch icon {
@@ -82,7 +84,7 @@ extension ReadingViewBuilder {
         guard !configuration.noteIconLinkPrefixes.iconsByPath.isEmpty, !link.isEmbed, !link.target.hasPrefix("#"),
               let linkedNote = await resolve(link.target, isWiki: link.isWiki, note: note, root: root, index: index),
               let icon = configuration.noteIconLinkPrefixes.iconsByPath[linkedNote] else { return "" }
-        guard let location = NoteIconInlineAddress.url(of: icon, root: root, textSize: configuration.textSize) else { return "" }
+        guard let location = NoteIconInlineAddress.url(of: icon, root: root) else { return "" }
         // An emoji is its picture's description, which reads it aloud and copies it.
         let description = if case .emoji(let emoji) = icon { emoji } else { "" }
         return "![\(description)](\(GraphiteOpenLink.markdownDestination(location))) "
@@ -92,8 +94,8 @@ extension ReadingViewBuilder {
     static let pageGlyph = NoteIcon.symbol(systemName: "doc.text")
 
     func pageGlyphPrefix(configuration: ReadingConfiguration) -> String {
-        NoteIconInlineAddress.url(of: Self.pageGlyph, root: configuration.noteIconLinkPrefixes.root ?? URL(fileURLWithPath: "/"),
-                                  textSize: configuration.textSize).map { location in "![](\(GraphiteOpenLink.markdownDestination(location))) " } ?? ""
+        NoteIconInlineAddress.url(of: Self.pageGlyph, root: configuration.noteIconLinkPrefixes.root ?? URL(fileURLWithPath: "/"))
+            .map { location in "![](\(GraphiteOpenLink.markdownDestination(location))) " } ?? ""
     }
 
     /// Where the links that get `pageGlyph` start in `markdown`: those alone on a line of a list of two or more such lines

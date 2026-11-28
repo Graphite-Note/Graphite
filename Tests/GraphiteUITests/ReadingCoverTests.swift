@@ -41,7 +41,7 @@ final class ReadingCoverTests: XCTestCase {
 
     /// How an emoji icon is written before a link: a square picture whose description is the emoji, then a space.
     private static func emojiIcon(_ emoji: String) -> String {
-        let address = NoteIconInlineAddress.url(of: .emoji(emoji), root: URL(fileURLWithPath: "/"), textSize: ReadingConfiguration().textSize)
+        let address = NoteIconInlineAddress.url(of: .emoji(emoji), root: URL(fileURLWithPath: "/"))
         return "![\(emoji)](\(address.map(GraphiteOpenLink.markdownDestination) ?? "")) "
     }
 
@@ -98,7 +98,7 @@ final class ReadingCoverTests: XCTestCase {
         configuration.noteIconLinkPrefixes = NoteIconLinkPrefixes(iconsByPath: [try VaultPath("Lab.md"): .symbol(systemName: "atom")], root: vault, version: 2)
         let symbolLink = markdownRuns(try await build("See [[Lab]].", configuration: configuration).blocks).joined()
         XCTAssertTrue(symbolLink.contains("![](graphite-note-icon://symbol/atom"), symbolLink)
-        let webAddress = try XCTUnwrap(NoteIconInlineAddress.url(of: .picture(.webAddress(notion)), root: vault, textSize: 17))
+        let webAddress = try XCTUnwrap(NoteIconInlineAddress.url(of: .picture(.webAddress(notion)), root: vault))
         XCTAssertEqual(NoteIconInlineAddress.named(by: webAddress), .webAddress(notion))
         XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(URL(string: symbolLink.components(separatedBy: "![](")[1].components(separatedBy: ")")[0]))),
                        .symbol("atom"))
@@ -326,19 +326,23 @@ final class ReadingCoverTests: XCTestCase {
         XCTAssertEqual([squared.width, squared.height], [side, side], "A wide logo is fitted into the square.")
         for icon in [NoteIcon.emoji("🏢"), .symbol(systemName: "doc.text"), .picture(.vaultFile(linkTarget: "Covers/Hills.png")),
                      .picture(.webAddress(try XCTUnwrap(URL(string: "https://example.com/i.svg"))))] {
-            let address = try XCTUnwrap(NoteIconInlineAddress.url(of: icon, root: vault, textSize: 16))
+            let address = try XCTUnwrap(NoteIconInlineAddress.url(of: icon, root: vault))
             XCTAssertNotNil(NoteIconInlineAddress.named(by: address), "\(icon)")
             XCTAssertEqual(PreviewImageFragment.displaySize(in: address)?.width, 20, "Notion's 20 points beside 16-point text: \(icon)")
         }
-        XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(NoteIconInlineAddress.url(of: .emoji("🏢"), root: vault, textSize: 16))), .emoji("🏢"))
+        XCTAssertEqual(NoteIconInlineAddress.named(by: try XCTUnwrap(NoteIconInlineAddress.url(of: .emoji("🏢"), root: vault))), .emoji("🏢"))
         let attachment = VaultImageAttachment(image: emoji, description: "🏢", displaySize: nil, path: nil, iconSide: 20)
         let environment = TextEnvironmentValues()
         XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: environment), CGSize(width: 20, height: 20))
         XCTAssertLessThan(attachment.baselineOffset(in: environment), 0, "The square reaches below the baseline as an emoji does.")
+        let zoomed = TextEnvironmentValues(attachmentScale: 1.5)
+        XCTAssertEqual(attachment.sizeThatFits(ProposedViewSize(width: 5, height: nil), in: zoomed), CGSize(width: 30, height: 30),
+                       "At 24 points the square grows as the text does, though the note is not built again.")
+        XCTAssertEqual(attachment.baselineOffset(in: zoomed), attachment.baselineOffset(in: environment) * 1.5, accuracy: 0.001)
     }
 
     func testLinesOfAnIconAndALinkStayOnOneLineAndOtherTextWraps() throws {
-        let icon = "![](\(try XCTUnwrap(NoteIconInlineAddress.url(of: .symbol(systemName: "doc.text"), root: vault, textSize: 16))))"
+        let icon = "![](\(try XCTUnwrap(NoteIconInlineAddress.url(of: .symbol(systemName: "doc.text"), root: vault))))"
         let parser = ObsidianMarkdownParser(baseURL: vault, textSize: 16)
         func isTruncated(_ markdown: String) throws -> Bool {
             TruncatedLines.isMarked(try parser.attributedString(for: markdown))

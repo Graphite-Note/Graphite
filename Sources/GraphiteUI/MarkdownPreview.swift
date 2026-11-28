@@ -3239,17 +3239,21 @@ struct VaultImageAttachment: Attachment {
         InlinePictureView(image: image, description: description, path: path)
     }
     func baselineOffset(in environment: TextEnvironmentValues) -> CGFloat {
-        iconSide.map { side in -side * NoteIconInlineAddress.shareBelowBaseline } ?? 0
+        iconSide.map { side in -side * Self.zoomScale(in: environment) * NoteIconInlineAddress.shareBelowBaseline } ?? 0
     }
     func sizeThatFits(_ proposal: ProposedViewSize, in environment: TextEnvironmentValues) -> CGSize {
-        if let iconSide { return CGSize(width: iconSide, height: iconSide) }
+        let zoomScale = Self.zoomScale(in: environment)
+        if let iconSide { return CGSize(width: iconSide * zoomScale, height: iconSide * zoomScale) }
         let width = Double(image.width), height = Double(image.height)
         guard width > 0, height > 0 else { return CGSize(width: 300, height: 200) }
-        // Zoomed as the note's text is (HUNT-388): the scale reaches the text's layout, which is not built again for it.
-        let zoomScale = environment.attachmentScale.isFinite && environment.attachmentScale > 0 ? environment.attachmentScale : 1
         let naturalWidth = (displaySize?.fittedWidth(aspectRatio: width / height) ?? width) * zoomScale
         let fittedWidth = min(max(proposal.width ?? naturalWidth, Self.narrowestFittedWidth), naturalWidth)
         return CGSize(width: fittedWidth, height: fittedWidth * height / width)
+    }
+    /// How much the note's text is zoomed (HUNT-388): the scale reaches the text's layout, which is not built again for it.
+    /// A picture's width and an icon's square, both given at the default text size, grow by it.
+    private static func zoomScale(in environment: TextEnvironmentValues) -> Double {
+        environment.attachmentScale.isFinite && environment.attachmentScale > 0 ? environment.attachmentScale : 1
     }
     /// The narrowest, in points, an image is drawn where it is offered less, as in a table
     /// too crowded to fit the note: narrower, a figure can no longer be made out.
