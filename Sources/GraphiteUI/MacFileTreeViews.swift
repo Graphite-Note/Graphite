@@ -147,6 +147,12 @@ final class FileTreeCellView: NSTableCellView {
     /// Whether the row shows its name field, which a test reads.
     var showsNameField: Bool { nameField?.superview === self }
 
+    /// The kept extension shown after the name field, with where it is in the cell, which a test reads; nil when none shows.
+    var shownNameFieldSuffix: (text: String, frame: NSRect, color: NSColor?)? {
+        guard showsNameField, !nameFieldSuffix.isHidden else { return nil }
+        return (nameFieldSuffix.stringValue, nameFieldSuffix.frame, nameFieldSuffix.textColor)
+    }
+
     /// The name fields in the cell, which a test counts: one while a name is typed, none after.
     var nameFieldCount: Int { subviews.filter { subview in subview is FileTreeNameField }.count }
 

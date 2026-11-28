@@ -137,6 +137,39 @@ final class UiFileTreeInlineNamingMacTests: XCTestCase {
         }
     }
 
+    /// A PDF's rename types its name alone: its extension stays after the field, muted, where it is drawn (issue #270).
+    func testAPDFsRenameShowsItsExtensionMutedAfterTheField() async throws {
+        let (workspace, _) = try makeWorkspace(files: ["Handout.pdf", "Welcome.md"])
+        await workspace.refreshDirectory()
+        let outlineView = try await showSidebar(of: workspace)
+        try await waitUntil { outlineView.numberOfRows == 2 }
+        workspace.requestRename(try VaultPath("Handout.pdf"))
+        let row = (0..<outlineView.numberOfRows).first { row in
+            (outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? FileTreeCellView)?.showsNameField == true
+        }
+        let cell = try XCTUnwrap(row.flatMap { row in outlineView.view(atColumn: 0, row: row, makeIfNecessary: false) as? FileTreeCellView })
+        cell.layoutSubtreeIfNeeded()
+        XCTAssertEqual(try typingEditor(in: outlineView).string, "Handout", "The name alone is typed.")
+        let suffix = try XCTUnwrap(cell.shownNameFieldSuffix, "The extension shows after the field.")
+        XCTAssertEqual(suffix.text, ".pdf")
+        XCTAssertEqual(suffix.color, .secondaryLabelColor, "Muted, as the tree's extensions are.")
+        let field = try XCTUnwrap(cell.subviews.first { subview in subview is FileTreeNameField })
+        XCTAssertGreaterThanOrEqual(suffix.frame.minX, field.frame.maxX, "After the field.")
+        XCTAssertLessThanOrEqual(suffix.frame.maxX, cell.bounds.maxX + 0.5, "Inside the row.")
+        XCTAssertGreaterThan(suffix.frame.width, 10, "Wide enough to read: \(suffix.frame).")
+        // Drawn: the extension's part of the row has the text's pixels.
+        let picture = try XCTUnwrap(cell.bitmapImageRepForCachingDisplay(in: cell.bounds))
+        cell.cacheDisplay(in: cell.bounds, to: picture)
+        let background = picture.colorAt(x: 1, y: 1)
+        var drawnPixels = 0
+        let scale = CGFloat(picture.pixelsWide) / cell.bounds.width
+        for x in Int(suffix.frame.minX * scale)..<Int(suffix.frame.maxX * scale) {
+            for y in Int((cell.bounds.height - suffix.frame.maxY) * scale)..<Int((cell.bounds.height - suffix.frame.minY) * scale)
+            where picture.colorAt(x: x, y: y) != background { drawnPixels += 1 }
+        }
+        XCTAssertGreaterThan(drawnPixels, 20, "The extension's text is drawn.")
+    }
+
     /// A name another item of the folder has keeps the field open on Return, and renames nothing.
     func testReturnOnATakenNameKeepsTheField() async throws {
         let (workspace, vault) = try makeWorkspace(files: ["Lecture.md", "Other.md"])
