@@ -2083,6 +2083,8 @@ private struct WordEnvironmentText: View {
 private struct ObsidianMarkdownTextContent: View, Equatable {
     let markdown: String
     @Environment(\.displayScale) private var displayScale
+    /// How much the note is zoomed: the pictures inside its text grow with it (HUNT-388).
+    @Environment(\.embeddedImageZoomScale) private var imageZoomScale
     @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
@@ -2149,7 +2151,8 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.highlighterTheme(CodeSyntaxColors.highlighterTheme(codeTheme: codeColorTheme, noteTheme: theme))
                 .textual.codeSegmenter(CodeSyntaxColors.readingSegments)
                 .textual.listItemStyle(ObsidianListItemStyle(textSize: textSize, theme: theme))
-                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
+                .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale, iconPictures: noteIcons?.pictures))
+                .textual.attachmentScale(imageZoomScale)
                 .textual.headingStyle(ObsidianHeadingStyle(theme: theme, typography: typography, textSize: textSize))
                 .textual.tableStyle(ObsidianTableStyle(theme: theme))
                 .textual.thematicBreakStyle(ObsidianThematicBreakStyle(theme: theme))
@@ -3001,6 +3004,7 @@ struct CalloutView<Body: View>: View {
     let automaticallyExpandsForReading: Bool
     @ViewBuilder let content: () -> Body
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.embeddedImageZoomScale) private var imageZoomScale
     @Environment(\.noteIcons) private var noteIcons
     @Environment(\.accent) private var accent
     @Environment(\.noteTypography) private var typography
@@ -3064,7 +3068,9 @@ struct CalloutView<Body: View>: View {
                         .font(typography.textSwiftUIFont(size: textSize).weight(.semibold))
                         .foregroundStyle(appearance.titleColor)
                         .textual.inlineStyle(InlineStyle.default.link(.foregroundColor(accent)))
-                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, iconPictures: noteIcons?.pictures))
+                        .textual.imageAttachmentLoader(VaultImageLoader(root: root, displayScale: displayScale, zoomScale: imageZoomScale,
+                                                                        iconPictures: noteIcons?.pictures))
+                        .textual.attachmentScale(imageZoomScale)
                         .environment(\.openURL, ObsidianMarkdownText.linkAction(root: root, navigate: navigate, scrollToHeading: scrollToHeading))
                         .allowsHitTesting(Self.containsLink(title))
                     if folding != .notFoldable {
@@ -3144,6 +3150,8 @@ struct VaultImageLoader: AttachmentLoader {
     let root: URL
     /// Pixels a point where the text is shown; a scale below 1 is a view not on a screen yet.
     let displayScale: CGFloat
+    /// How much the note is zoomed, which a picture given a width is drawn and decoded larger by.
+    var zoomScale: Double = 1
     /// The window's pictures of notes' icons, which icons before links are drawn from; nil while icons are off.
     let iconPictures: NoteIconPictures?
 
@@ -3184,7 +3192,7 @@ struct VaultImageLoader: AttachmentLoader {
     /// as an image without one is laid out at its pixel size.
     func displayPixelWidth(for location: URL) -> Int? {
         guard let displaySize = PreviewImageFragment.displaySize(in: location) else { return nil }
-        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize, displayScale: displayScale)
+        return EmbeddedImageDisplayWidth.pixelWidth(columnWidth: nil, displaySize: displaySize.scaled(by: zoomScale), displayScale: displayScale)
     }
 
     /// The picture's path in the vault, which its zoom names.
@@ -3229,7 +3237,9 @@ struct VaultImageAttachment: Attachment {
         if let iconSide { return CGSize(width: iconSide, height: iconSide) }
         let width = Double(image.width), height = Double(image.height)
         guard width > 0, height > 0 else { return CGSize(width: 300, height: 200) }
-        let naturalWidth = displaySize?.fittedWidth(aspectRatio: width / height) ?? width
+        // Zoomed as the note's text is (HUNT-388): the scale reaches the text's layout, which is not built again for it.
+        let zoomScale = environment.attachmentScale.isFinite && environment.attachmentScale > 0 ? environment.attachmentScale : 1
+        let naturalWidth = (displaySize?.fittedWidth(aspectRatio: width / height) ?? width) * zoomScale
         let fittedWidth = min(max(proposal.width ?? naturalWidth, Self.narrowestFittedWidth), naturalWidth)
         return CGSize(width: fittedWidth, height: fittedWidth * height / width)
     }

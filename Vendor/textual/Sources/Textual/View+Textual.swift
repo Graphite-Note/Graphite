@@ -162,6 +162,12 @@ extension TextualNamespace where Base: View {
     base.modifier(FontScaleModifier(scale))
   }
 
+  /// Graphite addition: how much the attachments of the text are zoomed, given to an attachment's sizing as
+  /// ``TextEnvironmentValues/attachmentScale``, as when the host zooms its text and its pictures with it.
+  public func attachmentScale(_ scale: Double) -> some View {
+    base.environment(\.textualAttachmentScale, scale)
+  }
+
   /// Sets the attachment loader used to resolve image attachments.
   public func imageAttachmentLoader(_ loader: some AttachmentLoader) -> some View {
     base.environment(\.imageAttachmentLoader, loader)

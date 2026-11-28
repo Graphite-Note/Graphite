@@ -6,7 +6,7 @@
  *              lines of images.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.52
+ * Version: 0.53
  * Date: 28/11/2026
  */
 
@@ -475,6 +475,8 @@ struct RenderedMarkdownBlock: View {
                              // `follow` scrolls the note to a heading written as `#heading`,
                              // and a heading's anchor is its own anchor.
                              scrollToHeading: { anchor in environment.follow("#" + anchor, true) }, sourceTokens: sourceTokens)
+            // The pictures inside a table's or callout's text grow with the note's zoom, as its text does (HUNT-388).
+            .environment(\.embeddedImageZoomScale, NoteFontSize.zoomScale(forTextSize: environment.textSize))
             .task(id: preparationTaskKey) {
                 guard preparationTaskKey != settledPreparationTaskKey else { return }
                 let preparation = await LivePreviewText.preparedResolvingEmbeds(markdown, environment: environment, place: place)
