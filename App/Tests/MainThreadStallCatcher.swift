@@ -6,8 +6,8 @@
  *              thread for an instant, reads its stack and lets it go, whether the main thread was working or waiting.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
- * Date: 18/11/2026
+ * Version: 0.3
+ * Date: 28/11/2026
  */
 #if os(iOS) && arch(arm64)
 import Foundation
@@ -182,6 +182,27 @@ private final class FrameTarget: NSObject {
 
     @objc func frame(_ link: CADisplayLink) {
         lastFrameTime.pointee = CACurrentMediaTime()
+    }
+}
+#elseif os(iOS)
+import QuartzCore
+
+/// The same calls on a processor whose registers the catcher does not read (an Intel simulator in a build for every
+/// architecture): it catches nothing, so a test that records stalls still builds and runs there and reports none.
+final class MainThreadStallCatcher: @unchecked Sendable {
+    struct Capture {
+        let lastFrameTime: CFTimeInterval
+        let capturedAt: CFTimeInterval
+        let wasRunning: Bool
+        let returnAddresses: [UInt]
+    }
+
+    init(stallSeconds: CFTimeInterval = 0.1) {}
+
+    func stop() -> [Capture] { [] }
+
+    static func report(_ captures: [Capture], deepestFrames: Int = 28) -> String {
+        "stalls are caught only on arm64"
     }
 }
 #endif

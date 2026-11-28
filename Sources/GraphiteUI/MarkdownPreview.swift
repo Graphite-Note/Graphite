@@ -5,7 +5,7 @@
  * Description: The reading view: builds a note's blocks, draws them, and parses their Markdown.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.79
+ * Version: 0.80
  * Date: 28/11/2026
  */
 
@@ -2113,23 +2113,7 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
 
     var body: some View {
         if let numberedEquation {
-            NumberedEquationView(equation: numberedEquation, textSize: textSize)
-                .background {
-                    if let activeRange, sourceTokens?.contains(where: { token in
-                        token.isEquation && NSIntersectionRange(token.sourceRange, activeRange).length > 0
-                    }) == true {
-                        RoundedRectangle(cornerRadius: 3).fill(ReadAloudHighlightStyle.color)
-                        GeometryReader { geometry in
-                            let frame = geometry.frame(in: .named(ReadingCoordinateSpace.name))
-                            Color.clear
-                                .onChange(of: frame, initial: true) { _, frame in
-                                    readingHighlightReceiver?.report([ReadingHighlightGeometry(sourceRange: activeRange, frame: frame)], of: activeRange)
-                                }
-                                .onDisappear { readingHighlightReceiver?.report([], of: activeRange) }
-                        }
-                        .allowsHitTesting(false)
-                    }
-                }
+            numberedEquationView(numberedEquation)
         } else {
             StructuredText(markdown, parser: ObsidianMarkdownParser(baseURL: root, textSize: textSize, sourceTokens: sourceTokens,
                                                                     themeColors: ReadingThemeColors(theme: theme), accent: accent,
@@ -2165,6 +2149,27 @@ private struct ObsidianMarkdownTextContent: View, Equatable {
                 .textual.linkInteractions(pictureLinkInteractions)
                 .textual.readingHighlight(activeRange, color: readingHighlightFill, coordinateSpace: ReadingCoordinateSpace.name)
         }
+    }
+
+    /// A numbered equation on a line of its own, with the reading highlight behind it while it is read aloud.
+    private func numberedEquationView(_ equation: NumberedEquation) -> some View {
+        NumberedEquationView(equation: equation, textSize: textSize)
+            .background {
+                if let activeRange, sourceTokens?.contains(where: { token in
+                    token.isEquation && NSIntersectionRange(token.sourceRange, activeRange).length > 0
+                }) == true {
+                    RoundedRectangle(cornerRadius: 3).fill(ReadAloudHighlightStyle.color)
+                    GeometryReader { geometry in
+                        let frame = geometry.frame(in: .named(ReadingCoordinateSpace.name))
+                        Color.clear
+                            .onChange(of: frame, initial: true) { _, frame in
+                                readingHighlightReceiver?.report([ReadingHighlightGeometry(sourceRange: activeRange, frame: frame)], of: activeRange)
+                            }
+                            .onDisappear { readingHighlightReceiver?.report([], of: activeRange) }
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
     }
 
     /// The menu and ⌘-click of the pictures in the text. On the iPad a rendered block of Live
