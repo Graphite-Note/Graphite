@@ -2,7 +2,7 @@
  * File: NotionImportSheet.swift
  * -----------------------------
  * Layer: UI
- * Description: Import from Notion's sheets: how to export from Notion and the choice of the export, the offer of the
+ * Description: Import from Notion's sheets: an export file or Notion's API to import from, the offer of the
  *              same importer as a plugin, the progress card while it is imported, and the summary when it ends.
  *
  * Authors: Bahey Shalash
@@ -14,34 +14,47 @@ import SwiftUI
 import UniformTypeIdentifiers
 import GraphiteCore
 
-/// The sheet Import from Notion opens: how to get the HTML export from Notion, the folder it goes into, and Choose
-/// Export, whose file chooser takes Notion's zip, the `Part-N` zips of a large export, or the folder a zip unzips to.
-/// Below, the offer of the Notion Importer plugin (`NotionImporterPluginOffer`).
+/// Where Import from Notion reads the workspace from.
+enum NotionImportSource: String, CaseIterable, Identifiable {
+    case export = "Export File"
+    case api = "Notion's API"
+    var id: Self { self }
+}
+
+/// The sheet Import from Notion opens. From an export file: how to get the HTML export from Notion, the folder it goes
+/// into, and Choose Export, whose file chooser takes Notion's zip, the `Part-N` zips of a large export, or the folder a
+/// zip unzips to. From Notion's API: the integration's token and a new folder or an earlier import to update
+/// (`NotionAPIImportForm`).
+/// Below the export's chooser, the offer of the Notion Importer plugin (`NotionImporterPluginOffer`).
 struct NotionImportSheet: View {
     let choice: NotionImportChoice
     /// The offer of the Notion Importer plugin, made once for the sheet; nil without a vault.
     let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
+    let startAPI: @MainActor (String, VaultPath, VaultPath?) -> Void
+    let earlierImports: [VaultPath]
     @Environment(\.dismiss) private var dismiss
     @State private var showsChooser = false
     @State private var pluginOffer: NotionImporterPluginOffer?
+    @State private var source = NotionImportSource.export
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text(NotionImportWording.exportSteps)
-                } header: {
-                    Text("In Notion")
+                    Picker("From", selection: $source) {
+                        ForEach(NotionImportSource.allCases) { source in Text(source.rawValue).tag(source) }
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("notion-import-source")
                 }
-                Section {
-                    LabeledContent("Into", value: NotionImportWording.destinationDescription(of: choice.directory))
-                } footer: {
-                    Text(NotionImportWording.whatIsImported)
-                }
-                Section {
-                    Button("Choose Export…", systemImage: "doc.zipper") { showsChooser = true }
-                        .frame(minHeight: 44)
+                if source == .api {
+                    NotionAPIImportForm(directory: choice.directory, earlierImports: earlierImports) { token, directory, earlierImport in
+                        dismiss()
+                        startAPI(token, directory, earlierImport)
+                    }
+                } else {
+                    exportSections
                 }
                 if let pluginOffer { NotionImporterPluginOfferSection(offer: pluginOffer) }
             }
@@ -62,6 +75,23 @@ struct NotionImportSheet: View {
             }
         }
         .sheetMinimumSize(width: 460, height: 420)
+    }
+
+    @ViewBuilder private var exportSections: some View {
+        Section {
+            Text(NotionImportWording.exportSteps)
+        } header: {
+            Text("In Notion")
+        }
+        Section {
+            LabeledContent("Into", value: NotionImportWording.destinationDescription(of: choice.directory))
+        } footer: {
+            Text(NotionImportWording.whatIsImported)
+        }
+        Section {
+            Button("Choose Export…", systemImage: "doc.zipper") { showsChooser = true }
+                .frame(minHeight: 44)
+        }
     }
 }
 
@@ -156,6 +186,10 @@ struct NotionImportPresentation: ViewModifier {
     let session: NotionImportSession?
     let makePluginOffer: @MainActor () -> NotionImporterPluginOffer?
     let start: @MainActor ([URL], VaultPath) -> Void
+    /// Starts an import through Notion's API with the token, into the folder, or over the earlier import.
+    let startAPI: @MainActor (String, VaultPath, VaultPath?) -> Void
+    /// The earlier imports through the API in a folder, which the sheet offers to update.
+    let earlierImports: @MainActor (VaultPath) -> [VaultPath]
     let openReport: @MainActor (VaultPath) -> Void
     /// Closes the summary; the workspace then lets the session go.
     let close: @MainActor () -> Void
@@ -168,7 +202,10 @@ struct NotionImportPresentation: ViewModifier {
                     NotionImportProgressCard(progress: progress, isPaused: isPaused, isCancelling: isCancelling, session: session)
                 }
             }
-            .sheet(item: $choice) { choice in NotionImportSheet(choice: choice, makePluginOffer: makePluginOffer, start: start) }
+            .sheet(item: $choice) { choice in
+                NotionImportSheet(choice: choice, makePluginOffer: makePluginOffer, start: start, startAPI: startAPI,
+                                  earlierImports: earlierImports(choice.directory))
+            }
             .sheet(isPresented: Binding(get: { finishedSummary != nil }, set: { isPresented in if !isPresented { close() } })) {
                 if let finishedSummary {
                     NotionImportSummarySheet(summary: finishedSummary, openReport: { path in

@@ -63,6 +63,17 @@ Highlight, underline and strike through text, draw with the mouse or trackpad, a
 - **Open in Graphite from anywhere.** Graphite is in the share sheet and Open With for Goodnotes and Notability files, ZIP archives, PDFs, pictures and Markdown. Notebooks are converted, ZIPs are unpacked with their folders, and everything lands in your vault.
 - **Dense handwriting stays smooth.** A formula sheet with thousands of strokes a page scrolls at the display's rate and zooms without freezing, and PDFs Graphite writes are about a third the size they used to be.
 
+### Move in from Notion
+
+- **A Notion page arrives as Notion shows it.** Import Notion's HTML export, or a workspace through Notion's API: the cover and the icon, columns, colored text and highlights, callouts with their icons, toggle headings that fold, equations, and databases as bases with their columns, their rows' whole titles and their views on other pages. [More pictures](https://github.com/Graphite-Note/Importer#a-notion-page-imported) in the Importer's README.
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/assets/notion-import-notion.jpg" alt="A Notion page with a cover, an icon, a quote, a callout and three columns of links to pages"></td>
+    <td width="50%"><img src=".github/assets/notion-import-graphite.jpg" alt="The same page imported into Graphite, in dark appearance"></td>
+  </tr>
+</table>
+
 ### Built to be trusted
 
 - **A small core.** The welcome tour's pictures come with the iPad and iPhone app and can be removed in Settings; larger extras such as voices are downloaded on first use.

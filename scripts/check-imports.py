@@ -49,9 +49,9 @@ FOUNDATIONAL_FRAMEWORKS = {"Foundation", "CoreGraphics", "CryptoKit", "zlib", "S
 RUNTIME_FRAMEWORKS = {"Swift", "Observation", "os", "OSLog"}
 
 # Standalone packages (section 3.5), under Packages/ or, as MermaidDiagrams since 2026-11-19 and the Importer's modules
-# ImporterCore and NotionImport since 2026-11-26, in a repository of their own: they know nothing of Graphite, so every
-# module may import them, and none of them may import a Graphite module.
-STANDALONE_PACKAGES = {"NotebookImport", "MermaidDiagrams", "ImporterCore", "NotionImport"}
+# ImporterCore and NotionImport since 2026-11-26 (ImporterFileSystem since 0.2.0), in a repository of their own: they
+# know nothing of Graphite, so every module may import them, and none of them may import a Graphite module.
+STANDALONE_PACKAGES = {"NotebookImport", "MermaidDiagrams", "ImporterCore", "NotionImport", "ImporterFileSystem"}
 
 # Section 3.2 rows for today's modules. "modules" are Graphite modules it may import; "frameworks" are the system and
 # third-party frameworks it may import beyond FOUNDATIONAL_FRAMEWORKS and RUNTIME_FRAMEWORKS. `prefixes` allow a family.

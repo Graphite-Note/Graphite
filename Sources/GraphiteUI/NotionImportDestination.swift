@@ -3,11 +3,12 @@
  * -----------------------------------
  * Layer: UI
  * Description: The open vault as the Importer's destination: every folder and file written through the vault's
- *              coordinated writer, never over a file already there, with the import held while it is paused.
+ *              coordinated writer, never over a file already there, with the import held while it is paused. Updating
+ *              an earlier import, a file is replaced only while it is what the import read.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 26/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 import Foundation
@@ -30,11 +31,11 @@ struct NotionImportDestination: ImportDestination {
         try await store.createDirectory(try Self.vaultPath(of: path))
     }
 
-    func writeNewFile(_ contents: Data, at path: ImporterCore.VaultPath) async throws {
+    func writeNewFile(_ contents: [UInt8], at path: ImporterCore.VaultPath) async throws {
         await pause.waitWhilePaused()
         let vaultPath = try Self.vaultPath(of: path)
         do {
-            _ = try await store.save(contents, at: vaultPath, expecting: .absent)
+            _ = try await store.save(Data(contents), at: vaultPath, expecting: .absent)
         } catch GraphiteError.conflict {
             throw ImportDestinationError.fileAlreadyExists(path)
         }
@@ -70,6 +71,45 @@ struct NotionImportDestination: ImportDestination {
     /// Graphite's path of an Importer path, both relative to the vault's folder.
     static func vaultPath(of path: ImporterCore.VaultPath) throws -> GraphiteCore.VaultPath {
         try GraphiteCore.VaultPath(path.components.joined(separator: "/"))
+    }
+}
+
+/// The folder of an earlier import, updated by a later import of the same workspace through Notion's API: a file is
+/// replaced only while it still holds the bytes the import read, by the store's save checked against the revision read.
+extension NotionImportDestination: UpdatingImportDestination {
+    func readFile(at path: ImporterCore.VaultPath) async throws -> [UInt8]? {
+        let vaultPath = try Self.vaultPath(of: path)
+        guard try await store.fileExists(vaultPath) else { return nil }
+        return Array(try await store.read(vaultPath).data)
+    }
+
+    func replaceFile(at path: ImporterCore.VaultPath, expecting expected: [UInt8], with contents: [UInt8]) async throws {
+        await pause.waitWhilePaused()
+        let vaultPath = try Self.vaultPath(of: path)
+        guard try await store.fileExists(vaultPath) else { throw ImportUpdateError.changedSinceRead(path) }
+        let snapshot = try await store.read(vaultPath)
+        guard Array(snapshot.data) == expected else { throw ImportUpdateError.changedSinceRead(path) }
+        do {
+            _ = try await store.save(Data(contents), at: vaultPath, expecting: .revision(snapshot.revision))
+        } catch GraphiteError.conflict {
+            throw ImportUpdateError.changedSinceRead(path)
+        }
+        await filesWritten.add(vaultPath)
+    }
+
+    func filePaths(inFolderAt path: ImporterCore.VaultPath) async throws -> [ImporterCore.VaultPath] {
+        let location = try Self.vaultPath(of: path).url(in: store.root)
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: location.path, isDirectory: &isFolder), isFolder.boolValue else { return [] }
+        let relativePaths = try store.writer.readingCoordinated(location) { coordinatedLocation in
+            try FileManager.default.subpathsOfDirectory(atPath: coordinatedLocation.path).filter { relativePath in
+                let entry = coordinatedLocation.appendingPathComponent(relativePath)
+                return (try? entry.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true // An unreadable entry is no file to update.
+            }
+        }
+        return relativePaths.sorted().compactMap { relativePath in
+            ImporterCore.VaultPath(components: path.components + relativePath.split(separator: "/").map(String.init))
+        }
     }
 }
 
@@ -109,9 +149,9 @@ actor NotionImportStagedFile: ImportFileWriting {
         try? FileManager.default.removeItem(at: stagingFolder) // Only this file's staging folder, emptied or not.
     }
 
-    func append(_ bytes: Data) async throws {
+    func append(_ bytes: [UInt8]) async throws {
         await pause.waitWhilePaused()
-        try handle.write(contentsOf: bytes)
+        try handle.write(contentsOf: Data(bytes))
     }
 
     func close() async throws {

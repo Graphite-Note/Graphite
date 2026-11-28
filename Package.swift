@@ -38,8 +38,8 @@ let package = Package(
         .package(path: "Packages/NotebookImport"),
         // Mermaid diagrams read, laid out and drawn natively, in Pele's style: Graphite's own package, in a repository of its own.
         .package(url: "https://github.com/Graphite-Note/MermaidDiagrams.git", exact: "0.8.1"),
-        // Other note apps' exports turned into vault files, Notion's HTML export first: Graphite's own package, in a repository of its own.
-        .package(url: "https://github.com/Graphite-Note/Importer.git", exact: "0.1.0")
+        // Other note apps' exports turned into vault files, Notion's HTML export and API first: Graphite's own package, in a repository of its own.
+        .package(url: "https://github.com/Graphite-Note/Importer.git", exact: "0.5.2")
     ],
     targets: [
         .target(name: "GraphiteCore", dependencies: [
