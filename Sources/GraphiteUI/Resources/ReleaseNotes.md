@@ -2,6 +2,10 @@
 
 ## 1.0.3
 
+### 2026-11-28 21:32
+
+- Added: The Guide's Everyday examples get a fourth dashboard, a made-up student newspaper's wiki.
+
 ### 2026-11-28 21:31
 
 - Fixed [Mac]: Playing a video embedded in a note no longer quits Graphite.
