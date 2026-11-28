@@ -11,6 +11,7 @@
     "members": "number",
     "sown": "date",
     "week": "number",
+    "words": "number",
     "tags": "tags",
     "aliases": "aliases"
   }

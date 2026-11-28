@@ -2,7 +2,7 @@
 
 Created: 2026-11-16.
 
-Status: sections 1 to 3, 6 and 7 built and ticked; section 5 written and checked 2026-11-23, its pack pin waiting for the commit on main; section 4 has a read-through in simulators and waits for a read on the physical devices (main 25c7e2d1, 87e47d93, ec9ba141, 4650d948, 751c4cd4, e929a078, and the commits of the gestures' pictures). Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), [#224](https://github.com/Graphite-Note/Graphite/issues/224), [#288](https://github.com/Graphite-Note/Graphite/issues/288), [#289](https://github.com/Graphite-Note/Graphite/issues/289), one per section.
+Status: sections 1 to 3 and 6 to 8 built and ticked; section 5 written and checked 2026-11-23, its pack pin waiting for the commit on main; section 4 has a read-through in simulators and waits for a read on the physical devices (main 25c7e2d1, 87e47d93, ec9ba141, 4650d948, 751c4cd4, e929a078, and the commits of the gestures' pictures). Issues: [#190](https://github.com/Graphite-Note/Graphite/issues/190), [#191](https://github.com/Graphite-Note/Graphite/issues/191), [#192](https://github.com/Graphite-Note/Graphite/issues/192), [#193](https://github.com/Graphite-Note/Graphite/issues/193), [#224](https://github.com/Graphite-Note/Graphite/issues/224), [#288](https://github.com/Graphite-Note/Graphite/issues/288), [#289](https://github.com/Graphite-Note/Graphite/issues/289), [#290](https://github.com/Graphite-Note/Graphite/issues/290), one per section.
 
 ## Request
 
@@ -142,3 +142,17 @@ Decisions:
   Done 2026-11-28: in an iPad Pro 11-inch (M5) simulator, iOS 27.2, and in a re-signed copy of the Mac Debug build (its own bundle ID and container, the link given to it with `open -a`), each left as an older app leaves it: a copy of the pack at 5c5c79b9 (before the dashboards) with a line added to Start here and no revision recorded, and the pack of this section installed. `graphite://guide` brought the copy up: the new pages (Moving in from Notion, Building a dashboard, the three dashboards and their notes) added, Everyday examples, Making notes look good and the Goodnotes page replaced, Start here kept with `Start here (Guide update).md` beside it, the revision recorded, and the notice over Start here said so (pictures looked at on both). Opening the Guide again changed no file and showed no notice. Not checked: a physical device, and an update through a real download from GitHub (the pack was placed as the download leaves it).
 - [x] The guide pack pinned to the commit on main with these notes.
   Done 2026-11-28: pinned at 081f7a14 (`scripts/make-guide-vault.py --pack-revision`, 162 files, 4.76 MB, 27 earlier versions); `check-add-on-packs.py` finds no problem and `GuideVaultTests` passes with the pin.
+
+## 8. A fourth dashboard: a student newspaper's wiki
+
+Issue: [#290](https://github.com/Graphite-Note/Graphite/issues/290)
+
+Requested 2026-11-28: the team wiki of section 6 is a solar boat team, and EPFL has a real one. The owner chose to keep it and to add a second wiki that no EPFL team resembles: a made-up student newspaper, *Campus Courier*.
+
+- [x] A cover drawn by `scripts/make-guide-vault.py`.
+  Done 2026-11-28: `campus_courier_cover` (two front pages, a camera and a page of notes, 1,200 by 300); the other generated files came out the same.
+- [x] `6 Everyday examples/Campus Courier`: the hub (cover, icon, a quote, a callout, columns of link lists with icons, coloured headings, the stories in a base as a board by stage and a table, folded answers, a formula for an issue's print run, an issue-day checklist) and its sections, how-to notes and stories; linked from Everyday examples, Start here and Building a dashboard.
+  Done 2026-11-28: the hub, four sections (`Sections/`, with an editor and a page count each), *Pitching a story*, *Style guide*, *Issue day*, and five stories in `Stories/` with a section, a writer, a word count and a stage numbered so the board's columns follow a story's way (`1 Pitched` to `4 Ready`); `Stories.base` as a board by stage and a table by section; `words` typed as a number. Linked from Everyday examples' Dashboards table, Start here and Building a dashboard.
+- [x] `GuideVaultTests`, the guide's pass on the Mac in light and dark, and the hub looked at on the Mac and in an iPad simulator.
+  Done 2026-11-28: `GuideVaultTests` (the pack test after the pin below), `GuideVaultPassTests` in light and dark (no finding either time), the hub's pages of the Mac pass, and pictures of the app in an iPad Pro 11-inch (M5) simulator, iOS 27.2, in light, dark, lower down and Live Preview: the cover and the 📰 icon, the `no-title` callout, the columns with an icon before each link, the board of stories by stage, the formula and the checklist. Not checked: the iPhone and a physical device.
+- [ ] The guide pack pinned to the commit on main with these notes.

@@ -1,0 +1,37 @@
+filters:
+  and:
+    - file.hasTag("story")
+    - file.inFolder("6 Everyday examples/Campus Courier/Stories")
+properties:
+  file.name:
+    displayName: Story
+  note.section:
+    displayName: Section
+  note.writer:
+    displayName: Writer
+  note.words:
+    displayName: Words
+  note.stage:
+    displayName: Stage
+views:
+  - type: kanban
+    name: By stage
+    groupBy:
+      property: stage
+      direction: ASC
+    order:
+      - file.name
+      - section
+      - writer
+  - type: table
+    name: By section
+    groupBy:
+      property: section
+      direction: ASC
+    order:
+      - file.name
+      - writer
+      - stage
+      - words
+    summaries:
+      words: Sum

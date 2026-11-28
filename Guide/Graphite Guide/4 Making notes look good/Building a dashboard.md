@@ -8,7 +8,7 @@ A dashboard is a note that opens a part of your vault: a cover, an icon, a few w
 
 This note builds [[Signals and Sound]], the example course's page, in eight steps. Each step shows what to type in a grey box (**Copy this**), then what Graphite draws from it (**What you see**). Open the finished page beside this one with **Split Right** ([[Library and list]]) to compare.
 
-The guide has three finished dashboards to take apart: [[Signals and Sound]] (a course), [[Solar Boat Team]] (a team's wiki) and [[Balcony Garden]] (a project at home).
+The guide has four finished dashboards to take apart: [[Signals and Sound]] (a course), [[Solar Boat Team]] (a team's wiki), [[Campus Courier]] (a student paper's wiki) and [[Balcony Garden]] (a project at home).
 
 > [!tip] 💡
 > The cover, the large icon and the icons before links are drawn in the **reading view**: tap the **pencil** button at the top right (on the Mac, ⌘E). Live Preview, where you write, shows the columns, colours and callouts, and lists the cover and icon as properties.

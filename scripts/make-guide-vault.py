@@ -255,6 +255,29 @@ def balcony_garden_cover():
     return picture
 
 
+def campus_courier_cover():
+    picture = FlatPicture(COVER_WIDTH, COVER_HEIGHT, left_to_right([(236, 228, 214), (246, 240, 228), (214, 202, 184)]))
+    ink, rule, photo = (48, 44, 40), (150, 140, 128), (120, 142, 168)
+    for left, tilt in ((330, 0), (640, 0)):
+        page_left = left + tilt
+        picture.rectangle(page_left, 38, page_left + 250, 300, (252, 250, 245))
+        picture.rectangle(page_left + 20, 58, page_left + 230, 82, ink, 3)
+        picture.rectangle(page_left + 20, 92, page_left + 230, 95, rule)
+        picture.rectangle(page_left + 20, 108, page_left + 120, 190, photo, 3)
+        for line in range(7):
+            picture.rectangle(page_left + 132, 110 + line * 12, page_left + 230, 115 + line * 12, rule, 2)
+        for column in range(3):
+            for line in range(7):
+                picture.rectangle(page_left + 20 + column * 72, 206 + line * 12, page_left + 82 + column * 72, 211 + line * 12, rule, 2)
+    # A camera for the photographers, a page of notes for the writers.
+    picture.rectangle(168, 132, 210, 150, (214, 96, 72), 4).rectangle(130, 144, 270, 236, (214, 96, 72), 12)
+    picture.circle(200, 190, 34, (252, 236, 220)).circle(200, 190, 22, (60, 56, 52)).circle(192, 182, 6, (200, 196, 190))
+    picture.rectangle(940, 110, 1060, 250, (70, 96, 140), 10)
+    for line in range(5):
+        picture.rectangle(960, 134 + line * 22, 1040, 142 + line * 22, (226, 232, 242), 3)
+    return picture
+
+
 SOLAR_BOAT_ICON = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <circle cx="44" cy="18" r="10" fill="#f5b83d"/>
   <rect x="14" y="26" width="30" height="10" rx="2" fill="#24406e"/>
@@ -280,6 +303,7 @@ PICTURES = {
     "Attachments/Cover - Signals and Sound.png": signals_cover,
     "Attachments/Cover - Solar Boat Team.png": solar_boat_cover,
     "Attachments/Cover - Balcony Garden.png": balcony_garden_cover,
+    "Attachments/Cover - Campus Courier.png": campus_courier_cover,
 }
 
 
