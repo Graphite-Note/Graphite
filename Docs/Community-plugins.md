@@ -129,6 +129,29 @@ Each of these is reported to the person, per plugin, when a plugin uses it (Sett
 
 ## How it was verified
 
+### The runtime in a vault of a real vault's size on the iPad and the iPhone (2026-11-28)
+
+In an iPad Pro 11-inch (M5) simulator and an iPhone 17 Pro simulator, iOS 27.2, Debug build of main cee4f3ba with this change, each its own simulator. The vault is made up by `tools/make-measurement-vault.py` in the shape of the vault measured on 2026-11-07: 1,364 notes in nine folders, 75 MB of Markdown, words drawn by Zipf's law from 161,000 dictionary words, each note with frontmatter (tags, rating, status, a date), headings, links to other notes, tags and dated tasks, and a `Dashboard.md` with seven plugin blocks: three Dataview queries (two tables, one list), two Tasks queries, two Admonition callouts, a DataviewJS line and an inline Dataview query. Nine plugins, built from their sources at the commits the Node tests pin and installed as Graphite installs them: Dataview, Tasks, Calendar, Recent Files, Admonition, Omnisearch, Highlightr, Natural Language Dates and Templater. `CommunityPluginRealVaultMeasurementHostedTests` opens the vault in the hosted app, turns the plugins on, opens the dashboard in the reading view, then opens Calendar split from it and Recent Files in a tab on that side; after each step `tools/measure-plugin-runtime.sh` reads the footprint of the app and of each WebKit web content process of that simulator every two seconds for thirty seconds. Each case ran once; the numbers are that run's.
+
+| | iPad, nine plugins | iPad, without Omnisearch | iPhone, nine plugins | iPhone, without Omnisearch |
+|---|---|---|---|---|
+| Every plugin loaded, from turning plugins on | 1.1 s | 0.9 s | 1.0 s | 0.9 s |
+| Plugins' page while the plugins index the vault (largest) | 828 MB | 687 MB | 834 MB | 641 MB |
+| Plugins' page with the dashboard and the two views (settled) | 824 MB | 383 MB | 823 MB | 392 MB |
+| The dashboard's first table with its 30 results, from opening it | 0.9 s | 0.7 s | 0.8 s | 0.7 s |
+| The two views drawn, from asking | 0.25 s | 0.17 s | 0.05 s | 0.04 s |
+| The app's own footprint | 46 to 54 MB | 46 to 54 MB | 46 to 57 MB | 46 to 57 MB |
+
+Each copy of a block or view on screen is a web content process of its own of 57 to 60 MB. In those runs the dashboard opened after the thirty seconds of measuring, when the indexes were ready. Opened at once after loading (an earlier run on the iPad with the nine plugins), Dataview drew its queries before its index was ready, with no results, and the first table showed its 30 rows 11.9 s after the dashboard opened; a block below the screen keeps the drawing it had when it left the screen until it comes back, so the second table, below the first, still showed Dataview's first drawing then. Without Omnisearch, Dataview's and Tasks' indexes are most of what the page holds; Omnisearch, which keeps every note's text and a word index (as in Obsidian), adds about 440 MB. All blocks showed their results (the two tables with 30 and 25 rows, the list, the tasks and the callouts); the DataviewJS line shows Dataview's own "disabled; enable in settings", as in Obsidian.
+
+Found and fixed on the way: the hosted tests with real plugins wrote only Obsidian's list of enabled plugins, from which Graphite leaves out the plugins it does itself since 2026-11-10, so `CommunityPluginHostTests.testOmnisearchIndexesTheVaultAndFindsANoteByItsWords` timed out with Omnisearch never loaded (the test is skipped wherever the plugins are not built, so nothing reported it). The helper now writes Graphite's own list too, and the test passes again in the iPad simulator.
+
+Not measured: a physical iPad or iPhone, whose memory limit for a web content process the simulators do not apply; the 31,000 other files of the vault measured on 2026-11-07 (the made-up vault has notes only); Graphite's own start-up with the vault (the hosted test opens it in a test window).
+
+### Recent Files' card in the app (2026-11-28)
+
+In the iPad Pro 11-inch (M5) simulator, iOS 27.2: `CommunityPluginHostTests.testRecentFilesRowShowsTheNotesCardBesideIt` loads Recent Files itself, built from its source at the commit the Node tests pin, opens two notes, then Recent Files' view in a tab. Its list is shown as a copy; a mouse pointer moved onto the row of `Other.md` in the copy reaches Recent Files' own `mouseover` handler, whose `hover-link` asks for that note's card, which the window's Page Preview shows beside the row with the note in it, and leaving the list closes the card. The test needs the window's cards: the test helper's window now takes `LinkPreviewLayer` when asked, as `GraphiteRootView` gives it while Page Preview is on.
+
 ### Meta Bind's buttons, fields and the course page demo (2026-11-26)
 
 Meta Bind 1.5.1 unmodified, its release's `main.js`, `manifest.json` and `styles.css` pinned by SHA-256 in `compatibility-plugins.json` (it builds with Bun, which the tests do not install), with Templater for notes from templates. Its plan is `Docs/Meta-Bind-buttons-todo.md`. Test material: a made-up course in `Tests/CommunityPluginRuntimeTests/fixtures/meta-bind-course-vault` ("Signals and Systems", with "New assignment" and "Start lecture" as button templates in Meta Bind's settings, a status, credits and exam field, a progress bar of the lectures held, and a base of the course work).
@@ -401,13 +424,26 @@ A cache folder given to `build-compatibility-plugins` must not have a hidden fol
 xcodebuild test -project Graphite.xcodeproj -scheme Graphite -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -only-testing:GraphiteIntegrationTests/CommunityPluginHostTests
 ```
 
-The tests with real plugins are skipped until `npm run build-compatibility-plugins` has built them.
+The tests with real plugins are skipped until `npm run build-compatibility-plugins` has built them. Their helper writes Graphite's own list (`.graphite/community-plugins.json`) as well as Obsidian's: from Obsidian's alone Graphite leaves out the plugins it does itself, so Omnisearch's test found the plugin never loaded from 2026-11-10 until 2026-11-28.
+
+The runtime's start-up and memory in a vault of a real vault's size, in an iOS simulator (How it was verified, 2026-11-28): a made-up vault, the plugins built as above, and a sampler of the simulator's processes beside the hosted test, which waits for it at each step.
+
+```bash
+python3 Tests/CommunityPluginRuntimeTests/tools/make-measurement-vault.py <scratch>/plugin-vault
+Tests/CommunityPluginRuntimeTests/tools/measure-plugin-runtime.sh <simulator udid> <scratch>/plugin-vault <scratch>/report.txt &
+TEST_RUNNER_GRAPHITE_PLUGIN_MEASURE_VAULT=<scratch>/plugin-vault TEST_RUNNER_GRAPHITE_RUNTIME_TESTS_FOLDER=<a copy of Tests/CommunityPluginRuntimeTests outside iCloud> \
+  xcodebuild test-without-building -project Graphite.xcodeproj -scheme Graphite -destination 'id=<simulator udid>' \
+  -only-testing:GraphiteIntegrationTests/CommunityPluginRealVaultMeasurementHostedTests
+```
+
+`TEST_RUNNER_GRAPHITE_PLUGIN_MEASURE_LEAVE_OUT=omnisearch` measures Graphite's default for an Obsidian vault, which leaves Omnisearch off. Without `GRAPHITE_PLUGIN_MEASURE_VAULT` the test returns at once, so the hosted suite does not run it.
 
 ## Next
 
 In order of what it unlocks for daily use:
 
 1. Use a real vault with the plugins above on an iPad and an iPhone, and measure the runtime's memory and start-up time there, with several code blocks and views shown. Issue: [#50](https://github.com/Graphite-Note/Graphite/issues/50).
+   - [x] Done 2026-11-28 in the iPad and iPhone simulators (How it was verified, 2026-11-28), with a made-up vault of a real vault's size (1,364 notes, 75 MB) and nine released plugins: they load in about a second, the plugins' page holds about 390 MB once Dataview and Tasks have indexed the vault, and about 825 MB with Omnisearch on as well, which Graphite leaves off for an Obsidian vault. `CommunityPluginRealVaultMeasurementHostedTests` and `tools/measure-plugin-runtime.sh` measure it again. A physical iPhone's or iPad's own memory limit for the page was not tried (the simulators set none).
 2. Apple Pencil in Excalidraw on an iPad (pressure, tilt, hover and palm rejection): done 2026-11-27 in the iPad simulator, as far as a simulator can check it. Issue: [#51](https://github.com/Graphite-Note/Graphite/issues/51).
    Checked on an iPad Pro 11-inch (M5) simulator, iOS 27.2, main 89054917, in a copy of the release test vault: Excalidraw 2.29.4 installed from the community directory in Settings › Community Plugins and turned on; a drawing with `excalidraw-plugin: parsed` opened in Excalidraw's own view, live; with its freedraw tool, two finger strokes drew and were saved to the file (two `freedraw` elements, 75 and 79 points). What the simulator could not check: a finger's touch reaches the page with no force, so the strokes carry pressures of 0 with `simulatePressure` false, and the simulator has no Apple Pencil, so pressure, tilt, hover and palm rejection were not tried (this Xcode has no Simulator app with a Pencil input, and XCTest's pointer hover reached no app there). WebKit gives a page Apple Pencil as pen pointer events and nothing of Graphite's sits on the live web view, so these are Excalidraw's and WebKit's on an iPad, as in Obsidian.
 3. From the sweep: hover previews of links, built on 2026-10-22; since 2026-11-12 a link inside a card follows on the iPad and the Mac; since 2026-11-28 the reading view's hover is tested on the iPad too, and the checks that need a real pointer moved to item 5. Done 2026-10-21: suggestions in the Mac editor, and the editor of a note right after `openFile` (Advanced URI) (How it was verified, below). Issue: [#52](https://github.com/Graphite-Note/Graphite/issues/52).
@@ -430,3 +466,4 @@ In order of what it unlocks for daily use:
 5. Later: Page Preview with a real pointer. Issue: [#277](https://github.com/Graphite-Note/Graphite/issues/277).
    - [ ] On an iPad: a trackpad's or mouse's pointer, and Apple Pencil hovering, resting on a link in the editor and the reading view shows the card after 300 ms. A simulator gives no pointer hover, and no iPad was at hand.
    - [ ] Recent Files itself, installed in the app, showing a note's card from its list by pointer hover, on the Mac and the iPad.
+     Partly done 2026-11-28: Recent Files itself, built from its source at the commit the Node tests pin, in the hosted app on the iPad simulator (`CommunityPluginHostTests.testRecentFilesRowShowsTheNotesCardBesideIt`, How it was verified, 2026-11-28): its view opened in a tab, a mouse pointer event moved onto the row of `Other.md` in the view's copy reaches Recent Files' own handler, the window's card shows that note beside the row, and leaving the list closes it. Left: a real pointer, and the Mac.
