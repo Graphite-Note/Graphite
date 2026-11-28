@@ -5,7 +5,7 @@
  * Description: One folder or file of the library's grid, as the Files app shows it: its picture, its name and its date.
  *
  * Authors: Bahey Shalash
- * Version: 0.4
+ * Version: 0.5
  * Date: 28/11/2026
  */
 
@@ -94,8 +94,8 @@ struct LibraryTile: View {
                 ForEach(entries.accessibilityActions(entry)) { entryAction in Button(entryAction.title, action: entryAction.perform) }
             }
         }
-        .modifier(ModifierKeyChoice(choose: choose))
         #if os(macOS)
+        .modifier(ModifierKeyChoice(choose: choose))
         // While choosing, a plain click only chooses; a double-click opens, as in the Finder.
         .simultaneousGesture(TapGesture(count: 2).onEnded { if selection.isSelecting { open() } })
         #endif
@@ -196,19 +196,17 @@ private struct LibraryFileTileArtwork: View {
 /// ⌘-click toggles and ⇧-click extends the choice, as in the Finder. They are gestures that take
 /// precedence over the button, which a plain click still reaches. On the iPad a tap only chooses
 /// or opens: a gesture reading the keys held at the touch stopped the grid from scrolling.
+#if os(macOS)
 private struct ModifierKeyChoice: ViewModifier {
     let choose: (LibrarySelection.Gesture) -> Void
 
     func body(content: Content) -> some View {
-        #if os(macOS)
         content
             .highPriorityGesture(TapGesture().modifiers(.command).onEnded { choose(.toggle) })
             .highPriorityGesture(TapGesture().modifiers(.shift).onEnded { choose(.extendRange) })
-        #else
-        content
-        #endif
     }
 }
+#endif
 
 /// A tile's menu, the file tree's own, with Customize Folder… for a folder, which opens
 /// Finder's folder popover over the tile (a sheet on the iPhone). While several tiles are
@@ -221,8 +219,11 @@ private struct LibraryTileMenu: ViewModifier {
     let findPictures: (String) async -> [VaultPath]
     @State private var isCustomizing = false
 
-    func body(content: Content) -> some View {
-        content
+    // A file tile never customizes a folder, so only a folder tile carries the popover and its action: a popover kept on
+    // every tile of a scrolled folder was built with each row that appeared (HUNT-390). A tile is a folder or a file for
+    // its whole life, so the two branches never swap under the same tile.
+    @ViewBuilder func body(content: Content) -> some View {
+        let menuContent = content
             .contextMenu {
                 if isMenuAvailable {
                     if entry.isDirectory {
@@ -232,7 +233,16 @@ private struct LibraryTileMenu: ViewModifier {
                     entries.menu(entry)
                 }
             }
-            .accessibilityAction(named: "Customize Folder") { if entry.isDirectory && isMenuAvailable { isCustomizing = true } }
+        if entry.isDirectory {
+            customizable(menuContent)
+        } else {
+            menuContent
+        }
+    }
+
+    private func customizable(_ content: some View) -> some View {
+        content
+            .accessibilityAction(named: "Customize Folder") { if isMenuAvailable { isCustomizing = true } }
             .popover(isPresented: $isCustomizing) {
                 FolderCustomizationPopover(folderName: entries.displayName(entry.path), style: library.folderLooks.shownLook(of: entry.path).style,
                                            previewImage: library.folderLooks.tileImages[entry.path], pictureActions: pictureActions) { style in

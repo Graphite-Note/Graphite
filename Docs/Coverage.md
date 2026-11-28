@@ -22,7 +22,9 @@ Last updated: 2026-11-28.
 - **A vault of 100,000 notes:** `LibraryLargeVaultScrollingHostedTests` (simulator, Debug, a heavily loaded Mac): the folder of 10,000 notes listed and laid out in 0.26 s; scrolled 60 points a frame, median 47.9 ms while the index read the vault and 29.0 ms after it had, most frames over 17.7 ms; memory 57 to 100 MB; 50 previews kept for the tiles shown.
 - **Cloud placeholders, on the Mac:** in a made-up iCloud Drive folder with one PDF evicted, the library showed it as "In iCloud" and did not download it.
 - **HUNT-390, the scroll made smooth at 60 Hz:** the slow frames above were measured with the accessibility runtime on and a tile body that made its menu's actions and was drawn again for any tile's preview. With the actions made only for an assistive technology and the preview read in a view of its own, an optimized build scrolls the folder of 10,000 notes while the index reads 100,000 with all 1,200 frames on time (main thread median 2.4 ms a frame, 95th percentile 9.7 ms, longest 11.9 ms, the Mac at a load average of 13).
-- **Not established:** the 8.3 ms of a 120 Hz iPad (196 of 1,200 frames over it, most where a row of tiles appears), a Release build and a device, the scroll with VoiceOver on after the change, the physical iPad and Apple Pencil, Obsidian itself.
+- **Per-tile work trimmed further:** the folder customization popover only on folder tiles, the Mac's modifier-key clicks only on the Mac: the main thread's processor time in a frame went from a median of 3.9 to 2.7 ms and a 95th percentile of 13.9 to 10.8 ms, measured back to back in one optimized build.
+- **With the accessibility runtime on, as VoiceOver has it:** 460 of 1,200 frames late at 60 Hz (main thread a median of 8.7 ms a frame), against 1 with it off, measured back to back.
+- **Not established, set aside in HUNT-391 and HUNT-392 (#218):** the 8.3 ms of a 120 Hz iPad for the frames where a row of tiles appears (239 of 1,200 over it) and a smooth scroll with VoiceOver on; a Release build and a device; the physical iPad and Apple Pencil, Obsidian itself.
 
 ## Imported notebooks edited by finger in the iPad simulator: 2026-11-28
 

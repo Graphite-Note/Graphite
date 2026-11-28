@@ -6,7 +6,7 @@
  *              finger scrolls it, each frame's gap measured, the app's memory and the previews kept for the tiles shown.
  *
  * Authors: Bahey Shalash
- * Version: 0.2
+ * Version: 0.3
  * Date: 28/11/2026
  */
 
@@ -14,7 +14,6 @@
 import XCTest
 import SwiftUI
 import Darwin
-import Synchronization
 import GraphiteCore
 @testable import GraphiteUI
 
@@ -39,6 +38,14 @@ final class LibraryLargeVaultScrollingHostedTests: SettingsHostedTestCase {
         let folders = (0..<90).map { number in (String(format: "Folder %02d", number), 1_000) } + [("Ten thousand", 10_000)]
         let library = try await scroll("Ten thousand", inAVaultOf: folders)
         XCTAssertLessThan(library.visiblePreviews.count, 200, "Previews are kept for the tiles on screen only, not for the 10,000 notes.")
+    }
+
+    /// The same scroll with the accessibility runtime on, as VoiceOver has it: SwiftUI then builds each tile's
+    /// accessibility element as the tile appears. The tiles' menu actions follow VoiceOver itself (`accessibilityEnabled`),
+    /// which the runtime alone does not switch on, so they are not part of this measure.
+    func testScrollingAFolderOfTenThousandNotesWithTheAccessibilityRuntimeOn() async throws {
+        try Self.setAccessibilityRuntimeEnabled(true)
+        _ = try await scroll("Ten thousand", inAVaultOf: [("Ten thousand", 10_000)], afterTheIndexScan: true)
     }
 
     /// The same folder of 10,000 notes in a vault of only those, scrolled once the index has read them all: what the
@@ -90,7 +97,7 @@ final class LibraryLargeVaultScrollingHostedTests: SettingsHostedTestCase {
         let late = gaps.filter { gap in gap > 0.0177 }.count, dropped = gaps.filter { gap in gap > 0.025 }.count
         let overHalfARefresh = mainThreadWork.filter { work in work > 0.0083 }.count
         print("LibraryLargeVaultScrollingHostedTests \(shownNoteCount) of \(noteCount) notes, \(gaps.count) frames: gaps \(Self.describe(gaps)), "
-              + "\(late) over 17.7 ms, \(dropped) over 25 ms; the main thread's work in a frame \(Self.describe(mainThreadWork)), "
+              + "\(late) over 17.7 ms, \(dropped) over 25 ms; the main thread's processor time in a frame \(Self.describe(mainThreadWork)), "
               + "\(overHalfARefresh) over 8.3 ms; memory \(footprintBefore) MB before opening the folder, \(footprintAfter) MB after the scroll; "
               + "\(library.visiblePreviews.count) previews kept for the tiles shown; index scan finished: \(workspace.hasCompletedIndexScan)")
         attachWhatIsOnScreen(in: controller, named: "After the scroll")
@@ -133,16 +140,16 @@ final class LibraryLargeVaultScrollingHostedTests: SettingsHostedTestCase {
 }
 
 /// Scrolls a scroll view by a display link, `step` points a frame down for `framesEachWay` frames and back, staying
-/// between its top and its end, and records the gap before each frame and the main thread's work in it.
+/// between its top and its end, and records the gap before each frame and the main thread's work in it: the processor
+/// time the main thread used since the frame before, which other processes' load on the machine does not lengthen.
 @MainActor
 private final class FrameGapRecorder: NSObject {
     private let scrollView: UIScrollView
     private let step: CGFloat
     private let framesEachWay: Int
-    private let awakeTime = MainThreadAwakeTime()
-    private var observer: CFRunLoopObserver?
     private var displayLink: CADisplayLink?
     private var previousTimestamp: CFTimeInterval?
+    private var previousProcessorNanoseconds: UInt64?
     private var gaps: [CFTimeInterval] = []
     private var mainThreadWork: [CFTimeInterval] = []
     private var continuation: CheckedContinuation<([CFTimeInterval], [CFTimeInterval]), Never>?
@@ -153,16 +160,10 @@ private final class FrameGapRecorder: NSObject {
         self.framesEachWay = framesEachWay
     }
 
-    /// The gap before each frame and the main thread's time awake since the frame before, in seconds.
+    /// The gap before each frame and the main thread's processor time since the frame before, in seconds.
     func run() async -> ([CFTimeInterval], [CFTimeInterval]) {
         await withCheckedContinuation { continuation in
             self.continuation = continuation
-            let awakeTime = self.awakeTime
-            let activities = CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue
-            let observer = CFRunLoopObserverCreateWithHandler(nil, activities, true, 0) { _, activity in awakeTime.note(activity) }
-            CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
-            self.observer = observer
-            _ = awakeTime.take()
             let displayLink = CADisplayLink(target: self, selector: #selector(frame(_:)))
             displayLink.add(to: .main, forMode: .common)
             self.displayLink = displayLink
@@ -170,17 +171,17 @@ private final class FrameGapRecorder: NSObject {
     }
 
     @objc private func frame(_ link: CADisplayLink) {
-        let work = awakeTime.take()
-        if let previousTimestamp {
+        // The display link calls on the main thread, so this thread's clock is the main thread's.
+        let processorNanoseconds = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        if let previousTimestamp, let previousProcessorNanoseconds {
             gaps.append(link.timestamp - previousTimestamp)
-            mainThreadWork.append(work)
+            mainThreadWork.append(Double(processorNanoseconds - previousProcessorNanoseconds) / 1_000_000_000)
         }
         previousTimestamp = link.timestamp
+        previousProcessorNanoseconds = processorNanoseconds
         guard gaps.count < framesEachWay * 2 else {
             link.invalidate()
             displayLink = nil
-            if let observer { CFRunLoopObserverInvalidate(observer) }
-            observer = nil
             continuation?.resume(returning: (gaps, mainThreadWork))
             continuation = nil
             return
@@ -189,40 +190,6 @@ private final class FrameGapRecorder: NSObject {
         let top = -scrollView.adjustedContentInset.top
         let bottom = max(top, scrollView.contentSize.height + scrollView.adjustedContentInset.bottom - scrollView.bounds.height)
         scrollView.contentOffset.y = min(bottom, max(top, scrollView.contentOffset.y + (isGoingBack ? -step : step)))
-    }
-}
-
-/// The main thread's time awake in its run loop, from waking to going back to wait, added up until it is taken. The run
-/// loop's observer reports on the main thread; the lock keeps the type free of any actor.
-private final class MainThreadAwakeTime: Sendable {
-    private struct Times {
-        var wokeAt: CFTimeInterval?
-        var awake: CFTimeInterval = 0
-    }
-
-    private let times = Mutex(Times(wokeAt: CACurrentMediaTime()))
-
-    func note(_ activity: CFRunLoopActivity) {
-        let now = CACurrentMediaTime()
-        times.withLock { times in
-            if activity == .afterWaiting {
-                times.wokeAt = now
-            } else if let wokeAt = times.wokeAt {
-                times.awake += now - wokeAt
-                times.wokeAt = nil
-            }
-        }
-    }
-
-    /// The time awake since the last take, counting the stretch the main thread is in now up to this moment.
-    func take() -> CFTimeInterval {
-        let now = CACurrentMediaTime()
-        return times.withLock { times in
-            let taken = times.awake + (times.wokeAt.map { wokeAt in now - wokeAt } ?? 0)
-            times.awake = 0
-            if times.wokeAt != nil { times.wokeAt = now }
-            return taken
-        }
     }
 }
 #endif
