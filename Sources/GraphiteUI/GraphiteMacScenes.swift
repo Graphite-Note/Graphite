@@ -5,8 +5,8 @@
  * Description: The Mac's scenes, menus and the saving that quitting waits for.
  *
  * Authors: felixchvl, Bahey Shalash
- * Version: 0.12
- * Date: 16/11/2026
+ * Version: 0.13
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -61,6 +61,14 @@ public struct GraphiteMacScenes: Scene {
         }
         .defaultSize(width: 1000, height: 720)
         .defaultPosition(.center)
+        // Every version's changes, from Help › What's New in Graphite.
+        Window("What’s New in Graphite", id: GraphiteMacScenes.whatsNewWindowIdentifier) {
+            WhatsNewPage(history: .bundledForThisDevice, newSince: nil, showsDoneButton: false)
+                .environment(\.accent, processServices.preferences.accentColor)
+                .preferredColorScheme(processServices.preferences.appearanceMode.colorScheme)
+        }
+        .defaultSize(width: 620, height: 720)
+        .defaultPosition(.center)
         Settings {
             SettingsView(workspace: settingsWorkspace) { settingsWorkspace.isVaultManagerPresented = true }
                 .defaultAppStorage(processServices.defaults)
@@ -72,6 +80,7 @@ public struct GraphiteMacScenes: Scene {
     }
 
     static let guideWindowIdentifier = "guide"
+    static let whatsNewWindowIdentifier = "whats-new"
 }
 
 /// The window in front, whose workspace the Settings window shows; each window's root view
@@ -87,7 +96,7 @@ final class FrontmostWindow {
     }
 }
 
-/// Help › Graphite Guide opens the Guide's window.
+/// Help › Graphite Guide opens the Guide's window, and Help › What's New in Graphite the release history's.
 private struct GuideCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
@@ -95,6 +104,7 @@ private struct GuideCommands: Commands {
         CommandGroup(replacing: .help) {
             Button("Graphite Guide") { openWindow(id: GraphiteMacScenes.guideWindowIdentifier) }
                 .keyboardShortcut("?", modifiers: .command)
+            Button("What’s New in Graphite") { openWindow(id: GraphiteMacScenes.whatsNewWindowIdentifier) }
         }
     }
 }

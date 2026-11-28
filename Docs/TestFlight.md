@@ -20,6 +20,12 @@ After archiving, the script runs `scripts/app-size-budget.py`, which lists the a
 
 Each upload needs a higher build number than the last. The script passes the date and time (`20261020.1530`) as `CURRENT_PROJECT_VERSION`, which `Info.plist` reads as `CFBundleVersion`; nothing in the repository changes per upload. The version people see is `MARKETING_VERSION` in the project (1.0.3 since 2026-11-04; 1.0.2 from 2026-10-22; 1.0.1 from 2026-10-21; 1.0 before). Raise it for a new release: a version with three numbers at most, since App Store Connect refuses a fourth.
 
+## What's New
+
+Every upload adds its lines to `Sources/GraphiteUI/Resources/ReleaseNotes.md` in a commit pushed before the archive, so the build carries them: a `### YYYY-MM-DD HH:MM` group (the time of the commit, earlier than the build number the script then takes) under the `## <version>` section of `MARKETING_VERSION`, with one line per change, `- Added: …`, `- Changed: …` or `- Fixed: …`, and `[Mac]`, `[iPad]` or `[iPhone]` after the kind when a change is limited to some devices. They are the build's What to Test lines, written for testers: what they will notice, in one sentence each, without type names, issue numbers or measurements. The groups go newest first, one per heading. A heading with a date alone (the history written before 2026-11-28) counts as the last minute of its day, so an upload's group always carries its time. A new version gets its `## <version>` section in the commit that raises `MARKETING_VERSION`; the script refuses to archive while the newest version in the file is not the build's. `ReleaseHistoryTests` and `WhatsNewTests` refuse a line the page could not read.
+
+The app opens What's New once after an update, with the groups written after the build last seen marked New (`Docs/Whats-new-todo.md`).
+
 Xcode's Organizer works too (Product › Archive, then Distribute App › TestFlight & App Store), but it uses build number 1 from the project unless it is raised by hand.
 
 ## What the upload declares

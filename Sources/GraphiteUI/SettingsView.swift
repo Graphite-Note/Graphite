@@ -5,8 +5,8 @@
  * Description: Settings laid out like Obsidian's: a list of options and one page per area or plugin.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.42
- * Date: 26/11/2026
+ * Version: 0.43
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -239,6 +239,7 @@ private struct GeneralSettingsPage: View {
     let manageVaults: () -> Void
     let openGuideVault: () -> Void
     @State private var showsWelcomeTour = false
+    @State private var showsWhatsNew = false
     @State private var showsGuide = false
 
     var body: some View {
@@ -278,12 +279,14 @@ private struct GeneralSettingsPage: View {
         }
         .navigationTitle("General")
         .welcomeTour(isPresented: $showsWelcomeTour)
+        .whatsNew(isPresented: $showsWhatsNew)
         .guide(isPresented: $showsGuide)
     }
 
     private var aboutSection: some View {
         Section("About") {
             LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development build")
+            Button("What’s New", systemImage: "gift") { showsWhatsNew = true }
             Button("Welcome Tour", systemImage: "sparkles") { showsWelcomeTour = true }
             Button("Guide", systemImage: "book") { showsGuide = true }
             if let sourceCode = ProjectAddresses.sourceCode {

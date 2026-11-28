@@ -6,8 +6,8 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.72
- * Date: 27/11/2026
+ * Version: 0.73
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -150,6 +150,8 @@ struct GraphiteRootView: View {
         .modifier(LinkPreviewLayer(isEnabled: workspace.preferences.isEnabled(.pagePreview), vault: workspace.linkPreviewVault))
         // Once per device, over the reopened vault or the welcome screen.
         .modifier(FirstLaunchWelcomeTour(isReadyToShow: presentsWelcomeTour && !isRestoringVault, fetchesPicturesAtLaunch: presentsWelcomeTour))
+        // Once after an update, in the same launches as the welcome tour (never one that hosts tests).
+        .modifier(AfterUpdateWhatsNew(isReadyToShow: presentsWelcomeTour && !isRestoringVault))
         // The settings the views keep with `@AppStorage` are read from the preferences the
         // workspace writes to: the standard ones in the app, a private suite in a hosted run.
         .defaultAppStorage(workspace.deviceDefaults)

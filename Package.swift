@@ -7,8 +7,8 @@
  *              makes a warning in any of its targets fail the build.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.21
- * Date: 26/11/2026
+ * Version: 0.22
+ * Date: 28/11/2026
  */
 import PackageDescription
 
@@ -62,7 +62,8 @@ let package = Package(
                 // one folder so the page's relative script paths keep working.
                 // The theme resolver's default variables and probe script (`ThemeTokenResolver`).
                 // The course starter's bases and template (`CourseStarter`).
-                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver"), .copy("Resources/CourseStarter")]),
+                // The release history the What's New page shows (`ReleaseHistory.bundledForThisDevice`).
+                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver"), .copy("Resources/CourseStarter"), .copy("Resources/ReleaseNotes.md")]),
         .executableTarget(name: "GraphiteBenchmarks", dependencies: ["GraphiteCore", "GraphiteIndex"]),
         // Fakes and helpers the test targets share (temporary vaults, isolated preferences, the one polling
         // wait, the conflict-version fake). It imports XCTest, so only test targets depend on it.
