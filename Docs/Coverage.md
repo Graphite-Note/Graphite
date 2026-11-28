@@ -286,6 +286,15 @@ Last updated: 2026-11-28.
 - **Found (for the package, listed in the todo's Later section):** a diagram wider than the column and than its narrow scene is drawn from the one narrow scene laid out for 280 points (an XY chart configured 900 wide in a 750-point column about 230 points wide, a Gantt chart `useWidth: 760` about 390, a Wardley map on a 160-point plot with its evolution labels and component labels over each other, where its SVG is drawn at natural size without overlap); the packet chart has no narrow layout and scrolls sideways in a split; class and entity relationship diagrams of about 560 points are cut off in a 417-point pane; the xyChart and quadrant `themeVariables` are not applied (a red `titleColor` stays black); the info diagram prints "MermaidDiagrams v0.3.0" under 0.4.0; the dense Sankey of the energy data overlaps its labels; a Gantt milestone's label is crossed by a vertical marker's line; `ReadingDiagramWording` still words a Gantt `click` or `vert` as not drawn.
 - **Not established:** a physical iPad or iPhone; the iPhone at all; a vault theme's `--pele-*` colors on the 0.4.0 types; Export to PDF of the new types; the Mac's context menu item chosen with a click and a file written by Save as SVG (the panel opens named "Animal example.svg" for the class diagram; a hosted test cannot enter AppKit's tracking loop), the iPad's share sheet this time; the Mac picture in the dark appearance (a hosted window's capture draws the reading view's dark colors wrongly, HUNT-363, so the iPad's dark pictures are the check); the package's own suite and speed (other agents are changing the layered layout, label line height, styled labels, icons, grammar and speed in the package).
 
+## The Graphite Guide shows dashboards like Notion pages: 2026-11-28
+
+[Guide-vault-todo.md](Guide-vault-todo.md) section 6 (issue #288).
+
+- **Written:** three made-up dashboards in `6 Everyday examples` (`Signals and Sound`, `Solar Boat Team`, `Balcony Garden`) with 26 short notes and three bases (a table, a table with cards, a board), and `4 Making notes look good/Building a dashboard.md`, a tutorial in eight steps; covers and an SVG icon drawn by `scripts/make-guide-vault.py`.
+- **Automated tests, passing on macOS:** `GuideVaultTests` (links, size 4.76 MB, the pack list at the notes' commit), `GuideVaultPassTests` with `GRAPHITE_RELEASE_PASS=1`, light and dark (no finding); in an iPad Pro 11-inch (M5) simulator, iOS 27.2, `GuideVaultPassHostedTests` and `GuideVaultOpeningHostedTests` (passed).
+- **Checked by hand:** each hub and the tutorial in the Mac pass's pages (reading view and Live Preview, light and dark) and in 17 pictures of the app in the iPad simulator.
+- **Not established:** the iPhone, a physical device, the pack downloaded from GitHub at the pushed commit.
+
 ## The Graphite Guide explains diagram colours, Split Down and section links: 2026-11-23
 
 [Guide-vault-todo.md](Guide-vault-todo.md) section 5 (issue #224).
