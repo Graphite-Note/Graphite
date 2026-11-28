@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Graphite-Note/Importer.git",
       "state" : {
-        "revision" : "63d5c8039cc29b7762521b685c04145eba37e064",
-        "version" : "0.5.1"
+        "revision" : "ac86b7f259730f6c855f3e50ef27336e94a40340",
+        "version" : "0.5.2"
       }
     },
     {
