@@ -5,8 +5,8 @@
  * Description: The Mac note editor keeps the line at its top when its width changes.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 02/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -105,6 +105,22 @@ final class MacMarkdownEditorWidthChangeTests: XCTestCase {
         // Released, so nothing is left to bring the view back.
         XCTAssertNil(fixture.coordinator.topLineHold.heldLocation)
         XCTAssertEqual(fixture.coordinator.topCharacter(of: fixture.textView), location(ofParagraph: 60))
+    }
+
+    /// A scroll bar dragged, Page Down, or a trackpad gesture already under way when the width
+    /// changed: with responsive scrolling only a gesture's first event reaches the text view, so
+    /// no wheel event releases the line, and the view jumped back to it once the width settled.
+    func testScrollingWithoutTheWheelWhileTheWidthSettlesIsNotUndone() async throws {
+        let fixture = try await editorScrolledToParagraph200()
+
+        setWidth(420, of: fixture)
+        fixture.scrollToTop(ofCharacter: location(ofParagraph: 60))
+        try await waitUntilTheWidthHasSettled(fixture)
+
+        // Near the place scrolled to (TextKit may still lay a line or two out at the new width), not back at paragraph 200.
+        let top = try XCTUnwrap(fixture.coordinator.topCharacter(of: fixture.textView))
+        XCTAssertGreaterThanOrEqual(top, location(ofParagraph: 58))
+        XCTAssertLessThan(top, location(ofParagraph: 64))
     }
 
     func testAJumpWhileTheWidthSettlesIsNotUndone() async throws {

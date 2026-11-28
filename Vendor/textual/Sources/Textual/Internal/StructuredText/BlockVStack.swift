@@ -49,13 +49,20 @@ extension StructuredText {
     }
 
     var body: some View {
-      // Read the block spacing preference and apply it as a layout value
-      content
-        .onPreferenceChange(BlockSpacingKey.self) { @MainActor value in
-          // Override with the resolved list item spacing if enabled
-          blockSpacing = listItemSpacingEnabled ? resolvedListItemSpacing : value
-        }
-        .layoutValue(key: BlockSpacingKey.self, value: blockSpacing)
+      // Graphite patch: a list's items are spaced by the list item spacing alone, which the
+      // environment already holds; read from the preference, as upstream did, it reached the
+      // layout only in a second pass, after the first had spaced the items by their views.
+      if listItemSpacingEnabled {
+        content
+          .layoutValue(key: BlockSpacingKey.self, value: resolvedListItemSpacing)
+      } else {
+        // Read the block spacing preference and apply it as a layout value
+        content
+          .onPreferenceChange(BlockSpacingKey.self) { @MainActor value in
+            blockSpacing = value
+          }
+          .layoutValue(key: BlockSpacingKey.self, value: blockSpacing)
+      }
     }
   }
 

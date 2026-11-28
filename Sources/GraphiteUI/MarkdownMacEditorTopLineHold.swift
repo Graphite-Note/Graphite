@@ -5,8 +5,8 @@
  * Description: Keeps the Mac note editor at the line at its top through a change of width.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 02/11/2026
+ * Version: 0.2
+ * Date: 27/11/2026
  */
 
 #if os(macOS)
@@ -27,6 +27,8 @@ final class MarkdownMacEditorTopLineHold {
     private struct TopLine {
         let location: Int
         let textLength: Int
+        /// The scroll offset when the line was held, which a new width leaves as it was.
+        let scrollOffset: CGFloat?
     }
 
     private let clock: any ApplicationClock
@@ -41,9 +43,9 @@ final class MarkdownMacEditorTopLineHold {
     var heldLocation: Int? { topLine?.location }
 
     /// Only the first of a run of changes says what the line was: the later ones see estimates.
-    func hold(location: Int?, textLength: Int) {
+    func hold(location: Int?, textLength: Int, scrollOffset: CGFloat? = nil) {
         guard topLine == nil, let location else { return }
-        topLine = TopLine(location: location, textLength: textLength)
+        topLine = TopLine(location: location, textLength: textLength, scrollOffset: scrollOffset)
     }
 
     /// The editor left the window: the line stays held for when it returns, with nothing to wait for until then.
@@ -53,16 +55,31 @@ final class MarkdownMacEditorTopLineHold {
     }
 
     /// Calls `returnToLine` once the width has stopped changing. Text edited in the meantime
-    /// moved the line, and the edit has shown its own place.
-    func returnWhenSettled(currentTextLength: @escaping () -> Int?, returnToLine: @escaping (Int) -> Void) {
-        guard topLine != nil else { return }
+    /// moved the line, and the edit has shown its own place. A scroll in the meantime chose
+    /// another place: a new width leaves the scroll offset as it was, so an offset that moved
+    /// since the line was held was moved by the scroll bar, the keyboard, or a trackpad
+    /// gesture whose later events AppKit's responsive scrolling handles without the text view
+    /// (only a gesture's first event reaches `scrollWheel(with:)`, which releases the line).
+    func returnWhenSettled(currentTextLength: @escaping () -> Int?, currentScrollOffset: @escaping () -> CGFloat?,
+                           returnToLine: @escaping (Int) -> Void) {
+        guard let topLine else { return }
+        guard !hasScrolled(since: topLine, currentScrollOffset: currentScrollOffset()) else { return release() }
         settling?.cancel()
         settling = Task { @MainActor [weak self, clock] in
             guard (try? await clock.sleep(for: Self.settlingTime)) != nil, // Fails only when cancelled: by a later width, or `release`.
                   let self, let topLine = self.topLine else { return }
             self.release()
-            if currentTextLength() == topLine.textLength { returnToLine(topLine.location) }
+            guard currentTextLength() == topLine.textLength, !self.hasScrolled(since: topLine, currentScrollOffset: currentScrollOffset()) else { return }
+            returnToLine(topLine.location)
         }
+    }
+
+    /// How far the scroll offset may move without a scroll: the clip view aligns it to device pixels.
+    private static let scrollAllowance: CGFloat = 1
+
+    private func hasScrolled(since topLine: TopLine, currentScrollOffset: CGFloat?) -> Bool {
+        guard let heldOffset = topLine.scrollOffset, let currentScrollOffset else { return false }
+        return abs(currentScrollOffset - heldOffset) > Self.scrollAllowance
     }
 
     /// The person or a jump has chosen another place, or the editor left the screen.
@@ -93,13 +110,14 @@ extension NativeMarkdownEditor.Coordinator {
 
     private func holdTopLine(of textView: NSTextView) {
         guard textView.window != nil, textView.bounds.width > 0, pendingJump == nil else { return }
-        topLineHold.hold(location: topCharacter(of: textView), textLength: textView.textStorage?.length ?? 0)
+        topLineHold.hold(location: topCharacter(of: textView), textLength: textView.textStorage?.length ?? 0, scrollOffset: textView.visibleRect.minY)
     }
 
     /// In the window, as a change of width out of it says nothing yet about where the lines will be.
     func returnToTopLineOnceSettled(in textView: NSTextView) {
         guard textView.window != nil else { return }
-        topLineHold.returnWhenSettled(currentTextLength: { [weak textView] in textView?.textStorage?.length }) { [weak self, weak textView] location in
+        topLineHold.returnWhenSettled(currentTextLength: { [weak textView] in textView?.textStorage?.length },
+                                      currentScrollOffset: { [weak textView] in textView?.visibleRect.minY }) { [weak self, weak textView] location in
             guard let self, let textView else { return }
             self.returnToTopLine(location, in: textView)
         }
