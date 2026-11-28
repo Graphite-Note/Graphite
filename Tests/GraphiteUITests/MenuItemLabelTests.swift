@@ -6,8 +6,8 @@
  *              menus with named symbols, and an unknown symbol still draws.
  *
  * Authors: Bahey Shalash
- * Version: 0.1
- * Date: 10/11/2026
+ * Version: 0.2
+ * Date: 28/11/2026
  */
 
 #if os(macOS)
@@ -87,7 +87,9 @@ final class MenuItemLabelTests: XCTestCase {
         let namedSymbols = try shortestTimeForItemsToAppear(usesMadeImages: false)
         let madeImages = try shortestTimeForItemsToAppear(usesMadeImages: true)
         // Measured 2026-11-10 on the development Mac: about 255 ms named, 155 ms made, 100 ms for plain buttons (50 ms of it the waits above).
-        XCTAssertLessThan(madeImages, namedSymbols * 0.85, "Made images \(madeImages), named symbols \(namedSymbols).")
+        // Checked there; a shared CI runner prints both times, as it does every timing budget: on GitHub's runner, on
+        // 2026-11-28, the made images took 0.54 s, not under 85% of the named symbols' time, with the same code.
+        SharedRunner.assertWithinTimingBudget(madeImages, isLessThan: namedSymbols * 0.85, "Made images \(madeImages), named symbols \(namedSymbols).")
     }
 
     func testAnUnknownSymbolStillDrawsItsTitle() throws {
