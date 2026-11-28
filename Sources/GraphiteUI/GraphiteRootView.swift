@@ -541,7 +541,7 @@ struct GraphiteRootView: View {
             .keptInViewWhenNarrow()
             ToolbarSpacer(.flexible, placement: .bottomBar)
             ToolbarItem(placement: .bottomBar) {
-                Button("New Note", systemImage: "square.and.pencil") { creation = CreationRequest(kind: .note) }.tint(.primary)
+                Button("New Note", systemImage: "square.and.pencil") { creation = workspace.creationSheet(.note) }.tint(.primary)
             }
             .keptInViewWhenNarrow()
             ToolbarSpacer(.flexible, placement: .bottomBar)
@@ -592,7 +592,7 @@ struct GraphiteRootView: View {
                 .frame(maxWidth: .infinity)
         } else {
             WorkspacePanes(workspace: workspace, showsLinksInspector: $showsInspector,
-                           create: { request in creation = request },
+                           create: { request in creation = workspace.creationSheet(for: request) },
                            showQuickSwitcher: { activePalette = .quickSwitcher },
                            acceptsFocusTouches: activePalette == nil, showsTabBar: !focusMode.isActive && !isCompactWidth && !hidesChromeWhileTyping)
             .modifier(WindowPaletteCommandsOffer(offersSplit: !isCompactWidth) { [workspace, windowActions] offersSplit in
@@ -617,7 +617,7 @@ struct GraphiteRootView: View {
                       },
                       showSidebar: showSidebar,
                       showLinksInspector: { showsInspector = true },
-                      create: { kind in creation = CreationRequest(kind: kind) },
+                      create: { kind in creation = workspace.creationSheet(kind) },
                       showTemplatePicker: showTemplatePicker,
                       showTabOverview: showTabOverview,
                       toggleFocusMode: focusModeAction)

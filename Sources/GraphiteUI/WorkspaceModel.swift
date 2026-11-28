@@ -79,6 +79,9 @@ final class WorkspaceModel {
     var fileSheet: FileSheet?
     /// The file chooser of Import… (the Mac's File menu and New menu) on screen; what is chosen is copied into the vault.
     var isChoosingFilesToImport = false
+    /// The window's file tree, which names new items and renames in its rows when it is on screen
+    /// (`requestRename`, `requestNewFolder`, `beginNamingInFileTree`); the sheets stand in when it is not.
+    @ObservationIgnored weak var fileTreeNaming: (any FileTreeNaming)?
     /// The notebook import running or showing its report: nil until notebooks are imported and again once its report is
     /// closed (`importNotebooks`, `endNotebookImport`), so the import holds nothing while it is not used.
     var notebookImport: NotebookImportSession?

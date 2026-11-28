@@ -2,7 +2,7 @@
  * File: MacFileTreeViews.swift
  * ----------------------------
  * Layer: UI
- * Description: The Mac file tree's outline view and its rows.
+ * Description: The Mac file tree's outline view and its rows, with the field a row shows while its name is typed.
  *
  * Authors: Bahey Shalash
  * Version: 0.2
@@ -80,6 +80,10 @@ final class FileTreeCellView: NSTableCellView {
     /// The part of the title and extension the file tree's filter matched, marked.
     private var highlightedRange: NSRange?
     private var font = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    /// The field naming the row's item, shown over its title while the name is typed.
+    private weak var nameField: NSTextField?
+    /// A renamed file's extension, muted after the field, as the rename keeps it.
+    private let nameFieldSuffix = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -95,7 +99,40 @@ final class FileTreeCellView: NSTableCellView {
         conflictMarker.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .regular)
         conflictMarker.isHidden = true
         addSubview(conflictMarker)
+        nameFieldSuffix.textColor = .secondaryLabelColor
+        nameFieldSuffix.isHidden = true
+        addSubview(nameFieldSuffix)
     }
+
+    /// Shows the field over the title, the kept extension after it.
+    func showNameField(_ field: NSTextField, extensionSuffix: String?) {
+        // A reused cell may still hold the field of an earlier name.
+        if let earlierField = nameField, earlierField !== field, earlierField.superview === self { earlierField.removeFromSuperview() }
+        if field.superview !== self { addSubview(field) }
+        nameField = field
+        titleField.isHidden = true
+        nameFieldSuffix.stringValue = extensionSuffix ?? ""
+        nameFieldSuffix.font = field.font
+        nameFieldSuffix.isHidden = extensionSuffix == nil
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    /// The title again, once the name is no longer typed or the cell shows another row.
+    func removeNameField() {
+        guard let nameField else { return }
+        if nameField.superview === self { nameField.removeFromSuperview() }
+        self.nameField = nil
+        titleField.isHidden = false
+        nameFieldSuffix.isHidden = true
+        needsLayout = true
+    }
+
+    /// Whether the row shows its name field, which a test reads.
+    var showsNameField: Bool { nameField?.superview === self }
+
+    /// The name fields in the cell, which a test counts: one while a name is typed, none after.
+    var nameFieldCount: Int { subviews.filter { subview in subview is FileTreeNameField }.count }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -172,6 +209,17 @@ final class FileTreeCellView: NSTableCellView {
         let titleFrame = NSRect(x: titleOrigin, y: floor((bounds.height - titleHeight) / 2),
                                 width: max(0, bounds.width - titleOrigin - 2 - markerWidth), height: titleHeight)
         if titleField.frame != titleFrame { titleField.frame = titleFrame }
+        if let nameField, nameField.superview === self {
+            let suffixWidth = nameFieldSuffix.isHidden ? 0 : ceil(nameFieldSuffix.intrinsicContentSize.width) + 2
+            let fieldHeight = min(bounds.height, ceil(nameField.intrinsicContentSize.height))
+            let fieldWidth = max(0, bounds.width - suffixWidth - markerWidth)
+            nameField.frame = NSRect(x: 0, y: floor((bounds.height - fieldHeight) / 2), width: fieldWidth, height: fieldHeight)
+            if !nameFieldSuffix.isHidden {
+                let suffixHeight = ceil(nameFieldSuffix.intrinsicContentSize.height)
+                let suffixOrigin = NSPoint(x: nameField.frame.maxX + 2, y: floor((bounds.height - suffixHeight) / 2))
+                nameFieldSuffix.frame = NSRect(origin: suffixOrigin, size: NSSize(width: suffixWidth - 2, height: suffixHeight))
+            }
+        }
         if !conflictMarker.isHidden {
             let markerFrame = NSRect(x: bounds.width - markerWidth, y: floor((bounds.height - 16) / 2), width: 16, height: 16)
             if conflictMarker.frame != markerFrame { conflictMarker.frame = markerFrame }
