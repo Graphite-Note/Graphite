@@ -3,11 +3,11 @@
  * File: Package.swift
  * -------------------
  * Layer: Build
- * Description: The Swift package of Graphite's modules, tests and benchmarks, its dependencies, and the setting that
- *              makes a warning in any of its targets fail the build.
+ * Description: The Swift package of Graphite's modules, tests and benchmarks, its dependencies, the system framework
+ *              linked by name (AVKit), and the setting that makes a warning in any of its targets fail the build.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.22
+ * Version: 0.23
  * Date: 28/11/2026
  */
 import PackageDescription
@@ -63,7 +63,11 @@ let package = Package(
                 // The theme resolver's default variables and probe script (`ThemeTokenResolver`).
                 // The course starter's bases and template (`CourseStarter`).
                 // The release history the What's New page shows (`ReleaseHistory.bundledForThisDevice`).
-                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver"), .copy("Resources/CourseStarter"), .copy("Resources/ReleaseNotes.md")]),
+                resources: [.copy("Resources/CommunityPluginRuntime"), .copy("Resources/ThemeResolver"), .copy("Resources/CourseStarter"), .copy("Resources/ReleaseNotes.md")],
+                // SwiftUI's VideoPlayer (`EmbeddedMediaPlayer`) subclasses AVKit's AVPlayerView. `import AVKit` only
+                // hints AVKit to the linker, which drops it as no symbol of it is named, and `_AVKit_SwiftUI` does not
+                // load it on macOS 27.2: without this link the Swift runtime aborts as it builds the player (HUNT-398).
+                linkerSettings: [.linkedFramework("AVKit")]),
         .executableTarget(name: "GraphiteBenchmarks", dependencies: ["GraphiteCore", "GraphiteIndex"]),
         // Fakes and helpers the test targets share (temporary vaults, isolated preferences, the one polling
         // wait, the conflict-version fake). It imports XCTest, so only test targets depend on it.

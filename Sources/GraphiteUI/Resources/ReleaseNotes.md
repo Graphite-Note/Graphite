@@ -2,6 +2,10 @@
 
 ## 1.0.3
 
+### 2026-11-28 21:31
+
+- Fixed [Mac]: Playing a video embedded in a note no longer quits Graphite.
+
 ### 2026-11-28 20:09
 
 - Added: The Graphite Guide explains moving in from Notion.

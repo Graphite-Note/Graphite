@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-28.
 
+## Playing a video embedded in a note on the Mac: 2026-11-28
+
+HUNT-398 of [Bug-hunt-todo.md](Bug-hunt-todo.md) (issue #118). TestFlight's Mac build 20261128.1856 quit as soon as a video embed started playing: SwiftUI's `VideoPlayer` subclasses AVKit's `AVPlayerView`, the app never linked AVKit (`import AVKit` only hints it to the linker, which drops it as no symbol of it is named), and on macOS 27.2 `_AVKit_SwiftUI` does not load it either, so the Swift runtime aborted. GraphiteUI now links AVKit by name.
+
+- **Automated tests, passing on macOS:** `EmbeddedVideoPlayerMacTests` (a video embed that is playing shows AVKit's player view; it names nothing of AVKit, and without the link it aborts with the crash report's message).
+- **Checked by hand on the Mac** (a Debug copy under its own bundle ID, a made-up vault with a silent test pattern): Play shows the system player, the video plays to its end and the app keeps running. `otool -L` lists AVKit.framework in the Mac Release and Debug builds and the iOS simulator build.
+- **Not checked:** pressing Play on the iPad or iPhone (iOS was not affected: `_AVKit_SwiftUI` brings AVKit in with it there), a physical device.
+
 ## The Mac's toolbar with the sidebar hidden: 2026-11-28
 
 HUNT-397 of [Bug-hunt-todo.md](Bug-hunt-todo.md) (issue #122). A hidden sidebar's toolbar items stayed in the sidebar's part of the window's toolbar, which AppKit squeezes beside the window's buttons, so New Note, Files Options and Show Sidebar went into the overflow menu (») with half the bar empty. On the Mac the sidebar's items now show only while it is beside the documents; while it is hidden Graph View and New Note show before Back and Forward (`HiddenSidebarToolbarButtons`).
