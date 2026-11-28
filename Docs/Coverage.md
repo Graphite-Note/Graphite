@@ -4,6 +4,14 @@ What Graphite does today, how each part is verified, and what is still missing. 
 
 Last updated: 2026-11-28.
 
+## The Mac's toolbar with the sidebar hidden: 2026-11-28
+
+HUNT-397 of [Bug-hunt-todo.md](Bug-hunt-todo.md) (issue #122). A hidden sidebar's toolbar items stayed in the sidebar's part of the window's toolbar, which AppKit squeezes beside the window's buttons, so New Note, Files Options and Show Sidebar went into the overflow menu (») with half the bar empty. On the Mac the sidebar's items now show only while it is beside the documents; while it is hidden Graph View and New Note show before Back and Forward (`HiddenSidebarToolbarButtons`).
+
+- **Automated tests, passing on macOS:** `HiddenSidebarToolbarMacTests` (hiding the sidebar moves Graph View and New Note after the sidebar's part and before Back and leaves no overflow button in the window; showing it again puts them back over the sidebar, once; it fails with the change undone), `MacNewMenuImportTests`, `ViewSwitchingMacTests` (3).
+- **Checked by hand on the Mac** (a Debug copy under its own bundle ID, a made-up vault, a window 1,200 points wide): hiding and showing the sidebar with its toggle, and Library mode, with no » in the bar.
+- **Not checked:** the iPad and iPhone, whose sidebar keeps its items; a window narrow enough for the note's own items to overflow.
+
 ## What's New: every version's changes, opened once after an update: 2026-11-28
 
 [Whats-new-todo.md](Whats-new-todo.md) (issues #285 and #286). `WhatsNewPage` lists the release history of `Sources/GraphiteUI/Resources/ReleaseNotes.md` newest first, each version's dated groups with their Added, Changed and Fixed lines, only the lines for the device it runs on. `AfterUpdateWhatsNew` opens it once after an update with the groups written after the build last seen marked New; a new install records its build and shows the welcome tour. Settings › General › About › What's New opens it as a sheet, Help › What's New in Graphite on the Mac in a window. The history goes back to 1.0, the first TestFlight build, and each upload adds its lines before archiving (`Docs/TestFlight.md`), which `scripts/archive-for-testflight.sh` checks for the version.

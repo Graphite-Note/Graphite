@@ -6,8 +6,8 @@
  *              delete), drag and drop, and creating files in a folder.
  *
  * Authors: Félix Chevalier, Bahey Shalash
- * Version: 0.54
- * Date: 26/11/2026
+ * Version: 0.55
+ * Date: 28/11/2026
  */
 
 import SwiftUI
@@ -86,6 +86,8 @@ struct VaultSidebar: View {
     @FocusState private var isSearchFocused: Bool
     @Environment(\.accent) private var accent
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Whether the sidebar is shown beside the documents; the root view's column visibility.
+    @Environment(\.isSidebarBesideDocuments) private var isSidebarBesideDocuments
     /// The vault's interface font, which the Mac's file tree draws names in.
     @Environment(\.noteTypography) private var typography
     @AppStorage(SidebarPanelSettingKey.panel) private var storedPanel = SidebarPanel.files
@@ -232,24 +234,16 @@ struct VaultSidebar: View {
                 Button("Settings", systemImage: "gearshape") { showsSettings = true }.tint(.primary)
             }
             #endif
-            if workspace.store != nil, workspace.preferences.isEnabled(.graph), !showsGraphButtonBesidePanels {
+            if workspace.store != nil, showsToolbarButtons, workspace.preferences.isEnabled(.graph), !showsGraphButtonBesidePanels {
                 // An item of its own, kept in view when the narrow sidebar folds New and the
                 // list's options into one menu.
-                ToolbarItem(placement: .primaryAction) { graphButton }
+                ToolbarItem(placement: .primaryAction) { GraphViewButton(showGraph: { workspace.showGraph() }) }
                     .keptInViewWhenNarrow()
             }
-            if workspace.store != nil {
+            if workspace.store != nil, showsToolbarButtons {
                 ToolbarItemGroup(placement: .primaryAction) {
                     #if os(macOS)
-                    // A click makes a note, as Notes' compose button does; the arrow beside it
-                    // offers the other kinds.
-                    Menu { newDocumentMenuItems } label: {
-                        Label("New Note", systemImage: "square.and.pencil")
-                    } primaryAction: {
-                        creation = workspace.creationSheet(.note)
-                    }
-                    .tint(.primary)
-                    .help("New Note")
+                    NewDocumentMenuButton(actions: workspace.newDocumentMenuActions(creation: $creation))
                     #else
                     NewItemButton(firstKind: workspace.preferences.library.firstCreatedKind, isEnabled: workspace.preferences.isEnabled,
                                   actions: newItemActions) {
@@ -285,7 +279,7 @@ struct VaultSidebar: View {
                             }
                         }
                         if showsGraphButtonBesidePanels {
-                            graphButton
+                            GraphViewButton(showGraph: { workspace.showGraph() })
                                 .labelStyle(.iconOnly)
                                 .buttonStyle(.bordered)
                                 .buttonBorderShape(.circle)
@@ -344,11 +338,16 @@ struct VaultSidebar: View {
         #endif
     }
 
-    /// One click from the file list to the whole vault's graph, in a tab of its own.
-    private var graphButton: some View {
-        Button("Graph View", systemImage: "point.3.connected.trianglepath.dotted") { workspace.showGraph() }
-            .tint(.primary)
-            .help("Graph View")
+    /// Whether the sidebar's buttons are in the window's toolbar. A hidden sidebar keeps its part of the Mac's toolbar,
+    /// which AppKit squeezes beside the window's buttons and empties into the overflow menu (») however wide the window,
+    /// the sidebar's own toggle with it; the documents' toolbar shows Graph View and New Note then
+    /// (`HiddenSidebarToolbarButtons`).
+    private var showsToolbarButtons: Bool {
+        #if os(macOS)
+        isSidebarBesideDocuments
+        #else
+        true
+        #endif
     }
 
     /// The options of the list shown, as each Obsidian sidebar view has its own.
@@ -388,22 +387,6 @@ struct VaultSidebar: View {
                        saveScannedNotebook: workspace.scannedNotebookSaver(),
                        reportProblem: { [workspace] message in workspace.errorMessage = message },
                        savePicture: workspace.pictureSaver(), canTakePhoto: WorkspaceModel.canTakePhotos, importFromNotion: workspace.chooseNotionExport)
-    }
-
-    @ViewBuilder private var newDocumentMenuItems: some View {
-        Button("New Note", systemImage: "doc.text") { creation = workspace.creationSheet(.note) }
-        Button("New Notebook", systemImage: "book.closed") { creation = workspace.creationSheet(.notebook) }
-        if workspace.preferences.isEnabled(.bases) {
-            Button("New Base", systemImage: "tablecells") { creation = workspace.creationSheet(.base) }
-            Button("New Course", systemImage: "graduationcap") { creation = workspace.creationSheet(.course) }
-        }
-        if workspace.preferences.isEnabled(.canvas) { Button("New Canvas", systemImage: "rectangle.3.group") { creation = workspace.creationSheet(.canvas) } }
-        if workspace.preferences.isEnabled(.dailyNotes) {
-            Button("Today's Daily Note", systemImage: "calendar") { Task { await workspace.openDailyNote() } }
-        }
-        Divider()
-        Button("New Folder", systemImage: "folder.badge.plus") { workspace.requestNewFolder(in: workspace.newFileDirectory(nil)) }
-        ImportMenuButtons(importFiles: { workspace.isChoosingFilesToImport = true }, importFromNotion: workspace.notionImportOpener)
     }
 
     /// The chosen list, or a community plugin's view, which fills the sidebar below the picker

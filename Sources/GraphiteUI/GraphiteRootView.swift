@@ -6,7 +6,7 @@
  *              bottom bar, palettes, sheets and full-screen viewers, and the links the window handles.
  *
  * Authors: Bahey Shalash, Félix Chevalier
- * Version: 0.73
+ * Version: 0.74
  * Date: 28/11/2026
  */
 
@@ -447,6 +447,8 @@ struct GraphiteRootView: View {
         // and Focus in the document's More menu (`WorkspaceMoreMenuItems`), so the toolbar
         // stays short enough for the title; Exit Focus stays in view while Focus hides the rest.
         if workspace.store != nil && !isCompactWidth {
+            workspace.hiddenSidebarToolbarButtons(isSidebarHidden: !isSidebarBesideDocuments && !focusMode.isActive,
+                                                  showsNewNote: !isLibraryHomeShown, creation: $creation)
             ToolbarItemGroup(placement: .navigation) {
                 if focusMode.isActive {
                     Button("Exit Focus", systemImage: "arrow.down.right.and.arrow.up.left") { toggleFocusMode() }
@@ -465,7 +467,7 @@ struct GraphiteRootView: View {
             }
             // Notes, PDFs and canvases end their own More menu with these commands; other
             // documents and an empty tab have no menu of their own, so the window shows one.
-            if !focusedDocumentHasMoreMenu { windowMoreMenu }
+            if !focusedDocumentHasMoreMenu { WindowMoreMenu() }
         }
         if workspace.store != nil && showsRecordingControl {
             ToolbarItem(placement: .primaryAction) {
@@ -480,19 +482,6 @@ struct GraphiteRootView: View {
                     .tint(.primary)
             }
         }
-    }
-
-    /// The window's More menu, for a document without one of its own or an empty tab: on iOS
-    /// in the system's overflow menu (•••), the one such menu of the bar.
-    @ToolbarContentBuilder private var windowMoreMenu: some ToolbarContent {
-        #if os(iOS)
-        ToolbarOverflowMenu { WorkspaceMoreMenuItems().tint(.primary) }
-        #else
-        ToolbarItem(placement: .primaryAction) {
-            Menu("More", systemImage: "ellipsis") { WorkspaceMoreMenuItems() }
-                .tint(.primary)
-        }
-        #endif
     }
 
     /// Whether the focused document puts a More menu of its own in the toolbar.
