@@ -106,15 +106,18 @@ final class KeyboardShortcutTableTests: XCTestCase {
             KeyCombination(.control, .named(.arrowLeft)), KeyCombination(.control, .named(.arrowRight)),
         ]
         for combination in reservedOnMac { XCTAssertEqual(mac.shortcut(matching: combination)?.kind, .reserved, "\(combination)") }
-        let standardEverywhere: [KeyCombination] = ["Q", "C", "V", "X", "Z", "A", ","].map { key in KeyCombination(.command, .character(key)) }
+        let standardEverywhere: [KeyCombination] = ["C", "V", "X", "Z", "A", ","].map { key in KeyCombination(.command, .character(key)) }
             + [KeyCombination([.command, .shift], .character("Z")), KeyCombination(.command, .character("M")), KeyCombination(.command, .character("`"))]
         for platform in [ShortcutPlatform.macOS, .iPadOS] {
             for combination in standardEverywhere {
                 XCTAssertEqual(SystemKeyboardShortcuts(platform: platform).shortcut(matching: combination)?.kind, .standard, "\(combination) on \(platform)")
             }
         }
+        let commandQ = KeyCombination(.command, .character("Q"))
+        XCTAssertEqual(SystemKeyboardShortcuts(platform: .macOS).shortcut(matching: commandQ)?.kind, .standard, "The Mac's own Graphite can take ⌘Q.")
         let iPad = SystemKeyboardShortcuts(platform: .iPadOS)
-        for combination in [KeyCombination(.command, .character("H")), KeyCombination(.command, .named(.space)), KeyCombination(.command, .named(.tab))] {
+        // iPadOS's app menu quits with ⌘Q before the app sees the key.
+        for combination in [KeyCombination(.command, .character("H")), KeyCombination(.command, .named(.space)), KeyCombination(.command, .named(.tab)), commandQ] {
             XCTAssertEqual(iPad.shortcut(matching: combination)?.kind, .reserved, "\(combination)")
         }
     }
